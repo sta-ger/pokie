@@ -578,6 +578,28 @@ describe("BuildCommand", () => {
             }
         });
 
+        it("prints the durable PAR-to-WASM imported Blueprint companion during dry-run without writing it", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-par-wasm-dry-run-"));
+            const sourcePath = path.join(directory, "source.par.xlsx");
+            const outputPath = path.join(directory, "exports", "game.wasm");
+            const importedBlueprintPath = `${outputPath}.pokie/par-import/imported.blueprint.json`;
+            const conversionEvidencePath = `${outputPath}.pokie/par-import/conversion-evidence.json`;
+            fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), sourcePath);
+            try {
+                const exitCode = await new BuildCommand("1.3.0").run([sourcePath, "--target", "wasm", "--out", outputPath, "--dry-run"]);
+
+                expect(exitCode).toBe(0);
+                const printed = logSpy.mock.calls.map(([message]) => message).join("\n");
+                expect(printed).toContain(importedBlueprintPath);
+                expect(printed).toContain(conversionEvidencePath);
+                expect(printed).not.toContain(`${outputPath}/.pokie/par-import`);
+                expect(fs.existsSync(importedBlueprintPath)).toBe(false);
+                expect(fs.existsSync(conversionEvidencePath)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
         it("--dry-run reports default paylines/bets when the blueprint omits them", async () => {
             const minimalBlueprint: GameBlueprint = {
                 manifest: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

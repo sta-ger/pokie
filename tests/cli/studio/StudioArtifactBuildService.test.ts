@@ -287,6 +287,32 @@ describe("StudioArtifactBuildService", () => {
             });
             expect(fs.existsSync(path.join(workDir, "game.wasm"))).toBe(false);
         });
+
+        it("previews the same durable PAR-to-WASM import companion that a build will publish, without writing it", async () => {
+            const workbookPath = path.join(workDir, "source.par.xlsx");
+            const destination = path.join(workDir, "exports", "game.wasm");
+            const importedBlueprintPath = `${destination}.pokie/par-import/imported.blueprint.json`;
+            const conversionEvidencePath = `${destination}.pokie/par-import/conversion-evidence.json`;
+            fs.copyFileSync(path.join(__dirname, "..", "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+
+            const result = await service.preview(workbookPath, "wasm", destination);
+
+            expect(result).toMatchObject({
+                status: "ok",
+                target: "wasm",
+                destination,
+                destinationKind: "file",
+                sourceType: "parWorkbook",
+            });
+            if (result.status !== "ok") throw new Error("expected preview");
+            expect(result.plan.steps[0]).toMatchObject({
+                kind: "importParWorkbook",
+                output: {canonicalLocation: importedBlueprintPath},
+                conversionEvidencePath,
+            });
+            expect(fs.existsSync(importedBlueprintPath)).toBe(false);
+            expect(fs.existsSync(conversionEvidencePath)).toBe(false);
+        });
     });
 
     describe("build", () => {

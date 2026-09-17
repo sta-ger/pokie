@@ -261,7 +261,7 @@ describe("ArtifactConversionPlanner", () => {
 
         expect(outcomeToPackage).toMatchObject({status: "unavailable", diagnostic: {code: "missing-data", failedEdge: {from: "outcomeLibrary", to: "tsPackage"}}});
         expect(outcomeToPackage.diagnostic?.message).toContain("does not preserve the game model");
-        expect(wasm.diagnostic?.message).toContain("metadata-only");
+        expect(wasm.diagnostic?.message).toContain("finished artifact");
         expect(par).toMatchObject({status: "planned", steps: [{kind: "importParWorkbook"}, {kind: "materializeRuntime"}, {kind: "generateOutcomeLibrary"}, {kind: "publish"}]});
     });
 
@@ -351,6 +351,27 @@ describe("ArtifactConversionPlanner", () => {
                 {kind: "publish"},
             ],
         });
+    });
+
+    it("uses a file companion for the durable PAR-to-WASM import while retaining directory-target evidence", () => {
+        const wasmPlan = planner.plan(project("parWorkbook"), "wasm", {destinationPath: "/exports/game.wasm"});
+        const packagePlan = planner.plan(project("parWorkbook"), "tsPackage", {destinationPath: "/exports/game"});
+
+        expect(wasmPlan.status).toBe("planned");
+        expect(wasmPlan.steps[0]).toMatchObject({
+            kind: "importParWorkbook",
+            output: {canonicalLocation: "/exports/game.wasm.pokie/par-import/imported.blueprint.json"},
+            conversionEvidencePath: "/exports/game.wasm.pokie/par-import/conversion-evidence.json",
+        });
+        expect(wasmPlan.steps[1]).toMatchObject({kind: "publish"});
+        expect(wasmPlan.steps[0]?.output.canonicalLocation).not.toContain("/game.wasm/.pokie/");
+        expect(packagePlan.status).toBe("planned");
+        expect(packagePlan.steps[0]).toMatchObject({
+            kind: "importParWorkbook",
+            output: {canonicalLocation: "/exports/game/.pokie/par-import/imported.blueprint.json"},
+            conversionEvidencePath: "/exports/game/.pokie/par-import/conversion-evidence.json",
+        });
+        expect(packagePlan.steps[1]).toMatchObject({kind: "publish"});
     });
 
     it("rejects a changed source or destination at import execution", () => {

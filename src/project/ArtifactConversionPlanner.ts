@@ -171,6 +171,8 @@ export type ArtifactConversionStep = {
     readonly kind: ArtifactConversionStepKind;
     readonly input: ArtifactIdentity;
     readonly output: ArtifactIdentity;
+    /** Durable PAR import evidence published with this otherwise-model-only intermediate. */
+    readonly conversionEvidencePath?: string;
     readonly choice: "materialize" | "reuse" | "publish";
     readonly estimatedWork: "none" | "read" | "materialize" | "generate" | "publish";
     readonly losses?: readonly string[];
@@ -842,6 +844,18 @@ export class ArtifactConversionPlanner {
         if (target.kind === "parWorkbook") {
             return this.planned(source, target, preflight, [{kind: "publish", input: source, output: target, choice: "publish", estimatedWork: "publish"}]);
         }
+        let durableImportDirectory: string | undefined;
+        let conversionEvidencePath: string | undefined;
+        if (target.canonicalLocation !== undefined) {
+            if (target.kind === "blueprint") {
+                conversionEvidencePath = `${target.canonicalLocation}.conversion-evidence.json`;
+            } else {
+                durableImportDirectory = target.kind === "wasm"
+                    ? path.join(`${target.canonicalLocation}.pokie`, "par-import")
+                    : path.join(target.canonicalLocation, ".pokie", "par-import");
+                conversionEvidencePath = path.join(durableImportDirectory, "conversion-evidence.json");
+            }
+        }
         const importedBlueprint: ArtifactIdentity = {
             kind: "blueprint",
             capabilities: TARGET_CAPABILITIES.blueprint,
@@ -851,13 +865,14 @@ export class ArtifactConversionPlanner {
             // conversion keeps its imported model and evidence under the
             // terminal artifact, so preview clients can name the exact
             // durable intermediate before publication begins.
-            ...(target.canonicalLocation === undefined
+            ...(durableImportDirectory === undefined
                 ? {}
-                : {canonicalLocation: path.join(target.canonicalLocation, ".pokie", "par-import", "imported.blueprint.json")}),
+                : {canonicalLocation: path.join(durableImportDirectory, "imported.blueprint.json")}),
         };
         const importStep: ArtifactConversionStep = {
             kind: "importParWorkbook", input: source, output: target.kind === "blueprint" ? target : importedBlueprint,
             choice: "materialize", estimatedWork: "read",
+            ...(conversionEvidencePath === undefined ? {} : {conversionEvidencePath}),
             losses: ["PAR import retains source provenance and diagnostics; inferred, defaulted, ignored, or formula-derived values remain inspectable conversion evidence."],
         };
         if (target.kind === "blueprint") return this.planned(source, target, preflight, [importStep]);

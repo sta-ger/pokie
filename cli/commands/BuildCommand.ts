@@ -456,6 +456,7 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  final destination ${plan.target.canonicalLocation ?? "selected destination"}`);
         for (const step of plan.steps) {
             console.log(`  intermediate     ${step.choice} ${step.output.kind}${step.output.canonicalLocation ? ` at ${step.output.canonicalLocation}` : ""}`);
+            if (step.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${step.conversionEvidencePath}`);
         }
         if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
             console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");

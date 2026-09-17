@@ -207,12 +207,23 @@ describe("ArtifactBuilderRegistry", () => {
             } as PokieProject;
             try {
                 fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
-                const result = await registry.build("wasm", source, destination);
+                const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
+                const importedBlueprintPath = `${destination}.pokie/par-import/imported.blueprint.json`;
+                const conversionEvidencePath = `${destination}.pokie/par-import/conversion-evidence.json`;
 
-                expect(result).toMatchObject({outputPath: destination, importedBlueprintPath: `${destination}.pokie/par-import/imported.blueprint.json`});
+                expect(plan.status).toBe("planned");
+                expect(plan.steps[0]).toMatchObject({
+                    kind: "importParWorkbook",
+                    output: {canonicalLocation: importedBlueprintPath},
+                    conversionEvidencePath,
+                });
+                const result = await registry.executePlan(plan, source, destination);
+
+                expect(result).toMatchObject({outputPath: destination, importedBlueprintPath, conversionEvidencePath});
                 expect(fs.existsSync(destination)).toBe(true);
                 expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(true);
-                expect(fs.existsSync(`${destination}.pokie/par-import/conversion-evidence.json`)).toBe(true);
+                expect(fs.existsSync(importedBlueprintPath)).toBe(true);
+                expect(fs.existsSync(conversionEvidencePath)).toBe(true);
                 expect(fs.existsSync(path.join(destination, ".pokie", "par-import"))).toBe(false);
             } finally {
                 fs.rmSync(directory, {recursive: true, force: true});
