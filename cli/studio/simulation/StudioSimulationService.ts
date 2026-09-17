@@ -37,6 +37,7 @@ import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import {toStudioSimulationJobView} from "./toStudioSimulationJobView.js";
 import type {ValidatedSimulationRequest} from "./validateSimulationRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
+import type {StudioJobView} from "../jobs/StudioJobView.js";
 
 const DEFAULT_CHUNK_SIZE = 1000;
 
@@ -163,7 +164,7 @@ export class StudioSimulationService {
         if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
         if (common?.status === "reattached") {
             const existing = this.repository.get(common.job.id);
-            return existing === undefined ? {status: "conflict", activeJobId: common.job.id} : {status: "created", job: toStudioSimulationJobView(existing)};
+            return {status: "created", job: existing === undefined ? this.projectDurableJob(common.job) : this.toJobView(existing)};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
@@ -200,12 +201,12 @@ export class StudioSimulationService {
             });
         });
 
-        return {status: "created", job: toStudioSimulationJobView(record)};
+        return {status: "created", job: this.toJobView(record)};
     }
 
     public getStatus(id: string): StudioSimulationJobView | undefined {
         const record = this.repository.get(id);
-        return record ? toStudioSimulationJobView(record) : undefined;
+        return record ? this.toJobView(record) : undefined;
     }
 
     // The project-scoped counterpart used by Studio's HTTP surface.  The service's unscoped
@@ -215,10 +216,9 @@ export class StudioSimulationService {
     // can leak when the user switches Projects.
     public getStatusForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
-        }
-        return toStudioSimulationJobView(record);
+        if (record?.projectRoot === projectRoot) return this.toJobView(record);
+        const common = this.jobService?.get(projectRoot, id);
+        return common?.operation === "simulation" ? this.projectDurableJob(common) : undefined;
     }
 
     // Idempotent: cancelling an already-terminal job is a no-op that still returns its (unchanged)
@@ -230,7 +230,7 @@ export class StudioSimulationService {
             return undefined;
         }
         this.cancelActiveRecord(record);
-        return toStudioSimulationJobView(record);
+        return this.toJobView(record);
     }
 
     // Same Project identity boundary as getStatusForProject().  In particular, a stale Cancel
@@ -239,10 +239,11 @@ export class StudioSimulationService {
     public cancelForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
         const record = this.repository.get(id);
         if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
+            const common = this.jobService?.cancel(projectRoot, id);
+            return common?.operation === "simulation" ? this.projectDurableJob(common) : undefined;
         }
         this.cancelActiveRecord(record);
-        return toStudioSimulationJobView(record);
+        return this.toJobView(record);
     }
 
     // Best-effort: aborts every currently active job — called from StudioServer.stop() so a stopped
@@ -644,6 +645,10 @@ export class StudioSimulationService {
     // queued; their run path continues to publish cancellation after it has cleaned those stages.
     private cancelActiveRecord(record: StudioSimulationJobRecord): void {
         if (record.status !== "queued" && record.status !== "running") return;
+        // Persist cancelling before asking the compatibility executor to
+        // release its runtime/worker resources. The terminal state is written
+        // only by markTerminal() after that cleanup has completed.
+        this.jobService?.cancel(record.projectRoot, record.id);
         record.abortController.abort();
         if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
@@ -670,5 +675,36 @@ export class StudioSimulationService {
         record.status = "running";
         this.jobService?.markRunning(record.id);
         this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
+    }
+
+    /** Compatibility DTO projection of the durable lifecycle authority. */
+    private toJobView(record: StudioSimulationJobRecord): StudioSimulationJobView {
+        const view = toStudioSimulationJobView(record);
+        const common = this.jobService?.get(record.projectRoot, record.id);
+        if (common?.operation !== "simulation") return view;
+        return {
+            ...view,
+            status: common.status,
+            ...(common.startedAt === undefined ? {} : {startedAt: new Date(common.startedAt).toISOString()}),
+            ...(common.durationMs === undefined ? {} : {durationMs: common.durationMs}),
+            ...(common.error === undefined ? {} : {error: common.error}),
+            ...(common.recovery === undefined ? {} : {recovery: common.recovery}),
+        };
+    }
+
+    private projectDurableJob(job: StudioJobView): StudioSimulationJobView {
+        return {
+            id: job.id,
+            status: job.status,
+            rounds: typeof job.request.rounds === "number" ? job.request.rounds : 0,
+            ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
+            workers: typeof job.request.workers === "number" ? job.request.workers : 1,
+            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+            startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
+            roundsCompleted: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
+            durationMs: job.durationMs ?? 0,
+            ...(job.error === undefined ? {} : {error: job.error}),
+            ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+        };
     }
 }

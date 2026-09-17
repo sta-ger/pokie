@@ -2504,10 +2504,6 @@ export class StudioServer implements StudioServerHandling {
             });
             return;
         }
-        if (this.outcomeLibraryGenerateJobService.isDestinationActive(this.currentContext.projectRoot, binding.destination)) {
-            this.sendJson(res, 409, {status: "conflict", error: "An Outcome Library generation is already active for this resolved destination. Wait for it to finish or cancel it before starting another."});
-            return;
-        }
         // Reject drift before allocating a lifecycle record.  The token is a
         // server-owned immutable snapshot, not a capability to run an
         // arbitrarily edited request.  This covers every transport field in
@@ -2522,7 +2518,11 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {status: "conflict", error: bindingConflict});
             return;
         }
-        this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
+        try {
+            this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
+        } catch (error) {
+            this.sendJson(res, 409, {status: "conflict", error: error instanceof Error ? error.message : String(error)});
+        }
     }
 
     private handleListOutcomeLibraryGenerationJobs(res: ServerResponse): void {
@@ -3003,12 +3003,20 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
                 return;
             }
+            if (start.status === "conflict") {
+                this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: start.activeJobId});
+                return;
+            }
             this.sendJson(res, 202, {status: "created", job: start.job});
             return;
         }
         const result = this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir);
         if (result.status === "unsupported") {
             this.sendJson(res, 409, {error: result.message});
+            return;
+        }
+        if (result.status === "conflict") {
+            this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: result.activeJobId});
             return;
         }
         this.sendJson(res, 202, result);

@@ -31,11 +31,11 @@ export function describeSimulationProgress(job: StudioSimulationJobView): Simula
 }
 
 export function isSimulationActive(job: StudioSimulationJobView): boolean {
-    return job.status === "queued" || job.status === "running";
+    return job.status === "queued" || job.status === "running" || job.status === "cancelling";
 }
 
 export function isSimulationTerminal(job: StudioSimulationJobView): boolean {
-    return job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+    return job.status === "completed" || job.status === "failed" || job.status === "cancelled" || job.status === "recovery-required";
 }
 
 export type BreakdownRowView = SimulationReportBreakdownComponent & {category: string};

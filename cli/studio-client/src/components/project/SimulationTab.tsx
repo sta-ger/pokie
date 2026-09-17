@@ -113,7 +113,7 @@ export function SimulationTab({
         return 0;
     });
 
-    const active = progress !== undefined && (progress.status === "queued" || progress.status === "running");
+    const active = progress !== undefined && (progress.status === "queued" || progress.status === "running" || progress.status === "cancelling");
     const isTerminal = progress !== undefined && !active;
     const canRetry = progress !== undefined && (progress.status === "failed" || progress.status === "cancelled");
 
@@ -128,8 +128,8 @@ export function SimulationTab({
         if (status === "queued") {
             setActiveStep(1);
         }
-        const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running";
-        const nowTerminal = status === "completed" || status === "failed" || status === "cancelled";
+        const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running" || prevStatusRef.current === "cancelling";
+        const nowTerminal = status === "completed" || status === "failed" || status === "cancelled" || status === "recovery-required";
         if (wasActive && nowTerminal) {
             setActiveStep(2);
             closeFullReport();

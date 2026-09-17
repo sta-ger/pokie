@@ -1,5 +1,6 @@
 import type {ReplayDescriptor} from "pokie";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
+import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 
 // The typed, plain-data DTO every /api/project/replays* endpoint returns — never a stack trace, never
 // a runtime session/game/AbortController object (see StudioReplayJobRecord, which is the internal
@@ -28,4 +29,6 @@ export type StudioReplayJobView = {
     // comment. Threaded through for the same "Run again with the same parameters" reason simulationId
     // is above. Undefined for an ordinary "tsPackage"/"blueprint" replay.
     modeName?: string;
+    /** Durable restart guidance when no private executor record survives. */
+    recovery?: StudioJobRecoveryView;
 };

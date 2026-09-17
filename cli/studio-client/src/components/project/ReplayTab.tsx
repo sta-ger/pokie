@@ -293,7 +293,7 @@ export function ReplayTab({
     // Gated on `jobLoaded` (not just `progress !== undefined`) so a prior target's still-active or
     // terminal job is never presented as the currently loaded target's state -- see `jobLoaded`'s own
     // doc comment above.
-    const active = jobLoaded && progress !== undefined && (progress.status === "queued" || progress.status === "running");
+    const active = jobLoaded && progress !== undefined && (progress.status === "queued" || progress.status === "running" || progress.status === "cancelling");
     const terminal = jobLoaded && progress !== undefined && !active;
 
     // Resets every per-source selection, plus the source-agnostic "expected artifact" the parent

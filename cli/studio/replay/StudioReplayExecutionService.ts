@@ -43,6 +43,7 @@ import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 import {toStudioReplayJobView} from "./toStudioReplayJobView.js";
 import type {ValidatedReplayRequest} from "./validateReplayRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
+import type {StudioJobView} from "../jobs/StudioJobView.js";
 
 const DEFAULT_CHUNK_SIZE = 500;
 
@@ -153,7 +154,7 @@ export class StudioReplayExecutionService {
         if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
         if (common?.status === "reattached") {
             const existing = this.repository.get(common.job.id);
-            return existing === undefined ? {status: "conflict", activeJobId: common.job.id} : {status: "created", job: toStudioReplayJobView(existing)};
+            return {status: "created", job: existing === undefined ? this.projectDurableJob(common.job) : this.toJobView(existing)};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
@@ -182,7 +183,7 @@ export class StudioReplayExecutionService {
             // promise rejection and crash the process.
         });
 
-        return {status: "created", job: toStudioReplayJobView(record)};
+        return {status: "created", job: this.toJobView(record)};
     }
 
     // undefined covers both a genuinely unknown id AND an id that belongs to a different project —
@@ -191,10 +192,9 @@ export class StudioReplayExecutionService {
     // has a replay with a given id.
     public getStatus(projectRoot: string, id: string): StudioReplayJobView | undefined {
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
-        }
-        return toStudioReplayJobView(record);
+        if (record?.projectRoot === projectRoot) return this.toJobView(record);
+        const common = this.jobService?.get(projectRoot, id);
+        return common?.operation === "replay" ? this.projectDurableJob(common) : undefined;
     }
 
     // Idempotent: cancelling an already-terminal job is a no-op that still returns its (unchanged)
@@ -204,10 +204,11 @@ export class StudioReplayExecutionService {
     public cancel(projectRoot: string, id: string): StudioReplayJobView | undefined {
         const record = this.repository.get(id);
         if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
+            const common = this.jobService?.cancel(projectRoot, id);
+            return common?.operation === "replay" ? this.projectDurableJob(common) : undefined;
         }
         this.cancelActiveRecord(record);
-        return toStudioReplayJobView(record);
+        return this.toJobView(record);
     }
 
     // Best-effort: aborts every currently active replay — called from StudioServer.stop() so a
@@ -235,7 +236,25 @@ export class StudioReplayExecutionService {
     }
 
     public listJobs(projectRoot: string): StudioReplayListEntry[] {
-        return this.repository.listByProjectRoot(projectRoot).map((record) => this.toListEntry(record));
+        const entries = new Map<string, StudioReplayListEntry>();
+        for (const record of this.repository.listByProjectRoot(projectRoot)) entries.set(record.id, this.toListEntry(record));
+        for (const job of this.jobService?.list(projectRoot) ?? []) {
+            if (job.operation === "replay" && !entries.has(job.id)) {
+                const view = this.projectDurableJob(job);
+                entries.set(job.id, {
+                    id: view.id,
+                    status: view.status,
+                    round: view.round,
+                    ...(view.seed === undefined ? {} : {seed: view.seed}),
+                    ...(view.modeName === undefined ? {} : {modeName: view.modeName}),
+                    completedRounds: view.completedRounds,
+                    startedAt: view.startedAt,
+                    durationMs: view.durationMs,
+                    ...(view.error === undefined ? {} : {error: view.error}),
+                });
+            }
+        }
+        return Array.from(entries.values());
     }
 
     // "not-found" covers both a genuinely unknown id AND an id belonging to a different project (same
@@ -254,9 +273,10 @@ export class StudioReplayExecutionService {
     }
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
+        const common = this.jobService?.get(record.projectRoot, record.id);
         return {
             id: record.id,
-            status: record.status,
+            status: common?.operation === "replay" ? common.status : record.status,
             game: record.game,
             configHash: record.configHash,
             round: record.round,
@@ -267,7 +287,7 @@ export class StudioReplayExecutionService {
             startedAt: new Date(record.startedAt).toISOString(),
             completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
             durationMs: record.durationMs,
-            error: record.error,
+            error: common?.operation === "replay" ? common.error ?? record.error : record.error,
             modeName: record.modeName,
         };
     }
@@ -731,6 +751,9 @@ export class StudioReplayExecutionService {
     // responsible for cleanup before publishing the terminal cancellation.
     private cancelActiveRecord(record: StudioReplayJobRecord): void {
         if (record.status !== "queued" && record.status !== "running") return;
+        // Cancellation is durable before the executor receives its abort
+        // handle; markTerminal() owns the post-cleanup terminal transition.
+        this.jobService?.cancel(record.projectRoot, record.id);
         record.abortController.abort();
         if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
@@ -757,5 +780,35 @@ export class StudioReplayExecutionService {
         record.status = "running";
         this.jobService?.markRunning(record.id);
         this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.completedRounds, total: record.round});
+    }
+
+    private toJobView(record: StudioReplayJobRecord): StudioReplayJobView {
+        const view = toStudioReplayJobView(record);
+        const common = this.jobService?.get(record.projectRoot, record.id);
+        if (common?.operation !== "replay") return view;
+        return {
+            ...view,
+            status: common.status,
+            ...(common.startedAt === undefined ? {} : {startedAt: new Date(common.startedAt).toISOString()}),
+            ...(common.durationMs === undefined ? {} : {durationMs: common.durationMs}),
+            ...(common.error === undefined ? {} : {error: common.error}),
+            ...(common.recovery === undefined ? {} : {recovery: common.recovery}),
+        };
+    }
+
+    private projectDurableJob(job: StudioJobView): StudioReplayJobView {
+        return {
+            id: job.id,
+            status: job.status,
+            round: typeof job.request.round === "number" ? job.request.round : 0,
+            ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
+            ...(typeof job.request.simulationId === "string" ? {simulationId: job.request.simulationId} : {}),
+            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+            startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
+            completedRounds: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
+            durationMs: job.durationMs ?? 0,
+            ...(job.error === undefined ? {} : {error: job.error}),
+            ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+        };
     }
 }
