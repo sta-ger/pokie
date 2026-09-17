@@ -143,13 +143,26 @@ export class StudioReplayExecutionService {
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.replay")) {
             return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
         }
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "replay",
+            request: {round: request.round, ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            conflictKey: `replay:${projectRoot}`,
+            recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
+        });
+        if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
+        if (common?.status === "reattached") {
+            const existing = this.repository.get(common.job.id);
+            return existing === undefined ? {status: "conflict", activeJobId: common.job.id} : {status: "created", job: toStudioReplayJobView(existing)};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
+            if (common?.status === "created") this.jobService?.cancelled(common.job.id, {summary: "Replay was already active in its compatibility executor."});
             return {status: "conflict", activeJobId: active.id};
         }
 
         const record: StudioReplayJobRecord = {
-            id: this.createId(),
+            id: common?.status === "created" ? common.job.id : this.createId(),
             projectRoot,
             status: "queued",
             round: request.round,
@@ -163,19 +176,6 @@ export class StudioReplayExecutionService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-        this.jobService?.adopt(record.id, {
-            projectId: projectRoot,
-            operation: "replay",
-            request: {
-                round: request.round,
-                ...(request.seed === undefined ? {} : {seed: request.seed}),
-                ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}),
-                ...(request.modeName === undefined ? {} : {modeName: request.modeName}),
-            },
-            conflictKey: `replay:${projectRoot}`,
-            recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
-        });
-
         this.run(record).catch(() => {
             // run() already catches every failure into the record's own "failed" status (see below)
             // — this is an extra safety net only, so a bug there can never surface as an unhandled

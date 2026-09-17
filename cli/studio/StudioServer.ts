@@ -551,6 +551,45 @@ export class StudioServer implements StudioServerHandling {
             : [];
     }
 
+    /**
+     * Starts a request-owned compatibility action through the durable lifecycle
+     * before its domain executor is invoked.  The compatibility URL may still
+     * return its historical DTO, but a duplicate request must never reach the
+     * executor merely because that DTO predates common jobs.
+     */
+    private beginCommonOperation(
+        res: ServerResponse,
+        projectId: string,
+        operation: string,
+        request: Readonly<Record<string, unknown>>,
+        conflictKey: string,
+        recoveryOnRestart: StudioJobView["recoveryOnRestart"],
+    ): StudioJobView | undefined {
+        const started = this.jobService.start({projectId, operation, request, conflictKey, recoveryOnRestart});
+        if (started.status === "created") {
+            this.jobService.markRunning(started.job.id);
+            return started.job;
+        }
+        if (started.status === "reattached") {
+            this.sendJson(res, 202, {job: started.job, reattached: true});
+            return undefined;
+        }
+        this.sendJson(res, 409, {
+            error: started.reason,
+            activeJobId: started.activeJobId,
+            recovery: started.recovery,
+        });
+        return undefined;
+    }
+
+    private completeCommonOperation(id: string, summary: string, detail?: Readonly<Record<string, unknown>>): void {
+        this.jobService.complete(id, {summary, ...(detail === undefined ? {} : {detail})});
+    }
+
+    private failCommonOperation(id: string, error: unknown, recovery: NonNullable<StudioJobView["recoveryOnRestart"]>): void {
+        this.jobService.fail(id, error instanceof Error ? error.message : String(error), recovery);
+    }
+
     private handleListJobs(res: ServerResponse): void {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
@@ -1303,6 +1342,13 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const sourcePath = path.resolve(validated.projectRoot);
+        const job = this.beginCommonOperation(
+            res, sourcePath, "project-open-materialization", {sourcePath}, `project-open:${sourcePath}`,
+            {action: "retry", reason: "Runtime materialization is not resumable after restart. Reopen the same project to retry."},
+        );
+        if (job === undefined) return;
+
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
         // "loaded", "outcome-source", "artifact", or "error" — "empty"/"loading" are exclusively synthesized
         // elsewhere in this class. A resolved "outcomeLibrary"/"stakeAdapter" project opens straight
@@ -1320,6 +1366,7 @@ export class StudioServer implements StudioServerHandling {
                 isCurrent: () => this.isCurrentRuntimePreparation(preparation),
             });
         } catch (error) {
+            this.failCommonOperation(job.id, error, {action: "retry", reason: "Correct the project source and reopen it."});
             if (!this.isCurrentRuntimePreparation(preparation)) {
                 this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
                 return;
@@ -1328,6 +1375,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.jobService.cancelled(job.id, {summary: "Project opening was superseded before a dashboard was published."}, {action: "retry", reason: "Reopen the desired project."});
             this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
             return;
         }
@@ -1338,6 +1386,7 @@ export class StudioServer implements StudioServerHandling {
             // human-readable "error" as its own field, never folded into it, so a client can offer it as
             // expandable diagnostic detail instead of always rendering a wall of npm output up front.
             const detail = dashboard.status === "error" ? dashboard.errorDetail : undefined;
+            this.jobService.fail(job.id, message, {action: "retry", reason: "Correct the project source and reopen it."});
             this.sendJson(res, 400, {error: message, detail});
             return;
         }
@@ -1350,6 +1399,7 @@ export class StudioServer implements StudioServerHandling {
         // before every remaining observable commit because registry I/O yields to a competing Home
         // request, and a late request must never reset/play-switch/publish over the newer project.
         if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.jobService.cancelled(job.id, {summary: "Project opening was superseded before a dashboard was published."}, {action: "retry", reason: "Reopen the desired project."});
             this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
             return;
         }
@@ -1363,6 +1413,7 @@ export class StudioServer implements StudioServerHandling {
                 },
             );
         } catch (error) {
+            this.failCommonOperation(job.id, error, {action: "retry", reason: "Correct the project source and reopen it."});
             if (!this.isCurrentRuntimePreparation(preparation)) {
                 this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
                 return;
@@ -1371,6 +1422,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (!this.isCurrentRuntimePreparation(preparation)) {
+            this.jobService.cancelled(job.id, {summary: "Project opening was superseded before a dashboard was published."}, {action: "retry", reason: "Reopen the desired project."});
             this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
             return;
         }
@@ -1385,6 +1437,7 @@ export class StudioServer implements StudioServerHandling {
         // doc comment).
         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
         this.projectDashboard = dashboard;
+        this.completeCommonOperation(job.id, "Project opening and runtime materialization completed.", {sourcePath, projectRoot: dashboard.projectRoot});
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 
@@ -1782,8 +1835,20 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        this.sendJson(res, 200, await this.blueprintService.importParSheet(validated.path));
+        const sourcePath = path.resolve(validated.path);
+        const job = this.beginCommonOperation(
+            res, `design:${sourcePath}`, "design-par-import", {path: sourcePath}, `design-par-import:${sourcePath}`,
+            {action: "rebuild", reason: "PAR import publication is not resumable after restart. Import the same workbook again."},
+        );
+        if (job === undefined) return;
+        try {
+            const result = await this.blueprintService.importParSheet(validated.path);
+            this.completeCommonOperation(job.id, "PAR import completed.", {sourcePath});
+            this.sendJson(res, 200, result);
+        } catch (error) {
+            this.failCommonOperation(job.id, error, {action: "rebuild", reason: "Correct the PAR workbook and import it again."});
+            throw error;
+        }
     }
 
     private async handleBlueprintParExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1796,7 +1861,16 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const sourcePath = path.resolve(validated.sourcePath ?? "blueprint");
+        const destinationPath = path.resolve(validated.path);
+        const job = this.beginCommonOperation(
+            res, `design:${sourcePath}`, "design-par-export", {sourcePath, destinationPath, overwrite: validated.overwrite}, `design-par-export:${sourcePath}:${destinationPath}`,
+            {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."},
+        );
+        if (job === undefined) return;
         const result = await this.blueprintService.exportParSheet(validated.blueprint, validated.path, validated.overwrite, validated.sourcePath);
+        if (result.status === "ok") this.completeCommonOperation(job.id, "PAR export completed.", {sourcePath, destinationPath});
+        else this.jobService.fail(job.id, "PAR export did not publish an output.", {action: "rebuild", reason: "Correct the export request and rebuild the workbook."});
         this.sendJson(res, this.statusForParSheetExport(result.status), result);
     }
 
@@ -1817,7 +1891,16 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const sourcePath = path.resolve(validated.sourcePath ?? "blueprint");
+        const destinationPath = path.resolve(validated.outDir);
+        const job = this.beginCommonOperation(
+            res, `design:${sourcePath}`, "design-build", {sourcePath, destinationPath}, `design-build:${sourcePath}:${destinationPath}`,
+            {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."},
+        );
+        if (job === undefined) return;
         const result = await this.blueprintService.build(validated.blueprint, validated.outDir, validated.sourcePath);
+        if (result.status === "ok") this.completeCommonOperation(job.id, "Design package build completed.", {sourcePath, destinationPath});
+        else this.jobService.fail(job.id, "Design build did not publish an output.", {action: "rebuild", reason: "Correct the design source and rebuild it."});
         this.sendJson(res, result.status === "ok" ? 201 : 200, result);
     }
 
@@ -2202,15 +2285,31 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.deploymentService.run(this.currentContext.projectRoot, validated);
+        const projectRoot = this.currentContext.projectRoot;
+        const job = this.beginCommonOperation(
+            res, projectRoot, "deployment", validated as unknown as Readonly<Record<string, unknown>>,
+            `deployment:${projectRoot}:${validated.targetId}:${JSON.stringify(validated.modes)}`,
+            {action: "rebuild", reason: "Deployment cannot safely resume after Studio restarts. Rebuild and publish again from the captured request."},
+        );
+        if (job === undefined) return;
+
+        let result;
+        try {
+            result = await this.deploymentService.run(projectRoot, validated);
+        } catch (error) {
+            this.failCommonOperation(job.id, error, {action: "rebuild", reason: "Correct the deployment problem and rebuild from the captured request."});
+            throw error;
+        }
         // A validated request's planner outcome is part of the action lifecycle,
         // including unavailable/conflict recovery.  Keep it in the normal DTO so
         // apiClient does not discard it while translating a non-2xx response.
         if (result.status === "ok") {
+            this.completeCommonOperation(job.id, "Deployment completed.", {targetId: validated.targetId});
             this.sendJson(res, 200, result.view);
             return;
         }
         const terminalError = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
+        this.jobService.fail(job.id, terminalError, {action: "rebuild", reason: "Correct the deployment request and rebuild from the captured request."});
         this.sendJson(res, 200, this.deploymentPlannerTerminalView(result.status, terminalError, result.plan, validated));
     }
 
@@ -2602,8 +2701,21 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        this.sendJson(res, 200, await this.certificationService.validateSourceBundle(this.currentContext.projectRoot, validated.bundleDir));
+        const projectRoot = this.currentContext.projectRoot;
+        const job = this.beginCommonOperation(
+            res, projectRoot, "certification-validate", {bundleDir: validated.bundleDir}, `certification-validate:${projectRoot}:${validated.bundleDir}`,
+            {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
+        );
+        if (job === undefined) return;
+        try {
+            const result = await this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir);
+            if (result.status === "ok") this.completeCommonOperation(job.id, "Certification source validation completed.", {bundleDir: validated.bundleDir});
+            else this.jobService.fail(job.id, result.error, {action: "retry", reason: "Correct the source bundle and retry validation."});
+            this.sendJson(res, 200, result);
+        } catch (error) {
+            this.failCommonOperation(job.id, error, {action: "retry", reason: "Correct the source bundle and retry validation."});
+            throw error;
+        }
     }
 
     private async handleBuildCertificationEvidenceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -2622,16 +2734,30 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const projectRoot = this.currentContext.projectRoot;
+        const job = this.beginCommonOperation(
+            res, projectRoot, "certification-build", validated as unknown as Readonly<Record<string, unknown>>,
+            `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
+            {action: "rebuild", reason: "Evidence publication is not resumable after restart. Rebuild from the captured source and destination."},
+        );
+        if (job === undefined) return;
         const controller = new AbortController();
         const cancel = () => controller.abort();
         req.once("aborted", cancel);
         res.once("close", cancel);
         try {
-            this.sendJson(
-                res,
-                200,
-                await this.certificationService.build(this.currentContext.projectRoot, validated.bundleDir, validated.modes, validated.outDir, controller.signal),
-            );
+            const result = await this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, this.jobService.signal(job.id) ?? controller.signal);
+            if (result.status === "ok") {
+                this.completeCommonOperation(job.id, "Certification evidence build completed.", {bundleDir: validated.bundleDir, outDir: validated.outDir});
+            } else if (this.jobService.signal(job.id)?.aborted) {
+                this.jobService.cancelled(job.id, {summary: "Certification evidence build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the evidence bundle from the captured source and destination."});
+            } else {
+                this.jobService.fail(job.id, result.status === "load-error" ? result.error : "Certification evidence build failed.", {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."});
+            }
+            this.sendJson(res, 200, result);
+        } catch (error) {
+            this.failCommonOperation(job.id, error, {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."});
+            throw error;
         } finally {
             req.off("aborted", cancel);
             res.off("close", cancel);
@@ -3276,11 +3402,20 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
+        const projectRoot = this.currentContext.projectRoot;
+        const job = this.beginCommonOperation(
+            res, projectRoot, "play-find-any-win", {sessionId}, `play:${projectRoot}:${sessionId}`,
+            {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."},
+        );
+        if (job === undefined) return;
         const result = await this.playService.findAnyWin(sessionId);
         if (result.status === "ok") {
+            if (this.jobService.signal(job.id)?.aborted) this.jobService.cancelled(job.id, {summary: "Scenario search stopped after its last settled round."}, {action: "new-session", reason: "Start a new Play session to continue scenario search."});
+            else this.completeCommonOperation(job.id, "Play scenario search completed.", {sessionId, scenario: "any-win"});
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;
         }
+        this.jobService.fail(job.id, `Play scenario search ${result.status}.`, {action: "new-session", reason: "Start a new Play session before searching again."});
         this.sendPlayErrorResult(res, sessionId, result);
     }
 
@@ -3303,11 +3438,20 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const projectRoot = this.currentContext.projectRoot;
+        const job = this.beginCommonOperation(
+            res, projectRoot, "play-find-symbol-win", {sessionId, symbolId: validated.symbolId}, `play:${projectRoot}:${sessionId}`,
+            {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."},
+        );
+        if (job === undefined) return;
         const result = await this.playService.findSymbolWin(sessionId, validated.symbolId);
         if (result.status === "ok") {
+            if (this.jobService.signal(job.id)?.aborted) this.jobService.cancelled(job.id, {summary: "Scenario search stopped after its last settled round."}, {action: "new-session", reason: "Start a new Play session to continue scenario search."});
+            else this.completeCommonOperation(job.id, "Play scenario search completed.", {sessionId, scenario: "symbol-win", symbolId: validated.symbolId});
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;
         }
+        this.jobService.fail(job.id, `Play scenario search ${result.status}.`, {action: "new-session", reason: "Start a new Play session before searching again."});
         this.sendPlayErrorResult(res, sessionId, result);
     }
 
@@ -3321,11 +3465,20 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
+        const projectRoot = this.currentContext.projectRoot;
+        const job = this.beginCommonOperation(
+            res, projectRoot, "play-find-free-games", {sessionId}, `play:${projectRoot}:${sessionId}`,
+            {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."},
+        );
+        if (job === undefined) return;
         const result = await this.playService.findFreeGames(sessionId);
         if (result.status === "ok") {
+            if (this.jobService.signal(job.id)?.aborted) this.jobService.cancelled(job.id, {summary: "Scenario search stopped after its last settled round."}, {action: "new-session", reason: "Start a new Play session to continue scenario search."});
+            else this.completeCommonOperation(job.id, "Play scenario search completed.", {sessionId, scenario: "free-games"});
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;
         }
+        this.jobService.fail(job.id, `Play scenario search ${result.status}.`, {action: "new-session", reason: "Start a new Play session before searching again."});
         this.sendPlayErrorResult(res, sessionId, result);
     }
 

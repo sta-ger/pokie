@@ -55,11 +55,12 @@ export class StudioJobService {
         const job: StudioJobView = {
             id: this.createId(), projectId: input.projectId, operation: input.operation, request: input.request,
             conflictKey: input.conflictKey, status: "queued", createdAt: this.now(),
+            recoveryOnRestart: input.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job reached a safe terminal state. Retry from scratch."},
         };
         this.repository.save(job);
         this.executions.set(job.id, {
             controller: new AbortController(),
-            recoveryOnRestart: input.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job reached a safe terminal state. Retry from scratch."},
+            recoveryOnRestart: job.recoveryOnRestart!,
         });
         return {status: "created", job};
     }
@@ -76,7 +77,7 @@ export class StudioJobService {
         this.executions.delete(started.job.id);
         this.executions.set(id, {
             controller: new AbortController(),
-            recoveryOnRestart: input.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job reached a safe terminal state. Retry from scratch."},
+            recoveryOnRestart: job.recoveryOnRestart!,
         });
         return {status: "created", job};
     }
@@ -111,7 +112,7 @@ export class StudioJobService {
     public reconcileInterruptedJobs(): void {
         for (const job of this.repository.list()) {
             if (isStudioJobTerminal(job.status)) continue;
-            const recovery: StudioJobRecoveryView = {action: "retry", reason: "Studio restarted before this job completed. No partial output was published; retry from scratch."};
+            const recovery: StudioJobRecoveryView = job.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job completed. No partial output was published; retry from scratch."};
             this.terminal(job.id, "recovery-required", {recovery});
         }
     }

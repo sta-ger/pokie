@@ -47,6 +47,13 @@ export type StudioJobView = {
     readonly result?: StudioJobResultView;
     readonly error?: string;
     readonly recovery?: StudioJobRecoveryView;
+    /**
+     * The recovery decision captured when work was accepted.  It is deliberately
+     * persisted with the queued record so process reconstruction does not have
+     * to guess whether this family may resume, rebuild, retry, or needs a new
+     * session.
+     */
+    readonly recoveryOnRestart?: StudioJobRecoveryView;
 };
 
 export const isStudioJobTerminal = (status: StudioJobStatus): boolean =>

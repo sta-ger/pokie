@@ -153,13 +153,26 @@ export class StudioSimulationService {
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "simulation",
+            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            conflictKey: `simulation:${projectRoot}`,
+            recoveryOnRestart: {action: "retry", reason: "A simulation cannot safely resume after Studio restarts. Run it again with these captured parameters."},
+        });
+        if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
+        if (common?.status === "reattached") {
+            const existing = this.repository.get(common.job.id);
+            return existing === undefined ? {status: "conflict", activeJobId: common.job.id} : {status: "created", job: toStudioSimulationJobView(existing)};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
+            if (common?.status === "created") this.jobService?.cancelled(common.job.id, {summary: "Simulation was already active in its compatibility executor."});
             return {status: "conflict", activeJobId: active.id};
         }
 
         const record: StudioSimulationJobRecord = {
-            id: this.createId(),
+            id: common?.status === "created" ? common.job.id : this.createId(),
             projectRoot,
             status: "queued",
             rounds: request.rounds,
@@ -173,14 +186,6 @@ export class StudioSimulationService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-        this.jobService?.adopt(record.id, {
-            projectId: projectRoot,
-            operation: "simulation",
-            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
-            conflictKey: `simulation:${projectRoot}`,
-            recoveryOnRestart: {action: "retry", reason: "A simulation cannot safely resume after Studio restarts. Run it again with these captured parameters."},
-        });
-
         // Deferred via queueMicrotask rather than called directly: run() sets record.status to
         // "running" before its own first await (calling createParallelSimulationRunner/.run()
         // synchronously starts that work), so calling it inline here would let that synchronous

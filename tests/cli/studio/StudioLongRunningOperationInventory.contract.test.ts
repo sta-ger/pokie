@@ -32,11 +32,11 @@ describe("Studio long-running operation inventory", () => {
     it("keeps every specified potentially noticeable operation visible with a lifecycle decision", () => {
         for (const operation of [
             "Common job: simulation", "Common job: replay", "Common job: Outcome Library generation",
-            "every `ArtifactBuilderRegistry` target", "Lifecycle required: certification deep validation",
-            "Lifecycle required: certification evidence build", "Lifecycle required: deployment check/publish",
-            "Lifecycle required: Play scenario search", "Lifecycle required: project opening/runtime materialization",
-            "Lifecycle required: Design package build/reel-strip materialization", "Lifecycle required: PAR import",
-            "Lifecycle required: PAR export",
+            "every `ArtifactBuilderRegistry` target", "Common job: certification deep validation",
+            "Common job: certification evidence build", "Common job: deployment check/publish",
+            "Common job: Play scenario search", "Common job: project opening/runtime materialization",
+            "Common job: Design package build/reel-strip materialization", "Common job: PAR import",
+            "Common job: PAR export",
         ]) expect(inventory).toContain(operation);
     });
 
