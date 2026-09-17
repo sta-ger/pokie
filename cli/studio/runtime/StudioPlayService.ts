@@ -446,14 +446,14 @@ export class StudioPlayService {
     // every round along the way -- including the final matching one -- is a genuine settled spin, not a
     // simulated/discarded trial: a search that runs out of attempts still leaves the session sitting on
     // whatever real round it last actually played.
-    public findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
+    public findAnyWin(sessionId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
         return this.spinUntilMatch(
             sessionId,
             "find-any-win",
             (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
-            (artifact) => artifact.totalWin > 0,
+            (artifact) => artifact.totalWin > 0, options.signal,
         );
     }
 
@@ -467,7 +467,7 @@ export class StudioPlayService {
     // no live GameSessionHandling to hand that strategy (see findAnyWin()'s own doc comment), so the
     // equivalent check reads whether the round's own already-computed artifact carries a win for that
     // exact symbolId, straight off RoundArtifactWin.symbolId -- never a second win-evaluation pass.
-    public findSymbolWin(sessionId: string, symbolId: string): Promise<StudioPlaySpinResult> {
+    public findSymbolWin(sessionId: string, symbolId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
         if (active.kind === "wasm") {
@@ -486,7 +486,7 @@ export class StudioPlayService {
             sessionId,
             "find-symbol-win",
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
-            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId),
+            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal,
         );
     }
 
@@ -502,7 +502,7 @@ export class StudioPlayService {
     // signal is read off that round's own artifact instead -- its `featureEvents`, specifically the
     // "freeGamesTriggered" event buildRoundArtifactFromSession derives from the exact same
     // getWonFreeGamesNumber() this strategy itself reads, never a second free-games determination.
-    public findFreeGames(sessionId: string): Promise<StudioPlaySpinResult> {
+    public findFreeGames(sessionId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
         if (active.kind === "wasm") {
@@ -519,7 +519,7 @@ export class StudioPlayService {
             sessionId,
             "find-free-games",
             (session) => !new PlayFreeGamesStrategy().canPlayNextSimulationRound(session as unknown as VideoSlotWithFreeGamesSessionHandling),
-            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"),
+            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"), options.signal,
         );
     }
 
@@ -683,14 +683,21 @@ export class StudioPlayService {
         operation: StudioRoundOperation,
         matchesLiveSession: (session: GameSessionHandling) => boolean,
         matchesArtifact: (artifact: RoundArtifactJson) => boolean,
+        signal?: AbortSignal,
     ): Promise<StudioPlaySpinResult> {
         for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
+            if (signal?.aborted) {
+                return {status: "error", error: "Scenario search was cancelled after its last settled round."};
+            }
             const active = this.active;
             if (active === undefined || sessionId !== this.currentSessionId) {
                 return {status: "not-found"};
             }
 
             const round = await this.spin(sessionId, operation);
+            if (signal?.aborted) {
+                return {status: "error", error: "Scenario search was cancelled after its last settled round."};
+            }
             if (round.status !== "ok") {
                 return round;
             }

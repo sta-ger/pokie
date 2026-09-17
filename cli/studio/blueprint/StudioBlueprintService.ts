@@ -662,7 +662,8 @@ export class StudioBlueprintService {
     // blueprint file, parsed as-is), "ok" here never means the result is error-free — the PAR Sheet
     // Import/Export panel's own Diagnose & map step is what actually shows errors/warnings to the user,
     // exactly like previewReelStripGeneration()'s own "surfaced alongside, never instead of" contract.
-    public async importParSheet(rawPath: string): Promise<StudioParSheetImportView> {
+    public async importParSheet(rawPath: string, signal?: AbortSignal): Promise<StudioParSheetImportView> {
+        if (signal?.aborted) return {status: "load-error", error: "PAR import was cancelled before the workbook was read."};
         const resolved = path.resolve(process.cwd(), rawPath);
         if (isPathWithin(this.studioRoot, resolved)) {
             return {status: "load-error", error: outsideStudioRootMessage(rawPath)};
@@ -675,10 +676,12 @@ export class StudioBlueprintService {
             // contract as CLI, rather than treating Studio as a parallel
             // importer/writer authority.
             let result = await this.parSheetImporter.importFromFile(resolved);
+            if (signal?.aborted) return {status: "load-error", error: "PAR import was cancelled after the workbook was read; no output was published."};
             const errors = result.issues.filter((issue) => issue.severity === "error");
             const warnings = result.issues.filter((issue) => issue.severity !== "error");
             if (errors.length === 0 && this.parSheetImporter instanceof ParSheetImporter) {
                 result = await this.prepareParApplyThroughRegistry(resolved);
+                if (signal?.aborted) return {status: "load-error", error: "PAR import was cancelled after its safe publication boundary."};
             }
             const conversionEvidence: StudioParSheetConversionEvidence = {...(result.conversionEvidence ?? {
                 metaSheet: undefined,
@@ -709,7 +712,7 @@ export class StudioBlueprintService {
     // exportToFile's own returned issues (which already includes
     // running the exact same GameBlueprintValidator every other Studio DTO uses, plus PAR export's own
     // reel-source checks) — none of that is reimplemented or re-derived here.
-    public async exportParSheet(blueprint: unknown, rawOutPath: string, _overwrite: boolean, sourcePath?: string): Promise<StudioParSheetExportView> {
+    public async exportParSheet(blueprint: unknown, rawOutPath: string, _overwrite: boolean, sourcePath?: string, signal?: AbortSignal): Promise<StudioParSheetExportView> {
         // The Studio request still accepts this legacy confirmation field, but
         // prepared artifact publication never overwrites an explicit output.
         // Keeping it in the request shape avoids a protocol break while
@@ -723,7 +726,6 @@ export class StudioBlueprintService {
         if (plan.status !== "planned") {
             return {status: "error", error: plan.diagnostic?.message ?? "PAR export is unavailable."};
         }
-        const controller = new AbortController();
         let terminalFailure: unknown;
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
@@ -750,9 +752,9 @@ export class StudioBlueprintService {
                 // PAR export performs its own atomic publication. The
                 // operation owns its ordering and terminal boundary; the
                 // shared policy has already ruled out a borrowed target.
-                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal: controller.signal}),
+                publish: () => this.parSheetExporter.exportToFile(blueprint, resolved, sourcePath, {signal}),
                 cleanup: () => undefined,
-                signal: controller.signal,
+                signal,
                 onTerminalFailure: (error) => {
                     terminalFailure = error;
                 },
@@ -908,7 +910,7 @@ export class StudioBlueprintService {
         }
     }
 
-    public async build(blueprint: unknown, outDir?: string, sourcePath?: string): Promise<StudioBuildResult> {
+    public async build(blueprint: unknown, outDir?: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioBuildResult> {
         const validated = this.validate(blueprint);
         if (validated.status === "invalid") {
             return validated;
@@ -927,7 +929,6 @@ export class StudioBlueprintService {
         if (plan.status !== "planned") {
             return {status: "error", error: plan.diagnostic?.message ?? "Package build is unavailable."};
         }
-        const controller = new AbortController();
         let terminalFailure: unknown;
         try {
             const execution = await this.planner.executeConversionPlan(plan, {
@@ -946,7 +947,7 @@ export class StudioBlueprintService {
                 // the package directory.
                 read: () => blueprint as GameBlueprint,
                 canPublish: () => true,
-                publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal: controller.signal}),
+                publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal}),
                 register: (generated) => this.homeService.rememberRecentProject(generated.projectRoot, generated.manifest.name),
                 // GamePackageGenerator owns a newly-created destination only
                 // after it has returned successfully.  If registration or a
@@ -955,7 +956,7 @@ export class StudioBlueprintService {
                 // already rejected).
                 rollback: (generated) => fs.promises.rm(generated.projectRoot, {recursive: true, force: true}),
                 cleanup: () => undefined,
-                signal: controller.signal,
+                signal,
                 onTerminalFailure: (error) => {
                     terminalFailure = error;
                 },

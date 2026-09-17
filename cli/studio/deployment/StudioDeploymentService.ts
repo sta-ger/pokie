@@ -188,7 +188,12 @@ export class StudioDeploymentService {
     // bundle the registry found compatible, not only a hand-typed flat JSON file; the first mode/library
     // that fails to load stops the whole request before ExternalDeploymentService is ever called, since
     // there's no well-formed input to give it yet), then runs the one real pipeline call.
-    public async run(projectRoot: string, request: ValidatedDeploymentRunRequest): Promise<StudioDeploymentRunResult> {
+    public async run(projectRoot: string, request: ValidatedDeploymentRunRequest, signal?: AbortSignal): Promise<StudioDeploymentRunResult> {
+        // The external adapter SDK does not currently take a signal.  Keep the
+        // cancellation boundary here nevertheless: cancellation is observed
+        // before it can begin delivery and again after the SDK has settled, so
+        // Studio never reports a cancelled request as a successful deployment.
+        if (signal?.aborted) throw new Error("Deployment was cancelled before delivery started.");
         // Deployment owns SDK-specific delivery, but the library it deploys is a
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
@@ -313,6 +318,7 @@ export class StudioDeploymentService {
                     return this.externalDeploymentService.deploy(runnableTarget, read.modes);
                 },
             });
+            if (signal?.aborted) throw new Error("Deployment was cancelled after its last settled delivery boundary.");
             if (!execution.published) {
                 return {
                     status: "load-error",

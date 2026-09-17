@@ -37,7 +37,10 @@ export class StudioCertificationService {
     // The exact preflight CertificationEvidenceBundleBuilder itself runs (and aborts the whole build on)
     // before ever sampling a round -- exposed as its own step so the user can check a candidate source
     // bundle before committing to Build, without triggering a build attempt.
-    public async validateSourceBundle(projectRoot: string, bundleDir: string): Promise<StudioCertificationSourceValidateView> {
+    public async validateSourceBundle(projectRoot: string, bundleDir: string, signal?: AbortSignal): Promise<StudioCertificationSourceValidateView> {
+        if (signal?.aborted) {
+            return {status: "load-error", error: "Certification source validation was cancelled before it started."};
+        }
         const resolved = resolveProjectDirectory(projectRoot, bundleDir, this.realpath);
         if (resolved.status === "error") {
             return {status: "load-error", error: resolved.message};
@@ -45,6 +48,9 @@ export class StudioCertificationService {
 
         try {
             const issues = await this.bundleValidator.validate(resolved.resolvedPath, {deep: true});
+            if (signal?.aborted) {
+                return {status: "load-error", error: "Certification source validation was cancelled after its last settled validation boundary."};
+            }
             return {
                 status: "ok",
                 errors: issues.filter((issue) => issue.severity === "error"),
