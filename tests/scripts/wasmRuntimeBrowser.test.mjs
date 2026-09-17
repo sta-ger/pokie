@@ -68,9 +68,12 @@ const page = `<!doctype html><script type="module">
         for (const command of golden.commands) mainRounds.push(await mainSession.play(command));
         const mainState = mainSession.serialize();
         const continuationRuntime = await instantiatePokieWasm(decode(fixture.bytes), fixture.manifest, new SeededPokieWasmHost(golden.seed));
-        const continuation = await continuationRuntime.restoreSession(mainState).play(golden.continuationCommand);
+        const continuationSession = continuationRuntime.restoreSession(mainState);
+        const continuation = await continuationSession.play(golden.continuationCommand);
+        const continuationState = continuationSession.serialize();
         const replayRuntime = await instantiatePokieWasm(decode(fixture.bytes), fixture.manifest, new SeededPokieWasmHost(golden.seed));
-        const replayRounds = await replayRuntime.replay(mainState, [golden.continuationCommand]);
+        const replayResult = await replayRuntime.replay(mainState, [golden.continuationCommand]);
+        const replayRounds = replayResult.rounds;
         const replay = {
             round: replayRounds[0].sequence,
             totalBet: [...mainRounds, ...replayRounds].reduce((total, round) => total + round.stake, 0),
@@ -78,7 +81,7 @@ const page = `<!doctype html><script type="module">
             screen: replayRounds[0].screen,
         };
         assertFieldForField({draws: mainState.draws, rounds: mainRounds, state: mainState, continuation, replay}, golden.expected, "browser main-thread golden");
-        assertFieldForField(replayRounds, [golden.expected.continuation], "browser replay rounds");
+        assertFieldForField(replayResult, {rounds: [golden.expected.continuation], stateBeforeFinal: mainState, stateAfter: continuationState}, "browser replay result");
         mainSession.dispose();
         mainRuntime.dispose();
         continuationRuntime.dispose();
@@ -112,7 +115,7 @@ const page = `<!doctype html><script type="module">
             worker.postMessage({id: "before", type: "play"});
             replies.push(await response);
             const transferred = decode(fixture.bytes);
-            const workerDraws = [...golden.expected.draws];
+            const workerDraws = seededDraws(golden.seed, 10);
             response = receive();
             worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: workerDraws, seed: golden.seed}, [transferred.buffer]);
             replies.push(await response);
@@ -136,13 +139,24 @@ const page = `<!doctype html><script type="module">
             assertFieldForField(workerRounds, mainRounds, "worker rounds compared with browser main thread");
             assertFieldForField(workerState, mainState, "worker serialized state compared with browser main thread");
             response = receive();
+            worker.postMessage({id: "replay", type: "replay", state: workerState, commands: [golden.continuationCommand]});
+            const workerReplay = await response;
+            replies.push(workerReplay);
+            if (!workerReplay.ok) throw new Error("worker golden replay failed: " + workerReplay.error);
+            assertFieldForField(workerReplay.result, replayResult, "worker replay result compared with browser main thread");
+            response = receive();
+            worker.postMessage({id: "replay-continuation", type: "replay", state: workerReplay.result.stateAfter, commands: [golden.continuationCommand]});
+            const workerContinuation = await response;
+            replies.push(workerContinuation);
+            if (!workerContinuation.ok || workerContinuation.result.rounds[0]?.sequence !== workerReplay.result.stateAfter.sequence + 1) throw new Error("worker replay continuation failed");
+            response = receive();
             worker.postMessage({id: "cancel", type: "cancel"});
             replies.push(await response);
             response = receive();
             worker.postMessage({id: "after", type: "serialize"});
             replies.push(await response);
             const workerRoundTripMs = performance.now() - workerStartedAt;
-            if (!replies[0].ok && replies[1].ok && !replies[2].ok && replies.slice(3, 6).every((reply) => reply.ok) && replies[6].ok && replies[7].ok && !replies[8].ok) {
+            if (!replies[0].ok && replies[1].ok && !replies[2].ok && replies.slice(3, 9).every((reply) => reply.ok) && replies[9].ok && !replies[10].ok) {
                 return {...benchmarkConfiguration, status: "PASS", coldInstantiateMs, warmPlayMs, workerRoundTripMs, serializationBytes};
             }
             throw new Error("worker protocol errors, cancellation, or cleanup failed");

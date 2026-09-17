@@ -134,7 +134,21 @@ describe("Pokie WASM runtime API", () => {
         expect(() => session.serialize()).toThrow(/does not declare runtime\.serialize/i);
         expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "replay-only", draws: [], sequence: 0, credits: 1000})).toThrow(/does not declare runtime\.serialize/i);
         await expect(runtime.replay({schemaVersion: "pokie.state.v1", seed: "replay-only", draws: [], sequence: 0, credits: 1000}, [{bet: 1}]))
-            .resolves.toMatchObject([{sequence: 1, command: {bet: 1}}]);
+            .resolves.toMatchObject({rounds: [{sequence: 1, command: {bet: 1}}]});
+        runtime.dispose();
+    });
+
+    it("returns JSON-safe replay rounds and continuation fields", async () => {
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.replay"]});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("wire-safe-replay"));
+        const initial = {schemaVersion: "pokie.state.v1" as const, seed: "wire-safe-replay", draws: [], sequence: 0, credits: 1000};
+        const replay = await runtime.replay(initial, [{bet: 1}, {bet: 1}]);
+        const wire = JSON.parse(JSON.stringify(replay));
+        expect(wire).toEqual(replay);
+        expect(wire.rounds).toHaveLength(2);
+        expect(wire.stateBeforeFinal).toEqual(replay.rounds[0] === undefined ? undefined : expect.objectContaining({sequence: 1}));
+        const continued = await runtime.replay(wire.stateAfter, [{bet: 1}]);
+        expect(continued.rounds[0]?.sequence).toBe(3);
         runtime.dispose();
     });
 

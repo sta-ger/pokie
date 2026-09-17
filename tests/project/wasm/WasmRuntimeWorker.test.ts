@@ -54,6 +54,36 @@ describe("PokieWasmWorkerProtocol", () => {
         expect(await protocol.handle({id: "after-trap", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/Instantiate/)});
     });
 
+    it("returns clone-safe replay continuations and can continue from stateAfter", async () => {
+        const fixture = createCanonicalWasmFixture({id: "worker-replay-wire", capabilities: ["runtime.replay"]});
+        const protocol = new PokieWasmWorkerProtocol();
+        const initial = {schemaVersion: "pokie.state.v1" as const, seed: "worker-replay-wire", draws: [], sequence: 0, credits: 1000};
+        await expect(protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25, 0.75, 0.5, 0.125]})).resolves.toMatchObject({ok: true});
+        const first = await protocol.handle({id: "replay", type: "replay", state: initial, commands: [{bet: 1}]});
+        expect(first).toMatchObject({ok: true, result: {rounds: [{sequence: 1}], stateBeforeFinal: initial, stateAfter: {sequence: 1}}});
+        if (!first.ok) throw new Error(first.error);
+        const cloned = structuredClone(first.result) as {stateAfter: typeof initial; rounds: readonly {sequence: number}[]};
+        expect(JSON.parse(JSON.stringify(cloned))).toEqual(cloned);
+        const continued = await protocol.handle({id: "continue", type: "replay", state: cloned.stateAfter, commands: [{bet: 1}]});
+        expect(continued).toMatchObject({ok: true, result: {rounds: [{sequence: 2}], stateAfter: {sequence: 2}}});
+    });
+
+    it("releases a replay-trapped runtime while declaration and request errors remain recoverable", async () => {
+        const replayOnly = createCanonicalWasmFixture({id: "worker-replay-recoverable", capabilities: ["runtime.replay"]});
+        const recoverable = new PokieWasmWorkerProtocol();
+        const initial = {schemaVersion: "pokie.state.v1" as const, seed: "worker-replay-recoverable", draws: [], sequence: 0, credits: 1000};
+        await recoverable.handle({id: "start", type: "instantiate", bytes: replayOnly.bytes, manifest: replayOnly.manifest, draws: [0.25, 0.75]});
+        expect(await recoverable.handle({id: "declaration", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/does not declare runtime\.serialize/i)});
+        expect(await recoverable.handle({id: "malformed", type: "replay", state: initial, commands: [null] as never})).toMatchObject({ok: false, error: expect.stringMatching(/Malformed/i)});
+        expect(await recoverable.handle({id: "replay", type: "replay", state: initial, commands: [{}]})).toMatchObject({ok: true, result: {rounds: [{sequence: 1}]}});
+
+        const trapping = createCanonicalWasmFixture({id: "worker-replay-trap", trapping: true});
+        const poisoned = new PokieWasmWorkerProtocol();
+        await poisoned.handle({id: "start", type: "instantiate", bytes: trapping.bytes, manifest: trapping.manifest, draws: [0.25]});
+        expect(await poisoned.handle({id: "trap", type: "replay", state: initial, commands: [{}]})).toMatchObject({ok: false, error: expect.stringMatching(/unreachable|trap/i)});
+        expect(await poisoned.handle({id: "after-trap", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/Instantiate/)});
+    });
+
     it("rejects malformed and unknown messages without releasing an active session", async () => {
         const fixture = createCanonicalWasmFixture({id: "worker-protocol"});
         const protocol = new PokieWasmWorkerProtocol();
@@ -68,7 +98,7 @@ describe("PokieWasmWorkerProtocol", () => {
         const replayProtocol = new PokieWasmWorkerProtocol();
         await expect(replayProtocol.handle({id: "start", type: "instantiate", bytes: replayOnly.bytes, manifest: replayOnly.manifest, draws: [0.25, 0.75]})).resolves.toMatchObject({ok: true});
         await expect(replayProtocol.handle({id: "replay", type: "replay", state: {schemaVersion: "pokie.state.v1", seed: "worker", draws: [], sequence: 0, credits: 1000}, commands: [{}]}))
-            .resolves.toMatchObject({ok: true, result: [{sequence: 1}]});
+            .resolves.toMatchObject({ok: true, result: {rounds: [{sequence: 1}]}});
         expect(await replayProtocol.handle({id: "play", type: "play"})).toMatchObject({ok: false, error: expect.stringMatching(/does not declare runtime\.play/i)});
         expect(await replayProtocol.handle({id: "serialize", type: "serialize"})).toMatchObject({ok: false, error: expect.stringMatching(/does not declare runtime\.serialize/i)});
 

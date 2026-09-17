@@ -49,7 +49,9 @@ export type PokieWasmRuntimeSession = {
  * Replay owns its deterministic execution and returns its own continuation;
  * this is not the separately declared session serialize/restore operation.
  */
-export type PokieWasmReplayResult = readonly PokieWasmRound[] & {
+export type PokieWasmReplayResult = {
+    /** Replay rounds are an explicit wire field, safe for JSON and Worker cloning. */
+    readonly rounds: readonly PokieWasmRound[];
     readonly stateBeforeFinal?: PokieWasmSessionState;
     readonly stateAfter: PokieWasmSessionState;
 };

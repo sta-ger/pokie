@@ -165,9 +165,9 @@ export class ReplayCommand implements CliCommandHandling {
                 {schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits: 1000},
                 Array.from({length: options.round}, () => ({})),
             );
-            const finalRound = replay[replay.length - 1];
-            const totalBet = replay.reduce((total, round) => total + round.stake, 0);
-            const totalWin = replay.reduce((total, round) => total + round.payout, 0);
+            const finalRound = replay.rounds[replay.rounds.length - 1];
+            const totalBet = replay.rounds.reduce((total, round) => total + round.stake, 0);
+            const totalWin = replay.rounds.reduce((total, round) => total + round.payout, 0);
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
             const descriptor = {
                 sessionId: `wasm-${seed}-${options.round}`,

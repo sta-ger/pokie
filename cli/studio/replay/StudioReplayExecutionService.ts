@@ -429,12 +429,12 @@ export class StudioReplayExecutionService {
                 const commands = Array.from({length: Math.min(this.chunkSize, record.round - index)}, () => ({}));
                 const replay = await runtime.replay(state, commands);
                 state = replay.stateAfter;
-                finalRound = replay[replay.length - 1];
+                finalRound = replay.rounds[replay.rounds.length - 1];
                 if (index + commands.length === record.round && replay.stateBeforeFinal !== undefined) {
                     stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
                 }
-                totalBet += replay.reduce((total, round) => total + round.stake, 0);
-                totalWin += replay.reduce((total, round) => total + round.payout, 0);
+                totalBet += replay.rounds.reduce((total, round) => total + round.stake, 0);
+                totalWin += replay.rounds.reduce((total, round) => total + round.payout, 0);
                 const completedRounds = index + commands.length;
                 this.updateReplayProgress(record, completedRounds);
                 if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();

@@ -19,11 +19,9 @@ export class PokieWasmWorkerProtocol {
 
     public async handle(request: PokieWasmWorkerRequest | unknown): Promise<PokieWasmWorkerResponse> {
         const id = workerRequestId(request);
-        let validatedRequest: PokieWasmWorkerRequest | undefined;
-        let playInvoked = false;
+        let runtimeOperationInvoked = false;
         try {
             assertValidWorkerRequest(request);
-            validatedRequest = request;
             if (request.type === "instantiate") {
                 const draws = [...request.draws];
                 const portableBytes = new Uint8Array(request.bytes.byteLength);
@@ -57,13 +55,16 @@ export class PokieWasmWorkerProtocol {
                 return {id: request.id, ok: true, result: runtime.manifest};
             }
             if (this.runtime === undefined) throw new Error("Instantiate a POKIE WASM runtime before sending this worker command.");
-            if (request.type === "replay") return {id: request.id, ok: true, result: await this.runtime.replay(request.state, request.commands)};
+            if (request.type === "replay") {
+                runtimeOperationInvoked = true;
+                return {id: request.id, ok: true, result: await this.runtime.replay(request.state, request.commands)};
+            }
             if (this.session === undefined) throw new Error("Instantiate a POKIE WASM runtime before sending this worker command.");
             if (request.type === "play") {
                 if (!this.runtime.manifest.capabilities.includes("runtime.play")) {
                     throw new Error("POKIE WASM artifact does not declare runtime.play; it cannot play a session round.");
                 }
-                playInvoked = true;
+                runtimeOperationInvoked = true;
                 return {id: request.id, ok: true, result: await this.session.play(request.command)};
             }
             if (request.type === "restore") {
@@ -79,10 +80,11 @@ export class PokieWasmWorkerProtocol {
             }
             throw new Error(`Unsupported POKIE WASM worker request type ${JSON.stringify(request.type)}.`);
         } catch (error) {
-            // A runtime trap during play poisons the instance. Protocol
-            // validation and restore failures do not: callers can correct the
-            // message and continue the active session.
-            if (validatedRequest?.type === "play" && playInvoked) this.release();
+            // A WebAssembly trap poisons the instance whether it occurs while
+            // playing or replaying. Declaration, protocol, and state errors
+            // happen before a module trap, so callers can correct them and
+            // continue using the active runtime.
+            if (runtimeOperationInvoked && isWasmRuntimeTrap(error)) this.release();
             return {id, ok: false, error: error instanceof Error ? error.message : String(error)};
         }
     }
@@ -93,6 +95,10 @@ export class PokieWasmWorkerProtocol {
         this.session = undefined;
         this.runtime = undefined;
     }
+}
+
+function isWasmRuntimeTrap(error: unknown): boolean {
+    return error instanceof WebAssembly.RuntimeError;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

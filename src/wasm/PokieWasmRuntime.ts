@@ -8,7 +8,7 @@ import {
     readIntegrityBoundCanonicalPokieWasmArtifact,
     type PokieWasmGameModel,
 } from "./PokieWasmCanonicalModule.js";
-import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmReplayResult, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
+import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
 
@@ -146,10 +146,11 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
                 replayState = result.state;
                 results.push(result.round);
             }
-            return Object.defineProperties(results, {
-                stateBeforeFinal: {value: stateBeforeFinal === undefined ? undefined : cloneSessionState(stateBeforeFinal), enumerable: false},
-                stateAfter: {value: cloneSessionState(replayState), enumerable: false},
-            }) as unknown as PokieWasmReplayResult;
+            return {
+                rounds: results,
+                ...(stateBeforeFinal === undefined ? {} : {stateBeforeFinal: cloneSessionState(stateBeforeFinal)}),
+                stateAfter: cloneSessionState(replayState),
+            };
         }),
         dispose: () => {
             disposed = true;

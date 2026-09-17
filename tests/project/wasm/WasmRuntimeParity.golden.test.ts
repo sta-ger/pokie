@@ -31,10 +31,10 @@ describe("WASM runtime parity golden", () => {
         const nodeContinuation = resumeNodeReference(golden.seed, node.state, golden.continuationCommand);
         const nodeReplay = recordNodeReplay(golden.seed, golden.replayRound);
         const wasmReplay = {
-            round: replay[0].sequence,
-            totalBet: [...wasmRounds, ...replay].reduce((total, round) => total + round.stake, 0),
-            totalWin: [...wasmRounds, ...replay].reduce((total, round) => total + round.payout, 0),
-            screen: replay[0].screen,
+            round: replay.rounds[0].sequence,
+            totalBet: [...wasmRounds, ...replay.rounds].reduce((total, round) => total + round.stake, 0),
+            totalWin: [...wasmRounds, ...replay.rounds].reduce((total, round) => total + round.payout, 0),
+            screen: replay.rounds[0].screen,
         };
 
         const observed = {
@@ -53,12 +53,12 @@ describe("WASM runtime parity golden", () => {
             state: golden.expected.state,
             continuation: golden.expected.continuation,
         });
-        expect(replay.map(canonicalRound)).toEqual([golden.expected.continuation]);
+        expect(replay.rounds.map(canonicalRound)).toEqual([golden.expected.continuation]);
         expect({
-            round: replay[0].sequence,
-            totalBet: [...wasmRounds, ...replay].reduce((total, round) => total + round.stake, 0),
-            totalWin: [...wasmRounds, ...replay].reduce((total, round) => total + round.payout, 0),
-            screen: replay[0].screen,
+            round: replay.rounds[0].sequence,
+            totalBet: [...wasmRounds, ...replay.rounds].reduce((total, round) => total + round.stake, 0),
+            totalWin: [...wasmRounds, ...replay.rounds].reduce((total, round) => total + round.payout, 0),
+            screen: replay.rounds[0].screen,
         }).toEqual(golden.expected.replay);
         expect(nodeContinuation).toEqual(golden.expected.continuation);
         expect(nodeReplay).toEqual(golden.expected.replay);
@@ -111,12 +111,12 @@ describe("WASM runtime parity golden", () => {
             state: golden.expected.state,
             continuation: golden.expected.continuation,
         });
-        expect(replay.map(canonicalRound)).toEqual([golden.expected.continuation]);
+        expect(replay.rounds.map(canonicalRound)).toEqual([golden.expected.continuation]);
         expect({
-            round: replay[0].sequence,
-            totalBet: [...rounds, ...replay].reduce((total, round) => total + round.stake, 0),
-            totalWin: [...rounds, ...replay].reduce((total, round) => total + round.payout, 0),
-            screen: replay[0].screen,
+            round: replay.rounds[0].sequence,
+            totalBet: [...rounds, ...replay.rounds].reduce((total, round) => total + round.stake, 0),
+            totalWin: [...rounds, ...replay.rounds].reduce((total, round) => total + round.payout, 0),
+            screen: replay.rounds[0].screen,
         }).toEqual(golden.expected.replay);
         runtime.dispose();
         continuedRuntime.dispose();
@@ -142,8 +142,8 @@ describe("WASM runtime parity golden", () => {
         expect(canonicalRound(round)).toEqual(node.rounds[0]);
         expect(serialized).toEqual(node.state);
         expect(canonicalRound(continuation)).toEqual(nodeContinuation);
-        expect(canonicalRound(replay[0])).toEqual(nodeContinuation);
-        expect({round: replay[0].sequence, totalBet: 2, totalWin: replay[0].payout, screen: replay[0].screen}).toEqual(nodeReplay);
+        expect(canonicalRound(replay.rounds[0])).toEqual(nodeContinuation);
+        expect({round: replay.rounds[0].sequence, totalBet: 2, totalWin: replay.rounds[0].payout, screen: replay.rounds[0].screen}).toEqual(nodeReplay);
         runtime.dispose();
         continuationRuntime.dispose();
         replayRuntime.dispose();
