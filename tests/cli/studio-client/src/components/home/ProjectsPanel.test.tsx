@@ -153,6 +153,29 @@ describe("ProjectsPanel: Import Project", () => {
         expect(screen.getByRole("option", {name: wasmPresentation.label, hidden: true})).toBeInTheDocument();
     });
 
+    it("renders a canonical WASM artifact as an ordinary Open project", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({
+                ok: true,
+                status: 200,
+                body: [{
+                    location: "/games/canonical.wasm",
+                    name: "Canonical component",
+                    type: "wasm",
+                    capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"],
+                    origin: "external",
+                    lastOpenedAt: "2026-01-01T00:00:00.000Z",
+                    status: "ok",
+                }],
+            }),
+        });
+        renderWithProviders(<ProjectsPanel />, {fetchImpl});
+
+        const row = (await screen.findByText("Canonical component")).closest("tr") as HTMLElement;
+        expect(within(row).getByRole("button", {name: "Open"})).toBeInTheDocument();
+        expect(within(row).queryByRole("button", {name: /inspect/i})).not.toBeInTheDocument();
+    });
+
     it("uses the recognized component's contract label before registration and preserves its inspection action after registration", async () => {
         const user = userEvent.setup();
         const wasmPresentation = {

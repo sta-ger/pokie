@@ -39,6 +39,22 @@ describe("assessWasmComponentCompatibility", () => {
         expect(result.issues.some((issue) => issue.code.startsWith("wasm-component-manifest-"))).toBe(true);
     });
 
+    it("rejects a canonical component with an unsupported ABI major", () => {
+        const result = assessWasmComponentCompatibility({
+            ...VALID_MANIFEST,
+            artifact: {
+                format: "pokie.wasm.v1",
+                sha256: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                bytes: 8,
+                abiVersion: "2.0.0",
+                adapter: "pokie/wasm",
+                configurationHash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            },
+        });
+
+        expect(result).toMatchObject({compatible: false, issues: [expect.objectContaining({code: "wasm-component-abi-version-incompatible", path: "artifact.abiVersion"})]});
+    });
+
     it("never throws for a completely unrelated value", () => {
         expect(() => assessWasmComponentCompatibility("not a manifest")).not.toThrow();
         expect(assessWasmComponentCompatibility(null).compatible).toBe(false);

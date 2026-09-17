@@ -64,6 +64,7 @@ import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {WasmArtifactBuilder} from "../../../src/project/WasmArtifactBuilder.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../fairness/FairnessRoundProofTestFixtures.js";
@@ -4024,6 +4025,158 @@ describe("StudioServer", () => {
             fs.rmSync(wasmStudioRoot, {recursive: true, force: true});
         });
 
+        it("runs a canonical WASM artifact through the public Play, Simulation, and Replay HTTP routes", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-canonical-wasm-http-"));
+            try {
+                const blueprintPath = path.join(workDir, "source.blueprint.json");
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(blueprintPath, JSON.stringify({
+                    manifest: {id: "http-wasm", name: "HTTP WASM", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]],
+                    paytable: {A: {3: 2}, B: {3: 1}},
+                }));
+                await new WasmArtifactBuilder("1.3.0").build(
+                    {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"},
+                    wasmFile,
+                );
+                const listTargets = jest.fn(() => []);
+                const validateSourceBundle = jest.fn();
+                const configureFairness = jest.fn();
+                const estimateOutcomeLibrary = jest.fn();
+                const homeService = new StudioHomeService("1.3.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.3.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    deploymentService: {listTargets} as unknown as StudioDeploymentService,
+                    certificationService: {validateSourceBundle} as unknown as StudioCertificationService,
+                    fairnessService: {configure: configureFairness} as unknown as StudioFairnessService,
+                    outcomeLibraryGenerateService: {estimate: estimateOutcomeLibrary} as unknown as StudioOutcomeLibraryGenerateService,
+                });
+                const address = await wasmServer.start();
+                const baseUrl = `http://${address.host}:${address.port}`;
+
+                const inspection = await get(`${baseUrl}/api/project/inspect`);
+                const validation = await get(`${baseUrl}/api/project/validate`);
+                const gameModel = await get(`${baseUrl}/api/project/gameModel`);
+                expect(inspection).toMatchObject({status: 200, body: {valid: true, wasmManifest: {component: {id: "http-wasm"}, artifact: expect.any(Object)}}});
+                expect(validation).toMatchObject({status: 200, body: {valid: true, game: {id: "http-wasm"}}});
+                expect(gameModel).toMatchObject({status: 200, body: {
+                    basics: {status: "available", data: {id: "http-wasm"}},
+                    symbols: {status: "available"}, reels: {status: "available"}, paytable: {status: "available"},
+                }});
+
+                const created = await post(`${baseUrl}/api/project/play/session`, {seed: "http-seed"});
+                expect(created).toMatchObject({status: 201, body: {status: "ok", session: {game: {id: "http-wasm"}}}});
+                const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+                const spun = await post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {});
+                expect(spun).toMatchObject({status: 200, body: {status: "ok", session: {game: {id: "http-wasm"}}}});
+                const scenario = await post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/find-any-win`);
+                expect(scenario).toMatchObject({status: 200, body: {status: "ok", session: {debug: {artifact: {totalWin: expect.any(Number), steps: [expect.objectContaining({wins: []})]}}}}});
+
+                const simulation = await post(`${baseUrl}/api/project/simulations`, {rounds: 2, seed: "http-seed"});
+                expect(simulation).toMatchObject({status: 202, body: {status: "queued"}});
+                const simulationId = (simulation.body as {id: string}).id;
+                await expect(pollUntilTerminal(`${baseUrl}/api/project/simulations/${simulationId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
+
+                const replay = await post(`${baseUrl}/api/project/replays`, {round: 1, seed: "http-seed"});
+                expect(replay).toMatchObject({status: 202, body: {status: "queued"}});
+                const replayId = (replay.body as {id: string}).id;
+                await expect(pollUntilTerminal(`${baseUrl}/api/project/replays/${replayId}`)).resolves.toMatchObject({status: 200, body: {status: "completed"}});
+
+                for (const response of await Promise.all([
+                    post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
+                    get(`${baseUrl}/api/project/deployment/targets`),
+                    post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"}),
+                    post(`${baseUrl}/api/project/fairness/configure`, {bundleDir: "bundle", modeName: "base", serverSeed: "s", clientSeed: "c", nonce: 0}),
+                    post(`${baseUrl}/api/project/outcome-libraries/generate/estimate`, {}),
+                ])) {
+                    expect(response).toMatchObject({status: 409, body: {error: expect.stringContaining("POKIE WASM artifact")}});
+                }
+                expect(listTargets).not.toHaveBeenCalled();
+                expect(validateSourceBundle).not.toHaveBeenCalled();
+                expect(configureFairness).not.toHaveBeenCalled();
+                expect(estimateOutcomeLibrary).not.toHaveBeenCalled();
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
+        it("returns a canonical WASM runtime trap through the public Play route and removes its session", async () => {
+            const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-canonical-wasm-trap-"));
+            try {
+                const blueprintPath = path.join(workDir, "source.blueprint.json");
+                const wasmFile = path.join(workDir, "game.wasm");
+                fs.writeFileSync(blueprintPath, JSON.stringify({
+                    manifest: {id: "trap-wasm", name: "Trap WASM", version: "1.0.0"},
+                    reels: 3,
+                    rows: 1,
+                    symbols: ["A", "B"],
+                    reelStrips: [["A", "B"], ["A", "B"], ["A", "B"]],
+                    paytable: {A: {3: 2}, B: {3: 1}},
+                }));
+                await new WasmArtifactBuilder("1.3.0").build(
+                    {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"},
+                    wasmFile,
+                );
+                const disposeSession = jest.fn();
+                const disposeRuntime = jest.fn();
+                const trappedRuntime = {
+                    manifest: {component: {id: "trap-wasm", version: "1.0.0"}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"], artifact: {sha256: "trap-integrity"}},
+                    createSession: () => ({
+                        play: () => Promise.reject(new Error("canonical WASM play trap")),
+                        serialize: () => ({schemaVersion: "pokie.state.v1", seed: "trap", draws: [], sequence: 0, credits: 1000}),
+                        dispose: disposeSession,
+                    }),
+                    restoreSession: () => undefined,
+                    replay: () => Promise.resolve([]),
+                    dispose: disposeRuntime,
+                };
+                const playService = new StudioPlayService(
+                    undefined,
+                    undefined,
+                    "1.3.0",
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    () => Promise.resolve(trappedRuntime as never),
+                );
+                const homeService = new StudioHomeService("1.3.0");
+                wasmServer = new StudioServer({
+                    pokieVersion: "1.3.0",
+                    host: "127.0.0.1",
+                    port: 0,
+                    studioRoot: wasmStudioRoot,
+                    homeService,
+                    blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
+                    initialContext: {mode: "project", projectRoot: wasmFile},
+                    playService,
+                });
+                const address = await wasmServer.start();
+                const baseUrl = `http://${address.host}:${address.port}`;
+
+                const created = await post(`${baseUrl}/api/project/play/session`, {seed: "trap"});
+                expect(created).toMatchObject({status: 201, body: {status: "ok"}});
+                const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+                await expect(post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {})).resolves.toMatchObject({
+                    status: 200,
+                    body: {status: "error", error: "canonical WASM play trap"},
+                });
+                expect(disposeSession).toHaveBeenCalledTimes(1);
+                await expect(post(`${baseUrl}/api/project/play/sessions/${encodeURIComponent(sessionId)}/spin`, {})).resolves.toMatchObject({status: 404});
+            } finally {
+                fs.rmSync(workDir, {recursive: true, force: true});
+            }
+        });
+
         it("rejects compatible and stale components before allocating Build/Export, simulation, or replay work", async () => {
             const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-direct-wasm-actions-work-"));
             try {
@@ -4074,7 +4227,6 @@ describe("StudioServer", () => {
                     post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
                     post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
                     post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
-                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
                     post(`${baseUrl}/api/project/play/session`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
@@ -4100,6 +4252,10 @@ describe("StudioServer", () => {
                     expect(response).toMatchObject({status: 409, body: {error: expect.stringContaining("POKIE WASM component")}});
                     expect((response.body as {error: string}).error).toContain("inspect a compatible component");
                 }
+                await expect(post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1})).resolves.toMatchObject({
+                    status: 200,
+                    body: {round: 1, artifactWarnings: []},
+                });
                 expect(loadGame).not.toHaveBeenCalled();
                 expect(listTargets).not.toHaveBeenCalled();
                 expect(validateSourceBundle).not.toHaveBeenCalled();
@@ -4115,7 +4271,6 @@ describe("StudioServer", () => {
                     post(`${baseUrl}/api/project/artifacts/build`, {target: "tsPackage"}),
                     post(`${baseUrl}/api/project/simulations`, {rounds: 1}),
                     post(`${baseUrl}/api/project/replays`, {round: 1, seed: "seed"}),
-                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
                     post(`${baseUrl}/api/project/play/session`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
@@ -4140,6 +4295,10 @@ describe("StudioServer", () => {
                 ])) {
                     expect(stale).toMatchObject({status: 409, body: {error: expect.stringContaining("not valid JSON")}});
                 }
+                await expect(post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1})).resolves.toMatchObject({
+                    status: 200,
+                    body: {round: 1, artifactWarnings: []},
+                });
                 expect(loadGame).not.toHaveBeenCalled();
                 expect(listTargets).not.toHaveBeenCalled();
                 expect(validateSourceBundle).not.toHaveBeenCalled();
@@ -4164,7 +4323,6 @@ describe("StudioServer", () => {
                     post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
                     post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
                     get(`${baseUrl}/api/project/outcome-libraries/registry`),
-                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
                     post(`${baseUrl}/api/project/play/session`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
@@ -4195,7 +4353,6 @@ describe("StudioServer", () => {
                     post(`${baseUrl}/api/project/outcome-libraries/generate/jobs`, {}),
                     post(`${baseUrl}/api/project/outcome-libraries/generate/jobs/checkpoint/resume`, {}),
                     get(`${baseUrl}/api/project/outcome-libraries/registry`),
-                    post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 1}),
                     post(`${baseUrl}/api/project/play/session`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/spin`, {}),
                     post(`${baseUrl}/api/project/play/sessions/session/find-any-win`, {}),
@@ -7100,7 +7257,7 @@ describe("StudioServer", () => {
 
             expect(status).toBe(200);
             const targets = body as {target: string; supported: boolean}[];
-            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+            expect(new Set(targets.map((entry) => entry.target))).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
             const byTarget = new Map(targets.map((entry) => [entry.target, entry.supported]));
             expect(byTarget.get("tsPackage")).toBe(true);
             expect(byTarget.get("outcomeLibrary")).toBe(true);

@@ -4,7 +4,7 @@ import {BlueprintProjectTargetAdapter} from "./BlueprintProjectTargetAdapter.js"
 import {OutcomeLibraryProjectTargetAdapter} from "./OutcomeLibraryProjectTargetAdapter.js";
 import {ParWorkbookProjectTargetAdapter} from "./ParWorkbookProjectTargetAdapter.js";
 import type {PokieProject} from "./PokieProject.js";
-import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
+import {PROJECT_TYPE_CAPABILITIES, wasmProjectCapabilities} from "./ProjectCapabilities.js";
 import {ProjectTargetAmbiguousError} from "./ProjectTargetAmbiguousError.js";
 import type {ProjectResolving} from "./ProjectResolving.js";
 import type {ProjectTargetTypeAdapter} from "./ProjectTargetTypeAdapter.js";
@@ -144,7 +144,7 @@ export class ProjectTargetResolver implements ProjectResolving {
         const project = {
             type: adapter.type,
             rootPath: resolvedPath,
-            capabilities: PROJECT_TYPE_CAPABILITIES[adapter.type],
+            capabilities: await this.capabilitiesFor(adapter.type, resolvedPath),
             provenance,
         } as PokieProject;
         // Keep the established enumerable project DTO stable for older command consumers while making
@@ -154,6 +154,12 @@ export class ProjectTargetResolver implements ProjectResolving {
             Reflect.defineProperty(project, "configurationProvenance", {value: configurationProvenance, enumerable: false});
         }
         return project;
+    }
+
+    private async capabilitiesFor(type: PokieProject["type"], rootPath: string) {
+        if (type !== "wasm") return PROJECT_TYPE_CAPABILITIES[type];
+        const raw = await fs.promises.readFile(wasmComponentManifestSidecarPath(rootPath), "utf-8");
+        return wasmProjectCapabilities(JSON.parse(raw) as Parameters<typeof wasmProjectCapabilities>[0]);
     }
 
     private async recognizeAll(

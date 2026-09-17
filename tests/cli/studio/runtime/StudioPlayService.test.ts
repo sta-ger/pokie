@@ -8,6 +8,8 @@ import {
     OutcomeLibraryBundleWriter,
     PokieGame,
     PokieGameManifest,
+    PokieWasmRuntime,
+    PokieWasmRuntimeSession,
     loadPokieGame,
     STUDIO_OPERATION,
     StakeEngineExportModeInput,
@@ -34,6 +36,48 @@ import {
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+function wasmProject(
+    rootPath = "/fake/canonical.wasm",
+    capabilities = [WASM_MANIFEST_READ_CAPABILITY, "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay", "wasm.runtime.execute", "wasm.artifact.inspect"],
+) {
+    return {rootPath, type: "wasm" as const, capabilities, provenance: "canonical POKIE WASM component"};
+}
+
+function fakeWasmRuntime(play: PokieWasmRuntimeSession["play"] = () => Promise.resolve({
+    sequence: 1,
+    draw: 0,
+    stops: [0],
+    screen: [["A"]],
+    winMultiplier: 1,
+    stake: 1,
+    payout: 1,
+    creditsBefore: 1000,
+    credits: 1000,
+    command: {},
+})): {runtime: PokieWasmRuntime; session: PokieWasmRuntimeSession; dispose: jest.Mock; disposeSession: jest.Mock} {
+    const dispose = jest.fn();
+    const disposeSession = jest.fn();
+    const session: PokieWasmRuntimeSession = {play, serialize: () => ({schemaVersion: "pokie.state.v1", seed: "test", draws: [], sequence: 0, credits: 1000}), dispose: disposeSession};
+    const runtime = {
+        manifest: {component: {id: "wasm-slot", version: "1.0.0"}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"], artifact: {sha256: "integrity"}},
+        createSession: () => session,
+        restoreSession: () => session,
+        replay: () => Promise.resolve([]),
+        dispose,
+    } as unknown as PokieWasmRuntime;
+    return {runtime, session, dispose, disposeSession};
+}
+
+function deferred<T>(): {promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void} {
+    let resolve: (value: T) => void = () => undefined;
+    let reject: (reason: unknown) => void = () => undefined;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return {promise, resolve, reject};
+}
 
 function runtimeSnapshotsForPackage(packageName: string): string[] {
     return fs
@@ -324,6 +368,248 @@ describe("StudioPlayService", () => {
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
+    });
+
+    it("disposes a canonical WASM runtime when cancellation wins after loading but before installation", async () => {
+        const controller = new AbortController();
+        let resolveRuntime: (runtime: PokieWasmRuntime) => void = () => undefined;
+        const deferred = new Promise<PokieWasmRuntime>((resolve) => {
+            resolveRuntime = resolve;
+        });
+        const {runtime, dispose} = fakeWasmRuntime();
+        const loadWasmRuntime = jest.fn(() => deferred);
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            undefined,
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            undefined,
+            loadWasmRuntime,
+        );
+
+        const creating = service.newSession("/fake/canonical.wasm", "cancelled", undefined, {signal: controller.signal});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(loadWasmRuntime).toHaveBeenCalledTimes(1);
+        controller.abort();
+        resolveRuntime(runtime);
+
+        await expect(creating).resolves.toMatchObject({status: "failed", error: expect.stringContaining("cancelled")});
+        expect(dispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("disposes and removes a trapped canonical WASM session, and validates foreign scenario ids first", async () => {
+        const trapped = fakeWasmRuntime(() => Promise.reject(new Error("WASM play trap")));
+        const revalidation = fakeWasmRuntime();
+        let loads = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            undefined,
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(++loads === 1 ? trapped.runtime : revalidation.runtime),
+        );
+
+        const created = await service.newSession("/fake/canonical.wasm", "trap-seed");
+        if (created.status !== "ok") throw new Error("expected canonical WASM session");
+        await expect(service.findAnyWin("foreign-session")).resolves.toEqual({status: "not-found"});
+        await expect(service.findSymbolWin("foreign-session", "A")).resolves.toEqual({status: "not-found"});
+        await expect(service.findFreeGames("foreign-session")).resolves.toEqual({status: "not-found"});
+
+        await expect(service.spin(created.session.sessionId)).resolves.toEqual({status: "error", error: "WASM play trap"});
+        expect(trapped.disposeSession).toHaveBeenCalledTimes(1);
+        expect(trapped.dispose).toHaveBeenCalledTimes(1);
+        await expect(service.spin(created.session.sessionId)).resolves.toEqual({status: "not-found"});
+    });
+
+    it("finds a settled canonical WASM payout and projects it through the ordinary RoundArtifact contract", async () => {
+        const active = fakeWasmRuntime();
+        const revalidation = fakeWasmRuntime();
+        let loads = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            "1.3.0",
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(++loads === 1 ? active.runtime : revalidation.runtime),
+        );
+
+        const created = await service.newSession("/fake/canonical.wasm", "winning-seed");
+        if (created.status !== "ok") throw new Error("expected canonical WASM session");
+        const result = await service.findAnyWin(created.session.sessionId);
+        expect(result).toMatchObject({
+            status: "ok",
+            session: {
+                win: 1,
+                debug: {
+                    artifact: {
+                        stake: 1,
+                        totalWin: 1,
+                        screen: [["A"]],
+                        wins: [],
+                        steps: [expect.objectContaining({totalWin: 1, wins: []})],
+                    },
+                },
+            },
+        });
+        if (result.status === "ok") expect(result.session.debug?.artifactUnavailableReason).toBeUndefined();
+    });
+
+    it("finds a canonical WASM payout without artifact inspection and never infers a symbol catalog from its screen", async () => {
+        const active = fakeWasmRuntime();
+        const revalidation = fakeWasmRuntime();
+        (active.runtime as unknown as {manifest: {capabilities: string[]}}).manifest.capabilities = ["runtime.play", "runtime.serialize"];
+        (revalidation.runtime as unknown as {manifest: {capabilities: string[]}}).manifest.capabilities = ["runtime.play", "runtime.serialize"];
+        let loads = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            "1.3.0",
+            {resolve: () => Promise.resolve(wasmProject("/fake/canonical.wasm", [WASM_MANIFEST_READ_CAPABILITY, "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize"]))},
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(++loads === 1 ? active.runtime : revalidation.runtime),
+        );
+
+        const created = await service.newSession("/fake/canonical.wasm", "payout-without-inspection");
+        if (created.status !== "ok") throw new Error("expected canonical WASM session");
+        const result = await service.findAnyWin(created.session.sessionId);
+
+        expect(result).toMatchObject({
+            status: "ok",
+            session: {
+                win: 1,
+                screen: [["A"]],
+                debug: {artifactUnavailableReason: expect.stringContaining("does not declare artifact.inspect")},
+            },
+        });
+        if (result.status === "ok") {
+            expect(result.session.debug?.artifact).toBeUndefined();
+            expect(result.session.availableSymbols).toBeUndefined();
+        }
+    });
+
+    it("disposes the captured WASM session when integrity revalidation fails", async () => {
+        const active = fakeWasmRuntime();
+        const mismatched = fakeWasmRuntime();
+        (mismatched.runtime as unknown as {manifest: {artifact: {sha256: string}}}).manifest.artifact.sha256 = "replacement-integrity";
+        let loads = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            undefined,
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(++loads === 1 ? active.runtime : mismatched.runtime),
+        );
+
+        const created = await service.newSession("/fake/canonical.wasm", "integrity");
+        if (created.status !== "ok") throw new Error("expected canonical WASM session");
+        await expect(service.spin(created.session.sessionId)).resolves.toMatchObject({
+            status: "error",
+            error: expect.stringContaining("artifact changed after this session was opened"),
+        });
+        expect(active.disposeSession).toHaveBeenCalledTimes(1);
+        expect(active.dispose).toHaveBeenCalledTimes(1);
+        await expect(service.spin(created.session.sessionId)).resolves.toEqual({status: "not-found"});
+    });
+
+    it("does not let stale WASM revalidation dispose a replacement session", async () => {
+        const stale = fakeWasmRuntime();
+        const replacement = fakeWasmRuntime();
+        const revalidation = deferred<PokieWasmRuntime>();
+        const replacementRevalidationRuntime = fakeWasmRuntime();
+        let calls = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            undefined,
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            undefined,
+            () => {
+                calls++;
+                if (calls === 1) return Promise.resolve(stale.runtime);
+                if (calls === 2) return revalidation.promise;
+                if (calls === 3) return Promise.resolve(replacement.runtime);
+                return Promise.resolve(replacementRevalidationRuntime.runtime);
+            },
+        );
+
+        const first = await service.newSession("/fake/canonical.wasm", "stale");
+        if (first.status !== "ok") throw new Error("expected stale WASM session");
+        const spinning = service.spin(first.session.sessionId);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(calls).toBe(2);
+
+        const current = await service.newSession("/fake/canonical.wasm", "replacement");
+        if (current.status !== "ok") throw new Error("expected replacement WASM session");
+        revalidation.reject(new Error("stale revalidation failure"));
+
+        await expect(spinning).resolves.toEqual({status: "not-found"});
+        expect(stale.disposeSession).toHaveBeenCalledTimes(1);
+        expect(stale.dispose).toHaveBeenCalledTimes(1);
+        expect(replacement.disposeSession).not.toHaveBeenCalled();
+        expect(replacement.dispose).not.toHaveBeenCalled();
+        await expect(service.spin(current.session.sessionId)).resolves.toMatchObject({status: "ok", session: {sessionId: current.session.sessionId}});
+    });
+
+    it("returns not-found and records nothing when a WASM session is replaced while play awaits", async () => {
+        const played = deferred<Awaited<ReturnType<PokieWasmRuntimeSession["play"]>>>();
+        const stale = fakeWasmRuntime(() => played.promise);
+        const replacement = fakeWasmRuntime();
+        const staleRevalidationRuntime = fakeWasmRuntime();
+        const replacementRevalidationRuntime = fakeWasmRuntime();
+        const recorder = new StudioRoundRecorder();
+        let calls = 0;
+        const service = new StudioPlayService(
+            undefined,
+            undefined,
+            undefined,
+            {resolve: () => Promise.resolve(wasmProject())},
+            undefined,
+            undefined,
+            recorder,
+            () => {
+                calls++;
+                if (calls === 1) return Promise.resolve(stale.runtime);
+                if (calls === 2) return Promise.resolve(staleRevalidationRuntime.runtime);
+                if (calls === 3) return Promise.resolve(replacement.runtime);
+                return Promise.resolve(replacementRevalidationRuntime.runtime);
+            },
+        );
+
+        const first = await service.newSession("/fake/canonical.wasm", "stale");
+        if (first.status !== "ok") throw new Error("expected stale WASM session");
+        const spinning = service.spin(first.session.sessionId);
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(calls).toBe(2);
+
+        const current = await service.newSession("/fake/canonical.wasm", "replacement");
+        if (current.status !== "ok") throw new Error("expected replacement WASM session");
+        played.resolve({sequence: 1, draw: 0, stops: [0], screen: [["A"]], winMultiplier: 1, stake: 1, payout: 1, creditsBefore: 1000, credits: 1000, command: {}});
+
+        await expect(spinning).resolves.toEqual({status: "not-found"});
+        expect(recorder.list()).toEqual([]);
+        await expect(service.spin(current.session.sessionId)).resolves.toMatchObject({status: "ok", session: {sessionId: current.session.sessionId}});
+        expect(recorder.list()).toHaveLength(1);
     });
 
     it("spins the just-created session and returns a real RoundArtifact, settled through the same wallet SpinCommandHandler always uses", async () => {

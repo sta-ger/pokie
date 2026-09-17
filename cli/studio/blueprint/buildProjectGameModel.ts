@@ -20,7 +20,7 @@ export type GameModelSourceReaders = {
 // established (see StudioServer.ts's own doc comment on resolveOpenedProject): "blueprint" reads the full
 // tracked source via StudioBlueprintService; "outcomeLibrary"/"stakeAdapter" never derive a game model at
 // all (a pre-generated outcome source is drawn from, not modeled -- see OutcomeSourceProjectReport's own
-// doc comment); "wasm" exposes only its own manifest identity (POKIE has no WASM execution backend to
+// doc comment); canonical "wasm" exposes its integrity-bound embedded model while legacy files expose their manifest identity (the portable runtime does not
 // introspect anything beyond that -- see PokieWasmComponentManifest's own doc comment); everything else
 // ("tsPackage", the default) exposes only package.json's own version/description as `basics` (its own
 // "name" is an npm package identifier that isn't reliably this game's own id or name, see the tsPackage
@@ -78,6 +78,21 @@ export async function buildProjectGameModel(
         const manifestRead = await readers.readWasmManifest(resolved);
         if (!manifestRead.supported) {
             return buildGameModelProjection(undefined, {reason: manifestRead.diagnostic.message});
+        }
+        if (manifestRead.canonical !== undefined) {
+            const model = manifestRead.canonical.model;
+            return buildGameModelProjection({
+                manifest: {id: manifestRead.manifest.component.id, name: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},
+                reels: model.reels,
+                rows: model.rows,
+                symbols: [...new Set(model.reelStrips.flat())],
+                reelStrips: model.reelStrips.map((strip) => [...strip]),
+                paylines: model.paylines.map((line) => [...line]),
+                paytable: model.paytable,
+                ...(model.wilds === undefined ? {} : {wilds: [...model.wilds]}),
+                ...(model.scatters === undefined ? {} : {scatters: [...model.scatters]}),
+                ...(model.availableBets === undefined ? {} : {availableBets: [...model.availableBets]}),
+            } as GameBlueprint);
         }
         return buildGameModelProjection(undefined, {
             manifest: {id: manifestRead.manifest.component.id, version: manifestRead.manifest.component.version},

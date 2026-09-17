@@ -18,6 +18,7 @@ import {
     isWasmComponentFile,
     StakeProjectionExportService,
     type PreparedStakeProjectionOperation,
+    wasmComponentManifestSidecarPath,
 } from "pokie";
 import path from "path";
 import fs from "fs";
@@ -37,12 +38,13 @@ export type StudioPreparedStakeProjectionStartResult =
     | {status: "unsupported"; message: string}
     | {status: "stale"};
 
-// "parWorkbook" is the one target whose artifact is a single file rather than a directory -- its default
-// destination needs a real file extension, mirroring BuildCommand's own PAR_WORKBOOK_DEFAULT_EXTENSION.
+// PAR workbooks and canonical WASM components are single-file artifacts. Their defaults need real file
+// names, mirroring BuildCommand's own target-specific destination handling.
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
+const WASM_DEFAULT_FILE_NAME = "game.wasm";
 
 function destinationKindFor(target: ArtifactTargetType): "file" | "directory" {
-    return target === "parWorkbook" || target === "blueprint" ? "file" : "directory";
+    return target === "parWorkbook" || target === "blueprint" || target === "wasm" ? "file" : "directory";
 }
 
 // This is intentionally a compact, target-level plan rather than a guessed inventory of generated
@@ -60,6 +62,8 @@ function plannedOutputsFor(target: ArtifactTargetType): readonly string[] {
             return ["Stake Engine export directory"];
         case "parWorkbook":
             return ["PAR workbook (.xlsx) file"];
+        case "wasm":
+            return ["Portable game.wasm module", "Integrity-bound POKIE WASM manifest sidecar"];
         default:
             throw new Error(`Unknown artifact target: ${target}`);
     }
@@ -73,6 +77,7 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
     let siblingName: string = target;
     if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
     if (target === "blueprint") siblingName = "blueprint.json";
+    if (target === "wasm") siblingName = WASM_DEFAULT_FILE_NAME;
     return path.join(path.dirname(rootPath), siblingName);
 }
 
@@ -286,10 +291,6 @@ export class StudioArtifactBuildService {
             const result = target === "stakeAdapter"
                 ? await this.stakeProjection.executeOperation(operation!, options)
                 : await this.registry.executePlan(plan, project, destination, options);
-            // executePlan's terminal writer has returned, but Studio has one
-            // more publication boundary: project registration.  Honour the
-            // same signal before exposing any registry entry or success DTO.
-            assertArtifactBuildNotCancelled(options);
             // Blueprint -> Outcome and Blueprint -> Stake both return the exact managed Outcome Project
             // the registry generated or reopened. Register it with Studio before reporting success; no
             // Studio-only outcome-path index is maintained here.
@@ -305,6 +306,12 @@ export class StudioArtifactBuildService {
             ]);
             const registeredRoots: string[] = [];
             try {
+                // The registry writer has completed, but this build is still
+                // inside Studio's publication transaction until every owned
+                // project has been registered.  Keep this boundary inside the
+                // rollback owner so cancellation cannot strand a module or
+                // one of its companion publications.
+                assertArtifactBuildNotCancelled(options);
                 const provenance = await this.parImportRegistrationProvenance(result.conversionEvidencePath);
                 for (const projectRoot of managedProjectRoots) {
                     assertArtifactBuildNotCancelled(options);
@@ -386,7 +393,7 @@ export class StudioArtifactBuildService {
 
         // A prepared Stake operation is only a preflight snapshot. Re-resolve
         // immediately before allocating its job so a package path replaced by
-        // an inspection-only component cannot consume the retained operation.
+        // any WASM component cannot consume the retained operation.
         try {
             const current = await resolveStudioProjectSource(this.resolveProject, projectRoot);
             if (current?.type === "wasm") {
@@ -666,6 +673,16 @@ export class StudioArtifactBuildService {
                 await fs.promises.rm(projectRoot, {recursive: true, force: true}).catch(() => undefined);
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
+        }
+        if (plan.target.kind === "wasm" && !outputDestinationExisted) {
+            // WASM publication has a file module plus integrity and PAR
+            // companions. They are allocated together by this operation, so
+            // no partially published component may survive failed Studio
+            // registration or post-writer cancellation.
+            await Promise.all([
+                fs.promises.rm(wasmComponentManifestSidecarPath(result.outputPath), {force: true}),
+                fs.promises.rm(`${result.outputPath}.pokie`, {recursive: true, force: true}),
+            ]).catch(() => undefined);
         }
     }
 

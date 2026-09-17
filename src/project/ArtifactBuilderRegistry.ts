@@ -11,6 +11,7 @@ import {assertArtifactDestinationIsSafe} from "./internal/assertArtifactDestinat
 import {OutcomeLibraryArtifactBuilder} from "./OutcomeLibraryArtifactBuilder.js";
 import {ParWorkbookArtifactBuilder} from "./ParWorkbookArtifactBuilder.js";
 import {BlueprintArtifactBuilder} from "./BlueprintArtifactBuilder.js";
+import {ParSheetImporter} from "../parsheet/ParSheetImporter.js";
 import type {PokieProject} from "./PokieProject.js";
 import {
     BUILD_OPERATION,
@@ -19,12 +20,15 @@ import {
     PAR_EXPORT_OPERATION,
     PAR_IMPORT_OPERATION,
     STAKE_ENGINE_EXPORT_OPERATION,
+    WASM_EXPORT_OPERATION,
     type PokieOperation,
 } from "./PokieOperation.js";
 import type {ProjectType} from "./ProjectType.js";
 import {PROJECT_TYPE_CAPABILITIES} from "./ProjectCapabilities.js";
 import {StakeAdapterArtifactBuilder} from "./StakeAdapterArtifactBuilder.js";
 import {TsPackageArtifactBuilder} from "./TsPackageArtifactBuilder.js";
+import {WasmArtifactBuilder, resolveCanonicalWasmGameModel} from "./WasmArtifactBuilder.js";
+import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {BlueprintStakeOutcomeLibraryWorkflow} from "./BlueprintStakeOutcomeLibraryWorkflow.js";
 import {ManagedOutcomeProjectService, type ManagedOutcomeProjectServicing} from "./ManagedOutcomeProjectService.js";
 import {loadGameBlueprint} from "../generated/loadGameBlueprint.js";
@@ -68,6 +72,7 @@ const TARGET_OPERATION: Readonly<Record<ArtifactTargetType, PokieOperation>> = {
     outcomeLibrary: OUTCOME_LIBRARY_BUILD_OPERATION,
     stakeAdapter: STAKE_ENGINE_EXPORT_OPERATION,
     parWorkbook: PAR_EXPORT_OPERATION,
+    wasm: WASM_EXPORT_OPERATION,
 };
 
 // Explicit, per-target statement of what building that target does NOT promise -- see
@@ -93,6 +98,9 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
         "Exports a Game Blueprint as a deterministic PAR workbook snapshot, or republishes an existing " +
             "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
     ],
+    wasm: [
+        "Builds a portable, integrity-bound POKIE WASM component from a Game Blueprint (or a PAR workbook through its model-preserving Blueprint import). It never compiles an arbitrary Node package into WASM.",
+    ],
 };
 
 function sameConfigurationProvenance(
@@ -114,10 +122,11 @@ function sameConfigurationProvenance(
 
 function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescriptor {
     const operation = TARGET_OPERATION[target];
-    const requiredSourceCapability = OPERATION_REQUIRED_CAPABILITY[operation];
-    if (requiredSourceCapability === undefined) {
+    const requirement = OPERATION_REQUIRED_CAPABILITY[operation];
+    if (requirement === undefined) {
         throw new Error(`ArtifactBuilderRegistry has no OPERATION_REQUIRED_CAPABILITY entry for "${operation}".`);
     }
+    const requiredSourceCapability = Array.isArray(requirement) ? requirement[0] : requirement;
 
     const sourceCells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.map((source) => getBuildProductMatrixCell(source, target));
     const supportedSources = sourceCells.filter((cell) => cell.state === "supported").map((cell) => cell.source);
@@ -132,8 +141,8 @@ function buildDescriptor(target: ArtifactTargetType): ArtifactBuildTargetDescrip
     };
 }
 
-// Every public target has a real, atomic builder. WASM is intentionally not an ArtifactTargetType: it is an
-// inspection-only resolved project kind until POKIE ships a complete WASM producer and consumer workflow.
+// Every public target has a real, atomic builder. WASM is a canonical product with explicit Blueprint/PAR
+// source edges; legacy resolved components remain inspection-only.
 function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetType, ArtifactBuilder> {
     return new Map<ArtifactTargetType, ArtifactBuilder>([
         ["blueprint", new BlueprintArtifactBuilder()],
@@ -141,6 +150,7 @@ function buildDefaultBuilders(pokieVersion: string): ReadonlyMap<ArtifactTargetT
         ["outcomeLibrary", new OutcomeLibraryArtifactBuilder(pokieVersion)],
         ["stakeAdapter", new StakeAdapterArtifactBuilder(pokieVersion)],
         ["parWorkbook", new ParWorkbookArtifactBuilder(pokieVersion)],
+        ["wasm", new WasmArtifactBuilder(pokieVersion)],
     ]);
 }
 
@@ -403,6 +413,12 @@ export class ArtifactBuilderRegistry {
             const blueprintBuilder = this.builders.get("blueprint");
             if (blueprintBuilder === undefined) throw new Error(this.unavailableTargetMessage("blueprint"));
             await blueprintBuilder.validate?.(source);
+            if (target === "wasm") {
+                const imported = await new ParSheetImporter().importFromFile(source.rootPath);
+                const errors = imported.issues.filter((issue) => issue.severity === "error");
+                if (errors.length > 0) throw new Error(`Could not import PAR workbook "${source.rootPath}": ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
+                resolveCanonicalWasmGameModel(imported.blueprint);
+            }
             return;
         }
 
@@ -411,6 +427,12 @@ export class ArtifactBuilderRegistry {
             const errors = new GameBlueprintValidator().validate(blueprint).filter((issue) => issue.severity === "error");
             if (errors.length > 0) {
                 throw new Error(`Blueprint "${source.rootPath}" has ${errors.length} error(s): ${errors.map((issue) => `${issue.code}: ${issue.message}`).join("; ")}`);
+            }
+            if (target === "wasm") {
+                const wasmBuilder = this.builders.get("wasm");
+                if (wasmBuilder === undefined) throw new Error(this.unavailableTargetMessage("wasm"));
+                await wasmBuilder.validate?.(source);
+                return;
             }
             const resolution = resolveReelStripGeneration(blueprint as GameBlueprint);
             if (!resolution.success) throw new Error(`Blueprint "${source.rootPath}" could not generate its reel strips.`);
@@ -513,6 +535,10 @@ export class ArtifactBuilderRegistry {
         const target = plan.target.kind as ArtifactTargetType;
         const destination = this.checkDestination(target, destinationPath, source.rootPath);
         if (!destination.available) throw new ArtifactBuildConflictError(destination.message ?? "The destination is unavailable.");
+        const wasmEvidenceRoot = target === "wasm" ? `${destinationPath}.pokie` : undefined;
+        if (wasmEvidenceRoot !== undefined && fs.existsSync(wasmEvidenceRoot)) {
+            throw new ArtifactBuildConflictError(`WASM conversion evidence companion "${wasmEvidenceRoot}" already exists. Choose a new output path or remove that companion explicitly before building.`);
+        }
         // PAR's imported Blueprint is staged alongside the requested output,
         // before any downstream builder gets a chance to create a directory.
         // Create the explicit output parent at this shared boundary so every
@@ -554,7 +580,12 @@ export class ArtifactBuilderRegistry {
             // copy and its evidence under the final artifact instead of
             // leaking a private temp path into provenance.
             const evidenceSource = `${intermediatePath}.conversion-evidence.json`;
-            const durableDirectory = path.join(result.outputPath, ".pokie", "par-import");
+            // A WASM artifact is a file.  Its conversion evidence therefore
+            // lives in an adjacent operation-owned companion, never under the
+            // module path as though that file were a directory.
+            const durableDirectory = target === "wasm"
+                ? path.join(wasmEvidenceRoot!, "par-import")
+                : path.join(result.outputPath, ".pokie", "par-import");
             const durableBlueprint = path.join(durableDirectory, "imported.blueprint.json");
             const durableEvidence = path.join(durableDirectory, "conversion-evidence.json");
             try {
@@ -592,7 +623,7 @@ export class ArtifactBuilderRegistry {
             await this.managedOutcomeProjects.release(entry.sourceRootPath, entry.rootPath).catch(() => undefined);
             if (entry.rootPath !== result.outputPath) await fs.promises.rm(entry.rootPath, {recursive: true, force: true}).catch(() => undefined);
         }
-        await this.removeParOperationOutput(result.outputPath, preserveDestinationDirectory);
+        await this.removeParOperationOutput(result.outputPath, plan.target.kind as ArtifactTargetType, preserveDestinationDirectory);
     }
 
     /**
@@ -669,7 +700,15 @@ export class ArtifactBuilderRegistry {
         }
     }
 
-    private async removeParOperationOutput(outputPath: string, preserveDestinationDirectory: boolean): Promise<void> {
+    private async removeParOperationOutput(outputPath: string, target: ArtifactTargetType, preserveDestinationDirectory: boolean): Promise<void> {
+        if (target === "wasm") {
+            await Promise.all([
+                fs.promises.rm(outputPath, {force: true}),
+                fs.promises.rm(wasmComponentManifestSidecarPath(outputPath), {force: true}),
+                fs.promises.rm(`${outputPath}.pokie`, {recursive: true, force: true}),
+            ]).catch(() => undefined);
+            return;
+        }
         if (!preserveDestinationDirectory) {
             await fs.promises.rm(outputPath, {recursive: true, force: true}).catch(() => undefined);
             return;

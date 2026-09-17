@@ -1,4 +1,4 @@
-import {describeUnavailableWasmComponent, ProjectTargetResolver, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "pokie";
+import {describeUnavailableWasmComponent, ProjectTargetResolver, WASM_CANONICAL_ARTIFACT_CAPABILITY, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "pokie";
 import fs from "fs";
 import path from "path";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
@@ -49,7 +49,8 @@ function registryView(
     unavailableReason?: string,
 ): StudioProjectRegistryView {
     if (entry.type === "wasm") {
-        return {...entry, type: "wasm", status, unavailableReason, wasmPresentation: wasmProductContractView()};
+        const legacy = !entry.capabilities.includes(WASM_CANONICAL_ARTIFACT_CAPABILITY);
+        return {...entry, type: "wasm", status, ...(unavailableReason === undefined ? {} : {unavailableReason}), ...(legacy ? {wasmPresentation: wasmProductContractView()} : {})};
     }
     return {...entry, type: entry.type as Exclude<ProjectType, "wasm">, status, ...(unavailableReason === undefined ? {} : {unavailableReason})};
 }
@@ -222,7 +223,11 @@ export class StudioProjectRegistrationService {
             suggestedName: defaultProjectName(resolved.location, resolved.project.type),
         };
         return resolved.project.type === "wasm"
-            ? {...preview, type: "wasm", wasmPresentation: wasmProductContractView()}
+            ? {
+                ...preview,
+                type: "wasm",
+                ...(!resolved.project.capabilities.includes(WASM_CANONICAL_ARTIFACT_CAPABILITY) ? {wasmPresentation: wasmProductContractView()} : {}),
+            }
             : {...preview, type: resolved.project.type as Exclude<ProjectType, "wasm">};
     }
 

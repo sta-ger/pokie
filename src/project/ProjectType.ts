@@ -17,9 +17,11 @@ export type ProjectType =
     | "stakeAdapter"
     // A WASM component project type: a ".wasm" file paired with a sidecar PokieWasmComponentManifest
     // WasmProjectTargetAdapter recognizes as contract-compatible (see project/wasm/PokieWasmComponentManifest.ts
-    // and docs/wasm-compatibility-boundary.md). Resolves read-only — ProjectCapabilities.ts grants "wasm" only
-    // WASM_MANIFEST_READ_CAPABILITY, never WASM_EXPORT_CAPABILITY or RUNTIME_EXECUTE_CAPABILITY (POKIE has no
-    // WASM build/export product or execution backend). An
+    // and docs/wasm-compatibility-boundary.md). Integrity-bound canonical artifacts grant canonical identity and
+    // only their independently declared portable operations; WASM_RUNTIME_EXECUTE_CAPABILITY means the complete
+    // play/serialize/replay bundle, not integrity alone. Legacy sidecar-only files are the only inspection-only
+    // WASM components. Neither artifact form grants WASM_EXPORT_CAPABILITY or RUNTIME_EXECUTE_CAPABILITY;
+    // authored Blueprint and PAR projects grant wasm.export instead. An
     // ordinary ".wasm" file with no sidecar manifest, or one whose manifest fails validation/compatibility,
     // is still not a supported POKIE project — see WasmProjectTargetAdapter's own doc comment for the exact
     // three-way split.

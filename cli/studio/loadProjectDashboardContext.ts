@@ -1,4 +1,4 @@
-import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, releasePokieGame, wasmProductContractView, type ProjectType} from "pokie";
+import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, OutcomeSourceProjectReport, PokieProject, ProjectTargetResolver, readWasmComponentManifest, releasePokieGame, type ProjectType} from "pokie";
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
@@ -35,9 +35,9 @@ const defaultResolveOutcomeSourceProject: OutcomeSourceProjectResolving = async 
     return {project, report};
 };
 
-// Resolves artifacts which deliberately have no runtime path. WASM inspection
-// is routed here before runtime preparation, so opening it can never load the
-// binary or allocate a materialized package.
+// Resolves artifacts before package-runtime preparation. Canonical WASM follows
+// its portable, integrity-checked path here; only legacy sidecar-only WASM
+// remains an inspection-only artifact. Neither path falls through to package loading.
 export type ArtifactProjectResolving = (projectRoot: string) => Promise<PokieProject | undefined>;
 
 // `isCurrent` belongs to Studio's request-generation owner.  An AbortSignal stops the
@@ -66,7 +66,7 @@ const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRo
 // `resolveRuntimePackageRoot` crosses the same materializing boundary sim/dev/serve/replay/Play cross
 // (see materializeRuntimePackage.ts) before loadGame ever runs — a resolved "blueprint" `projectRoot`
 // (e.g. a bare `pokie <blueprint.json>` launch) is materialized into a real runtime first, and an
-// unsupported project type (outcomeLibrary/stakeAdapter/parWorkbook/wasm) surfaces its
+// unsupported package-runtime project type (outcomeLibrary/stakeAdapter/parWorkbook) surfaces its
 // UnsupportedProjectOperationError's own message as this result's "error", never a raw loadPokieGame
 // failure a user would have to guess the cause of. A BlueprintMaterializationError's own "details" (a
 // failed materialization "npm install"'s real stderr) rides along separately as this result's own
@@ -94,8 +94,8 @@ export async function loadProjectDashboardContext(
     // "stakeAdapter" `projectRoot` has no materialized runtime to load at all (neither type ever gains
     // RUNTIME_EXECUTE_CAPABILITY), so attempting the ordinary path below would always fail with an
     // UnsupportedProjectOperationError. `undefined` here means "not one of those two types" (or
-    // unresolvable), so every existing tsPackage/blueprint/wasm caller falls straight through
-    // to the unchanged path below.
+    // unresolvable), so tsPackage/blueprint callers fall through to the package-runtime path below; WASM was
+    // already handled by its portable artifact path above.
     const outcomeSource = await resolveOutcomeSourceProject(projectRoot).catch(() => undefined);
     assertDashboardLoadCurrent(options);
     if (outcomeSource !== undefined) {
@@ -129,12 +129,39 @@ export async function loadProjectDashboardContext(
         const identity = await describeLocation(projectRoot).catch(() => undefined);
         assertDashboardLoadCurrent(options);
         if (artifact.type === "wasm") {
+            if (isWasmComponentFile(artifact.rootPath)) {
+                // A canonical component is an ordinary portable game runtime, not
+                // a Studio-only artifact dashboard. Read it again here so opening
+                // a registered/recent component cannot reuse stale metadata.
+                const manifestRead = await readWasmComponentManifest(artifact);
+                assertDashboardLoadCurrent(options);
+                if (manifestRead.supported && manifestRead.manifest.artifact !== undefined) {
+                    return {
+                        status: "loaded",
+                        projectRoot: resolvedRoot,
+                        game: {
+                            id: manifestRead.manifest.component.id,
+                            name: manifestRead.manifest.component.id,
+                            version: manifestRead.manifest.component.version,
+                        },
+                        type: "wasm",
+                        capabilities: artifact.capabilities,
+                        origin: identity?.origin,
+                    };
+                }
+            }
             return {
                 status: "artifact",
                 projectRoot: resolvedRoot,
                 project: artifact,
                 origin: identity?.origin,
-                wasmPresentation: wasmProductContractView(),
+                wasmPresentation: {
+                    label: "POKIE WASM component",
+                    manifestCapability: "wasm.manifest.read",
+                    manifestCapabilityLabel: "Inspect declared WASM component metadata",
+                    inspectActionLabel: "Inspect declared manifest",
+                    inspectionSummary: "This legacy WASM component is inspection-only; rebuild it as a canonical POKIE WASM artifact to use shared Studio workflows.",
+                },
             };
         }
         return {

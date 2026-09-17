@@ -79,6 +79,22 @@ describe("PokieWasmComponentManifestValidator", () => {
         expect(issues).toContainEqual(expect.objectContaining({code: "wasm-component-manifest-capabilities-invalid"}));
     });
 
+    it("rejects a canonical artifact with an unsupported adapter identifier", () => {
+        const issues = validator.validate({
+            ...VALID_MANIFEST,
+            artifact: {
+                format: "pokie.wasm.v1",
+                sha256: `sha256:${"0".repeat(64)}`,
+                bytes: 8,
+                abiVersion: "1.0.0",
+                adapter: "untrusted/adapter",
+                configurationHash: `sha256:${"0".repeat(64)}`,
+            },
+        });
+
+        expect(issues).toContainEqual(expect.objectContaining({code: "wasm-component-manifest-artifact-invalid"}));
+    });
+
     it("never throws for a deeply malformed value", () => {
         expect(() => validator.validate(null)).not.toThrow();
         expect(() => validator.validate(undefined)).not.toThrow();

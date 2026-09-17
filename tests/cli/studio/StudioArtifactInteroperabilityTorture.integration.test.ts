@@ -708,20 +708,20 @@ describe("PC-14 Studio real-artifact interoperability torture", () => {
         }));
         const wasmProject = await new ProjectTargetResolver().resolve(wasmPath);
         if (wasmProject === undefined || wasmProject.type !== "wasm") throw new Error("Expected the real Studio WASM component to resolve.");
-        const simulationDiagnostic = describeUnavailableArtifactOperation(wasmProject, "outcomeSource.simulate");
+        const simulationDiagnostic = describeUnavailableArtifactOperation(wasmProject, "sim");
         if (simulationDiagnostic === undefined) throw new Error("Expected the shared Studio simulation diagnostic.");
         expect(new StudioSimulationService().start(wasmPath, {rounds: 1}, wasmProject)).toEqual({
             status: "unsupported", message: simulationDiagnostic.message,
         });
-        const replayDiagnostic = describeUnavailableArtifactOperation(wasmProject, "outcomeSource.replay");
+        const replayDiagnostic = describeUnavailableArtifactOperation(wasmProject, "replay");
         if (replayDiagnostic === undefined) throw new Error("Expected the shared Studio replay diagnostic.");
         expect(new StudioReplayExecutionService().start(wasmPath, {round: 1}, wasmProject)).toEqual({
             status: "unsupported", message: replayDiagnostic.message,
         });
-        // The HTTP routes own generic game simulation/replay while the direct
-        // outcome-source services own their narrower operations. Record each
-        // concrete diagnostic separately; treating either as the other would
-        // incorrectly claim API/service parity for different public actions.
+        // The direct services and HTTP routes both own generic game
+        // simulation/replay. Keep their diagnostics aligned with the shared
+        // operations instead of incorrectly treating a component as an
+        // outcome-source project.
         const httpSimulationDiagnostic = describeUnavailableArtifactOperation(wasmProject, "sim");
         const httpReplayDiagnostic = describeUnavailableArtifactOperation(wasmProject, "replay");
         if (httpSimulationDiagnostic === undefined || httpReplayDiagnostic === undefined) {

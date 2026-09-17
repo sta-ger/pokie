@@ -154,6 +154,9 @@ export const BLUEPRINT_BUILD_CAPABILITY: StudioProjectCapability = "blueprint.bu
 // loadProjectDashboardContext.ts's own doc comment) -- ProjectDashboardPage therefore treats either this
 // or BLUEPRINT_BUILD_CAPABILITY as sufficient for those tabs, rather than requiring this one specifically.
 export const RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "runtime.execute";
+export const WASM_RUNTIME_EXECUTE_CAPABILITY: StudioProjectCapability = "wasm.runtime.execute";
+export const WASM_RUNTIME_PLAY_CAPABILITY: StudioProjectCapability = "wasm.runtime.play";
+export const WASM_RUNTIME_REPLAY_CAPABILITY: StudioProjectCapability = "wasm.runtime.replay";
 
 // The capability a project that already holds a readable, pre-generated outcome-library bundle carries --
 // only a project resolved as "outcomeLibrary" grants it (see PROJECT_TYPE_CAPABILITIES). Unlike
@@ -198,14 +201,20 @@ export const PROJECT_TYPE_LABEL: Record<Exclude<StudioProjectType, "wasm">, stri
 };
 
 export function describeProjectType(type: Exclude<StudioProjectType, "wasm">): string;
-export function describeProjectType(type: "wasm", wasmPresentation: StudioWasmPresentation): string;
+export function describeProjectType(type: "wasm", wasmPresentation?: StudioWasmPresentation): string;
 export function describeProjectType(type: StudioProjectType, wasmPresentation?: StudioWasmPresentation): string {
-    return type === "wasm" ? wasmPresentation!.label : PROJECT_TYPE_LABEL[type];
+    // A legacy component carries its inspection presentation; an integrity-bound canonical component
+    // is a normal loaded game and intentionally does not.  Give both truthful labels without forcing
+    // the shared loaded dashboard back into the legacy artifact DTO.
+    return type === "wasm" ? wasmPresentation?.label ?? "Playable WASM game" : PROJECT_TYPE_LABEL[type];
 }
 
 const CAPABILITY_LABEL: Record<string, string> = {
     "blueprint.build": "Edit and build this game",
     "runtime.execute": "Play, test, and export this game",
+    "wasm.runtime.execute": "Play, simulate, and replay this portable artifact",
+    "wasm.runtime.play": "Play and simulate this portable artifact",
+    "wasm.runtime.replay": "Replay this portable artifact",
     "outcomeLibrary.read": "Use saved game outcomes",
     "stakeAdapter.exchange": "Share this game export",
     "parWorkbook.exchange": "Share this PAR spreadsheet",

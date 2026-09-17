@@ -23,6 +23,10 @@ export type StudioRuntimeSessionView = {
     // own doc comment), and only ever the real, game-reported list, never inferred from a screen/round that
     // happens to have been seen so far. Play's own "Find symbol win" chooser is the one consumer today.
     availableSymbols?: string[];
+    // Capability reasons are returned by the executable host, not inferred by a particular Studio
+    // screen.  A missing key means the shared scenario is available; a present reason disables only
+    // that scenario while leaving an ordinary Spin usable.
+    scenarioCapabilities?: Partial<Record<"findAnyWin" | "findSymbolWin" | "findFreeGames", string>>;
     sessionVersion?: number;
     // Studio's own bookkeeping, not part of the game/public wire contract at all -- the client-supplied
     // requestId a spin was called with, recorded directly from that call's own parameter, so it's present

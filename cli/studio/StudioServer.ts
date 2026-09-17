@@ -1825,10 +1825,14 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (resolved?.type === "wasm") {
-            // Validation is game-logic validation.  A compatible component
-            // only grants manifest inspection, so never hand its path to the
-            // package validator (which could attempt to import it).
-            this.sendJson(res, 409, {error: describeUnsupportedProjectOperation(resolved, VALIDATE_OPERATION)?.message});
+            const manifestRead = await readWasmComponentManifest(resolved);
+            if (!manifestRead.supported || manifestRead.manifest.artifact === undefined) {
+                this.sendJson(res, 409, {error: manifestRead.supported
+                    ? describeUnsupportedProjectOperation(resolved, VALIDATE_OPERATION)?.message
+                    : manifestRead.diagnostic.message});
+                return;
+            }
+            this.sendJson(res, 200, this.validatedCanonicalWasmProject(resolved, manifestRead.manifest));
             return;
         }
         this.sendJson(res, 200, await this.gamePackageValidator.validate(projectRoot));
@@ -1852,11 +1856,24 @@ export class StudioServer implements StudioServerHandling {
                         services: [...manifestRead.manifest.host.services],
                     },
                     capabilities: [...manifestRead.manifest.capabilities],
+                    ...(manifestRead.manifest.minPokieVersion === undefined ? {} : {minPokieVersion: manifestRead.manifest.minPokieVersion}),
+                    ...(manifestRead.manifest.artifact === undefined ? {} : {artifact: manifestRead.manifest.artifact}),
                 },
             };
         } catch (error) {
             return {packageRoot: project.rootPath, valid: false, error: error instanceof Error ? error.message : String(error)};
         }
+    }
+
+    private validatedCanonicalWasmProject(project: PokieProject, manifest: {component: {id: string; version: string}}): PokieGamePackageValidationReport {
+        return {
+            packageRoot: project.rootPath,
+            valid: true,
+            game: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
+            errors: [],
+            warnings: [],
+            suggestions: [],
+        };
     }
 
     private isWasmPath(projectRoot: string): boolean {
@@ -1882,7 +1899,9 @@ export class StudioServer implements StudioServerHandling {
         try {
             const project = await new ProjectTargetResolver().resolve(projectRoot);
             if (project?.type === "wasm") {
+                const manifest = await readWasmComponentManifest(project);
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
+                if (manifest.supported && manifest.manifest.artifact !== undefined && diagnostic === undefined) return false;
                 this.playService.reset();
                 this.sendJson(res, 409, {error: diagnostic?.message ?? describeUnavailableWasmComponent()});
                 return true;
@@ -2959,8 +2978,6 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        if (await this.rejectCurrentWasmOperation(res, REPLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         if (typeof body !== "object" || body === null) {
             this.sendJson(res, 400, {error: "Request body must be a JSON object."});
@@ -3121,7 +3138,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -3151,7 +3167,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -3179,7 +3194,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const result = await this.playService.findAnyWin(sessionId);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
@@ -3198,7 +3212,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -3226,7 +3239,6 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-
         const result = await this.playService.findFreeGames(sessionId);
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});

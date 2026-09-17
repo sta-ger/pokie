@@ -128,6 +128,54 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 describe("StudioSimulationService", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
+    it("cancels a canonical WASM job after session acquisition and disposes its portable resources", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-simulation-cleanup-"));
+        const wasmPath = path.join(workDir, "game.wasm");
+        fs.writeFileSync(wasmPath, "");
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}}));
+        const gate = createControlledYield();
+        const disposeRuntime = jest.fn();
+        const disposeSession = jest.fn();
+        const runtime = {
+            manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
+            createSession: () => ({
+                play: () => Promise.resolve({stake: 1, payout: 1}),
+                serialize: () => ({schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: 1, credits: 1000}),
+                dispose: disposeSession,
+            }),
+            dispose: disposeRuntime,
+        };
+        const service = new StudioSimulationService(
+            undefined,
+            undefined,
+            undefined,
+            1,
+            undefined,
+            gate.yieldToEventLoop,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve(runtime as never),
+        );
+        try {
+            const started = service.start(wasmPath, {rounds: 2, seed: "cleanup"});
+            if (started.status !== "created") throw new Error("expected WASM simulation job");
+            for (let attempt = 0; attempt < 20 && gate.pendingCount() === 0; attempt++) await flushMacrotask();
+            expect(gate.pendingCount()).toBe(1);
+            service.cancel(started.job.id);
+            gate.release();
+            await expect(waitForTerminal(service, started.job.id)).resolves.toMatchObject({status: "cancelled"});
+            expect(disposeSession).toHaveBeenCalledTimes(1);
+            expect(disposeRuntime).toHaveBeenCalledTimes(1);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("runs a small simulation to completion and builds a SimulationReport", async () => {
         const service = new StudioSimulationService(
             new InMemoryStudioSimulationRepository(),

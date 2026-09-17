@@ -29,10 +29,10 @@ export async function resolveCurrentBuildModeIds(
     projectRoot: string,
     loadGame: (packageRoot: string) => Promise<PokieGame> = loadPokieGame,
 ): Promise<readonly string[] | undefined> {
-    // A WASM component is a manifest-only inspection target.  Do this before
-    // touching the runtime loader, so direct Deployment service consumers get
-    // the same resolver-specific stale-sidecar diagnostic as Studio's HTTP
-    // boundary instead of an erased "no build modes" result.
+    // Deployment consumes package build modes, which canonical WASM does not
+    // expose and legacy WASM cannot execute. Do this before touching the
+    // package runtime loader so direct consumers receive the same precise
+    // capability diagnostic as Studio's HTTP boundary.
     if (isWasmComponentFile(projectRoot)) {
         const project = await new ProjectTargetResolver().resolve(projectRoot);
         if (project?.type === "wasm") {

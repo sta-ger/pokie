@@ -57,8 +57,8 @@ const PROJECT_IMPORT_DETECTION_TIMEOUT_MS = 15_000;
 // The ProjectTypes Home's Open action (StudioHomeService.openProject/loadProjectDashboardContext) can
 // load runnable packages and Blueprints, as well as canonical outcome-source projects and exchangeable
 // PAR workbooks. A Blueprint is materialized into a runtime package; an outcome library, Stake Engine
-// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. WASM opens
-// its read-only inspection dashboard and never reaches runtime or Build/Export. PAR workbooks additionally
+// export, or PAR workbook loads its own capability-gated dashboard, including Build/Export. Canonical WASM
+// opens its ordinary portable-runtime dashboard; legacy manifest-only components retain inspection. PAR workbooks additionally
 // retain their dedicated Design Game action below.
 const RUNTIME_OR_ARTIFACT_OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new Set<StudioProjectType>([
     "tsPackage",
@@ -70,7 +70,7 @@ const RUNTIME_OR_ARTIFACT_OPENABLE_TYPES: ReadonlySet<StudioProjectType> = new S
 
 function isOpenable(entry: StudioProjectRegistryView): boolean {
     return entry.type === "wasm"
-        ? entry.capabilities.includes(entry.wasmPresentation.manifestCapability)
+        ? entry.capabilities.includes("wasm.canonical") || (entry.wasmPresentation !== undefined && entry.capabilities.includes(entry.wasmPresentation.manifestCapability))
         : RUNTIME_OR_ARTIFACT_OPENABLE_TYPES.has(entry.type);
 }
 
@@ -423,7 +423,7 @@ export function ProjectsPanel({
             <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
                     {entry.status === "ok" && isOpenable(entry) && (
-                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
+                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>

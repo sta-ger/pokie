@@ -57,10 +57,15 @@ export function describeUnsupportedProjectOperation(
     project: PokieProject,
     operation: PokieOperation,
 ): UnsupportedProjectOperationDiagnostic | undefined {
-    const requiredCapability = OPERATION_REQUIRED_CAPABILITY[operation];
-    if (requiredCapability === undefined || project.capabilities.includes(requiredCapability)) {
+    const requirement = OPERATION_REQUIRED_CAPABILITY[operation];
+    let requiredCapabilities: readonly string[] = [];
+    if (requirement !== undefined) {
+        requiredCapabilities = Array.isArray(requirement) ? requirement : [requirement];
+    }
+    if (requiredCapabilities.length === 0 || requiredCapabilities.some((capability) => project.capabilities.includes(capability))) {
         return undefined;
     }
+    const requiredCapability = requiredCapabilities[0];
 
     const alternatives = ALL_PROJECT_TYPES.filter(
         (type) => type !== project.type && PROJECT_TYPE_CAPABILITIES[type].includes(requiredCapability),

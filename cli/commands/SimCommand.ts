@@ -12,6 +12,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    readWasmComponentManifest,
     releasePokieGame,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
@@ -23,6 +24,9 @@ import {
     SimulationReportBuilding,
     SimulationReportSet,
     SIM_OPERATION,
+    SeededPokieWasmHost,
+    SimulationAccumulator,
+    loadPokieWasmFileRuntime,
     WeightedOutcomeRandomSource,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -328,8 +332,8 @@ export class SimCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
-            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            await this.executeAgainstWasmArtifact(project, options);
+            return;
         }
 
         // Crossed exactly once per invocation -- every downstream step (the metadata load below,
@@ -343,6 +347,65 @@ export class SimCommand implements CliCommandHandling {
             await this.executeAgainstRuntimePackage({...options, packageRoot: resolution.runtimePath});
         } finally {
             await resolution.release();
+        }
+    }
+
+    /**
+     * Canonical components are simulated through the portable host, never through package
+     * materialization or the package-worker runner.  The component owns the round semantics;
+     * this command only aggregates the same user-visible statistics as the package path.
+     */
+    private async executeAgainstWasmArtifact(project: PokieProject, options: SimOptions): Promise<void> {
+        const operationDiagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
+        if (operationDiagnostic !== undefined) throw new UnsupportedProjectOperationError(operationDiagnostic);
+        const manifestRead = await readWasmComponentManifest(project);
+        if (!manifestRead.supported || manifestRead.canonical === undefined) {
+            const diagnostic = describeUnavailableArtifactOperation(project, SIM_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            throw new Error("This WASM component is inspection-only and cannot be simulated.");
+        }
+        if (options.workers !== 1) {
+            throw new Error("Canonical WASM simulation currently supports --workers 1 because its portable host is executed in-process.");
+        }
+        if (options.mode !== undefined) {
+            throw new Error("Canonical WASM simulation does not support --mode; select a declared bet with the artifact's play command instead.");
+        }
+        if (options.convergence !== undefined) {
+            throw new Error("Canonical WASM simulation does not support adaptive convergence yet; omit --min-rounds, --rtp-tolerance, and --check-interval.");
+        }
+
+        const seed = options.seed ?? "pokie-wasm-simulation";
+        const startedAt = Date.now();
+        const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
+        let session;
+        try {
+            session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
+            const accumulator = new SimulationAccumulator();
+            for (let index = 0; index < options.rounds; index++) {
+                const round = await session.play();
+                accumulator.addRound(round.stake, round.payout);
+            }
+            const statistics = accumulator.getStatistics();
+            const report = this.reportBuilder.build({
+                manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                requestedRounds: options.rounds,
+                seed,
+                statistics,
+                durationMs: Date.now() - startedAt,
+                packageRoot: project.rootPath,
+                configHash: runtime.manifest.artifact?.configurationHash,
+                pokieVersion: this.pokieVersion,
+                workers: 1,
+                workerSeedStrategy: "portable seeded host stream (single in-process WASM runtime)",
+                stopReason: "maxRounds",
+            });
+            if (options.out) this.writeReport(options.out, JSON.stringify(report, null, 4));
+            if (options.format === "json") console.log(JSON.stringify(report, null, 4));
+            else this.printSummary(report);
+            if (options.out) this.printReportDestination(options.out, options.format === "json");
+        } finally {
+            session?.dispose();
+            runtime.dispose();
         }
     }
 

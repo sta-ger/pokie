@@ -1,5 +1,10 @@
 import type {PokieProject} from "./PokieProject.js";
 import type {ProjectType} from "./ProjectType.js";
+import {
+    WASM_CANONICAL_ARTIFACT_CAPABILITY,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
+} from "./ProjectCapability.js";
 import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 
 export type ProjectNextAction = {
@@ -68,15 +73,9 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
     },
     wasm: {
         kind: WASM_PRODUCT_CONTRACT.kind,
-        purpose: WASM_PRODUCT_CONTRACT.inspectionPurpose,
-        // `pokie inspect` is the operation currently rendering this presentation.
-        // A WASM component has no further CLI action after its manifest has been
-        // read, so do not send users back through a self-referential command.
+        purpose: "A self-describing POKIE WASM component. Canonical components are integrity checked before POKIE uses each declared operation.",
         nextActions: [],
-        prerequisites: [
-            `${WASM_PRODUCT_CONTRACT.inspectionBoundary} It cannot build, run, simulate, or validate WASM game logic; it also cannot replay or serve it.`,
-            WASM_PRODUCT_CONTRACT.originalSourceRecovery,
-        ],
+        prerequisites: ["Legacy sidecar-only components remain inspectable but must be rebuilt as canonical POKIE WASM artifacts before they can run."],
     },
     parWorkbook: {
         kind: "PAR workbook",
@@ -93,5 +92,41 @@ export function describeProjectType(type: ProjectType): string {
 }
 
 export function describeProjectPresentation(project: PokieProject): ProjectPresentation {
+    if (project.type === "wasm") {
+        return describeWasmProjectPresentation(project);
+    }
     return PROJECT_PRESENTATIONS[project.type];
+}
+
+// Canonical bytes prove the component identity and host contract, but do not grant every portable
+// operation. Keep inspection guidance on the same resolved capability set the command handlers use:
+// a third-party component that omits e.g. runtime.play must never be described as runnable merely
+// because it carries an integrity-bound artifact declaration.
+function describeWasmProjectPresentation(project: Extract<PokieProject, {type: "wasm"}>): ProjectPresentation {
+    const canonical = project.capabilities.includes(WASM_CANONICAL_ARTIFACT_CAPABILITY);
+    if (!canonical) return PROJECT_PRESENTATIONS.wasm;
+
+    const canPlay = project.capabilities.includes(WASM_RUNTIME_PLAY_CAPABILITY);
+    const canReplay = project.capabilities.includes(WASM_RUNTIME_REPLAY_CAPABILITY);
+    const nextActions: ProjectNextAction[] = [{label: "Validate the component", command: "pokie validate <path>"}];
+    if (canPlay) {
+        nextActions.push(
+            {label: "Start one deterministic round", command: "pokie run <path> --seed demo"},
+            {label: "Simulate component rounds", command: "pokie sim <path> --rounds 10000 --seed demo"},
+        );
+    }
+    if (canReplay) {
+        nextActions.push({label: "Replay one component round", command: "pokie replay <path> --round 1 --seed demo"});
+    }
+
+    return {
+        ...PROJECT_PRESENTATIONS.wasm,
+        purpose: canPlay
+            ? "A portable, self-describing POKIE game artifact. Its declared portable operations are integrity checked before POKIE uses them."
+            : "A self-describing POKIE WASM artifact with no declared portable play operation. Its metadata can be validated, but POKIE cannot start a round.",
+        nextActions,
+        prerequisites: canPlay
+            ? []
+            : ["This canonical component does not declare runtime.play. Rebuild it with the portable operation declarations required for play."],
+    };
 }

@@ -53,6 +53,7 @@ describe("StudioArtifactBuildService (integration)", () => {
             expect.objectContaining({target: "tsPackage", supported: true}),
             expect.objectContaining({target: "outcomeLibrary", supported: true}),
             expect.objectContaining({target: "stakeAdapter", supported: true}),
+            expect.objectContaining({target: "wasm", supported: true}),
         ]));
 
         for (const target of ["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter"] as const) {
@@ -82,6 +83,40 @@ describe("StudioArtifactBuildService (integration)", () => {
             });
             expect(fs.existsSync(destination)).toBe(true);
         }
+
+        const wasmDestination = path.join(workDir, "game.wasm");
+        const wasmImportedBlueprintPath = `${wasmDestination}.pokie/par-import/imported.blueprint.json`;
+        const wasmConversionEvidencePath = `${wasmDestination}.pokie/par-import/conversion-evidence.json`;
+        const wasmPreview = await service.preview(workbookPath, "wasm", wasmDestination);
+        expect(wasmPreview).toMatchObject({
+            status: "ok",
+            target: "wasm",
+            destination: wasmDestination,
+            destinationKind: "file",
+        });
+        if (wasmPreview.status !== "ok") throw new Error("expected WASM preview");
+        expect(wasmPreview.plan.steps[0]).toMatchObject({
+            kind: "importParWorkbook",
+            output: {canonicalLocation: wasmImportedBlueprintPath},
+            conversionEvidencePath: wasmConversionEvidencePath,
+        });
+        expect(fs.existsSync(wasmImportedBlueprintPath)).toBe(false);
+        expect(fs.existsSync(wasmConversionEvidencePath)).toBe(false);
+        const wasmResult = await service.build(workbookPath, "wasm", wasmDestination);
+
+        expect(wasmResult).toMatchObject({
+            status: "ok",
+            target: "wasm",
+            outputPath: wasmDestination,
+            outputKind: "file",
+            sourceType: "parWorkbook",
+            importedBlueprintPath: wasmImportedBlueprintPath,
+            conversionEvidencePath: wasmConversionEvidencePath,
+        });
+        expect(fs.existsSync(wasmDestination)).toBe(true);
+        expect(fs.existsSync(`${wasmDestination}.pokie-wasm.json`)).toBe(true);
+        expect(fs.existsSync(wasmImportedBlueprintPath)).toBe(true);
+        expect(fs.existsSync(wasmConversionEvidencePath)).toBe(true);
     });
 
     it("uses the same registry Outcome reuse and Stake flow for a real pokie init code-first package", async () => {

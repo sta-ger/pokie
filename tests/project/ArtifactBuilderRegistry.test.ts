@@ -6,12 +6,14 @@ import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
 import {ManagedOutcomeProjectService} from "../../src/project/ManagedOutcomeProjectService.js";
+import {ParSheetExporter} from "../../src/parsheet/ParSheetExporter.js";
 import {PROJECT_TYPE_CAPABILITIES} from "../../src/project/ProjectCapabilities.js";
 import {
     BLUEPRINT_BUILD_CAPABILITY,
     OUTCOME_LIBRARY_GENERATE_CAPABILITY,
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     STAKE_ADAPTER_EXPORT_CAPABILITY,
+    WASM_EXPORT_CAPABILITY,
 } from "../../src/project/ProjectCapability.js";
 import type {PokieProject} from "../../src/project/PokieProject.js";
 
@@ -19,7 +21,7 @@ describe("ArtifactBuilderRegistry", () => {
     const registry = new ArtifactBuilderRegistry();
 
     it("lists only matrix-advertised build targets", () => {
-        expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook"]));
+        expect(new Set(registry.listTargets())).toEqual(new Set(["blueprint", "tsPackage", "outcomeLibrary", "stakeAdapter", "parWorkbook", "wasm"]));
     });
 
     it("reports the true required source capability and supported sources for a package build", () => {
@@ -71,11 +73,11 @@ describe("ArtifactBuilderRegistry", () => {
         expect(stakeAdapterNotes).toMatch(/never re-derives or recovers the game model/);
     });
 
-    it("does not expose WASM as an ArtifactBuilderRegistry target", () => {
+    it("exposes WASM as a canonical Blueprint/PAR target", () => {
         const tsPackageNotes = registry.describe("tsPackage").unsupportedNotes.join(" ");
 
         expect(tsPackageNotes).toMatch(/never compiles or targets WASM/);
-        expect(() => registry.describe("wasm" as never)).toThrow(/Build target "wasm" is unavailable.*Next: choose a target shown by `pokie build --help`/);
+        expect(registry.describe("wasm")).toMatchObject({requiredSourceCapability: WASM_EXPORT_CAPABILITY, supportedSources: ["blueprint", "parWorkbook"]});
     });
 
     it("throws for a target it has no descriptor for", () => {
@@ -188,6 +190,143 @@ describe("ArtifactBuilderRegistry", () => {
                 expect(fs.existsSync(path.join(packageDestination, "package.json"))).toBe(true);
                 expect(fs.existsSync(path.join(packageDestination, ".pokie", "par-import", "conversion-evidence.json"))).toBe(true);
                 expect(fs.readdirSync(path.dirname(packageDestination))).not.toEqual(expect.arrayContaining([expect.stringMatching(/^\.pokie-par-import-/)]));
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("builds PAR-to-WASM through the imported Blueprint and stores evidence beside the module", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "nested", "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
+                const importedBlueprintPath = `${destination}.pokie/par-import/imported.blueprint.json`;
+                const conversionEvidencePath = `${destination}.pokie/par-import/conversion-evidence.json`;
+
+                expect(plan.status).toBe("planned");
+                expect(plan.steps[0]).toMatchObject({
+                    kind: "importParWorkbook",
+                    output: {canonicalLocation: importedBlueprintPath},
+                    conversionEvidencePath,
+                });
+                const result = await registry.executePlan(plan, source, destination);
+
+                expect(result).toMatchObject({outputPath: destination, importedBlueprintPath, conversionEvidencePath});
+                expect(fs.existsSync(destination)).toBe(true);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(true);
+                expect(fs.existsSync(importedBlueprintPath)).toBe(true);
+                expect(fs.existsSync(conversionEvidencePath)).toBe(true);
+                expect(fs.existsSync(path.join(destination, ".pokie", "par-import"))).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("validates the PAR-imported canonical WASM model during dry-run without publishing any companion", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-dry-run-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
+                await expect(registry.validate("wasm", source, plan)).resolves.toBeUndefined();
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("rejects unsupported PAR mechanics during WASM dry-run before publication", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-invalid-dry-run-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            const unsupportedBlueprint = {
+                manifest: {id: "par-free-games", name: "PAR Free Games", version: "1.0.0"},
+                reels: 3,
+                rows: 1,
+                symbols: ["A", "B", "S"],
+                scatters: ["S"],
+                reelStrips: [["A", "B", "S"], ["B", "S", "A"], ["S", "A", "B"]],
+                paytable: {A: {3: 2}, B: {3: 1}, S: {3: 1}},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 5}}},
+            };
+            try {
+                const issues = await new ParSheetExporter("1.3.0").exportToFile(unsupportedBlueprint, workbookPath);
+                expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
+                const plan = await registry.preparePlan(source, "wasm", {destinationPath: destination});
+                await expect(registry.validate("wasm", source, plan)).rejects.toThrow(/mechanics\.freeGames.*Next:/);
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("refuses an occupied PAR-to-WASM evidence companion without touching it", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-evidence-conflict-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const evidence = `${destination}.pokie`;
+            const source: PokieProject = {type: "parWorkbook", rootPath: workbookPath, capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook, provenance: "test PAR workbook"} as PokieProject;
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                fs.mkdirSync(evidence);
+                fs.writeFileSync(path.join(evidence, "preserve.txt"), "pre-existing evidence");
+                await expect(registry.build("wasm", source, destination)).rejects.toThrow(/evidence companion.*already exists/i);
+                expect(fs.readFileSync(path.join(evidence, "preserve.txt"), "utf8")).toBe("pre-existing evidence");
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
+        it("removes only PAR-to-WASM files owned by a cancelled publication", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-par-wasm-cancel-"));
+            const workbookPath = path.join(directory, "source.xlsx");
+            const destination = path.join(directory, "game.wasm");
+            const source: PokieProject = {
+                type: "parWorkbook",
+                rootPath: workbookPath,
+                capabilities: PROJECT_TYPE_CAPABILITIES.parWorkbook,
+                provenance: "test PAR workbook",
+            } as PokieProject;
+            const controller = new AbortController();
+            try {
+                fs.copyFileSync(path.join(__dirname, "..", "..", "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+                await expect(registry.build("wasm", source, destination, {
+                    signal: controller.signal,
+                    onProgress: (progress) => {
+                        if (progress.status === "completed") controller.abort();
+                    },
+                })).rejects.toThrow(/cancelled/i);
+
+                expect(fs.existsSync(workbookPath)).toBe(true);
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie`)).toBe(false);
             } finally {
                 fs.rmSync(directory, {recursive: true, force: true});
             }

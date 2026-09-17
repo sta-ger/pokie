@@ -7,11 +7,14 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    readWasmComponentManifest,
     replayOutcomeSourceProject,
     ReplayRecorder,
     ReplayRecording,
     releasePokieGame,
     REPLAY_OPERATION,
+    SeededPokieWasmHost,
+    loadPokieWasmFileRuntime,
 } from "pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -112,8 +115,8 @@ export class ReplayCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
-            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            await this.runWasmReplay(project, options);
+            return;
         }
 
         const resolution = await this.resolveRuntimePackageRoot(options.packageRoot);
@@ -138,6 +141,54 @@ export class ReplayCommand implements CliCommandHandling {
         console.log(json);
         if (options.out) {
             console.log(`\nReplay written to "${options.out}".`);
+        }
+    }
+
+    /** Runs a canonical component through its portable session facade, never a package loader. */
+    private async runWasmReplay(project: PokieProject, options: ReplayOptions): Promise<void> {
+        const operationDiagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
+        if (operationDiagnostic !== undefined) throw new UnsupportedProjectOperationError(operationDiagnostic);
+        const manifestRead = await readWasmComponentManifest(project);
+        if (!manifestRead.supported || manifestRead.canonical === undefined) {
+            const diagnostic = describeUnavailableArtifactOperation(project, REPLAY_OPERATION);
+            if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
+            throw new Error("This WASM component is inspection-only and cannot be replayed.");
+        }
+        if (options.mode !== undefined) {
+            throw new Error("Canonical WASM replay does not support --mode; replay its portable session directly.");
+        }
+        const seed = options.seed ?? "pokie-wasm-replay";
+        const startedAt = Date.now();
+        const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
+        try {
+            const replay = await runtime.replay(
+                {schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits: 1000},
+                Array.from({length: options.round}, () => ({})),
+            );
+            const finalRound = replay.rounds[replay.rounds.length - 1];
+            const totalBet = replay.rounds.reduce((total, round) => total + round.stake, 0);
+            const totalWin = replay.rounds.reduce((total, round) => total + round.payout, 0);
+            const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
+            const descriptor = {
+                sessionId: `wasm-${seed}-${options.round}`,
+                game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                seed,
+                round: options.round,
+                totalBet,
+                totalWin,
+                credits: finalRound?.credits ?? 1000,
+                screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
+                timestamp: startedAt,
+                durationMs: Date.now() - startedAt,
+                ...(canSerialize && replay.stateBeforeFinal !== undefined ? {stateBefore: replay.stateBeforeFinal as unknown as Record<string, unknown>} : {}),
+                ...(canSerialize ? {stateAfter: replay.stateAfter as unknown as Record<string, unknown>} : {}),
+            };
+            const json = JSON.stringify(descriptor, null, 4);
+            if (options.out) this.writeFile(options.out, json);
+            console.log(json);
+            if (options.out) console.log(`\nReplay written to "${options.out}".`);
+        } finally {
+            runtime.dispose();
         }
     }
 

@@ -159,6 +159,63 @@ describe("PlayTab renders a real captured Studio Play round through the actual p
         expect(screen.getByRole("button", {name: "Reset Play session"})).toBeEnabled();
     });
 
+    it("disables unsupported portable-WASM scenarios with host-provided reasons while retaining Spin", () => {
+        const wasmSession: StudioRuntimeSessionView = {
+            sessionId: "wasm-session",
+            game: {id: "wasm-slot", name: "WASM Slot", version: "1.0.0"},
+            screen: [["A"]],
+            scenarioCapabilities: {
+                findAnyWin: "WASM does not declare per-win details. Spin remains available.",
+                findSymbolWin: "WASM does not declare symbol win details. Spin remains available.",
+                findFreeGames: "WASM does not declare free-games events. Spin remains available.",
+            },
+        };
+
+        render(
+            <MantineProvider>
+                <PlayTab
+                    session={{status: "ok", session: wasmSession}}
+                    sessionId={wasmSession.sessionId}
+                    onNewSession={() => undefined}
+                    onSpin={() => undefined}
+                    onFindAnyWin={() => undefined}
+                    onFindSymbolWin={() => undefined}
+                    onFindFreeGames={() => undefined}
+                />
+            </MantineProvider>,
+        );
+
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Find any win"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Find symbol win"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Find free games"})).toBeDisabled();
+        expect(screen.getByText(/WASM does not declare per-win details/)).toBeInTheDocument();
+    });
+
+    it("renders a WASM runtime trap through the shared Play error state", () => {
+        const previousSession: StudioRuntimeSessionView = {
+            sessionId: "trapped-wasm-session",
+            game: {id: "wasm-slot", name: "WASM Slot", version: "1.0.0"},
+            screen: [["A"]],
+        };
+        render(
+            <MantineProvider>
+                <PlayTab
+                    session={{status: "error", message: "canonical WASM play trap", subject: "This spin", previousSession}}
+                    sessionId={previousSession.sessionId}
+                    onNewSession={() => undefined}
+                    onSpin={() => undefined}
+                    onFindAnyWin={() => undefined}
+                    onFindSymbolWin={() => undefined}
+                    onFindFreeGames={() => undefined}
+                />
+            </MantineProvider>,
+        );
+
+        expect(screen.getByText("This spin couldn't be completed. Try again. If it continues, start a new session and retry.")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
+    });
+
     it("keeps a completed round visible beside progress while a reset or spin is loading", () => {
         const previousSession: StudioRuntimeSessionView = {
             sessionId: "settled-session",

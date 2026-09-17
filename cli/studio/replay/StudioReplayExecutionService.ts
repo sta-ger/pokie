@@ -6,7 +6,10 @@ import {
     determineStakeAmount,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
+    hasDeclaredCanonicalWasmOperation,
+    hasDeclaredCanonicalWasmArtifact,
     isWasmComponentFile,
+    loadPokieWasmFileRuntime,
     GameSessionHandling,
     loadPokieGame,
     releasePokieGame,
@@ -25,6 +28,7 @@ import {
     resolveOutcomeLibraryModeName,
     RoundArtifact,
     SeededWeightedOutcomeRandomSource,
+    SeededPokieWasmHost,
     VideoSlotSessionHandling,
     WeightedOutcomeRandomSource,
 } from "pokie";
@@ -82,6 +86,7 @@ export class StudioReplayExecutionService {
     // Reads a resolved "outcomeLibrary"/"stakeAdapter" project's own bundle manifest -- see start()'s
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
+    private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -97,6 +102,7 @@ export class StudioReplayExecutionService {
         onCompleted: (record: StudioReplayJobRecord) => void = () => undefined,
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         loadRuntimeGame: StudioGameLoading = (projectRoot) => loadGame(projectRoot),
+        loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -108,6 +114,7 @@ export class StudioReplayExecutionService {
         this.pokieVersion = pokieVersion;
         this.onCompleted = onCompleted;
         this.outcomeLibraryReader = outcomeLibraryReader;
+        this.loadWasmRuntime = loadWasmRuntime;
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -124,12 +131,11 @@ export class StudioReplayExecutionService {
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
-        if (outcomeSourceProject?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_REPLAY_OPERATION);
-            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "replay a game round")};
-        }
-        if (isWasmComponentFile(projectRoot)) {
+        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "replay a game round")};
+        }
+        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.replay")) {
+            return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
@@ -182,9 +188,7 @@ export class StudioReplayExecutionService {
         if (!record || record.projectRoot !== projectRoot) {
             return undefined;
         }
-        if (record.status === "queued" || record.status === "running") {
-            record.abortController.abort();
-        }
+        this.cancelActiveRecord(record);
         return toStudioReplayJobView(record);
     }
 
@@ -193,7 +197,7 @@ export class StudioReplayExecutionService {
     // is serving HTTP requests on anymore.
     public cancelAll(): void {
         for (const record of this.repository.listActive()) {
-            record.abortController.abort();
+            this.cancelActiveRecord(record);
         }
     }
 
@@ -203,7 +207,7 @@ export class StudioReplayExecutionService {
     // nothing is active for that project.
     public cancelActiveForProject(projectRoot: string): void {
         const record = this.repository.findActiveByProjectRoot(projectRoot);
-        record?.abortController.abort();
+        if (record) this.cancelActiveRecord(record);
     }
 
     // Process-wide (not scoped to one project) — feeds GET /api/studio/diagnostics, a plain count safe
@@ -261,6 +265,11 @@ export class StudioReplayExecutionService {
     private async run(record: StudioReplayJobRecord): Promise<void> {
         if (record.outcomeSourceProject !== undefined) {
             await this.runOutcomeSourceReplay(record, record.outcomeSourceProject);
+            return;
+        }
+
+        if (isWasmComponentFile(record.projectRoot)) {
+            await this.runWasmReplay(record);
             return;
         }
 
@@ -388,6 +397,78 @@ export class StudioReplayExecutionService {
         } finally {
             await releasePokieGame(game).catch(() => undefined);
         }
+    }
+
+    /** Replays portable WASM with the same seeded host stream used by Studio Play. */
+    private async runWasmReplay(record: StudioReplayJobRecord): Promise<void> {
+        if (record.seed === undefined) {
+            this.fail(record, new Error("A canonical WASM replay requires a deterministic seed."));
+            return;
+        }
+        let runtime;
+        try {
+            runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(record.seed));
+            if (record.abortController.signal.aborted) {
+                this.cancelRecord(record);
+                return;
+            }
+            record.status = "running";
+            record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
+            record.configHash = runtime.manifest.artifact?.configurationHash;
+            const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
+            let state = {schemaVersion: "pokie.state.v1" as const, seed: record.seed, draws: [], sequence: 0, credits: 1000};
+            let totalBet = 0;
+            let totalWin = 0;
+            let finalRound;
+            let stateBefore: Record<string, unknown> | undefined;
+            for (let index = 0; index < record.round; index += this.chunkSize) {
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+                const commands = Array.from({length: Math.min(this.chunkSize, record.round - index)}, () => ({}));
+                const replay = await runtime.replay(state, commands);
+                state = replay.stateAfter;
+                finalRound = replay.rounds[replay.rounds.length - 1];
+                if (index + commands.length === record.round && replay.stateBeforeFinal !== undefined) {
+                    stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
+                }
+                totalBet += replay.rounds.reduce((total, round) => total + round.stake, 0);
+                totalWin += replay.rounds.reduce((total, round) => total + round.payout, 0);
+                const completedRounds = index + commands.length;
+                this.updateReplayProgress(record, completedRounds);
+                if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();
+            }
+            record.status = "completed";
+            record.descriptor = {
+                sessionId: this.createId(),
+                game: record.game,
+                seed: record.seed,
+                round: record.round,
+                totalBet,
+                totalWin,
+                credits: finalRound?.credits ?? state.credits,
+                // PokieWasmRound.screen is reel-major, the same DTO shape ReplayDescriptor
+                // receives from ordinary sessions. Preserve each reel instead of transposing it.
+                screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
+                timestamp: record.startedAt,
+                durationMs: record.durationMs,
+                ...(canSerialize && stateBefore !== undefined ? {stateBefore} : {}),
+                ...(canSerialize ? {stateAfter: state as unknown as Record<string, unknown>} : {}),
+            };
+            this.markTerminal(record);
+            this.onCompleted(record);
+        } catch (error) {
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, error);
+        } finally {
+            runtime?.dispose();
+        }
+    }
+
+    private updateReplayProgress(record: StudioReplayJobRecord, completedRounds: number): void {
+        record.completedRounds = completedRounds;
+        record.durationMs = this.now() - record.startedAt;
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was
@@ -621,6 +702,16 @@ export class StudioReplayExecutionService {
     private cancelRecord(record: StudioReplayJobRecord): void {
         record.status = "cancelled";
         this.markTerminal(record);
+    }
+
+    // A queued canonical component has not acquired a game/runtime session yet, so it can become
+    // terminal immediately instead of waiting for module loading to notice the abort signal. Other
+    // project kinds may own temporary materialization stages while queued; their run path remains
+    // responsible for cleanup before publishing the terminal cancellation.
+    private cancelActiveRecord(record: StudioReplayJobRecord): void {
+        if (record.status !== "queued" && record.status !== "running") return;
+        record.abortController.abort();
+        if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/

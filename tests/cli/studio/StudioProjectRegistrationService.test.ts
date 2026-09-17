@@ -48,6 +48,10 @@ function wasmProject(rootPath: string): PokieProject {
     return {type: "wasm", rootPath: path.resolve(rootPath), capabilities: ["wasm.manifest.read"], provenance: "compatible POKIE WASM sidecar"};
 }
 
+function runnableWasmProject(rootPath: string): PokieProject {
+    return {type: "wasm", rootPath: path.resolve(rootPath), capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"], provenance: "canonical POKIE WASM artifact"};
+}
+
 describe("StudioProjectRegistrationService", () => {
     describe("registerManaged", () => {
         it("records an entry with origin \"managed\", the resolved type, and capabilities from the resolver -- never the caller's own assertion", async () => {
@@ -201,6 +205,28 @@ describe("StudioProjectRegistrationService", () => {
             expect(result.status === "recognized" && result.suggestedName).toBe("game");
         });
 
+        it("keeps the legacy WASM inspection presentation only for sidecar-only components", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            const resolver = fakeResolver({
+                "/existing/canonical.wasm": runnableWasmProject("/existing/canonical.wasm"),
+                "/existing/legacy.wasm": wasmProject("/existing/legacy.wasm"),
+            });
+            const service = new StudioProjectRegistrationService(registry, resolver);
+
+            const canonical = await service.previewImport("/existing/canonical.wasm");
+            const legacy = await service.previewImport("/existing/legacy.wasm");
+
+            if (canonical.status !== "recognized" || canonical.type !== "wasm") throw new Error("expected canonical WASM import preview");
+            if (legacy.status !== "recognized" || legacy.type !== "wasm") throw new Error("expected legacy WASM import preview");
+            expect(canonical).toMatchObject({
+                status: "recognized",
+                type: "wasm",
+                capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"],
+            });
+            expect(canonical.wasmPresentation).toBeUndefined();
+            expect(legacy.wasmPresentation).toBeDefined();
+        });
+
         it("reports \"unrecognized\" rather than throwing when the path isn't any known POKIE project type", async () => {
             const registry = new InMemoryStudioProjectRegistry();
             const resolver = fakeResolver({});
@@ -263,6 +289,25 @@ describe("StudioProjectRegistrationService", () => {
             expect(await service.list()).toEqual([expect.objectContaining({type: "wasm", capabilities: ["wasm.manifest.read"], status: "ok"})]);
             const unavailable = new StudioProjectRegistrationService(registry, fakeResolver({}), () => true);
             expect(await unavailable.list()).toEqual([expect.objectContaining({status: "unavailable", unavailableReason: expect.stringContaining("compatible sidecar")})]);
+        });
+
+        it("lists canonical WASM without a legacy inspection presentation", async () => {
+            const registry = new InMemoryStudioProjectRegistry();
+            await registry.upsert({
+                location: "/canonical.wasm",
+                name: "Canonical",
+                type: "wasm",
+                capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"],
+                origin: "external",
+                lastOpenedAt: new Date().toISOString(),
+            });
+            const service = new StudioProjectRegistrationService(registry, fakeResolver({"/canonical.wasm": runnableWasmProject("/canonical.wasm")}), () => true);
+
+            const [entry] = await service.list();
+
+            if (entry?.type !== "wasm") throw new Error("expected canonical WASM registry entry");
+            expect(entry).toMatchObject({type: "wasm", capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.execute"], status: "ok"});
+            expect(entry.wasmPresentation).toBeUndefined();
         });
 
         it("retains the resolver's specific malformed WASM sidecar reason on an unavailable entry", async () => {
@@ -504,7 +549,7 @@ describe("StudioProjectRegistrationService", () => {
                     location: blueprintPath,
                     type: "blueprint",
                     origin: "external",
-                    capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"],
+                    capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export", "wasm.export"],
                 }),
             });
         });

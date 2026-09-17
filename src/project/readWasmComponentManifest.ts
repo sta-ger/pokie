@@ -7,15 +7,16 @@ import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompat
 import type {PokieWasmComponentManifest} from "./wasm/PokieWasmComponentManifest.js";
 import {wasmComponentManifestSidecarPath} from "./WasmProjectTargetAdapter.js";
 import {describeWasmSidecarFailure} from "./WasmProductContract.js";
+import {readIntegrityBoundCanonicalPokieWasmArtifact, type CanonicalPokieWasmModule} from "../wasm/PokieWasmCanonicalModule.js";
 
 export type WasmComponentManifestReadResult =
-    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest}
+    | {readonly supported: true; readonly manifest: PokieWasmComponentManifest; readonly canonical?: CanonicalPokieWasmModule}
     | {readonly supported: false; readonly diagnostic: UnsupportedProjectOperationDiagnostic};
 
 // Reads back a resolved "wasm" project's own PokieWasmComponentManifest -- the read-only access
 // WASM_MANIFEST_READ_CAPABILITY actually grants (see ProjectCapabilities.ts): metadata only, never the
 // ".wasm" bytes themselves, and never anything resembling loading/instantiating/executing the component --
-// POKIE has no WASM execution backend (see docs/wasm-compatibility-boundary.md). Re-reads and re-validates
+// Canonical POKIE WASM components execute through the portable runtime while this reader re-reads and re-validates
 // the sidecar from disk rather than trusting `project.provenance` (a human-readable string, not structured
 // data) -- PokieProject itself never carries type-specific structured data beyond
 // type/rootPath/capabilities/provenance, the same discipline sampleOutcomeSourceProject/
@@ -57,5 +58,16 @@ export async function readWasmComponentManifest(project: PokieProject): Promise<
         ));
     }
 
-    return {supported: true, manifest: manifest as PokieWasmComponentManifest};
+    const typedManifest = manifest as PokieWasmComponentManifest;
+    let canonical: CanonicalPokieWasmModule | undefined;
+    if (typedManifest.artifact !== undefined) {
+        const bytes = await fs.promises.readFile(project.rootPath);
+        try {
+            canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(new Uint8Array(bytes), typedManifest);
+        } catch (error) {
+            throw new Error(`POKIE rejected "${project.rootPath}": ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    return {supported: true, manifest: typedManifest, ...(canonical === undefined ? {} : {canonical})};
 }

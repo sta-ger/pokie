@@ -6,7 +6,8 @@ import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 // The build product contract is deliberately data, rather than a collection of capability checks spread
 // across the CLI, registry and Studio.  It includes every resolver source kind and every artifact target;
 // `hidden/unadvertised` is a real state so inspection-only kinds can never accidentally appear as build
-// choices just because they are part of ArtifactTargetType.
+// choices just because they are part of ArtifactTargetType. Legacy sidecar-only WASM remains an inspection-only
+// source, while Blueprint/PAR can build a canonical WASM product through its explicit planner edges.
 export type BuildProductMatrixCellState = "supported" | "diagnostic-required" | "hidden/unadvertised";
 
 export type BuildProductMatrixCell = {
@@ -32,11 +33,11 @@ export const BUILD_PRODUCT_MATRIX_TARGETS: readonly ArtifactTargetType[] = [
     "outcomeLibrary",
     "stakeAdapter",
     "parWorkbook",
+    "wasm",
 ];
 
-// Every build target is advertised because each has a complete source-to-artifact matrix. WASM remains a
-// resolved, inspectable project type, but is deliberately absent from ArtifactTargetType and this matrix until
-// POKIE can produce and consume it as a real product.
+// Every build target is advertised because each has a complete source-to-artifact matrix, including canonical
+// WASM from Blueprint and PAR sources.
 export const ADVERTISED_ARTIFACT_BUILD_TARGETS: readonly ArtifactTargetType[] = BUILD_PRODUCT_MATRIX_TARGETS;
 
 const PUBLIC_PROJECT_TYPE_NAMES: Readonly<Record<ProjectType, string>> = {
@@ -56,6 +57,7 @@ const TARGET_PREREQUISITES: Readonly<Record<ArtifactTargetType, {missingPrerequi
     outcomeLibrary: {missingPrerequisite: "a Game Blueprint, POKIE game package, or Outcome Library", nextAction: "Open one of those sources, then run `pokie build <path> --target outcomeLibrary`."},
     stakeAdapter: {missingPrerequisite: "a Game Blueprint, POKIE game package, Outcome Library, or Stake Engine export", nextAction: "Open one of those sources, then run `pokie build <path> --target stakeAdapter`."},
     parWorkbook: {missingPrerequisite: "a Game Blueprint or PAR workbook", nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target parWorkbook`."},
+    wasm: {missingPrerequisite: "a Game Blueprint or PAR workbook source", nextAction: "Open a Game Blueprint or PAR workbook, then run `pokie build <path> --target wasm`."},
 };
 
 function buildCell(source: ProjectType, target: ArtifactTargetType): BuildProductMatrixCell {

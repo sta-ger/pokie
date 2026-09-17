@@ -17,6 +17,31 @@ from an interactive terminal to design an editable Blueprint Project, or add `--
 non-interactive blueprint. Run `npx pokie <command> --help` before a workflow for its required arguments and
 options.
 
+## WASM quick start
+
+WASM is a normal POKIE artifact target. Build a portable, self-describing component from a Blueprint (or a PAR workbook through its model-preserving import):
+
+```sh
+npx pokie build slot.blueprint.json --target wasm --out game.wasm
+npx pokie game.wasm              # inspect its bound metadata and next actions
+npx pokie validate game.wasm
+npx pokie run game.wasm --seed demo
+```
+
+Canonical WASM artifacts also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component contract does not declare the local HTTP/server adapter required by the dev server. It validates the artifact binding and returns the normal capability diagnostic before loading a package or allocating a server.
+
+`npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
+
+## `pokie run <artifact.wasm>`
+
+Runs one deterministic round from a canonical POKIE WASM artifact using the portable host. It needs no package installation, compiler, local server, or browser-only setup:
+
+```sh
+pokie run game.wasm --seed demo
+```
+
+`--seed` defaults to `pokie-wasm-cli`. The command prints the played round's sequence, draw, and seed. Use [`pokie validate`](#pokie-validate-project) first when a component has not yet been checked, and use [`pokie inspect`](#pokie-inspect-packageroot) for its manifest, capabilities, and available next actions.
+
 ## `pokie --help` / `pokie -h`
 
 Prints the general usage line, the full list of commands with their descriptions, and the next workflow choices,
@@ -373,12 +398,14 @@ validate`/`pokie build --dry-run`.
 ## `pokie build <project>`
 
 POKIE's universal build pipeline: resolves `<project>` to a POKIE project and builds `--target <artifact>` from
-it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, e.g. building
-`tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults to `./blueprints/tsPackage`).
+it, writing the result to `--out <path>` (default: a `<target>`-named sibling of `<project>`, except canonical
+WASM defaults to `game.wasm`; e.g. building `tsPackage` from `./blueprints/sample-slot.blueprint.json` defaults
+to `./blueprints/tsPackage`).
 
-The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`.
-It can resolve a compatible `wasm` component only to reject conversion before publication: WASM is an
-inspection-only input, not a source workflow or a build target.
+The build command supports targets: `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`,
+and `wasm`. Blueprint is the canonical portable-WASM source; PAR workbooks use the same model-preserving
+Blueprint import before publication. A resolved WASM artifact is not a source for another conversion, and an
+arbitrary Node package is never compiled to WASM.
 
 ## `pokie generate <packageRoot>`
 
@@ -414,9 +441,9 @@ npm install
 Options:
 
 - `<project>` — a path the CLI resolves to a POKIE project: a `GameBlueprint` JSON file (a `blueprint` project), or an
-  already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook` artifact directory/file. Missing or
+  already-built `tsPackage`/`outcomeLibrary`/`stakeAdapter` artifact directory, `parWorkbook` file, or `wasm` file. Missing or
   unrecognized throws, naming the project types the CLI understands.
-- `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`.
+- `--target <artifact>` — **required**; one of `blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, `wasm`.
   Never an output directory (that's `--out`, below) — omitting it, or passing an unrecognized value, throws listing
   the full accepted vocabulary. `--target` must also be buildable from `<project>`'s own resolved type — building a
   unsupported source/target pair, for instance, throws naming which source types that target actually
@@ -427,17 +454,16 @@ Options:
 - `--sample <n> --seed <string>` — only for `--target outcomeLibrary`; explicitly chooses `n` deterministic
   bounded-coverage draws and records that choice in the library manifest.
 - `--out <path>` — where the built artifact is written; optional, defaulting to a `<target>`-named sibling of
-  `<project>` (a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
+  `<project>` (`game.wasm` for `wasm`, a `.xlsx` file for `parWorkbook`, a `.json` file for `blueprint`, a bare directory for every other target). An explicit `--out`
   always overrides the default and never changes what `--target` means. Must not already exist, or must be an
-  empty directory (a file target like `parWorkbook` must simply not exist yet) — see [Conflict
+  empty directory (a file target like `wasm` or `parWorkbook` must simply not exist yet) — see [Conflict
   handling](#conflict-handling-an-existing---out-destination) below.
 - `--dry-run` — validate and preview without writing anything.
 
-The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 14 supported cells are
-`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
+The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 16 supported cells are
+`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` → `outcomeLibrary`/`stakeAdapter`,
 `outcomeLibrary` → `outcomeLibrary`/`stakeAdapter`, `stakeAdapter` → `stakeAdapter`, and `parWorkbook` →
-`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`. Every other advertised cell reports its exact missing prerequisite and a next command. WASM remains
-inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
+`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`. Every other advertised cell reports its exact missing prerequisite and a next command. Canonical WASM is built only from Blueprint/PAR; legacy sidecar-only WASM remains inspection-only. PAR-derived targets first import a durable Blueprint intermediate; dry-run prints that stage and
 any generated/reused Outcome intermediate without writing it.
 
 A `blueprint` → `tsPackage` conversion is the classic "generate a game package from a `GameBlueprint`" path,
@@ -740,13 +766,14 @@ Failure modes:
 - `<project>` missing, or not recognized as a POKIE project at all (`pokie build` with no arguments, or an unknown
   option) throws a `Usage: pokie build <project> --target <artifact> [--out <path>]` error naming the project types
   the CLI understands.
-- `--target` omitted, or given a value outside `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`,
+- `--target` omitted, or given a value outside `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`,
   throws before `<project>` is even resolved, listing the full accepted vocabulary.
 - `--target` given a value `<project>`'s own resolved type can't build throws naming which source types that target
   actually supports and how to recover.
 - A blueprint (`tsPackage` target) with any error-level issue prints every error and exits `1` without generating
   anything.
-- `--out` already existing as a *file* where a directory target expects one (or vice versa for `parWorkbook`)
+- `--out` already existing as a *file* where a directory target expects one (or vice versa for either file target,
+  `parWorkbook` or `wasm`)
   throws — pick a different `--out` or remove it first.
 - `--out` already existing and having any content in it at all — even just your own unrelated `package.json`, or a
   directory a previous `pokie build` run itself produced — throws, naming the destination. See the next section.
@@ -760,6 +787,10 @@ above). Building again — after editing the blueprint, picking up a newer `poki
 same place a second time — means removing the destination (or its contents) first, or pointing `--out` at a
 different, empty destination. Every target enforces this the same way (`ArtifactBuildConflictError`), not a
 per-target-different overwrite policy.
+
+`parWorkbook` and `wasm` are file destinations: their target file must be missing, rather than an empty
+directory. A canonical WASM publication also owns its integrity-bound sidecar and any operation-owned companion
+under that file's companion layout; a conflict never authorizes replacing those files in place.
 
 Building the *same* blueprint with the same `pokie` version, into two different empty directories, reproduces
 every generated file byte-for-byte — every `tsPackage` build is a pure function of the blueprint, never dependent
@@ -3083,8 +3114,9 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
 - **Projects** lists every already-known project — managed (created/opened this Studio session, in-memory only,
   reset on restart) and registered (persisted across restarts via `StudioProjectRegistrationService`) — each
   showing its name, path, and last-opened time; a project whose directory/`package.json` can no longer be found
-  is flagged **missing** rather than silently dropped. **Open** loads it with `loadPokieGame`, the same package
-  loader every other command uses, and switches to the **Project** dashboard on success. **Import Project**
+  is flagged **missing** rather than silently dropped. **Open** resolves it through the shared project contract:
+  game packages use `loadPokieGame`, canonical WASM uses the portable integrity-checked runtime, and legacy
+  sidecar-only components retain their inspection view. **Import Project**
   previews/validates a target path before ever registering it — a detected PAR sheet routes into Design Game's
   own PAR Sheet Import/Export panel instead of being registered as a package, since there's no "open" story for
   a PAR sheet the way there is for a runnable one.
@@ -3227,8 +3259,9 @@ process-local, in-memory limit (same as the simulation jobs themselves): restart
 #### Replay
 
 The **Replay** tab (also called Replay & Debug) runs a [`pokie replay`](#pokie-replay-packageroot)-equivalent
-replay against the active project — reusing `loadPokieGame`/`GameSessionHandling.play()` directly (the same
-primitives `ReplayRecorder` itself uses), never shelling out to `pokie replay` or reimplementing its logic.
+replay against the active project — game packages reuse `loadPokieGame`/`GameSessionHandling.play()` directly (the
+same primitives `ReplayRecorder` itself uses), while canonical WASM uses its portable runtime contract. It never
+shells out to `pokie replay` or reimplements either runtime's logic.
 
 Replay has no single sequential order shared by every source — a live spin has nothing to reproduce, a pasted
 artifact validates before it can (optionally) reproduce, and a fresh seed/round or simulation round has no prior
@@ -3442,9 +3475,11 @@ client, even for a load/validation failure.
   `200 {"status": "error", "error": "..."}` or `201 {"status": "ok", "projectRoot", "manifest", "createdFiles",
   "buildInfo", "warnings"}` on success — the built project is also recorded as a recent project, so its
   **Open in Studio** button (`POST /api/home/projects/open` below) works exactly like every other Home flow's.
-- `POST /api/home/projects/open` `{"projectRoot": string}` — loads `projectRoot` with `loadPokieGame` and switches
-  Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`); `400 {"error": "..."}` if it
-  isn't a valid [game package](game-packages.md). This is the one explicit Home → Project Studio context
+- `POST /api/home/projects/open` `{"projectRoot": string}` — resolves `projectRoot` through the shared project
+  contract and switches Studio to Project mode on success (`200 {"context": {...}, "manifest": {...}}`): game
+  packages load with `loadPokieGame`, canonical WASM opens through the portable integrity-checked runtime, and
+  legacy sidecar-only components remain inspectable. `400 {"error": "..."}` reports an invalid project. This is
+  the one explicit Home → Project Studio context
   transition — it mutates the same running server's state in place, never starting a new HTTP server or Studio
   process (see `StudioServer.handleHomeOpenProject`).
 - `POST /api/projects/close` — switches back to Home mode.
@@ -3604,10 +3639,13 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 21 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
-`edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`reel`/`replay`/`report`/`sample`/`serve`/`sim`/
-`validate`) are shipped today, built on the same [game package](game-packages.md) primitives (`loadPokieGame`,
-`isPokieGame`, `PokieGameContractValidationRule`). [POKIE Studio](#pokie) already
+All 22 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+`edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
+`serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
+[game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
+the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `pokie/wasm`
+runtime instead, while artifact/source workflows use the resolver and `ArtifactBuilderRegistry` contracts appropriate
+to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
 tab, including PAR Sheet import/export and reel strip generation), and, once a project is open, inspection/
 validation (Overview), the Game Model view, Play, Simulation, Replay, Build/Export (outcome library generation,

@@ -11,7 +11,7 @@ export type WasmPackagingBlockingApiUsage = {
 // What assessWasmPackagingPreflight reports for a "tsPackage" project -- advisory only (see that function's
 // own doc comment): named Node built-in usages it actually found, the package's own declared runtime
 // dependencies (for a human to review -- POKIE has no way to know whether any given third-party dependency is
-// itself WASM/browser-portable), and an explicit inspection-only note so this report can never be read as "no
+// itself WASM/browser-portable), and an explicit scope note so this report can never be read as "no
 // blockers found, therefore compilation works".
 export type WasmPackagingPreflightReport = {
     readonly rootPath: string;

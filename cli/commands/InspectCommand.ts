@@ -8,6 +8,8 @@ import {
     ProjectTargetResolver,
     ProjectTargetUnsupportedError,
     readWasmComponentManifest,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
     WASM_PRODUCT_CONTRACT,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -107,13 +109,15 @@ export class InspectCommand implements CliCommandHandling {
         console.log(`  kind             ${presentation.kind}`);
         console.log(`  purpose          ${presentation.purpose}`);
 
-        if (project.type === "wasm") {
-            await this.printWasmManifest(project);
-        }
+        const wasmManifest = project.type === "wasm" ? await this.printWasmManifest(project) : undefined;
 
-        if (presentation.nextActions.length > 0) {
+        // Legacy components never have executable guidance. Canonical guidance itself is already
+        // narrowed in describeProjectPresentation() from the resolved per-operation capabilities;
+        // preserve that result rather than treating every artifact block as generically runnable.
+        const nextActions = project.type === "wasm" && wasmManifest?.artifact === undefined ? [] : presentation.nextActions;
+        if (nextActions.length > 0) {
             console.log("\nAvailable next actions:");
-            for (const action of presentation.nextActions) {
+            for (const action of nextActions) {
                 console.log(`  ${action.label}:\n    ${action.command.replace("<path>", `"${project.rootPath}"`)}`);
             }
         }
@@ -126,7 +130,7 @@ export class InspectCommand implements CliCommandHandling {
         }
     }
 
-    private async printWasmManifest(project: PokieProject): Promise<void> {
+    private async printWasmManifest(project: PokieProject): Promise<import("pokie").PokieWasmComponentManifest> {
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported) {
             throw new Error(manifestRead.diagnostic.message);
@@ -140,6 +144,19 @@ export class InspectCommand implements CliCommandHandling {
         console.log(`  serialization    session=${manifest.serialization.session}, play=${manifest.serialization.play}, state=${manifest.serialization.state}`);
         console.log(`  host bindings    rng=${manifest.host.rng}, services=${manifest.host.services.length === 0 ? "none" : manifest.host.services.join(", ")}`);
         console.log(`  capabilities     ${manifest.capabilities.length === 0 ? "none" : manifest.capabilities.join(", ")}`);
+        if (manifest.artifact === undefined) {
+            console.log("  runtime          legacy sidecar-only component (inspection-only)");
+        } else {
+            const declaredOperations = [
+                ...(project.capabilities.includes(WASM_RUNTIME_PLAY_CAPABILITY) ? ["play"] : []),
+                ...(project.capabilities.includes(WASM_RUNTIME_REPLAY_CAPABILITY) ? ["replay"] : []),
+            ];
+            console.log(`  runtime          canonical ABI ${manifest.artifact.abiVersion}; canonical ABI operations: ${declaredOperations.length === 0 ? "metadata only" : declaredOperations.join(", ")}`);
+            console.log("  compatibility    compatible with this POKIE WASM runtime");
+            console.log(`  integrity        ${manifest.artifact.sha256} (${manifest.artifact.bytes} bytes)`);
+            console.log(`  adapter          ${manifest.artifact.adapter}`);
+        }
+        return manifest;
     }
 
     private describeInspectionFailure(projectPath: string, error: unknown): string {

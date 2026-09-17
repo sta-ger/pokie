@@ -1,7 +1,9 @@
 import {
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
+    hasDeclaredCanonicalWasmArtifact,
     isWasmComponentFile,
+    loadPokieWasmFileRuntime,
     loadPokieGame,
     OUTCOME_SOURCE_SIMULATE_OPERATION,
     OutcomeLibraryBundleOutcomeSource,
@@ -15,6 +17,7 @@ import {
     resolveOutcomeLibraryModeName,
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
+    SeededPokieWasmHost,
     SimulationAccumulator,
     SimulationCancelledError,
     SimulationReport,
@@ -83,6 +86,7 @@ export class StudioSimulationService {
     private readonly resolveRuntimePackageRoot: RuntimePackageResolving;
     private readonly onCompleted: (record: StudioSimulationJobRecord) => void;
     private readonly pokieVersion: string | undefined;
+    private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -105,6 +109,7 @@ export class StudioSimulationService {
         resolveRuntimePackageRoot: RuntimePackageResolving = passthroughRuntimePackageResolver,
         onCompleted: (record: StudioSimulationJobRecord) => void = () => undefined,
         pokieVersion: string | undefined = undefined,
+        loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -119,6 +124,7 @@ export class StudioSimulationService {
         this.resolveRuntimePackageRoot = resolveRuntimePackageRoot;
         this.onCompleted = onCompleted;
         this.pokieVersion = pokieVersion;
+        this.loadWasmRuntime = loadWasmRuntime;
     }
 
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
@@ -138,11 +144,7 @@ export class StudioSimulationService {
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
         // normal project and must not be rejected from its pathname alone.
-        if (outcomeSourceProject?.type === "wasm") {
-            const diagnostic = describeUnavailableArtifactOperation(outcomeSourceProject, OUTCOME_SOURCE_SIMULATE_OPERATION);
-            return {status: "unsupported", message: diagnostic?.message ?? describeWasmLifecycleBoundary(outcomeSourceProject.rootPath, "simulate game rounds")};
-        }
-        if (isWasmComponentFile(projectRoot)) {
+        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
@@ -209,9 +211,7 @@ export class StudioSimulationService {
         if (!record) {
             return undefined;
         }
-        if (record.status === "queued" || record.status === "running") {
-            record.abortController.abort();
-        }
+        this.cancelActiveRecord(record);
         return toStudioSimulationJobView(record);
     }
 
@@ -223,9 +223,7 @@ export class StudioSimulationService {
         if (!record || record.projectRoot !== projectRoot) {
             return undefined;
         }
-        if (record.status === "queued" || record.status === "running") {
-            record.abortController.abort();
-        }
+        this.cancelActiveRecord(record);
         return toStudioSimulationJobView(record);
     }
 
@@ -234,7 +232,7 @@ export class StudioSimulationService {
     // nobody is serving HTTP requests on anymore.
     public cancelAll(): void {
         for (const record of this.repository.listActive()) {
-            record.abortController.abort();
+            this.cancelActiveRecord(record);
         }
     }
 
@@ -247,7 +245,7 @@ export class StudioSimulationService {
     // for that project.
     public cancelActiveForProject(projectRoot: string): void {
         const record = this.repository.findActiveByProjectRoot(projectRoot);
-        record?.abortController.abort();
+        if (record) this.cancelActiveRecord(record);
     }
 
     // Process-wide (not scoped to one project) — feeds GET /api/studio/diagnostics, a plain count safe
@@ -312,6 +310,11 @@ export class StudioSimulationService {
     private async run(record: StudioSimulationJobRecord): Promise<void> {
         if (record.outcomeSourceProject !== undefined) {
             await this.runOutcomeSourceSampling(record, record.outcomeSourceProject);
+            return;
+        }
+
+        if (isWasmComponentFile(record.projectRoot)) {
+            await this.runWasmSimulation(record);
             return;
         }
 
@@ -390,6 +393,74 @@ export class StudioSimulationService {
             this.fail(record, error);
         } finally {
             await runtime.release().catch(() => undefined);
+        }
+    }
+
+    /** Runs canonical WASM in-process: portable components have no Node worker loader. */
+    private async runWasmSimulation(record: StudioSimulationJobRecord): Promise<void> {
+        if (record.abortController.signal.aborted) {
+            this.cancelRecord(record);
+            return;
+        }
+        record.status = "running";
+        const seed = record.seed ?? crypto.randomUUID();
+        let runtime;
+        let disposeSession: (() => void) | undefined;
+        try {
+            runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(seed));
+            const session = runtime.createSession(seed, {credits: Number.MAX_SAFE_INTEGER});
+            disposeSession = () => session.dispose();
+            const accumulator = new SimulationAccumulator();
+            let remaining = record.rounds;
+            while (remaining > 0) {
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+                const chunk = Math.min(this.chunkSize, remaining);
+                for (let index = 0; index < chunk; index++) {
+                    if (record.abortController.signal.aborted) {
+                        this.cancelRecord(record);
+                        return;
+                    }
+                    const round = await session.play();
+                    accumulator.addRound(round.stake, round.payout);
+                }
+                record.roundsCompleted += chunk;
+                record.durationMs = this.now() - record.startedAt;
+                remaining -= chunk;
+                if (remaining > 0) await this.yieldToEventLoop();
+            }
+            const statistics = accumulator.getStatistics();
+            const report = this.reportBuilder.build({
+                manifest: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
+                requestedRounds: record.rounds,
+                ...(record.seed === undefined ? {} : {seed: record.seed}),
+                statistics,
+                durationMs: record.durationMs,
+                packageRoot: record.projectRoot,
+                configHash: runtime.manifest.artifact?.configurationHash,
+                workers: 1,
+                pokieVersion: this.pokieVersion,
+            });
+            record.status = "completed";
+            record.report = report;
+            record.statistics = {
+                volatility: statistics.volatility,
+                payoutStandardDeviation: statistics.payoutStandardDeviation,
+                returnStandardDeviation: statistics.returnStandardDeviation,
+                averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+                rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+                payoutHistogram: statistics.payoutHistogram,
+            };
+            this.markTerminal(record);
+            this.onCompleted(record);
+        } catch (error) {
+            if (record.abortController.signal.aborted) this.cancelRecord(record);
+            else this.fail(record, error);
+        } finally {
+            disposeSession?.();
+            runtime?.dispose();
         }
     }
 
@@ -545,6 +616,15 @@ export class StudioSimulationService {
     private cancelRecord(record: StudioSimulationJobRecord): void {
         record.status = "cancelled";
         this.markTerminal(record);
+    }
+
+    // A queued canonical component has no runtime/session resource to release, so it can become
+    // terminal immediately. Other project kinds may own temporary materialization stages while
+    // queued; their run path continues to publish cancellation after it has cleaned those stages.
+    private cancelActiveRecord(record: StudioSimulationJobRecord): void {
+        if (record.status !== "queued" && record.status !== "running") return;
+        record.abortController.abort();
+        if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
 
     // Common tail for every path that lands a record in a terminal status: stamps durationMs/

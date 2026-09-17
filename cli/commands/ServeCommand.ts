@@ -12,6 +12,7 @@ import {
     PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
+    readWasmComponentManifest,
     SERVE_OPERATION,
 } from "pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -104,6 +105,10 @@ export class ServeCommand implements CliCommandHandling {
             return;
         }
         if (project?.type === "wasm") {
+            // Re-read the canonical declaration and its module binding before reporting this
+            // intentionally unsupported boundary.  A stale/swapped component must never be
+            // described as a serveable artifact, and no package/server service is allocated.
+            await readWasmComponentManifest(project);
             const diagnostic = describeUnsupportedProjectOperation(project, SERVE_OPERATION);
             if (diagnostic !== undefined) throw new UnsupportedProjectOperationError(diagnostic);
         }

@@ -26,6 +26,8 @@ import {
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
     describeProjectType,
     RUNTIME_EXECUTE_CAPABILITY,
+    WASM_RUNTIME_PLAY_CAPABILITY,
+    WASM_RUNTIME_REPLAY_CAPABILITY,
     STAKE_ADAPTER_EXCHANGE_CAPABILITY,
     type ProjectHeaderView,
     type ProjectValidationView,
@@ -81,11 +83,15 @@ const RUNTIME_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [
     PAR_WORKBOOK_EXCHANGE_CAPABILITY,
 ];
 
+const PLAYABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, WASM_RUNTIME_PLAY_CAPABILITY];
+const REPLAYABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, WASM_RUNTIME_REPLAY_CAPABILITY];
+
 // Play/Simulation/Replay each reach a resolved "outcomeLibrary" project through its own real OutcomeSource
 // adapters (StudioPlayService/StudioSimulationService/StudioReplayExecutionService), never loadPokieGame --
 // see OUTCOME_SOURCE_SAMPLE_CAPABILITY's own doc comment. Added to (never replacing) RUNTIME_CAPABLE_CAPABILITIES
 // so a runtime-executable project keeps reaching these sections exactly as before.
-const OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...RUNTIME_CAPABLE_CAPABILITIES, OUTCOME_SOURCE_SAMPLE_CAPABILITY];
+const OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...PLAYABLE_CAPABILITIES, OUTCOME_SOURCE_SAMPLE_CAPABILITY];
+const OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES: StudioProjectCapability[] = [...REPLAYABLE_CAPABILITIES, OUTCOME_SOURCE_SAMPLE_CAPABILITY];
 
 // What Build/Export needs to be reachable at all -- either runtime-executable (able to generate/build/export
 // its own outputs) or already *is* a canonical outcome-source project ExportDeployTargets.ts's own capability-
@@ -156,7 +162,7 @@ const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
     {value: "gameModel", label: "Game Model"},
     {value: "play", label: "Play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
     {value: "simulation", label: "Simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
     {value: "exportDeploy", label: "Build/Export", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
     {value: "certification", label: "Certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
     {value: "provablyFair", label: "Provably Fair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
@@ -312,10 +318,10 @@ function describeProjectName(header: ProjectHeaderView): string {
     return "Project";
 }
 
-// The compatible component's declared metadata is the whole Studio WASM
-// workflow. It comes from GET /api/project/inspect, whose server branch reads
-// the canonical sidecar reader only; this component intentionally has no
-// binary URL, loader, or execution control.
+// The declared component contract comes from GET /api/project/inspect. It is
+// metadata inspection only: canonical artifacts remain runnable through the
+// ordinary capability-driven dashboard, while legacy sidecar-only components
+// remain on their read-only inspection presentation.
 function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; summary: string}) {
     const fetchImpl = useStudioApi();
     const [inspection, setInspection] = useState<GamePackageInspectionReport>();
@@ -345,7 +351,7 @@ function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; su
     if (inspection === undefined) return <LoadingState label="Reading declared WASM manifest…" />;
     if (!inspection.valid || inspection.wasmManifest === undefined) return <ErrorState message={inspection.error ?? "The WASM manifest is unavailable for inspection."} />;
 
-    const {component, schemaVersion, serialization, host, capabilities} = inspection.wasmManifest;
+    const {component, schemaVersion, serialization, host, capabilities, minPokieVersion, artifact} = inspection.wasmManifest;
     return (
         <div>
             <Text mb="sm">{summary}</Text>
@@ -360,6 +366,15 @@ function WasmManifestInspection({projectRoot, summary}: {projectRoot: string; su
                     <Table.Tr><Table.Th>RNG host binding</Table.Th><Table.Td>{host.rng}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Host services</Table.Th><Table.Td>{host.services.length === 0 ? "None declared" : host.services.join(", ")}</Table.Td></Table.Tr>
                     <Table.Tr><Table.Th>Declared capabilities</Table.Th><Table.Td>{capabilities.length === 0 ? "None declared" : capabilities.join(", ")}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Th>Minimum POKIE version</Table.Th><Table.Td>{minPokieVersion ?? "Not declared"}</Table.Td></Table.Tr>
+                    {artifact !== undefined && <>
+                        <Table.Tr><Table.Th>Artifact format</Table.Th><Table.Td>{artifact.format}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Artifact ABI</Table.Th><Table.Td>{artifact.abiVersion}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Host adapter</Table.Th><Table.Td>{artifact.adapter}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Artifact byte count</Table.Th><Table.Td>{artifact.bytes}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Artifact SHA-256</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{artifact.sha256}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Th>Configuration hash</Table.Th><Table.Td style={{overflowWrap: "anywhere"}}>{artifact.configurationHash}</Table.Td></Table.Tr>
+                    </>}
                 </Table.Tbody>
             </Table>
         </div>
@@ -1024,7 +1039,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {activeTabSupported && (
                         <>
                             {activeTab === "overview" && header.status === "loaded" && (
-                                <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} />
+                                <>
+                                    <OverviewTab header={header} validation={validation} onRevalidate={runValidate} onOpenPlay={() => setActiveTab("play")} />
+                                    {header.type === "wasm" && (
+                                        <WasmManifestInspection
+                                            projectRoot={header.projectRoot}
+                                            summary="This canonical POKIE WASM artifact is integrity-bound and runnable through Studio's shared workflows."
+                                        />
+                                    )}
+                                </>
                             )}
                             {activeTab === "overview" && header.status === "outcome-source" && (
                                 <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />

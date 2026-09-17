@@ -47,11 +47,17 @@ describe("PC-17 capability-matrix parity contract", () => {
 
     it("has one conversion contract for every supported matrix cell instead of a CLI- or Studio-only exception", () => {
         const parity = readAudit("CAPABILITY-PARITY.md");
+        const cliDocs = fs.readFileSync(path.resolve(process.cwd(), "docs/cli.md"), "utf-8");
         const supportedCells = BUILD_PRODUCT_MATRIX_SOURCE_TYPES.flatMap((source) =>
             BUILD_PRODUCT_MATRIX_TARGETS.filter((target) => BUILD_PRODUCT_MATRIX[source][target].state === "supported"),
         );
 
-        expect(supportedCells).toHaveLength(14);
+        expect(supportedCells).toHaveLength(16);
+        expect(BUILD_PRODUCT_MATRIX.blueprint.wasm.state).toBe("supported");
+        expect(BUILD_PRODUCT_MATRIX.parWorkbook.wasm.state).toBe("supported");
+        expect(cliDocs).toContain("The executable source × target matrix is exported as `BUILD_PRODUCT_MATRIX`: its 16 supported cells");
+        expect(cliDocs).toContain("`blueprint` → `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
+        expect(cliDocs).toContain("`parWorkbook` →\n`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
         expect(parity).toContain("409 conflict preservation");
         expect(parity).toContain("cancellation leaves neither output nor staging directory");
     });

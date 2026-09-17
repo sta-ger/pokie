@@ -10,9 +10,8 @@ export type UnsupportedProjectOperationDiagnostic = {
     readonly detectedType: ProjectType;
     readonly operation: PokieOperation;
     readonly missingCapability: ProjectCapability;
-    // Other ProjectType values whose PROJECT_TYPE_CAPABILITIES already grants missingCapability — empty when
-    // no project type supports this operation yet (e.g. every "wasm.export" attempt today; see
-    // ProjectType.ts's "wasm" doc comment).
+    // Other ProjectType values whose PROJECT_TYPE_CAPABILITIES already grants missingCapability — empty only
+    // when no project type supports the requested operation.
     readonly alternatives: readonly ProjectType[];
     /**
      * The actionable part of `message`, exposed independently so CLI, Studio,

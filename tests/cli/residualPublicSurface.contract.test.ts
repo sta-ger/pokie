@@ -9,6 +9,7 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 const TEST_VERSION = "1.3.0";
 const COVERAGE_MAP_PATH = path.join(__dirname, "..", "..", "docs", "evidence", "p7-01-cli-inventory", "coverage-map.json");
 const CLI_DOCS_PATH = path.join(__dirname, "..", "..", "docs", "cli.md");
+const WASM_BOUNDARY_DOCS_PATH = path.join(__dirname, "..", "..", "docs", "wasm-compatibility-boundary.md");
 const MAINTAINED_DOCS_PATHS = [
     CLI_DOCS_PATH,
     path.join(__dirname, "..", "..", "docs", "outcome-library-bundle.md"),
@@ -53,7 +54,11 @@ describe("residual public CLI surface", () => {
             .flatMap((command) => command.getCommanderCommand().commands.map((verb) => `${command.getName()} ${verb.name()}`))
             .sort();
 
-        expect(coverage.initialInventory.rootCommands).toEqual(commandNames);
+        // This coverage map is immutable P7 evidence.  P8 adds the public
+        // portable-artifact runner, so compare the historical command tree to
+        // its historical portion rather than rewriting the completed audit.
+        expect(coverage.initialInventory.rootCommands).toEqual(commandNames.filter((name) => name !== "run"));
+        expect(commandNames).toContain("run");
         expect(coverage.initialInventory.nestedVerbs).toEqual(nestedVerbs);
         for (const command of publicCommands) {
             const help = command.getCommanderCommand().helpInformation();
@@ -64,7 +69,24 @@ describe("residual public CLI surface", () => {
         for (const maintainedDocsPath of MAINTAINED_DOCS_PATHS) {
             expect(fs.readFileSync(maintainedDocsPath, "utf8")).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
         }
+        expect(docs).toContain("## `pokie run <artifact.wasm>`");
+        expect(docs).toContain("pokie run game.wasm --seed demo");
         expect(fs.readFileSync(MAINTAINED_DOCS_PATHS[1], "utf8")).toContain("cli.md#pokie-export-configjson---to-outcomes---out-dir---dry-run");
+    });
+
+    it("documents every build target and the portable WASM boundary without collapsing them into package loading", () => {
+        const docs = fs.readFileSync(CLI_DOCS_PATH, "utf8");
+        const wasmBoundary = fs.readFileSync(WASM_BOUNDARY_DOCS_PATH, "utf8");
+
+        expect(docs).toContain("`blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`");
+        expect(docs).toContain("`parWorkbook` and `wasm` are file destinations");
+        expect(docs).toContain("the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `pokie/wasm`\nruntime instead");
+        expect(docs).not.toContain("are shipped today, built on the same [game package]");
+        expect(wasmBoundary).toContain("canonical identity, but authorizes no runtime operation by itself");
+        expect(wasmBoundary).toContain("declared `runtime.play`, `runtime.serialize`, `runtime.replay`, and `artifact.inspect` operations grant their\nmatching capabilities independently");
+        expect(wasmBoundary).toContain("complete portable play/serialize/replay\ndeclaration set additionally grants `WASM_RUNTIME_EXECUTE_CAPABILITY`");
+        expect(wasmBoundary).toContain("the authored `blueprint` and\n`parWorkbook` project types grant `wasm.export`");
+        expect(docs).toContain("game packages use `loadPokieGame`, canonical WASM uses the portable integrity-checked runtime");
     });
 
     it.each([

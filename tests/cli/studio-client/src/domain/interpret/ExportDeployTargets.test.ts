@@ -161,6 +161,24 @@ describe("describeArtifactBuildTargetCards", () => {
         });
     });
 
+    it("offers the canonical WASM card only when the server's normal target matrix supports it", () => {
+        const [supported] = describeArtifactBuildTargetCards([{target: "wasm", supported: true, state: "supported", unsupportedNotes: []}]);
+        const [unsupported] = describeArtifactBuildTargetCards([{target: "wasm", supported: false, state: "diagnostic-required", unsupportedNotes: []}]);
+
+        expect(supported).toMatchObject({
+            artifactTarget: "wasm",
+            label: "Portable WASM game",
+            supported: true,
+            purpose: "Build a portable POKIE WASM game from this project.",
+            destination: "Choose where to save the WASM game, or use the default destination.",
+            technicalDestination: "A game.wasm module with an integrity-bound POKIE manifest sidecar.",
+        });
+        expect(unsupported).toMatchObject({
+            supported: false,
+            unavailableReasons: ["This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue."],
+        });
+    });
+
     it("keeps an unsupported output visible with its concrete unavailable reason, while reserving destination protocol for Advanced details", () => {
         const cards = describeArtifactBuildTargetCards([
             {
@@ -187,6 +205,7 @@ describe("describeArtifactBuildTargetCards", () => {
             {target: "outcomeLibrary", supported: false, state: "diagnostic-required", unsupportedNotes: []},
             {target: "stakeAdapter", supported: false, state: "diagnostic-required", unsupportedNotes: []},
             {target: "parWorkbook", supported: false, state: "diagnostic-required", unsupportedNotes: []},
+            {target: "wasm", supported: false, state: "diagnostic-required", unsupportedNotes: []},
         ]);
 
         expect(cards.map((card) => card.unavailableReasons)).toEqual([
@@ -194,6 +213,7 @@ describe("describeArtifactBuildTargetCards", () => {
             ["This project cannot create or republish an outcome library. Open a Game Blueprint, runnable game package, or outcome library project to continue."],
             ["This project cannot build a Stake Engine export. Open a Game Blueprint, runnable game package, outcome library, or Stake Engine export project to continue."],
             ["This project cannot export or republish a PAR workbook. Open a Game Blueprint or PAR sheet workbook project to continue."],
+            ["This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue."],
         ]);
     });
 

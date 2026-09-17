@@ -121,7 +121,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
-    const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, processesDrained: false};
+    const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, wasm: false, processesDrained: false};
     const completedSmokeTests = new Set<string>();
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
     const spawnSmokeChild = (args: string[], cwd: string): ChildProcessWithoutNullStreams => {
@@ -147,7 +147,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // A release receipt is a result, never a finally-block assertion.  In
         // particular, an earlier failed suite must not be able to leave a
         // seemingly successful installed/cleanup receipt behind.
-        if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker) return;
+        if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker || !smokeResults.wasm) return;
         const archive = fs.readFileSync(tarballPath!);
         const archiveSha256 = createHash("sha256").update(archive).digest("hex");
         expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
@@ -226,8 +226,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Every test in this describe is registered through smokeIt.  Keep the
         // expected count explicit so adding an unwrapped test cannot silently
         // make a release receipt describe only a subset of this suite.
-        const suitePassed = completedSmokeTests.size === 21;
-        if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker) {
+        const suitePassed = completedSmokeTests.size === 22;
+        if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) {
             stageReleaseSmokeArchive();
         }
         if (installDir !== undefined) {
@@ -363,6 +363,42 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
         expect(output).toContain('PARALLEL_SIMULATION_SMOKE_OK {"workers":2,"rounds":20000}');
         smokeResults.libraryWorker = true;
+    });
+
+    smokeIt("imports pokie/wasm, uses its Worker protocol, and runs installed CLI WASM build/inspect/validate/run without checkout files", () => {
+        const workflowDir = fs.mkdtempSync(path.join(installDir!, "wasm-installed-workflow-"));
+        const blueprintPath = path.join(workflowDir, "game.blueprint.json");
+        const wasmPath = path.join(workflowDir, "game.wasm");
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "installed-wasm", name: "Installed WASM", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], reelStrips: [["A", "B"], ["B", "A"]], paytable: {A: {2: 2}, B: {2: 1}},
+        }));
+        try {
+            execFileSync(pokieBinPath, ["build", blueprintPath, "--target", "wasm", "--out", wasmPath], {cwd: workflowDir, encoding: "utf-8"});
+            expect(execFileSync(pokieBinPath, ["inspect", wasmPath], {cwd: workflowDir, encoding: "utf-8"})).toContain("canonical ABI operations: play, replay");
+            expect(execFileSync(pokieBinPath, ["validate", wasmPath, "--format", "json"], {cwd: workflowDir, encoding: "utf-8"})).toContain('"valid": true');
+            expect(execFileSync(pokieBinPath, ["run", wasmPath, "--seed", "installed"], {cwd: workflowDir, encoding: "utf-8"})).toContain("POKIE WASM round 1");
+
+            const workerScript = path.join(workflowDir, "wasm-worker-protocol.mjs");
+            fs.writeFileSync(workerScript, `
+                import fs from "fs";
+                import {PokieWasmWorkerProtocol} from "pokie/wasm";
+                const artifact = ${JSON.stringify(wasmPath)};
+                const manifest = JSON.parse(fs.readFileSync(artifact + ".pokie-wasm.json", "utf8"));
+                const protocol = new PokieWasmWorkerProtocol();
+                const instantiated = await protocol.handle({id: "instantiate", type: "instantiate", bytes: new Uint8Array(fs.readFileSync(artifact)), manifest, draws: [0.1, 0.2, 0.3, 0.4]});
+                if (!instantiated.ok) throw new Error(instantiated.error);
+                const played = await protocol.handle({id: "play", type: "play"});
+                if (!played.ok || !Array.isArray(played.result.screen)) throw new Error("installed Worker protocol did not produce a round");
+                const disposed = await protocol.handle({id: "dispose", type: "dispose"});
+                if (!disposed.ok) throw new Error(disposed.error);
+                console.log("INSTALLED_WASM_WORKER_PROTOCOL_OK");
+            `);
+            expect(execFileSync("node", [workerScript], {cwd: workflowDir, encoding: "utf-8"})).toContain("INSTALLED_WASM_WORKER_PROTOCOL_OK");
+            smokeResults.wasm = true;
+        } finally {
+            fs.rmSync(workflowDir, {recursive: true, force: true});
+        }
     });
 
     // Studio startup targeting, against the real installed binary: which of Home / a project dashboard

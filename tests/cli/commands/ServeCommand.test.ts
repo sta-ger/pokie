@@ -28,6 +28,7 @@ import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {ServeCommand} from "../../../cli/commands/ServeCommand.js";
 import {createMaterializingRuntimePackageResolver, passthroughRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput, outcomeLibraryBundleTestProvenance} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -372,6 +373,26 @@ describe("ServeCommand (integration, real loadPokieGame + PokieDevServer + fixtu
 // runtime path that boundary hands back -- never the caller's own raw packageRoot.
 describe("ServeCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("integrity-checks then rejects a canonical WASM artifact before package or server allocation", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-canonical-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const fixture = createCanonicalWasmFixture({id: "canonical-serve"});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const server = createStubServer({host: "127.0.0.1", port: 0});
+        const command = new ServeCommand(loadGame, () => server, resolveRuntimePackageRoot);
+        try {
+            await expect(command.run([wasmPath])).rejects.toThrow(/cannot run a local game server|portable host/i);
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+            expect(server.startCalls).toBe(0);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or listening", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-serve-malformed-par-"));

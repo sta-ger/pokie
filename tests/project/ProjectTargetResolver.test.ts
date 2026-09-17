@@ -8,6 +8,7 @@ import {ProjectTargetResolver} from "../../src/project/ProjectTargetResolver.js"
 import type {ProjectTargetTypeAdapter} from "../../src/project/ProjectTargetTypeAdapter.js";
 import {ProjectTargetUnsupportedError} from "../../src/project/ProjectTargetUnsupportedError.js";
 import {POKIE_WASM_CONTRACT_VERSION} from "../../src/project/wasm/PokieWasmComponentManifest.js";
+import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const SAMPLE_BLUEPRINT = {
     manifest: {id: "sample", name: "Sample", version: "1.0.0"},
@@ -171,7 +172,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "blueprint",
             rootPath: blueprintFile,
-            capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export"],
+            capabilities: ["blueprint.build", "outcomeLibrary.generate", "stakeAdapter.export", "wasm.export"],
             provenance: expect.stringContaining("manifest"),
         });
     });
@@ -185,7 +186,7 @@ describe("ProjectTargetResolver", () => {
         expect(project).toEqual({
             type: "parWorkbook",
             rootPath: workbookFile,
-            capabilities: ["parWorkbook.exchange"],
+            capabilities: ["parWorkbook.exchange", "wasm.export"],
             provenance: expect.stringContaining("Manifest"),
         });
         expect(project?.configurationProvenance).toMatchObject({
@@ -267,6 +268,32 @@ describe("ProjectTargetResolver", () => {
         });
     });
 
+    it("derives canonical WASM capabilities from the supported contract and each declared operation", async () => {
+        const wasmFile = path.join(workDir, "declared-operations.wasm");
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.play", "runtime.serialize", "artifact.inspect"]});
+        fs.writeFileSync(wasmFile, fixture.bytes);
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+
+        await expect(resolver.resolve(wasmFile)).resolves.toMatchObject({
+            type: "wasm",
+            capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.artifact.inspect"],
+        });
+    });
+
+    it.each([
+        ["serialization", {serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "other.state.v1"}}, /unsupported serialization identifiers/i],
+        ["RNG protocol", {host: {rng: "other.rng.v1", services: []}}, /unsupported RNG protocol/i],
+        ["host service", {host: {rng: "pokie.rng.v1", services: ["pokie.clock.v1"]}}, /unsupported required host service/i],
+    ])("rejects a canonical WASM artifact with an unsupported %s contract", async (_name, options, error) => {
+        const wasmFile = path.join(workDir, `unsupported-${_name}.wasm`);
+        const fixture = createCanonicalWasmFixture(options);
+        fs.writeFileSync(wasmFile, fixture.bytes);
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(error);
+    });
+
     it("throws ProjectTargetMalformedError for a .wasm file whose manifest sidecar isn't valid JSON", async () => {
         const wasmFile = path.join(workDir, "broken.wasm");
         fs.writeFileSync(wasmFile, WASM_BINARY);
@@ -291,6 +318,14 @@ describe("ProjectTargetResolver", () => {
 
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(ProjectTargetUnsupportedError);
         await expect(resolver.resolve(wasmFile)).rejects.toThrow(/not compatible with this POKIE build/);
+    });
+
+    it("rejects a compatible component that requires a newer POKIE release", async () => {
+        const wasmFile = path.join(workDir, "future.wasm");
+        fs.writeFileSync(wasmFile, WASM_BINARY);
+        fs.writeFileSync(`${wasmFile}.pokie-wasm.json`, JSON.stringify({...SAMPLE_WASM_COMPONENT_MANIFEST, minPokieVersion: "99.0.0"}));
+
+        await expect(resolver.resolve(wasmFile)).rejects.toThrow(/requires POKIE 99\.0\.0 or newer/);
     });
 
     it("returns undefined for a file with an unrecognized extension that isn't a WASM target", async () => {

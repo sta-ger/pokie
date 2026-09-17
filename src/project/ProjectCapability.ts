@@ -7,8 +7,27 @@ export type ProjectCapability = string;
 
 // A project that can be loaded and executed in-process as a PokieGame — the capability "sim", "replay",
 // "serve", "dev", "client", "studio", "inspect", "validate", and "outcomeLibrary.generate" all require. Only
-// a "tsPackage" project grants it today.
+// a "tsPackage" project grants it today. Canonical portable components use the narrower WASM capability below.
 export const RUNTIME_EXECUTE_CAPABILITY: ProjectCapability = "runtime.execute";
+
+// The aggregate portable-runtime capability. It is granted only when an integrity-bound canonical component
+// declares the complete play/serialize/replay bundle; consumers still check each operation's own capability.
+// Legacy sidecar-only components never receive executable capabilities.
+export const WASM_RUNTIME_EXECUTE_CAPABILITY: ProjectCapability = "wasm.runtime.execute";
+
+// Identity only: this says the artifact bytes and sidecar passed the canonical
+// integrity/host contract. It grants no operation by itself; consumers use
+// the per-operation capabilities below before exposing an action.
+export const WASM_CANONICAL_ARTIFACT_CAPABILITY: ProjectCapability = "wasm.canonical";
+
+// The portable component declares these independently.  Keep them separate
+// from the aggregate capability so a third-party canonical artifact cannot
+// accidentally acquire replay or state persistence merely by carrying an
+// integrity-bound artifact block.
+export const WASM_RUNTIME_PLAY_CAPABILITY: ProjectCapability = "wasm.runtime.play";
+export const WASM_RUNTIME_SERIALIZE_CAPABILITY: ProjectCapability = "wasm.runtime.serialize";
+export const WASM_RUNTIME_REPLAY_CAPABILITY: ProjectCapability = "wasm.runtime.replay";
+export const WASM_ARTIFACT_INSPECT_CAPABILITY: ProjectCapability = "wasm.artifact.inspect";
 
 // A project that can be built into a generated tsPackage — what "build" requires. Only a "blueprint" project
 // grants it today.
@@ -37,19 +56,17 @@ export const STAKE_ADAPTER_EXPORT_CAPABILITY: ProjectCapability = "stakeAdapter.
 // a "parWorkbook" project grants it today.
 export const PAR_WORKBOOK_EXCHANGE_CAPABILITY: ProjectCapability = "parWorkbook.exchange";
 
-// What "wasm.export" would require. Declared here so a future step can grant it to a project type without
-// inventing a new capability id at the same time — no ProjectType grants it yet (see ProjectType.ts's own
-// "wasm" doc comment), so describeUnsupportedProjectOperation reports every "wasm.export" attempt as
-// unsupported with no alternatives, today.
+// Produces a canonical WASM component from an authored source through ArtifactBuilderRegistry. Blueprint and
+// PAR workbook projects grant it; existing WASM artifacts deliberately do not, because they are products rather
+// than source inputs for another conversion.
 export const WASM_EXPORT_CAPABILITY: ProjectCapability = "wasm.export";
 
 // A project whose own WASM component manifest (see project/wasm/PokieWasmComponentManifest.ts) can be read
 // back, metadata-only, via readWasmComponentManifest — what "wasm.inspect" requires. Only a "wasm" project
 // grants it, and only once WasmProjectTargetAdapter has already confirmed the manifest is contract-compatible
 // at resolution time (see that adapter's own doc comment). Deliberately distinct from WASM_EXPORT_CAPABILITY
-// above (which nothing grants) and from RUNTIME_EXECUTE_CAPABILITY: POKIE has no WASM execution backend, so a
-// resolved "wasm" project can be inspected — never built, loaded, run, sim'd, replayed, or served (see
-// docs/wasm-compatibility-boundary.md).
+// above (which Blueprint and PAR projects grant) and from executable capabilities: both legacy and canonical
+// artifacts expose metadata, while canonical artifacts grant only their declared per-operation capabilities.
 export const WASM_MANIFEST_READ_CAPABILITY: ProjectCapability = "wasm.manifest.read";
 
 // A project whose own pre-computed outcomes can be inspected and exactly analyzed straight off disk, via its

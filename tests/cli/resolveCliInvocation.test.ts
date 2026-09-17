@@ -156,6 +156,16 @@ describe("resolveCliInvocation", () => {
         expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: [absolute]});
     });
 
+    it("routes an existing canonical WASM artifact to inspect instead of Studio", () => {
+        const invocation = resolveCliInvocation(
+            ["node", "pokie", "game.wasm"],
+            [...KNOWN_COMMANDS, "inspect"],
+            (candidate) => candidate === "game.wasm",
+        );
+
+        expect(invocation).toEqual({commandName: "inspect", args: ["game.wasm"]});
+    });
+
     it('does not treat a non-existent path as a studio invocation ("pokie <missing-path>")', () => {
         const invocation = resolveCliInvocation(["node", "pokie", "./does-not-exist"], KNOWN_COMMANDS, () => false);
 

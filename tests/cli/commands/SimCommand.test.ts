@@ -12,10 +12,13 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     ProjectResolving,
     ProjectTargetResolver,
+    SeededPokieWasmHost,
+    SimulationAccumulator,
     SimulationReport,
     SimulationReportSet,
     SIM_OPERATION,
     WeightedOutcomeRandomSource,
+    loadPokieWasmFileRuntime,
 } from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
@@ -24,6 +27,7 @@ import path from "path";
 import {SimCommand} from "../../../cli/commands/SimCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -1055,6 +1059,71 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 // also what lets a resolved Blueprint reach a real materialized runtime instead of a raw blueprint file.
 describe("SimCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
+
+    it("simulates a byte-bound canonical WASM artifact without package materialization", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-canonical-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const reportPath = path.join(workDir, "report.json");
+        const fixture = createCanonicalWasmFixture({id: "canonical-sim"});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const resolveRuntimePackageRoot = jest.fn(() => Promise.resolve({runtimePath: "must-not-resolve", release: () => Promise.resolve()}));
+        const command = new SimCommand(loadGame, undefined, undefined, undefined, undefined, resolveRuntimePackageRoot);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run([wasmPath, "--rounds", "4", "--seed", "canonical-seed", "--out", reportPath, "--format", "json"]);
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8")) as SimulationReport;
+            expect(report).toMatchObject({game: {id: "canonical-sim"}, rounds: 4, seed: "canonical-seed", workers: 1});
+            const runtime = await loadPokieWasmFileRuntime(wasmPath, new SeededPokieWasmHost("canonical-seed"));
+            const session = runtime.createSession("canonical-seed", {credits: Number.MAX_SAFE_INTEGER});
+            const expected = new SimulationAccumulator();
+            try {
+                for (let index = 0; index < 4; index++) {
+                    const round = await session.play();
+                    expected.addRound(round.stake, round.payout);
+                }
+                const statistics = expected.getStatistics();
+                expect({
+                    rounds: report.rounds,
+                    hitCount: report.hitFrequency * report.rounds,
+                    totalBet: report.totalBet,
+                    totalPayout: report.totalWin,
+                    rtp: report.rtp,
+                    averageBet: report.averageBet,
+                    averagePayout: report.averagePayout,
+                    volatility: report.volatility,
+                    maxWin: report.maxWin,
+                    maxWinFrequency: report.maxWinFrequency,
+                    payoutHistogram: report.payoutHistogram,
+                    averagePayoutConfidenceInterval95: report.averagePayoutConfidenceInterval95,
+                    rtpConfidenceInterval95: report.rtpConfidenceInterval95,
+                }).toEqual({
+                    rounds: statistics.rounds,
+                    hitCount: statistics.hitCount,
+                    totalBet: statistics.totalBet,
+                    totalPayout: statistics.totalPayout,
+                    rtp: statistics.rtp,
+                    averageBet: statistics.averageBet,
+                    averagePayout: statistics.averagePayout,
+                    volatility: statistics.volatility,
+                    maxWin: statistics.maxWin,
+                    maxWinFrequency: statistics.maxWinFrequency,
+                    payoutHistogram: statistics.payoutHistogram,
+                    averagePayoutConfidenceInterval95: statistics.averagePayoutConfidenceInterval95,
+                    rtpConfidenceInterval95: statistics.rtpConfidenceInterval95,
+                });
+            } finally {
+                session.dispose();
+                runtime.dispose();
+            }
+            expect(resolveRuntimePackageRoot).not.toHaveBeenCalled();
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
 
     it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or writing a report", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-malformed-par-"));

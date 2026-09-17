@@ -45,6 +45,7 @@ const BLUEPRINT: GameBlueprint = {
 function defaultDestination(sourcePath: string, target: ArtifactTargetType): string {
     let name: string = target;
     if (target === "parWorkbook") name = "parWorkbook.xlsx";
+    if (target === "wasm") name = "game.wasm";
     if (target === "blueprint") name = "blueprint.json";
     return path.join(path.dirname(sourcePath), name);
 }
@@ -121,6 +122,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "blueprint:outcomeLibrary",
             "blueprint:stakeAdapter",
             "blueprint:parWorkbook",
+            "blueprint:wasm",
             "tsPackage:outcomeLibrary",
             "tsPackage:stakeAdapter",
             "outcomeLibrary:outcomeLibrary",
@@ -131,6 +133,7 @@ describe("BUILD_PRODUCT_MATRIX cross-surface lifecycle contract", () => {
             "parWorkbook:outcomeLibrary",
             "parWorkbook:stakeAdapter",
             "parWorkbook:parWorkbook",
+            "parWorkbook:wasm",
         ]);
     });
 

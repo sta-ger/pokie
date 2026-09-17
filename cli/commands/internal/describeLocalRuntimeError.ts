@@ -29,10 +29,11 @@ export function describeRuntimePackageLoadError(packageRoot: string, error: unkn
     if (error instanceof ProjectTargetMalformedError && error.targetType === "parWorkbook") {
         return RuntimePreparationError.parWorkbookRecognition(packageRoot, error);
     }
-    // A .wasm path has its own inspection-only resolver boundary.  In
+    // A .wasm path has its own resolver and portable-runtime boundary. In
     // particular, a missing, malformed, or incompatible sidecar is not a
     // package.json problem, and runtime preparation must not erase its exact
-    // repair action while trying to load a game.
+    // repair action while trying to load a game. Only a legacy sidecar-only
+    // component is inspection-only; a canonical one is resolved separately.
     if (
         (error instanceof ProjectTargetMalformedError || error instanceof ProjectTargetUnsupportedError) &&
         error.targetType === "wasm"

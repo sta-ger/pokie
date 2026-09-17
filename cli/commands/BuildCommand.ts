@@ -25,8 +25,8 @@ import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
-// The complete product matrix: every ArtifactTargetType is selectable because it has a builder and supported
-// source workflow. WASM is a resolved inspection type, not an artifact target.
+// The complete product matrix: every ArtifactTargetType is selectable through
+// one registry.  WASM is deliberately not a second build command.
 const TARGET_TYPES: readonly ArtifactTargetType[] = ADVERTISED_ARTIFACT_BUILD_TARGETS;
 
 const USAGE = "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]";
@@ -34,13 +34,14 @@ const TARGET_HINT = `--target must be one of: ${TARGET_TYPES.join(", ")}.`;
 const PROJECT_HINT =
     "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
     "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
-    "stakeAdapter, or PAR workbook; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or PAR workbook; " +
+    "stakeAdapter, PAR workbook, or wasm; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm; " +
     "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
-    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, or parWorkbook.";
+    "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, or wasm; Blueprint -> wasm is the canonical portable-runtime source.";
 // parWorkbook is the one target whose artifact is a single file rather than a directory (see
 // assertArtifactDestinationAvailable's own "file"/"directory" split) -- its default destination needs a real
 // file extension, every other target's default is just a bare directory name.
 const PAR_WORKBOOK_DEFAULT_EXTENSION = ".xlsx";
+const WASM_DEFAULT_EXTENSION = ".wasm";
 
 type BuildOptions = {target?: ArtifactTargetType; out?: string; dryRun?: boolean; exact?: boolean; sample?: bigint; seed?: string};
 
@@ -85,7 +86,7 @@ export class BuildCommand implements CliCommandHandling {
     public getDescription(): string {
         return (
             'Build an artifact from a resolved POKIE project ("pokie build <project> --target <artifact>") -- ' +
-            "the supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook, " +
+            "the supported source-to-target matrix includes PAR workbook -> Blueprint/tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm; GameBlueprint -> tsPackage/outcomeLibrary/stakeAdapter/parWorkbook/wasm, " +
             "tsPackage -> outcomeLibrary/stakeAdapter, outcomeLibrary -> outcomeLibrary/stakeAdapter, and same-type " +
             'republish for stakeAdapter/parWorkbook (for a first random game instead, see "pokie ' +
             'create --random"). --dry-run validates and previews without writing anything.'
@@ -216,6 +217,7 @@ export class BuildCommand implements CliCommandHandling {
     private resolveDestination(rootPath: string, target: ArtifactTargetType): string {
         let siblingName: string = target;
         if (target === "parWorkbook") siblingName = `${target}${PAR_WORKBOOK_DEFAULT_EXTENSION}`;
+        if (target === "wasm") siblingName = `game${WASM_DEFAULT_EXTENSION}`;
         if (target === "blueprint") siblingName = "blueprint.json";
         return path.join(path.dirname(rootPath), siblingName);
     }
@@ -454,6 +456,7 @@ export class BuildCommand implements CliCommandHandling {
         console.log(`  final destination ${plan.target.canonicalLocation ?? "selected destination"}`);
         for (const step of plan.steps) {
             console.log(`  intermediate     ${step.choice} ${step.output.kind}${step.output.canonicalLocation ? ` at ${step.output.canonicalLocation}` : ""}`);
+            if (step.conversionEvidencePath !== undefined) console.log(`  conversion evidence ${step.conversionEvidencePath}`);
         }
         if (plan.steps.some((step) => step.kind === "importParWorkbook")) {
             console.log("  evidence eligibility determined by durable PAR conversion facts and Meta/hash provenance");

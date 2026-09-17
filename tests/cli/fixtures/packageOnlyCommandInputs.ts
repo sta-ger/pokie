@@ -85,6 +85,9 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
 
     {command: "report", verb: undefined, requiresLoadablePackage: false, primaryInput: "simulationReportJson (a pokie sim --out report)"},
 
+    // --- run: executes one canonical WASM artifact directly, without loading a package. ---
+    {command: "run", verb: undefined, requiresLoadablePackage: false, primaryInput: "artifact.wasm (a canonical POKIE WASM artifact)"},
+
     {command: "serve", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
     {command: "sample", verb: undefined, requiresLoadablePackage: false, primaryInput: "path (an Outcome Library Bundle or Stake adapter directory)"},
     {command: "sim", verb: undefined, requiresLoadablePackage: true, primaryInput: "packageRoot"},
