@@ -7,6 +7,7 @@ import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDepl
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
+import type {ProjectDashboardContext} from "../../../cli/studio/ProjectDashboardContext.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
 
@@ -228,19 +229,22 @@ describe("StudioJobService executor bridge routes", () => {
         const aliasProject = path.join(directory, "project-alias");
         fs.mkdirSync(physicalProject);
         fs.symlinkSync(physicalProject, aliasProject, "dir");
-        let release: ((value: unknown) => void) | undefined;
+        let release: ((value: ProjectDashboardContext) => void) | undefined;
         let started: (() => void) | undefined;
         const running = new Promise<void>((resolve) => {
             started = resolve;
         });
-        const openProject = jest.fn(() => new Promise<unknown>((resolve) => {
+        // Keep the real Home-service surface intact: StudioServer consults recent projects while
+        // starting, whereas this route test controls only the executor under test.
+        const homeService = new StudioHomeService("1.3.0");
+        const openProject = jest.spyOn(homeService, "openProject").mockImplementation(() => new Promise<ProjectDashboardContext>((resolve) => {
             release = resolve;
             started?.();
         }));
         const baseUrl = await start(
             {} as StudioCertificationService,
             jobs,
-            {homeService: {openProject} as unknown as StudioHomeService},
+            {homeService},
         );
 
         const first = post(`${baseUrl}/api/home/projects/open`, {projectRoot: physicalProject});
