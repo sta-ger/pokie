@@ -40,6 +40,19 @@ describe("StudioJobService", () => {
         expect(service.cancel("/project-a", "job-2")).toEqual(expect.objectContaining({status: "cancelled"}));
     });
 
+    it("requests shutdown cancellation only for this process's active executors", () => {
+        let nextId = 0;
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `job-stop-${++nextId}`);
+        const first = service.start({projectId: "/project-a", operation: "deployment", request: {}, conflictKey: "deployment:a"});
+        const second = service.start({projectId: "/project-b", operation: "certification-build", request: {}, conflictKey: "certification:b"});
+        if (first.status !== "created" || second.status !== "created") throw new Error("expected active jobs");
+        service.complete(first.job.id, {summary: "already terminal"});
+
+        expect(service.cancelAll()).toEqual([expect.objectContaining({id: second.job.id, status: "cancelling"})]);
+        expect(service.get("/project-a", first.job.id)).toMatchObject({status: "completed"});
+        expect(service.get("/project-b", second.job.id)).toMatchObject({status: "cancelling"});
+    });
+
     it("owns queued, running, cancelling, and every executor terminal record", async () => {
         let nextId = 0;
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `job-lifecycle-${++nextId}`);

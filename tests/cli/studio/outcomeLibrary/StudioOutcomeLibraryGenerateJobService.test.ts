@@ -216,7 +216,11 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
             setImmediate(resolve);
         });
         await jobs.cancelAll();
-        expect(durableJobs.get(projectRoot, first.id)).toMatchObject({status: "cancelled", recovery: {action: "resume"}});
+        expect(durableJobs.get(projectRoot, first.id)).toMatchObject({
+            status: "cancelled",
+            recovery: {action: "resume"},
+            result: {detail: {result: {status: "cancelled", checkpoint: {id: first.id, processedRawIndex: "1", progressTotal: "2"}}}},
+        });
 
         const restarted = new StudioOutcomeLibraryGenerateJobService(generateService);
         restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));

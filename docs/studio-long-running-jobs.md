@@ -59,4 +59,4 @@ executor.
 Potentially noticeable rows above are all common-job operations; they are not excused merely because the current implementation awaits I/O. Their existing endpoints remain compatibility
 projections while their domain services remain executors.
 
-When leaving a project, Studio asks the server for the complete active job set. The browser names those operations and must confirm the transition; the server rejects an unconfirmed close. A new project generation invalidates stale list/start/poll/cancel responses so no response from project A is rendered in project B.
+When leaving a project, Studio asks the server for the complete active job set. The browser names those operations and must confirm the transition; the server rejects an unconfirmed close, Home navigation, or opening/switching to another project with the affected operation names. A new project generation invalidates stale list/start/poll/cancel responses so no response from project A is rendered in project B.

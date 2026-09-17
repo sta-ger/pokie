@@ -176,6 +176,23 @@ export class StudioJobService {
         return this.transition(id, (current) => ({...current, status: "cancelling"}));
     }
 
+    /**
+     * Requests cancellation for every executor this Studio process still owns.
+     * This is deliberately process-scoped rather than project-scoped: shutdown
+     * can occur while Home is materializing a different project, so consulting
+     * only the current dashboard would strand that operation in a false
+     * running state until the next restart reconciliation.
+     */
+    public cancelAll(): readonly StudioJobView[] {
+        const requested: StudioJobView[] = [];
+        for (const job of this.repository.list()) {
+            if (isStudioJobTerminal(job.status) || !this.executions.has(job.id)) continue;
+            const cancelled = this.cancel(job.projectId, job.id);
+            if (cancelled !== undefined) requested.push(cancelled);
+        }
+        return requested;
+    }
+
     public reconcileInterruptedJobs(): void {
         for (const job of this.repository.list()) {
             if (isStudioJobTerminal(job.status)) continue;

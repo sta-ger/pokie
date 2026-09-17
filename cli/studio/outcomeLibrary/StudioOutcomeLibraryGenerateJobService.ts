@@ -303,7 +303,15 @@ export class StudioOutcomeLibraryGenerateJobService {
                 }),
             };
             Object.assign(record, {result: cancelledResult, status: "cancelled" as const});
-            this.jobService?.cancelled(record.id, {summary: "Outcome Library generation cancelled before publication."}, {
+            this.jobService?.cancelled(record.id, {
+                summary: "Outcome Library generation cancelled before publication.",
+                // The checkpoint file remains the recovery authority, but the
+                // operation-specific terminal DTO belongs in the common
+                // durable job as well. A restarted compatibility route can
+                // then render the cursor, plan, and checkpoint reference
+                // without depending on this process-local record.
+                detail: {status: cancelledResult.status, result: cancelledResult},
+            }, {
                 action: cancelledResult.checkpoint === undefined ? "retry" : "resume",
                 reason: cancelledResult.checkpoint === undefined
                     ? cancelledResult.recovery

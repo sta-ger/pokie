@@ -493,6 +493,13 @@ export class StudioServer implements StudioServerHandling {
 
     public async stop(): Promise<void> {
         this.cancelRuntimePreparation();
+        // Certification, deployment, Play, Home materialization, and Design
+        // operations execute directly through StudioJobService rather than a
+        // compatibility service with its own cancelAll(). Request their
+        // aborts before closing HTTP so their executor-specific cleanup can
+        // publish an honest terminal state (or restart reconciliation can
+        // safely mark an interrupted record recovery-required).
+        this.jobService.cancelAll();
         // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
         // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
         // independently of any HTTP connection, so closing the server alone would leave either running
