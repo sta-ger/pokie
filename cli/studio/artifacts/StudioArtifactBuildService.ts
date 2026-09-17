@@ -28,6 +28,7 @@ import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 import {resolveStudioProjectSource} from "./StudioArtifactConversionPlanningService.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
 
 export type StudioArtifactBuildStartResult =
     | {status: "created"; job: StudioArtifactBuildJobView}
@@ -102,6 +103,7 @@ export class StudioArtifactBuildService {
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
     private nextJobId = 1;
     private nextPreparedStakeOperationId = 1;
+    private jobService: StudioJobService | undefined;
 
     constructor(
         pokieVersion: string,
@@ -119,6 +121,10 @@ export class StudioArtifactBuildService {
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
         this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
+    }
+
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
@@ -473,6 +479,13 @@ export class StudioArtifactBuildService {
             preparedStakeOperation,
         };
         this.jobs.set(record.id, record);
+        this.jobService?.adopt(record.id, {
+            projectId: projectRoot,
+            operation: "artifact-build",
+            request: {target, ...(outDir === undefined ? {} : {outDir})},
+            conflictKey: `artifact:${path.resolve(outDir ?? projectRoot, target)}`,
+            recoveryOnRestart: {action: "rebuild", reason: "Artifact publication cannot safely resume after Studio restarts. Rebuild from the captured target and destination."},
+        });
         queueMicrotask(() => {
             this.run(record, outDir).catch(() => {
                 // run() converts every builder failure into the public terminal result.
@@ -483,6 +496,8 @@ export class StudioArtifactBuildService {
 
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
         record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "artifacts", current: 0, total: 1});
         const options: ArtifactBuildOptions = {
             signal: record.controller.signal,
             onProgress: (progress) => {
@@ -493,6 +508,13 @@ export class StudioArtifactBuildService {
                 record.progress = next.preflight === undefined && record.progress?.preflight !== undefined
                     ? {...next, preflight: record.progress.preflight}
                     : next;
+                this.jobService?.progress(record.id, {
+                    stage: next.status,
+                    unit: "artifacts",
+                    current: next.completed ?? "0",
+                    total: next.total ?? "1",
+                    ...(next.message === undefined ? {} : {message: next.message}),
+                });
             },
         };
         const result = record.preparedStakeOperation === undefined
@@ -500,6 +522,18 @@ export class StudioArtifactBuildService {
             : await this.executeStakeProjection(record.preparedStakeOperation, options);
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
+        if (status === "completed") {
+            const resultView = result as Extract<StudioArtifactBuildView, {status: "ok"}>;
+            this.jobService?.complete(record.id, {
+                summary: "Artifact build completed.",
+                outputs: [{path: resultView.outputPath, label: "Built artifact"}],
+                detail: {target: record.target, outputKind: resultView.outputKind},
+            });
+        } else if (status === "cancelled") {
+            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
+        } else {
+            this.jobService?.fail(record.id, result.status === "error" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and rebuild."});
+        }
     }
 
     private toJobView(record: StudioArtifactBuildJobRecord): StudioArtifactBuildJobView {

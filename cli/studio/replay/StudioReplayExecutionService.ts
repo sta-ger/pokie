@@ -42,6 +42,7 @@ import type {StudioReplayRepository} from "./StudioReplayRepository.js";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 import {toStudioReplayJobView} from "./toStudioReplayJobView.js";
 import type {ValidatedReplayRequest} from "./validateReplayRequest.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
 
 const DEFAULT_CHUNK_SIZE = 500;
 
@@ -87,6 +88,7 @@ export class StudioReplayExecutionService {
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
+    private jobService: StudioJobService | undefined;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -115,6 +117,10 @@ export class StudioReplayExecutionService {
         this.onCompleted = onCompleted;
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.loadWasmRuntime = loadWasmRuntime;
+    }
+
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -157,6 +163,18 @@ export class StudioReplayExecutionService {
             modeName: request.modeName,
         };
         this.repository.save(record);
+        this.jobService?.adopt(record.id, {
+            projectId: projectRoot,
+            operation: "replay",
+            request: {
+                round: request.round,
+                ...(request.seed === undefined ? {} : {seed: request.seed}),
+                ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}),
+                ...(request.modeName === undefined ? {} : {modeName: request.modeName}),
+            },
+            conflictKey: `replay:${projectRoot}`,
+            recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
+        });
 
         this.run(record).catch(() => {
             // run() already catches every failure into the record's own "failed" status (see below)
@@ -288,7 +306,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
-            record.status = "running";
+            this.markRunning(record);
             const manifest = game.getManifest();
             record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
             record.configHash = game.getConfigHash?.();
@@ -364,6 +382,7 @@ export class StudioReplayExecutionService {
 
                     record.completedRounds += chunkRounds;
                     record.durationMs = this.now() - record.startedAt;
+                    this.jobService?.progress(record.id, {stage: "replay", unit: "rounds", current: record.completedRounds, total: record.round});
                     roundsRemaining -= chunkRounds;
                     if (roundsRemaining > 0) {
                         await this.yieldToEventLoop();
@@ -412,7 +431,7 @@ export class StudioReplayExecutionService {
                 this.cancelRecord(record);
                 return;
             }
-            record.status = "running";
+            this.markRunning(record);
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
@@ -469,6 +488,7 @@ export class StudioReplayExecutionService {
     private updateReplayProgress(record: StudioReplayJobRecord, completedRounds: number): void {
         record.completedRounds = completedRounds;
         record.durationMs = this.now() - record.startedAt;
+        this.jobService?.progress(record.id, {stage: "replay", unit: "rounds", current: completedRounds, total: record.round});
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was
@@ -523,7 +543,7 @@ export class StudioReplayExecutionService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
         const gameIdentity = {id: manifestGame.id, name: manifestGame.name, version: manifestGame.version};
         record.game = gameIdentity;
 
@@ -557,6 +577,7 @@ export class StudioReplayExecutionService {
 
                 record.completedRounds += chunkRounds;
                 record.durationMs = this.now() - record.startedAt;
+                this.jobService?.progress(record.id, {stage: "replay", unit: "rounds", current: record.completedRounds, total: record.round});
                 roundsRemaining -= chunkRounds;
                 if (roundsRemaining > 0) {
                     await this.yieldToEventLoop();
@@ -723,5 +744,18 @@ export class StudioReplayExecutionService {
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
+        if (record.status === "completed") {
+            this.jobService?.complete(record.id, {summary: "Replay completed.", detail: {round: record.round, descriptorAvailable: record.descriptor !== undefined}});
+        } else if (record.status === "cancelled") {
+            this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", detail: {rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
+        } else if (record.status === "failed") {
+            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: "Correct the reported problem and run the replay again."});
+        }
+    }
+
+    private markRunning(record: StudioReplayJobRecord): void {
+        record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.completedRounds, total: record.round});
     }
 }

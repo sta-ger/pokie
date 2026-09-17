@@ -378,6 +378,7 @@ export class StudioServer implements StudioServerHandling {
                 undefined,
                 loadCurrentProjectRuntimeGame,
             );
+        this.replayService.attachJobService(this.jobService);
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
         this.playService =
             options.playService ??
@@ -430,6 +431,7 @@ export class StudioServer implements StudioServerHandling {
                 options.pokiePackageRoot,
                 (projectRoot) => this.projectRegistrationService.remove(projectRoot),
             );
+        this.artifactBuildService.attachJobService(this.jobService);
         this.stakeEngineExportService =
             options.stakeEngineExportService ?? new StudioStakeEngineExportService(
                 this.pokieVersion,
@@ -569,6 +571,8 @@ export class StudioServer implements StudioServerHandling {
         if (action === "cancel" && method === "POST") {
             const job = this.jobService.cancel(this.currentContext.projectRoot, id);
             if (job?.operation === "simulation") this.simulationService.cancelForProject(this.currentContext.projectRoot, id);
+            if (job?.operation === "replay") this.replayService.cancel(this.currentContext.projectRoot, id);
+            if (job?.operation === "artifact-build") this.artifactBuildService.cancelForProject(this.currentContext.projectRoot, id);
             this.sendJson(res, job === undefined ? 404 : 202, job ?? {error: "Studio job not found."});
             return;
         }
