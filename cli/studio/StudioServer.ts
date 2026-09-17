@@ -128,7 +128,7 @@ import {validateStakeEngineExportValidateRequest, StakeEngineExportValidateReque
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
 import {FileStudioJobRepository} from "./jobs/FileStudioJobRepository.js";
-import {StudioJobService} from "./jobs/StudioJobService.js";
+import {StudioJobService, type StudioJobExecutorContext, type StudioJobExecutorTerminal} from "./jobs/StudioJobService.js";
 import type {StudioJobView} from "./jobs/StudioJobView.js";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
 
@@ -578,6 +578,54 @@ export class StudioServer implements StudioServerHandling {
             error: started.reason,
             activeJobId: started.activeJobId,
             recovery: started.recovery,
+        });
+        return undefined;
+    }
+
+    /**
+     * The HTTP-to-domain executor bridge for compatibility actions.  It keeps
+     * reattachment/conflict outside the domain executor and lets StudioJobService
+     * persist the final state only after the executor has returned or thrown.
+     */
+    private async executeCommonOperation<T>(
+        res: ServerResponse,
+        input: {
+            readonly projectId: string;
+            readonly operation: string;
+            readonly request: Readonly<Record<string, unknown>>;
+            readonly conflictKey: string;
+            readonly recoveryOnRestart: NonNullable<StudioJobView["recoveryOnRestart"]>;
+        },
+        executor: (context: StudioJobExecutorContext) => Promise<T>,
+        terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal,
+        terminalForException: (error: unknown, cancelled: boolean) => StudioJobExecutorTerminal,
+        disconnect?: {readonly req: IncomingMessage; readonly res: ServerResponse},
+    ): Promise<{readonly job: StudioJobView; readonly value: T} | undefined> {
+        const execution = await this.jobService.execute(
+            input,
+            async (context) => {
+                const cancel = () => this.jobService.cancel(input.projectId, context.job.id);
+                disconnect?.req.once("aborted", cancel);
+                disconnect?.res.once("close", cancel);
+                try {
+                    return await executor(context);
+                } finally {
+                    disconnect?.req.off("aborted", cancel);
+                    disconnect?.res.off("close", cancel);
+                }
+            },
+            terminalForResult,
+            terminalForException,
+        );
+        if (execution.status === "executed") return {job: execution.job, value: execution.value};
+        if (execution.status === "reattached") {
+            this.sendJson(res, 202, {job: execution.job, reattached: true});
+            return undefined;
+        }
+        this.sendJson(res, 409, {
+            error: execution.reason,
+            activeJobId: execution.activeJobId,
+            recovery: execution.recovery,
         });
         return undefined;
     }
@@ -2702,20 +2750,25 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         const projectRoot = this.currentContext.projectRoot;
-        const job = this.beginCommonOperation(
-            res, projectRoot, "certification-validate", {bundleDir: validated.bundleDir}, `certification-validate:${projectRoot}:${validated.bundleDir}`,
-            {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
+        const execution = await this.executeCommonOperation(
+            res,
+            {
+                projectId: projectRoot, operation: "certification-validate", request: {bundleDir: validated.bundleDir},
+                conflictKey: `certification-validate:${projectRoot}:${validated.bundleDir}`,
+                recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
+            },
+            () => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", detail: {bundleDir: validated.bundleDir}}};
+                return {status: "failed", error: result.error, recovery: {action: "retry", reason: "Correct the source bundle and retry validation."}};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "retry", reason: "Correct the source bundle and retry validation."}},
         );
-        if (job === undefined) return;
-        try {
-            const result = await this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir);
-            if (result.status === "ok") this.completeCommonOperation(job.id, "Certification source validation completed.", {bundleDir: validated.bundleDir});
-            else this.jobService.fail(job.id, result.error, {action: "retry", reason: "Correct the source bundle and retry validation."});
-            this.sendJson(res, 200, result);
-        } catch (error) {
-            this.failCommonOperation(job.id, error, {action: "retry", reason: "Correct the source bundle and retry validation."});
-            throw error;
-        }
+        if (execution === undefined) return;
+        this.sendJson(res, 200, execution.value);
     }
 
     private async handleBuildCertificationEvidenceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -2735,33 +2788,27 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const projectRoot = this.currentContext.projectRoot;
-        const job = this.beginCommonOperation(
-            res, projectRoot, "certification-build", validated as unknown as Readonly<Record<string, unknown>>,
-            `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
-            {action: "rebuild", reason: "Evidence publication is not resumable after restart. Rebuild from the captured source and destination."},
+        const recovery = {action: "rebuild", reason: "Rebuild the evidence bundle from the captured source and destination."} as const;
+        const execution = await this.executeCommonOperation(
+            res,
+            {
+                projectId: projectRoot, operation: "certification-build", request: validated as unknown as Readonly<Record<string, unknown>>,
+                conflictKey: `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
+                recoveryOnRestart: recovery,
+            },
+            ({signal}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, signal),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", detail: {bundleDir: validated.bundleDir, outDir: validated.outDir}}};
+                return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}},
+            {req, res},
         );
-        if (job === undefined) return;
-        const controller = new AbortController();
-        const cancel = () => controller.abort();
-        req.once("aborted", cancel);
-        res.once("close", cancel);
-        try {
-            const result = await this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, this.jobService.signal(job.id) ?? controller.signal);
-            if (result.status === "ok") {
-                this.completeCommonOperation(job.id, "Certification evidence build completed.", {bundleDir: validated.bundleDir, outDir: validated.outDir});
-            } else if (this.jobService.signal(job.id)?.aborted) {
-                this.jobService.cancelled(job.id, {summary: "Certification evidence build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the evidence bundle from the captured source and destination."});
-            } else {
-                this.jobService.fail(job.id, result.status === "load-error" ? result.error : "Certification evidence build failed.", {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."});
-            }
-            this.sendJson(res, 200, result);
-        } catch (error) {
-            this.failCommonOperation(job.id, error, {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."});
-            throw error;
-        } finally {
-            req.off("aborted", cancel);
-            res.off("close", cancel);
-        }
+        if (execution === undefined) return;
+        this.sendJson(res, 200, execution.value);
     }
 
     private async handleConfigureFairnessRound(req: IncomingMessage, res: ServerResponse): Promise<void> {

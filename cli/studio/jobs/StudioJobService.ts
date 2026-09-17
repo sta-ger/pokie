@@ -17,6 +17,26 @@ export type StudioJobStartResult = {status: "created"; job: StudioJobView} | {st
     recovery: StudioJobRecoveryView;
 };
 
+/**
+ * The narrow boundary between a Studio HTTP action and its established domain
+ * executor.  It deliberately carries no domain result type: executors keep
+ * their public contracts while Studio owns scheduling and durable lifecycle.
+ */
+export type StudioJobExecutorContext = {
+    readonly job: StudioJobView;
+    readonly signal: AbortSignal;
+    progress(progress: StudioJobProgressView): StudioJobView | undefined;
+};
+
+export type StudioJobExecutorTerminal =
+    | {readonly status: "completed"; readonly result: StudioJobResultView}
+    | {readonly status: "failed"; readonly error: string; readonly recovery?: StudioJobRecoveryView}
+    | {readonly status: "cancelled"; readonly result?: StudioJobResultView; readonly recovery?: StudioJobRecoveryView};
+
+export type StudioJobExecutionResult<T> =
+    | Exclude<StudioJobStartResult, {status: "created"}>
+    | {readonly status: "executed"; readonly job: StudioJobView; readonly value: T};
+
 type ActiveExecution = {readonly controller: AbortController; readonly recoveryOnRestart: StudioJobRecoveryView};
 
 /** The sole durable lifecycle owner.  Domain services remain executors. */
@@ -86,7 +106,9 @@ export class StudioJobService {
         return this.executions.get(id)?.controller.signal;
     }
     public markRunning(id: string): StudioJobView | undefined {
-        return this.transition(id, (job) => ({...job, status: "running", startedAt: job.startedAt ?? this.now()}));
+        return this.transition(id, (job) => job.status === "cancelling" || isStudioJobTerminal(job.status)
+            ? job
+            : {...job, status: "running", startedAt: job.startedAt ?? this.now()});
     }
     public progress(id: string, progress: StudioJobProgressView): StudioJobView | undefined {
         return this.transition(id, (job) => isStudioJobTerminal(job.status) ? job : {...job, progress});
@@ -99,6 +121,37 @@ export class StudioJobService {
     }
     public cancelled(id: string, result?: StudioJobResultView, recovery?: StudioJobRecoveryView): StudioJobView | undefined {
         return this.terminal(id, "cancelled", {...(result === undefined ? {} : {result}), ...(recovery === undefined ? {} : {recovery})});
+    }
+
+    /**
+     * Runs one compatibility executor behind the common durable job record.
+     * Reattachment/conflict is resolved before `executor` is called, and the
+     * retained AbortController is released only after its terminal state has
+     * been persisted.  The executor's own result type is returned unchanged.
+     */
+    public async execute<T>(
+        input: StudioJobStartInput,
+        executor: (context: StudioJobExecutorContext) => Promise<T>,
+        terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal,
+        terminalForException: (error: unknown, cancelled: boolean) => StudioJobExecutorTerminal = (error, cancelled) => cancelled
+            ? {status: "cancelled", result: {summary: "Studio job cancelled after executor cleanup."}}
+            : {status: "failed", error: error instanceof Error ? error.message : String(error)},
+    ): Promise<StudioJobExecutionResult<T>> {
+        const started = this.start(input);
+        if (started.status !== "created") return started;
+
+        const job = this.markRunning(started.job.id) ?? started.job;
+        const signal = this.signal(job.id);
+        if (signal === undefined) throw new Error(`Studio job "${job.id}" has no cancellation handle.`);
+        const context: StudioJobExecutorContext = {job, signal, progress: (progress) => this.progress(job.id, progress)};
+        try {
+            const value = await executor(context);
+            this.persistExecutorTerminal(job.id, terminalForResult(value, signal.aborted));
+            return {status: "executed", job: this.repository.get(job.id) ?? job, value};
+        } catch (error) {
+            this.persistExecutorTerminal(job.id, terminalForException(error, signal.aborted));
+            throw error;
+        }
     }
 
     /** Cancellation is only a request; executor cleanup calls cancelled(). */
@@ -118,10 +171,17 @@ export class StudioJobService {
     }
 
     private terminal(id: string, status: Extract<StudioJobView["status"], "completed" | "failed" | "cancelled" | "recovery-required">, fields: Partial<StudioJobView>): StudioJobView | undefined {
+        const current = this.repository.get(id);
+        if (current === undefined || isStudioJobTerminal(current.status)) return current;
         const completedAt = this.now();
         const result = this.transition(id, (job) => ({...job, ...fields, status, completedAt, durationMs: Math.max(0, completedAt - (job.startedAt ?? job.createdAt))}));
         this.executions.delete(id);
         return result;
+    }
+    private persistExecutorTerminal(id: string, terminal: StudioJobExecutorTerminal): StudioJobView | undefined {
+        if (terminal.status === "completed") return this.complete(id, terminal.result);
+        if (terminal.status === "failed") return this.fail(id, terminal.error, terminal.recovery);
+        return this.cancelled(id, terminal.result, terminal.recovery);
     }
     private transition(id: string, mutate: (job: StudioJobView) => StudioJobView): StudioJobView | undefined {
         const old = this.repository.get(id);

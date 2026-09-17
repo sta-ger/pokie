@@ -40,6 +40,47 @@ describe("StudioJobService", () => {
         expect(service.cancel("/project-a", "job-2")).toEqual(expect.objectContaining({status: "cancelled"}));
     });
 
+    it("bridges exact reattachment before execution and persists cancellation only after cleanup", async () => {
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => "job-bridge");
+        let release: (() => void) | undefined;
+        let executorStarted: (() => void) | undefined;
+        const started = new Promise<void>((resolve) => {
+            executorStarted = resolve;
+        });
+        const input = {projectId: "/project-a", operation: "certification-build", request: {bundleDir: "bundle"}, conflictKey: "certification:/project-a/bundle"};
+        const first = service.execute(
+            input,
+            () => new Promise<string>((resolve) => {
+                executorStarted?.();
+                release = () => resolve("cleaned up");
+            }),
+            (_value, cancelled) => cancelled
+                ? {status: "cancelled" as const, result: {summary: "cleanup complete"}}
+                : {status: "completed" as const, result: {summary: "done"}},
+        );
+        await started;
+
+        const duplicateExecutor = jest.fn();
+        await expect(service.execute(input, duplicateExecutor, () => ({status: "completed", result: {summary: "unreachable"}}))).resolves.toMatchObject({status: "reattached", job: {id: "job-bridge", status: "running"}});
+        expect(duplicateExecutor).not.toHaveBeenCalled();
+
+        expect(service.cancel("/project-a", "job-bridge")).toMatchObject({status: "cancelling"});
+        release?.();
+        await expect(first).resolves.toMatchObject({status: "executed", value: "cleaned up"});
+        expect(service.get("/project-a", "job-bridge")).toMatchObject({status: "cancelled", result: {summary: "cleanup complete"}});
+    });
+
+    it("persists a failed terminal record when a bridged executor throws", async () => {
+        const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => "job-error");
+        await expect(service.execute(
+            {projectId: "/project-a", operation: "certification-validate", request: {bundleDir: "bundle"}, conflictKey: "validation:/project-a/bundle"},
+            () => Promise.reject(new Error("executor exploded")),
+            () => ({status: "completed", result: {summary: "unreachable"}}),
+            (error) => ({status: "failed", error: error instanceof Error ? error.message : String(error)}),
+        )).rejects.toThrow("executor exploded");
+        expect(service.get("/project-a", "job-error")).toMatchObject({status: "failed", error: "executor exploded"});
+    });
+
     it("marks interrupted records recovery-required on restart without claiming they resumed", () => {
         const repository = new FileStudioJobRepository(directory);
         const first = new StudioJobService(repository, () => 100, () => "job-3");
