@@ -160,19 +160,15 @@ export class ReplayCommand implements CliCommandHandling {
         const seed = options.seed ?? "pokie-wasm-replay";
         const startedAt = Date.now();
         const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
-        let session;
         try {
-            session = runtime.createSession(seed);
-            let totalBet = 0;
-            let totalWin = 0;
-            let finalRound;
-            let stateBefore: Record<string, unknown> | undefined;
-            for (let index = 0; index < options.round; index++) {
-                if (index === options.round - 1) stateBefore = session.serialize() as unknown as Record<string, unknown>;
-                finalRound = await session.play();
-                totalBet += finalRound.stake;
-                totalWin += finalRound.payout;
-            }
+            const replay = await runtime.replay(
+                {schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits: 1000},
+                Array.from({length: options.round}, () => ({})),
+            );
+            const finalRound = replay[replay.length - 1];
+            const totalBet = replay.reduce((total, round) => total + round.stake, 0);
+            const totalWin = replay.reduce((total, round) => total + round.payout, 0);
+            const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
             const descriptor = {
                 sessionId: `wasm-${seed}-${options.round}`,
                 game: {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version},
@@ -180,19 +176,18 @@ export class ReplayCommand implements CliCommandHandling {
                 round: options.round,
                 totalBet,
                 totalWin,
-                credits: finalRound?.credits ?? session.serialize().credits,
+                credits: finalRound?.credits ?? 1000,
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
                 timestamp: startedAt,
                 durationMs: Date.now() - startedAt,
-                ...(stateBefore === undefined ? {} : {stateBefore}),
-                stateAfter: session.serialize() as unknown as Record<string, unknown>,
+                ...(canSerialize && replay.stateBeforeFinal !== undefined ? {stateBefore: replay.stateBeforeFinal as unknown as Record<string, unknown>} : {}),
+                ...(canSerialize ? {stateAfter: replay.stateAfter as unknown as Record<string, unknown>} : {}),
             };
             const json = JSON.stringify(descriptor, null, 4);
             if (options.out) this.writeFile(options.out, json);
             console.log(json);
             if (options.out) console.log(`\nReplay written to "${options.out}".`);
         } finally {
-            session?.dispose();
             runtime.dispose();
         }
     }

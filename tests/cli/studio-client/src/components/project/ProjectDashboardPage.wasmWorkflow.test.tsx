@@ -69,4 +69,31 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         await user.click(screen.getByRole("button", {name: "Play"}));
         expect(await screen.findByText(/Play prepares this game/)).toBeInTheDocument();
     });
+
+    it.each([
+        ["replay-only", ["wasm.canonical", "wasm.runtime.replay", "wasm.manifest.read"], false, false, true],
+        ["play-only", ["wasm.canonical", "wasm.runtime.play", "wasm.manifest.read"], true, true, false],
+        ["serialize-only", ["wasm.canonical", "wasm.runtime.serialize", "wasm.manifest.read"], false, false, false],
+        ["complete bundle", ["wasm.canonical", "wasm.runtime.play", "wasm.runtime.serialize", "wasm.runtime.replay", "wasm.runtime.execute", "wasm.manifest.read"], true, true, true],
+    ])("shows only executable controls for a %s canonical artifact", async (_name, capabilities, play, simulation, replay) => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({
+                ok: true,
+                status: 200,
+                body: {status: "loaded", projectRoot: "/games/game.wasm", game, type: "wasm", capabilities},
+            }),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/game.wasm", valid: true}}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/game.wasm", valid: true, game, errors: [], warnings: [], suggestions: []}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/rounds": () => ({ok: true, status: 200, body: []}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "wasm-slot"});
+        expect(screen.queryByRole("button", {name: "Play"})).toEqual(play ? expect.anything() : null);
+        expect(screen.queryByRole("button", {name: "Simulation"})).toEqual(simulation ? expect.anything() : null);
+        expect(screen.queryByRole("button", {name: "Replay"})).toEqual(replay ? expect.anything() : null);
+    });
 });

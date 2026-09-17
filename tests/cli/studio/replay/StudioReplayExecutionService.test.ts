@@ -22,6 +22,7 @@ import {BlueprintProjectMaterializer} from "../../../../cli/materialize/Blueprin
 import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
 import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioReplayJobView.js";
+import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // FNV-1a, same hashing trick the "playable-game" fixture uses to turn a --seed string into a
@@ -285,21 +286,19 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 
 describe("StudioReplayExecutionService", () => {
 
-    it("cancels a canonical WASM replay after session acquisition and disposes its portable resources", async () => {
+    it("cancels a canonical WASM replay after runtime acquisition and disposes its portable resources", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-replay-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmPath, "");
-        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}}));
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}, capabilities: ["runtime.replay"]}));
         const gate = createControlledYield();
         const disposeRuntime = jest.fn();
-        const disposeSession = jest.fn();
         const runtime = {
-            manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
-            createSession: () => ({
-                play: () => Promise.resolve({stake: 1, payout: 1, screen: [["A"]]}),
-                serialize: () => ({schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: 1, credits: 1000}),
-                dispose: disposeSession,
-            }),
+            manifest: {component: {id: "wasm", version: "1.0.0"}, capabilities: ["runtime.replay"], artifact: {configurationHash: "config"}},
+            replay: (state: {sequence: number; credits: number}, commands: readonly Record<string, unknown>[]) =>
+                Object.assign(commands.map((_command, index) => ({stake: 1, payout: 1, credits: state.credits, screen: [["A"]], sequence: state.sequence + index + 1})), {
+                    stateAfter: {schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: state.sequence + commands.length, credits: state.credits},
+                }),
             dispose: disposeRuntime,
         };
         const service = new StudioReplayExecutionService(
@@ -322,7 +321,6 @@ describe("StudioReplayExecutionService", () => {
             service.cancel(wasmPath, started.job.id);
             gate.release();
             await expect(waitForTerminal(service, wasmPath, started.job.id)).resolves.toMatchObject({status: "cancelled"});
-            expect(disposeSession).toHaveBeenCalledTimes(1);
             expect(disposeRuntime).toHaveBeenCalledTimes(1);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
@@ -355,6 +353,25 @@ describe("StudioReplayExecutionService", () => {
                 expect(repository.listActive()).toEqual([]);
             }
             expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
+    it("rejects a canonical WASM artifact without runtime.replay before queueing work", () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-capability-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const fixture = createCanonicalWasmFixture({id: "studio-play-only", capabilities: ["runtime.play"]});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const repository = new InMemoryStudioReplayRepository();
+        const service = new StudioReplayExecutionService(repository);
+        try {
+            expect(service.start(wasmPath, {round: 1, seed: "seed"})).toEqual({
+                status: "unsupported",
+                message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round.",
+            });
+            expect(repository.listActive()).toEqual([]);
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }

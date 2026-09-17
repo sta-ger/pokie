@@ -276,6 +276,29 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         }
     });
 
+    it("replays a replay-only canonical WASM artifact without session play or serialization", async () => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-only-wasm-"));
+        const wasmPath = path.join(workDir, "component.wasm");
+        const descriptorPath = path.join(workDir, "replay.json");
+        const fixture = createCanonicalWasmFixture({id: "replay-only", capabilities: ["runtime.replay"]});
+        fs.writeFileSync(wasmPath, fixture.bytes);
+        fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const loadGame = jest.fn(() => Promise.resolve(createFakeGame(manifest)));
+        const command = new ReplayCommand(loadGame);
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run([wasmPath, "--round", "2", "--seed", "replay-only", "--out", descriptorPath]);
+            const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8")) as ReplayDescriptor;
+            expect(descriptor).toMatchObject({game: {id: "replay-only"}, round: 2, credits: expect.any(Number)});
+            expect(descriptor).not.toHaveProperty("stateBefore");
+            expect(descriptor).not.toHaveProperty("stateAfter");
+            expect(loadGame).not.toHaveBeenCalled();
+        } finally {
+            logSpy.mockRestore();
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("keeps corrupt and incomplete PAR workbooks on the recognition/import diagnostic path without loading or publishing a descriptor", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-malformed-par-"));
         const corrupt = path.join(workDir, "corrupt.xlsx");

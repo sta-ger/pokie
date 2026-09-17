@@ -21,4 +21,15 @@ describe("browser-safe WASM runtime API", () => {
             new SeededPokieWasmHost("browser-version"),
         )).rejects.toThrow(/requires POKIE 999\.0\.0 or newer/);
     });
+
+    it("keeps replay executable without browser session play or serialization declarations", async () => {
+        const fixture = createCanonicalWasmFixture({id: "browser-replay-only", capabilities: ["runtime.replay"]});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("browser-replay-only"));
+        const session = runtime.createSession("browser-replay-only");
+        await expect(session.play()).rejects.toThrow(/does not declare runtime\.play/i);
+        expect(() => session.serialize()).toThrow(/does not declare runtime\.serialize/i);
+        await expect(runtime.replay({schemaVersion: "pokie.state.v1", seed: "browser-replay-only", draws: [], sequence: 0, credits: 1000}, [{}]))
+            .resolves.toMatchObject([{sequence: 1}]);
+        runtime.dispose();
+    });
 });

@@ -45,10 +45,18 @@ export type PokieWasmRuntimeSession = {
     serialize(): PokieWasmSessionState;
     dispose(): void;
 };
+/**
+ * Replay owns its deterministic execution and returns its own continuation;
+ * this is not the separately declared session serialize/restore operation.
+ */
+export type PokieWasmReplayResult = readonly PokieWasmRound[] & {
+    readonly stateBeforeFinal?: PokieWasmSessionState;
+    readonly stateAfter: PokieWasmSessionState;
+};
 export type PokieWasmRuntime = {
     readonly manifest: PokieWasmComponentManifest;
     createSession(seed: string, options?: {readonly credits?: number}): PokieWasmRuntimeSession;
     restoreSession(state: PokieWasmSessionState): PokieWasmRuntimeSession;
-    replay(state: PokieWasmSessionState, commands: readonly Record<string, unknown>[]): Promise<readonly PokieWasmRound[]>;
+    replay(state: PokieWasmSessionState, commands: readonly Record<string, unknown>[]): Promise<PokieWasmReplayResult>;
     dispose(): void;
 };

@@ -8,7 +8,7 @@ import {
     readIntegrityBoundCanonicalPokieWasmArtifact,
     type PokieWasmGameModel,
 } from "./PokieWasmCanonicalModule.js";
-import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
+import {POKIE_WASM_DEFAULT_CREDITS, type PokieWasmHost, type PokieWasmHostState, type PokieWasmReplayResult, type PokieWasmRound, type PokieWasmRuntime, type PokieWasmRuntimeSession, type PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 
 const MAX_HOST_RANDOM_DRAWS_PER_PLAY = 1024;
 
@@ -42,9 +42,6 @@ export function inspectPokieWasm(manifest: PokieWasmComponentManifest): PokieWas
 /** Instantiates the canonical portable ABI and derives complete deterministic rounds from it. */
 export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieWasmComponentManifest, host: PokieWasmHost): Promise<PokieWasmRuntime> {
     const canonical = await readIntegrityBoundCanonicalPokieWasmArtifact(bytes, manifest);
-    if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_PLAY_DECLARATION)) {
-        throw new Error(`POKIE WASM artifact cannot execute: it does not declare ${POKIE_WASM_RUNTIME_PLAY_DECLARATION}.`);
-    }
     let currentDraws: number[] = [];
     const instance = await WebAssembly.instantiate(canonical.module, {
         pokie: {
@@ -67,37 +64,57 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
     const play = instance.exports.play;
     if (typeof play !== "function") throw new Error("POKIE WASM artifact is missing its canonical play export.");
     let disposed = false;
-    const session = (state: PokieWasmSessionState): PokieWasmRuntimeSession => {
+    const restoreState = (state: PokieWasmSessionState): PokieWasmSessionState => {
+        if (state.schemaVersion !== "pokie.state.v1" || typeof state.seed !== "string" || !Array.isArray(state.draws) ||
+            !state.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) ||
+            !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isFinite(state.credits) || state.credits < 0 || !isHostState(state.rngState)) {
+            throw new Error("Unsupported or malformed POKIE WASM session state.");
+        }
+        if (state.rngState !== undefined) {
+            if (host.restoreState === undefined) throw new Error("This POKIE WASM host cannot restore the serialized RNG continuation.");
+            host.restoreState(state.rngState);
+        }
+        return JSON.parse(JSON.stringify(state)) as PokieWasmSessionState;
+    };
+    const playRound = (state: PokieWasmSessionState, command: Record<string, unknown> = {}): {readonly round: PokieWasmRound; readonly state: PokieWasmSessionState} => {
+        currentDraws = [];
+        const stake = resolveStake(command, canonical.model);
+        const creditsBefore = state.credits;
+        if (creditsBefore < stake) throw new Error(`POKIE WASM session has insufficient credits for stake ${stake}.`);
+        const packedStops = play();
+        if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
+        const stops = unpackStops(packedStops, canonical.model);
+        const screen = buildScreen(stops, canonical.model);
+        const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
+        const payout = winMultiplier * stake;
+        const rngState = host.serializeState?.();
+        const next = {
+            schemaVersion: "pokie.state.v1" as const,
+            seed: state.seed,
+            draws: [...state.draws, ...currentDraws],
+            sequence: state.sequence + 1,
+            credits: creditsBefore - stake + payout,
+            ...(rngState === undefined ? {} : {rngState: cloneHostState(rngState)}),
+        };
+        return {
+            state: next,
+            round: {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout, creditsBefore, credits: next.credits, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>},
+        };
+    };
+    const session = (initialState: PokieWasmSessionState): PokieWasmRuntimeSession => {
+        let state = initialState;
         let sessionDisposed = false;
         return {
             play: (command: Record<string, unknown> = {}) => Promise.resolve().then(() => {
                 if (disposed || sessionDisposed) throw new Error("The WASM runtime session has been disposed.");
-                currentDraws = [];
-                const stake = resolveStake(command, canonical.model);
-                const creditsBefore = state.credits;
-                if (creditsBefore < stake) throw new Error(`POKIE WASM session has insufficient credits for stake ${stake}.`);
-                const packedStops = play();
-                if (typeof packedStops !== "number" || currentDraws.length === 0) throw new Error("POKIE WASM play export must return packed reel stops after requesting host RNG draws.");
-                const stops = unpackStops(packedStops, canonical.model);
-                const screen = buildScreen(stops, canonical.model);
-                const winMultiplier = evaluateWinMultiplier(screen, canonical.model);
-                const payout = winMultiplier * stake;
-                const rngState = host.serializeState?.();
-                const next = {
-                    schemaVersion: "pokie.state.v1" as const,
-                    seed: state.seed,
-                    draws: [...state.draws, ...currentDraws],
-                    sequence: state.sequence + 1,
-                    credits: creditsBefore - stake + payout,
-                    ...(rngState === undefined ? {} : {rngState: cloneHostState(rngState)}),
-                };
-                state = next;
-                return {sequence: next.sequence, draw: currentDraws[0], stops, screen, winMultiplier, stake, payout, creditsBefore, credits: next.credits, command: JSON.parse(JSON.stringify(command)) as Record<string, unknown>} satisfies PokieWasmRound;
+                requireDeclaredOperation(POKIE_WASM_RUNTIME_PLAY_DECLARATION, "play a session round");
+                const result = playRound(state, command);
+                state = result.state;
+                return result.round;
             }),
             serialize: () => {
-                if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION)) {
-                    throw new Error(`POKIE WASM artifact does not declare ${POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION}; session serialization is unavailable.`);
-                }
+                if (disposed || sessionDisposed) throw new Error("The WASM runtime session has been disposed.");
+                requireDeclaredOperation(POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION, "serialize a session");
                 return JSON.parse(JSON.stringify(state)) as PokieWasmSessionState;
             },
             dispose: () => {
@@ -113,39 +130,45 @@ export async function instantiatePokieWasm(bytes: BufferSource, manifest: PokieW
             return session({schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits});
         },
         restoreSession: (state) => {
-            if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION)) {
-                throw new Error(`POKIE WASM artifact does not declare ${POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION}; session restoration is unavailable.`);
-            }
-            if (state.schemaVersion !== "pokie.state.v1" || typeof state.seed !== "string" || !Array.isArray(state.draws) ||
-                !state.draws.every((draw) => typeof draw === "number" && Number.isFinite(draw) && draw >= 0 && draw < 1) ||
-                !Number.isSafeInteger(state.sequence) || state.sequence < 0 || !Number.isFinite(state.credits) || state.credits < 0 || !isHostState(state.rngState)) {
-                throw new Error("Unsupported or malformed POKIE WASM session state.");
-            }
-            if (state.rngState !== undefined) {
-                if (host.restoreState === undefined) throw new Error("This POKIE WASM host cannot restore the serialized RNG continuation.");
-                host.restoreState(state.rngState);
-            }
-            return session(JSON.parse(JSON.stringify(state)) as PokieWasmSessionState);
+            if (disposed) throw new Error("The WASM runtime has been disposed.");
+            requireDeclaredOperation(POKIE_WASM_RUNTIME_SERIALIZE_DECLARATION, "restore a session");
+            return session(restoreState(state));
         },
-        replay: async (state, commands) => {
-            if (!hasCanonicalWasmOperationDeclaration(manifest, POKIE_WASM_RUNTIME_REPLAY_DECLARATION)) {
-                throw new Error(`POKIE WASM artifact does not declare ${POKIE_WASM_RUNTIME_REPLAY_DECLARATION}; replay is unavailable.`);
-            }
-            const restored = runtime.restoreSession(state);
+        replay: (state, commands) => Promise.resolve().then(() => {
+            if (disposed) throw new Error("The WASM runtime has been disposed.");
+            requireDeclaredOperation(POKIE_WASM_RUNTIME_REPLAY_DECLARATION, "replay session rounds");
+            let replayState = restoreState(state);
             const results: PokieWasmRound[] = [];
-            for (const command of commands) results.push(await restored.play(command));
-            restored.dispose();
-            return results;
-        },
+            let stateBeforeFinal: PokieWasmSessionState | undefined;
+            for (const command of commands) {
+                if (results.length === commands.length - 1) stateBeforeFinal = replayState;
+                const result = playRound(replayState, command);
+                replayState = result.state;
+                results.push(result.round);
+            }
+            return Object.defineProperties(results, {
+                stateBeforeFinal: {value: stateBeforeFinal === undefined ? undefined : cloneSessionState(stateBeforeFinal), enumerable: false},
+                stateAfter: {value: cloneSessionState(replayState), enumerable: false},
+            }) as unknown as PokieWasmReplayResult;
+        }),
         dispose: () => {
             disposed = true;
         },
     };
+    function requireDeclaredOperation(declaration: string, action: string): void {
+        if (!hasCanonicalWasmOperationDeclaration(manifest, declaration)) {
+            throw new Error(`POKIE WASM artifact does not declare ${declaration}; it cannot ${action}.`);
+        }
+    }
     return runtime;
 }
 
 function cloneHostState(state: PokieWasmHostState): PokieWasmHostState {
     return JSON.parse(JSON.stringify(state)) as PokieWasmHostState;
+}
+
+function cloneSessionState(state: PokieWasmSessionState): PokieWasmSessionState {
+    return JSON.parse(JSON.stringify(state)) as PokieWasmSessionState;
 }
 
 function isHostState(value: unknown): value is PokieWasmHostState | undefined {

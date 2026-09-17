@@ -114,19 +114,42 @@ describe("Pokie WASM runtime API", () => {
         await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5})).rejects.toThrow(error);
     });
 
-    it("gates serialization and replay on their individual declarations", async () => {
+    it("executes only the play declaration and rejects sibling operations before drawing", async () => {
         const fixture = createCanonicalWasmFixture({capabilities: ["runtime.play"]});
-        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5});
+        const nextRandom = jest.fn(() => 0.5);
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom});
         const session = runtime.createSession("play-only");
         await expect(session.play()).resolves.toMatchObject({sequence: 1});
         expect(() => session.serialize()).toThrow(/does not declare runtime\.serialize/i);
         await expect(runtime.replay({schemaVersion: "pokie.state.v1", seed: "play-only", draws: [], sequence: 0, credits: 1000}, [])).rejects.toThrow(/does not declare runtime\.replay/i);
+        expect(nextRandom).toHaveBeenCalledTimes(2);
         runtime.dispose();
     });
 
-    it("rejects a canonical artifact which omits runtime.play", async () => {
+    it("executes replay independently without public play or serialization declarations", async () => {
+        const fixture = createCanonicalWasmFixture({capabilities: ["runtime.replay"]});
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("replay-only"));
+        const session = runtime.createSession("replay-only");
+        await expect(session.play()).rejects.toThrow(/does not declare runtime\.play/i);
+        expect(() => session.serialize()).toThrow(/does not declare runtime\.serialize/i);
+        expect(() => runtime.restoreSession({schemaVersion: "pokie.state.v1", seed: "replay-only", draws: [], sequence: 0, credits: 1000})).toThrow(/does not declare runtime\.serialize/i);
+        await expect(runtime.replay({schemaVersion: "pokie.state.v1", seed: "replay-only", draws: [], sequence: 0, credits: 1000}, [{bet: 1}]))
+            .resolves.toMatchObject([{sequence: 1, command: {bet: 1}}]);
+        runtime.dispose();
+    });
+
+    it("executes only serialization and restoration when runtime.play is omitted", async () => {
         const fixture = createCanonicalWasmFixture({capabilities: ["runtime.serialize"]});
-        await expect(instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5})).rejects.toThrow(/does not declare runtime\.play/i);
+        const nextRandom = jest.fn(() => 0.5);
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom});
+        const state = {schemaVersion: "pokie.state.v1" as const, seed: "serialize-only", draws: [], sequence: 0, credits: 1000};
+        const session = runtime.createSession("serialize-only");
+        expect(session.serialize()).toEqual(state);
+        expect(runtime.restoreSession(state).serialize()).toEqual(state);
+        await expect(session.play()).rejects.toThrow(/does not declare runtime\.play/i);
+        await expect(runtime.replay(state, [])).rejects.toThrow(/does not declare runtime\.replay/i);
+        expect(nextRandom).not.toHaveBeenCalled();
+        runtime.dispose();
     });
 
     it("fails deterministically for malformed state and invalid host draws", async () => {

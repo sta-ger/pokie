@@ -8,6 +8,7 @@ import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.j
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const blueprint = {
     manifest: {id: "studio-wasm", name: "Studio WASM", version: "1.0.0"},
@@ -112,6 +113,27 @@ describe("canonical WASM Studio workflow", () => {
         expect(replay.getActiveCount()).toBe(0);
         await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "cancelled"});
         expect(replay.getActiveCount()).toBe(0);
+    });
+
+    it("replays a replay-only canonical WASM artifact without enabling session play or serialization", async () => {
+        const fixture = createCanonicalWasmFixture({id: "studio-replay-only", capabilities: ["runtime.replay"]});
+        fs.writeFileSync(artifactPath, fixture.bytes);
+        fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        await expect(loadProjectDashboardContext(artifactPath)).resolves.toMatchObject({
+            status: "loaded",
+            capabilities: ["wasm.manifest.read", "wasm.canonical", "wasm.runtime.replay"],
+        });
+
+        const replay = new StudioReplayExecutionService(undefined, undefined, 1);
+        const started = replay.start(artifactPath, {round: 2, seed: "studio-replay-only"});
+        expect(started.status).toBe("created");
+        if (started.status !== "created") throw new Error("expected Studio replay job");
+        await expect(waitForTerminal(() => replay.getStatus(artifactPath, started.job.id))).resolves.toMatchObject({status: "completed"});
+        const download = replay.getDownload(artifactPath, started.job.id);
+        expect(download).toMatchObject({status: "ok", descriptor: {game: {id: "studio-replay-only"}}});
+        if (download.status !== "ok") throw new Error("expected replay descriptor");
+        expect(download.descriptor).not.toHaveProperty("stateBefore");
+        expect(download.descriptor).not.toHaveProperty("stateAfter");
     });
 
     it("drops an active portable session when artifact integrity is stale", async () => {

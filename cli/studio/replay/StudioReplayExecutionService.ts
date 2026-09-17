@@ -6,6 +6,7 @@ import {
     determineStakeAmount,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
+    hasDeclaredCanonicalWasmOperation,
     hasDeclaredCanonicalWasmArtifact,
     isWasmComponentFile,
     loadPokieWasmFileRuntime,
@@ -132,6 +133,9 @@ export class StudioReplayExecutionService {
         // can only fail after attempting runtime preparation.
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "replay a game round")};
+        }
+        if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.replay")) {
+            return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
         }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
@@ -402,7 +406,6 @@ export class StudioReplayExecutionService {
             return;
         }
         let runtime;
-        let disposeSession: (() => void) | undefined;
         try {
             runtime = await this.loadWasmRuntime(record.projectRoot, new SeededPokieWasmHost(record.seed));
             if (record.abortController.signal.aborted) {
@@ -412,26 +415,30 @@ export class StudioReplayExecutionService {
             record.status = "running";
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
-            const session = runtime.createSession(record.seed);
-            disposeSession = () => session.dispose();
+            const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
+            let state = {schemaVersion: "pokie.state.v1" as const, seed: record.seed, draws: [], sequence: 0, credits: 1000};
             let totalBet = 0;
             let totalWin = 0;
             let finalRound;
             let stateBefore: Record<string, unknown> | undefined;
-            for (let index = 0; index < record.round; index++) {
+            for (let index = 0; index < record.round; index += this.chunkSize) {
                 if (record.abortController.signal.aborted) {
                     this.cancelRecord(record);
                     return;
                 }
-                if (index === record.round - 1) stateBefore = session.serialize() as unknown as Record<string, unknown>;
-                finalRound = await session.play();
-                totalBet += finalRound.stake;
-                totalWin += finalRound.payout;
-                const completedRounds = index + 1;
+                const commands = Array.from({length: Math.min(this.chunkSize, record.round - index)}, () => ({}));
+                const replay = await runtime.replay(state, commands);
+                state = replay.stateAfter;
+                finalRound = replay[replay.length - 1];
+                if (index + commands.length === record.round && replay.stateBeforeFinal !== undefined) {
+                    stateBefore = replay.stateBeforeFinal as unknown as Record<string, unknown>;
+                }
+                totalBet += replay.reduce((total, round) => total + round.stake, 0);
+                totalWin += replay.reduce((total, round) => total + round.payout, 0);
+                const completedRounds = index + commands.length;
                 this.updateReplayProgress(record, completedRounds);
                 if (completedRounds < record.round && completedRounds % this.chunkSize === 0) await this.yieldToEventLoop();
             }
-            const stateAfter = session.serialize() as unknown as Record<string, unknown>;
             record.status = "completed";
             record.descriptor = {
                 sessionId: this.createId(),
@@ -440,14 +447,14 @@ export class StudioReplayExecutionService {
                 round: record.round,
                 totalBet,
                 totalWin,
-                credits: finalRound?.credits ?? session.serialize().credits,
+                credits: finalRound?.credits ?? state.credits,
                 // PokieWasmRound.screen is reel-major, the same DTO shape ReplayDescriptor
                 // receives from ordinary sessions. Preserve each reel instead of transposing it.
                 screen: finalRound === undefined ? null : finalRound.screen.map((reel) => [...reel]),
                 timestamp: record.startedAt,
                 durationMs: record.durationMs,
-                ...(stateBefore === undefined ? {} : {stateBefore}),
-                stateAfter,
+                ...(canSerialize && stateBefore !== undefined ? {stateBefore} : {}),
+                ...(canSerialize ? {stateAfter: state as unknown as Record<string, unknown>} : {}),
             };
             this.markTerminal(record);
             this.onCompleted(record);
@@ -455,7 +462,6 @@ export class StudioReplayExecutionService {
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
         } finally {
-            disposeSession?.();
             runtime?.dispose();
         }
     }
