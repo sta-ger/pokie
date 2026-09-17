@@ -29,6 +29,7 @@ import {
     BUILD_OPERATION,
     CERTIFICATION_BUILD_OPERATION,
     CERTIFICATION_VALIDATE_OPERATION,
+    computeGameBlueprintHash,
     DEPLOYMENT_TARGETS_OPERATION,
     FAIRNESS_CONFIGURE_OPERATION,
     FAIRNESS_GENERATE_OPERATION,
@@ -557,15 +558,34 @@ export class StudioServer implements StudioServerHandling {
     /** A durable job key must not split when the same source is addressed via a symlink. */
     private canonicalPathIdentity(rawPath: string): string {
         const resolved = path.resolve(rawPath);
-        try {
-            return fs.realpathSync(resolved);
-        } catch {
-            const parent = path.dirname(resolved);
+        const unresolved: string[] = [];
+        let candidate = resolved;
+        // A new Design destination may have several as-yet-uncreated segments
+        // below a symlink. Resolve the deepest existing ancestor so aliases do
+        // not create separate durable job identities before publication.
+        for (;;) {
             try {
-                return path.join(fs.realpathSync(parent), path.basename(resolved));
+                return path.join(fs.realpathSync(candidate), ...unresolved.reverse());
             } catch {
-                return resolved;
+                const parent = path.dirname(candidate);
+                if (parent === candidate) return resolved;
+                unresolved.push(path.basename(candidate));
+                candidate = parent;
             }
+        }
+    }
+
+    private blueprintRequestIdentity(blueprint: unknown): string {
+        return computeGameBlueprintHash(blueprint);
+    }
+
+    private fileContentIdentity(filePath: string): string | undefined {
+        try {
+            return `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
+        } catch {
+            // The executor remains the authority for a missing/unreadable
+            // workbook; this helper only binds readable request content.
+            return undefined;
         }
     }
 
@@ -613,6 +633,8 @@ export class StudioServer implements StudioServerHandling {
             readonly request: Readonly<Record<string, unknown>>;
             readonly conflictKey: string;
             readonly recoveryOnRestart: NonNullable<StudioJobView["recoveryOnRestart"]>;
+            /** Keeps a compatibility route in its own DTO family on exact retries. */
+            readonly reattachedResponse?: (job: StudioJobView) => {readonly statusCode: number; readonly body: unknown};
         },
         executor: (context: StudioJobExecutorContext) => Promise<T>,
         terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal,
@@ -637,6 +659,11 @@ export class StudioServer implements StudioServerHandling {
         );
         if (execution.status === "executed") return {job: execution.job, value: execution.value};
         if (execution.status === "reattached") {
+            const compatibility = input.reattachedResponse?.(execution.job);
+            if (compatibility !== undefined) {
+                this.sendJson(res, compatibility.statusCode, compatibility.body);
+                return undefined;
+            }
             this.sendJson(res, 202, {job: execution.job, reattached: true});
             return undefined;
         }
@@ -1422,7 +1449,10 @@ export class StudioServer implements StudioServerHandling {
         try {
             execution = await this.executeCommonOperation(
                 res,
-                {projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery},
+                {
+                    projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery,
+                    reattachedResponse: (job) => ({statusCode: 409, body: {error: "Project opening is already in progress.", activeJobId: job.id, reattached: true}}),
+                },
                 async ({job, signal}) => {
                     preparation = this.beginRuntimePreparation();
                     const abortPreparation = () => preparation?.controller.abort();
@@ -1467,7 +1497,12 @@ export class StudioServer implements StudioServerHandling {
                         return {status: "cancelled", result: {summary: "Project opening was cancelled before a dashboard was published.", detail: {sourcePath}}, recovery};
                     }
                     if (dashboard.status === "loaded" || dashboard.status === "outcome-source" || dashboard.status === "artifact") {
-                        return {status: "completed", result: {summary: "Project opening and runtime materialization completed.", detail: {sourcePath, projectRoot: dashboard.projectRoot, output: dashboard.projectRoot, provenance: sourcePath}}};
+                        return {status: "completed", result: {
+                            summary: "Project opening and runtime materialization completed.",
+                            outputs: [{path: dashboard.projectRoot, label: "Opened project"}],
+                            provenance: {sourcePath},
+                            detail: {sourcePath, projectRoot: dashboard.projectRoot},
+                        }};
                     }
                     return {status: "failed", error: dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`, recovery};
                 },
@@ -1893,13 +1928,20 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         const sourcePath = this.canonicalPathIdentity(validated.path);
+        const sourceContentHash = this.fileContentIdentity(sourcePath);
         const recovery = {action: "rebuild", reason: "PAR import publication is not resumable after restart. Import the same workbook again."} as const;
         const execution = await this.executeCommonOperation(
-            res, {projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: recovery},
+            res, {
+                projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath, sourceContentHash}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "PAR import is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.blueprintService.importParSheet(sourcePath, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "PAR import cancelled after its safe boundary.", detail: {sourcePath}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "PAR import completed.", detail: {sourcePath, provenance: result.provenance, output: result.path}}};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "PAR import completed.", outputs: [{path: result.path, label: "Imported PAR workbook"}],
+                    provenance: {sourcePath, ...(result.provenance === undefined ? {} : {par: result.provenance})}, detail: {sourcePath},
+                }};
                 return {status: "failed", error: result.error ?? "PAR import did not complete.", recovery};
             },
             (error, cancelled) => cancelled
@@ -1922,13 +1964,20 @@ export class StudioServer implements StudioServerHandling {
 
         const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
         const destinationPath = this.canonicalPathIdentity(validated.path);
+        const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
         const recovery = {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."} as const;
         const execution = await this.executeCommonOperation(
-            res, {projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite}, conflictKey: `design-par-export:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery},
+            res, {
+                projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprintHash}, conflictKey: `design-par-export:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {status: "conflict", path: destinationPath, error: "PAR export is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.blueprintService.exportParSheet(validated.blueprint, destinationPath, validated.overwrite, sourcePath, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "PAR export cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "PAR export completed.", detail: {sourcePath, destinationPath: result.path, output: result.path, provenance: "Studio PAR Apply workbook"}}};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "PAR export completed.", outputs: [{path: result.path, label: "PAR workbook"}],
+                    provenance: {sourcePath, blueprintHash, generator: "Studio PAR Apply workbook"}, detail: {sourcePath, destinationPath: result.path},
+                }};
                 return {status: "failed", error: "error" in result ? result.error : "PAR export did not publish an output.", recovery};
             },
             (error, cancelled) => cancelled
@@ -1958,13 +2007,20 @@ export class StudioServer implements StudioServerHandling {
 
         const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
         const destinationPath = this.canonicalPathIdentity(validated.outDir);
+        const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
         const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
         const execution = await this.executeCommonOperation(
-            res, {projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath}, conflictKey: `design-build:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery},
+            res, {
+                projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprintHash}, conflictKey: `design-build:${sourcePath}:${destinationPath}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {status: "error", error: "Design build is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.blueprintService.build(validated.blueprint, destinationPath, sourcePath, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Design build cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Design package build completed.", detail: {sourcePath, destinationPath: result.projectRoot, output: result.projectRoot, provenance: sourcePath}}};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "Design package build completed.", outputs: [{path: result.projectRoot, label: "Built Design package"}],
+                    provenance: {sourcePath, blueprintHash}, detail: {sourcePath, destinationPath: result.projectRoot},
+                }};
                 return {status: "failed", error: "error" in result ? result.error : "Design build did not publish an output.", recovery};
             },
             (error, cancelled) => cancelled
@@ -2360,16 +2416,23 @@ export class StudioServer implements StudioServerHandling {
         const recovery = {action: "rebuild", reason: "Deployment cannot safely resume after Studio restarts. Rebuild and publish again from the captured request."} as const;
         const execution = await this.executeCommonOperation(
             res,
-            {projectId: projectRoot, operation: "deployment", request: validated as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment:${projectRoot}:${validated.targetId}:${JSON.stringify(validated.modes)}`, recoveryOnRestart: recovery},
+            {
+                projectId: projectRoot, operation: "deployment", request: validated as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment:${projectRoot}:${validated.targetId}:${JSON.stringify(validated.modes)}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Deployment is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.deploymentService.run(projectRoot, validated, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Deployment cancelled after its last settled delivery boundary.", detail: {targetId: validated.targetId, publish: validated.publish}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Deployment completed.", detail: {targetId: validated.targetId, publish: validated.publish, output: result.view.delivery, provenance: result.view.plan.source}}};
+                if (result.status === "cancelled") return {status: "cancelled", result: this.deploymentCancellationResult(validated, result), recovery};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "Deployment completed.", outputs: [{label: "Deployment delivery"}],
+                    provenance: {source: result.view.plan.source, targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, delivery: result.view.delivery},
+                }};
                 const error = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
                 return {status: "failed", error, recovery};
             },
             (error, cancelled) => cancelled
-                ? {status: "cancelled", result: {summary: "Deployment cancelled after its last settled delivery boundary.", detail: {targetId: validated.targetId, publish: validated.publish}}, recovery}
+                ? {status: "cancelled", result: {summary: "Deployment cancelled with outcome-unknown delivery state.", provenance: {targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, deliveryOutcome: "outcome-unknown"}}, recovery}
                 : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
             {req, res},
         );
@@ -2382,8 +2445,31 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 200, result.view);
             return;
         }
+        if (result.status === "cancelled") {
+            // Keep the deployment endpoint's established planner DTO shape;
+            // the durable job carries the more precise delivery outcome.
+            this.sendJson(res, 200, this.deploymentPlannerTerminalView(
+                "load-error",
+                `Deployment cancelled with ${result.deliveryOutcome} delivery state.`,
+                result.plan,
+                validated,
+            ));
+            return;
+        }
         const terminalError = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
         this.sendJson(res, 200, this.deploymentPlannerTerminalView(result.status, terminalError, result.plan, validated));
+    }
+
+    private deploymentCancellationResult(
+        request: {readonly targetId: string; readonly publish: boolean},
+        result: Extract<Awaited<ReturnType<StudioDeploymentService["run"]>>, {status: "cancelled"}>,
+    ): NonNullable<StudioJobView["result"]> {
+        return {
+            summary: `Deployment cancelled with ${result.deliveryOutcome} delivery state.`,
+            outputs: result.view === undefined ? [] : [{label: "Deployment delivery"}],
+            provenance: {targetId: request.targetId, source: result.plan.source},
+            detail: {targetId: request.targetId, publish: request.publish, deliveryOutcome: result.deliveryOutcome, ...(result.view === undefined ? {} : {delivery: result.view.delivery})},
+        };
     }
 
     private deploymentPlannerTerminalView(
@@ -2785,11 +2871,12 @@ export class StudioServer implements StudioServerHandling {
                 // another validator can allocate its own domain work.
                 conflictKey: `certification-validate:${projectRoot}`,
                 recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Certification validation is already in progress.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", detail: {bundleDir: validated.bundleDir, output: validated.bundleDir, provenance: projectRoot}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", outputs: [{path: validated.bundleDir, label: "Validated source bundle"}], provenance: {projectRoot, bundleDir: validated.bundleDir}}};
                 return {status: "failed", error: result.error, recovery: {action: "retry", reason: "Correct the source bundle and retry validation."}};
             },
             (error, cancelled) => cancelled
@@ -2824,11 +2911,12 @@ export class StudioServer implements StudioServerHandling {
                 projectId: projectRoot, operation: "certification-build", request: validated as unknown as Readonly<Record<string, unknown>>,
                 conflictKey: `certification-build:${projectRoot}:${validated.bundleDir}:${validated.outDir}:${JSON.stringify(validated.modes)}`,
                 recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Certification evidence build is already in progress.", activeJobId: job.id, reattached: true}}),
             },
             ({signal}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", detail: {bundleDir: validated.bundleDir, outDir: validated.outDir, output: result.files, provenance: result.manifest}}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", outputs: result.files.map((file) => ({path: file, label: "Certification evidence"})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest}, detail: {outDir: validated.outDir}}};
                 return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
             },
             (error, cancelled) => cancelled
@@ -3489,11 +3577,14 @@ export class StudioServer implements StudioServerHandling {
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
-            res, {projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery},
+            res, {
+                projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Scenario search is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.playService.findAnyWin(sessionId, {signal}),
             (result, cancelled) => {
-                if (cancelled) return {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win"}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", detail: {sessionId, scenario: "any-win", output: result.session, provenance: result.session.game}}};
+                if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "any-win", result.status === "cancelled" ? result.session : undefined), recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "any-win", session: result.session}}};
                 return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
             },
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
@@ -3525,11 +3616,14 @@ export class StudioServer implements StudioServerHandling {
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
-            res, {projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery},
+            res, {
+                projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Scenario search is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {signal}),
             (result, cancelled) => {
-                if (cancelled) return {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, output: result.session, provenance: result.session.game}}};
+                if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "symbol-win", result.status === "cancelled" ? result.session : undefined, validated.symbolId), recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, session: result.session}}};
                 return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
             },
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
@@ -3553,11 +3647,14 @@ export class StudioServer implements StudioServerHandling {
         const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
         const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
         const execution = await this.executeCommonOperation(
-            res, {projectId: projectRoot, operation: "play-find-free-games", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery},
+            res, {
+                projectId: projectRoot, operation: "play-find-free-games", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                reattachedResponse: (job) => ({statusCode: 409, body: {error: "Scenario search is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
             ({signal}) => this.playService.findFreeGames(sessionId, {signal}),
             (result, cancelled) => {
-                if (cancelled) return {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games"}}, recovery};
-                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", detail: {sessionId, scenario: "free-games", output: result.session, provenance: result.session.game}}};
+                if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "free-games", result.status === "cancelled" ? result.session : undefined), recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "free-games", session: result.session}}};
                 return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
             },
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
@@ -3580,7 +3677,28 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: result.error});
             return;
         }
+        if (result.status === "cancelled") {
+            // The compatibility route has historically exposed only the normal
+            // Play error DTO for a non-round terminal. The common job retains
+            // the optional settled session/round for durable consumers.
+            this.sendJson(res, 200, {status: "error", error: "Scenario search was cancelled after its last settled round."});
+            return;
+        }
         this.sendJson(res, 200, {status: "error", error: result.error});
+    }
+
+    private playCancellationResult(
+        sessionId: string,
+        scenario: "any-win" | "symbol-win" | "free-games",
+        session?: StudioRuntimeSessionView,
+        symbolId?: string,
+    ): NonNullable<StudioJobView["result"]> {
+        return {
+            summary: "Scenario search stopped after its last settled round.",
+            outputs: session === undefined ? [] : [{label: "Last settled Play round"}],
+            provenance: session === undefined ? {sessionId} : {sessionId, game: session.game},
+            detail: {sessionId, scenario, ...(symbolId === undefined ? {} : {symbolId}), ...(session === undefined ? {} : {session})},
+        };
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

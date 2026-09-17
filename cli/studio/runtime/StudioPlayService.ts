@@ -116,6 +116,8 @@ const WASM_SCENARIO_CAPABILITIES = {
 
 export type StudioPlaySpinResult =
     | {status: "ok"; session: StudioRuntimeSessionView}
+    /** A scenario search stopped only between real settled rounds. */
+    | {status: "cancelled"; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
     | {status: "blocked"; error: string}
     | {status: "error"; error: string};
@@ -685,9 +687,10 @@ export class StudioPlayService {
         matchesArtifact: (artifact: RoundArtifactJson) => boolean,
         signal?: AbortSignal,
     ): Promise<StudioPlaySpinResult> {
+        let lastSettledSession: StudioRuntimeSessionView | undefined;
         for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
             if (signal?.aborted) {
-                return {status: "error", error: "Scenario search was cancelled after its last settled round."};
+                return {status: "cancelled", ...(lastSettledSession === undefined ? {} : {session: lastSettledSession})};
             }
             const active = this.active;
             if (active === undefined || sessionId !== this.currentSessionId) {
@@ -696,11 +699,13 @@ export class StudioPlayService {
 
             const round = await this.spin(sessionId, operation);
             if (signal?.aborted) {
-                return {status: "error", error: "Scenario search was cancelled after its last settled round."};
+                const settledSession = round.status === "ok" ? round.session : lastSettledSession;
+                return {status: "cancelled", ...(settledSession === undefined ? {} : {session: settledSession})};
             }
             if (round.status !== "ok") {
                 return round;
             }
+            lastSettledSession = round.session;
 
             let matched: boolean;
             if (active.kind === "runtime") {

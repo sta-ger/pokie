@@ -76,8 +76,8 @@ describe("StudioJobService executor bridge routes", () => {
         await started;
 
         await expect(post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "bundle"})).resolves.toMatchObject({
-            status: 202,
-            body: {reattached: true, job: {id: "bridge-job", operation: "certification-validate", status: "running"}},
+            status: 409,
+            body: {error: "Certification validation is already in progress.", activeJobId: "bridge-job", reattached: true},
         });
         await expect(post(`${baseUrl}/api/project/certification/validate-source`, {bundleDir: "other-bundle"})).resolves.toMatchObject({
             status: 409,

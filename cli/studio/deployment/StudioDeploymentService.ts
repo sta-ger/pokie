@@ -32,6 +32,13 @@ const NO_SERVER_SELECTED_MODES: StudioDeploymentModeResolving = () => Promise.re
 
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
+    | {
+        readonly status: "cancelled";
+        /** Whether delivery is known to have happened when cancellation raced the SDK. */
+        readonly deliveryOutcome: "delivered" | "not-delivered" | "outcome-unknown";
+        readonly plan: import("pokie").ArtifactConversionPlan;
+        readonly view?: StudioDeploymentRunView;
+    }
     | {readonly status: "target-not-found"; readonly plan: import("pokie").ArtifactConversionPlan}
     | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan}
     | {readonly status: "load-error"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan};
@@ -193,7 +200,6 @@ export class StudioDeploymentService {
         // cancellation boundary here nevertheless: cancellation is observed
         // before it can begin delivery and again after the SDK has settled, so
         // Studio never reports a cancelled request as a successful deployment.
-        if (signal?.aborted) throw new Error("Deployment was cancelled before delivery started.");
         // Deployment owns SDK-specific delivery, but the library it deploys is a
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
@@ -206,6 +212,7 @@ export class StudioDeploymentService {
             : undefined;
         const selectedModes = request.modes.length === 0 ? serverSelectedModes! : request.modes;
         const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes);
+        if (signal?.aborted) return {status: "cancelled", deliveryOutcome: "not-delivered", plan};
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
@@ -213,6 +220,7 @@ export class StudioDeploymentService {
         }
 
         let buildModeIds: readonly string[] | undefined;
+        let publicationStarted = false;
         try {
             buildModeIds = await this.resolveBuildModeIds(projectRoot);
         } catch (error) {
@@ -315,10 +323,21 @@ export class StudioDeploymentService {
                     // variant and never mutates the registered target.
                     const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
                     if (read.status !== "ok") throw new Error(read.error);
+                    publicationStarted = true;
                     return this.externalDeploymentService.deploy(runnableTarget, read.modes);
                 },
             });
-            if (signal?.aborted) throw new Error("Deployment was cancelled after its last settled delivery boundary.");
+            if (signal?.aborted) {
+                const view = execution.published
+                    ? toStudioDeploymentRunView(execution.publication!, target.id, request.publish, plan)
+                    : undefined;
+                return {
+                    status: "cancelled",
+                    deliveryOutcome: view?.delivery?.delivered === true ? "delivered" : "not-delivered",
+                    plan,
+                    ...(view === undefined ? {} : {view}),
+                };
+            }
             if (!execution.published) {
                 return {
                     status: "load-error",
@@ -333,6 +352,11 @@ export class StudioDeploymentService {
                 },
             };
         } catch (error) {
+            if (signal?.aborted) {
+                // The adapter was already entered but did not settle a result
+                // Studio can inspect. Do not claim either delivery outcome.
+                return {status: "cancelled", deliveryOutcome: publicationStarted ? "outcome-unknown" : "not-delivered", plan};
+            }
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
     }
