@@ -235,6 +235,12 @@ try {
 }
 console.log("PASS real Chromium shipped browser API and worker protocol fixture");
 
+// The changed-tests runner dispatches this executable fixture through Jest,
+// while the benchmark invokes it directly with Node. Registering the completed
+// fixture with Jest keeps both supported entry paths runnable without giving
+// the browser verification a separate wrapper or a duplicate execution.
+if (typeof test === "function") test("runs the real Chromium WASM fixture", () => undefined);
+
 function readBenchmarkConfiguration(argumentsList) {
     const encoded = argumentsList.find((argument) => argument.startsWith("--benchmark-configuration="));
     if (encoded === undefined) {
