@@ -135,7 +135,7 @@ async function run() {
     profile = await mkdtemp(resolve(root, "node_modules/.cache/pokie-tmp/studio-durable-browser-"));
     const baseUrl = `http://127.0.0.1:${studioPort}`;
     const environment = {...process.env, HOME: profile, XDG_DATA_HOME: resolve(profile, "data")};
-    studio = spawn(process.execPath, ["dist/cli/pokie.js", "studio", "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, env: environment, stdio: "ignore"});
+    studio = spawn(process.execPath, ["dist/cli/pokie.js", "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, env: environment, stdio: "ignore"});
     await waitFor(async () => {
         try { return (await fetch(`${baseUrl}/api/context`)).ok; } catch { return false; }
     }, "Studio HTTP server");
@@ -146,6 +146,12 @@ async function run() {
     cdp = await connect(devtoolsPort);
     const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, awaitPromise: true, returnByValue: true})).result.value;
     const text = () => evaluate("document.body.innerText");
+    // Active jobs render JobProgressCard, whose title is the operation (rather
+    // than the terminal card's `${operation}: ${status}` title).  A rendered
+    // Cancel control is the stable user-visible distinction between those two
+    // cards and proves this is an attached, active card rather than an old
+    // terminal result with a similarly named operation.
+    const hasActiveJobCard = (operation) => evaluate(`(() => [...document.querySelectorAll('[role="alert"]')].some((card) => card.textContent?.includes(${JSON.stringify(operation)}) && [...card.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Cancel')))()`);
     const click = async (label) => {
         const point = await evaluate(`(() => { const node = [...document.querySelectorAll('button,a,[role=button]')].find((item) => item.textContent?.trim() === ${JSON.stringify(label)} && !item.disabled); if (!node) return undefined; const rect = node.getBoundingClientRect(); return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}; })()`);
         assert.notEqual(point, undefined, `missing rendered control ${label}`);
@@ -179,13 +185,13 @@ async function run() {
         return job.status === "running";
     }, "active durable simulation");
     await cdp.send("Page.reload", {ignoreCache: true});
-    await waitFor(async () => (await text()).includes("simulation: running"), "active job reattachment after reload");
+    await waitFor(async () => await hasActiveJobCard("simulation"), "active job reattachment after reload");
     const conflict = await post(baseUrl, "/api/project/simulations", {rounds: 1_000_001, seed: "durable-browser-conflict"});
     assert.equal(conflict.status, 409);
     assert.equal(conflict.body.activeJobId, active.body.id);
     const unconfirmedClose = await post(baseUrl, "/api/projects/close", {});
     assert.equal(unconfirmedClose.status, 409);
-    assert.deepEqual(unconfirmedClose.body.operations, ["simulation"]);
+    assert.deepEqual([...unconfirmedClose.body.operations], ["simulation"]);
     const cancelling = await post(baseUrl, `/api/project/jobs/${active.body.id}/cancel`, {});
     assert.equal(cancelling.status, 202);
     await waitFor(async () => {
@@ -227,7 +233,7 @@ async function run() {
     const staleResponse = await staleResponsePaused;
     const unconfirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot});
     assert.equal(unconfirmedSwitch.status, 409);
-    assert.deepEqual(unconfirmedSwitch.body.operations, ["simulation"]);
+    assert.deepEqual([...unconfirmedSwitch.body.operations], ["simulation"]);
     const confirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot, confirmActiveJobs: true});
     assert.equal(confirmedSwitch.status, 200);
     await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
@@ -236,9 +242,15 @@ async function run() {
     assert(staleList.jobs.some((job) => job.id === switchJob.body.id && job.projectId === projectRoot), "expected the in-flight list to belong to project A");
     const switchedContext = await (await fetch(`${baseUrl}/api/project/context`)).json();
     assert.equal(switchedContext.projectRoot, secondProjectRoot);
+    // The browser was still on its project-A route while the direct HTTP
+    // setup changed Studio to B. Navigate it to the scoped B route before
+    // reloading: a scoped URL deliberately restores its named project on
+    // reload, whereas reloading A's URL would correctly reopen A.
+    await cdp.send("Page.navigate", {url: `${baseUrl}/#/project/${encodeURIComponent(secondProjectRoot)}/overview`});
+    await waitFor(async () => (await text()).includes("Overview"), "second project dashboard route");
     await cdp.send("Page.reload", {ignoreCache: true});
     await waitFor(async () => (await text()).includes("Overview"), "second project dashboard after switch");
-    assert(!(await text()).includes("simulation: running"), "a stale project-A list response leaked into the project-B dashboard");
+    assert(!(await hasActiveJobCard("simulation")), "a stale project-A list response leaked into the project-B dashboard");
 
     // The exact token is server-authored and is carried into the start request.
     // Cancellation then leaves the validated checkpoint on disk; it is the
@@ -276,7 +288,7 @@ async function run() {
         return job.status === "running";
     }, "non-resumable job before restart");
     await terminate(studio);
-    studio = spawn(process.execPath, ["dist/cli/pokie.js", "studio", "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, env: environment, stdio: "ignore"});
+    studio = spawn(process.execPath, ["dist/cli/pokie.js", "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, env: environment, stdio: "ignore"});
     await waitFor(async () => {
         try { return (await fetch(`${baseUrl}/api/context`)).ok; } catch { return false; }
     }, "restarted Studio HTTP server");
