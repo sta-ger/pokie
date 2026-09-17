@@ -39,4 +39,18 @@ describe("JobResultCard", () => {
         fireEvent.click(screen.getByRole("button", {name: label}));
         expect(recover).toHaveBeenCalledWith(job);
     });
+
+    it("keeps operation-specific terminal detail and the immutable retry request inspectable", () => {
+        render(<MantineProvider><JobResultCard job={{
+            id: "certification-job", projectId: "/project", operation: "certification-build", request: {bundleDir: "/bundle", outDir: "/evidence", modes: [{modeName: "base", seed: "s", sampleCount: 10}]},
+            conflictKey: "certification", status: "cancelled", createdAt: 1,
+            result: {summary: "Cancelled after cleanup", detail: {cleanup: "staging removed", completedSamples: 32}},
+            recovery: {action: "rebuild", reason: "Rebuild from the retained source and destination."},
+        }} /></MantineProvider>);
+
+        fireEvent.click(screen.getByText("Inspect operation result"));
+        fireEvent.click(screen.getByText("Inspect retained request"));
+        expect(screen.getByText(/staging removed/)).toBeInTheDocument();
+        expect(screen.getByText(/\/bundle/)).toBeInTheDocument();
+    });
 });

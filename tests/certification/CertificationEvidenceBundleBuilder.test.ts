@@ -178,6 +178,27 @@ describe("CertificationEvidenceBundleBuilder", () => {
         expect(siblingLeftovers(certDir)).toEqual([]);
     });
 
+    it("yields within a large single mode so cancellation stops sampling and cleans staging", async () => {
+        await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
+        const controller = new AbortController();
+        const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION);
+        let sampled = 0;
+
+        await expect(builder.buildFromBundle(bundleDir, [{modeName: "base", seed: "cert-seed-1", sampleCount: 512}], certDir, {
+            signal: controller.signal,
+            onSample: (completed) => {
+                sampled = completed;
+                // This timer can only run if the sampling loop gives the event loop a turn.
+                if (completed === 32) setTimeout(() => controller.abort(), 0);
+            },
+        })).rejects.toThrow(CertificationEvidenceBundleBuildCancelledError);
+
+        expect(sampled).toBeGreaterThanOrEqual(32);
+        expect(sampled).toBeLessThan(512);
+        expect(fs.existsSync(certDir)).toBe(false);
+        expect(siblingLeftovers(certDir)).toEqual([]);
+    });
+
     it("rejects an empty modes array without writing anything", async () => {
         await buildSourceOutcomeLibraryBundle(bundleDir, ["base"]);
         const builder = new CertificationEvidenceBundleBuilder(CERTIFICATION_TEST_POKIE_VERSION);

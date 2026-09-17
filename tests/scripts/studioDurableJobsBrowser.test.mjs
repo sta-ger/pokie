@@ -219,37 +219,30 @@ async function run() {
     assert.equal(typeof secondProjectRoot, "string");
     assert.notEqual(resolve(secondProjectRoot), resolve(projectRoot));
 
-    // Hold an actual Chromium list response at the network boundary while the
-    // server transitions A -> B.  This is deliberately not a Node-side fetch:
-    // the browser has the stale project-A payload in flight, then receives it
-    // only after B is current.  The client reload below must render B's fresh
-    // discovery rather than that retained A response.
+    // Hold the mounted useProjectJobs discovery response while the server
+    // transitions A -> B.  Reloading first causes the hook itself (not a
+    // standalone window.fetch) to issue its normal /api/project/jobs request.
+    // There is deliberately no reload after releasing this response: React's
+    // request-generation guard must reject it in the live switched client.
     await cdp.send("Fetch.enable", {patterns: [{urlPattern: "*://*/api/project/jobs", requestStage: "Response"}]});
     const staleResponsePaused = cdp.waitForEvent("Fetch.requestPaused");
-    await cdp.send("Runtime.evaluate", {
-        expression: "window.__pokieDurableStaleList = fetch('/api/project/jobs', {cache: 'no-store'}).then((response) => response.json());",
-        awaitPromise: false,
-    });
+    await cdp.send("Page.reload", {ignoreCache: true});
     const staleResponse = await staleResponsePaused;
     const unconfirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot});
     assert.equal(unconfirmedSwitch.status, 409);
     assert.deepEqual([...unconfirmedSwitch.body.operations], ["simulation"]);
     const confirmedSwitch = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot, confirmActiveJobs: true});
     assert.equal(confirmedSwitch.status, 200);
-    await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
-    await cdp.send("Fetch.disable");
-    const staleList = await evaluate("window.__pokieDurableStaleList");
-    assert(staleList.jobs.some((job) => job.id === switchJob.body.id && job.projectId === projectRoot), "expected the in-flight list to belong to project A");
+    assert(staleResponse.params.request.url.endsWith("/api/project/jobs"), "expected the mounted useProjectJobs list response to be delayed");
     const switchedContext = await (await fetch(`${baseUrl}/api/project/context`)).json();
     assert.equal(switchedContext.projectRoot, secondProjectRoot);
-    // The browser was still on its project-A route while the direct HTTP
-    // setup changed Studio to B. Navigate it to the scoped B route before
-    // reloading: a scoped URL deliberately restores its named project on
-    // reload, whereas reloading A's URL would correctly reopen A.
-    await cdp.send("Page.navigate", {url: `${baseUrl}/#/project/${encodeURIComponent(secondProjectRoot)}/overview`});
+    // Change only the hash so the mounted client keeps its request-generation
+    // state. A document navigation here would discard the hook that issued A.
+    await evaluate(`window.location.hash = ${JSON.stringify(`/project/${encodeURIComponent(secondProjectRoot)}/overview`)}`);
     await waitFor(async () => (await text()).includes("Overview"), "second project dashboard route");
-    await cdp.send("Page.reload", {ignoreCache: true});
-    await waitFor(async () => (await text()).includes("Overview"), "second project dashboard after switch");
+    await cdp.send("Fetch.continueRequest", {requestId: staleResponse.params.requestId});
+    await cdp.send("Fetch.disable");
+    await pause(250);
     assert(!(await hasActiveJobCard("simulation")), "a stale project-A list response leaked into the project-B dashboard");
 
     // The exact token is server-authored and is carried into the start request.

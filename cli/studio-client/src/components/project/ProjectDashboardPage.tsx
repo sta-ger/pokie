@@ -435,12 +435,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
+    const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
-        // A retained terminal record deliberately does not replay a request in
-        // the background.  Send the user to the operation's live form, where
-        // captured parameters/provenance remain visible and a fresh request is
-        // explicitly confirmed.
+        // Never replay durable work in the background.  The destination form
+        // receives this immutable request and reconstructs it for an explicit
+        // new submission, rather than opening an empty unrelated workflow.
+        setRecoveryJob(job);
         if (job.recovery?.action === "new-session" || job.operation.startsWith("play-")) {
+            setNewSessionRecoveryRequested(true);
             setActiveTab("play");
         } else if (job.operation.includes("simulation")) {
             setActiveTab("simulation");
@@ -861,6 +864,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const resetPlayForProjectSwitch = play.resetForProjectSwitch;
     const deployment = useDeploymentManager();
 
+    useEffect(() => {
+        if (!newSessionRecoveryRequested || activeTab !== "play") return;
+        setNewSessionRecoveryRequested(false);
+        play.newSession();
+    }, [activeTab, newSessionRecoveryRequested, play]);
+
     // Reset Play before the newly resolved project's tab can be painted.  A passive effect here can
     // run after the user has already pressed "New Play session" on a just-opened project; its reset
     // then invalidates that request and leaves the visible form looking as if the action did nothing.
@@ -903,6 +912,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         replayListRequestIdRef.current++;
         setReplayListView({status: "empty"});
         setReplayListError(undefined);
+        setRecoveryJob(undefined);
+        setNewSessionRecoveryRequested(false);
         // simulation/replay own no page-level view state to reset here (their job/progress/error live
         // inside useSimulationPoll/useReplayPoll themselves) -- resetForProjectSwitch() is what a
         // genuinely different project needs to stop showing the previous one's simulation/replay job.
@@ -1149,6 +1160,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     progress={simulation.progress}
                                     error={simulation.error}
                                     onRun={startRun}
+                                    recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {
                                     // Clears eagerly (not just via the terminal-state effect) so the notice
                                     // doesn't linger for the ~poll-interval it takes the job to actually
@@ -1189,6 +1201,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
                                     error={replay.error}
                                     onRun={runReplay}
+                                    recoveryRequest={recoveryJob?.operation.includes("replay") ? recoveryJob.request : undefined}
                                     onCancel={replay.cancel}
                                     onRetry={() =>
                                         replay.job &&
@@ -1220,12 +1233,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} />
+                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" ? recoveryJob.request : undefined} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns
                             // all of its own stepper state locally (no page-level hook).
-                                <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
+                                <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} recoveryRequest={recoveryJob?.operation.includes("certification") ? recoveryJob.request : undefined} />
                             )}
                             {activeTab === "provablyFair" && (
                             // Same reasoning as GameModelTab's own key above -- ProvablyFairTab owns

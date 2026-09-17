@@ -40,4 +40,24 @@ describe("FileStudioJobRepository", () => {
 
         expect(repository.list("/project-a")).toEqual([expect.objectContaining({id: "valid"})]);
     });
+
+    it("orders one project's newest records first", () => {
+        const repository = new FileStudioJobRepository(directory);
+        for (const [id, createdAt] of [["old", 10], ["new", 30], ["middle", 20]] as const) {
+            repository.save({id, projectId: "/project-a", operation: "simulation", request: {}, conflictKey: id, status: "completed", createdAt, completedAt: createdAt, result: {summary: id}});
+        }
+
+        expect(repository.list("/project-a").map((job) => job.id)).toEqual(["new", "middle", "old"]);
+    });
+
+    it("retains active records while bounding retained terminal history", () => {
+        const repository = new FileStudioJobRepository(directory, 2);
+        for (const [id, createdAt] of [["terminal-old", 10], ["terminal-middle", 20], ["terminal-new", 30]] as const) {
+            repository.save({id, projectId: "/project-a", operation: "simulation", request: {}, conflictKey: id, status: "completed", createdAt, completedAt: createdAt, result: {summary: id}});
+        }
+        repository.save({id: "active", projectId: "/project-a", operation: "simulation", request: {}, conflictKey: "active", status: "running", createdAt: 40});
+
+        expect(repository.list("/project-a").map((job) => job.id)).toEqual(["active", "terminal-new", "terminal-middle"]);
+        expect(repository.get("terminal-old")).toBeUndefined();
+    });
 });

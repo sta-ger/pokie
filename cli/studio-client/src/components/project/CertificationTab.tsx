@@ -158,7 +158,7 @@ function modeFieldWarnings(mode: ModeFields): {modeName?: string; seed?: string;
 // in this UI. Same lifecycle discipline as every other Studio Stepper here: a monotonic requestId ref
 // per async action, a double-submit guard, and an invalidate*() helper that resets state and cascades to
 // downstream steps whenever an upstream input changes.
-export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
+export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: string; recoveryRequest?: Readonly<Record<string, unknown>>} = {}) {
     const fetchImpl = useStudioApi();
     const [activeStep, setActiveStep] = useState(0);
 
@@ -173,6 +173,19 @@ export function CertificationTab({projectRoot}: {projectRoot?: string} = {}) {
     const [bundleDir, setBundleDir] = useState(() => persistedFields?.bundleDir ?? "");
     const [outDir, setOutDir] = useState(() => persistedFields?.outDir ?? "certification");
     const [modes, setModes] = useState<ModeFields[]>(() => persistedFields?.modes ?? [EMPTY_MODE]);
+
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        const recoveredModes = Array.isArray(recoveryRequest.modes) && recoveryRequest.modes.every(isPersistedModeFields)
+            ? recoveryRequest.modes
+            : undefined;
+        if (typeof recoveryRequest.bundleDir === "string") setBundleDir(recoveryRequest.bundleDir);
+        if (typeof recoveryRequest.outDir === "string") setOutDir(recoveryRequest.outDir);
+        if (recoveredModes !== undefined) setModes(recoveredModes);
+        if (typeof recoveryRequest.bundleDir === "string" && typeof recoveryRequest.outDir === "string" && recoveredModes !== undefined) {
+            savePersistedCertificationFields(projectRoot, {bundleDir: recoveryRequest.bundleDir, outDir: recoveryRequest.outDir, modes: recoveredModes});
+        }
+    }, [projectRoot, recoveryRequest]);
 
     // ---- Source bundle autodetection ----
     const [detectedBundle, setDetectedBundle] = useState<DetectedBundleView>({status: "loading"});

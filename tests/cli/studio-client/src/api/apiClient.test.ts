@@ -3,6 +3,7 @@ import {
     buildReplayDownloadUrl,
     buildReportDownloadUrl,
     cancelReplay,
+    cancelHomeSourceJob,
     cancelSimulation,
     closeProject,
     createPlaySession,
@@ -13,6 +14,7 @@ import {
     FetchLike,
     generateRandomBlueprint,
     getContext,
+    getHomeSourceJob,
     getProjectContext,
     getReplay,
     getReport,
@@ -23,6 +25,7 @@ import {
     listOutcomeLibraryGenerationJobs,
     inspectProject,
     listProjectRegistry,
+    listHomeSourceJobs,
     listReplays,
     listReports,
     listRecentProjects,
@@ -34,6 +37,7 @@ import {
     ProjectOpenError,
     ProjectTransitionConflict,
     recoverProjectJob,
+    recoverHomeSourceJob,
     registerProjectImport,
     removeProjectRegistryEntry,
     runDeployment,
@@ -826,6 +830,24 @@ describe("studio-client apiClient", () => {
 
             await expect(recoverProjectJob(fetchImpl, "job-1")).resolves.toEqual(job);
             expect(calls).toEqual([{url: "/api/project/jobs/job-1/recover", init: {method: "POST", signal: undefined}}]);
+        });
+    });
+
+    describe("Home source job controls", () => {
+        it("lists, inspects, cancels, and recovers retained Design work with its source scope", async () => {
+            const job = {id: "design-job", status: "running"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {jobs: [job]}}));
+
+            await expect(listHomeSourceJobs(fetchImpl, "/drafts/game.json")).resolves.toEqual([job]);
+            await expect(getHomeSourceJob(fetchImpl, "design-job", "/drafts/game.json")).resolves.toEqual({jobs: [job]});
+            await expect(cancelHomeSourceJob(fetchImpl, "design-job", "/drafts/game.json")).resolves.toEqual({jobs: [job]});
+            await expect(recoverHomeSourceJob(fetchImpl, "design-job", "/drafts/game.json")).resolves.toEqual({jobs: [job]});
+            expect(calls.map((call) => [call.url, call.init?.method])).toEqual([
+                ["/api/home/jobs?sourcePath=%2Fdrafts%2Fgame.json", undefined],
+                ["/api/home/jobs/design-job?sourcePath=%2Fdrafts%2Fgame.json", undefined],
+                ["/api/home/jobs/design-job/cancel?sourcePath=%2Fdrafts%2Fgame.json", "POST"],
+                ["/api/home/jobs/design-job/recover?sourcePath=%2Fdrafts%2Fgame.json", "POST"],
+            ]);
         });
     });
 

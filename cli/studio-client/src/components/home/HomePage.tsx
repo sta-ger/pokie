@@ -10,6 +10,11 @@ import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DocumentationLinks} from "./DocumentationLinks";
 import {ProjectsPanel} from "./ProjectsPanel";
 import type {StudioProjectRegistryView} from "../../api/types";
+import {openOutputFolder} from "../../api/apiClient";
+import {useStudioApi} from "../../context/StudioApiProvider";
+import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
+import {JobProgressCard} from "../common/JobProgressCard";
+import {JobResultCard} from "../common/JobResultCard";
 
 export type HomeTab = "design" | "projects";
 
@@ -53,6 +58,7 @@ function isHomeTab(value: string | undefined): value is HomeTab {
 // the given blueprint. `location.state?.initialParSheetPath` is the same idea for Projects' own "Import
 // Project" -> PAR sheet routing (see ProjectsPanel's `handleGoToDesignGame`).
 export function HomePage() {
+    const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const {tab} = useParams<{tab: string}>();
     const activeTab: HomeTab = isHomeTab(tab) ? tab : "design";
@@ -87,6 +93,9 @@ export function HomePage() {
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
     const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
     const navigationGuard = useDesignNavigationGuard(isDesignDirty);
+    // Home does not have a current project identity.  The server therefore returns only Design and
+    // project-opening records here, including retained terminal records after a reload.
+    const homeJobs = useHomeSourceJobs(fetchImpl);
 
     return (
         <AppShellLayout
@@ -107,6 +116,19 @@ export function HomePage() {
                                 setProjectRegistryVersion((version) => version + 1);
                             }}
                         />
+                        {homeJobs.jobs.length > 0 && (
+                            <Stack gap="xs" mt="lg" aria-label="Design jobs">
+                                <Title order={3}>Design jobs</Title>
+                                <Text size="sm" c="dimmed">Retained work continues here after a reload. Open its details, cancel active work, or use a server-supported recovery.</Text>
+                                {homeJobs.jobs.map((job) =>
+                                    job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                                        ? <JobProgressCard key={job.id} job={job} onCancel={homeJobs.cancel} />
+                                        : <JobResultCard key={job.id} job={job} onRecover={homeJobs.recover} onOpenOutput={(outputPath) => {
+                                            openOutputFolder(fetchImpl, outputPath).catch(() => undefined);
+                                        }} />,
+                                )}
+                            </Stack>
+                        )}
                     </div>
 
                     <div ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>

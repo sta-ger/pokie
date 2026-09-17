@@ -54,6 +54,7 @@ export function SimulationTab({
     onClearCompare,
     downloadUrls,
     availableModes,
+    recoveryRequest,
 }: {
     progress: SimulationProgressView | undefined;
     error: string | undefined;
@@ -75,9 +76,27 @@ export function SimulationTab({
     // The current project's own real outcome-library modes -- see ProjectDashboardPage's own
     // outcomeLibraryModes doc comment. Undefined for an ordinary game-backed project.
     availableModes?: string[];
+    /** Immutable request retained by a terminal common job, restored for an explicit Run. */
+    recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
     const form = useForm<FormValues>({mode: "uncontrolled", initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""}});
+
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        const rounds = typeof recoveryRequest.rounds === "number" ? recoveryRequest.rounds : undefined;
+        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
+        const workers = typeof recoveryRequest.workers === "number" ? recoveryRequest.workers : undefined;
+        const modeName = typeof recoveryRequest.modeName === "string" ? recoveryRequest.modeName : undefined;
+        form.setValues({
+            ...(rounds === undefined ? {} : {rounds}),
+            ...(seed === undefined ? {} : {seed}),
+            ...(workers === undefined ? {} : {workers}),
+            ...(modeName === undefined ? {} : {modeName}),
+        });
+        // Mantine's uncontrolled form object is intentionally stable.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
 
     // Defaults the picker to the first real mode the moment the list becomes available -- SimulationTab
     // can mount before the project header's own outcome-source report necessarily has (see PlayTab's own

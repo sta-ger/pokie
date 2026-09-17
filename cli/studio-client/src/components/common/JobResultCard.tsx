@@ -26,6 +26,12 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput}: 
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
                 {job.result?.provenance !== undefined &&
                     <details><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
+                {job.result?.detail !== undefined &&
+                    <details><summary>Inspect operation result</summary><Text size="xs">{JSON.stringify(job.result.detail)}</Text></details>}
+                <details>
+                    <summary>Inspect retained request</summary>
+                    <Text size="xs">{JSON.stringify(job.request)}</Text>
+                </details>
                 {job.result?.outputs?.map((output) => (
                     <Group gap="xs" key={output.label}>
                         {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}

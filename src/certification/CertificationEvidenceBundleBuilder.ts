@@ -205,7 +205,7 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
                 const sourceEntry = sourceManifest.modes.find((entry) => entry.modeName === modeInput.modeName)!;
                 // Safe: captured for every requested mode in readModeIndexes above.
                 const capturedIndex = initialIndexes.get(modeInput.modeName)!;
-                modeEntries.push(this.sampleMode(bundleDir, modeInput, sourceEntry, capturedIndex, stagingDir, () => {
+                modeEntries.push(await this.sampleMode(bundleDir, modeInput, sourceEntry, capturedIndex, stagingDir, options, () => {
                     completedSamples++;
                     options?.onSample?.(completedSamples, totalSamples);
                 }));
@@ -362,21 +362,23 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
     // 2. reads and verifies that exact entry's own byte range via readAndVerifyOutcomeAtByteRange (the same
     //    byte-range read + recordHash check readOutcomeById/drawOutcome themselves rely on) — never drawOutcome
     //    itself, which would re-read the index on every single call.
-    // Fully synchronous (no I/O beyond direct fs.readSync calls inside readAndVerifyOutcomeAtByteRange and this
-    // class's own writeFile), so nothing about a mode's own sampling can observe two different index states.
-    private sampleMode(
+    // Sampling uses a captured in-memory index, so yielding does not weaken the snapshot guarantee.  It does,
+    // however, let the server receive cancellation while a single very large mode is still being sampled.
+    private async sampleMode(
         bundleDir: string,
         modeInput: CertificationEvidenceBundleModeSampleInput,
         sourceEntry: OutcomeLibraryBundleManifestModeEntry,
         index: OutcomeLibraryBundleModeIndex,
         stagingDir: string,
+        options: CertificationEvidenceBundleBuildOptions | undefined,
         onSample: () => void,
-    ): CertificationEvidenceBundleModeEntry {
+    ): Promise<CertificationEvidenceBundleModeEntry> {
         const randomSource = this.randomSourceFactory(modeInput.seed);
         const outcomesFilePath = path.join(bundleDir, index.outcomesFile);
 
         const lines: string[] = [];
         for (let sampleIndex = 0; sampleIndex < modeInput.sampleCount; sampleIndex++) {
+            assertNotCancelled(options);
             const winningEntry = selectIndexEntryByCumulativeWeight(modeInput.modeName, index.entries, randomSource);
             const outcome = readAndVerifyOutcomeAtByteRange<T>(modeInput.modeName, outcomesFilePath, winningEntry);
 
@@ -392,6 +394,15 @@ export class CertificationEvidenceBundleBuilder<T extends string | number = stri
             };
             lines.push(`${JSON.stringify(toCanonicalJson(record))}\n`);
             onSample();
+            // A macrotask, rather than a resolved Promise, is intentional: the HTTP cancellation request
+            // must be able to run between batches.  Keep the batch modest enough to make progress truthful
+            // without turning normal certification runs into one event-loop turn per sample.
+            if ((sampleIndex + 1) % 32 === 0) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+                assertNotCancelled(options);
+            }
         }
 
         const samplesFile = `samples_${modeInput.modeName}.jsonl`;

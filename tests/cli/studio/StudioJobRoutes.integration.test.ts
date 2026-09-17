@@ -56,6 +56,27 @@ describe("Studio common job routes", () => {
         });
     });
 
+    it("rejects common-job detail and cancellation across project identities", async () => {
+        const projectA = path.join(directory, "project-a");
+        const projectB = path.join(directory, "project-b");
+        const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => "project-a-job");
+        const started = jobs.start({projectId: projectA, operation: "certification-build", request: {bundleDir: "bundle"}, conflictKey: "certification:project-a"});
+        if (started.status !== "created") throw new Error("expected a common Studio job");
+
+        const home = new StudioHomeService("1.3.0");
+        server = new StudioServer({
+            pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: directory,
+            homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
+            initialContext: {mode: "project", projectRoot: projectB}, jobService: jobs,
+        });
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}`;
+
+        await expect(get(`${baseUrl}/api/project/jobs/project-a-job`)).resolves.toEqual({status: 404, body: {error: "Studio job not found."}});
+        await expect(post(`${baseUrl}/api/project/jobs/project-a-job/cancel`, {})).resolves.toEqual({status: 404, body: {error: "Studio job not found."}});
+        expect(jobs.get(projectA, "project-a-job")).toEqual(expect.objectContaining({status: "queued"}));
+    });
+
     it("keeps a Home Design job source-discoverable and names it before another project can open", async () => {
         const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => "design-job");
         const sourcePath = path.join(directory, "draft.json");
@@ -81,6 +102,10 @@ describe("Studio common job routes", () => {
         const baseUrl = `http://${address.host}:${address.port}`;
 
         await expect(get(`${baseUrl}/api/home/jobs?sourcePath=${encodeURIComponent(sourcePath)}`)).resolves.toEqual({
+            status: 200,
+            body: {jobs: [expect.objectContaining({id: "design-job", operation: "design-build", projectId: `design:${sourcePath}`})]},
+        });
+        await expect(get(`${baseUrl}/api/home/jobs`)).resolves.toEqual({
             status: 200,
             body: {jobs: [expect.objectContaining({id: "design-job", operation: "design-build", projectId: `design:${sourcePath}`})]},
         });

@@ -52,7 +52,11 @@ export function useProjectJobs(fetchImpl: FetchLike, projectId: string | undefin
         const timer = window.setTimeout(() => {
             Promise.all(jobs.filter(active).map((job) => getProjectJob(fetchImpl, job.id))).then((updates) => {
                 if (current.current.projectId !== identity.projectId || current.current.generation !== identity.generation) return;
-                setJobs((previous) => previous.map((job) => updates.find((update) => update.id === job.id && update.projectId === identity.projectId) ?? job));
+                // `getProjectJob` is server-scoped to the routed project.  A canonical record can therefore
+                // legitimately carry a different `projectId` from a symlink route; matching it back to the
+                // alias would freeze an active card forever.  The request generation above is the client-side
+                // guard against an old route, and the server is the authority for the job/project binding.
+                setJobs((previous) => previous.map((job) => updates.find((update) => update.id === job.id) ?? job));
             }).catch(() => undefined);
         }, 500);
         return () => window.clearTimeout(timer);

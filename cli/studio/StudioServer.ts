@@ -722,24 +722,30 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
     }
 
+    private isHomeScopedJob(job: StudioJobView): boolean {
+        return job.projectId.startsWith("design:") || job.operation === "project-open-materialization";
+    }
+
     private handleHomeListJobs(res: ServerResponse, sourcePath: string | null): void {
-        if (sourcePath === null || sourcePath.trim() === "") {
-            this.sendJson(res, 400, {error: "A Design or project source path is required."});
-            return;
-        }
-        const canonicalSource = this.canonicalPathIdentity(sourcePath);
-        const jobs = [...this.jobService.list(canonicalSource), ...this.jobService.list(`design:${canonicalSource}`)]
-            .sort((left, right) => right.createdAt - left.createdAt);
+        const jobs = sourcePath === null || sourcePath.trim() === ""
+            // A reload at Home has no selected blueprint path in React state.  Listing the retained
+            // source-scoped records is the durable discovery path; project records remain excluded.
+            ? this.jobService.list().filter((job) => this.isHomeScopedJob(job))
+            : (() => {
+                const canonicalSource = this.canonicalPathIdentity(sourcePath);
+                return [...this.jobService.list(canonicalSource), ...this.jobService.list(`design:${canonicalSource}`)];
+            })();
+        jobs.sort((left, right) => right.createdAt - left.createdAt);
         this.sendJson(res, 200, {jobs});
     }
 
     private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined, sourcePath: string | null): void {
-        if (sourcePath === null || sourcePath.trim() === "") {
-            this.sendJson(res, 400, {error: "A Design or project source path is required."});
-            return;
-        }
-        const sourceIdentity = this.canonicalPathIdentity(sourcePath);
-        const job = this.jobService.get(sourceIdentity, id) ?? this.jobService.get(`design:${sourceIdentity}`, id);
+        const job = sourcePath === null || sourcePath.trim() === ""
+            ? this.jobService.list().find((candidate) => candidate.id === id && this.isHomeScopedJob(candidate))
+            : (() => {
+                const sourceIdentity = this.canonicalPathIdentity(sourcePath);
+                return this.jobService.get(sourceIdentity, id) ?? this.jobService.get(`design:${sourceIdentity}`, id);
+            })();
         if (job === undefined) {
             this.sendJson(res, 404, {error: "Studio Home job not found."});
             return;

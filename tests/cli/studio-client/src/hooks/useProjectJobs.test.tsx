@@ -1,4 +1,4 @@
-import {renderHook, waitFor} from "@testing-library/react";
+import {act, renderHook, waitFor} from "@testing-library/react";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {useProjectJobs} from "../../../../../cli/studio-client/src/hooks/useProjectJobs";
 import type {StudioJobView} from "../../../../../cli/studio-client/src/api/types";
@@ -28,6 +28,31 @@ describe("useProjectJobs", () => {
         };
         const {result} = renderHook(() => useProjectJobs(fetchImpl, "/aliases/game", 1));
         await waitFor(() => expect(result.current.jobs).toEqual([expect.objectContaining({id: "job-canonical", projectId: canonicalProjectId})]));
+    });
+
+    it("continues polling a canonical job opened through a routed symlink alias", async () => {
+        jest.useFakeTimers();
+        const canonicalProjectId = "/real/projects/game";
+        let requests = 0;
+        const fetchImpl: FetchLike = (url) => {
+            requests++;
+            if (url === "/api/project/jobs") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [job("job-canonical", canonicalProjectId)]})});
+            }
+            if (url === "/api/project/jobs/job-canonical") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("job-canonical", canonicalProjectId, "completed"))});
+            }
+            throw new Error(`Unexpected request ${url}`);
+        };
+        const {result} = renderHook(() => useProjectJobs(fetchImpl, "/aliases/game", 1));
+        await waitFor(() => expect(result.current.jobs[0]).toEqual(expect.objectContaining({status: "running"})));
+        await act(async () => {
+            jest.advanceTimersByTime(500);
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(result.current.jobs[0]).toEqual(expect.objectContaining({status: "completed", projectId: canonicalProjectId})));
+        expect(requests).toBeGreaterThanOrEqual(2);
+        jest.useRealTimers();
     });
 
     it("rejects an old project's delayed list response after a genuine project change", async () => {

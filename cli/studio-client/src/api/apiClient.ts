@@ -67,11 +67,34 @@ export async function listProjectJobs(fetchImpl: FetchLike): Promise<StudioJobVi
 }
 
 /** Discovers retained Design/project-opening jobs before a project context exists. */
-export async function listHomeSourceJobs(fetchImpl: FetchLike, sourcePath: string): Promise<StudioJobView[]> {
-    const response = await fetchImpl(`/api/home/jobs?sourcePath=${encodeURIComponent(sourcePath)}`, {cache: "no-store"});
+export async function listHomeSourceJobs(fetchImpl: FetchLike, sourcePath?: string): Promise<StudioJobView[]> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs${query}`, {cache: "no-store"});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Home Studio jobs"));
     const body = await response.json() as {jobs?: unknown};
     return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+}
+
+/** Home has no current project context, so these routes retain the source scope in the URL. */
+export async function getHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}${query}`, {cache: "no-store", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Home Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function cancelHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}/cancel${query}`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel Home Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function recoverHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}/recover${query}`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to recover Home Studio job"));
+    return await response.json() as StudioJobView;
 }
 
 export async function getProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
