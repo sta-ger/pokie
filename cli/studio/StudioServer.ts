@@ -790,8 +790,7 @@ export class StudioServer implements StudioServerHandling {
     // not block startup on this best-effort bookkeeping.
     private migrateRecentProjectsToRegistry(): void {
         this.homeService
-            .listRecentProjects()
-            .then((recentProjects) => this.projectRegistrationService.migrateRecentProjects(recentProjects))
+            .handRecentProjectsTo((recentProjects) => this.projectRegistrationService.migrateRecentProjects(recentProjects))
             .catch(() => {
                 // Best-effort only -- a migration failure must never crash Studio's own startup.
             });
