@@ -906,7 +906,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         // An artifact retry must restore the exact target/destination the
         // retained job reserved; Build remains an explicit user click.
         if (typeof recoveryRequest.target === "string" && typeof recoveryRequest.outDir === "string") {
-            setArtifactDestinations((destinations) => ({...destinations, [recoveryRequest.target]: recoveryRequest.outDir}));
+            // Read narrowed values before entering the state updater: TypeScript
+            // cannot retain a narrowing of an optional prop across that closure.
+            const target = recoveryRequest.target;
+            const outDir = recoveryRequest.outDir;
+            setArtifactDestinations((destinations) => ({...destinations, [target]: outDir}));
         }
         // Deployment never auto-publishes from a retained record.  Re-select
         // its exact target so the user can inspect the regenerated plan and
