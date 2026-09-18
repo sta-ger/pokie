@@ -44,6 +44,12 @@ export type OutcomeLibraryBundleWriteOptions = {
     readonly expectedDestinationOwnership?: PublishDirectoryAtomicallyOwnership;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
     readonly onLifecycleStage?: (stage: OutcomeLibraryBundleWriteLifecycleStage) => void;
+    /**
+     * Optional publication order independent of streaming order. Studio uses
+     * this when it consumes a newly generated mode first to preserve lifecycle
+     * order while retaining the existing manifest's stable mode order.
+     */
+    readonly manifestModeOrder?: readonly string[];
     readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];
     readonly generatedBy?: string;
 };

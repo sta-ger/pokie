@@ -81,6 +81,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     entriesPath?: string,
     analysisPath?: string,
     completedBefore = BigInt(0),
+    announceWriting = true,
 ): Promise<StreamModeOutcomesResult<T>> {
     const issues: ValidationIssue[] = [];
     const roundArtifactValidator = new RoundArtifactValidator<T>();
@@ -111,7 +112,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             // before yielding the first outcome.  Announcing writing here,
             // rather than before asking the source for that outcome, keeps the
             // observable lifecycle in real execution order.
-            if (!announcedWriting) {
+            if (announceWriting && !announcedWriting) {
                 options?.onLifecycleStage?.("writing");
                 announcedWriting = true;
             }

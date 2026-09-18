@@ -75,7 +75,7 @@ function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sa
     return request.sample ?? request.sampled ?? request.bounded;
 }
 
-type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]} | {readonly status: "error"; readonly message: string};
+type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]; readonly manifestModeOrder: readonly string[]} | {readonly status: "error"; readonly message: string};
 export type StudioOutcomeLibraryGenerationLifecycleStage = "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
 
 /** Immutable source/destination snapshot behind a Studio preflight token. */
@@ -447,6 +447,21 @@ export class StudioOutcomeLibraryGenerateService {
         onPostEnumerationProgress?: (emittedOutcomes: bigint) => void,
         onBundleProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void,
     ): Promise<StudioOutcomeLibraryGenerateResultView> {
+        // Generation can report post-enumeration work in multiple internal
+        // chunks. Studio's public lifecycle is deliberately coarser: advance
+        // once through each real phase and never let a retained stream or a
+        // later partition move the visible stage backwards.
+        const lifecycleOrder: readonly StudioOutcomeLibraryGenerationLifecycleStage[] = [
+            "generation", "finalization", "writing", "analyzing", "building-index", "validation", "publication",
+        ];
+        let lifecycleIndex = -1;
+        const emitLifecycleStage = (stage: StudioOutcomeLibraryGenerationLifecycleStage): void => {
+            const nextIndex = lifecycleOrder.indexOf(stage === "serialization" ? "building-index" : stage);
+            if (nextIndex > lifecycleIndex) {
+                lifecycleIndex = nextIndex;
+                onLifecycleStage?.(stage);
+            }
+        };
         // HTTP callers always supply the snapshot they just displayed, but
         // retained in-process callers need the same immutable source binding.
         // In particular, a managed Blueprint must not be re-recognized after
@@ -501,7 +516,7 @@ export class StudioOutcomeLibraryGenerateService {
                 domainRequest = this.createDomainRequest(game, request, outDirRelative, projectRoot);
                 domainRequest = {
                     ...domainRequest,
-                    onPostEnumeration: () => onLifecycleStage?.("finalization"),
+                    onPostEnumeration: () => emitLifecycleStage("finalization"),
                     ...(onPostEnumerationProgress === undefined ? {} : {onPostEnumerationProgress}),
                 };
                 preparedRequest = prepareOutcomeLibraryGeneration(domainRequest);
@@ -576,12 +591,13 @@ export class StudioOutcomeLibraryGenerateService {
             if (planDrift !== undefined) {
                 return {status: "load-error", error: planDrift, plan};
             }
-            onLifecycleStage?.("generation");
+            emitLifecycleStage("generation");
         type PreparedGenerationRead =
             | {readonly status: "terminal"; readonly view: StudioOutcomeLibraryGenerateResultView}
             | {
                 readonly status: "ready";
                 readonly modes: readonly OutcomeLibraryBundleModeInput<string>[];
+                readonly manifestModeOrder: readonly string[];
                 readonly libraryId: string;
                 readonly generator?: GenerateExactWeightedOutcomeLibraryResult["diagnostics"];
                 readonly getGenerator?: () => GenerateExactWeightedOutcomeLibraryResult["diagnostics"] | undefined;
@@ -676,7 +692,7 @@ export class StudioOutcomeLibraryGenerateService {
                                     ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                                 });
                             }
-                            return {status: "ready", modes, libraryId: sourceMode.libraryId, generator: sourceMode.generator};
+                            return {status: "ready", modes, manifestModeOrder: sourceManifest.modes.map((entry) => entry.modeName), libraryId: sourceMode.libraryId, generator: sourceMode.generator};
                         } catch (error) {
                             return {status: "terminal", view: {status: "load-error", error: `Could not reopen the prepared reusable Outcome Library at "${sourceDir}": ${error instanceof Error ? error.message : String(error)}`, plan}};
                         }
@@ -692,7 +708,12 @@ export class StudioOutcomeLibraryGenerateService {
                             const generated = await this.generateLibrary(domainRequest);
                             return {
                                 status: "ready",
-                                modes: [...otherModes.modes, {modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}],
+                                // The generated source must be consumed before retained
+                                // modes. Its first pull completes enumeration/finalization;
+                                // placing a retained stream first would visibly start writing
+                                // before that source can announce its real finalization.
+                                modes: [{modeName, libraryId, schemaVersion: generated.library.schemaVersion, outcomes: generated.library.outcomes, generator: generated.diagnostics}, ...otherModes.modes],
+                                manifestModeOrder: otherModes.manifestModeOrder,
                                 libraryId,
                                 generator: generated.diagnostics,
                             };
@@ -700,12 +721,13 @@ export class StudioOutcomeLibraryGenerateService {
                         const generated = generateStreamingWeightedOutcomeLibrary(domainRequest);
                         return {
                             status: "ready",
-                            modes: [...otherModes.modes, {
+                            modes: [{
                                 modeName,
                                 libraryId,
                                 outcomes: generated.outcomes,
                                 getGenerator: generated.getDiagnostics,
-                            }],
+                            }, ...otherModes.modes],
+                            manifestModeOrder: otherModes.manifestModeOrder,
                             libraryId,
                             getGenerator: generated.getDiagnostics,
                         };
@@ -737,8 +759,9 @@ export class StudioOutcomeLibraryGenerateService {
                     if (read.status !== "ready") throw new Error("The prepared Outcome Library generation was not publishable.");
                     return this.writer.writeToDirectory(read.modes, boundDestination, {
                         signal: request.signal,
-                        onLifecycleStage,
+                        onLifecycleStage: emitLifecycleStage,
                         onProgress: onBundleProgress,
+                        manifestModeOrder: read.manifestModeOrder,
                         // The planner invokes this policy before publication;
                         // retain that exact async policy for the writer's final
                         // atomic replacement after streaming staging.
@@ -1079,7 +1102,7 @@ export class StudioOutcomeLibraryGenerateService {
     // a valid bundle is left alone rather than silently clobbered.
     private async readOtherModes(resolvedOutDir: string, excludeModeName: string, deep = true): Promise<OtherModesResult> {
         if (!this.directoryExists(resolvedOutDir)) {
-            return {status: "ok", modes: []};
+            return {status: "ok", modes: [], manifestModeOrder: [excludeModeName]};
         }
 
         // First establish that this is a bundle at all.  A directory can appear
@@ -1143,7 +1166,15 @@ export class StudioOutcomeLibraryGenerateService {
                 ...(entry.generator !== undefined ? {generator: entry.generator} : {}),
             });
         }
-        return {status: "ok", modes};
+        return {
+            status: "ok",
+            modes,
+            // Replacing a mode retains its exact manifest position; adding a
+            // new mode appends it just as the prior service composition did.
+            manifestModeOrder: manifest.modes.some((entry) => entry.modeName === excludeModeName)
+                ? manifest.modes.map((entry) => entry.modeName)
+                : [...manifest.modes.map((entry) => entry.modeName), excludeModeName],
+        };
     }
 
     // The only overwrite-like Studio operation is an atomic replacement of a bundle which was

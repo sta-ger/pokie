@@ -15,6 +15,7 @@ import {buildOutcomeLibraryBundleModeInput} from "../tests/weightedoutcome/bundl
 // the outcome id and deterministic payout vary by record.
 const RECORD_COUNT = 2_000_000;
 const FIXTURE_ID = "outcome-library-streaming-v1";
+const EXPECTED_WRITER_STAGES = ["writing", "analyzing", "building-index", "validation", "publication"] as const;
 // The benchmark deliberately has no performance assertion: the same
 // multi-million-record publication can take several minutes on constrained
 // CI storage. This only prevents Jest's correctness-test default from
@@ -103,6 +104,7 @@ describe("benchmark: Outcome Library streaming generation", () => {
             expect(validationResult).toEqual([]);
             expect(outcomeCount).toBe(RECORD_COUNT);
             expect(bytes).toBeGreaterThan(0);
+            expect(stages.map(({stage}) => stage)).toEqual(EXPECTED_WRITER_STAGES);
             expect(stageDurationsMs.every(({durationMs}) => durationMs >= 0)).toBe(true);
             expect(publicationDurationMs).toBeGreaterThanOrEqual(0);
             expect(deepValidationDurationMs).toBeGreaterThanOrEqual(0);

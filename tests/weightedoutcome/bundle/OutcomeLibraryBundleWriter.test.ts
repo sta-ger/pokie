@@ -101,20 +101,20 @@ describe("OutcomeLibraryBundleWriter", () => {
         }
     });
 
-    it("reports real write, analysis, index, validation, and publication stages with stage-local progress", async () => {
+    it("reports one forward-only writer lifecycle for every mode with stage-local progress", async () => {
         const stages: string[] = [];
         const progress: {message: string; completed: bigint; total?: bigint; unit?: string}[] = [];
 
-        await expect(new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([modes()[0]], outDir, {
+        await expect(new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes(), outDir, {
             onLifecycleStage: (stage) => stages.push(stage),
             onProgress: (entry) => progress.push(entry),
         })).resolves.toMatchObject({issues: []});
 
-        expect(stages).toEqual(expect.arrayContaining(["writing", "analyzing", "building-index", "validation", "publication"]));
+        expect(stages).toEqual(["writing", "analyzing", "building-index", "validation", "publication"]);
         expect(progress).toEqual(expect.arrayContaining([
             expect.objectContaining({message: expect.stringMatching(/^Analyzing Outcome mode base/), unit: "outcome records", total: BigInt(5)}),
             expect.objectContaining({message: "Building Outcome Library index", unit: "bytes"}),
-            expect.objectContaining({message: "Publishing Outcome file manifest.json", unit: "bundle files", total: BigInt(3)}),
+            expect.objectContaining({message: "Publishing Outcome file manifest.json", unit: "bundle files", total: BigInt(5)}),
         ]));
         for (const entry of progress.filter((item) => item.total !== undefined)) {
             expect(entry.completed <= entry.total!).toBe(true);

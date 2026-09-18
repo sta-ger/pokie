@@ -315,6 +315,11 @@ export class StudioOutcomeLibraryGenerateJobService {
                 total: "indeterminate",
             });
         }, (emittedOutcomes) => {
+            // A generator may emit several internal finalization updates while
+            // retained-mode writing is already underway. Those values remain
+            // useful only until the public lifecycle has advanced; never turn
+            // a later poll back into a finalization stage.
+            if (record.lifecycleStage !== undefined && record.lifecycleStage !== "generation" && record.lifecycleStage !== "finalization") return;
             if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
             else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
             this.jobService?.progress(record.id, {stage: "Deduplicating/finalizing outcomes", unit: "outcome records", current: emittedOutcomes.toString(), total: "indeterminate"});
