@@ -16,6 +16,11 @@ import {buildOutcomeLibraryBundleModeInput} from "../tests/weightedoutcome/bundl
 // the outcome id and deterministic payout vary by record.
 const RECORD_COUNT = 2_000_000;
 const FIXTURE_ID = "outcome-library-streaming-v1";
+// The benchmark deliberately has no performance assertion: the same
+// multi-million-record publication can take several minutes on constrained
+// CI storage. This only prevents Jest's correctness-test default from
+// interrupting the benchmark before it can emit its timing evidence.
+const BENCHMARK_TIMEOUT_MS = 20 * 60 * 1_000;
 
 function *realisticOutcomes(): Generator<WeightedOutcomeInput<string>> {
     const fixture = buildOutcomeLibraryBundleModeInput("base", "benchmark-library").outcomes as readonly WeightedOutcomeInput<string>[];
@@ -88,5 +93,5 @@ describe("benchmark: Outcome Library streaming generation", () => {
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }
-    });
+    }, BENCHMARK_TIMEOUT_MS);
 });
