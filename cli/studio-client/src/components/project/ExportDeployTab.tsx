@@ -430,11 +430,12 @@ function TargetCard({
                         Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
-                        <>
-                            <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
-                            {outcomeLibraryRun.job.durableProgress === undefined && <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />}
-                            <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
-                        </>
+                        outcomeLibraryRun.job.durableProgress !== undefined
+                            ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
+                            : <>
+                                <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
+                                <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
+                            </>
                     )}
                     {outcomeLibraryRun.status === "error" && (
                         <>

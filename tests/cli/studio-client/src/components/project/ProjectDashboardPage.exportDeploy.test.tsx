@@ -966,8 +966,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByText(/Selector: bundle outcomelibrary, mode base/)).toBeInTheDocument();
     });
 
-    it("shows finalization rather than a misleading generation label once raw work is complete", async () => {
+    it("renders compatibility lifecycle fallback as the sole running status and cancellation control", async () => {
         const user = userEvent.setup();
+        let cancellationRequests = 0;
         const routes = {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
@@ -980,6 +981,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     ok: true,
                     status: 202,
                     json: () => Promise.resolve({status: "created", job: {id: "generate-running", status: "running", cancellationRequested: false, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"}}}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/generate-running/cancel") {
+                cancellationRequests += 1;
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({id: "generate-running", status: "cancelling", cancellationRequested: true, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"}}),
                 });
             }
             if (path === "/api/project/outcome-libraries/generate/jobs/generate-running") {
@@ -996,6 +1005,64 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText("Finalizing generated outcomes…")).toBeInTheDocument();
+        expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
+        const cancellationControls = screen.getAllByRole("button", {name: "Cancel generation"});
+        expect(cancellationControls).toHaveLength(1);
+        expect(cancellationControls[0]).toBeEnabled();
+        expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
+
+        await user.click(cancellationControls[0]);
+        await waitFor(() => expect(cancellationRequests).toBe(1));
+    });
+
+    it("renders durable progress as the sole running status and cancellation control", async () => {
+        const user = userEvent.setup();
+        let cancellationRequests = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 202,
+                    json: () => Promise.resolve({status: "created", job: {
+                        id: "durable-running", status: "running", cancellationRequested: false,
+                        durableProgress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/durable-running/cancel") {
+                cancellationRequests += 1;
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        id: "durable-running", status: "cancelling", cancellationRequested: true,
+                        durableProgress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/durable-running") {
+                return new Promise(() => {
+                    // Deliberately unsettled: this assertion exercises the in-flight UI state.
+                });
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
+
+        expect(await screen.findByText("Enumerating combinations")).toBeInTheDocument();
+        expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
+        const cancellationControls = screen.getAllByRole("button", {name: "Cancel"});
+        expect(cancellationControls).toHaveLength(1);
+        expect(cancellationControls[0]).toBeEnabled();
+        expect(screen.queryByRole("button", {name: "Cancel generation"})).not.toBeInTheDocument();
+
+        await user.click(cancellationControls[0]);
+        await waitFor(() => expect(cancellationRequests).toBe(1));
     });
 
     it("refreshes the preflight binding after cancellation so an unchanged retry starts a new safe job", async () => {
