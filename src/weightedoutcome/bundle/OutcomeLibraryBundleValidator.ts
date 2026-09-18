@@ -778,196 +778,220 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         let sawError = false;
         let validCount = 0;
         let reference: {gameId: unknown; gameVersion: unknown; configHash: unknown; pokieVersion: unknown; betMode: unknown; stake: unknown} | undefined;
+        // Deep validation remains independent from publication, but it need
+        // not decode the same JSONL three times.  Preserve the validated
+        // numeric inputs in a private fixed-width spool, then replay that
+        // spool for the analyzer's two deterministic passes.
+        const analysisPath = path.join(path.dirname(outcomesPath), `.validation-analysis-${crypto.randomBytes(6).toString("hex")}.bin`);
+        let analysisDescriptor: number | undefined;
+        let analysisSpoolReady = false;
+        const analysisRecord = Buffer.allocUnsafe(24);
 
         const hash = crypto.createHash("sha256");
         hash.update(`{"libraryId":${JSON.stringify(index.libraryId)},"outcomes":[`);
         let hashedCount = 0;
 
-        for await (const line of iterateOutcomesJsonl(outcomesPath, {
-            signal: options?.signal,
-            throwIfAborted: options?.throwIfAborted,
-            onProgress: ({recordsRead}) => reportProgress(options, completedBefore + recordsRead, total, `Validating Outcome mode ${modeName} records`),
-        })) {
-            if (line.status === "invalid-json") {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-line-invalid-json",
-                    severity: "error",
-                    message: `mode "${modeName}": outcomes line ${line.position} is not valid JSON: ${line.error}`,
-                    details: {modeName, position: line.position},
-                });
-                sawError = true;
-                continue;
-            }
+        try {
+            analysisDescriptor = fs.openSync(analysisPath, "w");
+            for await (const line of iterateOutcomesJsonl(outcomesPath, {
+                signal: options?.signal,
+                throwIfAborted: options?.throwIfAborted,
+                onProgress: ({recordsRead}) => reportProgress(options, completedBefore + recordsRead, total, `Validating Outcome mode ${modeName} records`),
+            })) {
+                if (line.status === "invalid-json") {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-line-invalid-json",
+                        severity: "error",
+                        message: `mode "${modeName}": outcomes line ${line.position} is not valid JSON: ${line.error}`,
+                        details: {modeName, position: line.position},
+                    });
+                    sawError = true;
+                    continue;
+                }
 
-            const value = line.value;
-            if (
-                typeof value !== "object" ||
+                const value = line.value;
+                if (
+                    typeof value !== "object" ||
                 value === null ||
                 typeof (value as {id?: unknown}).id !== "string" ||
                 typeof (value as {weight?: unknown}).weight !== "number" ||
                 typeof (value as {artifact?: unknown}).artifact !== "object" ||
                 (value as {artifact?: unknown}).artifact === null
-            ) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-line-malformed",
-                    severity: "error",
-                    message: `mode "${modeName}": outcomes line ${line.position} is not {id, weight, artifact}.`,
-                    details: {modeName, position: line.position},
-                });
-                sawError = true;
-                continue;
-            }
+                ) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-line-malformed",
+                        severity: "error",
+                        message: `mode "${modeName}": outcomes line ${line.position} is not {id, weight, artifact}.`,
+                        details: {modeName, position: line.position},
+                    });
+                    sawError = true;
+                    continue;
+                }
 
-            const outcome = value as {id: string; weight: number; artifact: {payoutMultiplier?: unknown; stake?: unknown; betMode?: unknown; provenance?: {game?: {id?: unknown; version?: unknown}; configHash?: unknown; pokieVersion?: unknown}}};
-            if (seenIds.has(outcome.id)) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-duplicate-id",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome id "${outcome.id}" appears more than once in the outcomes file.`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            }
-            seenIds.add(outcome.id);
+                const outcome = value as {id: string; weight: number; artifact: {payoutMultiplier?: unknown; stake?: unknown; betMode?: unknown; provenance?: {game?: {id?: unknown; version?: unknown}; configHash?: unknown; pokieVersion?: unknown}}};
+                if (seenIds.has(outcome.id)) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-duplicate-id",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome id "${outcome.id}" appears more than once in the outcomes file.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                }
+                seenIds.add(outcome.id);
 
-            const indexEntry = indexById.get(outcome.id);
-            if (indexEntry === undefined) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-extra-id",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome id "${outcome.id}" is in the outcomes file but has no counterpart in the index.`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            }
-            if (indexEntry.weight !== outcome.weight) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-weight-mismatch",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}"'s weight in the outcomes file (${outcome.weight}) does not match the index's (${indexEntry.weight}).`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            }
+                const indexEntry = indexById.get(outcome.id);
+                if (indexEntry === undefined) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-extra-id",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome id "${outcome.id}" is in the outcomes file but has no counterpart in the index.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                }
+                if (indexEntry.weight !== outcome.weight) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-weight-mismatch",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome "${outcome.id}"'s weight in the outcomes file (${outcome.weight}) does not match the index's (${indexEntry.weight}).`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                }
 
-            const artifactIssues = this.roundArtifactValidator.validate(outcome.artifact as never);
-            if (artifactIssues.length > 0) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-artifact-invalid",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has an invalid artifact: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            }
+                const artifactIssues = this.roundArtifactValidator.validate(outcome.artifact as never);
+                if (artifactIssues.length > 0) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-artifact-invalid",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome "${outcome.id}" has an invalid artifact: ${artifactIssues.map((issue) => issue.code).join(", ")}.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                }
 
-            const current = {
-                gameId: outcome.artifact.provenance?.game?.id,
-                gameVersion: outcome.artifact.provenance?.game?.version,
-                configHash: outcome.artifact.provenance?.configHash,
-                pokieVersion: outcome.artifact.provenance?.pokieVersion,
-                betMode: outcome.artifact.betMode,
-                stake: outcome.artifact.stake,
-            };
-            if (reference === undefined) {
-                reference = current;
+                const current = {
+                    gameId: outcome.artifact.provenance?.game?.id,
+                    gameVersion: outcome.artifact.provenance?.game?.version,
+                    configHash: outcome.artifact.provenance?.configHash,
+                    pokieVersion: outcome.artifact.provenance?.pokieVersion,
+                    betMode: outcome.artifact.betMode,
+                    stake: outcome.artifact.stake,
+                };
+                if (reference === undefined) {
+                    reference = current;
 
-                // Cross-checked once, against the first outcome only: every later outcome is already required
-                // (see the "inconsistent-provenance"/"inconsistent-bet-mode"/"inconsistent-stake" checks below)
-                // to agree with this same reference, so checking the reference itself against manifest.json's
-                // own claims is enough to catch a manifest whose game/version/configHash/betMode/stake doesn't
-                // actually match what this mode's outcomes were built from — a gap the existing cross-*outcome*
-                // consistency check alone can't catch, since it never reads manifest.json at all.
-                if (
-                    current.gameId !== manifest.game.id ||
+                    // Cross-checked once, against the first outcome only: every later outcome is already required
+                    // (see the "inconsistent-provenance"/"inconsistent-bet-mode"/"inconsistent-stake" checks below)
+                    // to agree with this same reference, so checking the reference itself against manifest.json's
+                    // own claims is enough to catch a manifest whose game/version/configHash/betMode/stake doesn't
+                    // actually match what this mode's outcomes were built from — a gap the existing cross-*outcome*
+                    // consistency check alone can't catch, since it never reads manifest.json at all.
+                    if (
+                        current.gameId !== manifest.game.id ||
                     current.gameVersion !== manifest.game.version ||
                     current.configHash !== manifest.configHash ||
                     current.pokieVersion !== manifest.artifactPokieVersion
-                ) {
-                    issues.push({
-                        code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch",
-                        severity: "error",
-                        message:
+                    ) {
+                        issues.push({
+                            code: "outcome-library-bundle-outcomes-manifest-provenance-mismatch",
+                            severity: "error",
+                            message:
                             `mode "${modeName}": this mode's outcomes have provenance (game id "${String(current.gameId)}", version ` +
                             `"${String(current.gameVersion)}", configHash "${String(current.configHash)}", pokieVersion ` +
                             `"${String(current.pokieVersion)}") that does not match manifest.json's own game (id "${manifest.game.id}", version ` +
                             `"${manifest.game.version}") / configHash ("${String(manifest.configHash)}") / artifactPokieVersion ` +
                             `("${String(manifest.artifactPokieVersion)}").`,
-                        details: {modeName},
-                    });
-                    sawError = true;
-                    continue;
-                }
-                if (current.betMode !== modeEntry.betMode || current.stake !== modeEntry.stake) {
-                    issues.push({
-                        code: "outcome-library-bundle-outcomes-manifest-mode-mismatch",
-                        severity: "error",
-                        message:
+                            details: {modeName},
+                        });
+                        sawError = true;
+                        continue;
+                    }
+                    if (current.betMode !== modeEntry.betMode || current.stake !== modeEntry.stake) {
+                        issues.push({
+                            code: "outcome-library-bundle-outcomes-manifest-mode-mismatch",
+                            severity: "error",
+                            message:
                             `mode "${modeName}": this mode's outcomes have betMode ${JSON.stringify(current.betMode)}/stake ${String(current.stake)}, ` +
                             `which does not match manifest.json's own betMode ${JSON.stringify(modeEntry.betMode)}/stake ${String(modeEntry.stake)} for this mode.`,
-                        details: {modeName},
-                    });
-                    sawError = true;
-                    continue;
-                }
-            } else if (
-                current.gameId !== reference.gameId ||
+                            details: {modeName},
+                        });
+                        sawError = true;
+                        continue;
+                    }
+                } else if (
+                    current.gameId !== reference.gameId ||
                 current.gameVersion !== reference.gameVersion ||
                 current.configHash !== reference.configHash ||
                 current.pokieVersion !== reference.pokieVersion
-            ) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-inconsistent-provenance",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has different provenance (game id/version, configHash, or pokieVersion) than this mode's other outcomes.`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            } else if (current.betMode !== reference.betMode) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-inconsistent-bet-mode",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has betMode ${JSON.stringify(current.betMode)}, expected ${JSON.stringify(reference.betMode)}.`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            } else if (current.stake !== reference.stake) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-inconsistent-stake",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" has stake ${String(current.stake)}, expected ${String(reference.stake)}.`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            }
+                ) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-inconsistent-provenance",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome "${outcome.id}" has different provenance (game id/version, configHash, or pokieVersion) than this mode's other outcomes.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                } else if (current.betMode !== reference.betMode) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-inconsistent-bet-mode",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome "${outcome.id}" has betMode ${JSON.stringify(current.betMode)}, expected ${JSON.stringify(reference.betMode)}.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                } else if (current.stake !== reference.stake) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-inconsistent-stake",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome "${outcome.id}" has stake ${String(current.stake)}, expected ${String(reference.stake)}.`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                }
 
-            let canonicalLine: string;
-            try {
-                canonicalLine = JSON.stringify(toCanonicalJson(outcome));
-            } catch (error) {
-                issues.push({
-                    code: "outcome-library-bundle-outcomes-not-json-safe",
-                    severity: "error",
-                    message: `mode "${modeName}": outcome "${outcome.id}" is not JSON-safe: ${error instanceof Error ? error.message : String(error)}`,
-                    details: {modeName, id: outcome.id},
-                });
-                sawError = true;
-                continue;
-            }
+                let canonicalLine: string;
+                try {
+                    canonicalLine = JSON.stringify(toCanonicalJson(outcome));
+                } catch (error) {
+                    issues.push({
+                        code: "outcome-library-bundle-outcomes-not-json-safe",
+                        severity: "error",
+                        message: `mode "${modeName}": outcome "${outcome.id}" is not JSON-safe: ${error instanceof Error ? error.message : String(error)}`,
+                        details: {modeName, id: outcome.id},
+                    });
+                    sawError = true;
+                    continue;
+                }
 
-            validCount++;
-            if (hashedCount > 0) {
-                hash.update(",");
+                // This is written only after the independent JSON/shape/artifact
+                // checks above pass.  A corrupt file therefore cannot borrow a
+                // publication-time spool to hide from deep validation.
+                analysisRecord.writeDoubleLE(outcome.weight, 0);
+                analysisRecord.writeDoubleLE(Number(outcome.artifact.payoutMultiplier), 8);
+                analysisRecord.writeDoubleLE(Number((outcome.artifact as {totalWin?: unknown}).totalWin), 16);
+                if (analysisDescriptor === undefined) throw new Error("Outcome Library validation analysis spool was not opened.");
+                fs.writeSync(analysisDescriptor, analysisRecord);
+
+                validCount++;
+                if (hashedCount > 0) {
+                    hash.update(",");
+                }
+                hash.update(canonicalLine);
+                hashedCount++;
             }
-            hash.update(canonicalLine);
-            hashedCount++;
+            analysisSpoolReady = true;
+        } finally {
+            if (analysisDescriptor !== undefined) fs.closeSync(analysisDescriptor);
+            if (!analysisSpoolReady) fs.rmSync(analysisPath, {force: true});
         }
 
         for (const id of indexById.keys()) {
@@ -993,6 +1017,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         }
 
         if (sawError) {
+            fs.rmSync(analysisPath, {force: true});
             return;
         }
 
@@ -1007,17 +1032,23 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             });
         }
 
-        const recomputedAnalysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, index.totalWeight, {
-            signal: options?.signal,
-            throwIfAborted: options?.throwIfAborted,
-            expectedOutcomeCount: entryCount,
-            onProgress: ({pass, completed}) => reportProgress(
-                options,
-                completedBefore + entryCount + (pass === 1 ? completed : entryCount + completed),
-                total,
-                `Validating Outcome mode ${modeName} analysis (pass ${pass} of 2)`,
-            ),
-        });
+        let recomputedAnalysis;
+        try {
+            recomputedAnalysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, index.totalWeight, {
+                signal: options?.signal,
+                throwIfAborted: options?.throwIfAborted,
+                expectedOutcomeCount: entryCount,
+                stagedValuesPath: analysisPath,
+                onProgress: ({pass, completed}) => reportProgress(
+                    options,
+                    completedBefore + entryCount + (pass === 1 ? completed : entryCount + completed),
+                    total,
+                    `Validating Outcome mode ${modeName} analysis (pass ${pass} of 2)`,
+                ),
+            });
+        } finally {
+            fs.rmSync(analysisPath, {force: true});
+        }
         if (JSON.stringify(recomputedAnalysis) !== JSON.stringify(modeEntry.analysis)) {
             issues.push({
                 code: "outcome-library-bundle-analysis-mismatch",

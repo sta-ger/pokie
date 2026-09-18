@@ -57,13 +57,14 @@ describe("benchmark: Outcome Library streaming generation", () => {
                 onLifecycleStage: (stage) => stages.push({stage, atMs: Number(process.hrtime.bigint() - startedAt) / 1_000_000}),
             }));
             const validation = await measureBenchmarkAsync(() => new OutcomeLibraryBundleValidator().validate(outDir, {deep: true}));
+            const finishedAtMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
             const bytes = directoryBytes(outDir);
             const outcomeCount = publication.result.manifest?.modes[0]?.outcomeCount;
             const totalDurationMs = publication.durationMs + validation.durationMs;
             const recordThroughput = totalDurationMs === 0 ? 0 : RECORD_COUNT / (totalDurationMs / 1_000);
             const stageDurationsMs = stages.map((entry, index) => ({
                 stage: entry.stage,
-                durationMs: (stages[index + 1]?.atMs ?? publication.durationMs) - entry.atMs,
+                durationMs: (stages[index + 1]?.atMs ?? finishedAtMs) - entry.atMs,
             }));
 
             // One JSON document is intentional: benchmark collectors can
@@ -90,6 +91,8 @@ describe("benchmark: Outcome Library streaming generation", () => {
             expect(validation.result).toEqual([]);
             expect(outcomeCount).toBe(RECORD_COUNT);
             expect(bytes).toBeGreaterThan(0);
+            expect(stageDurationsMs.every(({durationMs}) => durationMs >= 0)).toBe(true);
+            expect(stages.every((stage, index) => index === 0 || stage.atMs >= stages[index - 1].atMs)).toBe(true);
         } finally {
             fs.rmSync(root, {recursive: true, force: true});
         }

@@ -12,7 +12,7 @@ import {
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
-import type {StudioJobRecoveryView, StudioJobView} from "../jobs/StudioJobView.js";
+import type {StudioJobProgressView, StudioJobRecoveryView, StudioJobView} from "../jobs/StudioJobView.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
     readonly id: string;
@@ -36,7 +36,18 @@ export type StudioOutcomeLibraryGenerateJobView = {
     readonly id: string;
     readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     readonly cancellationRequested: boolean;
+    /** The common durable job clock is the authority across polling and restart. */
+    readonly createdAt?: number;
+    readonly startedAt?: number;
+    readonly completedAt?: number;
+    readonly durationMs?: number;
     readonly lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
+    /**
+     * Stage-local telemetry from StudioJobService.  Keep the older raw cursor
+     * below for compatibility, but never derive a writing/validation percent
+     * from that enumeration-only denominator.
+     */
+    readonly durableProgress?: StudioJobProgressView;
     readonly progress?: {readonly processedRawIndex: string; readonly progressTotal: string; readonly emittedOutcomes?: string};
     readonly result?: StudioOutcomeLibraryGenerateJobResultView;
     readonly recovery?: StudioJobRecoveryView;
@@ -367,6 +378,10 @@ export class StudioOutcomeLibraryGenerateJobService {
             status: common?.operation === "outcome-library-generation" ? common.status : record.status,
             cancellationRequested: record.cancellationRequested || common?.status === "cancelling",
             ...(common?.durationMs === undefined ? {} : {durationMs: common.durationMs}),
+            ...(common?.createdAt === undefined ? {} : {createdAt: common.createdAt}),
+            ...(common?.startedAt === undefined ? {} : {startedAt: common.startedAt}),
+            ...(common?.completedAt === undefined ? {} : {completedAt: common.completedAt}),
+            ...(common?.progress === undefined ? {} : {durableProgress: common.progress}),
             ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
             ...(record.progress === undefined ? {} : {progress: record.progress}),
             ...(record.result === undefined ? {} : {result: record.result}),
@@ -383,7 +398,11 @@ export class StudioOutcomeLibraryGenerateJobService {
             id: job.id,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
+            createdAt: job.createdAt,
+            ...(job.startedAt === undefined ? {} : {startedAt: job.startedAt}),
+            ...(job.completedAt === undefined ? {} : {completedAt: job.completedAt}),
             ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs}),
+            ...(job.progress === undefined ? {} : {durableProgress: job.progress}),
             ...(outcomeLibraryResultFromDurableJob(job) === undefined ? {} : {result: outcomeLibraryResultFromDurableJob(job)}),
             ...(recovery === undefined ? {} : {recovery}),
         };

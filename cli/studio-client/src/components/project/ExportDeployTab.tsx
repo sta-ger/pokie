@@ -29,6 +29,7 @@ import type {
     StudioOutcomeLibraryGenerateJobView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioProjectCapability,
+    StudioJobView,
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {
@@ -48,6 +49,7 @@ import {ErrorState} from "../common/ErrorState";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
+import {JobProgressCard} from "../common/JobProgressCard";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {PathInput} from "../common/PathInput";
@@ -217,6 +219,7 @@ function TargetCard({
     onGenerateOutcomeLibrary,
     onCancelOutcomeLibrary,
     onResumeOutcomeLibrary,
+    onInspectOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
     deployment,
@@ -241,6 +244,7 @@ function TargetCard({
     onGenerateOutcomeLibrary: () => void;
     onCancelOutcomeLibrary: () => void;
     onResumeOutcomeLibrary: () => void;
+    onInspectOutcomeLibrary: (path: string) => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
     deployment: DeploymentManager;
@@ -427,7 +431,8 @@ function TargetCard({
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
                         <>
-                            <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
+                            <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
+                            {outcomeLibraryRun.job.durableProgress === undefined && <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />}
                             <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
                         </>
                     )}
@@ -452,14 +457,17 @@ function TargetCard({
                             <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                 {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>Open output folder</Button>
-                                <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.bundleDir)}>Reveal output</Button>
+                                <Button size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.bundleDir)}>Inspect library</Button>
                                 {outputActionsUnavailable ? (
                                     <>
                                         <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.bundleDir)}>Copy path</Button>
                                         <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
                                     </>
-                                ) : null}
+                                ) : <>
+                                    <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>Open output folder</Button>
+                                    <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.bundleDir)}>Reveal output</Button>
+                                </>}
+                                {outcomeLibraryRun.result.warnings.map((warning) => <Text size="xs" c="orange" key={`${warning.code}:${warning.message}`}>{warning.message}</Text>)}
                                 <AdvancedDisclosure label="Inspect completed library">
                                     <Text size="xs">Hash: {outcomeLibraryRun.result.mode.hash}. Library: {outcomeLibraryRun.result.mode.libraryId}. Total weight: {outcomeLibraryRun.result.mode.totalWeight.toLocaleString()}.</Text>
                                     <Text size="xs">Coverage: {outcomeLibraryRun.result.generator.strategy}; raw work {String(outcomeLibraryRun.result.generator.sampledRawCount)} / {String(outcomeLibraryRun.result.generator.totalOutcomeSpaceSize)}.</Text>
@@ -796,6 +804,22 @@ function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobVie
         case "generation": return progress === undefined ? "Generating outcome library from this project's current build…" : `Generating outcome library: ${progress}…`;
         default: return progress === undefined ? "Preparing outcome library generation…" : `Generating outcome library: ${progress}…`;
     }
+}
+
+function toDurableOutcomeLibraryJob(job: StudioOutcomeLibraryGenerateJobView): StudioJobView {
+    return {
+        id: job.id,
+        projectId: "outcome-library-project",
+        operation: "Outcome Library generation",
+        request: {},
+        conflictKey: "outcome-library",
+        status: job.status,
+        createdAt: job.createdAt ?? job.startedAt ?? Date.now(),
+        ...(job.startedAt === undefined ? {} : {startedAt: job.startedAt}),
+        ...(job.completedAt === undefined ? {} : {completedAt: job.completedAt}),
+        ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs}),
+        ...(job.durableProgress === undefined ? {} : {progress: job.durableProgress}),
+    };
 }
 
 // The sole Studio Build/Export surface -- lists every applicable builder this project's own resolved
@@ -1345,6 +1369,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             onCancelOutcomeLibrary={handleCancelOutcomeLibrary}
                                             onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
+                                            onInspectOutcomeLibrary={(bundleDir) => openAndNavigate(bundleDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
                                             deployment={deployment}

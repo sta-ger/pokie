@@ -1173,9 +1173,14 @@ export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
     status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
+    createdAt?: number;
+    startedAt?: number;
+    completedAt?: number;
     /** Common durable timing survives polling and Studio restart. */
     durationMs?: number;
     lifecycleStage?: "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
+    /** Authoritative common durable progress; stage units are local to that stage. */
+    durableProgress?: StudioJobView["progress"];
     progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateResultView;
     recovery?: StudioJobView["recovery"];

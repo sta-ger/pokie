@@ -33,7 +33,8 @@ export type OnlineWeightedOutcomeLibraryAnalysisOptions = {
 // raw weight*value products (see WeightedOutcomeLibraryAnalyzer's own doc comment for the full rationale); it's
 // needs two deterministic accumulation passes (rtp/hitFrequency/maxWin first, then variance/maxWinProbability,
 // which each depend on a value only known after the first pass). Native publication replays a compact staged
-// numeric representation for those passes; deep validation and direct callers independently scan JSONL.
+// numeric representation for those passes; deep validation creates its own compact spool only after
+// independently checking each JSONL record, while direct callers scan JSONL.
 //
 // A dedicated cross-check test asserts this produces bit-identical results to WeightedOutcomeLibraryAnalyzer.analyze()
 // for the same outcomes, so the two can never silently diverge.

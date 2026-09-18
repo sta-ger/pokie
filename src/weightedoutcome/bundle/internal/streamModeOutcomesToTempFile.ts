@@ -99,6 +99,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     let hashedCount = 0;
     let totalWeight = 0;
     let processed = BigInt(0);
+    let announcedWriting = false;
 
     const fd = fs.openSync(filePath, "w");
     try {
@@ -106,6 +107,14 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
         if (analysisPath !== undefined) analysisDescriptor = fs.openSync(analysisPath, "w");
         for await (const outcome of outcomes) {
             assertNotCancelled(options);
+            // Lazy generated sources announce their completed enumeration just
+            // before yielding the first outcome.  Announcing writing here,
+            // rather than before asking the source for that outcome, keeps the
+            // observable lifecycle in real execution order.
+            if (!announcedWriting) {
+                options?.onLifecycleStage?.("writing");
+                announcedWriting = true;
+            }
             if (!isNonEmptyString(outcome.id)) {
                 issues.push({
                     code: "outcome-library-bundle-write-outcome-id-invalid",

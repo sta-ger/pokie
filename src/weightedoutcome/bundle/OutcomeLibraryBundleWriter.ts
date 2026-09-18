@@ -120,7 +120,6 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
             for (const mode of modes) {
                 assertNotCancelled(options);
-                options?.onLifecycleStage?.("writing");
                 const schemaVersion = mode.schemaVersion ?? WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION;
                 if (schemaVersion !== WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION) {
                     issues.push({
@@ -151,7 +150,6 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 if (result.built === undefined) {
                     continue;
                 }
-                options?.onLifecycleStage?.("finalization");
                 completed += BigInt(result.built.outcomeCount);
 
                 const current = provenanceKeyOf(result.built.firstOutcome as never);
