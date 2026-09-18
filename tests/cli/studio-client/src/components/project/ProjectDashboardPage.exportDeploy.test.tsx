@@ -184,9 +184,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs/saved-checkpoint") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
-                    id: "saved-checkpoint", status: "completed", cancellationRequested: false,
+                    id: "saved-checkpoint", status: "completed", cancellationRequested: false, durationMs: 44,
                     result: {
-                        status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json"], warnings: [],
+                        status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json"], byteSize: 123, warnings: [],
                         mode: {modeName: "base", libraryId: "a-base", hash: "sha256:resumed", outcomeCount: 6, totalWeight: 6, rtp: 0.95},
                         generator: {strategy: "exact", pokieVersion: "1.0.0"}, coverage: 1,
                         selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
@@ -202,6 +202,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Resume exact generation"}));
 
         expect(await screen.findByText(/Generated 6 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.getByText(/Final size: 123 bytes.*Duration: 44ms/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Reveal output"})).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
+        expect(screen.getByText(/Hash: sha256:resumed/)).toBeInTheDocument();
         expect(requests).toContain("POST /api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume");
     });
 

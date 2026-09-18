@@ -366,6 +366,7 @@ export class StudioOutcomeLibraryGenerateJobService {
             id: record.id,
             status: common?.operation === "outcome-library-generation" ? common.status : record.status,
             cancellationRequested: record.cancellationRequested || common?.status === "cancelling",
+            ...(common?.durationMs === undefined ? {} : {durationMs: common.durationMs}),
             ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
             ...(record.progress === undefined ? {} : {progress: record.progress}),
             ...(record.result === undefined ? {} : {result: record.result}),
@@ -382,6 +383,7 @@ export class StudioOutcomeLibraryGenerateJobService {
             id: job.id,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
+            ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs}),
             ...(outcomeLibraryResultFromDurableJob(job) === undefined ? {} : {result: outcomeLibraryResultFromDurableJob(job)}),
             ...(recovery === undefined ? {} : {recovery}),
         };

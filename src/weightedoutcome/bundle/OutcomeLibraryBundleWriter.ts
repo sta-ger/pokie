@@ -135,6 +135,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 const outcomesFile = `outcomes_${mode.modeName}.jsonl`;
                 const outcomesPath = path.join(stagingDir, outcomesFile);
                 const stagedEntriesPath = this.nativeFileWriting ? path.join(stagingDir, `.entries_${mode.modeName}.json`) : undefined;
+                const stagedAnalysisPath = this.nativeFileWriting ? path.join(stagingDir, `.analysis_${mode.modeName}.bin`) : undefined;
                 const result = await streamModeOutcomesToTempFile(
                     mode.modeName,
                     mode.libraryId,
@@ -143,6 +144,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     outcomesPath,
                     options,
                     stagedEntriesPath,
+                    stagedAnalysisPath,
                     completed,
                 );
                 issues.push(...result.issues);
@@ -174,17 +176,23 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 }
 
                 options?.onLifecycleStage?.("analyzing");
-                const analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, result.built.totalWeight, {
-                    signal: options?.signal,
-                    throwIfAborted: () => assertNotCancelled(options),
-                    expectedOutcomeCount: BigInt(result.built.outcomeCount),
-                    onProgress: (progress) => options?.onProgress?.({
-                        completed: progress.completed,
-                        total: progress.total,
-                        unit: progress.unit,
-                        message: `Analyzing Outcome mode ${mode.modeName} (pass ${progress.pass} of 2)`,
-                    }),
-                });
+                let analysis;
+                try {
+                    analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, result.built.totalWeight, {
+                        signal: options?.signal,
+                        throwIfAborted: () => assertNotCancelled(options),
+                        expectedOutcomeCount: BigInt(result.built.outcomeCount),
+                        ...(result.built.analysisPath === undefined ? {} : {stagedValuesPath: result.built.analysisPath}),
+                        onProgress: (progress) => options?.onProgress?.({
+                            completed: progress.completed,
+                            total: progress.total,
+                            unit: progress.unit,
+                            message: `Analyzing Outcome mode ${mode.modeName} (pass ${progress.pass} of 2)`,
+                        }),
+                    });
+                } finally {
+                    if (result.built.analysisPath !== undefined) fs.rmSync(result.built.analysisPath, {force: true});
+                }
                 const indexFile = `index_${mode.modeName}.json`;
                 const firstOutcome = result.built.firstOutcome as {artifact: {betMode: string; stake: number}};
                 const generator = mode.generator ?? mode.getGenerator?.();

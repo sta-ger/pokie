@@ -121,7 +121,7 @@ type OutcomeLibraryGenerationOptions = {
 type OutcomeLibraryRunView =
     | {status: "idle"}
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView}
-    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>}
+    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
     | {status: "error"; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
@@ -129,6 +129,12 @@ type OutcomeLibraryPreflightView =
     | {status: "loading"}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>}
     | {status: "error"; result?: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>; message?: string};
+
+function describeCompletedOutcomeLibrarySelector(selector: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>["selector"]): string {
+    if (selector.kind === "bundle") return `bundle ${selector.bundleDir}, mode ${selector.modeName}`;
+    if (selector.kind === "json") return `JSON ${selector.path}`;
+    return `Stake Engine ${selector.stakeDir}, mode ${selector.modeName}`;
+}
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
     return describeOutcomeLibraryGenerationTerminalOutcome(view);
@@ -441,11 +447,25 @@ function TargetCard({
                                     ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
                                     : ""}
                                 {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
-                                {outcomeLibraryRun.result.bundleDir}.{" "}
-                                <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
-                                    Open output folder
-                                </Button>
+                                {outcomeLibraryRun.result.bundleDir}.
                             </Text>
+                            <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
+                                {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
+                            <QuickActions>
+                                <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>Open output folder</Button>
+                                <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.bundleDir)}>Reveal output</Button>
+                                {outputActionsUnavailable ? (
+                                    <>
+                                        <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.bundleDir)}>Copy path</Button>
+                                        <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
+                                    </>
+                                ) : null}
+                                <AdvancedDisclosure label="Inspect completed library">
+                                    <Text size="xs">Hash: {outcomeLibraryRun.result.mode.hash}. Library: {outcomeLibraryRun.result.mode.libraryId}. Total weight: {outcomeLibraryRun.result.mode.totalWeight.toLocaleString()}.</Text>
+                                    <Text size="xs">Coverage: {outcomeLibraryRun.result.generator.strategy}; raw work {String(outcomeLibraryRun.result.generator.sampledRawCount)} / {String(outcomeLibraryRun.result.generator.totalOutcomeSpaceSize)}.</Text>
+                                    <Text size="xs">Selector: {describeCompletedOutcomeLibrarySelector(outcomeLibraryRun.result.selector)}. Files: {outcomeLibraryRun.result.files.join(", ")}.</Text>
+                                </AdvancedDisclosure>
+                            </QuickActions>
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
                         </>
                     )}
@@ -1105,7 +1125,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 }
                 outcomeLibraryGuard.end();
                 if (job.status === "completed" && job.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: job.result});
+                    setOutcomeLibraryRun({status: "ok", result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
                     deployment.refreshProjectModes();
                     // The generated bundle is now canonical project state.
                     // Re-preflight every registry-backed artifact card so the

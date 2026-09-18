@@ -1144,6 +1144,7 @@ export type StudioOutcomeLibraryGenerateResultView =
           status: "ok";
           bundleDir: string;
           files: string[];
+          byteSize?: number;
           warnings: ValidationIssue[];
           mode: {modeName: string; libraryId: string; hash: string; outcomeCount: number; totalWeight: number; rtp: number};
           generator: OutcomeLibraryGeneratorDiagnostics;
@@ -1172,6 +1173,8 @@ export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
     status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
+    /** Common durable timing survives polling and Studio restart. */
+    durationMs?: number;
     lifecycleStage?: "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
     progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateResultView;

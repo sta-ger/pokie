@@ -9,10 +9,11 @@ import {
     OutcomeLibraryBundleWriteCancelledError,
     OutcomeLibraryBundleDestinationClaimedError,
     OutcomeLibraryBundleWriter,
+    WeightedOutcomeLibraryAnalyzer,
     WeightedOutcomeInput,
     capturePublishDirectoryOwnership,
 } from "pokie";
-import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function siblingLeftovers(outDir: string): string[] {
     const parentDir = path.dirname(outDir);
@@ -118,6 +119,17 @@ describe("OutcomeLibraryBundleWriter", () => {
         for (const entry of progress.filter((item) => item.total !== undefined)) {
             expect(entry.completed <= entry.total!).toBe(true);
         }
+    });
+
+    it("replays compact staged analysis inputs with the canonical analyzer's exact result and publishes no staging files", async () => {
+        const mode = buildOutcomeLibraryBundleModeInput("base", "base-lib");
+        const result = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([mode], outDir);
+
+        expect(result.issues).toEqual([]);
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryBundleManifest;
+        expect(manifest.modes[0].analysis).toEqual(new WeightedOutcomeLibraryAnalyzer().analyze(buildOutcomeLibraryBundleTestLibrary("base-lib")));
+        expect(fs.readdirSync(outDir).some((name) => name.startsWith(".analysis_") || name.startsWith(".entries_"))).toBe(false);
+        expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("honors cancellation during the cooperative analysis scan without publishing a partial bundle", async () => {

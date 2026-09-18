@@ -45,6 +45,8 @@ export type StreamModeOutcomesResult<T extends string | number> = {
         // shape. Native publication instead stages JSON index entries on disk.
         readonly entries?: readonly OutcomeLibraryBundleIndexEntry[];
         readonly entriesPath?: string;
+        /** Private compact numeric analysis spool used only during native publication. */
+        readonly analysisPath?: string;
         readonly outcomeCount: number;
         readonly totalWeight: number;
         readonly libraryHash: string;
@@ -77,6 +79,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     filePath: string,
     options?: OutcomeLibraryBundleWriteOptions,
     entriesPath?: string,
+    analysisPath?: string,
     completedBefore = BigInt(0),
 ): Promise<StreamModeOutcomesResult<T>> {
     const issues: ValidationIssue[] = [];
@@ -86,6 +89,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
 
     const entries: OutcomeLibraryBundleIndexEntry[] | undefined = entriesPath === undefined ? [] : undefined;
     let entriesDescriptor: number | undefined;
+    let analysisDescriptor: number | undefined;
+    const analysisRecord = analysisPath === undefined ? undefined : Buffer.allocUnsafe(24);
     let previousId: string | undefined;
     let alreadyReportedUnsorted = false;
     let reference: OutcomeHomogeneityKey | undefined;
@@ -98,6 +103,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     const fd = fs.openSync(filePath, "w");
     try {
         if (entriesPath !== undefined) entriesDescriptor = fs.openSync(entriesPath, "w");
+        if (analysisPath !== undefined) analysisDescriptor = fs.openSync(analysisPath, "w");
         for await (const outcome of outcomes) {
             assertNotCancelled(options);
             if (!isNonEmptyString(outcome.id)) {
@@ -220,6 +226,13 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 if (hashedCount > 0) fs.writeSync(entriesDescriptor, ",");
                 fs.writeSync(entriesDescriptor, JSON.stringify(indexEntry));
             }
+            if (analysisDescriptor !== undefined) {
+                if (analysisRecord === undefined) throw new Error("Outcome Library analysis staging buffer was not allocated.");
+                analysisRecord.writeDoubleLE(outcome.weight, 0);
+                analysisRecord.writeDoubleLE(outcome.artifact.payoutMultiplier, 8);
+                analysisRecord.writeDoubleLE(outcome.artifact.totalWin, 16);
+                fs.writeSync(analysisDescriptor, analysisRecord);
+            }
             offset += lineBuffer.byteLength + 1;
 
             if (hashedCount > 0) {
@@ -243,6 +256,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     } finally {
         fs.closeSync(fd);
         if (entriesDescriptor !== undefined) fs.closeSync(entriesDescriptor);
+        if (analysisDescriptor !== undefined) fs.closeSync(analysisDescriptor);
     }
 
     if (hashedCount === 0) {
@@ -280,6 +294,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
         issues,
         built: {
             ...(entries === undefined ? {entriesPath} : {entries}),
+            ...(analysisPath === undefined ? {} : {analysisPath}),
             outcomeCount: hashedCount,
             totalWeight,
             libraryHash,

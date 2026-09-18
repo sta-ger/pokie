@@ -13,6 +13,8 @@ export type StudioOutcomeLibraryGenerateResultView =
           readonly status: "ok";
           readonly bundleDir: string; // project-relative
           readonly files: readonly string[];
+          /** Final published byte size, measured only after the atomic swap settles. */
+          readonly byteSize?: number;
           readonly warnings: readonly ValidationIssue[];
           readonly mode: {
               readonly modeName: string;
