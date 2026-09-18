@@ -434,7 +434,8 @@ function TargetCard({
                             ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
                             : <>
                                 <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
-                                <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
+                                {outcomeLibraryRun.job.status !== "cancelling" && !outcomeLibraryRun.job.cancellationRequested &&
+                                    <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>}
                             </>
                     )}
                     {outcomeLibraryRun.status === "error" && (
@@ -875,13 +876,28 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         listOutcomeLibraryGenerationJobs(fetchImpl)
             .then((jobs) => {
                 if (cancelled) return;
+                const active = jobs.find((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+                if (active !== undefined) {
+                    setOutcomeLibraryRun({status: "running", job: active});
+                    pollOutcomeLibraryGeneration(active.id);
+                    return;
+                }
                 const completed = jobs.find((job) => job.status === "completed" && job.result?.status === "ok");
                 if (completed?.result?.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", result: completed.result, ...(completed.durationMs === undefined ? {} : {durationMs: completed.durationMs})});
                     return;
                 }
-                const resumable = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled" && job.result.checkpoint !== undefined);
-                if (resumable?.result?.status === "cancelled") setOutcomeLibraryRun({status: "cancelled", result: resumable.result});
+                const cancelledJob = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled");
+                if (cancelledJob?.result?.status === "cancelled") {
+                    setOutcomeLibraryRun({status: "cancelled", result: cancelledJob.result});
+                    return;
+                }
+                const failed = jobs.find((job) => job.status === "failed" || job.status === "recovery-required");
+                if (failed?.result !== undefined && failed.result.status !== "ok") {
+                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(failed.result), ...("error" in failed.result ? {diagnostic: failed.result.error} : {}), plan: failed.result.plan});
+                } else if (failed !== undefined) {
+                    setOutcomeLibraryRun({status: "error", message: "Outcome library generation ended without a result."});
+                }
             })
             .catch(() => {
                 // Older Studio servers do not expose checkpoint discovery; the
@@ -890,6 +906,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         return () => {
             cancelled = true;
         };
+        // The discovery request must stay mount-scoped; depending on the
+        // polling function would rediscover and restart the same durable job
+        // after every state update it applies.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl]);
     useEffect(() => {
         let cancelled = false;
@@ -1148,7 +1168,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     function pollOutcomeLibraryGeneration(id: string): void {
         getOutcomeLibraryGenerationJob(fetchImpl, id)
             .then((job) => {
-                if (job.status === "queued" || job.status === "running") {
+                if (job.status === "queued" || job.status === "running" || job.status === "cancelling") {
                     setOutcomeLibraryRun({status: "running", job});
                     outcomeLibraryPollTimer.current = setTimeout(() => pollOutcomeLibraryGeneration(id), 250);
                     return;

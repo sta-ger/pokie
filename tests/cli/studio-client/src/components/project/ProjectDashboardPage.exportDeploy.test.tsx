@@ -936,6 +936,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const user = userEvent.setup();
         const routes = {
             ...BASE_ROUTES,
+            "/api/project/jobs": () => ({
+                ok: true,
+                status: 200,
+                body: {jobs: [{
+                    id: "completed-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/outcomelibrary",
+                    status: "completed", createdAt: 1,
+                }]},
+            }),
             "/api/project/outcome-libraries/generate/jobs": () => ({
                 ok: true,
                 status: 200,
@@ -959,6 +967,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         expect(await screen.findByText(/Generated 4 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.queryByText("outcome-library-generation: completed")).not.toBeInTheDocument();
         expect(screen.getByText("Final size: 4,096 bytes · Duration: 321ms.")).toBeInTheDocument();
         expect(screen.getByText("The retained warning.")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
@@ -976,7 +985,26 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === "/api/project/outcome-libraries/generate/jobs") {
+            if (path === "/api/project/jobs") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "generate-running", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/outcomelibrary",
+                        status: "running", createdAt: 1,
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "generate-running", status: "running", cancellationRequested: false, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"},
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
                 return Promise.resolve({
                     ok: true,
                     status: 202,
@@ -1002,7 +1030,6 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText("Finalizing generated outcomes…")).toBeInTheDocument();
         expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
@@ -1020,6 +1047,27 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         let cancellationRequests = 0;
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
+            if (path === "/api/project/jobs") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "durable-running", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/outcomelibrary",
+                        status: "running", createdAt: 1,
+                        progress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "durable-running", status: "running", cancellationRequested: false,
+                        durableProgress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }]}),
+                });
+            }
             if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
                 return Promise.resolve({
                     ok: true,
@@ -1052,7 +1100,6 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText("Enumerating combinations")).toBeInTheDocument();
         expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);

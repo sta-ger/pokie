@@ -954,6 +954,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
     // own hooks/fetches.
     const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
+    // Build/Export owns the task-oriented Outcome Library workflow, including
+    // its operation-specific retained result and recovery actions. The common
+    // durable projection remains visible on every other tab, but displaying it
+    // beside the feature card would present the same durable job twice.
+    const visibleCommonJobs = activeTab === "exportDeploy"
+        ? commonJobs.jobs.filter((job) => job.operation !== "outcome-library-generation")
+        : commonJobs.jobs;
     const projectName = describeProjectName(header);
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -1129,7 +1136,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             {migration.message}
                         </Alert>
                     )}
-                    {commonJobs.jobs.map((job) =>
+                    {visibleCommonJobs.map((job) =>
                         job.status === "queued" || job.status === "running" || job.status === "cancelling"
                             ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
                             : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
