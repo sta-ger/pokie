@@ -874,6 +874,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         listOutcomeLibraryGenerationJobs(fetchImpl)
             .then((jobs) => {
                 if (cancelled) return;
+                const completed = jobs.find((job) => job.status === "completed" && job.result?.status === "ok");
+                if (completed?.result?.status === "ok") {
+                    setOutcomeLibraryRun({status: "ok", result: completed.result, ...(completed.durationMs === undefined ? {} : {durationMs: completed.durationMs})});
+                    return;
+                }
                 const resumable = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled" && job.result.checkpoint !== undefined);
                 if (resumable?.result?.status === "cancelled") setOutcomeLibraryRun({status: "cancelled", result: resumable.result});
             })

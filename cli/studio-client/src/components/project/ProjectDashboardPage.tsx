@@ -9,7 +9,9 @@ import {
     getReport,
     inspectProject,
     inspectReplayArtifact,
+    checkNativePickerAvailability,
     openOutputFolder,
+    revealOutputPath,
     listRecentSpins,
     listReplays,
     listReports,
@@ -45,6 +47,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useProjectJobs} from "../../hooks/useProjectJobs";
+import {useOpenProject} from "../../hooks/useOpenProject";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
@@ -966,6 +969,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
+    const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
+    const openAndNavigate = useOpenProject();
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
@@ -1023,6 +1028,39 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             })
             .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
+
+    function revealJobOutput(outputPath: string): void {
+        setJobOutputNotice(undefined);
+        revealOutputPath(fetchImpl, outputPath)
+            .then((result) => {
+                if (result.status === "ok") {
+                    setJobOutputNotice("Revealed job output.");
+                    return;
+                }
+                setJobOutputNotice(result.status === "unavailable" ? result.reason : result.message);
+            })
+            .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
+    }
+
+    function inspectJobOutput(outputPath: string): void {
+        setJobOutputNotice(undefined);
+        openAndNavigate(outputPath).catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
+    }
+
+    useEffect(() => {
+        let cancelled = false;
+        checkNativePickerAvailability(fetchImpl)
+            .then((view) => {
+                if (cancelled) return;
+                setJobOutputActionsUnavailableReason(view.status === "unavailable" ? view.reason : undefined);
+            })
+            .catch(() => {
+                if (!cancelled) setJobOutputActionsUnavailableReason("This Studio session cannot confirm access to its server's local output.");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
 
     if (header.status === "empty") {
         return (
@@ -1094,7 +1132,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {commonJobs.jobs.map((job) =>
                         job.status === "queued" || job.status === "running" || job.status === "cancelling"
                             ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} key={job.id} />,
+                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
                     )}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (

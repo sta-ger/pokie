@@ -368,6 +368,24 @@ export class StudioOutcomeLibraryGenerateJobService {
             this.jobService?.complete(record.id, {
                 summary: "Outcome Library generation completed.",
                 outputs: [{path: result.bundleDir, label: "Outcome Library bundle"}],
+                // Keep the completion card useful after its short-lived
+                // compatibility record has gone away.  These are copied from
+                // the published result rather than reconstructed by a later
+                // UI, so the durable job remains an honest record of this
+                // exact library and generator run.
+                provenance: {
+                    game: result.generator.game,
+                    generator: {
+                        algorithm: result.generator.algorithm,
+                        strategy: result.generator.strategy,
+                        pokieVersion: result.generator.pokieVersion,
+                        ...(result.generator.configHash === undefined ? {} : {configHash: result.generator.configHash}),
+                        generatedAt: result.generator.generatedAt,
+                    },
+                    library: {id: result.mode.libraryId, hash: result.mode.hash},
+                    selector: result.selector,
+                },
+                warnings: result.warnings.map((warning) => `${warning.code}: ${warning.message}`),
                 // Preserve the operation-specific result in the single
                 // durable authority.  The old in-process record can then be
                 // discarded without making a retained terminal job opaque.

@@ -9,8 +9,8 @@ import {AppShellLayout} from "../layout/AppShellLayout";
 import {NavTabs, type NavTabItem} from "../layout/NavTabs";
 import {DocumentationLinks} from "./DocumentationLinks";
 import {ProjectsPanel} from "./ProjectsPanel";
-import type {StudioJobView, StudioProjectRegistryView} from "../../api/types";
-import {openOutputFolder} from "../../api/apiClient";
+import type {StudioJobView, StudioOpenFolderView, StudioProjectRegistryView} from "../../api/types";
+import {checkNativePickerAvailability, openOutputFolder, revealOutputPath} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
 import {JobProgressCard} from "../common/JobProgressCard";
@@ -26,6 +26,12 @@ const HOME_TABS: NavTabItem<HomeTab>[] = [
 
 function isHomeTab(value: string | undefined): value is HomeTab {
     return HOME_TABS.some((tab) => tab.value === value);
+}
+
+function describeJobOutputAction(result: StudioOpenFolderView, success: string): string {
+    if (result.status === "ok") return success;
+    if (result.status === "unavailable") return result.reason;
+    return result.message;
 }
 
 // Task-oriented Home: 2 areas. "Design Game" is the primary happy path -- Blank/Random/Existing (the
@@ -95,9 +101,24 @@ export function HomePage() {
     const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
     const navigationGuard = useDesignNavigationGuard(isDesignDirty);
     const openAndNavigate = useOpenProject();
+    const [jobOutputNotice, setJobOutputNotice] = useState<string>();
+    const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     // Home does not have a current project identity.  The server therefore returns only Design and
     // project-opening records here, including retained terminal records after a reload.
     const homeJobs = useHomeSourceJobs(fetchImpl);
+    useEffect(() => {
+        let cancelled = false;
+        checkNativePickerAvailability(fetchImpl)
+            .then((view) => {
+                if (!cancelled) setJobOutputActionsUnavailableReason(view.status === "unavailable" ? view.reason : undefined);
+            })
+            .catch(() => {
+                if (!cancelled) setJobOutputActionsUnavailableReason("This Studio session cannot confirm access to its server's local output.");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
     const handleHomeRecoveryAction = (job: StudioJobView): void => {
         // Recovery never silently replays a retained write.  Re-open the
         // owning workflow with its captured source so the user can inspect
@@ -123,9 +144,16 @@ export function HomePage() {
                 job.status === "queued" || job.status === "running" || job.status === "cancelling"
                     ? <JobProgressCard key={job.id} job={job} onCancel={homeJobs.cancel} />
                     : <JobResultCard key={job.id} job={job} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
-                        openOutputFolder(fetchImpl, outputPath).catch(() => undefined);
-                    }} />,
+                        openOutputFolder(fetchImpl, outputPath).then((result) => {
+                            setJobOutputNotice(describeJobOutputAction(result, "Opened job output."));
+                        }).catch(() => setJobOutputNotice("Couldn't open the job output."));
+                    }} onRevealOutput={(outputPath) => {
+                        revealOutputPath(fetchImpl, outputPath).then((result) => {
+                            setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
+                        }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
+                    }} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} />,
             )}
+            {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
         </Stack>
     );
 

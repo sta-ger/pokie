@@ -53,4 +53,37 @@ describe("JobResultCard", () => {
         expect(screen.getByText(/staging removed/)).toBeInTheDocument();
         expect(screen.getByText(/\/bundle/)).toBeInTheDocument();
     });
+
+    it("renders a retained Outcome Library result and keeps inspection usable when host output actions are unavailable", () => {
+        const inspect = jest.fn();
+        render(<MantineProvider><JobResultCard onInspectOutput={inspect} outputActionsUnavailableReason="This is a remote Studio session." job={{
+            id: "outcome-completed", projectId: "/project", operation: "outcome-library-generation", request: {}, conflictKey: "generation",
+            status: "completed", createdAt: 1, completedAt: 2, durationMs: 321,
+            result: {
+                summary: "Outcome Library generation completed.",
+                warnings: ["retained-warning: The retained warning."],
+                provenance: {library: {id: "fixture-base", hash: "sha256:library"}},
+                outputs: [{label: "Outcome Library bundle", path: "outcomelibrary"}],
+                detail: {status: "ok", result: {
+                    status: "ok", byteSize: 4096,
+                    mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:library", outcomeCount: 4},
+                    generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", generatedAt: "2026-09-18T00:00:00.000Z", game: {id: "fixture", version: "1.0.0"}},
+                    selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                }},
+            },
+        }} /></MantineProvider>);
+
+        expect(screen.getByText("Duration: 321ms")).toBeInTheDocument();
+        expect(screen.getByText("Final size: 4,096 bytes")).toBeInTheDocument();
+        expect(screen.getByText("Library hash: sha256:library")).toBeInTheDocument();
+        expect(screen.getByText("Configuration hash: sha256:config")).toBeInTheDocument();
+        expect(screen.getByText("Selector: Bundle outcomelibrary, mode base")).toBeInTheDocument();
+        expect(screen.getByText("retained-warning: The retained warning.")).toBeInTheDocument();
+        expect(screen.getByText(/Open and reveal are unavailable: This is a remote Studio session/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open Outcome Library bundle"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reveal Outcome Library bundle"})).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", {name: "Inspect Outcome Library bundle"}));
+        expect(inspect).toHaveBeenCalledWith("outcomelibrary");
+    });
 });

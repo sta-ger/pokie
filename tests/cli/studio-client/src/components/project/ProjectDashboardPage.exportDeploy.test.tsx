@@ -918,6 +918,40 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(stakeRequest).toBeUndefined();
     });
 
+    it("rehydrates a completed Outcome Library result with its durable terminal metadata", async () => {
+        const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 200,
+                body: {jobs: [{
+                    id: "completed-library", status: "completed", cancellationRequested: false, durationMs: 321,
+                    result: {
+                        status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json", "base.jsonl"], byteSize: 4096,
+                        warnings: [{code: "retained-warning", message: "The retained warning."}],
+                        mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:library", outcomeCount: 4, totalWeight: 6, rtp: 0.95},
+                        generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", pokieVersion: "1.0.0", game: {id: "fixture", name: "Fixture", version: "1.0.0"}, generatedAt: "2026-09-18T00:00:00.000Z", sampledRawCount: 6, totalOutcomeSpaceSize: 6},
+                        coverage: 1,
+                        selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                        plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}},
+                    },
+                }]},
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText(/Generated 4 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.getByText("Final size: 4,096 bytes · Duration: 321ms.")).toBeInTheDocument();
+        expect(screen.getByText("The retained warning.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
+        expect(screen.getByText(/Hash: sha256:library/)).toBeInTheDocument();
+        expect(screen.getByText(/Selector: bundle outcomelibrary, mode base/)).toBeInTheDocument();
+    });
+
     it("shows finalization rather than a misleading generation label once raw work is complete", async () => {
         const user = userEvent.setup();
         const routes = {

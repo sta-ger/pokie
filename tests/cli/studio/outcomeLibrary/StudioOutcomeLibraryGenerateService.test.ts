@@ -817,7 +817,10 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result.mode.outcomeCount).toBe(4);
             expect(result.mode.totalWeight).toBe(6);
             expect(result.mode.hash).toEqual(expect.any(String));
+            expect(result.byteSize).toEqual(expect.any(Number));
             expect(result.generator.strategy).toBe("exact");
+            expect(result.generator.game).toEqual({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"});
+            expect(result.generator.configHash).toBeUndefined();
             expect(result.generator.pokieVersion).toBe(POKIE_VERSION);
             expect(result.coverage).toBe(1);
             expect(result.selector).toEqual({kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"});
