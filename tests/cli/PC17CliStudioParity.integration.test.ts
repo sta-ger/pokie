@@ -49,7 +49,10 @@ async function waitForJob(baseUrl: string, id: string): Promise<Record<string, u
         const response = await fetch(`${baseUrl}/api/project/artifacts/build/${id}`);
         expect(response.status).toBe(200);
         const job = await response.json() as Record<string, unknown>;
-        if (job.status !== "queued" && job.status !== "running") return job;
+        // Cancellation is an asynchronous cleanup boundary: a poll immediately
+        // after the cancel request truthfully observes `cancelling` until the
+        // builder has removed its staging output and persisted `cancelled`.
+        if (job.status !== "queued" && job.status !== "running" && job.status !== "cancelling") return job;
         await new Promise<void>((resolve) => {
             setTimeout(resolve, 10);
         });
