@@ -7,7 +7,6 @@ import {
     type OutcomeLibraryBundleModeInput,
     type WeightedOutcomeInput,
 } from "pokie";
-import {measureBenchmarkAsync} from "./support/measureBenchmark.js";
 import {buildOutcomeLibraryBundleModeInput} from "../tests/weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // This deliberately exercises the canonical streaming publisher rather than
@@ -45,7 +44,11 @@ describe("benchmark: Outcome Library streaming generation", () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-outcome-library-bench-"));
         const outDir = path.join(root, "bundle");
         const stages: {stage: string; atMs: number}[] = [];
+        // Every reported duration is measured against this one monotonic
+        // clock. Independent helper timers would make stage sums and the
+        // final publication/validation telemetry incomparable.
         const startedAt = process.hrtime.bigint();
+        const elapsedMs = (): number => Number(process.hrtime.bigint() - startedAt) / 1_000_000;
         const modes: OutcomeLibraryBundleModeInput<string>[] = [{
             modeName: "base",
             libraryId: "benchmark-library",
@@ -53,18 +56,26 @@ describe("benchmark: Outcome Library streaming generation", () => {
         }];
 
         try {
-            const publication = await measureBenchmarkAsync(() => new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes, outDir, {
-                onLifecycleStage: (stage) => stages.push({stage, atMs: Number(process.hrtime.bigint() - startedAt) / 1_000_000}),
-            }));
-            const validation = await measureBenchmarkAsync(() => new OutcomeLibraryBundleValidator().validate(outDir, {deep: true}));
-            const finishedAtMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+            const publicationStartedAtMs = elapsedMs();
+            const publicationResult = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes, outDir, {
+                onLifecycleStage: (stage) => stages.push({stage, atMs: elapsedMs()}),
+            });
+            const publicationFinishedAtMs = elapsedMs();
+            const validationStartedAtMs = elapsedMs();
+            const validationResult = await new OutcomeLibraryBundleValidator().validate(outDir, {deep: true});
+            const finishedAtMs = elapsedMs();
             const bytes = directoryBytes(outDir);
-            const outcomeCount = publication.result.manifest?.modes[0]?.outcomeCount;
-            const totalDurationMs = publication.durationMs + validation.durationMs;
+            const outcomeCount = publicationResult.manifest?.modes[0]?.outcomeCount;
+            const publicationDurationMs = publicationFinishedAtMs - publicationStartedAtMs;
+            const deepValidationDurationMs = finishedAtMs - validationStartedAtMs;
+            const totalDurationMs = finishedAtMs;
             const recordThroughput = totalDurationMs === 0 ? 0 : RECORD_COUNT / (totalDurationMs / 1_000);
             const stageDurationsMs = stages.map((entry, index) => ({
                 stage: entry.stage,
-                durationMs: (stages[index + 1]?.atMs ?? finishedAtMs) - entry.atMs,
+                // Publication ends before the independent deep validation
+                // begins. Keep both telemetry intervals on the shared clock
+                // without assigning validation time to the final publish stage.
+                durationMs: (stages[index + 1]?.atMs ?? publicationFinishedAtMs) - entry.atMs,
             }));
 
             // One JSON document is intentional: benchmark collectors can
@@ -77,21 +88,24 @@ describe("benchmark: Outcome Library streaming generation", () => {
                 uniqueRecordCount: outcomeCount,
                 bytes,
                 stageTransitions: stages,
-                stageDurationsMs: [...stageDurationsMs, {stage: "deep-validation", durationMs: validation.durationMs}],
-                publicationDurationMs: publication.durationMs,
-                deepValidationDurationMs: validation.durationMs,
+                stageDurationsMs: [...stageDurationsMs, {stage: "deep-validation", durationMs: deepValidationDurationMs}],
+                publicationDurationMs,
+                deepValidationDurationMs,
                 totalDurationMs,
                 recordsPerSecond: recordThroughput,
                 cancellationLatencyMs: "not exercised",
                 runtime: {node: process.version, platform: process.platform, arch: process.arch},
-                correctness: publication.result.issues.length === 0 && validation.result.length === 0 && outcomeCount === RECORD_COUNT,
+                correctness: publicationResult.issues.length === 0 && validationResult.length === 0 && outcomeCount === RECORD_COUNT,
+                validation: {deep: true, issueCount: validationResult.length, passed: validationResult.length === 0},
             }));
 
-            expect(publication.result.issues).toEqual([]);
-            expect(validation.result).toEqual([]);
+            expect(publicationResult.issues).toEqual([]);
+            expect(validationResult).toEqual([]);
             expect(outcomeCount).toBe(RECORD_COUNT);
             expect(bytes).toBeGreaterThan(0);
             expect(stageDurationsMs.every(({durationMs}) => durationMs >= 0)).toBe(true);
+            expect(publicationDurationMs).toBeGreaterThanOrEqual(0);
+            expect(deepValidationDurationMs).toBeGreaterThanOrEqual(0);
             expect(stages.every((stage, index) => index === 0 || stage.atMs >= stages[index - 1].atMs)).toBe(true);
         } finally {
             fs.rmSync(root, {recursive: true, force: true});

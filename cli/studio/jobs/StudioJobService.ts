@@ -123,8 +123,12 @@ export class StudioJobService {
     public complete(id: string, result: StudioJobResultView): StudioJobView | undefined {
         return this.terminal(id, "completed", {result});
     }
-    public fail(id: string, error: string, recovery?: StudioJobRecoveryView): StudioJobView | undefined {
-        return this.terminal(id, "failed", {error, ...(recovery === undefined ? {} : {recovery})});
+    public fail(id: string, error: string, recovery?: StudioJobRecoveryView, result?: StudioJobResultView): StudioJobView | undefined {
+        return this.terminal(id, "failed", {
+            error,
+            ...(recovery === undefined ? {} : {recovery}),
+            ...(result === undefined ? {} : {result}),
+        });
     }
     public cancelled(id: string, result?: StudioJobResultView, recovery?: StudioJobRecoveryView): StudioJobView | undefined {
         return this.terminal(id, "cancelled", {...(result === undefined ? {} : {result}), ...(recovery === undefined ? {} : {recovery})});

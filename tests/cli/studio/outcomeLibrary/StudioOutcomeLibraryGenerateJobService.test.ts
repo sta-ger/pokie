@@ -17,7 +17,7 @@ import {
 import {createUnresolvedRuntimePlan} from "../../../../cli/studio/artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
-import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {StudioOutcomeLibraryGenerateService, type StudioOutcomeLibraryGenerationLifecycleStage} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 
@@ -271,6 +271,85 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
             setImmediate(resolve);
         });
         expect(jobs.getStatusForProject(projectRoot, started.id)).toMatchObject({status: "cancelled", lifecycleStage: "finalization"});
+    });
+
+    it("projects the durable lifecycle identically before and after Studio rehydrates a completed job", async () => {
+        const durableDirectory = path.join(projectRoot, ".durable-jobs");
+        const repository = new FileStudioJobRepository(durableDirectory);
+        let now = 10;
+        const durableJobs = new StudioJobService(repository, () => now);
+        const generate = jest.fn((
+            root: string,
+            _request: unknown,
+            onLifecycleStage?: (stage: StudioOutcomeLibraryGenerationLifecycleStage) => void,
+            _onPostEnumerationProgress?: (emitted: bigint) => void,
+            onBundleProgress?: (progress: {completed: bigint; total?: bigint; unit?: "outcome records" | "outcome records checked" | "bytes" | "bundle files"; message: string}) => void,
+        ) => {
+            onLifecycleStage?.("writing");
+            onBundleProgress?.({
+                completed: BigInt("9007199254740993"), total: BigInt("18014398509481986"), unit: "outcome records", message: "Writing Outcome mode base",
+            });
+            now = 30;
+            return {status: "generation-error" as const, code: "fixture", error: "stop", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
+        });
+        const liveService = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+        liveService.attachJobService(durableJobs);
+
+        now = 20;
+        const started = liveService.start(projectRoot, {generation: "sampled"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        const live = liveService.getStatusForProject(projectRoot, started.id);
+        const rehydratedService = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+        rehydratedService.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory), () => 100));
+        const rehydrated = rehydratedService.getStatusForProject(projectRoot, started.id);
+
+        expect(live).toEqual(rehydrated);
+        expect(rehydrated).toMatchObject({
+            status: "failed", createdAt: 20, startedAt: 20, completedAt: 30, durationMs: 10,
+            durableProgress: {
+                stage: "Writing outcomes", unit: "outcome records", current: "9007199254740993", total: "18014398509481986", message: "Writing Outcome mode base",
+            },
+        });
+        expect(live).not.toHaveProperty("lifecycleStage");
+        expect(live).not.toHaveProperty("progress");
+    });
+
+    it("emits the complete durable Outcome Library stage trace in execution order", async () => {
+        const durableJobs = new StudioJobService(new FileStudioJobRepository(path.join(projectRoot, ".durable-jobs")));
+        const progress = jest.spyOn(durableJobs, "progress");
+        const generate = jest.fn((
+            root: string,
+            request: {onProgress?: (processed: bigint, total: bigint) => void},
+            onLifecycleStage?: (stage: StudioOutcomeLibraryGenerationLifecycleStage) => void,
+            onPostEnumerationProgress?: (emitted: bigint) => void,
+            onBundleProgress?: (entry: {completed: bigint; total?: bigint; unit?: "outcome records" | "outcome records checked" | "bytes" | "bundle files"; message: string}) => void,
+        ) => {
+            onLifecycleStage?.("generation");
+            request.onProgress?.(BigInt(2), BigInt(4));
+            onLifecycleStage?.("finalization");
+            onPostEnumerationProgress?.(BigInt(3));
+            for (const stage of ["writing", "analyzing", "building-index", "validation", "publication"] as const) {
+                onLifecycleStage?.(stage);
+                onBundleProgress?.({completed: BigInt(1), total: BigInt(2), unit: "outcome records", message: stage});
+            }
+            return {status: "generation-error" as const, code: "fixture", error: "stop", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
+        });
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+        jobs.attachJobService(durableJobs);
+
+        jobs.start(projectRoot, {generation: "sampled"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+
+        const stages = progress.mock.calls.map(([, entry]) => entry.stage)
+            .filter((stage, index, entries) => index === 0 || stage !== entries[index - 1]);
+        expect(stages).toEqual([
+            "Preflight", "Enumerating combinations", "Deduplicating/finalizing outcomes", "Writing outcomes",
+            "Analyzing outcomes", "Building index", "Validating", "Publishing",
+        ]);
     });
 
     it("reports a retry conflict for a missing persisted recovery instead of silently losing the job", async () => {

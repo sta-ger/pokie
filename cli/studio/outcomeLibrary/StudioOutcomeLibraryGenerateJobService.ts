@@ -151,16 +151,20 @@ export class StudioOutcomeLibraryGenerateJobService {
         }).then(() => this.run(record)).catch((error: unknown) => {
             // generate() normally converts domain failures into its result union. Keep an unexpected
             // adapter failure observable as a terminal job instead of an unhandled server rejection.
+            const failedResult: StudioOutcomeLibraryGenerateJobResultView = {
+                status: "generation-error" as const,
+                code: "studio-outcome-library-job-failed",
+                error: error instanceof Error ? error.message : String(error),
+                plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
+            };
             Object.assign(record, {
                 status: "failed" as const,
-                result: {
-                    status: "generation-error" as const,
-                    code: "studio-outcome-library-job-failed",
-                    error: error instanceof Error ? error.message : String(error),
-                    plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
-                },
+                result: failedResult,
             });
-            this.jobService?.fail(record.id, error instanceof Error ? error.message : String(error), {action: "retry", reason: "Correct the reported generation problem and run it again."});
+            this.jobService?.fail(record.id, failedResult.error, {action: "retry", reason: "Correct the reported generation problem and run it again."}, {
+                summary: "Outcome Library generation failed.",
+                detail: {status: failedResult.status, result: failedResult},
+            });
         }).finally(() => {
             // Generation owns staging/partial-output cleanup and only resolves once that is
             // complete. Release the destination after that terminal boundary, never on abort.
@@ -366,24 +370,32 @@ export class StudioOutcomeLibraryGenerateJobService {
             });
         } else {
             const message = "error" in result ? result.error : "Outcome Library generation failed validation.";
-            this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."});
+            this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."}, {
+                summary: "Outcome Library generation failed.",
+                detail: {status: result.status, result},
+            });
         }
         if (result.status === "ok") this.removeCheckpoint(record.projectRoot, record.id);
     }
 
     private toView(record: JobRecord): StudioOutcomeLibraryGenerateJobView {
         const common = this.jobService?.get(record.projectRoot, record.id);
+        const hasDurableProjection = common?.operation === "outcome-library-generation";
         return {
             id: record.id,
-            status: common?.operation === "outcome-library-generation" ? common.status : record.status,
+            status: hasDurableProjection ? common.status : record.status,
             cancellationRequested: record.cancellationRequested || common?.status === "cancelling",
             ...(common?.durationMs === undefined ? {} : {durationMs: common.durationMs}),
             ...(common?.createdAt === undefined ? {} : {createdAt: common.createdAt}),
             ...(common?.startedAt === undefined ? {} : {startedAt: common.startedAt}),
             ...(common?.completedAt === undefined ? {} : {completedAt: common.completedAt}),
             ...(common?.progress === undefined ? {} : {durableProgress: common.progress}),
-            ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
-            ...(record.progress === undefined ? {} : {progress: record.progress}),
+            // Once the common job service owns this job, its persisted progress
+            // is the sole public lifecycle projection. Keeping the adapter's
+            // in-process cursor beside it made a live poll materially differ
+            // from the same record after Studio restart.
+            ...(hasDurableProjection || record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
+            ...(hasDurableProjection || record.progress === undefined ? {} : {progress: record.progress}),
             ...(record.result === undefined ? {} : {result: record.result}),
             ...(common?.recovery === undefined ? {} : {recovery: common.recovery}),
         };
