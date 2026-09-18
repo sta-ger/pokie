@@ -408,6 +408,9 @@ export class StudioOutcomeLibraryGenerateJobService {
     private toView(record: JobRecord): StudioOutcomeLibraryGenerateJobView {
         const common = this.jobService?.get(record.projectRoot, record.id);
         const hasDurableProjection = common?.operation === "outcome-library-generation";
+        const isDurablyTerminal = common !== undefined && (
+            common.status === "completed" || common.status === "failed" || common.status === "cancelled" || common.status === "recovery-required"
+        );
         return {
             id: record.id,
             status: hasDurableProjection ? common.status : record.status,
@@ -417,14 +420,13 @@ export class StudioOutcomeLibraryGenerateJobService {
             ...(common?.startedAt === undefined ? {} : {startedAt: common.startedAt}),
             ...(common?.completedAt === undefined ? {} : {completedAt: common.completedAt}),
             ...(common?.progress === undefined ? {} : {durableProgress: common.progress}),
-            // The durable projection is authoritative for every lifecycle
-            // stage, but the established HTTP DTO also exposes the exact
-            // enumeration cursor while this executor is live.  Keeping that
-            // compatibility cursor makes a real running job observable to
-            // polling clients; the durable stage-local snapshot remains the
-            // restart-safe source for every later phase.
-            ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
-            ...(record.progress === undefined ? {} : {progress: record.progress}),
+            // The executor cursor is only meaningful while that executor is
+            // live.  Once a durable job reaches a terminal state, projecting
+            // it would make the in-process view differ from the exact record
+            // a Studio restart rehydrates.  The durable stage snapshot remains
+            // available throughout, including the final publication stage.
+            ...(isDurablyTerminal || record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
+            ...(isDurablyTerminal || record.progress === undefined ? {} : {progress: record.progress}),
             ...(record.result === undefined ? {} : {result: record.result}),
             ...(common?.recovery === undefined ? {} : {recovery: common.recovery}),
         };
