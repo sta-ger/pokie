@@ -259,7 +259,16 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             // batches without weakening the one-pass streaming contract.
             if (processed % BigInt(256) === BigInt(0)) {
                 await new Promise<void>((resolve) => {
-                    setImmediate(resolve);
+                    // Let poll/timer work run before continuing the writer.
+                    // Re-queuing an immediate from the check phase can keep
+                    // a fast publish invisible to the Studio HTTP job route.
+                    // The first cooperative boundary needs a full polling
+                    // interval: a local HTTP client receives the accepted
+                    // job only after this call stack unwinds, and otherwise a
+                    // small but cancellable write can complete before it can
+                    // address the published job at all. Later batches retain
+                    // the ordinary zero-delay cooperative yield.
+                    setTimeout(resolve, processed === BigInt(256) ? 25 : 0);
                 });
                 // The source can finish exactly at a cooperative boundary.
                 // Check again here rather than letting the caller advance to

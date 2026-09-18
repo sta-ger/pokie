@@ -602,7 +602,13 @@ async function *externallyAccumulateExactGridWeights(
             if (processedRawCount % EXTERNAL_YIELD_EVERY === BigInt(0)) {
                 options.onProgress?.(processedRawCount, progressTotal);
                 await new Promise<void>((resolve) => {
-                    setImmediate(resolve);
+                    // A chain of setImmediate callbacks can drain the check
+                    // phase before libuv returns to poll.  That made a short
+                    // HTTP-published job able to finish between its 202
+                    // response and the first status request.  Cross the
+                    // timer boundary instead so progress and cancellation
+                    // have an actual opportunity to be observed.
+                    setTimeout(resolve, 0);
                 });
             }
         }

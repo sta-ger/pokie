@@ -417,12 +417,14 @@ export class StudioOutcomeLibraryGenerateJobService {
             ...(common?.startedAt === undefined ? {} : {startedAt: common.startedAt}),
             ...(common?.completedAt === undefined ? {} : {completedAt: common.completedAt}),
             ...(common?.progress === undefined ? {} : {durableProgress: common.progress}),
-            // Once the common job service owns this job, its persisted progress
-            // is the sole public lifecycle projection. Keeping the adapter's
-            // in-process cursor beside it made a live poll materially differ
-            // from the same record after Studio restart.
-            ...(hasDurableProjection || record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
-            ...(hasDurableProjection || record.progress === undefined ? {} : {progress: record.progress}),
+            // The durable projection is authoritative for every lifecycle
+            // stage, but the established HTTP DTO also exposes the exact
+            // enumeration cursor while this executor is live.  Keeping that
+            // compatibility cursor makes a real running job observable to
+            // polling clients; the durable stage-local snapshot remains the
+            // restart-safe source for every later phase.
+            ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
+            ...(record.progress === undefined ? {} : {progress: record.progress}),
             ...(record.result === undefined ? {} : {result: record.result}),
             ...(common?.recovery === undefined ? {} : {recovery: common.recovery}),
         };

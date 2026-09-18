@@ -11,7 +11,10 @@ const YIELD_EVERY = BigInt(5000);
 // cancellation/progress stay observable to the rest of the process, not just a resolved-immediately microtask.
 function yieldToEventLoop(): Promise<void> {
     return new Promise((resolve) => {
-        setImmediate(resolve);
+        // Do not recursively drain Node's check phase: HTTP polling and
+        // timer-driven cancellation must get a turn between enumeration
+        // batches, even when a small job would otherwise complete at once.
+        setTimeout(resolve, 0);
     });
 }
 
