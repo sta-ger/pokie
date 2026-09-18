@@ -20,9 +20,11 @@ import {validateFairnessVerifyRequest} from "../../../cli/studio/fairness/valida
 // isolated per-file test suite doesn't make visible on its own.
 
 describe("Contract baseline: New Blueprint (Open)", () => {
-    it("Open Project takes only a projectRoot -- no blueprint, mode, or credentials", () => {
-        expect(validateOpenProjectRequest({projectRoot: "/games/a"})).toEqual({projectRoot: "/games/a"});
+    it("Open Project takes a projectRoot and defaults its explicit active-job transition confirmation to false -- no blueprint, mode, or credentials", () => {
+        expect(validateOpenProjectRequest({projectRoot: "/games/a"})).toEqual({projectRoot: "/games/a", confirmActiveJobs: false});
+        expect(validateOpenProjectRequest({projectRoot: "/games/a", confirmActiveJobs: true})).toEqual({projectRoot: "/games/a", confirmActiveJobs: true});
         expect(() => validateOpenProjectRequest({})).toThrow('"projectRoot" is required.');
+        expect(() => validateOpenProjectRequest({projectRoot: "/games/a", confirmActiveJobs: "yes"})).toThrow('"confirmActiveJobs" must be a boolean when provided.');
     });
 });
 

@@ -61,6 +61,127 @@ async function expectActiveSection(name: string): Promise<void> {
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
+    it("keeps retained project-opening recovery visible on Projects and invokes its captured open action", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "open-retained", projectId: "/games/recoverable", operation: "project-open-materialization",
+                request: {sourcePath: "/games/recoverable"}, conflictKey: "project-open:/games/recoverable",
+                status: "recovery-required", createdAt: 1,
+                recovery: {action: "retry", reason: "Reopen the captured project."},
+            }]}}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/recoverable"}, manifest: {id: "recoverable", name: "Recoverable", version: "1.0.0"}}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/recoverable", game: {id: "recoverable", name: "Recoverable", version: "1.0.0"}, type: "blueprint", capabilities: []}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/recoverable", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        expect(await screen.findByRole("heading", {name: "Home jobs"})).toBeInTheDocument();
+        expect(screen.getByText("project-open-materialization: recovery-required")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Retry"}));
+
+        await waitFor(() => expect(calls.some((call) => call.url === "/api/home/projects/open" && call.init?.body === JSON.stringify({projectRoot: "/games/recoverable"}))).toBe(true));
+    });
+
+    it("reconstructs a retained PAR import on Home without importing until the user explicitly submits it", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-par-import", projectId: "design:/games/retained.par.xlsx", operation: "design-par-import",
+                request: {path: "/games/retained.par.xlsx"}, conflictKey: "design-par-import:/games/retained.par.xlsx",
+                status: "recovery-required", createdAt: 1,
+                recovery: {action: "rebuild", reason: "Import the captured workbook again."},
+            }]}}),
+            "/api/home/blueprints/par-import": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/retained.par.xlsx", blueprint: {}, errors: [], warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        await screen.findByText("design-par-import: recovery-required");
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+
+        const importPath = await screen.findByLabelText("PAR sheet path");
+        expect(importPath).toHaveValue("/games/retained.par.xlsx");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/par-import")).toHaveLength(0);
+
+        await user.click(screen.getByRole("button", {name: "Import"}));
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/par-import")).toHaveLength(1));
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/par-import")?.init?.body ?? "{}")).toEqual({path: "/games/retained.par.xlsx"});
+    });
+
+    it("reconstructs a retained Design build destination and waits for an explicit rebuild", async () => {
+        const user = userEvent.setup();
+        const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-design-build", projectId: "design:/games/recovered.blueprint.json", operation: "design-build",
+                request: {sourcePath: "/games/recovered.blueprint.json", destinationPath: "/games/recovered-package", blueprint},
+                conflictKey: "design-destination:/games/recovered-package", status: "recovery-required", createdAt: 1,
+                recovery: {action: "rebuild", reason: "Build the captured package again."},
+            }]}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: {
+                status: "ok", projectRoot: "/games/recovered-package", destinationHasContent: false, warnings: [], manifest: blueprint.manifest,
+                reels: 3, rows: 3, symbolsCount: 1, blueprintHash: "sha256:recovered", expectedFiles: [], createFiles: [], updateFiles: [], deleteFiles: [],
+            }}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 201, body: {
+                status: "ok", projectRoot: "/games/recovered-package", manifest: blueprint.manifest, createdFiles: [], warnings: [],
+                buildInfo: {generatedAt: "2026-09-17T00:00:00.000Z", blueprintHash: "sha256:recovered"},
+            }}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        await screen.findByText("design-build: recovery-required");
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+
+        expect(await screen.findByLabelText("Output directory (optional)")).toHaveValue("/games/recovered-package");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
+        const buildButton = screen.getByRole("button", {name: "Build Package"});
+        await waitFor(() => expect(buildButton).not.toBeDisabled());
+        await user.click(buildButton);
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1));
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/build")?.init?.body ?? "{}")).toMatchObject({
+            sourcePath: "/games/recovered.blueprint.json", outDir: "/games/recovered-package", blueprint,
+        });
+    });
+
+    it("reconstructs a retained PAR export destination and waits for an explicit export", async () => {
+        const user = userEvent.setup();
+        const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-par-export", projectId: "design:/games/recovered.blueprint.json", operation: "design-par-export",
+                request: {sourcePath: "/games/recovered.blueprint.json", destinationPath: "/games/recovered.par.xlsx", blueprint},
+                conflictKey: "design-destination:/games/recovered.par.xlsx", status: "recovery-required", createdAt: 1,
+                recovery: {action: "rebuild", reason: "Export the captured workbook again."},
+            }]}}),
+            "/api/home/blueprints/par-export": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/recovered.par.xlsx", warnings: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+
+        await screen.findByText("design-par-export: recovery-required");
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+
+        expect(await screen.findByLabelText("Export to path")).toHaveValue("/games/recovered.par.xlsx");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/par-export")).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Export"}));
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/par-export")).toHaveLength(1));
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/par-export")?.init?.body ?? "{}")).toMatchObject({
+            path: "/games/recovered.par.xlsx", sourcePath: "/games/recovered.blueprint.json", blueprint,
+        });
+    });
+
     it("defaults to Design Game and switches between tabs, keeping aria-current on the active one", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

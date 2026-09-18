@@ -1,8 +1,9 @@
 import {useEffect, useState} from "react";
-import {getProjectContext, openProject, ProjectOpenError} from "../api/apiClient";
+import {getProjectContext, ProjectOpenError} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
 import {describeProjectContextFailure, describeProjectHeader, type ProjectHeaderView} from "../domain/interpret/ProjectDashboard";
+import {useConfirmedProjectOpen} from "./useOpenProject";
 
 // Ports pollProjectDashboard (500ms interval, capped at 40 attempts, ~20s) -- only ever needed when
 // Studio starts directly into Project mode (`pokie .`), since Create/Open both resolve straight to
@@ -22,6 +23,7 @@ function projectContextErrorDetail(error: unknown): string {
 // while browser history may point back to an earlier one.
 export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderView {
     const fetchImpl = useStudioApi();
+    const openWithConfirmation = useConfirmedProjectOpen();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
 
     useEffect(() => {
@@ -68,7 +70,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
                         }
                         return;
                     }
-                    openProject(fetchImpl, requestedProjectRoot)
+                    openWithConfirmation(requestedProjectRoot)
                         .then(() => {
                             if (!cancelled) {
                                 poll(POLL_MAX_ATTEMPTS);
@@ -91,7 +93,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
             cancelled = true;
             clearTimeout(timeoutId);
         };
-    }, [fetchImpl, requestedProjectRoot]);
+    }, [fetchImpl, openWithConfirmation, requestedProjectRoot]);
 
     return header;
 }

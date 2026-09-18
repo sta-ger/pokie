@@ -27,6 +27,7 @@ import {
 } from "pokie";
 import crypto from "crypto";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {InMemoryStudioSimulationRepository} from "./InMemoryStudioSimulationRepository.js";
 import type {StudioSimulationJobRecord} from "./StudioSimulationJobRecord.js";
@@ -36,6 +37,8 @@ import type {StudioSimulationReportListEntry} from "./StudioSimulationReportList
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import {toStudioSimulationJobView} from "./toStudioSimulationJobView.js";
 import type {ValidatedSimulationRequest} from "./validateSimulationRequest.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
+import type {StudioJobView} from "../jobs/StudioJobView.js";
 
 const DEFAULT_CHUNK_SIZE = 1000;
 
@@ -87,6 +90,7 @@ export class StudioSimulationService {
     private readonly onCompleted: (record: StudioSimulationJobRecord) => void;
     private readonly pokieVersion: string | undefined;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
+    private jobService: StudioJobService | undefined;
 
     constructor(
         repository: StudioSimulationRepository = new InMemoryStudioSimulationRepository(),
@@ -127,6 +131,10 @@ export class StudioSimulationService {
         this.loadWasmRuntime = loadWasmRuntime;
     }
 
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
+    }
+
     // Returns immediately with a "queued" job — the actual simulation runs in the background (see
     // run()), never blocking the caller (StudioServer's POST handler). Rejects with a conflict
     // instead of creating a second job when one is already queued/running for this projectRoot, so a
@@ -140,6 +148,7 @@ export class StudioSimulationService {
     // through" convention handleOutcomeSourceSample already uses for the sample route. Undefined here means
     // "run the ordinary ParallelSimulationRunner path" (see run()), exactly as before this parameter existed.
     public start(projectRoot: string, request: ValidatedSimulationRequest, outcomeSourceProject?: PokieProject): StudioSimulationStartResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         // This service is also used directly, outside StudioServer's HTTP
         // guard. A resolved component, or an actual unresolved WASM file, has
         // no runnable branch. A package directory named `game.wasm` remains a
@@ -147,13 +156,26 @@ export class StudioSimulationService {
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmArtifact(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "simulate game rounds")};
         }
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "simulation",
+            request: {rounds: request.rounds, ...(request.seed === undefined ? {} : {seed: request.seed}), workers: request.workers ?? 1, ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            conflictKey: `simulation:${projectRoot}`,
+            recoveryOnRestart: {action: "retry", reason: "A simulation cannot safely resume after Studio restarts. Run it again with these captured parameters."},
+        });
+        if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
+        if (common?.status === "reattached") {
+            const existing = this.repository.get(common.job.id);
+            return {status: "created", job: existing === undefined ? this.projectDurableJob(common.job) : this.toJobView(existing)};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
+            if (common?.status === "created") this.jobService?.cancelled(common.job.id, {summary: "Simulation was already active in its compatibility executor."});
             return {status: "conflict", activeJobId: active.id};
         }
 
         const record: StudioSimulationJobRecord = {
-            id: this.createId(),
+            id: common?.status === "created" ? common.job.id : this.createId(),
             projectRoot,
             status: "queued",
             rounds: request.rounds,
@@ -167,7 +189,6 @@ export class StudioSimulationService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-
         // Deferred via queueMicrotask rather than called directly: run() sets record.status to
         // "running" before its own first await (calling createParallelSimulationRunner/.run()
         // synchronously starts that work), so calling it inline here would let that synchronous
@@ -182,12 +203,12 @@ export class StudioSimulationService {
             });
         });
 
-        return {status: "created", job: toStudioSimulationJobView(record)};
+        return {status: "created", job: this.toJobView(record)};
     }
 
     public getStatus(id: string): StudioSimulationJobView | undefined {
         const record = this.repository.get(id);
-        return record ? toStudioSimulationJobView(record) : undefined;
+        return record ? this.toJobView(record) : undefined;
     }
 
     // The project-scoped counterpart used by Studio's HTTP surface.  The service's unscoped
@@ -196,11 +217,11 @@ export class StudioSimulationService {
     // different Project exactly like an unknown one so neither its run state nor its safe error text
     // can leak when the user switches Projects.
     public getStatusForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
-        }
-        return toStudioSimulationJobView(record);
+        if (record?.projectRoot === projectRoot) return this.toJobView(record);
+        const common = this.jobService?.get(projectRoot, id);
+        return common?.operation === "simulation" ? this.projectDurableJob(common) : undefined;
     }
 
     // Idempotent: cancelling an already-terminal job is a no-op that still returns its (unchanged)
@@ -212,19 +233,21 @@ export class StudioSimulationService {
             return undefined;
         }
         this.cancelActiveRecord(record);
-        return toStudioSimulationJobView(record);
+        return this.toJobView(record);
     }
 
     // Same Project identity boundary as getStatusForProject().  In particular, a stale Cancel
     // request from Project A must never cancel a coincidentally-known job after Studio has moved to
     // Project B.
     public cancelForProject(projectRoot: string, id: string): StudioSimulationJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
+            const common = this.jobService?.cancel(projectRoot, id);
+            return common?.operation === "simulation" ? this.projectDurableJob(common) : undefined;
         }
         this.cancelActiveRecord(record);
-        return toStudioSimulationJobView(record);
+        return this.toJobView(record);
     }
 
     // Best-effort: aborts every currently active job — called from StudioServer.stop() so a stopped
@@ -244,6 +267,7 @@ export class StudioSimulationService {
     // leaving it running would only waste CPU, never remain usable). A no-op when nothing is active
     // for that project.
     public cancelActiveForProject(projectRoot: string): void {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.findActiveByProjectRoot(projectRoot);
         if (record) this.cancelActiveRecord(record);
     }
@@ -259,28 +283,39 @@ export class StudioSimulationService {
     // tracked by the repository for retention purposes (see StudioSimulationRepository). Always
     // scoped to one projectRoot — never includes another project's jobs.
     public listReports(projectRoot: string): StudioSimulationReportListEntry[] {
-        const entries: StudioSimulationReportListEntry[] = [];
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        const entries = new Map<string, StudioSimulationReportListEntry>();
         for (const record of this.repository.listTerminalByProjectRoot(projectRoot)) {
             const entry = this.toReportListEntry(record);
             if (entry) {
-                entries.push(entry);
+                entries.set(entry.id, entry);
             }
         }
-        return entries;
+        // The compatibility repository is intentionally process-local.  A
+        // retained common job therefore becomes the authoritative projection
+        // after restart, including the report needed by the old Reports URL.
+        for (const job of this.jobService?.list(projectRoot) ?? []) {
+            const entry = this.reportListEntryFromDurableJob(job);
+            if (entry !== undefined && !entries.has(entry.id)) entries.set(entry.id, entry);
+        }
+        return Array.from(entries.values());
     }
 
     // "not-found" covers both a genuinely unknown id AND an id that belongs to a different project —
     // deliberately indistinguishable from the caller's perspective, so this can never be used to probe
     // whether some other project has a simulation with a given id.
     public getReport(projectRoot: string, id: string): GetSimulationReportResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return {status: "not-found"};
+        if (record?.projectRoot === projectRoot) {
+            if (!record.report) return {status: "not-ready", jobStatus: record.status};
+            return {status: "ok", report: record.report, statistics: record.statistics};
         }
-        if (!record.report) {
-            return {status: "not-ready", jobStatus: record.status};
-        }
-        return {status: "ok", report: record.report, statistics: record.statistics};
+        const job = this.jobService?.get(projectRoot, id);
+        if (job?.operation !== "simulation") return {status: "not-found"};
+        const report = reportFromDurableDetail(job);
+        if (report === undefined) return {status: "not-ready", jobStatus: job.status};
+        return {status: "ok", report, statistics: statisticsFromDurableDetail(job)};
     }
 
     private toReportListEntry(record: StudioSimulationJobRecord): StudioSimulationReportListEntry | undefined {
@@ -322,7 +357,7 @@ export class StudioSimulationService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
 
         let runtime;
         try {
@@ -345,6 +380,7 @@ export class StudioSimulationService {
                 onProgress: (roundsCompleted) => {
                     record.roundsCompleted = roundsCompleted;
                     record.durationMs = this.now() - record.startedAt;
+                    this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: roundsCompleted, total: record.rounds});
                 },
             });
             const result = await runner.run();
@@ -402,7 +438,7 @@ export class StudioSimulationService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
         const seed = record.seed ?? crypto.randomUUID();
         let runtime;
         let disposeSession: (() => void) | undefined;
@@ -428,6 +464,7 @@ export class StudioSimulationService {
                 }
                 record.roundsCompleted += chunk;
                 record.durationMs = this.now() - record.startedAt;
+                this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
                 remaining -= chunk;
                 if (remaining > 0) await this.yieldToEventLoop();
             }
@@ -507,7 +544,7 @@ export class StudioSimulationService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
 
         const outcomeSource = new OutcomeLibraryBundleOutcomeSource(project.rootPath, modeName);
         const randomSource: WeightedOutcomeRandomSource = new SecureWeightedOutcomeRandomSource();
@@ -559,6 +596,7 @@ export class StudioSimulationService {
 
                 record.roundsCompleted += chunkRounds;
                 record.durationMs = this.now() - record.startedAt;
+                this.jobService?.progress(record.id, {stage: "simulation", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
                 roundsRemaining -= chunkRounds;
                 if (roundsRemaining > 0) {
                     await this.yieldToEventLoop();
@@ -623,6 +661,10 @@ export class StudioSimulationService {
     // queued; their run path continues to publish cancellation after it has cleaned those stages.
     private cancelActiveRecord(record: StudioSimulationJobRecord): void {
         if (record.status !== "queued" && record.status !== "running") return;
+        // Persist cancelling before asking the compatibility executor to
+        // release its runtime/worker resources. The terminal state is written
+        // only by markTerminal() after that cleanup has completed.
+        this.jobService?.cancel(record.projectRoot, record.id);
         record.abortController.abort();
         if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
@@ -636,5 +678,93 @@ export class StudioSimulationService {
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
+        if (record.status === "completed") {
+            this.jobService?.complete(record.id, {
+                summary: "Simulation completed.",
+                outputs: [{label: "Simulation report", downloadPath: `/api/project/reports/${encodeURIComponent(record.id)}/download?format=json`}],
+                provenance: {simulationId: record.id, projectRoot: record.projectRoot},
+                detail: {simulationId: record.id, rounds: record.roundsCompleted, report: record.report, statistics: record.statistics},
+            });
+        } else if (record.status === "cancelled") {
+            this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
+        } else if (record.status === "failed") {
+            this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: "Correct the reported problem and run the simulation again."});
+        }
     }
+
+    private markRunning(record: StudioSimulationJobRecord): void {
+        record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.roundsCompleted, total: record.rounds});
+    }
+
+    /** Compatibility DTO projection of the durable lifecycle authority. */
+    private toJobView(record: StudioSimulationJobRecord): StudioSimulationJobView {
+        const view = toStudioSimulationJobView(record);
+        const common = this.jobService?.get(record.projectRoot, record.id);
+        if (common?.operation !== "simulation") return view;
+        return {
+            ...view,
+            status: common.status,
+            ...(common.startedAt === undefined ? {} : {startedAt: new Date(common.startedAt).toISOString()}),
+            ...(common.durationMs === undefined ? {} : {durationMs: common.durationMs}),
+            ...(common.error === undefined ? {} : {error: common.error}),
+            ...(common.recovery === undefined ? {} : {recovery: common.recovery}),
+        };
+    }
+
+    private projectDurableJob(job: StudioJobView): StudioSimulationJobView {
+        return {
+            id: job.id,
+            status: job.status,
+            rounds: typeof job.request.rounds === "number" ? job.request.rounds : 0,
+            ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
+            workers: typeof job.request.workers === "number" ? job.request.workers : 1,
+            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+            startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
+            roundsCompleted: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
+            durationMs: job.durationMs ?? 0,
+            ...(reportFromDurableDetail(job) === undefined ? {} : {report: reportFromDurableDetail(job)}),
+            ...(statisticsFromDurableDetail(job) === undefined ? {} : {statistics: statisticsFromDurableDetail(job)}),
+            ...(job.error === undefined ? {} : {error: job.error}),
+            ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+        };
+    }
+
+    private reportListEntryFromDurableJob(job: StudioJobView): StudioSimulationReportListEntry | undefined {
+        if (job.operation !== "simulation" || job.status !== "completed") return undefined;
+        const report = reportFromDurableDetail(job);
+        if (report === undefined) return undefined;
+        return {
+            id: job.id,
+            status: "completed",
+            game: {id: report.game.id, version: report.game.version},
+            requestedRounds: report.requestedRounds,
+            actualRounds: report.rounds,
+            ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
+            workers: report.workers ?? (typeof job.request.workers === "number" ? job.request.workers : 1),
+            rtp: report.rtp,
+            hitFrequency: report.hitFrequency,
+            maxWin: report.maxWin,
+            startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
+            completedAt: new Date(job.completedAt ?? job.createdAt).toISOString(),
+            durationMs: job.durationMs ?? 0,
+            hasWarnings: (report.warnings?.length ?? 0) > 0,
+            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+        };
+    }
+}
+
+function durableDetail(job: StudioJobView): Readonly<Record<string, unknown>> | undefined {
+    return job.result?.detail !== undefined && typeof job.result.detail === "object" ? job.result.detail : undefined;
+}
+
+function reportFromDurableDetail(job: StudioJobView): SimulationReport | undefined {
+    const report = durableDetail(job)?.report;
+    return typeof report === "object" && report !== null && "game" in report && "rounds" in report ? report as SimulationReport : undefined;
+}
+
+function statisticsFromDurableDetail(job: StudioJobView): StudioSimulationStatisticsView | undefined {
+    const statistics = durableDetail(job)?.statistics;
+    return typeof statistics === "object" && statistics !== null ? statistics as StudioSimulationStatisticsView : undefined;
 }

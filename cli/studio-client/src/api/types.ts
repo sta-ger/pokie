@@ -1,5 +1,24 @@
 export type StudioContext = {mode: "home"} | {mode: "project"; projectRoot: string};
 
+/** Mirrors the server-owned durable Studio job contract. */
+export type StudioJobStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
+export type StudioJobView = {
+    id: string;
+    projectId: string;
+    operation: string;
+    request: Record<string, unknown>;
+    conflictKey: string;
+    status: StudioJobStatus;
+    createdAt: number;
+    startedAt?: number;
+    completedAt?: number;
+    durationMs?: number;
+    progress?: {stage: string; unit: string; current: number | string; total: number | string; message?: string};
+    result?: {summary: string; outputs?: {path?: string; downloadPath?: string; label: string}[]; provenance?: Record<string, unknown>; warnings?: string[]; detail?: Record<string, unknown>};
+    error?: string;
+    recovery?: {action: "resume" | "retry" | "rebuild" | "new-session"; reason: string};
+};
+
 export type RecentProjectEntry = {
     projectRoot: string;
     name: string;
@@ -691,7 +710,7 @@ export type StudioSimulationReportDetail = {
     statistics?: StudioSimulationStatisticsView;
 };
 
-export type StudioSimulationStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type StudioSimulationStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
 
 export type StudioSimulationJobView = {
     id: string;
@@ -705,6 +724,7 @@ export type StudioSimulationJobView = {
     report?: SimulationReport;
     statistics?: StudioSimulationStatisticsView;
     error?: string;
+    recovery?: StudioJobView["recovery"];
     // The real outcome-library mode this job samples/sampled -- undefined for an ordinary
     // "tsPackage"/"blueprint" simulation, which has no notion of an outcome-library mode at all.
     modeName?: string;
@@ -862,7 +882,7 @@ export type ReplayDescriptor = {
     };
 };
 
-export type StudioReplayStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type StudioReplayStatus = "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
 
 // The typed DTO every /api/project/replays* endpoint returns — see
 // cli/studio/replay/StudioReplayJobView.ts's own doc comment. `descriptor` is only present once
@@ -882,6 +902,7 @@ export type StudioReplayJobView = {
     game?: {id: string; name: string; version: string};
     descriptor?: ReplayDescriptor;
     error?: string;
+    recovery?: StudioJobView["recovery"];
     // The real outcome-library mode this job replays/replayed -- undefined for an ordinary
     // "tsPackage"/"blueprint" replay, which has no notion of an outcome-library mode at all.
     modeName?: string;
@@ -1142,11 +1163,12 @@ export type StudioOutcomeLibraryGenerateResultView =
 // accumulated grids never cross the HTTP boundary or become browser-owned state.
 export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
-    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
     lifecycleStage?: "generation" | "finalization" | "serialization" | "validation" | "publication";
     progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateResultView;
+    recovery?: StudioJobView["recovery"];
 };
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
@@ -1420,7 +1442,7 @@ export type StudioArtifactBuildView =
 export type StudioArtifactBuildJobView = {
     id: string;
     target: StudioArtifactTargetType;
-    status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
     progress?: {
         status: "preflight" | "running" | "completed" | "cancelled" | "failed";
@@ -1430,6 +1452,8 @@ export type StudioArtifactBuildJobView = {
         message?: string;
     };
     result?: StudioArtifactBuildView;
+    error?: string;
+    recovery?: StudioJobView["recovery"];
 };
 
 // POST /api/project/artifacts/preview's own DTO — see cli/studio/artifacts/StudioArtifactPreviewView.ts's

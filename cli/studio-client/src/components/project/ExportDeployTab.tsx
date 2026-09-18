@@ -782,7 +782,7 @@ function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobVie
 // auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
-export function ExportDeployTab({capabilities: _capabilities, deployment}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager}) {
+export function ExportDeployTab({capabilities: _capabilities, deployment, recoveryRequest}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager; recoveryRequest?: Readonly<Record<string, unknown>>}) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
@@ -901,6 +901,53 @@ export function ExportDeployTab({capabilities: _capabilities, deployment}: {capa
     // once a build attempt itself hits it.
     const [artifactPreviews, setArtifactPreviews] = useState<Record<string, ArtifactPreviewRunView>>({});
     const [artifactDestinations, setArtifactDestinations] = useState<Record<string, string>>({});
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        // Outcome Library recovery is a form reconstruction, never an
+        // implicit publication.  Preserve every captured generation choice
+        // (including the optional bounded/sample configuration) and let the
+        // normal fresh preflight bind it to the current source before the
+        // user explicitly submits again.
+        if (
+            typeof recoveryRequest.generation === "string" ||
+            typeof recoveryRequest.maxOutcomeSpaceSize === "string" ||
+            typeof recoveryRequest.libraryId === "string"
+        ) {
+            const sample = recoveryRequest.sample;
+            const sampleRecord = sample !== null && typeof sample === "object" ? sample as Readonly<Record<string, unknown>> : undefined;
+            const generation = recoveryRequest.generation === "exact" || recoveryRequest.generation === "sampled" || recoveryRequest.generation === "bounded"
+                ? recoveryRequest.generation
+                : "default";
+            setOutcomeLibraryGenerationOptions((current) => ({
+                ...current,
+                mode: typeof recoveryRequest.mode === "string" ? recoveryRequest.mode : current.mode,
+                stake: typeof recoveryRequest.stake === "number" ? String(recoveryRequest.stake) : current.stake,
+                libraryId: typeof recoveryRequest.libraryId === "string" ? recoveryRequest.libraryId : current.libraryId,
+                configHash: typeof recoveryRequest.configHash === "string" ? recoveryRequest.configHash : current.configHash,
+                outDir: typeof recoveryRequest.outDir === "string" ? recoveryRequest.outDir : current.outDir,
+                maxOutcomeSpaceSize: typeof recoveryRequest.maxOutcomeSpaceSize === "string" ? recoveryRequest.maxOutcomeSpaceSize : current.maxOutcomeSpaceSize,
+                generation,
+                sampleSize: typeof sampleRecord?.sampleSize === "string" ? sampleRecord.sampleSize : current.sampleSize,
+                seed: typeof sampleRecord?.seed === "string" ? sampleRecord.seed : current.seed,
+            }));
+        }
+        // An artifact retry must restore the exact target/destination the
+        // retained job reserved; Build remains an explicit user click.
+        if (typeof recoveryRequest.target === "string" && typeof recoveryRequest.outDir === "string") {
+            // Read narrowed values before entering the state updater: TypeScript
+            // cannot retain a narrowing of an optional prop across that closure.
+            const target = recoveryRequest.target;
+            const outDir = recoveryRequest.outDir;
+            setArtifactDestinations((destinations) => ({...destinations, [target]: outDir}));
+        }
+        // Deployment never auto-publishes from a retained record.  Re-select
+        // its exact target so the user can inspect the regenerated plan and
+        // explicitly choose Check or Publish again.
+        if (typeof recoveryRequest.targetId === "string" && deployment.targetsView.status === "loaded") {
+            const target = deployment.targetsView.targets.find((candidate) => candidate.id === recoveryRequest.targetId);
+            if (target !== undefined) deployment.selectTarget(target);
+        }
+    }, [deployment, recoveryRequest]);
     // A completed Outcome Library publication changes the canonical input the
     // Stake projection is allowed to reuse.  Refresh its server-owned
     // prepared operation before enabling the follow-on Build action; retaining

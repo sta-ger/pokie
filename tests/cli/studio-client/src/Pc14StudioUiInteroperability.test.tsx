@@ -486,7 +486,13 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.clear(parExportInput);
         await user.type(parExportInput, occupiedParPath);
         await user.click(screen.getByRole("button", {name: "Export"}));
-        await screen.findByText(/already exists|never overwritten/i);
+        // The interoperability journey mounts more than one routed Studio
+        // application. Scope this assertion to the current designer so an
+        // earlier app's retained portal cannot satisfy (or make ambiguous)
+        // the current export conflict.
+        await within(designApp.container).findByText((content) =>
+            content.includes(occupiedParPath) && (/already exists|never overwritten/i).test(content),
+        );
         expect(fs.readFileSync(occupiedParPath, "utf8")).toBe("caller-owned PAR destination");
         const exportedParPath = path.join(workDir, "studio-ui-edited.par.xlsx");
         await user.clear(parExportInput);

@@ -10,6 +10,9 @@ import {
     type StudioOutcomeLibraryPreflightBinding,
 } from "./StudioOutcomeLibraryGenerateService.js";
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
+import type {StudioJobRecoveryView, StudioJobView} from "../jobs/StudioJobView.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
     readonly id: string;
@@ -31,11 +34,12 @@ export type StudioOutcomeLibraryGenerateJobResultView = Exclude<StudioOutcomeLib
 /** A bounded, JSON-safe record of one Outcome Library publish. */
 export type StudioOutcomeLibraryGenerateJobView = {
     readonly id: string;
-    readonly status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     readonly cancellationRequested: boolean;
     readonly lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
     readonly progress?: {readonly processedRawIndex: string; readonly progressTotal: string; readonly emittedOutcomes?: string};
     readonly result?: StudioOutcomeLibraryGenerateJobResultView;
+    readonly recovery?: StudioJobRecoveryView;
 };
 
 type JobRecord = {
@@ -81,20 +85,46 @@ export class StudioOutcomeLibraryGenerateJobService {
     /** One atomic bundle writer owns a resolved destination at a time. */
     private readonly activeDestinationOwners = new Map<string, string>();
     private readonly generateService: StudioOutcomeLibraryGenerateService;
+    private jobService: StudioJobService | undefined;
 
     constructor(generateService: StudioOutcomeLibraryGenerateService) {
         this.generateService = generateService;
     }
 
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
+    }
+
     public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         this.trimTerminalJobs();
         const destinationKey = this.destinationKey(projectRoot, request);
+        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
+        const id = resumedId ?? randomUUID();
+        const common = this.jobService?.adopt(id, {
+            projectId: projectRoot,
+            operation: "outcome-library-generation",
+            request: durableRequestIdentity(request, preflightBinding, destinationKey),
+            conflictKey: `outcome-library:${destinationKey}`,
+            // An interrupted executor has not produced a checkpoint yet.  Do
+            // not advertise resume merely because this operation *could* be
+            // exact: restart reconciliation must guide it to a safe retry.
+            recoveryOnRestart: {action: "retry", reason: "Studio restarted before an exact Outcome Library checkpoint was validated. Retry the captured generation from scratch."},
+        });
+        if (common?.status === "reattached") {
+            const existing = this.jobs.get(common.job.id);
+            return existing?.projectRoot === projectRoot ? this.toView(existing) : this.projectDurableJob(common.job);
+        }
+        if (common?.status === "conflict") throw new Error(common.reason);
         if (this.activeDestinationOwners.has(destinationKey)) {
+            // Direct, legacy callers may not have attached a JobService. Keep
+            // their established destination guard without bypassing durable
+            // exact-retry reattachment when the common service is present.
+            if (common?.status === "created") this.jobService?.cancelled(common.job.id, {summary: "Outcome Library generation was already active in its compatibility executor."});
             throw new Error("An Outcome Library generation is already active for this destination.");
         }
-        const id = resumedId ?? randomUUID();
         const record: JobRecord = {
             // UUIDs make checkpoints safely discoverable across a server restart without
             // reusing the old process-local 1, 2, … namespace.
@@ -119,6 +149,7 @@ export class StudioOutcomeLibraryGenerateJobService {
                     plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
                 },
             });
+            this.jobService?.fail(record.id, error instanceof Error ? error.message : String(error), {action: "retry", reason: "Correct the reported generation problem and run it again."});
         }).finally(() => {
             // Generation owns staging/partial-output cleanup and only resolves once that is
             // complete. Release the destination after that terminal boundary, never on abort.
@@ -130,29 +161,40 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public isDestinationActive(projectRoot: string, destination: string): boolean {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         return this.activeDestinationOwners.has(path.resolve(projectRoot, destination));
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
         if (record?.projectRoot === projectRoot) return this.toView(record);
         const persisted = this.readCheckpoint(projectRoot, id);
-        if (persisted === undefined) return undefined;
-        return this.toView(this.restoreCancelledRecord(projectRoot, id, persisted));
+        if (persisted !== undefined) return this.toView(this.restoreCancelledRecord(projectRoot, id, persisted));
+        const common = this.jobService?.get(projectRoot, id);
+        return common?.operation === "outcome-library-generation" ? this.projectDurableJob(common) : undefined;
     }
 
     /** Includes persisted cancellation checkpoints, so a fresh Studio process can offer recovery. */
     public listForProject(projectRoot: string): readonly StudioOutcomeLibraryGenerateJobView[] {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const visible = new Map<string, StudioOutcomeLibraryGenerateJobView>();
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot) visible.set(record.id, this.toView(record));
+        }
+        for (const job of this.jobService?.list(projectRoot) ?? []) {
+            if (job.operation === "outcome-library-generation" && !visible.has(job.id)) visible.set(job.id, this.projectDurableJob(job));
         }
         const directory = path.dirname(this.checkpointPath(projectRoot, "placeholder"));
         try {
             for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
                 if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
                 const id = entry.name.slice(0, -5);
-                if (!visible.has(id)) {
+                // A checkpoint is the richer compatibility projection after
+                // restart: it carries the only resumable cursor. It must
+                // replace the generic common recovery record, never be
+                // hidden merely because that durable record was listed first.
+                if (!visible.has(id) || !this.jobs.has(id)) {
                     const persisted = this.readCheckpoint(projectRoot, id);
                     if (persisted !== undefined) visible.set(id, this.toView(this.restoreCancelledRecord(projectRoot, id, persisted)));
                 }
@@ -164,9 +206,14 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public cancelForProject(projectRoot: string, id: string): StudioOutcomeLibraryGenerateJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
-        if (record === undefined || record.projectRoot !== projectRoot) return undefined;
+        if (record === undefined || record.projectRoot !== projectRoot) {
+            const common = this.jobService?.cancel(projectRoot, id);
+            return common?.operation === "outcome-library-generation" ? this.projectDurableJob(common) : undefined;
+        }
         if (record.status === "queued" || record.status === "running") {
+            this.jobService?.cancel(projectRoot, id);
             record.cancellationRequested = true;
             record.controller.abort();
         }
@@ -178,6 +225,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         const active: JobRecord[] = [];
         for (const record of this.jobs.values()) {
             if (record.status === "queued" || record.status === "running") {
+                this.jobService?.cancel(record.projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
                 active.push(record);
@@ -188,9 +236,11 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     /** Abort active work for a project which Studio is about to leave. */
     public async cancelActiveForProject(projectRoot: string): Promise<void> {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const active: JobRecord[] = [];
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
+                this.jobService?.cancel(projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
                 active.push(record);
@@ -200,6 +250,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
         const persisted = this.readCheckpoint(projectRoot, id);
@@ -231,17 +282,22 @@ export class StudioOutcomeLibraryGenerateJobService {
 
     private async run(record: JobRecord): Promise<void> {
         record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "raw combinations", current: "0", total: "0"});
         const result = await this.generateService.generate(record.projectRoot, {
             ...record.request,
             signal: record.controller.signal,
             onProgress: (processedRawIndex, progressTotal) => {
                 record.progress = {processedRawIndex: processedRawIndex.toString(), progressTotal: progressTotal.toString()};
+                this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
             },
         }, (stage) => {
             record.lifecycleStage = stage;
+            this.jobService?.progress(record.id, {stage, unit: "raw combinations", current: record.progress?.processedRawIndex ?? "0", total: record.progress?.progressTotal ?? "0"});
         }, (emittedOutcomes) => {
             if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
             else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
+            this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "emitted outcomes", current: emittedOutcomes.toString(), total: record.progress.progressTotal});
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
@@ -255,14 +311,64 @@ export class StudioOutcomeLibraryGenerateJobService {
                 }),
             };
             Object.assign(record, {result: cancelledResult, status: "cancelled" as const});
+            this.jobService?.cancelled(record.id, {
+                summary: "Outcome Library generation cancelled before publication.",
+                // The checkpoint file remains the recovery authority, but the
+                // operation-specific terminal DTO belongs in the common
+                // durable job as well. A restarted compatibility route can
+                // then render the cursor, plan, and checkpoint reference
+                // without depending on this process-local record.
+                detail: {status: cancelledResult.status, result: cancelledResult},
+            }, {
+                action: cancelledResult.checkpoint === undefined ? "retry" : "resume",
+                reason: cancelledResult.checkpoint === undefined
+                    ? cancelledResult.recovery
+                    : "Resume is available only after Studio revalidates this exact checkpoint against its original source, configuration, and destination.",
+            });
             return;
         }
         Object.assign(record, {result, status: result.status === "ok" ? "completed" as const : "failed" as const});
+        if (result.status === "ok") {
+            this.jobService?.complete(record.id, {
+                summary: "Outcome Library generation completed.",
+                outputs: [{path: result.bundleDir, label: "Outcome Library bundle"}],
+                // Preserve the operation-specific result in the single
+                // durable authority.  The old in-process record can then be
+                // discarded without making a retained terminal job opaque.
+                detail: {status: result.status, result},
+            });
+        } else {
+            const message = "error" in result ? result.error : "Outcome Library generation failed validation.";
+            this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."});
+        }
         if (result.status === "ok") this.removeCheckpoint(record.projectRoot, record.id);
     }
 
     private toView(record: JobRecord): StudioOutcomeLibraryGenerateJobView {
-        return {id: record.id, status: record.status, cancellationRequested: record.cancellationRequested, ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}), ...(record.progress === undefined ? {} : {progress: record.progress}), ...(record.result === undefined ? {} : {result: record.result})};
+        const common = this.jobService?.get(record.projectRoot, record.id);
+        return {
+            id: record.id,
+            status: common?.operation === "outcome-library-generation" ? common.status : record.status,
+            cancellationRequested: record.cancellationRequested || common?.status === "cancelling",
+            ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
+            ...(record.progress === undefined ? {} : {progress: record.progress}),
+            ...(record.result === undefined ? {} : {result: record.result}),
+            ...(common?.recovery === undefined ? {} : {recovery: common.recovery}),
+        };
+    }
+
+    private projectDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView {
+        const checkpoint = job.recovery?.action === "resume" ? this.readCheckpoint(job.projectId, job.id) : undefined;
+        const recovery = job.recovery?.action === "resume" && checkpoint === undefined
+            ? {action: "retry" as const, reason: "The persisted Outcome Library checkpoint is missing or corrupt. Retry the captured generation from scratch."}
+            : job.recovery;
+        return {
+            id: job.id,
+            status: job.status,
+            cancellationRequested: job.status === "cancelling",
+            ...(outcomeLibraryResultFromDurableJob(job) === undefined ? {} : {result: outcomeLibraryResultFromDurableJob(job)}),
+            ...(recovery === undefined ? {} : {recovery}),
+        };
     }
 
     private checkpointPath(projectRoot: string, id: string): string {
@@ -284,25 +390,26 @@ export class StudioOutcomeLibraryGenerateJobService {
         }
     }
 
-    private persistCheckpoint(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, checkpoint: ExactEnumerationCheckpoint): StudioOutcomeLibraryCheckpointView {
+    private persistCheckpoint(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, checkpoint: ExactEnumerationCheckpoint): StudioOutcomeLibraryCheckpointView | undefined {
+        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
+        // Sampled/bounded jobs and unbound direct calls have no durable exact
+        // recovery authority.  A generator result alone is not sufficient to
+        // make one resumable after process restart.
+        if (!isResumableExactRequest(request, preflightBinding) || !isExactCheckpoint(checkpoint)) return undefined;
         const filePath = this.checkpointPath(projectRoot, id);
         fs.mkdirSync(path.dirname(filePath), {recursive: true});
         // Keep the in-process service seam usable for direct callers that do
         // not expose Studio preflight state; HTTP jobs always provide it.
-        const preflightBinding = this.generateService.getPreflightBinding?.(request.preflightToken);
         const stored: PersistedCheckpoint = {
             request: toPersistedRequest(request),
             binding: {
                 requestIdentity: requestIdentity(request),
-                requestKey: preflightBinding?.requestKey ?? generationRequestKey(request),
-                gameId: preflightBinding?.gameId ?? "",
-                gameVersion: preflightBinding?.gameVersion ?? "",
-                ...(preflightBinding?.configHash === undefined ? {} : {configHash: preflightBinding.configHash}),
-                destination: preflightBinding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR,
-                // Only exact jobs produce resumable checkpoints; a direct
-                // in-process caller without a token is therefore known to
-                // have already passed sampled-opt-in eligibility.
-                requiresBounded: preflightBinding?.requiresBounded ?? false,
+                requestKey: preflightBinding.requestKey,
+                gameId: preflightBinding.gameId,
+                gameVersion: preflightBinding.gameVersion,
+                ...(preflightBinding.configHash === undefined ? {} : {configHash: preflightBinding.configHash}),
+                destination: preflightBinding.destination,
+                requiresBounded: preflightBinding.requiresBounded,
             },
             checkpoint: {
                 processedRawIndex: checkpoint.processedRawIndex.toString(), progressTotal: checkpoint.progressTotal.toString(), sourceEnumerationId: checkpoint.sourceEnumerationId,
@@ -331,7 +438,7 @@ export class StudioOutcomeLibraryGenerateJobService {
                 (checkpoint.recoveryAuthorityId !== undefined && (typeof checkpoint.recoveryAuthorityId !== "string" || !(/^[0-9a-f-]{36}$/i).test(checkpoint.recoveryAuthorityId)))
             ) return undefined;
             if (
-                persisted.binding === undefined ||
+                !isPersistedBinding(persisted.binding) ||
                 requestIdentity(fromPersistedRequest(persisted.request)) !== persisted.binding.requestIdentity ||
                 checkpoint.recoveryAuthorityId !== id ||
                 !isPersistedExactCheckpoint(checkpoint)
@@ -372,6 +479,7 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 
     private restoreRejectedResume(projectRoot: string, id: string, request: ValidatedOutcomeLibraryGenerateRequest, error: string, plan = createUnresolvedRuntimePlan(projectRoot, "outcomeLibrary")): StudioOutcomeLibraryGenerateJobView {
+        this.jobService?.setRecovery(id, {action: "retry", reason: error});
         const record: JobRecord = {
             id, projectRoot, request, controller: new AbortController(), status: "failed", cancellationRequested: false,
             completion: Promise.resolve(), destinationKey: this.destinationKey(projectRoot, request),
@@ -395,6 +503,11 @@ export class StudioOutcomeLibraryGenerateJobService {
     }
 }
 
+function outcomeLibraryResultFromDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView["result"] | undefined {
+    const result = job.result?.detail?.result;
+    return typeof result === "object" && result !== null && "status" in result ? result as StudioOutcomeLibraryGenerateJobView["result"] : undefined;
+}
+
 function toPersistedRequest(request: ValidatedOutcomeLibraryGenerateRequest): PersistedRequest {
     const {maxOutcomeSpaceSize, sample, resumeFrom: _resumeFrom, signal: _signal, onProgress: _onProgress, ...rest} = request;
     return {...rest, ...(maxOutcomeSpaceSize === undefined ? {} : {maxOutcomeSpaceSize: maxOutcomeSpaceSize.toString()}), ...(sample === undefined ? {} : {sample: {sampleSize: sample.sampleSize.toString(), seed: sample.seed}})};
@@ -415,7 +528,7 @@ function fromPersistedCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"]):
 
 /** Reject malformed durable JSON before bigint/map conversion can consume it. */
 function isPersistedExactCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"] & Record<string, unknown>): boolean {
-    return (
+    const fieldsAreValid = (
         typeof checkpoint.processedRawIndex === "string" && (/^[0-9]+$/).test(checkpoint.processedRawIndex) &&
         typeof checkpoint.progressTotal === "string" && (/^[0-9]+$/).test(checkpoint.progressTotal) &&
         typeof checkpoint.sourceEnumerationId === "string" && checkpoint.sourceEnumerationId.length > 0 &&
@@ -427,6 +540,10 @@ function isPersistedExactCheckpoint(checkpoint: PersistedCheckpoint["checkpoint"
             typeof entry.weight === "string" && (/^[0-9]+$/).test(entry.weight),
         )
     );
+    if (!fieldsAreValid) return false;
+    return BigInt(checkpoint.progressTotal) > BigInt(0)
+        && BigInt(checkpoint.processedRawIndex) <= BigInt(checkpoint.progressTotal)
+        && new Set(checkpoint.grids.map((entry) => entry.key)).size === checkpoint.grids.length;
 }
 
 function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): string {
@@ -434,14 +551,58 @@ function requestIdentity(request: ValidatedOutcomeLibraryGenerateRequest): strin
         mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId,
         maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(), generation: request.generation,
         sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed},
-        outDir: request.outDir, preflightToken: request.preflightToken,
+        outDir: request.outDir,
     });
 }
 
-function generationRequestKey(request: ValidatedOutcomeLibraryGenerateRequest): string {
-    return JSON.stringify({
-        mode: request.mode, stake: request.stake, configHash: request.configHash, libraryId: request.libraryId,
-        outDir: request.outDir, generation: request.generation, maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(),
+function durableRequestIdentity(
+    request: ValidatedOutcomeLibraryGenerateRequest,
+    binding: StudioOutcomeLibraryPreflightBinding | undefined,
+    destination: string,
+): Readonly<Record<string, unknown>> {
+    return {
+        mode: request.mode,
+        stake: request.stake,
+        configHash: request.configHash,
+        libraryId: request.libraryId,
+        maxOutcomeSpaceSize: request.maxOutcomeSpaceSize?.toString(),
+        generation: request.generation,
         sample: request.sample === undefined ? undefined : {sampleSize: request.sample.sampleSize.toString(), seed: request.sample.seed},
-    });
+        outDir: request.outDir,
+        destination,
+        preflight: binding === undefined ? undefined : {
+            requestKey: binding.requestKey,
+            gameId: binding.gameId,
+            gameVersion: binding.gameVersion,
+            configHash: binding.configHash,
+            destination: binding.destination,
+            requiresBounded: binding.requiresBounded,
+        },
+    };
+}
+
+function isResumableExactRequest(
+    request: ValidatedOutcomeLibraryGenerateRequest,
+    binding: StudioOutcomeLibraryPreflightBinding | undefined,
+): binding is StudioOutcomeLibraryPreflightBinding {
+    return binding !== undefined && binding.requiresBounded === false && (request.generation === "default" || request.generation === "exact");
+}
+
+function isExactCheckpoint(checkpoint: ExactEnumerationCheckpoint): boolean {
+    return checkpoint.processedRawIndex >= BigInt(0)
+        && checkpoint.processedRawIndex <= checkpoint.progressTotal
+        && checkpoint.progressTotal > BigInt(0)
+        && checkpoint.sourceEnumerationId.length > 0;
+}
+
+function isPersistedBinding(binding: unknown): binding is PersistedRequestBinding {
+    if (typeof binding !== "object" || binding === null) return false;
+    const candidate = binding as Partial<PersistedRequestBinding>;
+    return typeof candidate.requestIdentity === "string"
+        && typeof candidate.requestKey === "string"
+        && typeof candidate.gameId === "string" && candidate.gameId.length > 0
+        && typeof candidate.gameVersion === "string" && candidate.gameVersion.length > 0
+        && (candidate.configHash === undefined || typeof candidate.configHash === "string")
+        && typeof candidate.destination === "string" && candidate.destination.length > 0
+        && typeof candidate.requiresBounded === "boolean";
 }

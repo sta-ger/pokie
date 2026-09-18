@@ -3,15 +3,18 @@ import {
     buildReplayDownloadUrl,
     buildReportDownloadUrl,
     cancelReplay,
+    cancelHomeSourceJob,
     cancelSimulation,
     closeProject,
     createPlaySession,
     exportParSheet,
+    findAnyWinPlaySession,
     cancelOutcomeLibraryGeneration,
     estimateOutcomeLibraryGeneration,
     FetchLike,
     generateRandomBlueprint,
     getContext,
+    getHomeSourceJob,
     getProjectContext,
     getReplay,
     getReport,
@@ -22,6 +25,7 @@ import {
     listOutcomeLibraryGenerationJobs,
     inspectProject,
     listProjectRegistry,
+    listHomeSourceJobs,
     listReplays,
     listReports,
     listRecentProjects,
@@ -31,6 +35,9 @@ import {
     previewProjectImport,
     previewReelStripGeneration,
     ProjectOpenError,
+    ProjectTransitionConflict,
+    recoverProjectJob,
+    recoverHomeSourceJob,
     registerProjectImport,
     removeProjectRegistryEntry,
     runDeployment,
@@ -770,6 +777,18 @@ describe("studio-client apiClient", () => {
             expect(failure).toBeInstanceOf(ProjectOpenError);
             expect((failure as ProjectOpenError).detail).toBeUndefined();
         });
+
+        it("surfaces a server-confirmed switch guard with its operation names", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: false, status: 409, body: {
+                code: "active-jobs-require-confirmation", error: "Confirm active jobs.", operations: ["artifact-build"],
+            }}));
+
+            const failure = await openProject(fetchImpl, "./other").catch((error: unknown) => error);
+
+            expect(failure).toBeInstanceOf(ProjectTransitionConflict);
+            expect((failure as ProjectTransitionConflict).operations).toEqual(["artifact-build"]);
+            expect(calls[0].init?.body).toBe(JSON.stringify({projectRoot: "./other"}));
+        });
     });
 
     describe("closeProject", () => {
@@ -780,6 +799,55 @@ describe("studio-client apiClient", () => {
 
             expect(calls).toEqual([{url: "/api/projects/close", init: {method: "POST"}}]);
             expect(context).toEqual({mode: "home"});
+        });
+
+        it("retains the server's active operation names for a required confirmation", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {
+                code: "active-jobs-require-confirmation",
+                error: "Active jobs require confirmation.",
+                operations: ["simulation", "deployment"],
+            }}));
+
+            const failure = await closeProject(fetchImpl).catch((error: unknown) => error);
+
+            expect(failure).toBeInstanceOf(ProjectTransitionConflict);
+            expect((failure as ProjectTransitionConflict).operations).toEqual(["simulation", "deployment"]);
+        });
+
+        it("sends an explicit confirmation only after the user confirms", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {context: {mode: "home"}}}));
+
+            await closeProject(fetchImpl, true);
+
+            expect(calls).toEqual([{url: "/api/projects/close", init: {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmActiveJobs: true})}}]);
+        });
+    });
+
+    describe("recoverProjectJob", () => {
+        it("uses the common recovery endpoint", async () => {
+            const job = {id: "job-1", status: "running"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: job}));
+
+            await expect(recoverProjectJob(fetchImpl, "job-1")).resolves.toEqual(job);
+            expect(calls).toEqual([{url: "/api/project/jobs/job-1/recover", init: {method: "POST", signal: undefined}}]);
+        });
+    });
+
+    describe("Home source job controls", () => {
+        it("lists, inspects, cancels, and recovers retained Design work with its source scope", async () => {
+            const job = {id: "design-job", status: "running"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {jobs: [job]}}));
+
+            await expect(listHomeSourceJobs(fetchImpl, "/drafts/game.json")).resolves.toEqual([job]);
+            await expect(getHomeSourceJob(fetchImpl, "design-job", "/drafts/game.json")).resolves.toEqual({jobs: [job]});
+            await expect(cancelHomeSourceJob(fetchImpl, "design-job", "/drafts/game.json")).resolves.toEqual({jobs: [job]});
+            await expect(recoverHomeSourceJob(fetchImpl, "design-job", "/drafts/game.json")).resolves.toEqual({jobs: [job]});
+            expect(calls.map((call) => [call.url, call.init?.method])).toEqual([
+                ["/api/home/jobs?sourcePath=%2Fdrafts%2Fgame.json", undefined],
+                ["/api/home/jobs/design-job?sourcePath=%2Fdrafts%2Fgame.json", undefined],
+                ["/api/home/jobs/design-job/cancel?sourcePath=%2Fdrafts%2Fgame.json", "POST"],
+                ["/api/home/jobs/design-job/recover?sourcePath=%2Fdrafts%2Fgame.json", "POST"],
+            ]);
         });
     });
 
@@ -1297,6 +1365,19 @@ describe("studio-client apiClient", () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "error", error: "unexpected failure"}}));
 
             expect(await spinPlaySession(fetchImpl, "session-1")).toEqual({status: "error", message: "unexpected failure"});
+        });
+
+        it("keeps an exact scenario-search reattachment in the Play error union, never no-active-project", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({
+                ok: true,
+                status: 200,
+                body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: "job-1", reattached: true},
+            }));
+
+            expect(await findAnyWinPlaySession(fetchImpl, "session-1")).toEqual({
+                status: "error",
+                message: "Scenario search is already in progress for this exact request.",
+            });
         });
     });
 });

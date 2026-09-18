@@ -1,15 +1,18 @@
 import type {ArtifactBuildProgress, ArtifactTargetType} from "pokie";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
+import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 
 // A deliberately bounded, pollable representation of one artifact publish.  A job never exposes the
 // AbortController or a live builder; callers receive only the latest truthful lifecycle snapshot.
 export type StudioArtifactBuildJobView = {
     readonly id: string;
     readonly target: ArtifactTargetType;
-    readonly status: "queued" | "running" | "completed" | "failed" | "cancelled";
+    readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     readonly cancellationRequested: boolean;
     readonly progress?: StudioArtifactBuildProgressView;
     readonly result?: StudioArtifactBuildView;
+    readonly error?: string;
+    readonly recovery?: StudioJobRecoveryView;
 };
 
 export type StudioArtifactBuildProgressView = {

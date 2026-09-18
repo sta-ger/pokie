@@ -1,5 +1,6 @@
 import type {PreGeneratedRoundReplayDescriptor, SimulationReport} from "pokie";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
+import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 
 // The one extra bit of data Studio surfaces alongside the standard SimulationReport — volatility/
 // standard deviation/confidence intervals that SimulationAccumulator.getStatistics() already
@@ -36,6 +37,8 @@ export type StudioSimulationJobView = {
     // doc comment. Undefined for an ordinary "tsPackage"/"blueprint" simulation.
     modeName?: string;
     lastReplay?: PreGeneratedRoundReplayDescriptor;
+    /** Durable restart guidance when no private executor record survives. */
+    recovery?: StudioJobRecoveryView;
 };
 
 // The GET /api/project/reports/:id response envelope -- bundles the persisted SimulationReport with the

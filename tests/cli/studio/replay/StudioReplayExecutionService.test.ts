@@ -21,6 +21,8 @@ import {InMemoryStudioReplayRepository} from "../../../../cli/studio/replay/InMe
 import {BlueprintProjectMaterializer} from "../../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioReplayExecutionService} from "../../../../cli/studio/replay/StudioReplayExecutionService.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 import type {StudioReplayJobView} from "../../../../cli/studio/replay/StudioReplayJobView.js";
 import {createCanonicalWasmFixture} from "../../../fixtures/wasm/createCanonicalWasmFixture.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
@@ -258,11 +260,18 @@ async function waitForTerminal(service: StudioReplayExecutionService, projectRoo
 }
 
 async function waitFor(condition: () => boolean, message: string): Promise<void> {
-    for (let i = 0; i < 2000; i++) {
+    // Resolver preparation includes real XLSX I/O.  A fixed number of
+    // setImmediate turns is not a timeout: under parallel test contention it
+    // can be exhausted before that I/O gets a chance to settle. Keep yielding
+    // to the event loop, but bound the observable wait by elapsed time.
+    const deadline = Date.now() + 20_000;
+    for (;;) {
         if (condition()) return;
-        await flushMacrotask();
+        if (Date.now() >= deadline) throw new Error(message);
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 5);
+        });
     }
-    throw new Error(message);
 }
 
 // A controllable substitute for the real setImmediate-based yieldToEventLoop: each call queues its own
@@ -849,6 +858,8 @@ describe("StudioReplayExecutionService", () => {
 
     it("cancels a queued/running replay between chunks, stopping further progress", async () => {
         const gate = createControlledYield();
+        const durableDirectory = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-jobs-")), "jobs");
+        const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
         const service = new StudioReplayExecutionService(
             new InMemoryStudioReplayRepository(),
             () => Promise.resolve(createSeedAwareFakeGame(manifest)),
@@ -856,6 +867,7 @@ describe("StudioReplayExecutionService", () => {
             undefined,
             gate.yieldToEventLoop,
         );
+        service.attachJobService(durableJobs);
 
         const result = service.start("/a", {round: 25});
         if (result.status !== "created") {
@@ -869,7 +881,7 @@ describe("StudioReplayExecutionService", () => {
         // own doc comment) — cancel() requests it (aborting the controller) but the record only
         // actually transitions to "cancelled" once the paused chunk loop notices, after release().
         const cancelled = service.cancel("/a", result.job.id);
-        expect(cancelled?.status).toBe("running");
+        expect(cancelled?.status).toBe("cancelling");
 
         gate.release();
         await flushMacrotask();
@@ -879,6 +891,12 @@ describe("StudioReplayExecutionService", () => {
         // No further chunk ran after the cancel was observed.
         expect(job?.completedRounds).toBe(10);
         expect(job?.descriptor).toBeUndefined();
+        expect(durableJobs.list("/a")).toEqual([expect.objectContaining({id: result.job.id, status: "cancelled"})]);
+
+        const restarted = new StudioReplayExecutionService(new InMemoryStudioReplayRepository());
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+        expect(restarted.getStatus("/a", result.job.id)).toMatchObject({status: "cancelled"});
+        fs.rmSync(path.dirname(durableDirectory), {recursive: true, force: true});
     });
 
     it("cancels while runtime preparation is pending without loading a game or publishing a descriptor", async () => {

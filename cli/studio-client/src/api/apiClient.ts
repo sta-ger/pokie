@@ -53,10 +53,68 @@ import type {
     StudioSimulationJobView,
     StudioSimulationReportDetail,
     StudioSimulationReportListEntry,
+    StudioJobView,
     StudioStakeEngineExportModeInput,
     StudioStakeEngineExportValidateView,
     StudioStakeEngineExportView,
 } from "./types";
+
+export async function listProjectJobs(fetchImpl: FetchLike): Promise<StudioJobView[]> {
+    const response = await fetchImpl("/api/project/jobs", {cache: "no-store"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Studio jobs"));
+    const body = await response.json() as {jobs?: unknown};
+    return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+}
+
+/** Discovers retained Design/project-opening jobs before a project context exists. */
+export async function listHomeSourceJobs(fetchImpl: FetchLike, sourcePath?: string): Promise<StudioJobView[]> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs${query}`, {cache: "no-store"});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Home Studio jobs"));
+    const body = await response.json() as {jobs?: unknown};
+    return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
+}
+
+/** Home has no current project context, so these routes retain the source scope in the URL. */
+export async function getHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}${query}`, {cache: "no-store", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Home Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function cancelHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}/cancel${query}`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel Home Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function recoverHomeSourceJob(fetchImpl: FetchLike, id: string, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
+    const response = await fetchImpl(`/api/home/jobs/${encodeURIComponent(id)}/recover${query}`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to recover Home Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function getProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}`, {cache: "no-store", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to load Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+export async function cancelProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}/cancel`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to cancel Studio job"));
+    return await response.json() as StudioJobView;
+}
+
+/** Requests the one server-supported durable recovery path for a retained job. */
+export async function recoverProjectJob(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioJobView> {
+    const response = await fetchImpl(`/api/project/jobs/${encodeURIComponent(id)}/recover`, {method: "POST", signal});
+    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to recover Studio job"));
+    return await response.json() as StudioJobView;
+}
 
 // Same minimal Fetch subset as cli/client/apiClient.ts's FetchLike — kept structurally compatible
 // with the real global `fetch` so tests can inject a trivial fake instead of needing jsdom/network.
@@ -69,6 +127,17 @@ export type FetchLike = (
 // contract precise so every caller routes from the server-resolved project identity rather than the
 // potentially non-canonical registry location it submitted.
 type ProjectActionResult = {context: Extract<StudioContext, {mode: "project"}>; manifest: PokieGameManifest};
+
+/** A server-enforced transition guard, with the exact affected operation names. */
+export class ProjectTransitionConflict extends Error {
+    public readonly operations: readonly string[];
+
+    public constructor(message: string, operations: readonly string[]) {
+        super(message);
+        this.name = "ProjectTransitionConflict";
+        this.operations = operations;
+    }
+}
 
 export async function getContext(fetchImpl: FetchLike): Promise<StudioContext> {
     const response = await fetchImpl("/api/context");
@@ -483,27 +552,37 @@ export class ProjectOpenError extends Error {
     }
 }
 
-export async function openProject(fetchImpl: FetchLike, projectRoot: string): Promise<ProjectActionResult> {
+export async function openProject(fetchImpl: FetchLike, projectRoot: string, confirmActiveJobs = false): Promise<ProjectActionResult> {
     const response = await fetchImpl("/api/home/projects/open", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({projectRoot}),
+        body: JSON.stringify({projectRoot, ...(confirmActiveJobs ? {confirmActiveJobs: true} : {})}),
     });
     if (!response.ok) {
-        let body: {error?: string; detail?: string} = {};
+        let body: {error?: string; detail?: string; code?: string; operations?: unknown} = {};
         try {
             body = (await response.json()) as {error?: string; detail?: string};
         } catch {
             // Falls through to the generic fallback message below.
+        }
+        if (response.status === 409 && body.code === "active-jobs-require-confirmation") {
+            throw new ProjectTransitionConflict(body.error ?? "Active Studio jobs require confirmation.", Array.isArray(body.operations) ? body.operations.filter((operation): operation is string => typeof operation === "string") : []);
         }
         throw new ProjectOpenError(body.error ?? `Failed to open project (HTTP ${response.status}).`, body.detail);
     }
     return (await response.json()) as ProjectActionResult;
 }
 
-export async function closeProject(fetchImpl: FetchLike): Promise<StudioContext> {
-    const response = await fetchImpl("/api/projects/close", {method: "POST"});
+export async function closeProject(fetchImpl: FetchLike, confirmActiveJobs = false): Promise<StudioContext> {
+    const response = await fetchImpl("/api/projects/close", confirmActiveJobs ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmActiveJobs: true})} : {method: "POST"});
     if (!response.ok) {
+        if (response.status === 409) {
+            const body = await response.json() as {error?: string; code?: string; operations?: unknown};
+            if (body.code === "active-jobs-require-confirmation") {
+                throw new ProjectTransitionConflict(body.error ?? "Active Studio jobs require confirmation.", Array.isArray(body.operations) ? body.operations.filter((operation): operation is string => typeof operation === "string") : []);
+            }
+            throw new Error(body.error ?? "Failed to close project");
+        }
         throw new Error(await extractErrorMessage(response, "Failed to close project"));
     }
     const body = (await response.json()) as {context: StudioContext};

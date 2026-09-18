@@ -18,6 +18,8 @@ import {createUnresolvedRuntimePlan} from "../../../../cli/studio/artifacts/crea
 import type {StudioOutcomeLibraryGenerateResultView} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {FileStudioJobRepository} from "../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../cli/studio/jobs/StudioJobService.js";
 
 const plannedOutcomeLibrary: ArtifactConversionPlan = {
     status: "planned",
@@ -180,6 +182,53 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         await jobs.cancelAll();
     });
 
+    it("uses the complete immutable request for durable exact retries and only publishes resume after an exact checkpoint", async () => {
+        const checkpoint: ExactEnumerationCheckpoint = {
+            processedRawIndex: BigInt(1), progressTotal: BigInt(2), sourceEnumerationId: "fixture-source", grids: new Map(),
+        };
+        const destination = path.join(projectRoot, "outcomelibrary");
+        const generate = jest.fn(async (root: string, request: {readonly signal?: AbortSignal}) => {
+            await new Promise<void>((resolve) => {
+                request.signal?.addEventListener("abort", () => resolve(), {once: true});
+            });
+            return {status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(2), checkpoint, recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
+        });
+        const generateService = {
+            generate,
+            getPreflightBinding: jest.fn(() => ({requestKey: "exact-bound-request", gameId: "fixture", gameVersion: "1", configHash: "config", destination, requiresBounded: false})),
+        } as unknown as StudioOutcomeLibraryGenerateService;
+        const durableDirectory = path.join(projectRoot, ".durable-jobs");
+        const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
+        const jobs = new StudioOutcomeLibraryGenerateJobService(generateService);
+        jobs.attachJobService(durableJobs);
+
+        const request = {generation: "exact" as const, mode: "base", stake: 1, configHash: "config", libraryId: "library", maxOutcomeSpaceSize: BigInt(10), preflightToken: "first-token"};
+        const first = jobs.start(projectRoot, request);
+        const reattached = jobs.start(projectRoot, {...request, preflightToken: "replacement-token"});
+        expect(reattached.id).toBe(first.id);
+        expect(() => jobs.start(projectRoot, {...request, stake: 2, preflightToken: "different-request"})).toThrow(/already owns this resource/i);
+        expect(durableJobs.get(projectRoot, first.id)).toMatchObject({
+            request: expect.objectContaining({mode: "base", stake: 1, configHash: "config", libraryId: "library", maxOutcomeSpaceSize: "10", generation: "exact", destination}),
+            recoveryOnRestart: {action: "retry"},
+        });
+
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        await jobs.cancelAll();
+        expect(durableJobs.get(projectRoot, first.id)).toMatchObject({
+            status: "cancelled",
+            recovery: {action: "resume"},
+            result: {detail: {result: {status: "cancelled", checkpoint: {id: first.id, processedRawIndex: "1", progressTotal: "2"}}}},
+        });
+
+        const restarted = new StudioOutcomeLibraryGenerateJobService(generateService);
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+        expect(restarted.listForProject(projectRoot)).toEqual(expect.arrayContaining([
+            expect.objectContaining({id: first.id, status: "cancelled", result: expect.objectContaining({checkpoint: expect.objectContaining({id: first.id})})}),
+        ]));
+    });
+
     it("keeps bounded cancellation retryable without persisting or exposing an exact checkpoint", async () => {
         const generate = jest.fn((root: string) => ({
             status: "cancelled" as const,
@@ -245,8 +294,9 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
             return {status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(6), checkpoint, recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
         });
         const rebindCheckpointRequest = jest.fn();
-        const jobs = new StudioOutcomeLibraryGenerateJobService({generate, rebindCheckpointRequest} as unknown as StudioOutcomeLibraryGenerateService);
-        const job = jobs.start(projectRoot, {generation: "exact"});
+        const binding = {requestKey: "exact-bound-request", gameId: "fixture", gameVersion: "1", destination: path.join(projectRoot, "outcomelibrary"), requiresBounded: false};
+        const jobs = new StudioOutcomeLibraryGenerateJobService({generate, rebindCheckpointRequest, getPreflightBinding: jest.fn(() => binding)} as unknown as StudioOutcomeLibraryGenerateService);
+        const job = jobs.start(projectRoot, {generation: "exact", preflightToken: "original-token"});
         await new Promise<void>((resolve) => {
             setImmediate(resolve);
         });
@@ -293,7 +343,7 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
                 generator: {} as never, coverage: 1, selector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}, plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
             };
         });
-        const binding = {requestKey: JSON.stringify({generation: "exact"}), gameId: "game", gameVersion: "1", configHash: "config", destination: path.join(projectRoot, "outcomelibrary")};
+        const binding = {requestKey: JSON.stringify({generation: "exact"}), gameId: "game", gameVersion: "1", configHash: "config", destination: path.join(projectRoot, "outcomelibrary"), requiresBounded: false};
         const service = {
             generate,
             getPreflightBinding: jest.fn(() => binding),

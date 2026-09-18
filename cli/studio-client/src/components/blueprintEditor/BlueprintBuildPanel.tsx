@@ -164,6 +164,7 @@ function BuiltBlueprintSummary({
 export function BlueprintBuildPanel({
     blueprint,
     sourcePath,
+    initialOutDir,
     builtSnapshot,
     onBuilt,
     onRestoreBuilt,
@@ -172,6 +173,8 @@ export function BlueprintBuildPanel({
 }: {
     blueprint: Record<string, unknown>;
     sourcePath?: string;
+    /** A retained Design recovery reconstructs its destination but still requires an explicit build. */
+    initialOutDir?: string;
     // The persistent last-successful-build record -- owned by BlueprintEditorPage, not this panel's own
     // local state (see BuiltBlueprintSummary's own doc comment for why).
     builtSnapshot?: BuiltBlueprintSnapshot;
@@ -211,7 +214,10 @@ export function BlueprintBuildPanel({
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const confirm = useConfirm();
-    const [outDir, setOutDir] = useState("");
+    const [outDir, setOutDir] = useState(initialOutDir ?? "");
+    useEffect(() => {
+        if (initialOutDir !== undefined) setOutDir(initialOutDir);
+    }, [initialOutDir]);
     const [preview, setPreview] = useState<BuildPreviewView>({status: "idle"});
     const [result, setResult] = useState<BuildProjectView>({status: "idle"});
     // State (not a ref) because it drives rendered output below (the "new destination" hint) as well as

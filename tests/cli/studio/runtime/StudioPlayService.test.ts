@@ -1079,6 +1079,18 @@ describe("StudioPlayService", () => {
             expect(getAttempts()).toBe(4);
         });
 
+        it("reports every settled search attempt through the optional durable-progress hook", async () => {
+            const {session} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "A" : undefined));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}), undefined, "unknown", undefined, undefined, 5);
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("expected ok");
+            const progress = jest.fn();
+
+            await expect(service.findAnyWin(created.session.sessionId, {onProgress: progress})).resolves.toMatchObject({status: "ok"});
+
+            expect(progress.mock.calls).toEqual([[1, 5], [2, 5], [3, 5]]);
+        });
+
         it("findSymbolWin propagates the chooser's own selected symbol into the search -- a round winning a different symbol never matches", async () => {
             const {session} = createControllableVideoSlotSession(() => "A");
             // maxFindScenarioSpins is overridden to a small bound (the 6th constructor argument) so this

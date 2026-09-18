@@ -175,6 +175,7 @@ export function ReplayTab({
     onRefreshRecentRuns,
     currentGame,
     availableModes,
+    recoveryRequest,
 }: {
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
@@ -208,10 +209,21 @@ export function ReplayTab({
     // never re-picked), and "Session Spin"/"Replay Artifact" never reach the outcome-library draw path
     // at all.
     availableModes?: string[];
+    /** Immutable request retained by a terminal common job, restored for an explicit replay. */
+    recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        const round = typeof recoveryRequest.round === "number" ? recoveryRequest.round : undefined;
+        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
+        if (round !== undefined || seed !== undefined) form.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
+        if (typeof recoveryRequest.modeName === "string") setSelectedMode(recoveryRequest.modeName);
+        // Mantine's uncontrolled form object is intentionally stable.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
     useEffect(() => {
         if (selectedMode === null && availableModes !== undefined && availableModes.length > 0) {
             setSelectedMode(availableModes[0]);
@@ -293,7 +305,7 @@ export function ReplayTab({
     // Gated on `jobLoaded` (not just `progress !== undefined`) so a prior target's still-active or
     // terminal job is never presented as the currently loaded target's state -- see `jobLoaded`'s own
     // doc comment above.
-    const active = jobLoaded && progress !== undefined && (progress.status === "queued" || progress.status === "running");
+    const active = jobLoaded && progress !== undefined && (progress.status === "queued" || progress.status === "running" || progress.status === "cancelling");
     const terminal = jobLoaded && progress !== undefined && !active;
 
     // Resets every per-source selection, plus the source-agnostic "expected artifact" the parent

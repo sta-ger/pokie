@@ -22,19 +22,25 @@ import {
 } from "pokie";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioArtifactBuildJobView, StudioArtifactBuildProgressView} from "./StudioArtifactBuildJobView.js";
 import type {StudioArtifactPreviewView} from "./StudioArtifactPreviewView.js";
 import type {StudioArtifactTargetView} from "./StudioArtifactTargetView.js";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 import {resolveStudioProjectSource} from "./StudioArtifactConversionPlanningService.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
+import type {StudioJobView} from "../jobs/StudioJobView.js";
 
 export type StudioArtifactBuildStartResult =
     | {status: "created"; job: StudioArtifactBuildJobView}
+    | {status: "conflict"; activeJobId: string}
     | {status: "unsupported"; message: string};
 
 export type StudioPreparedStakeProjectionStartResult =
     | {status: "created"; job: StudioArtifactBuildJobView}
+    | {status: "conflict"; activeJobId: string}
     | {status: "unsupported"; message: string}
     | {status: "stale"};
 
@@ -100,8 +106,8 @@ export class StudioArtifactBuildService {
     // A Stake preview is an executable capability decision. Retain the exact
     // operation server-side so Build never repeats its library lookup.
     private readonly preparedStakeOperations = new Map<string, PreparedStakeOperationRecord>();
-    private nextJobId = 1;
     private nextPreparedStakeOperationId = 1;
+    private jobService: StudioJobService | undefined;
 
     constructor(
         pokieVersion: string,
@@ -119,6 +125,10 @@ export class StudioArtifactBuildService {
         this.registry = registry ?? new ArtifactBuilderRegistry(pokieVersion, undefined, managedOutcomeProjects ?? new ManagedOutcomeProjectService(this.resolveProject));
         this.stakeProjection = new StakeProjectionExportService(this.registry);
         if (pokiePackageRoot !== undefined) this.registry.withRuntimePackageRoot(pokiePackageRoot);
+    }
+
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
     }
 
     // Every target ArtifactBuilderRegistry knows about, alongside whether the active project (by its own
@@ -383,11 +393,12 @@ export class StudioArtifactBuildService {
         if (isWasmComponentFile(projectRoot)) {
             return {status: "unsupported", message: describeWasmLifecycleBoundary(projectRoot, "build a POKIE game package")};
         }
-        return {status: "created", job: this.startOperation(projectRoot, target, outDir)};
+        return this.startOperation(projectRoot, target, outDir);
     }
 
     /** Consume a preview-issued operation, rejecting stale or cross-project handles. */
     public async startPreparedStakeProjection(projectRoot: string, preparedOperationId: string): Promise<StudioPreparedStakeProjectionStartResult> {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         if (prepared === undefined || prepared.projectRoot !== projectRoot) return {status: "stale"};
 
@@ -414,24 +425,33 @@ export class StudioArtifactBuildService {
             return {status: "stale"};
         }
         this.preparedStakeOperations.delete(preparedOperationId);
-        return {status: "created", job: this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation)};
+        return this.startOperation(projectRoot, "stakeAdapter", prepared.operation.destinationPath, prepared.operation);
     }
 
     /** Returns the destination bound by a preview without exposing its operation. */
     public preparedStakeProjectionDestination(projectRoot: string, preparedOperationId: string): string | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const prepared = this.preparedStakeOperations.get(preparedOperationId);
         return prepared?.projectRoot === projectRoot ? prepared.operation.destinationPath : undefined;
     }
 
     public getStatusForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
-        return record?.projectRoot === projectRoot ? this.toJobView(record) : undefined;
+        if (record?.projectRoot === projectRoot) return this.toJobView(record);
+        const common = this.jobService?.get(projectRoot, id);
+        return common?.operation === "artifact-build" ? this.projectDurableJob(common) : undefined;
     }
 
     public cancelForProject(projectRoot: string, id: string): StudioArtifactBuildJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.jobs.get(id);
-        if (record === undefined || record.projectRoot !== projectRoot) return undefined;
+        if (record === undefined || record.projectRoot !== projectRoot) {
+            const common = this.jobService?.cancel(projectRoot, id);
+            return common?.operation === "artifact-build" ? this.projectDurableJob(common) : undefined;
+        }
         if (record.status === "queued" || record.status === "running") {
+            this.jobService?.cancel(projectRoot, id);
             record.cancellationRequested = true;
             record.controller.abort();
         }
@@ -439,8 +459,10 @@ export class StudioArtifactBuildService {
     }
 
     public cancelActiveForProject(projectRoot: string): void {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         for (const record of this.jobs.values()) {
             if (record.projectRoot === projectRoot && (record.status === "queued" || record.status === "running")) {
+                this.jobService?.cancel(projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
             }
@@ -450,6 +472,7 @@ export class StudioArtifactBuildService {
     public cancelAll(): void {
         for (const record of this.jobs.values()) {
             if (record.status === "queued" || record.status === "running") {
+                this.jobService?.cancel(record.projectRoot, record.id);
                 record.cancellationRequested = true;
                 record.controller.abort();
             }
@@ -461,10 +484,28 @@ export class StudioArtifactBuildService {
         target: ArtifactTargetType,
         outDir?: string,
         preparedStakeOperation?: PreparedStakeProjectionOperation,
-    ): StudioArtifactBuildJobView {
+    ): StudioArtifactBuildStartResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         this.trimTerminalJobs();
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "artifact-build",
+            request: {target, ...(outDir === undefined ? {} : {outDir})},
+            // `target` describes the builder, not the resource it locks.
+            // Two builders spelling the same output as "out", "./out", or
+            // an absolute path must share one common durable conflict key.
+            conflictKey: `artifact:${path.resolve(outDir ?? resolveDefaultDestination(projectRoot, target))}`,
+            recoveryOnRestart: {action: "rebuild", reason: "Artifact publication cannot safely resume after Studio restarts. Rebuild from the captured target and destination."},
+        });
+        if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
+        if (common?.status === "reattached") {
+            const existing = this.jobs.get(common.job.id);
+            return {status: "created", job: existing?.projectRoot === projectRoot ? this.toJobView(existing) : this.projectDurableJob(common.job)};
+        }
         const record: StudioArtifactBuildJobRecord = {
-            id: String(this.nextJobId++),
+            // Legacy direct callers still receive an opaque prefixed id. Once
+            // attached, the durable common job id is the compatibility id.
+            id: common?.status === "created" ? common.job.id : `artifact-${crypto.randomUUID()}`,
             projectRoot,
             target,
             status: "queued",
@@ -478,11 +519,13 @@ export class StudioArtifactBuildService {
                 // run() converts every builder failure into the public terminal result.
             });
         });
-        return this.toJobView(record);
+        return {status: "created", job: this.toJobView(record)};
     }
 
     private async run(record: StudioArtifactBuildJobRecord, outDir: string | undefined): Promise<void> {
         record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "artifacts", current: 0, total: 1});
         const options: ArtifactBuildOptions = {
             signal: record.controller.signal,
             onProgress: (progress) => {
@@ -493,6 +536,13 @@ export class StudioArtifactBuildService {
                 record.progress = next.preflight === undefined && record.progress?.preflight !== undefined
                     ? {...next, preflight: record.progress.preflight}
                     : next;
+                this.jobService?.progress(record.id, {
+                    stage: next.status,
+                    unit: "artifacts",
+                    current: next.completed ?? "0",
+                    total: next.total ?? "1",
+                    ...(next.message === undefined ? {} : {message: next.message}),
+                });
             },
         };
         const result = record.preparedStakeOperation === undefined
@@ -500,16 +550,54 @@ export class StudioArtifactBuildService {
             : await this.executeStakeProjection(record.preparedStakeOperation, options);
         const status = terminalStatusFor(result);
         Object.assign(record, {result, status});
+        if (status === "completed") {
+            const resultView = result as Extract<StudioArtifactBuildView, {status: "ok"}>;
+            this.jobService?.complete(record.id, {
+                summary: "Artifact build completed.",
+                outputs: [{path: resultView.outputPath, label: "Built artifact"}],
+                // The old job map is only a live-executor convenience.  Keep
+                // the compatibility DTO in the common durable record so an
+                // Artifact Build card and legacy route remain useful after a
+                // Studio process restart.
+                detail: {target: record.target, outputKind: resultView.outputKind, result: resultView},
+            });
+        } else if (status === "cancelled") {
+            this.jobService?.cancelled(record.id, {summary: "Artifact build cancelled after staging cleanup."}, {action: "rebuild", reason: "Rebuild the artifact from its captured target and destination."});
+        } else {
+            this.jobService?.fail(record.id, result.status === "error" ? result.message : "Artifact build failed.", {action: "rebuild", reason: "Resolve the reported build problem and rebuild."});
+        }
     }
 
     private toJobView(record: StudioArtifactBuildJobRecord): StudioArtifactBuildJobView {
-        return {
+        const view: StudioArtifactBuildJobView = {
             id: record.id,
             target: record.target,
             status: record.status,
             cancellationRequested: record.cancellationRequested,
             ...(record.progress !== undefined ? {progress: record.progress} : {}),
             ...(record.result !== undefined ? {result: record.result} : {}),
+        };
+        const common = this.jobService?.get(record.projectRoot, record.id);
+        if (common?.operation !== "artifact-build") return view;
+        return {
+            ...view,
+            status: common.status,
+            cancellationRequested: record.cancellationRequested || common.status === "cancelling",
+            ...(common.error === undefined ? {} : {error: common.error}),
+            ...(common.recovery === undefined ? {} : {recovery: common.recovery}),
+        };
+    }
+
+    private projectDurableJob(job: StudioJobView): StudioArtifactBuildJobView {
+        const result = artifactResultFromDurableJob(job);
+        return {
+            id: job.id,
+            target: job.request.target as ArtifactTargetType,
+            status: job.status,
+            cancellationRequested: job.status === "cancelling",
+            ...(result === undefined ? {} : {result}),
+            ...(job.error === undefined ? {} : {error: job.error}),
+            ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
     }
 
@@ -723,6 +811,11 @@ export class StudioArtifactBuildService {
             return {conversionEvidencePath};
         }
     }
+}
+
+function artifactResultFromDurableJob(job: StudioJobView): StudioArtifactBuildView | undefined {
+    const result = job.result?.detail?.result;
+    return typeof result === "object" && result !== null && "status" in result ? result as StudioArtifactBuildView : undefined;
 }
 
 function terminalStatusFor(result: StudioArtifactBuildView): "completed" | "failed" | "cancelled" {

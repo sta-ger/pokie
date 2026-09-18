@@ -9,12 +9,14 @@ import {
     getReport,
     inspectProject,
     inspectReplayArtifact,
+    openOutputFolder,
     listRecentSpins,
     listReplays,
     listReports,
     validateProject,
+    ProjectTransitionConflict,
 } from "../../api/apiClient";
-import type {GamePackageInspectionReport, RoundArtifactJson, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
+import type {GamePackageInspectionReport, RoundArtifactJson, StudioJobView, StudioProjectCapability, StudioSimulationReportListEntry} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
 import {
@@ -42,9 +44,12 @@ import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
+import {useProjectJobs} from "../../hooks/useProjectJobs";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
+import {JobProgressCard} from "../common/JobProgressCard";
+import {JobResultCard} from "../common/JobResultCard";
 import {LoadingState} from "../common/LoadingState";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {AppShellLayout} from "../layout/AppShellLayout";
@@ -425,6 +430,31 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
             ? header.projectRoot
             : undefined;
+    const [projectGeneration, setProjectGeneration] = useState(0);
+    useEffect(() => {
+        setProjectGeneration((previous) => previous + 1);
+    }, [projectKey]);
+    const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
+    const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
+    const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
+        // Never replay durable work in the background.  The destination form
+        // receives this immutable request and reconstructs it for an explicit
+        // new submission, rather than opening an empty unrelated workflow.
+        setRecoveryJob(job);
+        if (job.recovery?.action === "new-session" || job.operation.startsWith("play-")) {
+            setNewSessionRecoveryRequested(true);
+            setActiveTab("play");
+        } else if (job.operation.includes("simulation")) {
+            setActiveTab("simulation");
+        } else if (job.operation.includes("replay")) {
+            setActiveTab("replay");
+        } else if (job.operation.includes("certification")) {
+            setActiveTab("certification");
+        } else {
+            setActiveTab("exportDeploy");
+        }
+    }, [setActiveTab]);
     // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs its capabilities without caring whether the project is game-backed, canonical-
     // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
@@ -834,6 +864,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const resetPlayForProjectSwitch = play.resetForProjectSwitch;
     const deployment = useDeploymentManager();
 
+    useEffect(() => {
+        if (!newSessionRecoveryRequested || activeTab !== "play") return;
+        setNewSessionRecoveryRequested(false);
+        play.newSession();
+    }, [activeTab, newSessionRecoveryRequested, play]);
+
     // Reset Play before the newly resolved project's tab can be painted.  A passive effect here can
     // run after the user has already pressed "New Play session" on a just-opened project; its reset
     // then invalidates that request and leaves the visible form looking as if the action did nothing.
@@ -876,6 +912,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         replayListRequestIdRef.current++;
         setReplayListView({status: "empty"});
         setReplayListError(undefined);
+        setRecoveryJob(undefined);
+        setNewSessionRecoveryRequested(false);
         // simulation/replay own no page-level view state to reset here (their job/progress/error live
         // inside useSimulationPoll/useReplayPoll themselves) -- resetForProjectSwitch() is what a
         // genuinely different project needs to stop showing the previous one's simulation/replay job.
@@ -900,7 +938,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const hasActiveOperation =
         (simulation.job !== undefined && isSimulationActive(simulation.job)) ||
         (replay.job !== undefined && isReplayActive(replay.job)) ||
-        deployment.runLoading;
+        deployment.runLoading ||
+        commonJobs.jobs.some((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+    const activeOperationNames = [...new Set(commonJobs.jobs
+        .filter((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling")
+        .map((job) => job.operation))];
 
     const activeTabDescriptor = ALL_PROJECT_TABS.find((tab) => tab.value === activeTab);
     const activeTabLabel = activeTabDescriptor?.label ?? "Overview";
@@ -923,19 +965,27 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
+    const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const closeGuard = useDoubleSubmitGuard();
-    const closeProjectAndReturnToProjects = (): void => {
+    const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
             return;
         }
         setCloseError(undefined);
-        closeProject(fetchImpl)
+        closeProject(fetchImpl, confirmActiveJobs)
             .then(() => {
                 // Closing a workspace returns to the list it came from, where the user can reopen it
                 // or choose another project.  Starting a new game remains an explicit Home choice.
                 navigate("/home/projects");
             })
-            .catch((error: unknown) => setCloseError(errorMessage(error)))
+            .catch((error: unknown) => {
+                if (error instanceof ProjectTransitionConflict && !confirmActiveJobs) {
+                    const operations = error.operations.length > 0 ? error.operations : activeOperationNames;
+                    confirm(`Active operations: ${operations.join(", ")}. Close the project and cancel them after cleanup?`, () => closeProjectAndReturnToProjects(true));
+                    return;
+                }
+                setCloseError(errorMessage(error));
+            })
             .finally(() => closeGuard.end());
     };
     const handleClose = (): void => {
@@ -944,7 +994,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             return;
         }
         const reasons = [
-            hasActiveOperation ? "an active simulation, replay, or deployment" : undefined,
+            hasActiveOperation ? `active Studio operations (${activeOperationNames.join(", ") || "loading"})` : undefined,
             gameModelDirty ? "unsaved Game Model changes" : undefined,
         ].filter((reason): reason is string => reason !== undefined);
         confirm(`This project has ${reasons.join(" and ")}. Close the project anyway?`, closeProjectAndReturnToProjects);
@@ -959,6 +1009,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .writeText(projectKey)
             .then(() => setCopyPathNotice("Project path copied."))
             .catch(() => setCopyPathNotice("Couldn't copy the project path. Open Advanced details to select it."));
+    }
+
+    function openJobOutput(outputPath: string): void {
+        setJobOutputNotice(undefined);
+        openOutputFolder(fetchImpl, outputPath)
+            .then((result) => {
+                if (result.status === "ok") {
+                    setJobOutputNotice("Opened job output.");
+                    return;
+                }
+                setJobOutputNotice(result.status === "unavailable" ? result.reason : result.message);
+            })
+            .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
 
     if (header.status === "empty") {
@@ -1028,6 +1091,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             {migration.message}
                         </Alert>
                     )}
+                    {commonJobs.jobs.map((job) =>
+                        job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                            ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
+                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} key={job.id} />,
+                    )}
+                    {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
                             <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />
@@ -1091,6 +1160,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     progress={simulation.progress}
                                     error={simulation.error}
                                     onRun={startRun}
+                                    recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {
                                     // Clears eagerly (not just via the terminal-state effect) so the notice
                                     // doesn't linger for the ~poll-interval it takes the job to actually
@@ -1131,6 +1201,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     result={replay.job?.status === "completed" ? describeReplayResult(replay.job) : undefined}
                                     error={replay.error}
                                     onRun={runReplay}
+                                    recoveryRequest={recoveryJob?.operation.includes("replay") ? recoveryJob.request : undefined}
                                     onCancel={replay.cancel}
                                     onRetry={() =>
                                         replay.job &&
@@ -1162,12 +1233,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} />
+                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" || recoveryJob?.operation === "outcome-library-generation" ? recoveryJob.request : undefined} />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns
                             // all of its own stepper state locally (no page-level hook).
-                                <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
+                                <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} recoveryRequest={recoveryJob?.operation.includes("certification") ? recoveryJob.request : undefined} />
                             )}
                             {activeTab === "provablyFair" && (
                             // Same reasoning as GameModelTab's own key above -- ProvablyFairTab owns

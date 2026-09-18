@@ -29,6 +29,7 @@ import {
     BUILD_OPERATION,
     CERTIFICATION_BUILD_OPERATION,
     CERTIFICATION_VALIDATE_OPERATION,
+    computeGameBlueprintHash,
     DEPLOYMENT_TARGETS_OPERATION,
     FAIRNESS_CONFIGURE_OPERATION,
     FAIRNESS_GENERATE_OPERATION,
@@ -127,6 +128,11 @@ import {validateStakeEngineExportRequest, StakeEngineExportRequestInput} from ".
 import {validateStakeEngineExportValidateRequest, StakeEngineExportValidateRequestInput} from "./stakeengine/validateStakeEngineExportValidateRequest.js";
 import type {StudioContext} from "./StudioContext.js";
 import type {StudioServerHandling} from "./StudioServerHandling.js";
+import {FileStudioJobRepository} from "./jobs/FileStudioJobRepository.js";
+import {canonicalStudioProjectIdentity} from "./jobs/canonicalStudioProjectIdentity.js";
+import {StudioJobService, type StudioJobExecutorContext, type StudioJobExecutorTerminal} from "./jobs/StudioJobService.js";
+import type {StudioJobProgressView, StudioJobView} from "./jobs/StudioJobView.js";
+import {PokiePathResolver} from "../paths/PokiePathResolver.js";
 
 function describeIncompleteOutcomeSourceProvenance(recorded: unknown): string | undefined {
     if (typeof recorded !== "object" || recorded === null) {
@@ -287,6 +293,7 @@ export class StudioServer implements StudioServerHandling {
     private readonly fairnessService: StudioFairnessService;
     private readonly stakeEngineExportService: StudioStakeEngineExportService;
     private readonly artifactBuildService: StudioArtifactBuildService;
+    private readonly jobService: StudioJobService;
     // The persistent Studio project registry -- see StudioServerOptions.projectRegistrationService's own
     // doc comment for the default's FileStudioProjectRegistry-vs-app-data-unresolved fallback story.
     private readonly projectRegistrationService: StudioProjectRegistrationService;
@@ -307,6 +314,11 @@ export class StudioServer implements StudioServerHandling {
     constructor(options: StudioServerOptions) {
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
+        const jobDirectory = path.join(
+            new PokiePathResolver().resolveAppDataDirectory() ?? path.join(process.cwd(), ".pokie"),
+            "studio-jobs",
+        );
+        this.jobService = options.jobService ?? new StudioJobService(new FileStudioJobRepository(jobDirectory));
         this.configuredTrustedOrigins = new Set((options.trustedOrigins ?? []).map((origin) => this.normalizeTrustedOrigin(origin)));
         this.pokieVersion = options.pokieVersion;
         this.studioRoot = path.resolve(options.studioRoot);
@@ -351,6 +363,7 @@ export class StudioServer implements StudioServerHandling {
                 (record) => this.recordOutcomeSourceSimulation(record),
                 this.pokieVersion,
             );
+        this.simulationService.attachJobService(this.jobService);
         this.replayService =
             options.replayService ??
             // Legacy construction shape: new StudioReplayExecutionService(undefined, loadCurrentProjectGame)
@@ -367,12 +380,14 @@ export class StudioServer implements StudioServerHandling {
                 undefined,
                 loadCurrentProjectRuntimeGame,
             );
+        this.replayService.attachJobService(this.jobService);
         this.roundRecorder = options.roundRecorder ?? new StudioRoundRecorder();
         this.playService =
             options.playService ??
             new StudioPlayService(this.loadGame, this.resolveRuntimePackageRoot, this.pokieVersion, undefined, undefined, undefined, this.roundRecorder);
         this.outcomeLibraryGenerateService = options.outcomeLibraryGenerateService ?? new StudioOutcomeLibraryGenerateService(this.pokieVersion, loadCurrentProjectGame);
         this.outcomeLibraryGenerateJobService = new StudioOutcomeLibraryGenerateJobService(this.outcomeLibraryGenerateService);
+        this.outcomeLibraryGenerateJobService.attachJobService(this.jobService);
         this.deploymentService = options.deploymentService ?? StudioDeploymentService.withPokieVersion(
             this.pokieVersion,
             async (projectRoot) => {
@@ -419,6 +434,7 @@ export class StudioServer implements StudioServerHandling {
                 options.pokiePackageRoot,
                 (projectRoot) => this.projectRegistrationService.remove(projectRoot),
             );
+        this.artifactBuildService.attachJobService(this.jobService);
         this.stakeEngineExportService =
             options.stakeEngineExportService ?? new StudioStakeEngineExportService(
                 this.pokieVersion,
@@ -478,6 +494,13 @@ export class StudioServer implements StudioServerHandling {
 
     public async stop(): Promise<void> {
         this.cancelRuntimePreparation();
+        // Certification, deployment, Play, Home materialization, and Design
+        // operations execute directly through StudioJobService rather than a
+        // compatibility service with its own cancelAll(). Request their
+        // aborts before closing HTTP so their executor-specific cleanup can
+        // publish an honest terminal state (or restart reconciliation can
+        // safely mark an interrupted record recovery-required).
+        this.jobService.cancelAll();
         // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
         // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
         // independently of any HTTP connection, so closing the server alone would leave either running
@@ -514,20 +537,266 @@ export class StudioServer implements StudioServerHandling {
     }
 
     // Called from both project-switch points (handleHomeOpenProject, /api/projects/close) *before*
-    // this.currentContext is mutated — a no-op unless currentContext is still "project" at the time of
-    // the call. StudioSimulationService/StudioReplayExecutionService jobs are otherwise only ever stopped
-    // on full Studio shutdown (see stop() above) — they're scoped by projectRoot so a job for a project
-    // you've switched away from is never *reachable* through this project's own routes again, but
-    // "unreachable" isn't "stopped": without this, its chunk loop would keep running in the background
-    // indefinitely, wasting CPU for a result nothing can ever read.
-    private async cancelActiveJobsForOldProject(): Promise<void> {
+    // this.currentContext is mutated.  A project context identifies the older
+    // compatibility executors; Home still has common Design/opening executors
+    // that a confirmed transition must explicitly cancel.  Merely making
+    // those Home jobs invisible by changing the context would strand real
+    // publishing work behind a finished confirmation.
+    private async cancelActiveJobsForOldProject(excludeJobId?: string): Promise<void> {
+        if (this.currentContext.mode === "project") {
+            const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+            this.simulationService.cancelActiveForProject(projectId);
+            this.replayService.cancelActiveForProject(projectId);
+            this.artifactBuildService.cancelActiveForProject(projectId);
+            await this.outcomeLibraryGenerateJobService.cancelActiveForProject(projectId);
+        }
+        for (const job of this.activeCommonJobs()) {
+            if (job.id !== excludeJobId) this.jobService.cancel(job.projectId, job.id);
+        }
+    }
+
+    private activeJobsForIdentity(projectId: string): readonly StudioJobView[] {
+        return this.jobService.list(projectId).filter((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+    }
+
+    private activeCommonJobs(sourcePath?: string): readonly StudioJobView[] {
+        const identities = new Set<string>();
+        if (this.currentContext.mode === "project") identities.add(this.canonicalPathIdentity(this.currentContext.projectRoot));
+        if (sourcePath !== undefined) {
+            const canonicalSource = this.canonicalPathIdentity(sourcePath);
+            identities.add(canonicalSource);
+            identities.add(`design:${canonicalSource}`);
+        }
+        const scoped = [...identities].flatMap((projectId) => this.activeJobsForIdentity(projectId));
+        // Home has no current project identity while runtime materialization is
+        // in flight.  Keep that accepted operation visible/protected until it
+        // reaches a terminal record instead of letting a second Home action
+        // silently replace it.
+        const allActive = this.jobService.list().filter((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
+        // Home has no project context to use as an implicit filter.  In
+        // particular, a Design build/import/export can still be publishing
+        // when a user opens a different project from Home.  Leaving it out
+        // here made that durable record undiscoverable to the transition
+        // guard, even though its source-scoped list and controls remained
+        // available.  One server owns all of these executors, so every active
+        // durable operation must receive the same explicit leave decision.
+        return [...new Map([...scoped, ...allActive].map((job) => [job.id, job])).values()];
+    }
+
+    /** The HTTP boundary, rather than the browser alone, protects active work. */
+    private rejectUnconfirmedProjectTransition(res: ServerResponse, confirmed: boolean, sourcePath?: string): boolean {
+        const canonicalSource = sourcePath === undefined ? undefined : this.canonicalPathIdentity(sourcePath);
+        const jobs = this.activeCommonJobs(sourcePath).filter((job) =>
+            !(canonicalSource !== undefined && job.operation === "project-open-materialization" && job.projectId === canonicalSource),
+        );
+        if (confirmed || jobs.length === 0) return false;
+        const operations = [...new Set(jobs.map((job) => job.operation))];
+        this.sendJson(res, 409, {
+            error: `Active Studio jobs require explicit confirmation before changing projects: ${operations.join(", ")}.`,
+            code: "active-jobs-require-confirmation",
+            operations,
+            activeJobs: jobs.map((job) => ({id: job.id, operation: job.operation})),
+        });
+        return true;
+    }
+
+    /** A durable job key must not split when the same source is addressed via a symlink. */
+    private canonicalPathIdentity(rawPath: string): string {
+        return canonicalStudioProjectIdentity(rawPath);
+    }
+
+    private blueprintRequestIdentity(blueprint: unknown): string {
+        return computeGameBlueprintHash(blueprint);
+    }
+
+    private fileContentIdentity(filePath: string): string | undefined {
+        try {
+            return `sha256:${crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex")}`;
+        } catch {
+            // The executor remains the authority for a missing/unreadable
+            // workbook; this helper only binds readable request content.
+            return undefined;
+        }
+    }
+
+    /**
+     * Starts a request-owned compatibility action through the durable lifecycle
+     * before its domain executor is invoked.  The compatibility URL may still
+     * return its historical DTO, but a duplicate request must never reach the
+     * executor merely because that DTO predates common jobs.
+     */
+    private beginCommonOperation(
+        res: ServerResponse,
+        projectId: string,
+        operation: string,
+        request: Readonly<Record<string, unknown>>,
+        conflictKey: string,
+        recoveryOnRestart: StudioJobView["recoveryOnRestart"],
+    ): StudioJobView | undefined {
+        const started = this.jobService.start({projectId, operation, request, conflictKey, recoveryOnRestart});
+        if (started.status === "created") {
+            this.jobService.markRunning(started.job.id);
+            return started.job;
+        }
+        if (started.status === "reattached") {
+            this.sendJson(res, 202, {job: started.job, reattached: true});
+            return undefined;
+        }
+        this.sendJson(res, 409, {
+            error: started.reason,
+            activeJobId: started.activeJobId,
+            recovery: started.recovery,
+        });
+        return undefined;
+    }
+
+    /**
+     * The HTTP-to-domain executor bridge for compatibility actions.  It keeps
+     * reattachment/conflict outside the domain executor and lets StudioJobService
+     * persist the final state only after the executor has returned or thrown.
+     */
+    private async executeCommonOperation<T>(
+        res: ServerResponse,
+        input: {
+            readonly projectId: string;
+            readonly operation: string;
+            readonly request: Readonly<Record<string, unknown>>;
+            readonly conflictKey: string;
+            readonly recoveryOnRestart: NonNullable<StudioJobView["recoveryOnRestart"]>;
+            /** The first honest domain-specific snapshot before the executor can refine it. */
+            readonly initialProgress?: StudioJobProgressView;
+            /** Keeps a compatibility route in its own DTO family on exact retries. */
+            readonly reattachedResponse?: (job: StudioJobView) => {readonly statusCode: number; readonly body: unknown};
+        },
+        executor: (context: StudioJobExecutorContext) => Promise<T>,
+        terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal,
+        terminalForException: (error: unknown, cancelled: boolean) => StudioJobExecutorTerminal,
+    ): Promise<{readonly job: StudioJobView; readonly value: T} | undefined> {
+        const execution = await this.jobService.execute(
+            input,
+            (context) => {
+                // Executors that cannot expose a measurable inner loop still
+                // publish an honest, durable indeterminate snapshot.  Domain
+                // executors may refine it with their own semantic unit/stage.
+                context.progress({stage: "Preparing", unit: "work", current: 0, total: "unknown", message: `Preparing ${input.operation}.`});
+                // Not every established domain API has a progress callback.
+                // Keep those snapshots domain-specific and indeterminate,
+                // rather than claiming a made-up percentage of generic work.
+                context.progress(input.initialProgress ?? {stage: "Executing", unit: "work", current: "indeterminate", total: "indeterminate", message: `${input.operation} is running.`});
+                return executor(context);
+            },
+            terminalForResult,
+            terminalForException,
+        );
+        if (execution.status === "executed") return {job: execution.job, value: execution.value};
+        if (execution.status === "reattached") {
+            const compatibility = input.reattachedResponse?.(execution.job);
+            if (compatibility !== undefined) {
+                this.sendJson(res, compatibility.statusCode, compatibility.body);
+                return undefined;
+            }
+            this.sendJson(res, 202, {job: execution.job, reattached: true});
+            return undefined;
+        }
+        this.sendJson(res, 409, {
+            error: execution.reason,
+            activeJobId: execution.activeJobId,
+            recovery: execution.recovery,
+        });
+        return undefined;
+    }
+
+    private completeCommonOperation(id: string, summary: string, detail?: Readonly<Record<string, unknown>>): void {
+        this.jobService.complete(id, {summary, ...(detail === undefined ? {} : {detail})});
+    }
+
+    private failCommonOperation(id: string, error: unknown, recovery: NonNullable<StudioJobView["recoveryOnRestart"]>): void {
+        this.jobService.fail(id, error instanceof Error ? error.message : String(error), recovery);
+    }
+
+    private handleListJobs(res: ServerResponse): void {
         if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.simulationService.cancelActiveForProject(this.currentContext.projectRoot);
-        this.replayService.cancelActiveForProject(this.currentContext.projectRoot);
-        this.artifactBuildService.cancelActiveForProject(this.currentContext.projectRoot);
-        await this.outcomeLibraryGenerateJobService.cancelActiveForProject(this.currentContext.projectRoot);
+        this.sendJson(res, 200, {jobs: this.jobService.list(this.canonicalPathIdentity(this.currentContext.projectRoot))});
+    }
+
+    private isHomeScopedJob(job: StudioJobView): boolean {
+        return job.projectId.startsWith("design:") || job.operation === "project-open-materialization";
+    }
+
+    private handleHomeListJobs(res: ServerResponse, sourcePath: string | null): void {
+        const jobs = sourcePath === null || sourcePath.trim() === ""
+            // A reload at Home has no selected blueprint path in React state.  Listing the retained
+            // source-scoped records is the durable discovery path; project records remain excluded.
+            ? this.jobService.list().filter((job) => this.isHomeScopedJob(job))
+            : (() => {
+                const canonicalSource = this.canonicalPathIdentity(sourcePath);
+                return [...this.jobService.list(canonicalSource), ...this.jobService.list(`design:${canonicalSource}`)];
+            })();
+        jobs.sort((left, right) => right.createdAt - left.createdAt);
+        this.sendJson(res, 200, {jobs});
+    }
+
+    private handleHomeCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined, sourcePath: string | null): void {
+        const job = sourcePath === null || sourcePath.trim() === ""
+            ? this.jobService.list().find((candidate) => candidate.id === id && this.isHomeScopedJob(candidate))
+            : (() => {
+                const sourceIdentity = this.canonicalPathIdentity(sourcePath);
+                return this.jobService.get(sourceIdentity, id) ?? this.jobService.get(`design:${sourceIdentity}`, id);
+            })();
+        if (job === undefined) {
+            this.sendJson(res, 404, {error: "Studio Home job not found."});
+            return;
+        }
+        if (action === undefined && method === "GET") {
+            this.sendJson(res, 200, job);
+            return;
+        }
+        if (action === "cancel" && method === "POST") {
+            this.sendJson(res, 202, this.jobService.cancel(job.projectId, id));
+            return;
+        }
+        this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This Home operation must be started again from its original action."});
+    }
+
+    private async handleCommonJob(method: string, res: ServerResponse, id: string, action: "cancel" | "recover" | undefined): Promise<void> {
+        if (this.currentContext.mode !== "project") {
+            this.sendJson(res, 409, {error: "No active project."});
+            return;
+        }
+        const projectId = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        if (action === undefined && method === "GET") {
+            const job = this.jobService.get(projectId, id);
+            this.sendJson(res, job === undefined ? 404 : 200, job ?? {error: "Studio job not found."});
+            return;
+        }
+        if (action === "cancel" && method === "POST") {
+            const job = this.jobService.cancel(projectId, id);
+            if (job?.operation === "simulation") this.simulationService.cancelForProject(projectId, id);
+            if (job?.operation === "replay") this.replayService.cancel(projectId, id);
+            if (job?.operation === "artifact-build") this.artifactBuildService.cancelForProject(projectId, id);
+            if (job?.operation === "outcome-library-generation") this.outcomeLibraryGenerateJobService.cancelForProject(projectId, id);
+            this.sendJson(res, job === undefined ? 404 : 202, job ?? {error: "Studio job not found."});
+            return;
+        }
+        if (action === "recover" && method === "POST") {
+            const job = this.jobService.get(projectId, id);
+            if (job === undefined) {
+                this.sendJson(res, 404, {error: "Studio job not found."});
+                return;
+            }
+            if (job.operation === "outcome-library-generation" && job.recovery?.action === "resume") {
+                const recovered = await this.outcomeLibraryGenerateJobService.resumeForProject(projectId, id);
+                const current = this.jobService.get(projectId, id);
+                this.sendJson(res, recovered === undefined || current === undefined ? 409 : 202, current ?? {status: "recovery-required", error: "The Outcome Library checkpoint could not be resumed."});
+                return;
+            }
+            this.sendJson(res, 409, {status: "recovery-required", job, error: job.recovery?.reason ?? "This operation must be started again from its original action."});
+            return;
+        }
+        this.sendJson(res, 405, {error: "Method not allowed."});
     }
 
     // Every field is a primitive already safe to expose — no stack traces, env vars, tokens, or service
@@ -591,8 +860,7 @@ export class StudioServer implements StudioServerHandling {
     // not block startup on this best-effort bookkeeping.
     private migrateRecentProjectsToRegistry(): void {
         this.homeService
-            .listRecentProjects()
-            .then((recentProjects) => this.projectRegistrationService.migrateRecentProjects(recentProjects))
+            .handRecentProjectsTo((recentProjects) => this.projectRegistrationService.migrateRecentProjects(recentProjects))
             .catch(() => {
                 // Best-effort only -- a migration failure must never crash Studio's own startup.
             });
@@ -626,6 +894,16 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/home/projects/registry") {
             this.sendJson(res, 200, await this.projectRegistrationService.list());
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/home/jobs") {
+            this.handleHomeListJobs(res, url.searchParams.get("sourcePath"));
+            return;
+        }
+        const homeJobRoute = (/^\/api\/home\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover))?$/).exec(url.pathname);
+        if (homeJobRoute !== null) {
+            this.handleHomeCommonJob(method, res, homeJobRoute[1], homeJobRoute[2] as "cancel" | "recover" | undefined, url.searchParams.get("sourcePath"));
             return;
         }
 
@@ -755,9 +1033,14 @@ export class StudioServer implements StudioServerHandling {
         }
 
         if (method === "POST" && url.pathname === "/api/projects/close") {
+            const body = await this.readJsonBody(req);
+            const confirmed = (body as {confirmActiveJobs?: unknown} | undefined)?.confirmActiveJobs === true;
+            if (this.rejectUnconfirmedProjectTransition(res, confirmed)) return;
             // Simulation/Replay jobs for the project being left are cancelled too — see
             // cancelActiveJobsForOldProject()'s own doc comment for why this can't just rely on their
             // existing projectRoot scoping alone.
+            // Closing is the established explicit policy: request cancellation,
+            // then let each executor persist its own cleanup-safe terminal state.
             this.cancelRuntimePreparation();
             this.playService.reset();
             // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
@@ -772,6 +1055,16 @@ export class StudioServer implements StudioServerHandling {
 
         if (method === "GET" && url.pathname === "/api/project/context") {
             this.sendJson(res, 200, this.projectDashboard ?? {status: "empty"});
+            return;
+        }
+
+        if (method === "GET" && url.pathname === "/api/project/jobs") {
+            this.handleListJobs(res);
+            return;
+        }
+        const commonJobRoute = (/^\/api\/project\/jobs\/([A-Za-z0-9_-]+)(?:\/(cancel|recover))?$/).exec(url.pathname);
+        if (commonJobRoute !== null) {
+            await this.handleCommonJob(method, res, commonJobRoute[1], commonJobRoute[2] as "cancel" | "recover" | undefined);
             return;
         }
 
@@ -1221,6 +1514,11 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        if (this.rejectUnconfirmedProjectTransition(res, validated.confirmActiveJobs, validated.projectRoot)) return;
+
+        const sourcePath = this.canonicalPathIdentity(validated.projectRoot);
+        const recovery = {action: "retry", reason: "Runtime materialization is not resumable after restart. Reopen the same project to retry."} as const;
+
         // loadProjectDashboardContext (behind StudioHomeService.openProject()) only ever resolves
         // "loaded", "outcome-source", "artifact", or "error" — "empty"/"loading" are exclusively synthesized
         // elsewhere in this class. A resolved "outcomeLibrary"/"stakeAdapter" project opens straight
@@ -1230,79 +1528,95 @@ export class StudioServer implements StudioServerHandling {
         // Every Home intent owns a generation, including an open of the same path.  In particular it
         // must supersede a direct-entry dashboard load and an earlier Home request; sharing the prior
         // controller would let the older handler publish after the newer one completed.
-        const preparation = this.beginRuntimePreparation();
-        let dashboard: ProjectDashboardContext;
+        let preparation: ReturnType<StudioServer["beginRuntimePreparation"]> | undefined;
+        let execution: {readonly job: StudioJobView; readonly value: ProjectDashboardContext} | undefined;
         try {
-            dashboard = await this.homeService.openProject(validated.projectRoot, {
-                signal: preparation.controller.signal,
-                isCurrent: () => this.isCurrentRuntimePreparation(preparation),
-            });
+            execution = await this.executeCommonOperation(
+                res,
+                {
+                    projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery,
+                    initialProgress: {stage: "Resolving project", unit: "opening stages", current: 0, total: 3, message: "Resolving the requested project source."},
+                    reattachedResponse: (job) => ({statusCode: 409, body: {error: "Project opening is already in progress.", activeJobId: job.id, reattached: true}}),
+                },
+                async ({job, signal, progress}) => {
+                    preparation = this.beginRuntimePreparation();
+                    const abortPreparation = () => preparation?.controller.abort();
+                    signal.addEventListener("abort", abortPreparation, {once: true});
+                    try {
+                    // Preserve the established Home executor argument/DTO contract;
+                    // `sourcePath` above is only the durable canonical job identity.
+                        progress({stage: "Materializing runtime", unit: "opening stages", current: 1, total: 3, message: "Loading the project and materializing any required runtime."});
+                        const dashboard = await this.homeService.openProject(validated.projectRoot, {
+                            signal: preparation.controller.signal,
+                            isCurrent: () => this.isCurrentRuntimePreparation(preparation!),
+                        });
+                        if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
+                            throw new Error("Project opening was superseded by a newer request.");
+                        }
+                        if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
+                            return dashboard;
+                        }
+
+                        progress({stage: "Registering project", unit: "opening stages", current: 2, total: 3, message: "Saving the opened-project record."});
+                        await this.projectRegistrationService.recordOpened(
+                            dashboard.projectRoot,
+                            dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
+                            {
+                                signal: preparation.controller.signal,
+                                isCurrent: () => this.isCurrentRuntimePreparation(preparation!),
+                            },
+                        );
+                        if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
+                            throw new Error("Project opening was superseded by a newer request.");
+                        }
+                        progress({stage: "Publishing dashboard", unit: "opening stages", current: 3, total: 3, message: "Switching Studio to the opened project."});
+                        this.playService.reset();
+                        this.roundRecorder.clearAll();
+                        await this.cancelActiveJobsForOldProject(job.id);
+                        this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
+                        this.projectDashboard = dashboard;
+                        return dashboard;
+                    } finally {
+                        signal.removeEventListener("abort", abortPreparation);
+                    }
+                },
+                (dashboard, cancelled) => {
+                    if (cancelled || (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation))) {
+                        return {status: "cancelled", result: {summary: "Project opening was cancelled before a dashboard was published.", detail: {sourcePath}}, recovery};
+                    }
+                    if (dashboard.status === "loaded" || dashboard.status === "outcome-source" || dashboard.status === "artifact") {
+                        return {status: "completed", result: {
+                            summary: "Project opening and runtime materialization completed.",
+                            outputs: [{path: dashboard.projectRoot, label: "Opened project"}],
+                            provenance: {sourcePath},
+                            detail: {sourcePath, projectRoot: dashboard.projectRoot},
+                        }};
+                    }
+                    return {status: "failed", error: dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`, recovery};
+                },
+                (error, cancelled) => (cancelled || (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation)))
+                    ? {status: "cancelled", result: {summary: "Project opening was cancelled before a dashboard was published.", detail: {sourcePath}}, recovery}
+                    : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+            );
         } catch (error) {
-            if (!this.isCurrentRuntimePreparation(preparation)) {
+            if (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation)) {
                 this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
                 return;
             }
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-        if (!this.isCurrentRuntimePreparation(preparation)) {
+        if (execution === undefined) return;
+        const dashboard = execution.value;
+        if (preparation === undefined || !this.isCurrentRuntimePreparation(preparation)) {
             this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
             return;
         }
         if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
             const message = dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`;
-            // "detail" -- e.g. a failed materialization "npm install"'s own raw stderr (see
-            // ProjectDashboardContext's own doc comment on "errorDetail") -- rides alongside the primary
-            // human-readable "error" as its own field, never folded into it, so a client can offer it as
-            // expandable diagnostic detail instead of always rendering a wall of npm output up front.
-            const detail = dashboard.status === "error" ? dashboard.errorDetail : undefined;
-            this.sendJson(res, 400, {error: message, detail});
+            this.sendJson(res, 400, {error: message, ...(dashboard.status === "error" && dashboard.errorDetail !== undefined ? {detail: dashboard.errorDetail} : {})});
             return;
         }
-
-        // Reset only now that the new project's dashboard has actually loaded — a *failed* open never
-        // strands the previous project's Play session prematurely. Same reasoning as the
-        // /api/projects/close branch's own call.
-        //
-        // HomeService made its recent-project commit under this same generation guard.  Check again
-        // before every remaining observable commit because registry I/O yields to a competing Home
-        // request, and a late request must never reset/play-switch/publish over the newer project.
-        if (!this.isCurrentRuntimePreparation(preparation)) {
-            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
-            return;
-        }
-        try {
-            await this.projectRegistrationService.recordOpened(
-                dashboard.projectRoot,
-                dashboard.status === "loaded" ? dashboard.game.name : path.basename(dashboard.projectRoot),
-                {
-                    signal: preparation.controller.signal,
-                    isCurrent: () => this.isCurrentRuntimePreparation(preparation),
-                },
-            );
-        } catch (error) {
-            if (!this.isCurrentRuntimePreparation(preparation)) {
-                this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
-                return;
-            }
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
-            return;
-        }
-        if (!this.isCurrentRuntimePreparation(preparation)) {
-            this.sendJson(res, 409, {error: "Project opening was superseded by a newer request."});
-            return;
-        }
-        this.playService.reset();
-        // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
-        // project being left.
-        this.roundRecorder.clearAll();
-        await this.cancelActiveJobsForOldProject();
-
-        // The explicit Home → Project Studio context transition: mutates this same running server's
-        // state in place — no new HTTP server or Studio process is ever started (see the class-level
-        // doc comment).
-        this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
-        this.projectDashboard = dashboard;
         this.sendJson(res, 200, {context: this.currentContext, manifest: dashboard.status === "loaded" ? dashboard.game : undefined});
     }
 
@@ -1700,8 +2014,33 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        this.sendJson(res, 200, await this.blueprintService.importParSheet(validated.path));
+        const sourcePath = this.canonicalPathIdentity(validated.path);
+        const sourceContentHash = this.fileContentIdentity(sourcePath);
+        const recovery = {action: "rebuild", reason: "PAR import publication is not resumable after restart. Import the same workbook again."} as const;
+        const execution = await this.executeCommonOperation(
+            res, {
+                projectId: `design:${sourcePath}`, operation: "design-par-import", request: {path: sourcePath, sourceContentHash}, conflictKey: `design-par-import:${sourcePath}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Reading workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Reading the source PAR workbook before validation."},
+                // importParSheet has always resolved a StudioParSheetImportView
+                // for domain outcomes.  Keep an exact retry in that DTO family
+                // rather than making a harmless reconnect look like transport
+                // failure to the Design client.
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "PAR import is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal}) => this.blueprintService.importParSheet(sourcePath, signal),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "PAR import cancelled after its safe boundary.", detail: {sourcePath}}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "PAR import completed.", outputs: [{path: result.path, label: "Imported PAR workbook"}],
+                    provenance: {sourcePath, ...(result.provenance === undefined ? {} : {par: result.provenance})}, detail: {sourcePath},
+                }};
+                return {status: "failed", error: result.error ?? "PAR import did not complete.", recovery};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "PAR import cancelled after its safe boundary.", detail: {sourcePath}}, recovery}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution !== undefined) this.sendJson(res, 200, execution.value);
     }
 
     private async handleBlueprintParExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -1714,8 +2053,30 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.blueprintService.exportParSheet(validated.blueprint, validated.path, validated.overwrite, validated.sourcePath);
-        this.sendJson(res, this.statusForParSheetExport(result.status), result);
+        const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
+        const destinationPath = this.canonicalPathIdentity(validated.path);
+        const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
+        const recovery = {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."} as const;
+        const execution = await this.executeCommonOperation(
+            res, {
+                projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Writing workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Writing the PAR workbook to its staging destination."},
+                reattachedResponse: (job) => ({statusCode: 409, body: {status: "conflict", path: destinationPath, error: "PAR export is already in progress.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal}) => this.blueprintService.exportParSheet(validated.blueprint, destinationPath, validated.overwrite, sourcePath, signal),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "PAR export cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "PAR export completed.", outputs: [{path: result.path, label: "PAR workbook"}],
+                    provenance: {sourcePath, blueprintHash, generator: "Studio PAR Apply workbook"}, detail: {sourcePath, destinationPath: result.path},
+                }};
+                return {status: "failed", error: "error" in result ? result.error : "PAR export did not publish an output.", recovery};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "PAR export cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution !== undefined) this.sendJson(res, this.statusForParSheetExport(execution.value.status), execution.value);
     }
 
     private statusForParSheetExport(status: "ok" | "conflict" | "invalid" | "error"): number {
@@ -1735,8 +2096,32 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.blueprintService.build(validated.blueprint, validated.outDir, validated.sourcePath);
-        this.sendJson(res, result.status === "ok" ? 201 : 200, result);
+        const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
+        const destinationPath = this.canonicalPathIdentity(validated.outDir);
+        const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
+        const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
+        const execution = await this.executeCommonOperation(
+            res, {
+                projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Building package", unit: "package files", current: "indeterminate", total: "indeterminate", message: "Generating the Design package in its staging destination."},
+                // buildBlueprint treats non-2xx as a transport failure.  An
+                // in-flight exact request is still a normal StudioBuildResult.
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Design build is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal}) => this.blueprintService.build(validated.blueprint, destinationPath, sourcePath, signal),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "Design build cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "Design package build completed.", outputs: [{path: result.projectRoot, label: "Built Design package"}],
+                    provenance: {sourcePath, blueprintHash}, detail: {sourcePath, destinationPath: result.projectRoot},
+                }};
+                return {status: "failed", error: "error" in result ? result.error : "Design build did not publish an output.", recovery};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "Design build cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution !== undefined) this.sendJson(res, execution.value.status === "ok" ? 201 : 200, execution.value);
     }
 
     // Resolves `projectRoot`'s own PokieProject (see ProjectTargetResolver) so Inspect/Validate below
@@ -2120,7 +2505,46 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.deploymentService.run(this.currentContext.projectRoot, validated);
+        const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const recovery = {action: "rebuild", reason: "Deployment cannot safely resume after Studio restarts. Rebuild and publish again from the captured request."} as const;
+        const execution = await this.executeCommonOperation(
+            res,
+            {
+                projectId: projectRoot, operation: "deployment", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>, conflictKey: `deployment-delivery:${validated.targetId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Planning deployment", unit: "pipeline stages", current: 0, total: "indeterminate", message: "Validating artifacts and delivery boundaries."},
+                // runDeployment always resolves its planner view for an
+                // operation outcome.  Keep reconnects in that shape too; a
+                // bare 409 would be mistaken for a failed HTTP request.
+                reattachedResponse: (job) => ({
+                    statusCode: 200,
+                    body: {...this.deploymentPlannerTerminalView("load-error", "Deployment is already in progress for this exact request.", undefined, validated), activeJobId: job.id, reattached: true},
+                }),
+            },
+            ({signal, progress}) => this.deploymentService.run(projectRoot, validated, {
+                signal,
+                onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
+            }),
+            (result, cancelled) => {
+                // The deployment executor is the authority for a cancellation
+                // that reached one of its delivery boundaries.  Its result can
+                // honestly say delivered, not-delivered, or outcome-unknown;
+                // do not replace that fact merely because the common signal was
+                // also aborted while it was unwinding.
+                if (result.status === "cancelled") return {status: "cancelled", result: this.deploymentCancellationResult(validated, result), recovery};
+                if (cancelled) return {status: "cancelled", result: {summary: "Deployment cancelled after its last settled delivery boundary.", provenance: {targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, deliveryOutcome: "outcome-unknown"}}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {
+                    summary: "Deployment completed.", outputs: [{label: "Deployment delivery"}],
+                    provenance: {source: result.view.plan.source, targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, delivery: result.view.delivery},
+                }};
+                const error = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
+                return {status: "failed", error, recovery};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "Deployment cancelled with outcome-unknown delivery state.", provenance: {targetId: validated.targetId}, detail: {targetId: validated.targetId, publish: validated.publish, deliveryOutcome: "outcome-unknown"}}, recovery}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution === undefined) return;
+        const result = execution.value;
         // A validated request's planner outcome is part of the action lifecycle,
         // including unavailable/conflict recovery.  Keep it in the normal DTO so
         // apiClient does not discard it while translating a non-2xx response.
@@ -2128,8 +2552,31 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 200, result.view);
             return;
         }
+        if (result.status === "cancelled") {
+            // Keep the deployment endpoint's established planner DTO shape;
+            // the durable job carries the more precise delivery outcome.
+            this.sendJson(res, 200, this.deploymentPlannerTerminalView(
+                "load-error",
+                `Deployment cancelled with ${result.deliveryOutcome} delivery state.`,
+                result.plan,
+                validated,
+            ));
+            return;
+        }
         const terminalError = result.status === "target-not-found" ? `Unknown deployment target "${validated.targetId}".` : result.error;
         this.sendJson(res, 200, this.deploymentPlannerTerminalView(result.status, terminalError, result.plan, validated));
+    }
+
+    private deploymentCancellationResult(
+        request: {readonly targetId: string; readonly publish: boolean},
+        result: Extract<Awaited<ReturnType<StudioDeploymentService["run"]>>, {status: "cancelled"}>,
+    ): NonNullable<StudioJobView["result"]> {
+        return {
+            summary: `Deployment cancelled with ${result.deliveryOutcome} delivery state.`,
+            outputs: result.view === undefined ? [] : [{label: "Deployment delivery"}],
+            provenance: {targetId: request.targetId, source: result.plan.source},
+            detail: {targetId: request.targetId, publish: request.publish, deliveryOutcome: result.deliveryOutcome, ...(result.view === undefined ? {} : {delivery: result.view.delivery})},
+        };
     }
 
     private deploymentPlannerTerminalView(
@@ -2275,10 +2722,6 @@ export class StudioServer implements StudioServerHandling {
             });
             return;
         }
-        if (this.outcomeLibraryGenerateJobService.isDestinationActive(this.currentContext.projectRoot, binding.destination)) {
-            this.sendJson(res, 409, {status: "conflict", error: "An Outcome Library generation is already active for this resolved destination. Wait for it to finish or cancel it before starting another."});
-            return;
-        }
         // Reject drift before allocating a lifecycle record.  The token is a
         // server-owned immutable snapshot, not a capability to run an
         // arbitrarily edited request.  This covers every transport field in
@@ -2293,7 +2736,11 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {status: "conflict", error: bindingConflict});
             return;
         }
-        this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.currentContext.projectRoot, validated)});
+        try {
+            this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated)});
+        } catch (error) {
+            this.sendJson(res, 409, {status: "conflict", error: error instanceof Error ? error.message : String(error)});
+        }
     }
 
     private handleListOutcomeLibraryGenerationJobs(res: ServerResponse): void {
@@ -2316,10 +2763,10 @@ export class StudioServer implements StudioServerHandling {
         if (action === "resume" && await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) return;
         let job;
         if (action === "cancel") {
-            job = this.outcomeLibraryGenerateJobService.cancelForProject(this.currentContext.projectRoot, id);
+            job = this.outcomeLibraryGenerateJobService.cancelForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
         } else if (action === "resume") {
             try {
-                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.currentContext.projectRoot, id);
+                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
             } catch (error) {
                 // A resume rebind can race another job's destination ownership.
                 // Preserve the Outcome Library recovery DTO rather than letting
@@ -2334,7 +2781,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 404, {error: action === "resume" ? "Outcome library checkpoint not found." : "Outcome library generation job not found."});
             return;
         }
-        if (action === "resume" && job.status === "failed" && job.result?.status === "conflict") {
+        if (action === "resume" && job.result?.status === "conflict") {
             this.sendJson(res, 409, {status: "conflict", error: job.result.error, plan: job.result.plan});
             return;
         }
@@ -2520,8 +2967,35 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
             return;
         }
-
-        this.sendJson(res, 200, await this.certificationService.validateSourceBundle(this.currentContext.projectRoot, validated.bundleDir));
+        const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const execution = await this.executeCommonOperation(
+            res,
+            {
+                projectId: projectRoot, operation: "certification-validate", request: {bundleDir: validated.bundleDir},
+                // Deep validation has one project-scoped executor slot.  The
+                // request is still retained verbatim for exact reattachment,
+                // while a different source bundle is a typed conflict before
+                // another validator can allocate its own domain work.
+                conflictKey: `certification-validate:${projectRoot}`,
+                recoveryOnRestart: {action: "retry", reason: "Deep validation is not resumable after restart. Retry the captured validation."},
+                initialProgress: {stage: "Validating evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Checking certification evidence and provenance."},
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "load-error", error: "Certification validation is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal, progress}) => this.certificationService.validateSourceBundle(projectRoot, validated.bundleDir, {
+                signal,
+                onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
+            }),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification source validation completed.", outputs: [{path: validated.bundleDir, label: "Validated source bundle"}], provenance: {projectRoot, bundleDir: validated.bundleDir}}};
+                return {status: "failed", error: result.error, recovery: {action: "retry", reason: "Correct the source bundle and retry validation."}};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "Certification source validation cancelled after executor cleanup."}, recovery: {action: "retry", reason: "Retry the captured validation."}}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "retry", reason: "Correct the source bundle and retry validation."}},
+        );
+        if (execution === undefined) return;
+        this.sendJson(res, 200, execution.value);
     }
 
     private async handleBuildCertificationEvidenceBundle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -2540,20 +3014,32 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const controller = new AbortController();
-        const cancel = () => controller.abort();
-        req.once("aborted", cancel);
-        res.once("close", cancel);
-        try {
-            this.sendJson(
-                res,
-                200,
-                await this.certificationService.build(this.currentContext.projectRoot, validated.bundleDir, validated.modes, validated.outDir, controller.signal),
-            );
-        } finally {
-            req.off("aborted", cancel);
-            res.off("close", cancel);
-        }
+        const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const recovery = {action: "rebuild", reason: "Rebuild the evidence bundle from the captured source and destination."} as const;
+        const execution = await this.executeCommonOperation(
+            res,
+            {
+                projectId: projectRoot, operation: "certification-build", request: {...validated, sourceProjectId: projectRoot} as unknown as Readonly<Record<string, unknown>>,
+                conflictKey: `certification-output:${this.canonicalPathIdentity(path.resolve(projectRoot, validated.outDir))}`,
+                recoveryOnRestart: recovery,
+                initialProgress: {stage: "Building evidence", unit: "evidence files", current: "indeterminate", total: "indeterminate", message: "Writing certification evidence to a staging destination."},
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", errors: [], warnings: [], activeJobId: job.id, reattached: true}}),
+            },
+            ({signal, progress}) => this.certificationService.build(projectRoot, validated.bundleDir, validated.modes, validated.outDir, {
+                signal,
+                onProgress: (stage, unit, current, total, message) => progress({stage, unit, current, total, message}),
+            }),
+            (result, cancelled) => {
+                if (cancelled) return {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Certification evidence build completed.", outputs: result.files.map((file) => ({path: file, label: "Certification evidence"})), provenance: {bundleDir: validated.bundleDir, manifest: result.manifest}, detail: {outDir: validated.outDir}}};
+                return {status: "failed", error: result.status === "load-error" ? result.error : "Certification evidence build failed.", recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}};
+            },
+            (error, cancelled) => cancelled
+                ? {status: "cancelled", result: {summary: "Certification evidence build cancelled after staging cleanup."}, recovery}
+                : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery: {action: "rebuild", reason: "Correct the source bundle and rebuild the evidence."}},
+        );
+        if (execution === undefined) return;
+        this.sendJson(res, 200, execution.value);
     }
 
     private async handleConfigureFairnessRound(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -2735,7 +3221,7 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or names a different destination. Refresh the preflight before building."});
                 return;
             }
-            const start = await this.artifactBuildService.startPreparedStakeProjection(this.currentContext.projectRoot, validated.preparedOperationId);
+            const start = await this.artifactBuildService.startPreparedStakeProjection(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.preparedOperationId);
             if (start.status === "unsupported") {
                 this.sendJson(res, 409, {error: start.message});
                 return;
@@ -2744,12 +3230,20 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 409, {error: "The prepared Stake operation is stale or belongs to another project. Refresh the preflight before building."});
                 return;
             }
+            if (start.status === "conflict") {
+                this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: start.activeJobId});
+                return;
+            }
             this.sendJson(res, 202, {status: "created", job: start.job});
             return;
         }
-        const result = this.artifactBuildService.start(this.currentContext.projectRoot, validated.target, validated.outDir);
+        const result = this.artifactBuildService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated.target, validated.outDir);
         if (result.status === "unsupported") {
             this.sendJson(res, 409, {error: result.message});
+            return;
+        }
+        if (result.status === "conflict") {
+            this.sendJson(res, 409, {error: "An artifact build already owns this destination.", activeJobId: result.activeJobId});
             return;
         }
         this.sendJson(res, 202, result);
@@ -2765,7 +3259,7 @@ export class StudioServer implements StudioServerHandling {
             return Promise.resolve();
         }
         const job = cancel
-            ? this.artifactBuildService.cancelForProject(this.currentContext.projectRoot, id)
+            ? this.artifactBuildService.cancelForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id)
             : this.artifactBuildService.getStatusForProject(this.currentContext.projectRoot, id);
         if (job === undefined) {
             this.sendJson(res, 404, {error: "Artifact build job not found."});
@@ -2792,7 +3286,7 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const outcomeSourceProject = this.projectDashboard?.status === "outcome-source" ? this.projectDashboard.project : undefined;
-        const result = this.simulationService.start(this.currentContext.projectRoot, validated, outcomeSourceProject);
+        const result = this.simulationService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated, outcomeSourceProject);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
                 error: "A simulation is already running for this project.",
@@ -2825,7 +3319,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        const job = this.simulationService.cancelForProject(this.currentContext.projectRoot, id);
+        const job = this.simulationService.cancelForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
         if (!job) {
             this.sendJson(res, 404, {error: `Unknown simulation id "${id}".`});
             return;
@@ -2838,7 +3332,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        this.sendJson(res, 200, this.simulationService.listReports(this.currentContext.projectRoot));
+        this.sendJson(res, 200, this.simulationService.listReports(this.canonicalPathIdentity(this.currentContext.projectRoot)));
     }
 
     private handleGetReport(res: ServerResponse, id: string): void {
@@ -2950,7 +3444,7 @@ export class StudioServer implements StudioServerHandling {
             }
         }
 
-        const result = this.replayService.start(this.currentContext.projectRoot, validated, outcomeSourceProject);
+        const result = this.replayService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated, outcomeSourceProject);
         if (result.status === "conflict") {
             this.sendJson(res, 409, {
                 error: "A replay is already running for this project.",
@@ -3077,7 +3571,7 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 409, {error: "No active project."});
             return;
         }
-        const job = this.replayService.cancel(this.currentContext.projectRoot, id);
+        const job = this.replayService.cancel(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
         if (!job) {
             this.sendJson(res, 404, {error: `Unknown replay id "${id}".`});
             return;
@@ -3194,12 +3688,27 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-        const result = await this.playService.findAnyWin(sessionId);
-        if (result.status === "ok") {
-            this.sendJson(res, 200, {status: "ok", session: result.session});
-            return;
-        }
-        this.sendPlayErrorResult(res, sessionId, result);
+        const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const execution = await this.executeCommonOperation(
+            res, {
+                projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a winning round is settled."},
+                // The Play client uses 409 exclusively for no-active-project.
+                // Preserve its normal result union for exact reattachment.
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal, progress}) => this.playService.findAnyWin(sessionId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a winning settled round."})}),
+            (result, cancelled) => {
+                if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "any-win", result.status === "cancelled" ? result.session : undefined), recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "any-win", session: result.session}}};
+                return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
+            },
+            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution === undefined) return;
+        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
+        else this.sendPlayErrorResult(res, sessionId, execution.value);
     }
 
     // PlayTab's "Find symbol win" scenario control -- POST /api/project/play/sessions/:id/find-symbol-win,
@@ -3221,12 +3730,25 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.playService.findSymbolWin(sessionId, validated.symbolId);
-        if (result.status === "ok") {
-            this.sendJson(res, 200, {status: "ok", session: result.session});
-            return;
-        }
-        this.sendPlayErrorResult(res, sessionId, result);
+        const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const execution = await this.executeCommonOperation(
+            res, {
+                projectId: projectRoot, operation: "play-find-symbol-win", request: {sessionId, symbolId: validated.symbolId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until the requested symbol win is settled."},
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal, progress}) => this.playService.findSymbolWin(sessionId, validated.symbolId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for the requested symbol win."})}),
+            (result, cancelled) => {
+                if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "symbol-win", result.status === "cancelled" ? result.session : undefined, validated.symbolId), recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, session: result.session}}};
+                return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
+            },
+            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution === undefined) return;
+        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
+        else this.sendPlayErrorResult(res, sessionId, execution.value);
     }
 
     // PlayTab's "Find free games" scenario control -- POST /api/project/play/sessions/:id/find-free-games,
@@ -3239,12 +3761,25 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-        const result = await this.playService.findFreeGames(sessionId);
-        if (result.status === "ok") {
-            this.sendJson(res, 200, {status: "ok", session: result.session});
-            return;
-        }
-        this.sendPlayErrorResult(res, sessionId, result);
+        const projectRoot = this.canonicalPathIdentity(this.currentContext.projectRoot);
+        const recovery = {action: "new-session", reason: "Scenario search cannot resume after restart because settled wallet state belongs to its original Play session."} as const;
+        const execution = await this.executeCommonOperation(
+            res, {
+                projectId: projectRoot, operation: "play-find-free-games", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
+                initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a free-games round is settled."},
+                reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
+            },
+            ({signal, progress}) => this.playService.findFreeGames(sessionId, {signal, onProgress: (current, total) => progress({stage: "Searching rounds", unit: "attempted spins", current, total, message: "Waiting for a free-games settled round."})}),
+            (result, cancelled) => {
+                if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "free-games", result.status === "cancelled" ? result.session : undefined), recovery};
+                if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "free-games", session: result.session}}};
+                return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
+            },
+            (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+        );
+        if (execution === undefined) return;
+        if (execution.value.status === "ok") this.sendJson(res, 200, {status: "ok", session: execution.value.session});
+        else this.sendPlayErrorResult(res, sessionId, execution.value);
     }
 
     // "not-found"/"blocked" are bare `{"error"}` bodies; "error" covers anything else (safe message
@@ -3260,7 +3795,28 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 400, {error: result.error});
             return;
         }
+        if (result.status === "cancelled") {
+            // The compatibility route has historically exposed only the normal
+            // Play error DTO for a non-round terminal. The common job retains
+            // the optional settled session/round for durable consumers.
+            this.sendJson(res, 200, {status: "error", error: "Scenario search was cancelled after its last settled round."});
+            return;
+        }
         this.sendJson(res, 200, {status: "error", error: result.error});
+    }
+
+    private playCancellationResult(
+        sessionId: string,
+        scenario: "any-win" | "symbol-win" | "free-games",
+        session?: StudioRuntimeSessionView,
+        symbolId?: string,
+    ): NonNullable<StudioJobView["result"]> {
+        return {
+            summary: "Scenario search stopped after its last settled round.",
+            outputs: session === undefined ? [] : [{label: "Last settled Play round"}],
+            provenance: session === undefined ? {sessionId} : {sessionId, game: session.game},
+            detail: {sessionId, scenario, ...(symbolId === undefined ? {} : {symbolId}), ...(session === undefined ? {} : {session})},
+        };
     }
 
     private async readJsonBody(req: IncomingMessage): Promise<unknown> {

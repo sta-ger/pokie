@@ -37,11 +37,11 @@ export function describeReplayProgress(job: StudioReplayJobView): ReplayProgress
 }
 
 export function isReplayActive(job: StudioReplayJobView): boolean {
-    return job.status === "queued" || job.status === "running";
+    return job.status === "queued" || job.status === "running" || job.status === "cancelling";
 }
 
 export function isReplayTerminal(job: StudioReplayJobView): boolean {
-    return job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+    return job.status === "completed" || job.status === "failed" || job.status === "cancelled" || job.status === "recovery-required";
 }
 
 // A RoundArtifact with every screen (round-level and each step's own) pre-formatted to display
@@ -547,9 +547,11 @@ function dedupeReplayListEntries(entries: StudioReplayListEntry[]): StudioReplay
 const REPLAY_ENTRY_STATUS_LABEL: Record<StudioReplayStatus, string> = {
     queued: "Queued to reproduce",
     running: "Reproducing…",
+    cancelling: "Cancelling reproduction…",
     completed: "Reproduced",
     failed: "Reproduction failed",
     cancelled: "Reproduction cancelled",
+    "recovery-required": "Reproduction needs retry",
 };
 
 export function describeReplayEntryStatus(status: StudioReplayStatus): string {

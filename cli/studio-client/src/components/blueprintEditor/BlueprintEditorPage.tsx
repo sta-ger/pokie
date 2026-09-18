@@ -2,7 +2,7 @@ import {Anchor, Badge, Button, Collapse, Group, SegmentedControl, Text, Title} f
 import {useDisclosure} from "@mantine/hooks";
 import {useCallback, useEffect, useRef, useState} from "react";
 import {useNavigate} from "react-router-dom";
-import {checkBlueprintSource, loadBlueprint, openProject, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
+import {checkBlueprintSource, loadBlueprint, saveBlueprint, saveManagedBlueprint, validateBlueprint} from "../../api/apiClient";
 import type {ParSheetConversionEvidence, StudioProjectRegistryView} from "../../api/types";
 import {useAllowNextDesignNavigation} from "../../context/DesignNavigationGuardContext";
 import {useStudioApi} from "../../context/StudioApiProvider";
@@ -23,6 +23,7 @@ import type {BuiltBlueprintSnapshot} from "../../domain/interpret/Home";
 import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {useConfirmedProjectOpen} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
 import {QuickActions} from "../common/QuickActions";
 import {RecoveryNotice} from "../common/RecoveryNotice";
@@ -107,6 +108,8 @@ export function BlueprintEditorPage({
     guided = false,
     initialPath,
     initialParSheetPath,
+    recoverParImport = false,
+    recoveryRequest,
     onDirtyChange,
     onManagedProjectSaved,
     isVisible = true,
@@ -114,17 +117,22 @@ export function BlueprintEditorPage({
     guided?: boolean;
     initialPath?: string;
     initialParSheetPath?: string;
+    /** A retained job restores its path for inspection but must not re-run Import automatically. */
+    recoverParImport?: boolean;
+    recoveryRequest?: Readonly<Record<string, unknown>>;
     onDirtyChange?: (dirty: boolean) => void;
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
     isVisible?: boolean;
 } = {}) {
     const fetchImpl = useStudioApi();
+    const openWithConfirmation = useConfirmedProjectOpen();
     const navigate = useNavigate();
     const allowNextDesignNavigation = useAllowNextDesignNavigation();
     const confirm = useConfirm();
     // Design Game opens on a real, immediately playable Recommended Project. The raw editor remains
     // intentionally blank when used outside this guided entry point.
     const editor = useBlueprintEditor(guided ? createRecommendedBlueprint() : undefined);
+    const loadRecoveredBlueprint = editor.loadFrom;
     const [mode, setMode] = useState<BlueprintMode>("form");
     const [blueprintPath, setBlueprintPath] = useState<string>();
     const [overwriteConfirmedForPath, setOverwriteConfirmedForPath] = useState<string>();
@@ -176,7 +184,7 @@ export function BlueprintEditorPage({
     const loadGuard = useDoubleSubmitGuard();
     const saveGuard = useDoubleSubmitGuard();
     const validateGuard = useDoubleSubmitGuard();
-    const [advancedOpened, {toggle: toggleAdvanced, open: openAdvanced}] = useDisclosure(Boolean(initialParSheetPath));
+    const [advancedOpened, {toggle: toggleAdvanced, open: openAdvanced}] = useDisclosure(Boolean(initialParSheetPath || recoveryRequest !== undefined));
     // useDisclosure's own initial value above only ever covers a fresh mount -- Projects -> Design (both
     // under the same `/home/:tab` route, see HomePage's own routing doc comment) never remounts this page,
     // so a *second* "Import Project" -> "Open in Design Game" click while already on the Design tab would
@@ -186,11 +194,11 @@ export function BlueprintEditorPage({
     // itself, not just reading it once, closes that gap the same way ParSheetImportExportPanel's own
     // initialImportPath effect below now does.
     useEffect(() => {
-        if (initialParSheetPath) {
+        if (initialParSheetPath || recoveryRequest !== undefined) {
             openAdvanced();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialParSheetPath]);
+    }, [initialParSheetPath, recoveryRequest]);
     const [newDialogOpened, {open: openNewDialog, close: closeNewDialog}] = useDisclosure(false);
     // A single-level "undo" for the New flow's own Blank/Generate random replace -- see
     // handleChooseBlank/handleUseRandomBlueprint below for where this is captured, and
@@ -808,13 +816,22 @@ export function BlueprintEditorPage({
     };
 
     useEffect(() => {
-        if (initialPath) {
+        if (initialPath && recoveryRequest?.blueprint === undefined) {
             handleLoad(initialPath);
         }
-        // Only ever auto-loads the path this page mounted with -- a later prop change (there isn't one
-        // in practice, since it only comes from a one-time navigation state) must not re-trigger a load.
+        // A retained Design card can navigate to Home without remounting this
+        // permanently mounted editor.  Treat its captured source exactly like
+        // an initial load so recovery reconstructs the visible form.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [initialPath, recoveryRequest]);
+
+    useEffect(() => {
+        if (recoveryRequest?.blueprint === undefined) return;
+        nextFormGenerationIsClean.current = true;
+        loadRecoveredBlueprint(recoveryRequest.blueprint);
+        setBlueprintPath(typeof recoveryRequest.sourcePath === "string" ? recoveryRequest.sourcePath : undefined);
+        setBuiltSnapshot(undefined);
+    }, [loadRecoveredBlueprint, recoveryRequest]);
 
     const runSave = (path: string, overwrite: boolean): void => {
         if (!saveGuard.begin()) {
@@ -917,7 +934,7 @@ export function BlueprintEditorPage({
                     // concrete Blueprint file the save confirmed and, for a loaded CLI Blueprint, the
                     // source Home must register while opening.
                     const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
-                    openProject(fetchImpl, view.path)
+                    openWithConfirmation(view.path)
                         .then(({context}) => {
                             if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
                                 return;
@@ -1239,7 +1256,9 @@ export function BlueprintEditorPage({
                     blueprintPath={blueprintPath}
                     revision={revision}
                     onApplyImportedBlueprint={handleApplyImportedBlueprint}
-                    initialImportPath={initialParSheetPath}
+                    initialImportPath={recoverParImport ? undefined : initialParSheetPath}
+                    initialImportFieldPath={recoverParImport ? initialParSheetPath : undefined}
+                    initialExportPath={typeof recoveryRequest?.destinationPath === "string" && recoveryRequest.blueprint !== undefined ? recoveryRequest.destinationPath : undefined}
                 />
             </Collapse>
 
@@ -1280,6 +1299,19 @@ export function BlueprintEditorPage({
                 onRestoreBuilt={handleRestoreBuilt}
                 blocked={validationView.status === "invalid"}
             />}
+            {guided && recoveryRequest?.blueprint !== undefined && typeof recoveryRequest.destinationPath === "string" && (
+                <BlueprintBuildPanel
+                    key={`recovery-build-${editor.formGeneration}`}
+                    blueprint={blueprint}
+                    sourcePath={typeof recoveryRequest.sourcePath === "string" ? recoveryRequest.sourcePath : blueprintPath}
+                    initialOutDir={recoveryRequest.destinationPath}
+                    builtSnapshot={builtSnapshot}
+                    onBuilt={handleBuilt}
+                    onRestoreBuilt={handleRestoreBuilt}
+                    blocked={validationView.status !== "ok"}
+                    blockedMessage="Studio is validating the reconstructed Design request before rebuilding."
+                />
+            )}
         </div>
     );
 }

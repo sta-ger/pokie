@@ -1,8 +1,9 @@
 import {useCallback} from "react";
 import {useNavigate} from "react-router-dom";
-import {openProject} from "../api/apiClient";
+import {openProject, ProjectTransitionConflict} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {useGuardedAction} from "../context/DesignNavigationGuardContext";
+import {useConfirm} from "./useConfirm";
 
 // Shared by the Projects registry list, the Open by path form, and the guided editor's own "Open in
 // Studio" button (Blueprint-Build) -- the one explicit Home -> Project transition, see
@@ -16,14 +17,37 @@ import {useGuardedAction} from "../context/DesignNavigationGuardContext";
 // *both* the API call and the navigation until the user confirms -- Cancel must never have already told
 // the server to open a different project. guardedAction also suppresses the router-level blocker for the
 // one navigate() call this makes once confirmed, so there's exactly one confirmation, never two.
-export function useOpenProject(): (projectRoot: string) => Promise<void> {
+/** One named-operation confirmation flow for every server project transition. */
+export function useConfirmedProjectOpen(): (projectRoot: string) => Promise<Awaited<ReturnType<typeof openProject>>> {
     const fetchImpl = useStudioApi();
+    const confirm = useConfirm();
+    return useCallback(
+        async (projectRoot: string) => {
+            try {
+                return await openProject(fetchImpl, projectRoot);
+            } catch (error) {
+                if (!(error instanceof ProjectTransitionConflict)) throw error;
+                return new Promise<Awaited<ReturnType<typeof openProject>>>((resolve, reject) => {
+                    const operations = error.operations.join(", ") || "active Studio operations";
+                    confirm(`Active operations: ${operations}. Open another project and cancel them after cleanup?`, () => {
+                        openProject(fetchImpl, projectRoot, true).then(resolve, reject);
+                    }, () => reject(new Error("Project switch cancelled.")));
+                });
+            }
+        },
+        [fetchImpl, confirm],
+    );
+}
+
+export function useOpenProject(): (projectRoot: string) => Promise<void> {
     const navigate = useNavigate();
     const guardedAction = useGuardedAction();
+    const openWithConfirmation = useConfirmedProjectOpen();
     return useCallback(
         (projectRoot: string) =>
             guardedAction(async () => {
-                const {context} = await openProject(fetchImpl, projectRoot);
+                const opened = await openWithConfirmation(projectRoot);
+                const {context} = opened;
                 // Project identity belongs in the history entry, not only in the server's mutable
                 // current-project context. This lets a Back/Forward navigation restore the project
                 // whose state the entry represents before its dashboard can become interactive. The
@@ -31,6 +55,6 @@ export function useOpenProject(): (projectRoot: string) => Promise<void> {
                 // runtime package), so its returned context is the authoritative route identity.
                 navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
             }),
-        [fetchImpl, navigate, guardedAction],
+        [navigate, guardedAction, openWithConfirmation],
     );
 }

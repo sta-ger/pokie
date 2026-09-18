@@ -53,7 +53,11 @@ import {describeRuntimePackageLoadError} from "../../commands/internal/describeL
 import type {StudioRuntimeSessionView} from "./StudioRuntimeSessionView.js";
 
 export type StudioPlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView} | {status: "failed"; error: string};
-export type StudioPlaySessionOptions = {readonly signal?: AbortSignal};
+export type StudioPlaySessionOptions = {
+    readonly signal?: AbortSignal;
+    /** Called only after a real round has settled; optional for direct callers. */
+    readonly onProgress?: (attemptedSpins: number, maximumSpins: number) => void;
+};
 export type StudioWasmRuntimeLoading = typeof loadPokieWasmFileRuntime;
 
 // The two shapes an active Play session can take, discriminated by "kind" -- a "runtime" session (a real
@@ -116,6 +120,8 @@ const WASM_SCENARIO_CAPABILITIES = {
 
 export type StudioPlaySpinResult =
     | {status: "ok"; session: StudioRuntimeSessionView}
+    /** A scenario search stopped only between real settled rounds. */
+    | {status: "cancelled"; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
     | {status: "blocked"; error: string}
     | {status: "error"; error: string};
@@ -446,14 +452,14 @@ export class StudioPlayService {
     // every round along the way -- including the final matching one -- is a genuine settled spin, not a
     // simulated/discarded trial: a search that runs out of attempts still leaves the session sitting on
     // whatever real round it last actually played.
-    public findAnyWin(sessionId: string): Promise<StudioPlaySpinResult> {
+    public findAnyWin(sessionId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
         return this.spinUntilMatch(
             sessionId,
             "find-any-win",
             (session) => !new PlayUntilAnyWinStrategy().canPlayNextSimulationRound(session),
-            (artifact) => artifact.totalWin > 0,
+            (artifact) => artifact.totalWin > 0, options.signal, options.onProgress,
         );
     }
 
@@ -467,7 +473,7 @@ export class StudioPlayService {
     // no live GameSessionHandling to hand that strategy (see findAnyWin()'s own doc comment), so the
     // equivalent check reads whether the round's own already-computed artifact carries a win for that
     // exact symbolId, straight off RoundArtifactWin.symbolId -- never a second win-evaluation pass.
-    public findSymbolWin(sessionId: string, symbolId: string): Promise<StudioPlaySpinResult> {
+    public findSymbolWin(sessionId: string, symbolId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
         if (active.kind === "wasm") {
@@ -486,7 +492,7 @@ export class StudioPlayService {
             sessionId,
             "find-symbol-win",
             (session) => !new PlayUntilSymbolWinStrategy(symbolId).canPlayNextSimulationRound(session as unknown as VideoSlotSessionHandling<string>),
-            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId),
+            (artifact) => artifact.wins.some((win) => win.symbolId === symbolId), options.signal, options.onProgress,
         );
     }
 
@@ -502,7 +508,7 @@ export class StudioPlayService {
     // signal is read off that round's own artifact instead -- its `featureEvents`, specifically the
     // "freeGamesTriggered" event buildRoundArtifactFromSession derives from the exact same
     // getWonFreeGamesNumber() this strategy itself reads, never a second free-games determination.
-    public findFreeGames(sessionId: string): Promise<StudioPlaySpinResult> {
+    public findFreeGames(sessionId: string, options: StudioPlaySessionOptions = {}): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) return Promise.resolve({status: "not-found"});
         if (active.kind === "wasm") {
@@ -519,7 +525,7 @@ export class StudioPlayService {
             sessionId,
             "find-free-games",
             (session) => !new PlayFreeGamesStrategy().canPlayNextSimulationRound(session as unknown as VideoSlotWithFreeGamesSessionHandling),
-            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"),
+            (artifact) => (artifact.featureEvents ?? []).some((event) => event.type === "freeGamesTriggered"), options.signal, options.onProgress,
         );
     }
 
@@ -683,17 +689,29 @@ export class StudioPlayService {
         operation: StudioRoundOperation,
         matchesLiveSession: (session: GameSessionHandling) => boolean,
         matchesArtifact: (artifact: RoundArtifactJson) => boolean,
+        signal?: AbortSignal,
+        onProgress?: (attemptedSpins: number, maximumSpins: number) => void,
     ): Promise<StudioPlaySpinResult> {
+        let lastSettledSession: StudioRuntimeSessionView | undefined;
         for (let attempt = 0; attempt < this.maxFindScenarioSpins; attempt++) {
+            if (signal?.aborted) {
+                return {status: "cancelled", ...(lastSettledSession === undefined ? {} : {session: lastSettledSession})};
+            }
             const active = this.active;
             if (active === undefined || sessionId !== this.currentSessionId) {
                 return {status: "not-found"};
             }
 
             const round = await this.spin(sessionId, operation);
+            if (signal?.aborted) {
+                const settledSession = round.status === "ok" ? round.session : lastSettledSession;
+                return {status: "cancelled", ...(settledSession === undefined ? {} : {session: settledSession})};
+            }
             if (round.status !== "ok") {
                 return round;
             }
+            lastSettledSession = round.session;
+            onProgress?.(attempt + 1, this.maxFindScenarioSpins);
 
             let matched: boolean;
             if (active.kind === "runtime") {

@@ -33,6 +33,7 @@ import {
     WeightedOutcomeRandomSource,
 } from "pokie";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
+import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import crypto from "crypto";
 import {InMemoryStudioReplayRepository} from "./InMemoryStudioReplayRepository.js";
 import type {StudioReplayJobRecord} from "./StudioReplayJobRecord.js";
@@ -42,6 +43,8 @@ import type {StudioReplayRepository} from "./StudioReplayRepository.js";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 import {toStudioReplayJobView} from "./toStudioReplayJobView.js";
 import type {ValidatedReplayRequest} from "./validateReplayRequest.js";
+import {StudioJobService} from "../jobs/StudioJobService.js";
+import type {StudioJobView} from "../jobs/StudioJobView.js";
 
 const DEFAULT_CHUNK_SIZE = 500;
 
@@ -87,6 +90,7 @@ export class StudioReplayExecutionService {
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
+    private jobService: StudioJobService | undefined;
 
     constructor(
         repository: StudioReplayRepository = new InMemoryStudioReplayRepository(),
@@ -117,6 +121,10 @@ export class StudioReplayExecutionService {
         this.loadWasmRuntime = loadWasmRuntime;
     }
 
+    public attachJobService(jobService: StudioJobService): void {
+        this.jobService = jobService;
+    }
+
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
     // never blocking the caller (StudioServer's POST handler). Rejects with a conflict instead of
     // creating a second job when one is already queued/running for this projectRoot, same reasoning as
@@ -128,6 +136,7 @@ export class StudioReplayExecutionService {
     // parameter of the same name (see that doc comment for why this service never re-resolves
     // `projectRoot`'s own type itself).
     public start(projectRoot: string, request: ValidatedReplayRequest, outcomeSourceProject?: PokieProject): StudioReplayStartResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
@@ -137,13 +146,26 @@ export class StudioReplayExecutionService {
         if (isWasmComponentFile(projectRoot) && !hasDeclaredCanonicalWasmOperation(projectRoot, "runtime.replay")) {
             return {status: "unsupported", message: "This canonical WASM artifact does not declare runtime.replay; it cannot replay a game round."};
         }
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "replay",
+            request: {round: request.round, ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            conflictKey: `replay:${projectRoot}`,
+            recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
+        });
+        if (common?.status === "conflict") return {status: "conflict", activeJobId: common.activeJobId};
+        if (common?.status === "reattached") {
+            const existing = this.repository.get(common.job.id);
+            return {status: "created", job: existing === undefined ? this.projectDurableJob(common.job) : this.toJobView(existing)};
+        }
         const active = this.repository.findActiveByProjectRoot(projectRoot);
         if (active) {
+            if (common?.status === "created") this.jobService?.cancelled(common.job.id, {summary: "Replay was already active in its compatibility executor."});
             return {status: "conflict", activeJobId: active.id};
         }
 
         const record: StudioReplayJobRecord = {
-            id: this.createId(),
+            id: common?.status === "created" ? common.job.id : this.createId(),
             projectRoot,
             status: "queued",
             round: request.round,
@@ -157,14 +179,13 @@ export class StudioReplayExecutionService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-
         this.run(record).catch(() => {
             // run() already catches every failure into the record's own "failed" status (see below)
             // — this is an extra safety net only, so a bug there can never surface as an unhandled
             // promise rejection and crash the process.
         });
 
-        return {status: "created", job: toStudioReplayJobView(record)};
+        return {status: "created", job: this.toJobView(record)};
     }
 
     // undefined covers both a genuinely unknown id AND an id that belongs to a different project —
@@ -172,11 +193,11 @@ export class StudioReplayExecutionService {
     // StudioSimulationService.getReport(): this can never be used to probe whether some other project
     // has a replay with a given id.
     public getStatus(projectRoot: string, id: string): StudioReplayJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
-        }
-        return toStudioReplayJobView(record);
+        if (record?.projectRoot === projectRoot) return this.toJobView(record);
+        const common = this.jobService?.get(projectRoot, id);
+        return common?.operation === "replay" ? this.projectDurableJob(common) : undefined;
     }
 
     // Idempotent: cancelling an already-terminal job is a no-op that still returns its (unchanged)
@@ -184,12 +205,14 @@ export class StudioReplayExecutionService {
     // start(). Returns undefined for an unknown id or one belonging to a different project (same
     // isolation reasoning as getStatus()).
     public cancel(projectRoot: string, id: string): StudioReplayJobView | undefined {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (!record || record.projectRoot !== projectRoot) {
-            return undefined;
+            const common = this.jobService?.cancel(projectRoot, id);
+            return common?.operation === "replay" ? this.projectDurableJob(common) : undefined;
         }
         this.cancelActiveRecord(record);
-        return toStudioReplayJobView(record);
+        return this.toJobView(record);
     }
 
     // Best-effort: aborts every currently active replay — called from StudioServer.stop() so a
@@ -206,6 +229,7 @@ export class StudioReplayExecutionService {
     // the project just left doesn't keep running its chunk loop unseen and unreachable. A no-op when
     // nothing is active for that project.
     public cancelActiveForProject(projectRoot: string): void {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.findActiveByProjectRoot(projectRoot);
         if (record) this.cancelActiveRecord(record);
     }
@@ -217,7 +241,26 @@ export class StudioReplayExecutionService {
     }
 
     public listJobs(projectRoot: string): StudioReplayListEntry[] {
-        return this.repository.listByProjectRoot(projectRoot).map((record) => this.toListEntry(record));
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        const entries = new Map<string, StudioReplayListEntry>();
+        for (const record of this.repository.listByProjectRoot(projectRoot)) entries.set(record.id, this.toListEntry(record));
+        for (const job of this.jobService?.list(projectRoot) ?? []) {
+            if (job.operation === "replay" && !entries.has(job.id)) {
+                const view = this.projectDurableJob(job);
+                entries.set(job.id, {
+                    id: view.id,
+                    status: view.status,
+                    round: view.round,
+                    ...(view.seed === undefined ? {} : {seed: view.seed}),
+                    ...(view.modeName === undefined ? {} : {modeName: view.modeName}),
+                    completedRounds: view.completedRounds,
+                    startedAt: view.startedAt,
+                    durationMs: view.durationMs,
+                    ...(view.error === undefined ? {} : {error: view.error}),
+                });
+            }
+        }
+        return Array.from(entries.values());
     }
 
     // "not-found" covers both a genuinely unknown id AND an id belonging to a different project (same
@@ -225,20 +268,23 @@ export class StudioReplayExecutionService {
     // failed/cancelled replay has no descriptor to download, same as a failed/cancelled simulation
     // having no report (see StudioSimulationService.getReport()).
     public getDownload(projectRoot: string, id: string): GetReplayDownloadResult {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
-        if (!record || record.projectRoot !== projectRoot) {
-            return {status: "not-found"};
+        if (record?.projectRoot === projectRoot) {
+            if (!record.descriptor) return {status: "not-ready", jobStatus: record.status};
+            return {status: "ok", descriptor: record.descriptor};
         }
-        if (!record.descriptor) {
-            return {status: "not-ready", jobStatus: record.status};
-        }
-        return {status: "ok", descriptor: record.descriptor};
+        const job = this.jobService?.get(projectRoot, id);
+        if (job?.operation !== "replay") return {status: "not-found"};
+        const descriptor = descriptorFromDurableDetail(job);
+        return descriptor === undefined ? {status: "not-ready", jobStatus: job.status} : {status: "ok", descriptor};
     }
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
+        const common = this.jobService?.get(record.projectRoot, record.id);
         return {
             id: record.id,
-            status: record.status,
+            status: common?.operation === "replay" ? common.status : record.status,
             game: record.game,
             configHash: record.configHash,
             round: record.round,
@@ -249,7 +295,7 @@ export class StudioReplayExecutionService {
             startedAt: new Date(record.startedAt).toISOString(),
             completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
             durationMs: record.durationMs,
-            error: record.error,
+            error: common?.operation === "replay" ? common.error ?? record.error : record.error,
             modeName: record.modeName,
         };
     }
@@ -288,7 +334,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
-            record.status = "running";
+            this.markRunning(record);
             const manifest = game.getManifest();
             record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
             record.configHash = game.getConfigHash?.();
@@ -364,6 +410,7 @@ export class StudioReplayExecutionService {
 
                     record.completedRounds += chunkRounds;
                     record.durationMs = this.now() - record.startedAt;
+                    this.jobService?.progress(record.id, {stage: "replay", unit: "rounds", current: record.completedRounds, total: record.round});
                     roundsRemaining -= chunkRounds;
                     if (roundsRemaining > 0) {
                         await this.yieldToEventLoop();
@@ -412,7 +459,7 @@ export class StudioReplayExecutionService {
                 this.cancelRecord(record);
                 return;
             }
-            record.status = "running";
+            this.markRunning(record);
             record.game = {id: runtime.manifest.component.id, name: runtime.manifest.component.id, version: runtime.manifest.component.version};
             record.configHash = runtime.manifest.artifact?.configurationHash;
             const canSerialize = runtime.manifest.capabilities.includes("runtime.serialize");
@@ -469,6 +516,7 @@ export class StudioReplayExecutionService {
     private updateReplayProgress(record: StudioReplayJobRecord, completedRounds: number): void {
         record.completedRounds = completedRounds;
         record.durationMs = this.now() - record.startedAt;
+        this.jobService?.progress(record.id, {stage: "replay", unit: "rounds", current: completedRounds, total: record.round});
     }
 
     // The "outcomeLibrary"/"stakeAdapter" counterpart to run() above -- reached only when start() was
@@ -523,7 +571,7 @@ export class StudioReplayExecutionService {
             this.cancelRecord(record);
             return;
         }
-        record.status = "running";
+        this.markRunning(record);
         const gameIdentity = {id: manifestGame.id, name: manifestGame.name, version: manifestGame.version};
         record.game = gameIdentity;
 
@@ -557,6 +605,7 @@ export class StudioReplayExecutionService {
 
                 record.completedRounds += chunkRounds;
                 record.durationMs = this.now() - record.startedAt;
+                this.jobService?.progress(record.id, {stage: "replay", unit: "rounds", current: record.completedRounds, total: record.round});
                 roundsRemaining -= chunkRounds;
                 if (roundsRemaining > 0) {
                     await this.yieldToEventLoop();
@@ -710,6 +759,9 @@ export class StudioReplayExecutionService {
     // responsible for cleanup before publishing the terminal cancellation.
     private cancelActiveRecord(record: StudioReplayJobRecord): void {
         if (record.status !== "queued" && record.status !== "running") return;
+        // Cancellation is durable before the executor receives its abort
+        // handle; markTerminal() owns the post-cleanup terminal transition.
+        this.jobService?.cancel(record.projectRoot, record.id);
         record.abortController.abort();
         if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
@@ -723,5 +775,61 @@ export class StudioReplayExecutionService {
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
+        if (record.status === "completed") {
+            this.jobService?.complete(record.id, {
+                summary: "Replay completed.",
+                outputs: [{label: "Replay descriptor", downloadPath: `/api/project/replays/${encodeURIComponent(record.id)}/download`}],
+                provenance: {replayId: record.id, projectRoot: record.projectRoot},
+                detail: {replayId: record.id, round: record.round, descriptor: record.descriptor},
+            });
+        } else if (record.status === "cancelled") {
+            this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
+        } else if (record.status === "failed") {
+            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: "Correct the reported problem and run the replay again."});
+        }
     }
+
+    private markRunning(record: StudioReplayJobRecord): void {
+        record.status = "running";
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "preparing", unit: "rounds", current: record.completedRounds, total: record.round});
+    }
+
+    private toJobView(record: StudioReplayJobRecord): StudioReplayJobView {
+        const view = toStudioReplayJobView(record);
+        const common = this.jobService?.get(record.projectRoot, record.id);
+        if (common?.operation !== "replay") return view;
+        return {
+            ...view,
+            status: common.status,
+            ...(common.startedAt === undefined ? {} : {startedAt: new Date(common.startedAt).toISOString()}),
+            ...(common.durationMs === undefined ? {} : {durationMs: common.durationMs}),
+            ...(common.error === undefined ? {} : {error: common.error}),
+            ...(common.recovery === undefined ? {} : {recovery: common.recovery}),
+        };
+    }
+
+    private projectDurableJob(job: StudioJobView): StudioReplayJobView {
+        return {
+            id: job.id,
+            status: job.status,
+            round: typeof job.request.round === "number" ? job.request.round : 0,
+            ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
+            ...(typeof job.request.simulationId === "string" ? {simulationId: job.request.simulationId} : {}),
+            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+            startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
+            completedRounds: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
+            durationMs: job.durationMs ?? 0,
+            ...(descriptorFromDurableDetail(job) === undefined ? {} : {descriptor: descriptorFromDurableDetail(job)}),
+            ...(job.error === undefined ? {} : {error: job.error}),
+            ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+        };
+    }
+}
+
+function descriptorFromDurableDetail(job: StudioJobView): ReplayDescriptor | undefined {
+    const descriptor = job.result?.detail?.descriptor;
+    return typeof descriptor === "object" && descriptor !== null && "sessionId" in descriptor && "round" in descriptor
+        ? descriptor as ReplayDescriptor
+        : undefined;
 }

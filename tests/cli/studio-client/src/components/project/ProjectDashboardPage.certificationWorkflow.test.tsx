@@ -1,4 +1,4 @@
-import {screen} from "@testing-library/react";
+import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {StudioCertificationBuildView, StudioCertificationSourceValidateView} from "../../../../../../cli/studio-client/src/api/types";
@@ -91,6 +91,43 @@ async function fillSelectStep(user: ReturnType<typeof userEvent.setup>, bundleDi
 }
 
 describe("ProjectDashboardPage - Certification workflow", () => {
+    it("restores a retained certification build from a direct project entry and submits it only after an explicit Build", async () => {
+        const user = userEvent.setup();
+        const buildCalls: unknown[] = [];
+        const recoveryRequest = {bundleDir: "/games/a/outcomes/bundle", outDir: "recovered-certification", modes: [{modeName: "base", seed: "recovered-seed", sampleCount: 7}]};
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-certification", projectId: "/games/a", operation: "certification-build", request: recoveryRequest,
+                conflictKey: "certification-output:/games/a/recovered-certification", status: "recovery-required", createdAt: 1,
+                recovery: {action: "rebuild", reason: "Rebuild the evidence bundle from the captured request."},
+            }]}}),
+            "/api/project/certification/validate-source": () => ({ok: true, status: 200, body: {status: "ok", errors: [], warnings: []}}),
+            "/api/project/certification/build": (call) => {
+                buildCalls.push(JSON.parse(call.init?.body ?? "{}"));
+                return {ok: true, status: 200, body: okBuildView()};
+            },
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/overview"]});
+
+        await screen.findByText("certification-build: recovery-required");
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+        await screen.findByLabelText("Source outcome-library bundle directory");
+        expect(screen.getByLabelText("Source outcome-library bundle directory")).toHaveValue(recoveryRequest.bundleDir);
+        expect(screen.getByLabelText("Mode name")).toHaveValue("base");
+        expect(screen.getByLabelText("Seed")).toHaveValue("recovered-seed");
+        expect(buildCalls).toEqual([]);
+
+        await user.click(screen.getByRole("button", {name: "Continue to Validate"}));
+        await user.click(screen.getByRole("button", {name: "Validate source bundle"}));
+        await screen.findByText("Clean");
+        await user.click(screen.getByRole("button", {name: "Continue to Build bundle"}));
+        expect(await screen.findByLabelText("Output directory")).toHaveValue(recoveryRequest.outDir);
+        await user.click(screen.getByRole("button", {name: "Build certification bundle"}));
+        await waitFor(() => expect(buildCalls).toEqual([recoveryRequest]));
+    });
+
     it("runs the full Select -> Validate -> Build -> Inspect -> Export workflow", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

@@ -89,6 +89,14 @@ export class StudioHomeService {
         return Promise.all(entries.map((entry) => this.describeRecentProject(entry)));
     }
 
+    // StudioServer starts serving before its project registry has imported Home's process-local
+    // history.  Keep that startup hand-off owned by the Home service: callers receive the same
+    // fully described views as GET /api/home/recent-projects, rather than reaching into Home's
+    // repository or rebuilding its missing/unavailable policy at the server boundary.
+    public async handRecentProjectsTo(consumer: (projects: readonly StudioHomeRecentProjectView[]) => Promise<void>): Promise<void> {
+        await consumer(await this.listRecentProjects());
+    }
+
     // Reuses loadProjectDashboardContext exactly as the Project Dashboard's own background load and
     // the (now-removed) single-shot Open Project flow both already did — "does this path actually
     // load" is decided in exactly one place. StudioServer itself performs the actual Studio context

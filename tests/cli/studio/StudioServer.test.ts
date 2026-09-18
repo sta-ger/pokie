@@ -63,6 +63,8 @@ import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.j
 import {InMemoryStudioSimulationRepository} from "../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {WasmArtifactBuilder} from "../../../src/project/WasmArtifactBuilder.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
@@ -405,6 +407,10 @@ describe("StudioServer", () => {
         fs.writeFileSync(path.join(root, "style.css"), "body { margin: 0; }");
     }
 
+    function createIsolatedJobService(root: string): StudioJobService {
+        return new StudioJobService(new FileStudioJobRepository(path.join(root, ".test-studio-jobs")));
+    }
+
     beforeEach(async () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-test-"));
         writeStudioAssets(studioRoot);
@@ -424,6 +430,7 @@ describe("StudioServer", () => {
             loadGame,
             gamePackageInspector: {inspect},
             gamePackageValidator: {validate},
+            jobService: createIsolatedJobService(studioRoot),
         });
         const address = await server.start();
         baseUrl = `http://${address.host}:${address.port}`;
@@ -473,6 +480,7 @@ describe("StudioServer", () => {
                 if (token === "http-token-4") requestKey = JSON.stringify({mode: "cancel", generation: "exact"});
                 return {
                     ...binding,
+                    requiresBounded: false,
                     requestKey,
                     // A token is server-owned, but it still has to enforce the
                     // same sampled-opt-in eligibility as the compatibility route.
@@ -505,6 +513,7 @@ describe("StudioServer", () => {
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
             homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0")),
             initialContext: {mode: "project", projectRoot}, outcomeLibraryGenerateService: outcomeService as never,
+            jobService: createIsolatedJobService(projectRoot),
         });
         const replaceServer = (nextServer: StudioServer): void => {
             server = nextServer;
@@ -625,7 +634,7 @@ describe("StudioServer", () => {
         replaceServer(outcomeServer);
         const restartedAddress = await outcomeServer.start();
         outcomeBaseUrl = `http://${restartedAddress.host}:${restartedAddress.port}`;
-        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: [expect.objectContaining({id: cancelledId, status: "cancelled"})]}});
+        expect(await get(`${outcomeBaseUrl}/api/project/outcome-libraries/generate/jobs`)).toMatchObject({status: 200, body: {jobs: expect.arrayContaining([expect.objectContaining({id: cancelledId, status: "cancelled"})])}});
 
         // Resume rebinding shares the destination owner with ordinary starts.
         // A collision is an actionable Outcome Library conflict, never an
@@ -679,6 +688,7 @@ describe("StudioServer", () => {
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
             loadGame: loadPokieGame,
             initialContext: {mode: "project", projectRoot},
+            jobService: createIsolatedJobService(projectRoot),
         }));
         const address = await server.start();
         let realBaseUrl = `http://${address.host}:${address.port}`;
@@ -770,6 +780,7 @@ describe("StudioServer", () => {
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
             loadGame: loadPokieGame,
             initialContext: {mode: "project", projectRoot},
+            jobService: createIsolatedJobService(projectRoot),
         });
         const startServer = async (projectRoot: string): Promise<string> => {
             server = createRealServer(projectRoot);
@@ -845,14 +856,25 @@ describe("StudioServer", () => {
         lifecycleBaseUrl = await startServer(closeRoot);
         const closedId = await startExactJob(lifecycleBaseUrl, "closed-http-library");
         await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, closedId);
-        expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+        // Project close has the same server-owned active-job protection as a
+        // project switch.  A close is allowed only after the caller explicitly
+        // acknowledges that it will request cleanup of the active generator.
+        expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["outcome-library-generation"]},
+        });
+        expect(await post(`${lifecycleBaseUrl}/api/projects/close`, {confirmActiveJobs: true})).toEqual({status: 200, body: {context: {mode: "home"}}});
         expectNoOutcomeLibraryPublication(closeRoot, "outcomelibrary");
         expect(fs.existsSync(path.join(closeRoot, ".pokie", "outcome-library-checkpoints", `${closedId}.json`))).toBe(true);
 
         expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: switchRoot})).status).toBe(200);
         const switchedId = await startExactJob(lifecycleBaseUrl, "switched-http-library");
         await waitForOutcomeLibraryJobProgress(lifecycleBaseUrl, switchedId);
-        expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot})).status).toBe(200);
+        expect(await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot})).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["outcome-library-generation"]},
+        });
+        expect((await post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: baselineRoot, confirmActiveJobs: true})).status).toBe(200);
         expectNoOutcomeLibraryPublication(switchRoot, "outcomelibrary");
         expect(fs.existsSync(path.join(switchRoot, ".pokie", "outcome-library-checkpoints", `${switchedId}.json`))).toBe(true);
 
@@ -1067,7 +1089,14 @@ describe("StudioServer", () => {
         const firstOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./first"});
         await firstLoadStarted;
 
-        const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"});
+        // Home cannot silently replace visible work.  The server exposes the
+        // active durable opening first; a confirmed retry owns the superseding
+        // transition and leaves the old opening unable to publish.
+        expect(await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second"})).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["project-open-materialization"]},
+        });
+        const secondOpen = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./second", confirmActiveJobs: true});
         await secondLoadStarted;
         completeLoads.get("./second")?.(createFakeGame(secondManifest));
 
@@ -1217,7 +1246,11 @@ describe("StudioServer", () => {
 
         const opening = post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./late"});
         await lateLoadStarted;
-        expect(await post(`${baseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+        expect(await post(`${baseUrl}/api/projects/close`)).toMatchObject({
+            status: 409,
+            body: {code: "active-jobs-require-confirmation", operations: ["project-open-materialization"]},
+        });
+        expect(await post(`${baseUrl}/api/projects/close`, {confirmActiveJobs: true})).toEqual({status: 200, body: {context: {mode: "home"}}});
 
         completeLoads.get("./late")?.(createFakeGame(manifest));
         expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
@@ -1277,7 +1310,11 @@ describe("StudioServer", () => {
         try {
             const opening = post(`${lifecycleBaseUrl}/api/home/projects/open`, {projectRoot: wasmFile});
             await descriptionStarted;
-            expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toEqual({status: 200, body: {context: {mode: "home"}}});
+            expect(await post(`${lifecycleBaseUrl}/api/projects/close`)).toMatchObject({
+                status: 409,
+                body: {code: "active-jobs-require-confirmation", operations: ["project-open-materialization"]},
+            });
+            expect(await post(`${lifecycleBaseUrl}/api/projects/close`, {confirmActiveJobs: true})).toEqual({status: 200, body: {context: {mode: "home"}}});
             releaseDescription?.();
 
             expect(await opening).toEqual({status: 409, body: {error: "Project opening was superseded by a newer request."}});
@@ -4800,7 +4837,12 @@ describe("StudioServer", () => {
             });
             expect(JSON.stringify(diagnostics.body)).not.toContain("\\n    at ");
 
-            const closeResponse = await post(`${projectBaseUrl}/api/projects/close`);
+            const rejectedClose = await post(`${projectBaseUrl}/api/projects/close`);
+            expect(rejectedClose).toMatchObject({
+                status: 409,
+                body: {code: "active-jobs-require-confirmation", operations: expect.arrayContaining(["simulation", "replay"])},
+            });
+            const closeResponse = await post(`${projectBaseUrl}/api/projects/close`, {confirmActiveJobs: true});
             expect(closeResponse.status).toBe(200);
 
             // cancel() only requests cancellation (aborts the controller) — the records transition to
@@ -6716,7 +6758,7 @@ describe("StudioServer", () => {
             fs.rmSync(certProjectRoot, {recursive: true, force: true});
         });
 
-        async function startServerForProject(projectRoot: string | undefined): Promise<string> {
+        async function startServerForProject(projectRoot: string | undefined, certificationService?: StudioCertificationService): Promise<string> {
             const homeService = new StudioHomeService("1.3.0");
             certServer = new StudioServer({
                 pokieVersion: "1.3.0",
@@ -6726,6 +6768,7 @@ describe("StudioServer", () => {
                 homeService,
                 blueprintService: new StudioBlueprintService("1.3.0", certStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
+                certificationService,
             });
             const address = await certServer.start();
             return `http://${address.host}:${address.port}`;
@@ -7371,6 +7414,7 @@ describe("StudioServer", () => {
                 blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
                 artifactBuildService,
                 initialContext: {mode: "project", projectRoot: blueprintPath},
+                jobService: createIsolatedJobService(artifactWorkDir),
             });
             const address = await artifactServer.start();
             const projectBaseUrl = `http://${address.host}:${address.port}`;
@@ -7398,14 +7442,14 @@ describe("StudioServer", () => {
 
             const cancelled = await post(`${projectBaseUrl}/api/project/artifacts/build/${job.id}/cancel`);
             expect(cancelled.status).toBe(200);
-            expect(cancelled.body).toMatchObject({id: job.id, status: "running", cancellationRequested: true});
+            expect(cancelled.body).toMatchObject({id: job.id, status: "cancelling", cancellationRequested: true});
 
             let terminalJob: {id: string; status: string; cancellationRequested: boolean; result?: {status: string}} | undefined;
             for (let attempt = 0; attempt < 1200; attempt += 1) {
                 const response = await get(`${projectBaseUrl}/api/project/artifacts/build/${job.id}`);
                 expect(response.status).toBe(200);
                 const current = response.body as {id: string; status: string; cancellationRequested: boolean; result?: {status: string}};
-                if (current.status !== "queued" && current.status !== "running") {
+                if (current.status !== "queued" && current.status !== "running" && current.status !== "cancelling") {
                     terminalJob = current;
                     break;
                 }

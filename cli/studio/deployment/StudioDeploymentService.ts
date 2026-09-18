@@ -30,8 +30,32 @@ import {createExternalOutcomeLibraryPlan} from "../artifacts/createExternalArtif
 const DEPLOYMENT_OUTPUT_DIRNAME = "deployment";
 const NO_SERVER_SELECTED_MODES: StudioDeploymentModeResolving = () => Promise.resolve([]);
 
+export type StudioDeploymentProgressReporting = (
+    stage: string,
+    unit: string,
+    current: number | "indeterminate",
+    total: number | "indeterminate",
+    message: string,
+) => void;
+
+export type StudioDeploymentExecutionOptions = {
+    readonly signal?: AbortSignal;
+    readonly onProgress?: StudioDeploymentProgressReporting;
+};
+
+function executionOptions(options: AbortSignal | StudioDeploymentExecutionOptions | undefined): StudioDeploymentExecutionOptions {
+    return options instanceof AbortSignal ? {signal: options} : options ?? {};
+}
+
 export type StudioDeploymentRunResult =
     | {readonly status: "ok"; readonly view: StudioDeploymentRunView}
+    | {
+        readonly status: "cancelled";
+        /** Whether delivery is known to have happened when cancellation raced the SDK. */
+        readonly deliveryOutcome: "delivered" | "not-delivered" | "outcome-unknown";
+        readonly plan: import("pokie").ArtifactConversionPlan;
+        readonly view?: StudioDeploymentRunView;
+    }
     | {readonly status: "target-not-found"; readonly plan: import("pokie").ArtifactConversionPlan}
     | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan}
     | {readonly status: "load-error"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan};
@@ -188,7 +212,12 @@ export class StudioDeploymentService {
     // bundle the registry found compatible, not only a hand-typed flat JSON file; the first mode/library
     // that fails to load stops the whole request before ExternalDeploymentService is ever called, since
     // there's no well-formed input to give it yet), then runs the one real pipeline call.
-    public async run(projectRoot: string, request: ValidatedDeploymentRunRequest): Promise<StudioDeploymentRunResult> {
+    public async run(projectRoot: string, request: ValidatedDeploymentRunRequest, options?: AbortSignal | StudioDeploymentExecutionOptions): Promise<StudioDeploymentRunResult> {
+        const {signal, onProgress} = executionOptions(options);
+        // The external adapter SDK does not currently take a signal.  Keep the
+        // cancellation boundary here nevertheless: cancellation is observed
+        // before it can begin delivery and again after the SDK has settled, so
+        // Studio never reports a cancelled request as a successful deployment.
         // Deployment owns SDK-specific delivery, but the library it deploys is a
         // planner-governed prerequisite.  Carry that exact server plan forward so
         // the browser never has to infer whether it can create/reuse one.
@@ -196,11 +225,14 @@ export class StudioDeploymentService {
         // verified compatible library".  Resolve it exactly once before both
         // planning and reading, so a browser cannot choose a stale/moved bundle
         // between those two phases.
+        onProgress?.("Planning deployment", "pipeline stages", 0, 5, "Resolving the server-verified deployment inputs.");
         const serverSelectedModes = this.hasServerSelectedModes || request.modes.length === 0
             ? await this.resolveServerSelectedModes(projectRoot)
             : undefined;
         const selectedModes = request.modes.length === 0 ? serverSelectedModes! : request.modes;
         const plan = await this.prepareForSelectedBundles(projectRoot, selectedModes);
+        onProgress?.("Validating deployment", "pipeline stages", 1, 5, "Checking the prepared artifact plan and target.");
+        if (signal?.aborted) return {status: "cancelled", deliveryOutcome: "not-delivered", plan};
         const registry = this.buildRegistry(projectRoot);
         const target = registry.get(request.targetId);
         if (target === undefined) {
@@ -208,6 +240,7 @@ export class StudioDeploymentService {
         }
 
         let buildModeIds: readonly string[] | undefined;
+        let publicationStarted = false;
         try {
             buildModeIds = await this.resolveBuildModeIds(projectRoot);
         } catch (error) {
@@ -278,6 +311,7 @@ export class StudioDeploymentService {
             | {readonly status: "ok"; readonly modes: readonly ExternalDeploymentModeInput[]}
             | {readonly status: "load-error"; readonly error: string};
         try {
+            onProgress?.("Loading artifacts", "deployment modes", 0, selectedModes.length, "Loading each selected outcome library.");
             // Loading selectors and calling the SDK are deliberately callbacks of
             // the prepared operation.  The adapter has finished validating the
             // request above; from this point the operation owns the final source
@@ -286,7 +320,7 @@ export class StudioDeploymentService {
                 currentSource: async () => (await this.prepareForSelectedBundles(projectRoot, selectedModes)).source,
                 read: async (): Promise<DeploymentRead> => {
                     const modes: ExternalDeploymentModeInput[] = [];
-                    for (const mode of selectedModes) {
+                    for (const [index, mode] of selectedModes.entries()) {
                         const loaded = await loadOutcomeLibraryFromSelector(
                             projectRoot,
                             mode.librarySelector,
@@ -299,6 +333,7 @@ export class StudioDeploymentService {
                             return {status: "load-error", error: `mode "${mode.modeName}": ${loaded.error}`};
                         }
                         modes.push({modeName: mode.modeName, library: loaded.library});
+                        onProgress?.("Loading artifacts", "deployment modes", index + 1, selectedModes.length, `Loaded mode ${mode.modeName}.`);
                     }
                     return {status: "ok", modes};
                 },
@@ -310,9 +345,23 @@ export class StudioDeploymentService {
                     // variant and never mutates the registered target.
                     const runnableTarget = request.publish ? target : {...target, runtimeAdapter: undefined};
                     if (read.status !== "ok") throw new Error(read.error);
+                    onProgress?.("Delivering artifacts", "pipeline stages", 4, 5, request.publish ? "Delivering artifacts to the selected target." : "Preparing a deployment preview without delivery.");
+                    publicationStarted = true;
                     return this.externalDeploymentService.deploy(runnableTarget, read.modes);
                 },
             });
+            onProgress?.("Finalizing deployment", "pipeline stages", 5, 5, "Recording the deployment result and delivery outcome.");
+            if (signal?.aborted) {
+                const view = execution.published
+                    ? toStudioDeploymentRunView(execution.publication!, target.id, request.publish, plan)
+                    : undefined;
+                return {
+                    status: "cancelled",
+                    deliveryOutcome: view?.delivery?.delivered === true ? "delivered" : "not-delivered",
+                    plan,
+                    ...(view === undefined ? {} : {view}),
+                };
+            }
             if (!execution.published) {
                 return {
                     status: "load-error",
@@ -327,6 +376,11 @@ export class StudioDeploymentService {
                 },
             };
         } catch (error) {
+            if (signal?.aborted) {
+                // The adapter was already entered but did not settle a result
+                // Studio can inspect. Do not claim either delivery outcome.
+                return {status: "cancelled", deliveryOutcome: publicationStarted ? "outcome-unknown" : "not-delivered", plan};
+            }
             return {status: "load-error", error: error instanceof Error ? error.message : String(error), plan};
         }
     }
