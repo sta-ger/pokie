@@ -3,6 +3,21 @@ import type {WeightedOutcomePayoutBucket, WeightedOutcomeLibraryAnalysis} from "
 import {iterateOutcomesJsonl} from "./iterateOutcomesJsonl.js";
 import {OutcomeLibraryBundleInvariantError} from "../OutcomeLibraryBundleInvariantError.js";
 
+export type OnlineWeightedOutcomeLibraryAnalysisProgress = {
+    readonly pass: 1 | 2;
+    readonly completed: bigint;
+    readonly total?: bigint;
+    readonly unit: "outcome records";
+};
+
+export type OnlineWeightedOutcomeLibraryAnalysisOptions = {
+    readonly signal?: AbortSignal;
+    readonly throwIfAborted?: () => void;
+    /** A writer knows this from its just-completed streaming pass. */
+    readonly expectedOutcomeCount?: bigint;
+    readonly onProgress?: (progress: OnlineWeightedOutcomeLibraryAnalysisProgress) => void;
+};
+
 // Recomputes exactly the same statistics WeightedOutcomeLibraryAnalyzer.analyze() would, over a mode's already-
 // written outcomes file, without ever holding more than one outcome in memory (see iterateOutcomesJsonl) or
 // building an array of them — "totalWeight" must already be known (from the same streaming write pass that
@@ -16,13 +31,17 @@ import {OutcomeLibraryBundleInvariantError} from "../OutcomeLibraryBundleInvaria
 //
 // A dedicated cross-check test asserts this produces bit-identical results to WeightedOutcomeLibraryAnalyzer.analyze()
 // for the same outcomes, so the two can never silently diverge.
-export async function computeOnlineWeightedOutcomeLibraryAnalysis(outcomesFilePath: string, totalWeight: number): Promise<WeightedOutcomeLibraryAnalysis> {
+export async function computeOnlineWeightedOutcomeLibraryAnalysis(
+    outcomesFilePath: string,
+    totalWeight: number,
+    options?: OnlineWeightedOutcomeLibraryAnalysisOptions,
+): Promise<WeightedOutcomeLibraryAnalysis> {
     let rtpSum = 0;
     let hitFrequencySum = 0;
     let maxWin = 0;
     const weightByMultiplier = new Map<number, number>();
 
-    for await (const line of iterateOutcomesJsonl(outcomesFilePath)) {
+    for await (const line of iterateOutcomesJsonl(outcomesFilePath, analysisIterationOptions(options, 1))) {
         if (line.status !== "ok") {
             throw new OutcomeLibraryBundleInvariantError(`outcomes file line ${line.position} is not valid JSON on a re-read of a file this same writer just wrote.`);
         }
@@ -41,7 +60,7 @@ export async function computeOnlineWeightedOutcomeLibraryAnalysis(outcomesFilePa
 
     let varianceSum = 0;
     let maxWinProbabilitySum = 0;
-    for await (const line of iterateOutcomesJsonl(outcomesFilePath)) {
+    for await (const line of iterateOutcomesJsonl(outcomesFilePath, analysisIterationOptions(options, 2))) {
         if (line.status !== "ok") {
             throw new OutcomeLibraryBundleInvariantError(`outcomes file line ${line.position} is not valid JSON on a re-read of a file this same writer just wrote.`);
         }
@@ -71,4 +90,17 @@ export async function computeOnlineWeightedOutcomeLibraryAnalysis(outcomesFilePa
         maxWinProbability,
         payoutDistribution,
     });
+}
+
+function analysisIterationOptions(options: OnlineWeightedOutcomeLibraryAnalysisOptions | undefined, pass: 1 | 2) {
+    return {
+        signal: options?.signal,
+        throwIfAborted: options?.throwIfAborted,
+        onProgress: ({recordsRead}: {readonly recordsRead: bigint}) => options?.onProgress?.({
+            pass,
+            completed: recordsRead,
+            unit: "outcome records",
+            ...(options?.expectedOutcomeCount === undefined ? {} : {total: options.expectedOutcomeCount}),
+        }),
+    };
 }

@@ -1165,7 +1165,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
     status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
-    lifecycleStage?: "generation" | "finalization" | "serialization" | "validation" | "publication";
+    lifecycleStage?: "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
     progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateResultView;
     recovery?: StudioJobView["recovery"];

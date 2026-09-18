@@ -283,21 +283,37 @@ export class StudioOutcomeLibraryGenerateJobService {
     private async run(record: JobRecord): Promise<void> {
         record.status = "running";
         this.jobService?.markRunning(record.id);
-        this.jobService?.progress(record.id, {stage: "preparing", unit: "raw combinations", current: "0", total: "0"});
+        this.jobService?.progress(record.id, {stage: "Preflight", unit: "work", current: "indeterminate", total: "indeterminate", message: "Revalidating the prepared source, configuration, and destination."});
         const result = await this.generateService.generate(record.projectRoot, {
             ...record.request,
             signal: record.controller.signal,
             onProgress: (processedRawIndex, progressTotal) => {
                 record.progress = {processedRawIndex: processedRawIndex.toString(), progressTotal: progressTotal.toString()};
-                this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
+                this.jobService?.progress(record.id, {stage: "Enumerating combinations", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
             },
         }, (stage) => {
             record.lifecycleStage = stage;
-            this.jobService?.progress(record.id, {stage, unit: "raw combinations", current: record.progress?.processedRawIndex ?? "0", total: record.progress?.progressTotal ?? "0"});
+            this.jobService?.progress(record.id, {
+                stage: durableStageLabel(stage),
+                unit: "work",
+                current: "indeterminate",
+                total: "indeterminate",
+            });
         }, (emittedOutcomes) => {
             if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
             else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
-            this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "emitted outcomes", current: emittedOutcomes.toString(), total: record.progress.progressTotal});
+            this.jobService?.progress(record.id, {stage: "Deduplicating/finalizing outcomes", unit: "outcome records", current: emittedOutcomes.toString(), total: "indeterminate"});
+        }, (progress) => {
+            // A raw-combination total says nothing about a write, analysis or
+            // index-copy stage. Preserve an honest indeterminate total until
+            // the owning writer supplies a stage-local denominator.
+            this.jobService?.progress(record.id, {
+                stage: durableStageLabel(record.lifecycleStage ?? "writing"),
+                unit: progress.unit ?? "outcome records",
+                current: progress.completed.toString(),
+                total: progress.total?.toString() ?? "indeterminate",
+                message: progress.message,
+            });
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
@@ -501,6 +517,20 @@ export class StudioOutcomeLibraryGenerateJobService {
         const binding = this.generateService.getPreflightBinding?.(request.preflightToken);
         return path.resolve(projectRoot, binding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
     }
+}
+
+function durableStageLabel(stage: StudioOutcomeLibraryGenerationLifecycleStage): string {
+    switch (stage) {
+        case "generation": return "Enumerating combinations";
+        case "finalization": return "Deduplicating/finalizing outcomes";
+        case "writing": return "Writing outcomes";
+        case "analyzing": return "Analyzing outcomes";
+        case "building-index": return "Building index";
+        case "serialization": return "Building index";
+        case "validation": return "Validating";
+        case "publication": return "Publishing";
+    }
+    throw new Error(`Unsupported Outcome Library lifecycle stage: ${stage}`);
 }
 
 function outcomeLibraryResultFromDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView["result"] | undefined {

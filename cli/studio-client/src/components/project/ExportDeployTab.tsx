@@ -312,54 +312,8 @@ function TargetCard({
                             onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, mode: event.currentTarget.value})
                         }
                     />
-                    <Group align="start" grow mt="sm">
-                        <TextInput
-                            label="Output destination"
-                            description="Project-relative bundle directory (for example, libraries/release). Absolute and outside-project paths are not supported; existing modes are preserved safely."
-                            value={outcomeLibraryGenerationOptions.outDir}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})
-                            }
-                        />
-                        <TextInput
-                            label="Library identity"
-                            description="Optional stable library ID; blank uses the game and mode."
-                            value={outcomeLibraryGenerationOptions.libraryId}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})
-                            }
-                        />
-                    </Group>
-                    <Group align="start" grow mt="sm">
-                        <TextInput
-                            label="Stake"
-                            description="Optional positive stake recorded on generated outcomes."
-                            inputMode="decimal"
-                            value={outcomeLibraryGenerationOptions.stake}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})
-                            }
-                        />
-                        <TextInput
-                            label="Configuration identity"
-                            description="Optional loaded configuration identity to verify; it never overrides the loaded game provenance."
-                            value={outcomeLibraryGenerationOptions.configHash}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})
-                            }
-                        />
-                    </Group>
-                    <TextInput
-                        mt="sm"
-                        label="Max outcome space size"
-                        description="Exact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store."
-                        inputMode="numeric"
-                        value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
-                        onChange={(event) =>
-                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})
-                        }
-                    />
                     <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
+                    <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
                     <Group gap="xs" mt={4}>
                         {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
                             <Button key={generation} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
@@ -368,24 +322,65 @@ function TargetCard({
                         ))}
                     </Group>
                     {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
-                        <Group align="start" grow mt="sm">
+                        <TextInput
+                            mt="sm"
+                            label="Sample size"
+                            description="Number of deterministic reel-stop draws to include."
+                            inputMode="numeric"
+                            value={outcomeLibraryGenerationOptions.sampleSize}
+                            onChange={(event) =>
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
+                            }
+                        />
+                    )}
+                    <AdvancedDisclosure label="Advanced generation controls">
+                        <Group align="start" grow>
                             <TextInput
-                                label="Sample size"
-                                description="Number of deterministic reel-stop draws to include."
-                                inputMode="numeric"
-                                value={outcomeLibraryGenerationOptions.sampleSize}
-                                onChange={(event) =>
-                                    onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
-                                }
+                                label="Output destination"
+                                description="Project-relative bundle directory; existing modes are preserved safely."
+                                value={outcomeLibraryGenerationOptions.outDir}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})}
                             />
                             <TextInput
+                                label="Library identity"
+                                description="Optional stable library ID; blank uses the game and mode."
+                                value={outcomeLibraryGenerationOptions.libraryId}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})}
+                            />
+                        </Group>
+                        <Group align="start" grow mt="sm">
+                            <TextInput
+                                label="Stake"
+                                description="Optional positive stake recorded on generated outcomes."
+                                inputMode="decimal"
+                                value={outcomeLibraryGenerationOptions.stake}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})}
+                            />
+                            <TextInput
+                                label="Configuration identity"
+                                description="Optional loaded configuration identity to verify; it never overrides loaded provenance."
+                                value={outcomeLibraryGenerationOptions.configHash}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})}
+                            />
+                        </Group>
+                        <TextInput
+                            mt="sm"
+                            label="Max outcome space size"
+                            description="Raise only when the complete library is practical to generate and store."
+                            inputMode="numeric"
+                            value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
+                            onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})}
+                        />
+                        {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
+                            <TextInput
+                                mt="sm"
                                 label="Coverage seed"
                                 description="Saved with the generated library so this sample can be reproduced."
                                 value={outcomeLibraryGenerationOptions.seed}
                                 onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, seed: event.currentTarget.value})}
                             />
-                        </Group>
-                    )}
+                        )}
+                    </AdvancedDisclosure>
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
                     {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
                     {outcomeLibraryPreflight.status === "error" && (
@@ -760,6 +755,9 @@ function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobVie
     const emitted = job.progress?.emittedOutcomes === undefined ? undefined : `${job.progress.emittedOutcomes} outcome record${job.progress.emittedOutcomes === "1" ? "" : "s"} evaluated`;
     switch (job.lifecycleStage) {
         case "finalization": return emitted === undefined ? "Finalizing generated outcomes…" : `Finalizing generated outcomes: ${emitted}…`;
+        case "writing": return "Writing Outcome Library records…";
+        case "analyzing": return "Analyzing Outcome Library outcomes…";
+        case "building-index": return "Building the native Outcome Library index…";
         case "serialization": return "Serializing Outcome Library records…";
         case "validation": return "Validating the complete Outcome Library…";
         case "publication": return "Atomically publishing the validated Outcome Library…";

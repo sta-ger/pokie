@@ -120,6 +120,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
 
             for (const mode of modes) {
                 assertNotCancelled(options);
+                options?.onLifecycleStage?.("writing");
                 const schemaVersion = mode.schemaVersion ?? WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION;
                 if (schemaVersion !== WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION) {
                     issues.push({
@@ -172,7 +173,18 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                     continue;
                 }
 
-                const analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, result.built.totalWeight);
+                options?.onLifecycleStage?.("analyzing");
+                const analysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, result.built.totalWeight, {
+                    signal: options?.signal,
+                    throwIfAborted: () => assertNotCancelled(options),
+                    expectedOutcomeCount: BigInt(result.built.outcomeCount),
+                    onProgress: (progress) => options?.onProgress?.({
+                        completed: progress.completed,
+                        total: progress.total,
+                        unit: progress.unit,
+                        message: `Analyzing Outcome mode ${mode.modeName} (pass ${progress.pass} of 2)`,
+                    }),
+                });
                 const indexFile = `index_${mode.modeName}.json`;
                 const firstOutcome = result.built.firstOutcome as {artifact: {betMode: string; stake: number}};
                 const generator = mode.generator ?? mode.getGenerator?.();
@@ -193,9 +205,9 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 manifestEntries.push(manifestEntry);
 
                 const indexPath = path.join(stagingDir, indexFile);
-                options?.onLifecycleStage?.("serialization");
+                options?.onLifecycleStage?.("building-index");
                 if (result.built.entriesPath !== undefined) {
-                    this.writeNativeIndex(indexPath, {
+                    await this.writeNativeIndex(indexPath, {
                         schemaVersion: OUTCOME_LIBRARY_BUNDLE_MODE_INDEX_SCHEMA_VERSION,
                         modeName: mode.modeName,
                         libraryId: mode.libraryId,
@@ -204,7 +216,7 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                         outcomeCount: result.built.outcomeCount,
                         totalWeight: result.built.totalWeight,
                         outcomesFile,
-                    }, result.built.entriesPath);
+                    }, result.built.entriesPath, options);
                     fs.rmSync(result.built.entriesPath, {force: true});
                 } else {
                     const index: OutcomeLibraryBundleModeIndex = {
@@ -263,10 +275,12 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 removeDirectory: this.removeDirectory,
                 destinationClaimedError: (message) => new OutcomeLibraryBundleDestinationClaimedError(message),
                 writeFilesIntoTempDir: (tempDir) => {
+                    let publishedFiles = BigInt(0);
                     for (const file of filesToPublish) {
                         assertNotCancelled(options);
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
-                        options?.onProgress?.({completed, message: `Publishing Outcome file ${file}`});
+                        publishedFiles++;
+                        options?.onProgress?.({completed: publishedFiles, total: BigInt(filesToPublish.length), unit: "bundle files", message: `Publishing Outcome file ${file}`});
                         // A progress listener is allowed to abort the work it is observing.  This check
                         // must be after the callback as well as before the next file: the last callback
                         // is immediately followed by the atomic swap below.
@@ -303,22 +317,34 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
     }
 
     /** Writes the potentially large entries array without ever parsing it back into JS. */
-    private writeNativeIndex(
+    private async writeNativeIndex(
         indexPath: string,
         header: Omit<OutcomeLibraryBundleModeIndex, "entries">,
         entriesPath: string,
-    ): void {
+        options?: OutcomeLibraryBundleWriteOptions,
+    ): Promise<void> {
         const destination = fs.openSync(indexPath, "w");
         const source = fs.openSync(entriesPath, "r");
         try {
             const headerJson = JSON.stringify(header);
             fs.writeSync(destination, `${headerJson.slice(0, -1)},"entries":[`);
             const buffer = Buffer.allocUnsafe(64 * 1024);
+            const totalBytes = BigInt(fs.fstatSync(source).size);
+            let copied = BigInt(0);
             let bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
             while (bytesRead > 0) {
+                assertNotCancelled(options);
                 fs.writeSync(destination, buffer, 0, bytesRead);
+                copied += BigInt(bytesRead);
+                options?.onProgress?.({completed: copied, total: totalBytes, unit: "bytes", message: "Building Outcome Library index"});
                 bytesRead = fs.readSync(source, buffer, 0, buffer.length, null);
+                // Native index copying is synchronous I/O, so yield between
+                // bounded chunks before another cancellation check.
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
             }
+            assertNotCancelled(options);
             fs.writeSync(destination, "]}\n");
         } finally {
             fs.closeSync(source);

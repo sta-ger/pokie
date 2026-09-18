@@ -13,4 +13,15 @@ describe("JobProgressCard", () => {
         expect(screen.getByText("1 / unknown artifacts · Waiting for delivery")).toBeInTheDocument();
         expect(screen.queryByRole("progressbar")).toBeNull();
     });
+
+    it("calculates a bounded percentage from bigint-safe durable progress without Number precision loss", () => {
+        render(<MantineProvider><JobProgressCard job={{
+            id: "job-big", projectId: "/project", operation: "outcome-library-generation", request: {}, conflictKey: "generation",
+            status: "running", createdAt: 1, startedAt: 1,
+            progress: {stage: "Analyzing outcomes", unit: "outcome records", current: "9007199254740993", total: "18014398509481986"},
+        }} /></MantineProvider>);
+
+        expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+        expect(screen.getByText(/Elapsed:/)).toBeInTheDocument();
+    });
 });

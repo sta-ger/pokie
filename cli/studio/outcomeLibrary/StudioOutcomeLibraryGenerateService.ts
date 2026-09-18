@@ -9,6 +9,7 @@ import {
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
     OutcomeLibraryBundleWriting,
+    OutcomeLibraryBundleWriteProgress,
     OutcomeLibraryBundleWriteCancelledError,
     OutcomeSpaceEstimate,
     OutcomeLibraryGenerationRequest,
@@ -75,7 +76,7 @@ function resolveSample(request: {sample?: {sampleSize: bigint; seed: string}; sa
 }
 
 type OtherModesResult = {readonly status: "ok"; readonly modes: readonly OutcomeLibraryBundleModeInput<string>[]} | {readonly status: "error"; readonly message: string};
-export type StudioOutcomeLibraryGenerationLifecycleStage = "generation" | "finalization" | "serialization" | "validation" | "publication";
+export type StudioOutcomeLibraryGenerationLifecycleStage = "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
 
 /** Immutable source/destination snapshot behind a Studio preflight token. */
 export type StudioOutcomeLibraryPreflightBinding = {
@@ -434,6 +435,7 @@ export class StudioOutcomeLibraryGenerateService {
         request: ValidatedOutcomeLibraryGenerateRequest,
         onLifecycleStage?: (stage: StudioOutcomeLibraryGenerationLifecycleStage) => void,
         onPostEnumerationProgress?: (emittedOutcomes: bigint) => void,
+        onBundleProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void,
     ): Promise<StudioOutcomeLibraryGenerateResultView> {
         // HTTP callers always supply the snapshot they just displayed, but
         // retained in-process callers need the same immutable source binding.
@@ -726,6 +728,7 @@ export class StudioOutcomeLibraryGenerateService {
                     return this.writer.writeToDirectory(read.modes, boundDestination, {
                         signal: request.signal,
                         onLifecycleStage,
+                        onProgress: onBundleProgress,
                         // The planner invokes this policy before publication;
                         // retain that exact async policy for the writer's final
                         // atomic replacement after streaming staging.
