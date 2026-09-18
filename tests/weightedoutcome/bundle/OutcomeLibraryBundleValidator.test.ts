@@ -53,6 +53,24 @@ describe("OutcomeLibraryBundleValidator", () => {
         expect(await validator.validate(outDir, {deep: true})).toEqual([]);
     });
 
+    it("reports bounded deep-validation progress and honours cancellation before publication consumers can continue", async () => {
+        const controller = new AbortController();
+        const progress: {completed: bigint; total?: bigint; unit: string; message: string}[] = [];
+
+        await expect(new OutcomeLibraryBundleValidator().validate(outDir, {
+            deep: true,
+            signal: controller.signal,
+            onProgress: (entry) => {
+                progress.push(entry);
+                controller.abort();
+            },
+        })).rejects.toMatchObject({name: "AbortError"});
+
+        expect(progress).toEqual([
+            expect.objectContaining({completed: BigInt(1), total: BigInt(25), unit: "outcome records checked", message: "Validating Outcome mode base index layout"}),
+        ]);
+    });
+
     describe("manifest", () => {
         it("reports outcome-library-bundle-manifest-missing when manifest.json is removed", async () => {
             fs.rmSync(path.join(outDir, "manifest.json"));

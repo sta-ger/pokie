@@ -49,14 +49,18 @@ function isValidSha256Hash(value: unknown): value is string {
 //   internal/computeOnlineWeightedOutcomeLibraryAnalysis) — to catch corruption a byte-layout check alone can't
 //   (a record whose content was tampered without changing its byte length, a hash that no longer matches).
 //
-// Never throws: a top-level catch-all reports "outcome-library-bundle-malformed" instead.
+// Ordinary malformed bundles never throw: a top-level catch-all reports
+// "outcome-library-bundle-malformed" instead. An explicit AbortSignal is the
+// exception: it propagates cancellation so an owning durable job can settle
+// cleanup before reporting its terminal state.
 export class OutcomeLibraryBundleValidator<T extends string | number = string> implements OutcomeLibraryBundleValidating {
     private readonly roundArtifactValidator = new RoundArtifactValidator<T>();
 
     public async validate(bundleDir: string, options?: OutcomeLibraryBundleValidateOptions): Promise<ValidationIssue[]> {
         try {
-            return await this.validateInternal(bundleDir, options?.deep ?? false);
+            return await this.validateInternal(bundleDir, options?.deep ?? false, options);
         } catch (error) {
+            if (options?.signal?.aborted || isAbortError(error)) throw error;
             return [
                 {
                     code: "outcome-library-bundle-malformed",
@@ -67,8 +71,9 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         }
     }
 
-    private async validateInternal(bundleDir: string, deep: boolean): Promise<ValidationIssue[]> {
+    private async validateInternal(bundleDir: string, deep: boolean, options?: OutcomeLibraryBundleValidateOptions): Promise<ValidationIssue[]> {
         const issues: ValidationIssue[] = [];
+        assertNotCancelled(options);
 
         const manifest = this.readManifest(bundleDir, issues);
         if (manifest === undefined) {
@@ -76,7 +81,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         }
 
         for (const modeEntry of manifest.modes) {
-            await this.validateMode(bundleDir, manifest, modeEntry, deep, issues);
+            await this.validateMode(bundleDir, manifest, modeEntry, deep, issues, options);
         }
 
         return issues;
@@ -372,6 +377,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         modeEntry: OutcomeLibraryBundleManifestModeEntry,
         deep: boolean,
         issues: ValidationIssue[],
+        options?: OutcomeLibraryBundleValidateOptions,
     ): Promise<void> {
         const modeName = modeEntry.modeName;
 
@@ -479,7 +485,9 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             return;
         }
 
-        const layoutOk = entriesOk && this.validateByteLayout(modeName, index.entries, outcomesPath, stat.size, issues);
+        const entryCount = BigInt(index.entries.length);
+        const validationTotal = entryCount * BigInt(5);
+        const layoutOk = entriesOk && await this.validateByteLayout(modeName, index.entries, outcomesPath, stat.size, issues, options, validationTotal);
 
         if (deep) {
             // Random-access verification trusts the index's own byteOffset/byteLength to point somewhere
@@ -490,9 +498,9 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             // layout is itself broken, rather than being silently skipped whenever two different corruptions
             // happen to coincide.
             if (layoutOk) {
-                this.validateRandomAccessConsistency(modeName, outcomesPath, index.entries, issues);
+                await this.validateRandomAccessConsistency(modeName, outcomesPath, index.entries, issues, options, entryCount, validationTotal);
             }
-            await this.validateModeDeep(outcomesPath, manifest, modeEntry, index, issues);
+            await this.validateModeDeep(outcomesPath, manifest, modeEntry, index, issues, options, entryCount * BigInt(2), validationTotal);
         }
     }
 
@@ -507,15 +515,20 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
     // lines were physically reordered (or otherwise shifted) while every id/weight still appears somewhere in
     // the file — exactly the corruption a byte-range random-access read (the whole point of this bundle format)
     // would silently return the wrong outcome for.
-    private validateRandomAccessConsistency(
+    private async validateRandomAccessConsistency(
         modeName: string,
         outcomesPath: string,
         entries: readonly OutcomeLibraryBundleIndexEntry[],
         issues: ValidationIssue[],
-    ): void {
+        options: OutcomeLibraryBundleValidateOptions | undefined,
+        completedBefore: bigint,
+        total: bigint,
+    ): Promise<void> {
         const fd = fs.openSync(outcomesPath, "r");
         try {
-            for (const entry of entries) {
+            for (let position = 0; position < entries.length; position++) {
+                assertNotCancelled(options);
+                const entry = entries[position];
                 try {
                     readAndVerifyOutcomeAtByteRangeFromFileDescriptor(modeName, fd, entry);
                 } catch (error) {
@@ -526,6 +539,8 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                         details: {modeName, id: entry.id},
                     });
                 }
+                reportProgress(options, completedBefore + BigInt(position + 1), total, `Validating Outcome mode ${modeName} index entries`);
+                await yieldValidationWork(position);
             }
         } finally {
             fs.closeSync(fd);
@@ -540,7 +555,15 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
     // exactly where the writer would have placed a line break, not partway into one), and the file's own exact
     // size accounts for every byte the index describes and not one more — so neither a truncated file nor one
     // with trailing/extra bytes past the last recorded record can slip past a merely-cheap size check.
-    private validateByteLayout(modeName: string, entries: readonly OutcomeLibraryBundleIndexEntry[], outcomesPath: string, fileSize: number, issues: ValidationIssue[]): boolean {
+    private async validateByteLayout(
+        modeName: string,
+        entries: readonly OutcomeLibraryBundleIndexEntry[],
+        outcomesPath: string,
+        fileSize: number,
+        issues: ValidationIssue[],
+        options: OutcomeLibraryBundleValidateOptions | undefined,
+        total: bigint,
+    ): Promise<boolean> {
         if (entries.length === 0) {
             return true;
         }
@@ -552,6 +575,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             const separator = Buffer.alloc(1);
 
             for (let position = 0; position < entries.length; position++) {
+                assertNotCancelled(options);
                 const entry = entries[position];
                 if (entry.byteOffset !== expectedOffset) {
                     issues.push({
@@ -580,6 +604,8 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                 }
 
                 expectedOffset = separatorPosition + 1;
+                reportProgress(options, BigInt(position + 1), total, `Validating Outcome mode ${modeName} index layout`);
+                await yieldValidationWork(position);
             }
         } finally {
             fs.closeSync(fd);
@@ -741,8 +767,12 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         modeEntry: OutcomeLibraryBundleManifestModeEntry,
         index: OutcomeLibraryBundleModeIndex,
         issues: ValidationIssue[],
+        options: OutcomeLibraryBundleValidateOptions | undefined,
+        completedBefore: bigint,
+        total: bigint,
     ): Promise<void> {
         const modeName = modeEntry.modeName;
+        const entryCount = BigInt(index.entries.length);
         const indexById = new Map(index.entries.map((entry) => [entry.id, entry]));
         const seenIds = new Set<string>();
         let sawError = false;
@@ -753,7 +783,11 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
         hash.update(`{"libraryId":${JSON.stringify(index.libraryId)},"outcomes":[`);
         let hashedCount = 0;
 
-        for await (const line of iterateOutcomesJsonl(outcomesPath)) {
+        for await (const line of iterateOutcomesJsonl(outcomesPath, {
+            signal: options?.signal,
+            throwIfAborted: options?.throwIfAborted,
+            onProgress: ({recordsRead}) => reportProgress(options, completedBefore + recordsRead, total, `Validating Outcome mode ${modeName} records`),
+        })) {
             if (line.status === "invalid-json") {
                 issues.push({
                     code: "outcome-library-bundle-outcomes-line-invalid-json",
@@ -973,7 +1007,17 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             });
         }
 
-        const recomputedAnalysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, index.totalWeight);
+        const recomputedAnalysis = await computeOnlineWeightedOutcomeLibraryAnalysis(outcomesPath, index.totalWeight, {
+            signal: options?.signal,
+            throwIfAborted: options?.throwIfAborted,
+            expectedOutcomeCount: entryCount,
+            onProgress: ({pass, completed}) => reportProgress(
+                options,
+                completedBefore + entryCount + (pass === 1 ? completed : entryCount + completed),
+                total,
+                `Validating Outcome mode ${modeName} analysis (pass ${pass} of 2)`,
+            ),
+        });
         if (JSON.stringify(recomputedAnalysis) !== JSON.stringify(modeEntry.analysis)) {
             issues.push({
                 code: "outcome-library-bundle-analysis-mismatch",
@@ -983,4 +1027,32 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
             });
         }
     }
+}
+
+function reportProgress(
+    options: OutcomeLibraryBundleValidateOptions | undefined,
+    completed: bigint,
+    total: bigint,
+    message: string,
+): void {
+    options?.onProgress?.({completed, total, unit: "outcome records checked", message});
+}
+
+function assertNotCancelled(options: OutcomeLibraryBundleValidateOptions | undefined): void {
+    options?.throwIfAborted?.();
+    if (!options?.signal?.aborted) return;
+    const error = new Error("Outcome Library bundle validation was cancelled.");
+    error.name = "AbortError";
+    throw error;
+}
+
+function isAbortError(error: unknown): boolean {
+    return error instanceof Error && error.name === "AbortError";
+}
+
+async function yieldValidationWork(position: number): Promise<void> {
+    if ((position + 1) % 256 !== 0) return;
+    await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+    });
 }

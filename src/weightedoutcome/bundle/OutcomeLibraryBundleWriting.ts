@@ -7,7 +7,7 @@ import type {PublishDirectoryAtomicallyOwnership} from "../../stakeengine/intern
 export type OutcomeLibraryBundleWriteProgress = {
     readonly completed: bigint;
     readonly message: string;
-    readonly unit?: "outcome records" | "bytes" | "bundle files";
+    readonly unit?: "outcome records" | "outcome records checked" | "bytes" | "bundle files";
     readonly total?: bigint;
 };
 
