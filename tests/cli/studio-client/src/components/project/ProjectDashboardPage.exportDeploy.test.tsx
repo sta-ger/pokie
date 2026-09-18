@@ -170,9 +170,17 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("resumes a rehydrated exact checkpoint through the lifecycle endpoint and renders its completed bundle", async () => {
         const user = userEvent.setup();
         const requests: string[] = [];
+        let inspectedProjectRoot: string | undefined;
         const fetchImpl: FetchLike = (url, init) => {
             const [requestPath] = url.split("?");
             requests.push(`${init?.method ?? "GET"} ${requestPath}`);
+            if (requestPath === "/api/home/projects/open") {
+                inspectedProjectRoot = (JSON.parse(String(init?.body)) as {projectRoot: string}).projectRoot;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
+                    status: "ok",
+                    context: {mode: "project", projectRoot: "outcomelibrary"},
+                })});
+            }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [{
                     id: "saved-checkpoint", status: "cancelled", cancellationRequested: false,
@@ -203,10 +211,15 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(await screen.findByText(/Generated 6 outcomes for mode "base" using exact/)).toBeInTheDocument();
         expect(screen.getByText(/Final size: 123 bytes.*Duration: 44ms/)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Reveal output"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Copy path"})).toBeInTheDocument();
+        expect(screen.getByText("Opening local output is unavailable from this headless or remote Studio session.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open output folder"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reveal output"})).not.toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
         expect(screen.getByText(/Hash: sha256:resumed/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Inspect library"}));
+        await waitFor(() => expect(inspectedProjectRoot).toBe("outcomelibrary"));
         expect(requests).toContain("POST /api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume");
     });
 
@@ -894,7 +907,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText(/Generated 500 outcomes for mode "base" using exact \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Copy path"})).toBeInTheDocument();
+        expect(screen.getByText("Opening local output is unavailable from this headless or remote Studio session.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open output folder"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reveal output"})).not.toBeInTheDocument();
         expect(screen.getByLabelText("Mode")).toBeInTheDocument();
         expect(generated).toBe(true);
 
