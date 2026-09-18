@@ -53,7 +53,7 @@ describe("OutcomeLibraryBundleValidator", () => {
         expect(await validator.validate(outDir, {deep: true})).toEqual([]);
     });
 
-    it("reports bounded deep-validation progress and honours cancellation before publication consumers can continue", async () => {
+    it("cancels during the independent deep JSONL scan and removes its private analysis spool", async () => {
         const controller = new AbortController();
         const progress: {completed: bigint; total?: bigint; unit: string; message: string}[] = [];
 
@@ -62,13 +62,14 @@ describe("OutcomeLibraryBundleValidator", () => {
             signal: controller.signal,
             onProgress: (entry) => {
                 progress.push(entry);
-                controller.abort();
+                if (entry.message === "Validating Outcome mode base records") controller.abort();
             },
         })).rejects.toMatchObject({name: "AbortError"});
 
-        expect(progress).toEqual([
-            expect.objectContaining({completed: BigInt(1), total: BigInt(25), unit: "outcome records checked", message: "Validating Outcome mode base index layout"}),
-        ]);
+        expect(progress).toContainEqual(
+            expect.objectContaining({unit: "outcome records checked", message: "Validating Outcome mode base records"}),
+        );
+        expect(fs.readdirSync(outDir).filter((name) => name.startsWith(".validation-analysis-"))).toEqual([]);
     });
 
     describe("manifest", () => {

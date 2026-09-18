@@ -132,8 +132,10 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
-    it("honors cancellation during the cooperative analysis scan without publishing a partial bundle", async () => {
+    it("honors cancellation during the cooperative analysis scan without replacing an existing destination", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
         const controller = new AbortController();
 
         await expect(writer.writeToDirectory([modes()[0]], outDir, {
@@ -143,7 +145,41 @@ describe("OutcomeLibraryBundleWriter", () => {
             },
         })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
 
-        expect(fs.existsSync(outDir)).toBe(false);
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("cancels during writing without replacing an existing destination or leaving staging output", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const controller = new AbortController();
+
+        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+            signal: controller.signal,
+            onProgress: (progress) => {
+                if (progress.message === "Writing Outcome mode base") controller.abort();
+            },
+        })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
+
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("cancels while copying the native index without replacing an existing destination or leaving staging output", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const controller = new AbortController();
+
+        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+            signal: controller.signal,
+            onProgress: (progress) => {
+                if (progress.message === "Building Outcome Library index") controller.abort();
+            },
+        })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
+
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
@@ -318,8 +354,10 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
-    it("honors cancellation from the final temporary-publish callback without committing an output", async () => {
+    it("honors cancellation from the final temporary-publish callback without replacing an existing output", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
         const controller = new AbortController();
 
         await expect(
@@ -331,7 +369,7 @@ describe("OutcomeLibraryBundleWriter", () => {
             }),
         ).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
 
-        expect(fs.existsSync(outDir)).toBe(false);
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 

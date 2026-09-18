@@ -24,4 +24,25 @@ describe("JobProgressCard", () => {
         expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
         expect(screen.getByText(/Elapsed:/)).toBeInTheDocument();
     });
+
+    it("shows throughput and ETA only after monotonic progress in the same stage with a stable known total", () => {
+        let now = 1_000;
+        const dateNow = jest.spyOn(Date, "now").mockImplementation(() => now);
+        const job = (current: string, total = "20") => ({
+            id: "job-rate", projectId: "/project", operation: "outcome-library-generation", request: {}, conflictKey: "generation",
+            status: "running" as const, createdAt: 1, startedAt: 1,
+            progress: {stage: "Writing outcomes", unit: "outcome records", current, total},
+        });
+        const {rerender} = render(<MantineProvider><JobProgressCard job={job("10")} /></MantineProvider>);
+
+        expect(screen.queryByText(/Throughput:/)).toBeNull();
+        now = 2_000;
+        rerender(<MantineProvider><JobProgressCard job={job("15")} /></MantineProvider>);
+        expect(screen.getByText(/Throughput: 5\.00 outcome records\/s · ETA: 1000ms/)).toBeInTheDocument();
+
+        now = 3_000;
+        rerender(<MantineProvider><JobProgressCard job={job("16", "25")} /></MantineProvider>);
+        expect(screen.queryByText(/Throughput:/)).toBeNull();
+        dateNow.mockRestore();
+    });
 });

@@ -20,7 +20,7 @@ function percentFor(current: number | string | undefined, total: number | string
 
 export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?: (id: string) => void}) {
     const [observedAt, setObservedAt] = useState<number | undefined>();
-    const previousProgress = useRef<{stage: string; unit: string; current: bigint; at: number} | undefined>();
+    const previousProgress = useRef<{stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>();
     const [rate, setRate] = useState<{perSecond: number; etaMs: number} | undefined>();
     useEffect(() => {
         let timer: number | undefined;
@@ -46,8 +46,8 @@ export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?:
             if (current < BigInt(0) || total <= BigInt(0)) throw new Error("indeterminate progress");
             const now = Date.now();
             const previous = previousProgress.current;
-            previousProgress.current = {stage: progress.stage, unit: progress.unit, current, at: now};
-            if (previous === undefined || previous.stage !== progress.stage || previous.unit !== progress.unit || current <= previous.current || now <= previous.at) {
+            previousProgress.current = {stage: progress.stage, unit: progress.unit, current, total, at: now};
+            if (previous === undefined || previous.stage !== progress.stage || previous.unit !== progress.unit || previous.total !== total || current <= previous.current || now <= previous.at) {
                 setRate(undefined);
                 return;
             }
