@@ -540,7 +540,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
                     });
                 }
                 reportProgress(options, completedBefore + BigInt(position + 1), total, `Validating Outcome mode ${modeName} index entries`);
-                await yieldValidationWork(position);
+                await yieldValidationWork(position, options);
             }
         } finally {
             fs.closeSync(fd);
@@ -605,7 +605,7 @@ export class OutcomeLibraryBundleValidator<T extends string | number = string> i
 
                 expectedOffset = separatorPosition + 1;
                 reportProgress(options, BigInt(position + 1), total, `Validating Outcome mode ${modeName} index layout`);
-                await yieldValidationWork(position);
+                await yieldValidationWork(position, options);
             }
         } finally {
             fs.closeSync(fd);
@@ -1081,9 +1081,10 @@ function isAbortError(error: unknown): boolean {
     return error instanceof Error && error.name === "AbortError";
 }
 
-async function yieldValidationWork(position: number): Promise<void> {
+async function yieldValidationWork(position: number, options: OutcomeLibraryBundleValidateOptions | undefined): Promise<void> {
     if ((position + 1) % 256 !== 0) return;
     await new Promise<void>((resolve) => {
         setImmediate(resolve);
     });
+    assertNotCancelled(options);
 }

@@ -40,6 +40,18 @@ describe("OutcomeLibraryBundleWriter", () => {
         return [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("bonus", "bonus-lib")];
     }
 
+    // More than one native I/O batch.  Keeping this fixture here means the
+    // cancellation tests exercise the production writer's actual synchronous
+    // JSONL/index work, rather than a mock that happens to yield on its own.
+    function manyOutcomes(count = 512): WeightedOutcomeInput[] {
+        const seed = modes()[0].outcomes as WeightedOutcomeInput[];
+        return Array.from({length: count}, (_, position) => ({
+            id: String(position).padStart(4, "0"),
+            weight: 1,
+            artifact: {...seed[position % seed.length].artifact, roundId: `many-${position}`},
+        }));
+    }
+
     // A genuinely async source — forces a real await boundary between outcomes, the same way a caller streaming
     // from a database cursor or a network response would, rather than a plain array that happens to also satisfy
     // Iterable.
@@ -137,14 +149,21 @@ describe("OutcomeLibraryBundleWriter", () => {
         await writer.writeToDirectory([modes()[0]], outDir);
         const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
         const controller = new AbortController();
+        let timerRan = false;
 
-        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+        await expect(writer.writeToDirectory([{...modes()[0], outcomes: manyOutcomes()}], outDir, {
             signal: controller.signal,
-            onProgress: (progress) => {
-                if (progress.message.startsWith("Analyzing Outcome mode")) controller.abort();
+            onLifecycleStage: (stage) => {
+                if (stage === "analyzing") {
+                    setImmediate(() => {
+                        timerRan = true;
+                        controller.abort();
+                    });
+                }
             },
         })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
 
+        expect(timerRan).toBe(true);
         expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
@@ -154,14 +173,17 @@ describe("OutcomeLibraryBundleWriter", () => {
         await writer.writeToDirectory([modes()[0]], outDir);
         const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
         const controller = new AbortController();
+        let timerRan = false;
+        setImmediate(() => {
+            timerRan = true;
+            controller.abort();
+        });
 
-        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+        await expect(writer.writeToDirectory([{...modes()[0], outcomes: manyOutcomes()}], outDir, {
             signal: controller.signal,
-            onProgress: (progress) => {
-                if (progress.message === "Writing Outcome mode base") controller.abort();
-            },
         })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
 
+        expect(timerRan).toBe(true);
         expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
@@ -171,14 +193,21 @@ describe("OutcomeLibraryBundleWriter", () => {
         await writer.writeToDirectory([modes()[0]], outDir);
         const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
         const controller = new AbortController();
+        let timerRan = false;
 
-        await expect(writer.writeToDirectory([modes()[0]], outDir, {
+        await expect(writer.writeToDirectory([{...modes()[0], outcomes: manyOutcomes()}], outDir, {
             signal: controller.signal,
-            onProgress: (progress) => {
-                if (progress.message === "Building Outcome Library index") controller.abort();
+            onLifecycleStage: (stage) => {
+                if (stage === "building-index") {
+                    setImmediate(() => {
+                        timerRan = true;
+                        controller.abort();
+                    });
+                }
             },
         })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
 
+        expect(timerRan).toBe(true);
         expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
@@ -379,7 +408,9 @@ describe("OutcomeLibraryBundleWriter", () => {
 
         await expect(writer.writeToDirectory([modes()[0]], outDir, {
             assertDestinationAvailable: async () => {
-                await Promise.resolve();
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
                 assertionReached = true;
                 fs.mkdirSync(outDir);
                 fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");

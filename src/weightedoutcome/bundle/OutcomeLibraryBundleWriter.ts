@@ -376,6 +376,9 @@ export class OutcomeLibraryBundleWriter<T extends string | number = string> impl
                 await new Promise<void>((resolve) => {
                     setImmediate(resolve);
                 });
+                // A final chunk can complete the copy.  Honor cancellation
+                // before either finishing the JSON object or publishing it.
+                assertNotCancelled(options);
             }
             assertNotCancelled(options);
             fs.writeSync(destination, "]}\n");

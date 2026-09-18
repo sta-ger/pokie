@@ -261,6 +261,10 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 await new Promise<void>((resolve) => {
                     setImmediate(resolve);
                 });
+                // The source can finish exactly at a cooperative boundary.
+                // Check again here rather than letting the caller advance to
+                // the next lifecycle phase before seeing a timer-driven abort.
+                assertNotCancelled(options);
             }
         }
     } finally {
