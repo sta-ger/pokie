@@ -1096,6 +1096,13 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           requiresBounded: boolean;
           expectedRawWork: number | string;
           warnings: string[];
+          operationalEstimates?: {
+              recordCount: "unknown";
+              outputSize: "unknown";
+              memoryRisk: "unknown";
+              diskRisk: "unknown";
+              likelyDuration: "unknown";
+          };
           sampleSize?: number | string;
           seed?: string;
           plan: StudioArtifactConversionPlan;

@@ -255,6 +255,13 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    const operationalEstimates = outcomeLibraryPreflight.status !== "ok" ? undefined : outcomeLibraryPreflight.result.operationalEstimates ?? {
+        recordCount: "unknown",
+        outputSize: "unknown",
+        memoryRisk: "unknown",
+        diskRisk: "unknown",
+        likelyDuration: "unknown",
+    } as const;
 
     return (
         <div style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}>
@@ -393,6 +400,11 @@ function TargetCard({
                         <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
                             {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
                             {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
+                        </Text>
+                    )}
+                    {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
+                        <Text size="xs" c="dimmed">
+                            Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
                         </Text>
                     )}
                     {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (

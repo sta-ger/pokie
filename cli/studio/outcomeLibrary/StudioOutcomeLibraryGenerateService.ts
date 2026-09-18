@@ -296,6 +296,16 @@ export class StudioOutcomeLibraryGenerateService {
                 requiresBounded: preparedRequest.preflight.requiresSampledOptIn,
                 expectedRawWork: formatBigIntSafely(preparedRequest.preflight.expectedRawWork),
                 warnings: preparedRequest.preflight.warnings,
+                // Raw combination cardinality proves neither the number of
+                // deduplicated outcomes nor their serialized artifact size.
+                // Do not turn it into a host-dependent time/space promise.
+                operationalEstimates: {
+                    recordCount: "unknown",
+                    outputSize: "unknown",
+                    memoryRisk: "unknown",
+                    diskRisk: "unknown",
+                    likelyDuration: "unknown",
+                },
                 ...(preparedRequest.preflight.sample === undefined ? {} : {sampleSize: formatBigIntSafely(preparedRequest.preflight.sample.sampleSize), seed: preparedRequest.preflight.sample.seed}),
                 plan,
                 defaults: {
