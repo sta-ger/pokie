@@ -19,8 +19,8 @@ function percentFor(current: number | string | undefined, total: number | string
 }
 
 export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?: (id: string) => void}) {
-    const [observedAt, setObservedAt] = useState<number | undefined>();
-    const previousProgress = useRef<{stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>();
+    const [observedAt, setObservedAt] = useState<number | undefined>(undefined);
+    const previousProgress = useRef<{stage: string; unit: string; current: bigint; total: bigint; at: number} | undefined>(undefined);
     const [rate, setRate] = useState<{perSecond: number; etaMs: number} | undefined>();
     useEffect(() => {
         let timer: number | undefined;
@@ -69,7 +69,7 @@ export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?:
             previousProgress.current = undefined;
             setRate(undefined);
         }
-    }, [job.progress?.current, job.progress?.stage, job.progress?.total, job.progress?.unit]);
+    }, [job.progress]);
     if (!active(job.status)) return null;
     const progress = job.progress;
     const percent = percentFor(progress?.current, progress?.total);
