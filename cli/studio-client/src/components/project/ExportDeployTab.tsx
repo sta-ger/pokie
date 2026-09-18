@@ -125,7 +125,7 @@ type OutcomeLibraryRunView =
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
-    | {status: "error"; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
+    | {status: "error"; jobId?: string; recovery?: StudioJobView["recovery"]; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
@@ -219,6 +219,7 @@ function TargetCard({
     onGenerateOutcomeLibrary,
     onCancelOutcomeLibrary,
     onResumeOutcomeLibrary,
+    onFeatureOutcomeLibraryRecoveryAction,
     onInspectOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
@@ -244,6 +245,7 @@ function TargetCard({
     onGenerateOutcomeLibrary: () => void;
     onCancelOutcomeLibrary: () => void;
     onResumeOutcomeLibrary: () => void;
+    onFeatureOutcomeLibraryRecoveryAction?: (jobId: string) => void;
     onInspectOutcomeLibrary: (path: string) => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
@@ -442,6 +444,11 @@ function TargetCard({
                         <>
                             <ErrorState message={outcomeLibraryRun.message} />
                             {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
+                            {outcomeLibraryRun.jobId !== undefined && outcomeLibraryRun.recovery !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
+                                <Button size="xs" variant="light" mt="xs" onClick={() => onFeatureOutcomeLibraryRecoveryAction(outcomeLibraryRun.jobId!)}>
+                                    {outcomeLibraryRun.recovery.action === "resume" ? "Resume" : "Retry"}
+                                </Button>
+                            )}
                             <PlannerSummary plan={outcomeLibraryRun.plan} />
                         </>
                     )}
@@ -824,6 +831,19 @@ function toDurableOutcomeLibraryJob(job: StudioOutcomeLibraryGenerateJobView): S
     };
 }
 
+function outcomeLibraryJobTimestamp(job: StudioOutcomeLibraryGenerateJobView): number {
+    return job.completedAt ?? job.startedAt ?? job.createdAt ?? 0;
+}
+
+// The endpoint retains jobs across destinations and Studio restarts. Its
+// storage order is not a user-facing ordering contract, so choose the newest
+// record explicitly before allowing this feature card to own it.
+function newestOutcomeLibraryJob(jobs: readonly StudioOutcomeLibraryGenerateJobView[]): StudioOutcomeLibraryGenerateJobView | undefined {
+    return [...jobs].sort((left, right) =>
+        outcomeLibraryJobTimestamp(right) - outcomeLibraryJobTimestamp(left) || right.id.localeCompare(left.id),
+    )[0];
+}
+
 // The sole Studio Build/Export surface -- lists every applicable builder this project's own resolved
 // capabilities offer (see describeExportDeployTargetCards's own doc comment), grouped by what it actually
 // does, and runs it directly: outcome-library generation, Stake Engine Export, and every registered
@@ -838,18 +858,31 @@ function toDurableOutcomeLibraryJob(job: StudioOutcomeLibraryGenerateJobView): S
 // auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
-export function ExportDeployTab({capabilities: _capabilities, deployment, recoveryRequest}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager; recoveryRequest?: Readonly<Record<string, unknown>>}) {
+export function ExportDeployTab({capabilities: _capabilities, deployment, recoveryRequest, onFeatureOwnedOutcomeLibraryJobChange, onFeatureOutcomeLibraryRecoveryAction}: {
+    capabilities: readonly StudioProjectCapability[];
+    deployment: DeploymentManager;
+    recoveryRequest?: Readonly<Record<string, unknown>>;
+    onFeatureOwnedOutcomeLibraryJobChange?: (jobId: string | undefined) => void;
+    onFeatureOutcomeLibraryRecoveryAction?: (jobId: string) => void;
+}) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
+    const [featureOwnedOutcomeLibraryJobId, setFeatureOwnedOutcomeLibraryJobId] = useState<string | undefined>();
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const outcomeLibraryPollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => {
         if (outcomeLibraryPollTimer.current !== undefined) clearTimeout(outcomeLibraryPollTimer.current);
     }, []);
+    useEffect(() => {
+        onFeatureOwnedOutcomeLibraryJobChange?.(featureOwnedOutcomeLibraryJobId);
+    }, [featureOwnedOutcomeLibraryJobId, onFeatureOwnedOutcomeLibraryJobChange]);
+    useEffect(() => () => {
+        onFeatureOwnedOutcomeLibraryJobChange?.(undefined);
+    }, [onFeatureOwnedOutcomeLibraryJobChange]);
     const [outcomeLibraryGenerationOptions, setOutcomeLibraryGenerationOptions] = useState<OutcomeLibraryGenerationOptions>({
         mode: "",
         stake: "",
@@ -876,27 +909,26 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         listOutcomeLibraryGenerationJobs(fetchImpl)
             .then((jobs) => {
                 if (cancelled) return;
-                const active = jobs.find((job) => job.status === "queued" || job.status === "running" || job.status === "cancelling");
-                if (active !== undefined) {
-                    setOutcomeLibraryRun({status: "running", job: active});
-                    pollOutcomeLibraryGeneration(active.id);
+                const newest = newestOutcomeLibraryJob(jobs);
+                setFeatureOwnedOutcomeLibraryJobId(newest?.id);
+                if (newest === undefined) return;
+                if (newest.status === "queued" || newest.status === "running" || newest.status === "cancelling") {
+                    setOutcomeLibraryRun({status: "running", job: newest});
+                    pollOutcomeLibraryGeneration(newest.id);
                     return;
                 }
-                const completed = jobs.find((job) => job.status === "completed" && job.result?.status === "ok");
-                if (completed?.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: completed.result, ...(completed.durationMs === undefined ? {} : {durationMs: completed.durationMs})});
+                if (newest.status === "completed" && newest.result?.status === "ok") {
+                    setOutcomeLibraryRun({status: "ok", result: newest.result, ...(newest.durationMs === undefined ? {} : {durationMs: newest.durationMs})});
                     return;
                 }
-                const cancelledJob = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled");
-                if (cancelledJob?.result?.status === "cancelled") {
-                    setOutcomeLibraryRun({status: "cancelled", result: cancelledJob.result});
+                if (newest.status === "cancelled" && newest.result?.status === "cancelled") {
+                    setOutcomeLibraryRun({status: "cancelled", result: newest.result});
                     return;
                 }
-                const failed = jobs.find((job) => job.status === "failed" || job.status === "recovery-required");
-                if (failed?.result !== undefined && failed.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(failed.result), ...("error" in failed.result ? {diagnostic: failed.result.error} : {}), plan: failed.result.plan});
-                } else if (failed !== undefined) {
-                    setOutcomeLibraryRun({status: "error", message: "Outcome library generation ended without a result."});
+                if (newest.result !== undefined && newest.result.status !== "ok") {
+                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: describeGenerateResultError(newest.result), ...("error" in newest.result ? {diagnostic: newest.result.error} : {}), plan: newest.result.plan});
+                } else {
+                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: "Outcome library generation ended without a result."});
                 }
             })
             .catch(() => {
@@ -1149,6 +1181,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             preflightToken: outcomeLibraryPreflight.result.preflightToken,
         })
             .then((job) => {
+                setFeatureOwnedOutcomeLibraryJobId(job.id);
                 setOutcomeLibraryRun({status: "running", job});
                 pollOutcomeLibraryGeneration(job.id);
             })
@@ -1168,6 +1201,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     function pollOutcomeLibraryGeneration(id: string): void {
         getOutcomeLibraryGenerationJob(fetchImpl, id)
             .then((job) => {
+                setFeatureOwnedOutcomeLibraryJobId(job.id);
                 if (job.status === "queued" || job.status === "running" || job.status === "cancelling") {
                     setOutcomeLibraryRun({status: "running", job});
                     outcomeLibraryPollTimer.current = setTimeout(() => pollOutcomeLibraryGeneration(id), 250);
@@ -1190,9 +1224,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // check while making a clean cancellation recoverable.
                     setOutcomeLibraryPreflightRevision((revision) => revision + 1);
                 } else if (job.result !== undefined && job.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
+                    setOutcomeLibraryRun({status: "error", jobId: job.id, recovery: job.recovery, message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {
-                    setOutcomeLibraryRun({status: "error", message: "Outcome library generation ended without a result."});
+                    setOutcomeLibraryRun({status: "error", jobId: job.id, recovery: job.recovery, message: "Outcome library generation ended without a result."});
                 }
             })
             .catch((error: unknown) => {
@@ -1213,6 +1247,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         if (!outcomeLibraryGuard.begin()) return;
         resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id)
             .then((job) => {
+                setFeatureOwnedOutcomeLibraryJobId(job.id);
                 setOutcomeLibraryRun({status: "running", job});
                 pollOutcomeLibraryGeneration(job.id);
             })
@@ -1395,6 +1430,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             onCancelOutcomeLibrary={handleCancelOutcomeLibrary}
                                             onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
+                                            onFeatureOutcomeLibraryRecoveryAction={onFeatureOutcomeLibraryRecoveryAction}
                                             onInspectOutcomeLibrary={(bundleDir) => openAndNavigate(bundleDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}

@@ -438,6 +438,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    // Build/Export can provide a richer, operation-specific presentation for
+    // one Outcome Library job. Keep that ownership at durable-job granularity:
+    // concurrent destinations and retained history must continue through the
+    // common cards instead of disappearing with the whole operation.
+    const [featureOwnedOutcomeLibraryJobId, setFeatureOwnedOutcomeLibraryJobId] = useState<string | undefined>();
+    const handleFeatureOwnedOutcomeLibraryJobChange = useCallback((jobId: string | undefined): void => {
+        setFeatureOwnedOutcomeLibraryJobId(jobId);
+    }, []);
     const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
@@ -458,6 +466,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setActiveTab("exportDeploy");
         }
     }, [setActiveTab]);
+    const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
+        const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
+        if (job === undefined || job.recovery === undefined) return;
+        if (job.recovery.action === "resume") {
+            commonJobs.recover(job.id);
+            return;
+        }
+        handleJobRecoveryAction(job);
+    }, [commonJobs, handleJobRecoveryAction]);
     // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs its capabilities without caring whether the project is game-backed, canonical-
     // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
@@ -954,12 +971,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
     // own hooks/fetches.
     const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
-    // Build/Export owns the task-oriented Outcome Library workflow, including
+    // Build/Export owns one task-oriented Outcome Library workflow, including
     // its operation-specific retained result and recovery actions. The common
-    // durable projection remains visible on every other tab, but displaying it
-    // beside the feature card would present the same durable job twice.
+    // durable projection remains visible on every other tab, and on this tab
+    // for every Outcome Library job the feature workflow does not own.
     const visibleCommonJobs = activeTab === "exportDeploy"
-        ? commonJobs.jobs.filter((job) => job.operation !== "outcome-library-generation")
+        ? commonJobs.jobs.filter((job) => job.id !== featureOwnedOutcomeLibraryJobId)
         : commonJobs.jobs;
     const projectName = describeProjectName(header);
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
@@ -1278,7 +1295,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" || recoveryJob?.operation === "outcome-library-generation" ? recoveryJob.request : undefined} />
+                                <ExportDeployTab
+                                    key={projectKey ?? "no-project"}
+                                    capabilities={headerCapabilities}
+                                    deployment={deployment}
+                                    recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" || recoveryJob?.operation === "outcome-library-generation" ? recoveryJob.request : undefined}
+                                    onFeatureOwnedOutcomeLibraryJobChange={handleFeatureOwnedOutcomeLibraryJobChange}
+                                    onFeatureOutcomeLibraryRecoveryAction={handleFeatureOutcomeLibraryRecoveryAction}
+                                />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns

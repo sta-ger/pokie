@@ -975,6 +975,102 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByText(/Selector: bundle outcomelibrary, mode base/)).toBeInTheDocument();
     });
 
+    it("owns only the newest concurrent Outcome Library job and leaves the other durable job visible", async () => {
+        const user = userEvent.setup();
+        const olderJob = {
+            id: "older-active-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/older",
+            status: "running", createdAt: 10, progress: {stage: "Writing outcomes", unit: "records", current: "2", total: "4"},
+        };
+        const newestJob = {
+            id: "newest-active-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/newest",
+            status: "running", createdAt: 20, progress: {stage: "Analyzing outcomes", unit: "records", current: "3", total: "4"},
+        };
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [olderJob, newestJob]}}),
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 200,
+                // Deliberately oldest-first: durable storage order must not choose the feature card.
+                body: {jobs: [
+                    {id: olderJob.id, status: "running", cancellationRequested: false, createdAt: olderJob.createdAt, durableProgress: olderJob.progress},
+                    {id: newestJob.id, status: "running", cancellationRequested: false, createdAt: newestJob.createdAt, durableProgress: newestJob.progress},
+                ]},
+            }),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === `/api/project/outcome-libraries/generate/jobs/${newestJob.id}`) {
+                return new Promise(() => {
+                    // Keep the rehydrated job active while asserting its visible owner.
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText("Writing outcomes")).toBeInTheDocument();
+        expect(screen.getAllByText("Writing outcomes")).toHaveLength(1);
+        expect(screen.getAllByRole("alert")).toHaveLength(2);
+        expect(screen.getByText("Analyzing outcomes")).toBeInTheDocument();
+        expect(screen.getAllByText("Analyzing outcomes")).toHaveLength(1);
+        expect(screen.getAllByRole("button", {name: "Cancel"})).toHaveLength(2);
+    });
+
+    it("selects the newest retained Outcome Library result without hiding older terminal jobs", async () => {
+        const user = userEvent.setup();
+        const retainedResult = {
+            status: "ok" as const, bundleDir: "newest-library", resolvedBundleDir: "/owning-project/newest-library", files: ["manifest.json", "base.jsonl"], byteSize: 4096,
+            warnings: [],
+            mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:newest", outcomeCount: 4, totalWeight: 6, rtp: 0.95},
+            generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", pokieVersion: "1.0.0", game: {id: "fixture", name: "Fixture", version: "1.0.0"}, generatedAt: "2026-09-18T00:00:00.000Z", sampledRawCount: 6, totalOutcomeSpaceSize: 6},
+            coverage: 1,
+            selector: {kind: "bundle" as const, bundleDir: "newest-library", modeName: "base"},
+            plan: {status: "planned" as const, source: {kind: "blueprint" as const, capabilities: []}, target: {kind: "outcomeLibrary" as const, capabilities: []}, steps: [], preflight: {destinationKind: "directory" as const, estimatedWork: "generate", losses: [], oneWay: false}},
+        };
+        const olderFailed = {
+            id: "older-failed-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/failed",
+            status: "failed", createdAt: 10, error: "Older generation failed.",
+        };
+        const olderCancelled = {
+            id: "older-cancelled-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/cancelled",
+            status: "cancelled", createdAt: 20, result: {summary: "Older generation was cancelled."},
+        };
+        const newestCompleted = {
+            id: "newest-completed-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/newest",
+            status: "completed", createdAt: 30,
+        };
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [olderFailed, olderCancelled, newestCompleted]}}),
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 200,
+                // Deliberately oldest-first: completion must use timestamps rather than Map insertion order.
+                body: {jobs: [
+                    {id: olderFailed.id, status: "failed", cancellationRequested: false, createdAt: olderFailed.createdAt},
+                    {id: olderCancelled.id, status: "cancelled", cancellationRequested: true, createdAt: olderCancelled.createdAt, result: {status: "cancelled", processedRawIndex: "2", progressTotal: "4", recovery: "Retry."}},
+                    {id: newestCompleted.id, status: "completed", cancellationRequested: false, createdAt: newestCompleted.createdAt, completedAt: newestCompleted.createdAt, durationMs: 321, result: retainedResult},
+                ]},
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText(/Generated 4 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.getAllByText(/Generated 4 outcomes for mode "base" using exact/)).toHaveLength(1);
+        expect(screen.getByText("outcome-library-generation: failed")).toBeInTheDocument();
+        expect(screen.getAllByText("outcome-library-generation: failed")).toHaveLength(1);
+        expect(screen.getByText("outcome-library-generation: cancelled")).toBeInTheDocument();
+        expect(screen.getAllByText("outcome-library-generation: cancelled")).toHaveLength(1);
+        expect(screen.queryByText("outcome-library-generation: completed")).not.toBeInTheDocument();
+    });
+
     it("renders compatibility lifecycle fallback as the sole running status and cancellation control", async () => {
         const user = userEvent.setup();
         let cancellationRequests = 0;
