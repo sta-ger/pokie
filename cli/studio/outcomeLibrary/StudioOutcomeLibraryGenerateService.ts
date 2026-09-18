@@ -796,6 +796,7 @@ export class StudioOutcomeLibraryGenerateService {
             return {
                 status: "ok",
                 bundleDir: outDirRelative,
+                resolvedBundleDir: boundDestination,
                 files: writeResult.files,
                 byteSize: writeResult.files.reduce((total, file) => total + fs.statSync(path.join(boundDestination, file)).size, 0),
                 warnings: writeResult.issues,

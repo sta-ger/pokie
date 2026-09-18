@@ -1143,6 +1143,8 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {
           status: "ok";
           bundleDir: string;
+          /** Canonical server-resolved bundle path for inspect/open/reveal. */
+          resolvedBundleDir: string;
           files: string[];
           byteSize?: number;
           warnings: ValidationIssue[];

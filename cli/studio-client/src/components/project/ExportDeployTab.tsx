@@ -457,15 +457,15 @@ function TargetCard({
                             <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                 {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.bundleDir)}>Inspect library</Button>
+                                <Button size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
                                 {outputActionsUnavailable ? (
                                     <>
-                                        <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.bundleDir)}>Copy path</Button>
+                                        <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
                                         <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
                                     </>
                                 ) : <>
-                                    <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>Open output folder</Button>
-                                    <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.bundleDir)}>Reveal output</Button>
+                                    <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.resolvedBundleDir)}>Open output folder</Button>
+                                    <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.resolvedBundleDir)}>Reveal output</Button>
                                 </>}
                                 {outcomeLibraryRun.result.warnings.map((warning) => <Text size="xs" c="orange" key={`${warning.code}:${warning.message}`}>{warning.message}</Text>)}
                                 <AdvancedDisclosure label="Inspect completed library">

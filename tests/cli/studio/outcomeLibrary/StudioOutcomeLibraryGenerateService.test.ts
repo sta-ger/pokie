@@ -810,6 +810,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             }
 
             expect(result.bundleDir).toBe(StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
+            expect(result.resolvedBundleDir).toBe(path.join(projectRoot, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR));
             expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(true);
             expect(result.files.length).toBeGreaterThan(0);
             expect(result.mode.modeName).toBe("base");

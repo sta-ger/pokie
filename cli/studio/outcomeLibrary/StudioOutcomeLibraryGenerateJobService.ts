@@ -367,7 +367,11 @@ export class StudioOutcomeLibraryGenerateJobService {
         if (result.status === "ok") {
             this.jobService?.complete(record.id, {
                 summary: "Outcome Library generation completed.",
-                outputs: [{path: result.bundleDir, label: "Outcome Library bundle"}],
+                // bundleDir is intentionally project-relative because it is
+                // part of the selector/configuration contract. Durable host
+                // actions instead retain the server-resolved published path:
+                // a Studio process cwd is not the owning project directory.
+                outputs: [{path: result.resolvedBundleDir, label: "Outcome Library bundle"}],
                 // Keep the completion card useful after its short-lived
                 // compatibility record has gone away.  These are copied from
                 // the published result rather than reconstructed by a later

@@ -316,6 +316,42 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(live).not.toHaveProperty("progress");
     });
 
+    it("retains the resolved published bundle path for live and rehydrated terminal actions", async () => {
+        const durableDirectory = path.join(projectRoot, ".durable-jobs");
+        const resolvedBundleDir = path.join(projectRoot, "published", "outcomelibrary");
+        const generate = jest.fn((root: string) => ({
+            status: "ok" as const,
+            bundleDir: "published/outcomelibrary",
+            resolvedBundleDir,
+            files: ["manifest.json"],
+            warnings: [],
+            mode: {modeName: "base", libraryId: "library", hash: "hash", outcomeCount: 1, totalWeight: 1, rtp: 1},
+            generator: {} as never,
+            coverage: 1,
+            selector: {kind: "bundle" as const, bundleDir: "published/outcomelibrary", modeName: "base"},
+            plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+        }));
+        const liveService = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+        const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
+        liveService.attachJobService(durableJobs);
+
+        const started = liveService.start(projectRoot, {generation: "sampled"});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(durableJobs.get(projectRoot, started.id)).toMatchObject({
+            status: "completed",
+            result: {outputs: [{label: "Outcome Library bundle", path: resolvedBundleDir}], detail: {result: {resolvedBundleDir}}},
+        });
+
+        const rehydratedService = new StudioOutcomeLibraryGenerateJobService({generate} as unknown as StudioOutcomeLibraryGenerateService);
+        rehydratedService.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+        expect(rehydratedService.getStatusForProject(projectRoot, started.id)).toMatchObject({
+            status: "completed",
+            result: {status: "ok", resolvedBundleDir},
+        });
+    });
+
     it("emits the complete durable Outcome Library stage trace in execution order", async () => {
         const durableJobs = new StudioJobService(new FileStudioJobRepository(path.join(projectRoot, ".durable-jobs")));
         const progress = jest.spyOn(durableJobs, "progress");
@@ -417,7 +453,7 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
                 return {status: "cancelled" as const, processedRawIndex: BigInt(1), progressTotal: BigInt(6), checkpoint, recovery: "resume", plan: createUnresolvedRuntimePlan(root, "outcomeLibrary")};
             }
             return {
-                status: "ok" as const, bundleDir: "outcomelibrary", files: [], warnings: [],
+                status: "ok" as const, bundleDir: "outcomelibrary", resolvedBundleDir: path.join(root, "outcomelibrary"), files: [], warnings: [],
                 mode: {modeName: "base", libraryId: "library", hash: "hash", outcomeCount: 1, totalWeight: 1, rtp: 1},
                 generator: {} as never, coverage: 1, selector: {kind: "bundle" as const, bundleDir: "outcomelibrary", modeName: "base"}, plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
             };

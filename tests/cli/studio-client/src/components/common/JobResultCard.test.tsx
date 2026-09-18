@@ -65,7 +65,7 @@ describe("JobResultCard", () => {
                 provenance: {library: {id: "fixture-base", hash: "sha256:library"}},
                 outputs: [{label: "Outcome Library bundle", path: "outcomelibrary"}],
                 detail: {status: "ok", result: {
-                    status: "ok", byteSize: 4096,
+                    status: "ok", resolvedBundleDir: "/owning-project/outcomelibrary", byteSize: 4096,
                     mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:library", outcomeCount: 4},
                     generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", generatedAt: "2026-09-18T00:00:00.000Z", game: {id: "fixture", version: "1.0.0"}},
                     selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
@@ -84,6 +84,31 @@ describe("JobResultCard", () => {
         expect(screen.queryByRole("button", {name: "Reveal Outcome Library bundle"})).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", {name: "Inspect Outcome Library bundle"}));
-        expect(inspect).toHaveBeenCalledWith("outcomelibrary");
+        expect(inspect).toHaveBeenCalledWith("/owning-project/outcomelibrary");
+    });
+
+    it("sends Inspect, Open, and Reveal to the retained resolved Outcome Library bundle", () => {
+        const inspect = jest.fn();
+        const open = jest.fn();
+        const reveal = jest.fn();
+        render(<MantineProvider><JobResultCard onInspectOutput={inspect} onOpenOutput={open} onRevealOutput={reveal} job={{
+            id: "outcome-local", projectId: "/owning-project", operation: "outcome-library-generation", request: {}, conflictKey: "generation",
+            status: "completed", createdAt: 1,
+            result: {
+                summary: "Outcome Library generation completed.",
+                outputs: [{label: "Outcome Library bundle", path: "outcomelibrary"}],
+                detail: {result: {
+                    status: "ok", resolvedBundleDir: "/owning-project/outcomelibrary",
+                    mode: {}, generator: {}, selector: {},
+                }},
+            },
+        }} /></MantineProvider>);
+
+        fireEvent.click(screen.getByRole("button", {name: "Inspect Outcome Library bundle"}));
+        fireEvent.click(screen.getByRole("button", {name: "Open Outcome Library bundle"}));
+        fireEvent.click(screen.getByRole("button", {name: "Reveal Outcome Library bundle"}));
+        expect(inspect).toHaveBeenCalledWith("/owning-project/outcomelibrary");
+        expect(open).toHaveBeenCalledWith("/owning-project/outcomelibrary");
+        expect(reveal).toHaveBeenCalledWith("/owning-project/outcomelibrary");
     });
 });

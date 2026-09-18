@@ -171,6 +171,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const user = userEvent.setup();
         const requests: string[] = [];
         let inspectedProjectRoot: string | undefined;
+        let openedFolder: string | undefined;
+        let revealedPath: string | undefined;
+        const resolvedBundleDir = "/owning-project/outcomelibrary";
         const fetchImpl: FetchLike = (url, init) => {
             const [requestPath] = url.split("?");
             requests.push(`${init?.method ?? "GET"} ${requestPath}`);
@@ -178,8 +181,19 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 inspectedProjectRoot = (JSON.parse(String(init?.body)) as {projectRoot: string}).projectRoot;
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
                     status: "ok",
-                    context: {mode: "project", projectRoot: "outcomelibrary"},
+                    context: {mode: "project", projectRoot: resolvedBundleDir},
                 })});
+            }
+            if (requestPath === "/api/home/fs/native-browse/availability") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "available"})});
+            }
+            if (requestPath === "/api/home/fs/open-folder") {
+                openedFolder = (JSON.parse(String(init?.body)) as {path: string}).path;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+            }
+            if (requestPath === "/api/home/fs/reveal-path") {
+                revealedPath = (JSON.parse(String(init?.body)) as {path: string}).path;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [{
@@ -194,7 +208,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
                     id: "saved-checkpoint", status: "completed", cancellationRequested: false, durationMs: 44,
                     result: {
-                        status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json"], byteSize: 123, warnings: [],
+                        status: "ok", bundleDir: "outcomelibrary", resolvedBundleDir, files: ["manifest.json"], byteSize: 123, warnings: [],
                         mode: {modeName: "base", libraryId: "a-base", hash: "sha256:resumed", outcomeCount: 6, totalWeight: 6, rtp: 0.95},
                         generator: {strategy: "exact", pokieVersion: "1.0.0"}, coverage: 1,
                         selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
@@ -212,14 +226,14 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText(/Generated 6 outcomes for mode "base" using exact/)).toBeInTheDocument();
         expect(screen.getByText(/Final size: 123 bytes.*Duration: 44ms/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Copy path"})).toBeInTheDocument();
-        expect(screen.getByText("Opening local output is unavailable from this headless or remote Studio session.")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Open output folder"})).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Reveal output"})).not.toBeInTheDocument();
+        await user.click(await screen.findByRole("button", {name: "Open output folder"}));
+        await user.click(screen.getByRole("button", {name: "Reveal output"}));
+        await waitFor(() => expect(openedFolder).toBe(resolvedBundleDir));
+        expect(revealedPath).toBe(resolvedBundleDir);
         await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
         expect(screen.getByText(/Hash: sha256:resumed/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Inspect library"}));
-        await waitFor(() => expect(inspectedProjectRoot).toBe("outcomelibrary"));
+        await waitFor(() => expect(inspectedProjectRoot).toBe(resolvedBundleDir));
         expect(requests).toContain("POST /api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume");
     });
 
@@ -928,7 +942,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 body: {jobs: [{
                     id: "completed-library", status: "completed", cancellationRequested: false, durationMs: 321,
                     result: {
-                        status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json", "base.jsonl"], byteSize: 4096,
+                        status: "ok", bundleDir: "outcomelibrary", resolvedBundleDir: "/owning-project/outcomelibrary", files: ["manifest.json", "base.jsonl"], byteSize: 4096,
                         warnings: [{code: "retained-warning", message: "The retained warning."}],
                         mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:library", outcomeCount: 4, totalWeight: 6, rtp: 0.95},
                         generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", pokieVersion: "1.0.0", game: {id: "fixture", name: "Fixture", version: "1.0.0"}, generatedAt: "2026-09-18T00:00:00.000Z", sampledRawCount: 6, totalOutcomeSpaceSize: 6},
@@ -1079,6 +1093,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     result: {
                         status: "ok",
                         bundleDir: "outcomelibrary",
+                        resolvedBundleDir: "/owning-project/outcomelibrary",
                         files: ["manifest.json"],
                         warnings: [],
                         mode: {modeName: "base", libraryId: "random-base", hash: "sha256:library", outcomeCount: 10_000, totalWeight: 10_000, rtp: 0.95},

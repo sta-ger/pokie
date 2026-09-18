@@ -64,6 +64,10 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
     const generatorGame = isRecord(generator?.game)
         ? [textValue(generator.game.id), textValue(generator.game.version)].filter((entry): entry is string => entry !== undefined).join(" · ")
         : undefined;
+    // The durable output is written by StudioOutcomeLibraryGenerateJobService
+    // from resolvedBundleDir. Do not substitute the project-relative selector
+    // path for a host action when viewing an older incomplete durable record.
+    const resolvedOutcomeLibraryPath = textValue(outcomeResult?.resolvedBundleDir);
     return (
         <Alert color={color} title={title}>
             <Stack gap={4}>
@@ -90,21 +94,26 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                     <summary>Inspect retained request</summary>
                     <Text size="xs">{JSON.stringify(job.request)}</Text>
                 </details>
-                {job.result?.outputs?.map((output) => (
-                    <Group gap="xs" key={output.label}>
-                        {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}
-                        {job.operation === "outcome-library-generation" && output.path !== undefined && onInspectOutput !== undefined &&
-                            <Button size="xs" variant="subtle" onClick={() => onInspectOutput(output.path!)}>Inspect {output.label}</Button>}
-                        {output.path !== undefined && outputActionsUnavailableReason === undefined && onOpenOutput !== undefined &&
-                            <Button size="xs" variant="subtle" onClick={() => onOpenOutput(output.path!)}>Open {output.label}</Button>}
-                        {output.path !== undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
-                            <Button size="xs" variant="subtle" onClick={() => onRevealOutput(output.path!)}>Reveal {output.label}</Button>}
-                        {output.path !== undefined && outputActionsUnavailableReason !== undefined &&
-                            <Text size="xs">Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
-                        {output.downloadPath === undefined && (output.path === undefined || (onOpenOutput === undefined && onRevealOutput === undefined && onInspectOutput === undefined)) &&
-                            <Text size="xs">{output.label}{output.path === undefined ? "" : `: ${output.path}`}</Text>}
-                    </Group>
-                ))}
+                {job.result?.outputs?.map((output) => {
+                    const outputPath = job.operation === "outcome-library-generation" && outcomeResult !== undefined
+                        ? resolvedOutcomeLibraryPath
+                        : output.path;
+                    return (
+                        <Group gap="xs" key={output.label}>
+                            {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}
+                            {job.operation === "outcome-library-generation" && outputPath !== undefined && onInspectOutput !== undefined &&
+                                <Button size="xs" variant="subtle" onClick={() => onInspectOutput(outputPath)}>Inspect {output.label}</Button>}
+                            {outputPath !== undefined && outputActionsUnavailableReason === undefined && onOpenOutput !== undefined &&
+                                <Button size="xs" variant="subtle" onClick={() => onOpenOutput(outputPath)}>Open {output.label}</Button>}
+                            {outputPath !== undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
+                                <Button size="xs" variant="subtle" onClick={() => onRevealOutput(outputPath)}>Reveal {output.label}</Button>}
+                            {outputPath !== undefined && outputActionsUnavailableReason !== undefined &&
+                                <Text size="xs">Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
+                            {output.downloadPath === undefined && (outputPath === undefined || (onOpenOutput === undefined && onRevealOutput === undefined && onInspectOutput === undefined)) &&
+                                <Text size="xs">{output.label}{outputPath === undefined ? "" : `: ${outputPath}`}</Text>}
+                        </Group>
+                    );
+                })}
                 {job.recovery !== undefined && <Text size="xs">Next: {job.recovery.action} — {job.recovery.reason}</Text>}
                 {job.recovery !== undefined && (
                     <Group gap="xs">

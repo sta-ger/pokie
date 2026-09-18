@@ -1016,9 +1016,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .catch(() => setCopyPathNotice("Couldn't copy the project path. Open Advanced details to select it."));
     }
 
-    function openJobOutput(outputPath: string): void {
+    function openJobOutput(resolvedOutputPath: string): void {
         setJobOutputNotice(undefined);
-        openOutputFolder(fetchImpl, outputPath)
+        openOutputFolder(fetchImpl, resolvedOutputPath)
             .then((result) => {
                 if (result.status === "ok") {
                     setJobOutputNotice("Opened job output.");
@@ -1029,9 +1029,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
 
-    function revealJobOutput(outputPath: string): void {
+    function revealJobOutput(resolvedOutputPath: string): void {
         setJobOutputNotice(undefined);
-        revealOutputPath(fetchImpl, outputPath)
+        revealOutputPath(fetchImpl, resolvedOutputPath)
             .then((result) => {
                 if (result.status === "ok") {
                     setJobOutputNotice("Revealed job output.");
@@ -1042,9 +1042,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
 
-    function inspectJobOutput(outputPath: string): void {
+    function inspectJobOutput(resolvedOutputPath: string): void {
         setJobOutputNotice(undefined);
-        openAndNavigate(outputPath).catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
+        openAndNavigate(resolvedOutputPath).catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
 
     useEffect(() => {
