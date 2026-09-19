@@ -64,7 +64,7 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
         issues: ValidationIssue[],
     ): PokieGamePackageValidationReport {
         const errors = issues.filter((issue) => issue.severity === "error");
-        const warnings = issues.filter((issue) => issue.severity === "warning" || issue.severity === "info");
+        const warnings = issues.filter((issue) => issue.severity === "warning");
         const suggestions = [
             ...new Set(
                 issues

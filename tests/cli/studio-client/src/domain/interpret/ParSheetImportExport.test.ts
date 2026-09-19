@@ -61,6 +61,15 @@ describe("interpretParSheetImportExport", () => {
             expect(describeParSheetImportOutcome({errors: [], warnings: []})).toBe("success");
         });
 
+        it("is success when verified provenance is the only informational diagnostic", () => {
+            const provenance: ValidationIssue = {
+                code: "parsheet-provenance-present",
+                severity: "info",
+                message: "The recorded hash matches the imported data.",
+            };
+            expect(describeParSheetImportOutcome({errors: [], warnings: [], information: [provenance]})).toBe("success");
+        });
+
         it("is partial when there are only warnings", () => {
             const warning: ValidationIssue = {code: "parsheet-provenance-missing", severity: "warning", message: "no Meta sheet"};
             expect(describeParSheetImportOutcome({errors: [], warnings: [warning]})).toBe("partial");

@@ -2425,7 +2425,7 @@ export class StudioServer implements StudioServerHandling {
         try {
             const imported = await new ParSheetImporter().importFromFile(project.rootPath);
             const errors = imported.issues.filter((issue) => issue.severity === "error");
-            const warnings = imported.issues.filter((issue) => issue.severity !== "error");
+            const warnings = imported.issues.filter((issue) => issue.severity === "warning");
             const suggestions = [...new Set([...errors, ...warnings].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion)))];
             return {packageRoot: project.rootPath, valid: errors.length === 0, game: readBlueprintGameIdentity(imported.blueprint), errors, warnings, suggestions};
         } catch (error) {

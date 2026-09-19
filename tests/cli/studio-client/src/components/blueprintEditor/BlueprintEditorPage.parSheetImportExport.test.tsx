@@ -128,6 +128,34 @@ describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
         expect(screen.getByRole("button", {name: "Apply"})).not.toBeDisabled();
     });
 
+    it("presents verified provenance as successful integrity information rather than a warning", async () => {
+        const user = userEvent.setup();
+        const fetchImpl: FetchLike = (url) => {
+            if (url === IMPORT_URL) {
+                return jsonResponse({
+                    status: "ok",
+                    path: "/games/in.par.xlsx",
+                    blueprint: IMPORTED_BLUEPRINT,
+                    conversionEvidence: CONVERSION_EVIDENCE,
+                    errors: [],
+                    warnings: [],
+                    information: [{code: "parsheet-provenance-present", severity: "info", message: "The recorded hash matches the imported data."}],
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+        await user.type(screen.getByLabelText("PAR sheet path"), "./in.par.xlsx");
+        await user.click(screen.getByRole("button", {name: "Import"}));
+
+        expect(await screen.findByText("Imported successfully")).toBeInTheDocument();
+        expect(screen.getByText("Verified integrity")).toBeInTheDocument();
+        expect(screen.getByText("parsheet-provenance-present: The recorded hash matches the imported data.")).toBeInTheDocument();
+        expect(screen.queryByText("Imported with warnings")).not.toBeInTheDocument();
+    });
+
     it("reflects an accepted native PAR workbook selection in the rendered path field", async () => {
         const user = userEvent.setup();
         const selectedPath = "/physical-fixtures/starter.par.xlsx";
