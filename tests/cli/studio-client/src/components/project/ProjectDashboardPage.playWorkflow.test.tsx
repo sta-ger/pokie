@@ -44,7 +44,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
-        await screen.findByText("play-find-any-win: recovery-required");
+        await screen.findByText("play-find-any-win · Recovery required");
         expect(calls.filter((call) => call.url === "/api/project/play/session")).toHaveLength(0);
         await user.click(screen.getByRole("button", {name: "Start new session"}));
         await screen.findByRole("button", {name: "Spin"});

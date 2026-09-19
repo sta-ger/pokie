@@ -113,7 +113,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
-        await screen.findByText("simulation: recovery-required");
+        await screen.findByText("simulation · Recovery required");
         await user.click(screen.getByRole("button", {name: "Retry"}));
         // Mantine NumberInput is a text input so it can preserve intermediate numeric input;
         // the submitted request below proves the reconstructed form still emits a number.

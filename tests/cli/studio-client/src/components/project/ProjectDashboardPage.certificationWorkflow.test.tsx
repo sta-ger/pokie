@@ -111,7 +111,7 @@ describe("ProjectDashboardPage - Certification workflow", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/overview"]});
 
-        await screen.findByText("certification-build: recovery-required");
+        await screen.findByText("certification-build · Recovery required");
         await user.click(screen.getByRole("button", {name: "Rebuild"}));
         await screen.findByLabelText("Source outcome-library bundle directory");
         expect(screen.getByLabelText("Source outcome-library bundle directory")).toHaveValue(recoveryRequest.bundleDir);

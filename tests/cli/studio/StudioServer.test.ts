@@ -3234,6 +3234,7 @@ describe("StudioServer", () => {
                 game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 errors: [],
                 warnings: [],
+                information: [],
                 suggestions: [],
             };
             validate.mockResolvedValue(report);
@@ -3579,6 +3580,7 @@ describe("StudioServer", () => {
                 game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
                 errors: [],
                 warnings: [],
+                information: [],
                 suggestions: [],
             });
         });
@@ -3689,7 +3691,7 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
 
                 expect(status).toBe(200);
-                expect(body).toEqual({packageRoot: bundleDir, valid: true, game: null, errors: [], warnings: [], suggestions: []});
+                expect(body).toEqual({packageRoot: bundleDir, valid: true, game: null, errors: [], warnings: [], information: [], suggestions: []});
                 expect(libraryValidate).not.toHaveBeenCalled();
             });
 
@@ -3730,7 +3732,7 @@ describe("StudioServer", () => {
                 const {status, body} = await get(`${projectBaseUrl}/api/project/validate`);
 
                 expect(status).toBe(200);
-                expect(body).toEqual({packageRoot: stakeDir, valid: true, game: null, errors: [], warnings: [], suggestions: []});
+                expect(body).toEqual({packageRoot: stakeDir, valid: true, game: null, errors: [], warnings: [], information: [], suggestions: []});
                 expect(libraryValidate).not.toHaveBeenCalled();
             });
         });
