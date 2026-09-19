@@ -21,6 +21,7 @@ const validReport: PokieGamePackageValidationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     errors: [],
     warnings: [],
+    information: [],
     suggestions: [],
 };
 
@@ -30,6 +31,7 @@ const invalidReport: PokieGamePackageValidationReport = {
     game: null,
     errors: [{code: "pokie-game-missing-contract-methods", severity: "error", message: "does not implement PokieGame"}],
     warnings: [{code: "some-warning", severity: "warning", message: "a warning"}],
+    information: [],
     suggestions: ["Export an object implementing PokieGame as the entry module's default export."],
 };
 

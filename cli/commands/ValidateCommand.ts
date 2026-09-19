@@ -211,6 +211,7 @@ export class ValidateCommand implements CliCommandHandling {
                 valid: true,
                 errors: [],
                 warnings: [],
+                information: [],
                 suggestions: [],
                 wasm: {
                     abiVersion: artifact.abiVersion,
