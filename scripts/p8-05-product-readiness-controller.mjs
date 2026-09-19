@@ -35,7 +35,14 @@ async function runAudits(config, phase, candidateValue, dependencies) {
     const audits = [];
     // Sequential execution guarantees per-persona process ownership and avoids a
     // shared random Studio port being mistaken for clean-room reuse.
-    for (const persona of P805_PERSONAS) audits.push(await services.runAudit({persona, phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage}));
+    for (const persona of P805_PERSONAS) {
+        try { audits.push(await services.runAudit({persona, phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage})); }
+        catch (error) {
+            const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, persona, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:services.now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
+            await writeRecord(config.directory, `${phase}-${persona}-audit.failed.json`, failure);
+            throw error;
+        }
+    }
     return audits;
 }
 

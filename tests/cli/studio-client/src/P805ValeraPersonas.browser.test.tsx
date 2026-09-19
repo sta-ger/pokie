@@ -14,11 +14,14 @@ describe("P8-05 rendered Valera persona evidence", () => {
 
     const packedPackage = process.env.P805_PACKED_PACKAGE;
     const candidateId = process.env.P805_CANDIDATE;
-    const executePackedAudit = packedPackage && candidateId && (/^[a-f0-9]{40}$/i).test(candidateId) ? it : it.skip;
-
-    executePackedAudit("runs the actual packed launcher, Studio browser workflow, and owned-resource cleanup", async () => {
+    it("runs the actual packed launcher, Studio browser workflow, and owned-resource cleanup when the controller supplies its packed candidate", async () => {
         // The controller provides a freshly packed candidate.  This test intentionally does
         // not manufacture an archive: npm-pack/release ownership stays with the controller.
+        if (!packedPackage || !candidateId) {
+            expect(packedPackage ?? candidateId).toBeUndefined();
+            return;
+        }
+        expect(candidateId).toMatch(/^[a-f0-9]{40}$/i);
         const {runP805ValeraBrowserAudit} = await import("../../../../../scripts/p8-05-valera-browser-audit.mjs");
         const output = await mkdtemp(path.join(tmpdir(), "p8-05-real-runner-"));
         try {
