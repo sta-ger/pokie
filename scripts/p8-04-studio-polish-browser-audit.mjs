@@ -13,7 +13,9 @@ import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const evidence = resolve(root, "docs/evidence/p8-04-studio-polish");
+// A controller may point a verification run at a temporary directory.  The
+// checked-in invocation deliberately uses the evidence directory below.
+const evidence = resolve(root, process.env.P8_04_EVIDENCE_DIR ?? "docs/evidence/p8-04-studio-polish");
 const port = Number(process.env.P8_04_STUDIO_PORT ?? 32184);
 const browserPort = Number(process.env.P8_04_CHROME_PORT ?? 9234);
 const chromium = process.env.P8_04_CHROMIUM_BINARY ?? "chromium-browser";
@@ -86,9 +88,11 @@ async function setViewport(name, width, height) {
 }
 
 async function capture(name, state) {
+    const overflow = await evaluate("document.documentElement.scrollWidth > window.innerWidth");
+    assert.equal(overflow, false, `${name} state has document-level horizontal overflow`);
     const image = await cdp.send("Page.captureScreenshot", {format: "png", captureBeyondViewport: false});
     await writeFile(resolve(evidence, name), Buffer.from(image.data, "base64"));
-    note(`CAPTURE ${name}: ${state}`);
+    note(`CAPTURE ${name}: ${state}; document overflow=false`);
 }
 
 async function clickText(label) {
@@ -107,13 +111,98 @@ async function clickText(label) {
     await pause(300);
 }
 
+async function fillField(label, value) {
+    const point = await evaluate(`(() => {
+        const wanted = ${JSON.stringify(label)};
+        const normalise = (text) => text?.trim().replace(/\\s+\\*$/, "");
+        const node = [...document.querySelectorAll("input,textarea")].find((item) => item.getClientRects().length > 0 &&
+            (item.getAttribute("aria-label") === wanted || [...(item.labels ?? [])].some((itemLabel) => normalise(itemLabel.textContent) === wanted)));
+        if (!node) return undefined;
+        node.scrollIntoView({block: "center", inline: "nearest"});
+        const rect = node.getBoundingClientRect();
+        return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    })()`);
+    assert.ok(point, `Rendered field unavailable: ${label}`);
+    await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", ...point, button: "left", clickCount: 1});
+    await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", ...point, button: "left", clickCount: 1});
+    await cdp.send("Input.dispatchKeyEvent", {type: "keyDown", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2});
+    await cdp.send("Input.dispatchKeyEvent", {type: "keyUp", key: "a", code: "KeyA", windowsVirtualKeyCode: 65, modifiers: 2});
+    await cdp.send("Input.insertText", {text: value});
+    await cdp.send("Input.dispatchKeyEvent", {type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9});
+    await cdp.send("Input.dispatchKeyEvent", {type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9});
+    note(`INPUT ${label}=${JSON.stringify(value)} through rendered browser field`);
+    await pause(300);
+}
+
 async function bodyIncludes(text) {
     return (await evaluate("document.body.innerText")).includes(text);
 }
 
+async function waitForText(text, label, timeout) {
+    await waitFor(() => bodyIncludes(text), label, timeout);
+}
+
+async function createProject() {
+    await clickText("New Blueprint");
+    await waitForText("Create Blueprint Project", "real New Blueprint dialog");
+    await clickText("Random");
+    await waitForText("Seed (optional)", "real random blueprint controls");
+    // This deliberately exercises containment of a real, long project label
+    // through creation, registration, reopening and the project dashboard.
+    const name = "P8-04 Studio audit — a deliberately long project name for responsive containment";
+    await fillField("Name (optional)", name);
+    await clickText("Generate");
+    await waitForText("Generated", "real random blueprint result", 120_000);
+    await clickText("Use this blueprint");
+    await waitForText("Create Project", "real guided blueprint editor");
+    await clickText("Create Project");
+    await waitForText("Close project", "created real project dashboard", 120_000);
+    await waitForText(name, "long project name on the real project dashboard");
+    note("WORKFLOW created, registered, and opened a real long-named project through Studio's rendered Design flow.");
+}
+
+async function runAndCancelSimulation() {
+    await clickText("Simulation");
+    await waitForText("Run Simulation", "real Simulation workflow");
+    // A large, real run gives the rendered polling UI time to reach its
+    // cancellable lifecycle rather than relying on a fabricated job record.
+    await fillField("Rounds", "2000000");
+    await clickText("Run Simulation");
+    await waitFor(async () => (await bodyIncludes("queued —")) || (await bodyIncludes("running —")), "rendered queued or running simulation", 120_000);
+    await capture("compact-simulation-running.png", "Compact 1024×768 real simulation job queued/running");
+    await clickText("Cancel");
+    await waitForText("Please confirm", "rendered cancellation confirmation");
+    await clickText("Confirm");
+    await waitFor(async () => (await bodyIncludes("cancelling —")) || (await bodyIncludes("cancelled —")), "rendered cancelling or cancelled simulation", 120_000);
+    if (await bodyIncludes("cancelling —")) {
+        await capture("compact-simulation-cancelling.png", "Compact 1024×768 cancellation requested; cleanup remains active");
+    }
+    await waitForText("cancelled —", "real cancellation terminal result", 120_000);
+    await capture("compact-simulation-cancelled.png", "Compact 1024×768 real cancelled simulation result");
+    note("WORKFLOW cancelled the rendered simulation through its confirmation and waited for the server terminal state.");
+}
+
+async function runCompletedSimulation() {
+    await clickText("Configure");
+    await waitForText("Run Simulation", "simulation configuration after cancellation");
+    await fillField("Rounds", "25");
+    await clickText("Run Simulation");
+    await waitFor(async () => (await bodyIncludes("RTP")) && (await bodyIncludes("Recent runs")), "real completed simulation report", 120_000);
+    await capture("wide-simulation-completed.png", "Wide 1440×900 real completed simulation report and output actions");
+    note("WORKFLOW completed a second real simulation and rendered its durable report summary.");
+}
+
 async function main() {
     await mkdir(evidence, {recursive: true});
-    await Promise.all(["wide-overview.png", "compact-project.png", "small-navigation.png", "AUDIT-TRANSCRIPT.txt"].map((name) => rm(resolve(evidence, name), {force: true})));
+    await Promise.all([
+        "wide-project-overview.png",
+        "compact-simulation-running.png",
+        "compact-simulation-cancelling.png",
+        "compact-simulation-cancelled.png",
+        "wide-simulation-completed.png",
+        "small-navigation.png",
+        "AUDIT-TRANSCRIPT.txt",
+    ].map((name) => rm(resolve(evidence, name), {force: true})));
     profile = await mkdtemp(resolve(tmpdir(), "pokie-p8-04-browser-"));
     studio = spawn(process.execPath, ["dist/cli/pokie.js", "studio", "--no-open", "--host", "127.0.0.1", "--port", String(port)], {cwd: root, env: {...process.env, HOME: profile}, stdio: "ignore"});
     await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/context`)).ok; } catch { return false; } }, "built Studio API");
@@ -123,16 +212,18 @@ async function main() {
     await cdp.send("Page.navigate", {url: `http://127.0.0.1:${port}/#/home/design`});
     await waitFor(() => bodyIncludes("Design Your Game"), "real Design route");
     await setViewport("wide desktop", 1440, 900);
-    await capture("wide-overview.png", "Design workflow ready for project creation");
-    await clickText("Projects");
-    await waitFor(() => bodyIncludes("Projects"), "real Projects navigation");
+    await createProject();
+    await waitForText("Overview", "real project Overview");
+    await capture("wide-project-overview.png", "Wide 1440×900 real project Overview with long project identity");
     await setViewport("compact desktop", 1024, 768);
-    await capture("compact-project.png", "Projects workflow");
+    await runAndCancelSimulation();
+    await setViewport("wide desktop", 1440, 900);
+    await runCompletedSimulation();
     await setViewport("small viewport", 390, 844);
     await clickText("Toggle navigation");
     assert.equal(await evaluate("document.querySelector('[role=navigation], nav')?.getClientRects().length > 0"), true, "small viewport navigation did not open");
-    await capture("small-navigation.png", "Small viewport navigation open");
-    note("PASS real built Studio navigation and no document-level horizontal overflow at wide, compact, and small viewports.");
+    await capture("small-navigation.png", "Small 390×844 viewport with rendered navigation open after real project/job workflows");
+    note("PASS real built Studio project creation, responsive navigation, simulation cancellation/completion, and no document-level horizontal overflow at wide, compact, and small viewports.");
 }
 
 main().catch((error) => {

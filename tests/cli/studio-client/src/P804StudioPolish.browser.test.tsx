@@ -1,66 +1,55 @@
-import {MantineProvider} from "@mantine/core";
-import {render, screen} from "@testing-library/react";
-import {JobProgressCard} from "../../../../cli/studio-client/src/components/common/JobProgressCard";
-import {JobResultCard} from "../../../../cli/studio-client/src/components/common/JobResultCard";
-import {OutcomeBanner} from "../../../../cli/studio-client/src/components/common/OutcomeBanner";
+import {existsSync, mkdtempSync, readFileSync, rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {resolve} from "node:path";
+import {spawnSync} from "node:child_process";
 
-const LONG_VALUE = `sha256:${"a".repeat(64)}`;
+const root = resolve(__dirname, "../../../..");
+const audit = resolve(root, "scripts/p8-04-studio-polish-browser-audit.mjs");
 
-function renderStudio(ui: React.ReactElement) {
-    return render(<MantineProvider>{ui}</MantineProvider>);
-}
+describe("P8-04 Studio polish browser audit", () => {
+    jest.setTimeout(300_000);
 
-describe("P8-04 Studio polish browser surface", () => {
-    it("keeps integrity success, durable progress, and a completed long-content result distinct in the rendered product surface", () => {
-        renderStudio(
-            <>
-                <OutcomeBanner
-                    color="green"
-                    icon={null}
-                    title="Imported successfully"
-                    errors={[]}
-                    warnings={[]}
-                    information={[{code: "parsheet-provenance-present", message: "The recorded hash matches the imported data."}]}
-                    informationTitle="Verified integrity"
-                />
-                <JobProgressCard job={{
-                    id: "running", projectId: "/projects/long", operation: "Generate outcome library", request: {}, conflictKey: "generation",
-                    status: "cancelling", createdAt: 1, startedAt: 1, progress: {stage: "Cleaning up", unit: "files", current: 1, total: 2},
-                }} />
-                <JobResultCard job={{
-                    id: "completed", projectId: "/projects/long", operation: "Generate outcome library", request: {}, conflictKey: "generation",
-                    status: "completed", createdAt: 1, completedAt: 2,
-                    result: {summary: `Published output with ${LONG_VALUE}`, outputs: [{label: "Long output", path: `/projects/${LONG_VALUE}/out`}]},
-                }} />
-            </>,
-        );
-
-        expect(screen.getAllByRole("status")[0]).toHaveTextContent("Imported successfully");
-        expect(screen.getByText("Verified integrity")).toBeInTheDocument();
-        expect(screen.getByText("Cancellation requested; waiting for cleanup.")).toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Cancel"})).toBeNull();
-        expect(screen.getByText(`Published output with ${LONG_VALUE}`)).toBeInTheDocument();
-        expect(screen.getByText(`Published output with ${LONG_VALUE}`).closest(".mantine-Alert-root")).toBeTruthy();
-    });
-
-    it("gives every durable terminal state an observable semantic result rather than silently unmounting it", () => {
-        renderStudio(
-            <>
-                {(["cancelled", "failed", "recovery-required", "completed"] as const).map((status) => (
-                    <JobResultCard key={status} onRecoveryAction={() => undefined} job={{
-                        id: status, projectId: "/project", operation: "Generate outcome library", request: {destination: LONG_VALUE}, conflictKey: status,
-                        status, createdAt: 1, error: status === "failed" ? LONG_VALUE : undefined,
-                        result: status === "failed" ? undefined : {summary: `${status} ${LONG_VALUE}`},
-                        recovery: status === "recovery-required" ? {action: "retry", reason: "Retry from the retained request."} : undefined,
-                    }} />
-                ))}
-            </>,
-        );
-
-        expect(screen.getByRole("alert")).toHaveTextContent("failed");
-        expect(screen.getAllByRole("status")).toHaveLength(3);
-        expect(screen.getByRole("button", {name: "Retry"})).toBeInTheDocument();
-        expect(screen.getByText(`cancelled ${LONG_VALUE}`)).toBeInTheDocument();
-        expect(screen.getByText(`completed ${LONG_VALUE}`)).toBeInTheDocument();
+    it("drives the built Studio through rendered project and durable-job workflows at every required viewport", () => {
+        // This is deliberately not a jsdom component assertion. The audit
+        // starts dist/cli/pokie.js and Chromium, then uses only CDP browser
+        // input against the rendered Studio UI. Its production invocation
+        // writes the committed evidence directory; the Jest run isolates its
+        // disposable screenshots so a verification run cannot rewrite it.
+        expect(existsSync(resolve(root, "dist/cli/pokie.js"))).toBe(true);
+        const evidence = mkdtempSync(resolve(tmpdir(), "pokie-p8-04-evidence-"));
+        const offset = process.pid % 1_000;
+        try {
+            const result = spawnSync(process.execPath, [audit], {
+                cwd: root,
+                encoding: "utf8",
+                timeout: 270_000,
+                env: {
+                    ...process.env,
+                    P8_04_EVIDENCE_DIR: evidence,
+                    P8_04_STUDIO_PORT: String(32_000 + offset),
+                    P8_04_CHROME_PORT: String(9_300 + offset),
+                },
+            });
+            expect(result.error).toBeUndefined();
+            expect(result.status).toBe(0);
+            const transcript = readFileSync(resolve(evidence, "AUDIT-TRANSCRIPT.txt"), "utf8");
+            expect(transcript).toContain("WORKFLOW created, registered, and opened a real long-named project");
+            expect(transcript).toContain("WORKFLOW cancelled the rendered simulation");
+            expect(transcript).toContain("WORKFLOW completed a second real simulation");
+            expect(transcript).toContain("VIEWPORT wide desktop: 1440x900; document overflow=false");
+            expect(transcript).toContain("VIEWPORT compact desktop: 1024x768; document overflow=false");
+            expect(transcript).toContain("VIEWPORT small viewport: 390x844; document overflow=false");
+            for (const screenshot of [
+                "wide-project-overview.png",
+                "compact-simulation-running.png",
+                "compact-simulation-cancelled.png",
+                "wide-simulation-completed.png",
+                "small-navigation.png",
+            ]) {
+                expect(existsSync(resolve(evidence, screenshot))).toBe(true);
+            }
+        } finally {
+            rmSync(evidence, {recursive: true, force: true});
+        }
     });
 });
