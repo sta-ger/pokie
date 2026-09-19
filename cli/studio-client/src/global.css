@@ -5,7 +5,43 @@ html,
 body,
 #root {
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
+}
+
+/* Keep ordinary Studio workspaces deliberately readable on wide screens while
+   letting individual tables and code blocks own their local scrolling. */
+.studio-app-main {
+    min-width: 0;
+}
+
+.studio-page {
+    width: min(100%, 76rem);
+    min-width: 0;
+    margin-inline: auto;
+}
+
+.studio-page :where(p, span, td, th, pre, summary) {
+    overflow-wrap: anywhere;
+}
+
+.studio-page :where(.mantine-Alert-root, .mantine-Fieldset-root) {
+    min-width: 0;
+}
+
+.studio-job-card {
+    overflow: hidden;
+}
+
+.studio-job-card [data-job-detail] {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 76em) {
+    .studio-page > .mantine-Stack-root,
+    .studio-page > .mantine-Group-root {
+        max-width: 68rem;
+    }
 }
 
 /* The Projects registry has a desktop table for fast comparison. When the fixed desktop navigation
@@ -105,5 +141,13 @@ body,
     .project-registry-entry > td,
     .project-registry-selection:not(:empty) {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .studio-app-main {
+        padding-block: var(--mantine-spacing-sm);
+    }
+
+    .studio-page {
+        width: 100%;
     }
 }

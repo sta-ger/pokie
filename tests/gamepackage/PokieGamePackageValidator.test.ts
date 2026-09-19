@@ -15,6 +15,7 @@ describe("PokieGamePackageValidator", () => {
             game: {id: "valid-game", name: "Valid Game", version: "1.0.0"},
             errors: [],
             warnings: [],
+            information: [],
             suggestions: [],
         });
     });

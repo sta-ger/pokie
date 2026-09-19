@@ -197,6 +197,7 @@ export type PokieGamePackageValidationReport = {
     game: {id: string; name: string; version: string} | null;
     errors: ValidationIssue[];
     warnings: ValidationIssue[];
+    information?: ValidationIssue[];
     suggestions: string[];
 };
 

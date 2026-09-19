@@ -1111,7 +1111,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             // discarding an unapplied Mechanics Editor draft or an active operation with no warning at all.
             onHomeClick={handleClose}
         >
-            <div>
+            <div className="studio-page">
                 <Title id="project-dashboard-heading" order={2}>{describeProjectName(header)}</Title>
                 {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
                 {projectKey !== undefined && (

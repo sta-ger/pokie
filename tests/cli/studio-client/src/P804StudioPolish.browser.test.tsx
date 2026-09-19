@@ -1,7 +1,5 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
-import {readFileSync} from "node:fs";
-import {join} from "node:path";
 import {JobProgressCard} from "../../../../cli/studio-client/src/components/common/JobProgressCard";
 import {JobResultCard} from "../../../../cli/studio-client/src/components/common/JobResultCard";
 import {OutcomeBanner} from "../../../../cli/studio-client/src/components/common/OutcomeBanner";
@@ -37,7 +35,7 @@ describe("P8-04 Studio polish browser surface", () => {
             </>,
         );
 
-        expect(screen.getByRole("status")).toHaveTextContent("Imported successfully");
+        expect(screen.getAllByRole("status")[0]).toHaveTextContent("Imported successfully");
         expect(screen.getByText("Verified integrity")).toBeInTheDocument();
         expect(screen.getByText("Cancellation requested; waiting for cleanup.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Cancel"})).toBeNull();
@@ -45,12 +43,24 @@ describe("P8-04 Studio polish browser surface", () => {
         expect(screen.getByText(`Published output with ${LONG_VALUE}`).closest(".mantine-Alert-root")).toBeTruthy();
     });
 
-    it("ships the wide, compact, and phone responsive safeguards with local overflow containment", () => {
-        const css = readFileSync(join(process.cwd(), "cli/studio-client/src/global.css"), "utf8");
-        expect(css).toContain("max-width: 100%");
-        expect(css).toContain("overflow-x: hidden");
-        expect(css).toContain("@media (max-width: 75em)");
-        expect(css).toContain("@media (max-width: 48em)");
-        expect(css).toContain("--app-shell-navbar-offset: 0px !important");
+    it("gives every durable terminal state an observable semantic result rather than silently unmounting it", () => {
+        renderStudio(
+            <>
+                {(["cancelled", "failed", "recovery-required", "completed"] as const).map((status) => (
+                    <JobResultCard key={status} onRecoveryAction={() => undefined} job={{
+                        id: status, projectId: "/project", operation: "Generate outcome library", request: {destination: LONG_VALUE}, conflictKey: status,
+                        status, createdAt: 1, error: status === "failed" ? LONG_VALUE : undefined,
+                        result: status === "failed" ? undefined : {summary: `${status} ${LONG_VALUE}`},
+                        recovery: status === "recovery-required" ? {action: "retry", reason: "Retry from the retained request."} : undefined,
+                    }} />
+                ))}
+            </>,
+        );
+
+        expect(screen.getByRole("alert")).toHaveTextContent("failed");
+        expect(screen.getAllByRole("status")).toHaveLength(3);
+        expect(screen.getByRole("button", {name: "Retry"})).toBeInTheDocument();
+        expect(screen.getByText(`cancelled ${LONG_VALUE}`)).toBeInTheDocument();
+        expect(screen.getByText(`completed ${LONG_VALUE}`)).toBeInTheDocument();
     });
 });

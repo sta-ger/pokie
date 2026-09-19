@@ -69,9 +69,9 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
     // path for a host action when viewing an older incomplete durable record.
     const resolvedOutcomeLibraryPath = textValue(outcomeResult?.resolvedBundleDir);
     return (
-        <Alert color={color} title={title}>
+        <Alert className="studio-job-card" color={color} title={title} role={job.status === "failed" ? "alert" : "status"} aria-live={job.status === "failed" ? undefined : "polite"}>
             <Stack gap={4}>
-                <Text size="sm">{job.result?.summary ?? job.error ?? job.recovery?.reason ?? "No additional result is available."}</Text>
+                <Text size="sm" data-job-detail>{job.result?.summary ?? job.error ?? job.recovery?.reason ?? "No additional result is available."}</Text>
                 {job.durationMs !== undefined && <Text size="xs">Duration: {job.durationMs}ms</Text>}
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
                 {outcomeResult !== undefined && (

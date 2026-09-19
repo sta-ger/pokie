@@ -34,6 +34,7 @@ type ValidateReport = {
     valid: boolean;
     errors: ValidateDiagnostic[];
     warnings: ValidateDiagnostic[];
+    information: ValidateDiagnostic[];
     suggestions: string[];
     packageRoot?: string;
     game?: PokieGamePackageValidationReport["game"];
@@ -275,7 +276,7 @@ export class ValidateCommand implements CliCommandHandling {
     }
 
     private packageReport(packageRoot: string, report: PokieGamePackageValidationReport): ValidateReport {
-        const issues = [...report.errors, ...report.warnings].map((issue) =>
+        const issues = [...report.errors, ...report.warnings, ...(report.information ?? [])].map((issue) =>
             issue.code === "pokie-package-load-failed"
                 ? {
                     ...issue,
@@ -330,7 +331,8 @@ export class ValidateCommand implements CliCommandHandling {
     ): ValidateReport {
         const diagnostics = issues.map((issue) => this.describeIssue(issue, projectPath));
         const errors = diagnostics.filter((issue) => issue.severity === "error");
-        const warnings = diagnostics.filter((issue) => issue.severity !== "error");
+        const warnings = diagnostics.filter((issue) => issue.severity === "warning");
+        const information = diagnostics.filter((issue) => issue.severity === "info");
         const suggestions = [...new Set([...inheritedSuggestions, ...diagnostics.map((issue) => issue.suggestion)])];
         return {
             schemaVersion: 1,
@@ -339,6 +341,7 @@ export class ValidateCommand implements CliCommandHandling {
             valid: errors.length === 0,
             errors,
             warnings,
+            information,
             suggestions,
             ...(kind === "package" ? {packageRoot: projectPath} : {}),
             ...(game !== undefined ? {game} : {}),
@@ -539,6 +542,13 @@ export class ValidateCommand implements CliCommandHandling {
             }
         }
 
+        if (report.information.length > 0) {
+            console.log(`\nInformation (${report.information.length}):`);
+            for (const issue of report.information) {
+                this.printIssue(issue);
+            }
+        }
+
         if (report.suggestions.length > 0) {
             console.log("\nSuggestions:");
             for (const suggestion of report.suggestions) {
@@ -546,7 +556,7 @@ export class ValidateCommand implements CliCommandHandling {
             }
         }
 
-        if (report.valid && report.warnings.length === 0) {
+        if (report.valid && report.warnings.length === 0 && report.information.length === 0) {
             console.log("\nNo issues found.");
         }
     }

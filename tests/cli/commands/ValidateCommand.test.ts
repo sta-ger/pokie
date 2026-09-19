@@ -98,6 +98,18 @@ describe("ValidateCommand", () => {
         logSpy.mockRestore();
     });
 
+    it("prints package integrity information separately from warnings", async () => {
+        const command = new ValidateCommand(createStubValidator({...validReport, information: [{code: "package-integrity-verified", severity: "info", message: "The package provenance is verified."}]}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        expect(await command.run(["./sample-slot"])).toBe(0);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Information (1):");
+        expect(printed).toContain("package-integrity-verified");
+        expect(printed).not.toContain("Warnings (1):");
+        logSpy.mockRestore();
+    });
+
     it("prints errors, warnings, and suggestions, and returns exit code 1 for an invalid package", async () => {
         const command = new ValidateCommand(createStubValidator(invalidReport));
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
