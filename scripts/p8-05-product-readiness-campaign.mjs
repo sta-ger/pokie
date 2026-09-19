@@ -86,7 +86,7 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
 function semanticObservation(contents, observation, label) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed semantic page-state evidence`); }
-    if (page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== "observed" || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the claimed ${observation} operation and outcome`);
+    if (page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== "observed" || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.interaction || typeof page.interaction.control !== "string" || !page.interaction.control || page.interaction.keyboardFocused !== true || page.interaction.outcome !== "observed" || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the claimed ${observation} operation and outcome`);
 }
 
 async function validateAuditEvidence(directory, audit, expected, label, used) {
