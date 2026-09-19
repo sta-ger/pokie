@@ -27,6 +27,33 @@ export const P805_REQUIRED_OBSERVATIONS = {
     "ui-ux":["onboarding-terminology-forms-progress", "reload-reconnect-recovery-cancellation-project-switch", "keyboard-responsive-accessibility"],
     "graphic-designer":["hierarchy-typography-spacing-density-controls-finish"],
 };
+// This is an evidence contract, not a list of pages to visit.  Each audit
+// observation must name the public operation that caused it, its rendered
+// control, the server activity it expects to see, and the durable result that
+// makes the observation useful to a first-time user.  Keeping it here lets
+// the collector and the append-only validator reject a relabelled screenshot.
+export const P805_WORKFLOW_CONTRACTS = {
+    mathematician: {
+        "blueprint": {route:"overview", control:"Blueprint", api:"/api/project/context", terminal:"project-context"},
+        "par-xlsx-round-trip": {route:"gameModel", control:"PAR", api:"/api/project/par", artifact:"xlsx", terminal:"round-trip"},
+        "reels-paytable-modes-mechanics": {route:"gameModel", control:"Game Model", api:"/api/project/gameModel", terminal:"model-visible"},
+        "simulation-success-failure-cancellation": {route:"simulation", control:"Run simulation", api:"/api/project/simulations", terminal:"cancelled-and-retry-completed"},
+        "simulation-rtp-volatility-features": {route:"simulation", control:"Simulation", api:"/api/project/reports", artifact:"simulation-report", terminal:"report-completed"},
+        "outcome-library-report-diff-replay": {route:"replay", control:"Outcome Library", api:"/api/project/outcome-libraries/registry", artifact:"outcome-library", terminal:"library-visible"},
+        "replay-artifact-success-failure-recovery": {route:"replay", control:"Replay Artifact", api:"/api/project/replays/inspect-artifact", artifact:"replay-descriptor", terminal:"failure-and-recovery"},
+        "certification-fairness-conditional": {route:"certification", control:"Certification", api:"/api/project/certification/validate-source", terminal:"conditional-state"},
+        "build-export-output-folder": {route:"exportDeploy", control:"Build", api:"/api/project/artifacts/build", artifact:"output-folder", terminal:"artifact-completed"},
+        "import-export-defaults": {route:"overview", control:"Import", api:"/api/project/context", terminal:"defaults-visible"},
+    },
+    programmer: {
+        "packed-install": {route:"overview", control:"Overview", api:"/api/project/context", cli:"packed CLI install", terminal:"installed-launcher"}, "npx-pokie": {route:"overview", control:"Overview", api:"/api/project/context", cli:"PACKED_NPX_HELP", terminal:"npx-help"}, "recursive-help": {route:"overview", control:"Overview", api:"/api/project/context", cli:"packed CLI recursive help", terminal:"help"},
+        "create-build-inspect": {route:"overview", control:"Overview", api:"/api/project/inspect", cli:"packed CLI create", artifact:"blueprint", terminal:"created-and-built"}, "validate-sim-report-diff-replay-serve-wasm": {route:"overview", control:"Overview", api:"/api/project/context", cli:"packed CLI WASM build", artifact:"wasm", terminal:"commands-completed"},
+        "spaces-invalid-inputs-exit-codes-ci-recovery": {route:"overview", control:"Overview", api:"/api/project/context", cli:"packed CLI invalid-input recovery", terminal:"actionable-exit-code"}, "build-export-output-folder": {route:"exportDeploy", control:"Build", api:"/api/project/artifacts/build", cli:"packed CLI PAR build", artifact:"xlsx", terminal:"output-written"},
+    },
+    producer: {"product-framing": {route:"overview", control:"Overview", api:"/api/project/context", terminal:"project-context"}, "end-to-end-navigation": {route:"play", control:"Play", api:"/api/project/context", terminal:"navigation-visible"}, trust: {route:"certification", control:"Certification", api:"/api/project/certification/validate-source", terminal:"trust-state"}},
+    "ui-ux": {"onboarding-terminology-forms-progress": {route:"overview", control:"Overview", api:"/api/project/context", terminal:"labels-visible"}, "reload-reconnect-recovery-cancellation-project-switch": {route:"simulation", control:"Simulation", api:"/api/project/simulations", terminal:"recovered"}, "keyboard-responsive-accessibility": {route:"overview", control:"Overview", api:"/api/project/context", terminal:"keyboard-visible"}},
+    "graphic-designer": {"hierarchy-typography-spacing-density-controls-finish": {route:"overview", control:"Overview", api:"/api/project/context", terminal:"rendered-finish"}},
+};
 const RECORDS = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json", "manifest.json", "closeout.json"];
 const BLOCKING = (finding) => finding.severity === "P0" || finding.severity === "P1" || (finding.severity === "P2" && finding.material === true);
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
@@ -86,7 +113,8 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
 function semanticObservation(contents, observation, persona, label) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed semantic page-state evidence`); }
-    if (page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== "observed" || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.interaction || typeof page.interaction.control !== "string" || !page.interaction.control || page.interaction.keyboardFocused !== true || page.interaction.keyboardActivated !== true || page.interaction.outcome !== "observed" || !page.workflow || page.workflow.persona !== persona || page.workflow.source !== "rendered-keyboard-control" || !Array.isArray(page.workflow.operations) || !page.workflow.operations.includes(observation) || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the claimed ${observation} operation and outcome`);
+    const contract = P805_WORKFLOW_CONTRACTS[persona]?.[observation];
+    if (!contract || page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== contract.terminal || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.interaction || page.interaction.control !== contract.control || page.interaction.keyboardFocused !== true || page.interaction.keyboardActivated !== true || page.interaction.activation !== "keyboard" || page.interaction.outcome !== contract.terminal || !page.workflow || page.workflow.persona !== persona || page.workflow.source !== "rendered-control" || page.workflow.expectedApi !== contract.api || page.workflow.expectedArtifact !== (contract.artifact ?? null) || page.workflow.terminal !== contract.terminal || !page.request || page.request.path !== contract.api || !Number.isInteger(page.request.status) || page.request.status < 200 || page.request.status >= 400 || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the declared control, API, artifact, and terminal outcome for ${observation}`);
 }
 
 async function validateAuditEvidence(directory, audit, expected, label, used) {
@@ -103,11 +131,11 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     const text = (kind) => one(kind)?.toString("utf8") ?? "";
     let api, browser, timing, artifact;
     try { api = JSON.parse(text("api-log")); browser = JSON.parse(text("browser-log")); timing = JSON.parse(text("timing")); artifact = JSON.parse(text("artifact")); } catch { fail(`${label} has unparsed machine workflow evidence`); }
-    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !api.some((entry) => entry?.path === "/api/project/simulations") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, timing, and artifact operations`);
+    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !api.some((entry) => entry?.path === "/api/project/simulations") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || artifact?.candidatePackageJsonSha256 !== audit.packageIdentity.candidatePackageJsonSha256 || artifact?.installedPackageJsonSha256 !== audit.packageIdentity.installedPackageJsonSha256 || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, candidate binding, timing, and artifact operations`);
     const cleanup = evidenceById.get(audit.cleanup?.evidenceId);
     let cleanupRecord;
     try { cleanupRecord = JSON.parse(cleanup?.contents.toString("utf8") ?? ""); } catch { fail(`${label} cleanup evidence is not machine JSON`); }
-    if (cleanup?.item.kind !== "cleanup" || cleanupRecord.kind !== "p8-05-cleanup" || cleanupRecord.processTreeDrained !== true || cleanupRecord.resourcesDrained !== true || cleanupRecord.contextRemoved !== true) fail(`${label} cleanup evidence does not prove owned resource drainage`);
+    if (cleanup?.item.kind !== "cleanup" || cleanupRecord.kind !== "p8-05-cleanup" || cleanupRecord.processTreeDrained !== true || cleanupRecord.resourcesDrained !== true || cleanupRecord.contextRemoved !== true || !Array.isArray(cleanupRecord.ownership) || !cleanupRecord.ownership.length || cleanupRecord.ownership.some((owner) => !owner?.spawnedAt || !Number.isInteger(owner.pid) || owner.pid < 1 || owner.drain?.processTreeDrained !== true || owner.drain?.resourcesDrained !== true)) fail(`${label} cleanup evidence does not prove spawn-time owned resource drainage`);
 }
 
 function validateFinding(value, label) {
@@ -123,9 +151,20 @@ function frozenFields(initial, later) {
 function auditRecord(record, phase, initial, finalCandidate) {
     const timings = record?.timings;
     const timingNames = ["startupMs", "projectCreationMs", "validationMs", "buildMs", "simulationMs", "replayMs", "cancellationMs"];
-    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || P805_REQUIRED_OBSERVATIONS[record.persona].some((required) => !record.observations.includes(required)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] < 0 || timings[name] > 30 * 60 * 1000)) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
+    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || P805_REQUIRED_OBSERVATIONS[record.persona].some((required) => !record.observations.includes(required)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] <= 0 || timings[name] > 30 * 60 * 1000)) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
     candidate(record, phase === "initial" ? initial : finalCandidate, `${phase} audit ${record.persona}`);
     validateP805RenderedPersonaAudit(record);
+}
+
+function qualityDefects(audit) {
+    const measurements = audit.rendered?.measurements ?? {};
+    const defects = [
+        ["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures],
+        ["accessibility", measurements.inaccessiblePrimaryActions], ["disabled-control", measurements.unexplainedDisabledControls],
+        ["overflow", measurements.documentOverflow === true ? 1 : 0],
+    ].filter(([, count]) => count > 0).map(([kind]) => kind);
+    if (!Array.isArray(audit.rendered?.defects) || defects.some((kind) => !audit.rendered.defects.some((defect) => defect?.kind === kind && typeof defect.evidenceId === "string"))) fail(`${audit.phase} ${audit.persona} does not retain every measured browser defect as evidence`);
+    return defects;
 }
 
 /**
@@ -165,6 +204,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     if (anchor.kind !== "p8-05-freeze-anchor" || anchor.campaignId !== provenance.campaignId || anchor.candidateId !== initialCandidate.candidateId || anchor.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || anchor.frozenFindingsSha256 !== frozenDigest(frozen) || anchor.initialAuditsSha256 !== digest(entries[1].contents) || typeof anchor.receiptId !== "string" || !anchor.receiptId || !iso(anchor.anchoredAt) || Date.parse(anchor.anchoredAt) < Date.parse(frozen.frozenAt)) fail("external finding-freeze anchor does not bind the initial audit and frozen register");
     unique(frozen.findings, "frozen findings");
     for (const item of frozen.findings) { validateFinding(item, `frozen finding ${item?.id ?? "unknown"}`); await boundedEvidence(root, item.evidence, initialCandidate, `frozen finding ${item.id}`, {after:provenance.startedAt, before:frozen.frozenAt, used}); }
+    for (const audit of initial.audits) for (const defect of qualityDefects(audit)) if (!frozen.findings.some((finding) => finding.persona === audit.persona && finding.publicSurface.toLowerCase().includes(defect))) fail(`initial ${audit.persona} ${defect} defect was not frozen as a finding`);
     const findingRegister = records["finding-register.json"];
     if (findingRegister.schemaVersion !== P805_SCHEMA_VERSION || findingRegister.campaignId !== provenance.campaignId || !Array.isArray(findingRegister.findings)) fail("finding register is incomplete");
     unique(findingRegister.findings, "finding register");
@@ -195,6 +235,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     if (Date.parse(retests.startedAt) <= Date.parse(frozen.frozenAt)) fail("retests started before findings were frozen");
     for (const audit of retests.audits) {
         auditRecord(audit, "retest", initialCandidate, finalCandidate);
+        if (qualityDefects(audit).length) fail(`clean retest ${audit.persona} retains a browser quality defect`);
         for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
         for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && Date.parse(regression.verifiedAt) > Date.parse(audit.startedAt)) fail(`retest ${audit.persona} predates regression verification`);
