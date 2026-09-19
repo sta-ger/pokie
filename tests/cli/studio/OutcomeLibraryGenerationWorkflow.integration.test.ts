@@ -5,6 +5,9 @@ import path from "path";
 import {BuildCommand} from "../../../cli/commands/BuildCommand.js";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
+import {StudioOutcomeLibraryGenerateJobService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 
 const plan: ArtifactConversionPlan = {
     status: "planned",
@@ -165,7 +168,31 @@ describe("Outcome Library CLI and Studio generation (integration)", () => {
         await expect(studio.generate(packageRoot, {...studioRequest, mode: "ante", libraryId: "parity-lib-ante", preflightToken: antePreview.preflightToken})).resolves.toMatchObject({status: "ok"});
         const baseRegenerationPreview = await studio.estimate(packageRoot, studioRequest);
         if (baseRegenerationPreview.status !== "ok") throw new Error(`Expected regeneration preflight, got ${JSON.stringify(baseRegenerationPreview)}`);
-        await expect(studio.generate(packageRoot, {...studioRequest, preflightToken: baseRegenerationPreview.preflightToken})).resolves.toMatchObject({status: "ok"});
+        const durableJobs = new StudioJobService(new FileStudioJobRepository(path.join(root, "durable-studio-jobs")));
+        const lifecycle = jest.spyOn(durableJobs, "progress");
+        const jobs = new StudioOutcomeLibraryGenerateJobService(studio);
+        jobs.attachJobService(durableJobs);
+        const queued = jobs.start(packageRoot, {...studioRequest, preflightToken: baseRegenerationPreview.preflightToken});
+        // Poll the real service/writer composition while it replaces one mode
+        // in a bundle that retains its sibling mode.
+        expect(jobs.getStatusForProject(packageRoot, queued.id)).toMatchObject({id: queued.id});
+        let live = jobs.getStatusForProject(packageRoot, queued.id);
+        for (let attempts = 0; attempts < 100 && (live?.status === "queued" || live?.status === "running" || live?.status === "cancelling"); attempts++) {
+            await new Promise<void>((resolve) => {
+                setImmediate(resolve);
+            });
+            live = jobs.getStatusForProject(packageRoot, queued.id);
+        }
+        expect(live).toMatchObject({status: "completed", durableProgress: expect.objectContaining({stage: "Publishing"})});
+        const rehydratedJobs = new StudioOutcomeLibraryGenerateJobService(studio);
+        rehydratedJobs.attachJobService(new StudioJobService(new FileStudioJobRepository(path.join(root, "durable-studio-jobs"))));
+        expect(rehydratedJobs.getStatusForProject(packageRoot, queued.id)).toEqual(live);
+        expect(lifecycle.mock.calls.map(([, entry]) => entry.stage)
+            .filter((stage, index, stages) => index === 0 || stage !== stages[index - 1]))
+            .toEqual([
+                "Preflight", "Enumerating combinations", "Deduplicating/finalizing outcomes", "Writing outcomes",
+                "Analyzing outcomes", "Building index", "Validating", "Publishing",
+            ]);
         await expect(new OutcomeLibraryBundleReader().readManifest(path.join(packageRoot, "studio-library"))).resolves.toMatchObject({
             modes: expect.arrayContaining([expect.objectContaining({modeName: "base"}), expect.objectContaining({modeName: "ante"})]),
         });

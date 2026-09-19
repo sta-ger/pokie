@@ -409,7 +409,10 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
                     reportArtifactBuildProgress(options, {
                         status: "running",
                         completed: progress.completed,
-                        total: preflight.estimatedItemCount,
+                        // The writer's local totals are records, bytes, or
+                        // files. Never display the raw enumeration estimate
+                        // as a false whole-publication denominator.
+                        total: progress.total,
                         preflight,
                         message: progress.message,
                     });

@@ -102,6 +102,22 @@ describe("StudioServer outcome-source project routes", () => {
     }
 
     describe("opening a resolved native outcome-library project", () => {
+        it("opens the resolved published bundle outside Studio's working root", async () => {
+            const owningProject = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-owning-project-"));
+            const bundleDir = path.join(owningProject, "generated", "outcomelibrary");
+            try {
+                await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
+                expect(path.relative(studioRoot, bundleDir)).toMatch(/^\.\./);
+
+                const opened = await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
+                expect(opened.status).toBe(200);
+                const {body} = await get(`${baseUrl}/api/project/context`);
+                expect(body).toMatchObject({status: "outcome-source", project: {rootPath: bundleDir}});
+            } finally {
+                fs.rmSync(owningProject, {recursive: true, force: true});
+            }
+        });
+
         it("opens into an \"outcome-source\" dashboard carrying the canonical reader's descriptor/limitations/exact analysis", async () => {
             const bundleDir = await buildNativeLibraryDir();
 

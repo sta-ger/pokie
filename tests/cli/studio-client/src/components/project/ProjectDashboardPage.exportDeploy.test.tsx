@@ -170,9 +170,31 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("resumes a rehydrated exact checkpoint through the lifecycle endpoint and renders its completed bundle", async () => {
         const user = userEvent.setup();
         const requests: string[] = [];
+        let inspectedProjectRoot: string | undefined;
+        let openedFolder: string | undefined;
+        let revealedPath: string | undefined;
+        const resolvedBundleDir = "/owning-project/outcomelibrary";
         const fetchImpl: FetchLike = (url, init) => {
             const [requestPath] = url.split("?");
             requests.push(`${init?.method ?? "GET"} ${requestPath}`);
+            if (requestPath === "/api/home/projects/open") {
+                inspectedProjectRoot = (JSON.parse(String(init?.body)) as {projectRoot: string}).projectRoot;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
+                    status: "ok",
+                    context: {mode: "project", projectRoot: resolvedBundleDir},
+                })});
+            }
+            if (requestPath === "/api/home/fs/native-browse/availability") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "available"})});
+            }
+            if (requestPath === "/api/home/fs/open-folder") {
+                openedFolder = (JSON.parse(String(init?.body)) as {path: string}).path;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+            }
+            if (requestPath === "/api/home/fs/reveal-path") {
+                revealedPath = (JSON.parse(String(init?.body)) as {path: string}).path;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok"})});
+            }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({jobs: [{
                     id: "saved-checkpoint", status: "cancelled", cancellationRequested: false,
@@ -184,9 +206,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs/saved-checkpoint") {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({
-                    id: "saved-checkpoint", status: "completed", cancellationRequested: false,
+                    id: "saved-checkpoint", status: "completed", cancellationRequested: false, durationMs: 44,
                     result: {
-                        status: "ok", bundleDir: "outcomelibrary", files: ["manifest.json"], warnings: [],
+                        status: "ok", bundleDir: "outcomelibrary", resolvedBundleDir, files: ["manifest.json"], byteSize: 123, warnings: [],
                         mode: {modeName: "base", libraryId: "a-base", hash: "sha256:resumed", outcomeCount: 6, totalWeight: 6, rtp: 0.95},
                         generator: {strategy: "exact", pokieVersion: "1.0.0"}, coverage: 1,
                         selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
@@ -202,6 +224,16 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Resume exact generation"}));
 
         expect(await screen.findByText(/Generated 6 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.getByText(/Final size: 123 bytes.*Duration: 44ms/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
+        await user.click(await screen.findByRole("button", {name: "Open output folder"}));
+        await user.click(screen.getByRole("button", {name: "Reveal output"}));
+        await waitFor(() => expect(openedFolder).toBe(resolvedBundleDir));
+        expect(revealedPath).toBe(resolvedBundleDir);
+        await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
+        expect(screen.getByText(/Hash: sha256:resumed/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Inspect library"}));
+        await waitFor(() => expect(inspectedProjectRoot).toBe(resolvedBundleDir));
         expect(requests).toContain("POST /api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume");
     });
 
@@ -889,15 +921,159 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText(/Generated 500 outcomes for mode "base" using exact \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Open output folder"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Copy path"})).toBeInTheDocument();
+        expect(screen.getByText("Opening local output is unavailable from this headless or remote Studio session.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open output folder"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Reveal output"})).not.toBeInTheDocument();
         expect(screen.getByLabelText("Mode")).toBeInTheDocument();
         expect(generated).toBe(true);
 
         expect(stakeRequest).toBeUndefined();
     });
 
-    it("shows finalization rather than a misleading generation label once raw work is complete", async () => {
+    it("rehydrates a completed Outcome Library result with its durable terminal metadata", async () => {
         const user = userEvent.setup();
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({
+                ok: true,
+                status: 200,
+                body: {jobs: [{
+                    id: "completed-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/outcomelibrary",
+                    status: "completed", createdAt: 1,
+                }]},
+            }),
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 200,
+                body: {jobs: [{
+                    id: "completed-library", status: "completed", cancellationRequested: false, durationMs: 321,
+                    result: {
+                        status: "ok", bundleDir: "outcomelibrary", resolvedBundleDir: "/owning-project/outcomelibrary", files: ["manifest.json", "base.jsonl"], byteSize: 4096,
+                        warnings: [{code: "retained-warning", message: "The retained warning."}],
+                        mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:library", outcomeCount: 4, totalWeight: 6, rtp: 0.95},
+                        generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", pokieVersion: "1.0.0", game: {id: "fixture", name: "Fixture", version: "1.0.0"}, generatedAt: "2026-09-18T00:00:00.000Z", sampledRawCount: 6, totalOutcomeSpaceSize: 6},
+                        coverage: 1,
+                        selector: {kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"},
+                        plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []}, steps: [], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false}},
+                    },
+                }]},
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText(/Generated 4 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.queryByText("outcome-library-generation: completed")).not.toBeInTheDocument();
+        expect(screen.getByText("Final size: 4,096 bytes · Duration: 321ms.")).toBeInTheDocument();
+        expect(screen.getByText("The retained warning.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Show Inspect completed library"}));
+        expect(screen.getByText(/Hash: sha256:library/)).toBeInTheDocument();
+        expect(screen.getByText(/Selector: bundle outcomelibrary, mode base/)).toBeInTheDocument();
+    });
+
+    it("owns only the newest concurrent Outcome Library job and leaves the other durable job visible", async () => {
+        const user = userEvent.setup();
+        const olderJob = {
+            id: "older-active-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/older",
+            status: "running", createdAt: 10, progress: {stage: "Writing outcomes", unit: "records", current: "2", total: "4"},
+        };
+        const newestJob = {
+            id: "newest-active-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/newest",
+            status: "running", createdAt: 20, progress: {stage: "Analyzing outcomes", unit: "records", current: "3", total: "4"},
+        };
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [olderJob, newestJob]}}),
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 200,
+                // Deliberately oldest-first: durable storage order must not choose the feature card.
+                body: {jobs: [
+                    {id: olderJob.id, status: "running", cancellationRequested: false, createdAt: olderJob.createdAt, durableProgress: olderJob.progress},
+                    {id: newestJob.id, status: "running", cancellationRequested: false, createdAt: newestJob.createdAt, durableProgress: newestJob.progress},
+                ]},
+            }),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === `/api/project/outcome-libraries/generate/jobs/${newestJob.id}`) {
+                return new Promise(() => {
+                    // Keep the rehydrated job active while asserting its visible owner.
+                });
+            }
+            return fetchImplFrom(routes)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText("Writing outcomes")).toBeInTheDocument();
+        expect(screen.getAllByText("Writing outcomes")).toHaveLength(1);
+        expect(screen.getAllByRole("alert")).toHaveLength(2);
+        expect(screen.getByText("Analyzing outcomes")).toBeInTheDocument();
+        expect(screen.getAllByText("Analyzing outcomes")).toHaveLength(1);
+        expect(screen.getAllByRole("button", {name: "Cancel"})).toHaveLength(2);
+    });
+
+    it("selects the newest retained Outcome Library result without hiding older terminal jobs", async () => {
+        const user = userEvent.setup();
+        const retainedResult = {
+            status: "ok" as const, bundleDir: "newest-library", resolvedBundleDir: "/owning-project/newest-library", files: ["manifest.json", "base.jsonl"], byteSize: 4096,
+            warnings: [],
+            mode: {modeName: "base", libraryId: "fixture-base", hash: "sha256:newest", outcomeCount: 4, totalWeight: 6, rtp: 0.95},
+            generator: {algorithm: "exact", strategy: "exact", configHash: "sha256:config", pokieVersion: "1.0.0", game: {id: "fixture", name: "Fixture", version: "1.0.0"}, generatedAt: "2026-09-18T00:00:00.000Z", sampledRawCount: 6, totalOutcomeSpaceSize: 6},
+            coverage: 1,
+            selector: {kind: "bundle" as const, bundleDir: "newest-library", modeName: "base"},
+            plan: {status: "planned" as const, source: {kind: "blueprint" as const, capabilities: []}, target: {kind: "outcomeLibrary" as const, capabilities: []}, steps: [], preflight: {destinationKind: "directory" as const, estimatedWork: "generate", losses: [], oneWay: false}},
+        };
+        const olderFailed = {
+            id: "older-failed-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/failed",
+            status: "failed", createdAt: 10, error: "Older generation failed.",
+        };
+        const olderCancelled = {
+            id: "older-cancelled-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/cancelled",
+            status: "cancelled", createdAt: 20, result: {summary: "Older generation was cancelled."},
+        };
+        const newestCompleted = {
+            id: "newest-completed-library", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/newest",
+            status: "completed", createdAt: 30,
+        };
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [olderFailed, olderCancelled, newestCompleted]}}),
+            "/api/project/outcome-libraries/generate/jobs": () => ({
+                ok: true,
+                status: 200,
+                // Deliberately oldest-first: completion must use timestamps rather than Map insertion order.
+                body: {jobs: [
+                    {id: olderFailed.id, status: "failed", cancellationRequested: false, createdAt: olderFailed.createdAt},
+                    {id: olderCancelled.id, status: "cancelled", cancellationRequested: true, createdAt: olderCancelled.createdAt, result: {status: "cancelled", processedRawIndex: "2", progressTotal: "4", recovery: "Retry."}},
+                    {id: newestCompleted.id, status: "completed", cancellationRequested: false, createdAt: newestCompleted.createdAt, completedAt: newestCompleted.createdAt, durationMs: 321, result: retainedResult},
+                ]},
+            }),
+        };
+
+        renderRoutedApp({fetchImpl: fetchImplFrom(routes), initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText(/Generated 4 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(screen.getAllByText(/Generated 4 outcomes for mode "base" using exact/)).toHaveLength(1);
+        expect(screen.getByText("outcome-library-generation: failed")).toBeInTheDocument();
+        expect(screen.getAllByText("outcome-library-generation: failed")).toHaveLength(1);
+        expect(screen.getByText("outcome-library-generation: cancelled")).toBeInTheDocument();
+        expect(screen.getAllByText("outcome-library-generation: cancelled")).toHaveLength(1);
+        expect(screen.queryByText("outcome-library-generation: completed")).not.toBeInTheDocument();
+    });
+
+    it("renders compatibility lifecycle fallback as the sole running status and cancellation control", async () => {
+        const user = userEvent.setup();
+        let cancellationRequests = 0;
         const routes = {
             ...BASE_ROUTES,
             "/api/project/deployment/build-modes": () => ({ok: true, status: 200, body: {status: "ok", modeIds: ["base"]}}),
@@ -905,11 +1081,38 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
-            if (path === "/api/project/outcome-libraries/generate/jobs") {
+            if (path === "/api/project/jobs") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "generate-running", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/outcomelibrary",
+                        status: "running", createdAt: 1,
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "generate-running", status: "running", cancellationRequested: false, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"},
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
                 return Promise.resolve({
                     ok: true,
                     status: 202,
                     json: () => Promise.resolve({status: "created", job: {id: "generate-running", status: "running", cancellationRequested: false, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"}}}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/generate-running/cancel") {
+                cancellationRequests += 1;
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({id: "generate-running", status: "cancelling", cancellationRequested: true, lifecycleStage: "finalization", progress: {processedRawIndex: "6", progressTotal: "6"}}),
                 });
             }
             if (path === "/api/project/outcome-libraries/generate/jobs/generate-running") {
@@ -923,9 +1126,86 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText("Finalizing generated outcomes…")).toBeInTheDocument();
+        expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
+        const cancellationControls = screen.getAllByRole("button", {name: "Cancel generation"});
+        expect(cancellationControls).toHaveLength(1);
+        expect(cancellationControls[0]).toBeEnabled();
+        expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
+
+        await user.click(cancellationControls[0]);
+        await waitFor(() => expect(cancellationRequests).toBe(1));
+    });
+
+    it("renders durable progress as the sole running status and cancellation control", async () => {
+        const user = userEvent.setup();
+        let cancellationRequests = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/jobs") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "durable-running", projectId: "/games/a", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/a/outcomelibrary",
+                        status: "running", createdAt: 1,
+                        progress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({jobs: [{
+                        id: "durable-running", status: "running", cancellationRequested: false,
+                        durableProgress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }]}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                return Promise.resolve({
+                    ok: true,
+                    status: 202,
+                    json: () => Promise.resolve({status: "created", job: {
+                        id: "durable-running", status: "running", cancellationRequested: false,
+                        durableProgress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }}),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/durable-running/cancel") {
+                cancellationRequests += 1;
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: () => Promise.resolve({
+                        id: "durable-running", status: "cancelling", cancellationRequested: true,
+                        durableProgress: {stage: "Enumerating combinations", unit: "raw combinations", current: "3", total: "27"},
+                    }),
+                });
+            }
+            if (path === "/api/project/outcome-libraries/generate/jobs/durable-running") {
+                return new Promise(() => {
+                    // Deliberately unsettled: this assertion exercises the in-flight UI state.
+                });
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+
+        expect(await screen.findByText("Enumerating combinations")).toBeInTheDocument();
+        expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
+        const cancellationControls = screen.getAllByRole("button", {name: "Cancel"});
+        expect(cancellationControls).toHaveLength(1);
+        expect(cancellationControls[0]).toBeEnabled();
+        expect(screen.queryByRole("button", {name: "Cancel generation"})).not.toBeInTheDocument();
+
+        await user.click(cancellationControls[0]);
+        await waitFor(() => expect(cancellationRequests).toBe(1));
     });
 
     it("refreshes the preflight binding after cancellation so an unchanged retry starts a new safe job", async () => {
@@ -1023,6 +1303,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     result: {
                         status: "ok",
                         bundleDir: "outcomelibrary",
+                        resolvedBundleDir: "/owning-project/outcomelibrary",
                         files: ["manifest.json"],
                         warnings: [],
                         mode: {modeName: "base", libraryId: "random-base", hash: "sha256:library", outcomeCount: 10_000, totalWeight: 10_000, rtp: 0.95},

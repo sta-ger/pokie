@@ -7,12 +7,14 @@ import type {PublishDirectoryAtomicallyOwnership} from "../../stakeengine/intern
 export type OutcomeLibraryBundleWriteProgress = {
     readonly completed: bigint;
     readonly message: string;
+    readonly unit?: "outcome records" | "outcome records checked" | "bytes" | "bundle files";
+    readonly total?: bigint;
 };
 
 // These are observable boundaries after a streaming producer has started: they deliberately do
 // not pretend that a raw-combination percentage is the whole job. Studio uses them to distinguish
 // completed enumeration from the remaining finalization, serialization, validation and atomic swap.
-export type OutcomeLibraryBundleWriteLifecycleStage = "finalization" | "serialization" | "validation" | "publication";
+export type OutcomeLibraryBundleWriteLifecycleStage = "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
 
 // A caller may keep a small, non-bundle companion document beside a canonical bundle (for example,
 // a deployment descriptor that refers back to this bundle). These files are intentionally excluded
@@ -42,6 +44,12 @@ export type OutcomeLibraryBundleWriteOptions = {
     readonly expectedDestinationOwnership?: PublishDirectoryAtomicallyOwnership;
     readonly onProgress?: (progress: OutcomeLibraryBundleWriteProgress) => void;
     readonly onLifecycleStage?: (stage: OutcomeLibraryBundleWriteLifecycleStage) => void;
+    /**
+     * Optional publication order independent of streaming order. Studio uses
+     * this when it consumes a newly generated mode first to preserve lifecycle
+     * order while retaining the existing manifest's stable mode order.
+     */
+    readonly manifestModeOrder?: readonly string[];
     readonly supplementalFiles?: readonly OutcomeLibraryBundleSupplementalFile[];
     readonly generatedBy?: string;
 };

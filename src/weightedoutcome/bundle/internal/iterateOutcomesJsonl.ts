@@ -10,6 +10,15 @@ export type RawOutcomeLine =
     | {readonly status: "ok"; readonly position: number; readonly byteOffset: number; readonly value: unknown; readonly raw: string}
     | {readonly status: "invalid-json"; readonly position: number; readonly byteOffset: number; readonly error: string};
 
+/** Controls for a long JSONL scan without compromising streaming semantics. */
+export type IterateOutcomesJsonlOptions = {
+    readonly signal?: AbortSignal;
+    /** Lets an owning workflow retain its public cancellation error type. */
+    readonly throwIfAborted?: () => void;
+    readonly onProgress?: (progress: {readonly recordsRead: bigint; readonly bytesRead: bigint}) => void;
+    readonly yieldEvery?: bigint;
+};
+
 // Streams "filePath" line by line via Node's readline over a read stream — the one place in this codebase that
 // reads a file as a true, never-buffer-the-whole-thing async stream (every other exporter/importer reads a
 // whole file into memory at once; a canonical outcome-library bundle's whole point is to avoid that for
@@ -17,14 +26,16 @@ export type RawOutcomeLine =
 // iterateModeOutcomes/readLibrary (which throw on anything other than "ok" — those callers expect an
 // already-validated bundle) and OutcomeLibraryBundleValidator's deep mode (which turns each "invalid-json" or
 // shape mismatch into its own distinct ValidationIssue instead).
-export async function *iterateOutcomesJsonl(filePath: string): AsyncGenerator<RawOutcomeLine> {
+export async function *iterateOutcomesJsonl(filePath: string, options?: IterateOutcomesJsonlOptions): AsyncGenerator<RawOutcomeLine> {
     const stream = fs.createReadStream(filePath, {encoding: "utf-8"});
     const rl = readline.createInterface({input: stream, crlfDelay: Infinity});
 
     let position = 0;
     let byteOffset = 0;
+    const yieldEvery = options?.yieldEvery ?? BigInt(256);
     try {
         for await (const line of rl) {
+            assertNotCancelled(options);
             const lineByteLength = Buffer.byteLength(line, "utf-8");
             if (line.length > 0) {
                 const lineByteOffset = byteOffset;
@@ -34,6 +45,17 @@ export async function *iterateOutcomesJsonl(filePath: string): AsyncGenerator<Ra
                     yield {status: "invalid-json", position, byteOffset: lineByteOffset, error: error instanceof Error ? error.message : String(error)};
                 }
                 position++;
+                options?.onProgress?.({recordsRead: BigInt(position), bytesRead: BigInt(byteOffset + lineByteLength + 1)});
+                assertNotCancelled(options);
+                // readline can drain a buffered multi-million-record file in
+                // one turn. Yielding here keeps cancellation and UI updates
+                // responsive without buffering records.
+                if (yieldEvery > BigInt(0) && BigInt(position) % yieldEvery === BigInt(0)) {
+                    await new Promise<void>((resolve) => {
+                        setImmediate(resolve);
+                    });
+                    assertNotCancelled(options);
+                }
             }
             byteOffset += lineByteLength + 1;
         }
@@ -41,4 +63,12 @@ export async function *iterateOutcomesJsonl(filePath: string): AsyncGenerator<Ra
         rl.close();
         stream.destroy();
     }
+}
+
+function assertNotCancelled(options: IterateOutcomesJsonlOptions | undefined): void {
+    options?.throwIfAborted?.();
+    if (!options?.signal?.aborted) return;
+    const error = new Error("Outcome JSONL scan was cancelled.");
+    error.name = "AbortError";
+    throw error;
 }

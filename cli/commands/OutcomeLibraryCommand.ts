@@ -748,7 +748,13 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                     if ("library" in result) {
                         this.writeFile(rawOutput!, JSON.stringify(result.library, null, 4));
                     } else {
-                        await this.writeStreamingRawLibrary(rawOutput!, resolvedRequest.libraryId, result.outcomes, signal);
+                        await this.writeStreamingRawLibrary(
+                            rawOutput!,
+                            resolvedRequest.libraryId,
+                            result.outcomes,
+                            signal,
+                            options.progress ? (written) => console.error(`  Writing outcomes  ${written}`) : undefined,
+                        );
                     }
                     publishedOutput = true;
                 },
@@ -911,7 +917,10 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             ...(options.resume === undefined ? {} : {durableCheckpointOnCancellation: true}),
             ...(recoveryAuthority === undefined ? {} : {recoveryAuthority}),
             ...(signal === undefined ? {} : {signal}),
-            ...(options.progress ? {onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  ${processedRawIndex} / ${progressTotal}`)} : {}),
+            ...(options.progress ? {
+                onProgress: (processedRawIndex: bigint, progressTotal: bigint) => console.error(`  progress  Enumerating combinations  ${processedRawIndex} / ${progressTotal}`),
+                onPostEnumeration: () => console.error("  Deduplicating/finalizing outcomes"),
+            } : {}),
         };
     }
 
@@ -926,6 +935,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         libraryId: string,
         outcomes: AsyncIterable<WeightedOutcomeInput>,
         signal: AbortSignal,
+        onProgress?: (writtenOutcomes: bigint) => void,
     ): Promise<void> {
         const tempPath = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.pokie-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`);
         let fd: number | undefined;
@@ -933,6 +943,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
             fd = fs.openSync(tempPath, "wx");
             fs.writeSync(fd, `{"schemaVersion":1,"libraryId":${JSON.stringify(libraryId)},"outcomes":[`);
             let first = true;
+            let writtenOutcomes = BigInt(0);
             for await (const outcome of outcomes) {
                 if (signal.aborted) {
                     throw new WeightedOutcomeLibraryGenerationError(
@@ -943,7 +954,15 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
                 if (!first) fs.writeSync(fd, ",");
                 fs.writeSync(fd, JSON.stringify(outcome));
                 first = false;
+                writtenOutcomes++;
+                if (writtenOutcomes % BigInt(256) === BigInt(0)) {
+                    onProgress?.(writtenOutcomes);
+                    await new Promise<void>((resolve) => {
+                        setImmediate(resolve);
+                    });
+                }
             }
+            onProgress?.(writtenOutcomes);
             if (signal.aborted) {
                 throw new WeightedOutcomeLibraryGenerationError(
                     "weighted-outcome-library-generation-cancelled",

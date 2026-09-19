@@ -11,8 +11,17 @@ import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 export type StudioOutcomeLibraryGenerateResultView =
     | {
           readonly status: "ok";
-          readonly bundleDir: string; // project-relative
+          /** The project-relative destination retained for selector/configuration workflows. */
+          readonly bundleDir: string;
+          /**
+           * The canonical, server-resolved location of the published bundle.
+           * Host actions and the Outcome Library project inspector must use
+           * this rather than resolving bundleDir from the server's cwd.
+           */
+          readonly resolvedBundleDir: string;
           readonly files: readonly string[];
+          /** Final published byte size, measured only after the atomic swap settles. */
+          readonly byteSize?: number;
           readonly warnings: readonly ValidationIssue[];
           readonly mode: {
               readonly modeName: string;

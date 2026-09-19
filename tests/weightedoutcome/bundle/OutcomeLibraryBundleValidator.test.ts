@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter} from "pokie";
+import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter, WeightedOutcomeInput} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function readManifest(outDir: string): OutcomeLibraryBundleManifest {
@@ -18,6 +18,19 @@ function writeIndex(outDir: string, modeName: string, index: unknown): void {
 }
 function issueCodes(issues: readonly {code: string}[]): string[] {
     return issues.map((issue) => issue.code);
+}
+
+function largeMode() {
+    const seed = buildOutcomeLibraryBundleModeInput("base", "base-lib");
+    const outcomes = seed.outcomes as WeightedOutcomeInput[];
+    return {
+        ...seed,
+        outcomes: Array.from({length: 512}, (_, position) => ({
+            id: String(position).padStart(4, "0"),
+            weight: 1,
+            artifact: {...outcomes[position % outcomes.length].artifact, roundId: `validation-many-${position}`},
+        })),
+    };
 }
 // Corrupts every record's own bytes in place, leaving each index entry's byteOffset/byteLength — and, crucially,
 // the newline byte immediately after it — completely untouched. This is what isolates "the outcomes file's JSON
@@ -51,6 +64,35 @@ describe("OutcomeLibraryBundleValidator", () => {
 
         expect(await validator.validate(outDir)).toEqual([]);
         expect(await validator.validate(outDir, {deep: true})).toEqual([]);
+    });
+
+    it("cancels during the independent deep JSONL scan and removes its private analysis spool", async () => {
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([largeMode()], outDir);
+        const controller = new AbortController();
+        const progress: {completed: bigint; total?: bigint; unit: string; message: string}[] = [];
+        let timerRan = false;
+        let cancellationScheduled = false;
+
+        await expect(new OutcomeLibraryBundleValidator().validate(outDir, {
+            deep: true,
+            signal: controller.signal,
+            onProgress: (entry) => {
+                progress.push(entry);
+                if (!cancellationScheduled && entry.message === "Validating Outcome mode base records") {
+                    cancellationScheduled = true;
+                    setImmediate(() => {
+                        timerRan = true;
+                        controller.abort();
+                    });
+                }
+            },
+        })).rejects.toMatchObject({name: "AbortError"});
+
+        expect(timerRan).toBe(true);
+        expect(progress).toContainEqual(
+            expect.objectContaining({unit: "outcome records checked", message: "Validating Outcome mode base records"}),
+        );
+        expect(fs.readdirSync(outDir).filter((name) => name.startsWith(".validation-analysis-"))).toEqual([]);
     });
 
     describe("manifest", () => {

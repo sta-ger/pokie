@@ -45,6 +45,8 @@ export type StreamModeOutcomesResult<T extends string | number> = {
         // shape. Native publication instead stages JSON index entries on disk.
         readonly entries?: readonly OutcomeLibraryBundleIndexEntry[];
         readonly entriesPath?: string;
+        /** Private compact numeric analysis spool used only during native publication. */
+        readonly analysisPath?: string;
         readonly outcomeCount: number;
         readonly totalWeight: number;
         readonly libraryHash: string;
@@ -77,7 +79,9 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     filePath: string,
     options?: OutcomeLibraryBundleWriteOptions,
     entriesPath?: string,
+    analysisPath?: string,
     completedBefore = BigInt(0),
+    announceWriting = true,
 ): Promise<StreamModeOutcomesResult<T>> {
     const issues: ValidationIssue[] = [];
     const roundArtifactValidator = new RoundArtifactValidator<T>();
@@ -86,6 +90,8 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
 
     const entries: OutcomeLibraryBundleIndexEntry[] | undefined = entriesPath === undefined ? [] : undefined;
     let entriesDescriptor: number | undefined;
+    let analysisDescriptor: number | undefined;
+    const analysisRecord = analysisPath === undefined ? undefined : Buffer.allocUnsafe(24);
     let previousId: string | undefined;
     let alreadyReportedUnsorted = false;
     let reference: OutcomeHomogeneityKey | undefined;
@@ -94,12 +100,22 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
     let hashedCount = 0;
     let totalWeight = 0;
     let processed = BigInt(0);
+    let announcedWriting = false;
 
     const fd = fs.openSync(filePath, "w");
     try {
         if (entriesPath !== undefined) entriesDescriptor = fs.openSync(entriesPath, "w");
+        if (analysisPath !== undefined) analysisDescriptor = fs.openSync(analysisPath, "w");
         for await (const outcome of outcomes) {
             assertNotCancelled(options);
+            // Lazy generated sources announce their completed enumeration just
+            // before yielding the first outcome.  Announcing writing here,
+            // rather than before asking the source for that outcome, keeps the
+            // observable lifecycle in real execution order.
+            if (announceWriting && !announcedWriting) {
+                options?.onLifecycleStage?.("writing");
+                announcedWriting = true;
+            }
             if (!isNonEmptyString(outcome.id)) {
                 issues.push({
                     code: "outcome-library-bundle-write-outcome-id-invalid",
@@ -220,6 +236,13 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
                 if (hashedCount > 0) fs.writeSync(entriesDescriptor, ",");
                 fs.writeSync(entriesDescriptor, JSON.stringify(indexEntry));
             }
+            if (analysisDescriptor !== undefined) {
+                if (analysisRecord === undefined) throw new Error("Outcome Library analysis staging buffer was not allocated.");
+                analysisRecord.writeDoubleLE(outcome.weight, 0);
+                analysisRecord.writeDoubleLE(outcome.artifact.payoutMultiplier, 8);
+                analysisRecord.writeDoubleLE(outcome.artifact.totalWin, 16);
+                fs.writeSync(analysisDescriptor, analysisRecord);
+            }
             offset += lineBuffer.byteLength + 1;
 
             if (hashedCount > 0) {
@@ -236,13 +259,27 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
             // batches without weakening the one-pass streaming contract.
             if (processed % BigInt(256) === BigInt(0)) {
                 await new Promise<void>((resolve) => {
-                    setImmediate(resolve);
+                    // Let poll/timer work run before continuing the writer.
+                    // Re-queuing an immediate from the check phase can keep
+                    // a fast publish invisible to the Studio HTTP job route.
+                    // The first cooperative boundary needs a full polling
+                    // interval: a local HTTP client receives the accepted
+                    // job only after this call stack unwinds, and otherwise a
+                    // small but cancellable write can complete before it can
+                    // address the published job at all. Later batches retain
+                    // the ordinary zero-delay cooperative yield.
+                    setTimeout(resolve, processed === BigInt(256) ? 25 : 0);
                 });
+                // The source can finish exactly at a cooperative boundary.
+                // Check again here rather than letting the caller advance to
+                // the next lifecycle phase before seeing a timer-driven abort.
+                assertNotCancelled(options);
             }
         }
     } finally {
         fs.closeSync(fd);
         if (entriesDescriptor !== undefined) fs.closeSync(entriesDescriptor);
+        if (analysisDescriptor !== undefined) fs.closeSync(analysisDescriptor);
     }
 
     if (hashedCount === 0) {
@@ -280,6 +317,7 @@ export async function streamModeOutcomesToTempFile<T extends string | number>(
         issues,
         built: {
             ...(entries === undefined ? {entriesPath} : {entries}),
+            ...(analysisPath === undefined ? {} : {analysisPath}),
             outcomeCount: hashedCount,
             totalWeight,
             libraryHash,

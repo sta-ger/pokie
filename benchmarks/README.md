@@ -22,6 +22,7 @@ Every file prints its own `[bench] ...` line to stdout with the numbers it measu
 | `randomGameBlueprintGeneration.bench.ts` | `RandomGameBlueprintGenerator.generate()` average time across 500 seeds. |
 | `simulationReportGeneration.bench.ts` | `SimulationReportBuilder.build()` plus `HtmlSimulationReportRenderer`/`MarkdownSimulationReportRenderer` `.render()` timing for a 100,000-round report. |
 | `wasmRuntime.bench.ts` | Raw module, manifest, and complete portable packaged-artifact bytes; Node cold instantiate/warm spin/serialization/replay; and genuine Chromium main-thread plus module-Worker protocol timings for the canonical portable fixture. |
+| `outcomeLibraryGeneration.bench.ts` | A deterministic two-million-record canonical Outcome Library stream through publication and deep validation, with a machine-readable record of stage transitions, bytes, durations, throughput, runtime, and correctness. |
 
 For the focused portable baseline, use this one-command flow:
 

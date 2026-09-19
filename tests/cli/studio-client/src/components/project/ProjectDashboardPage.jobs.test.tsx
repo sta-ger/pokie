@@ -9,6 +9,27 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it("keeps an Outcome Library durable job visible through the common card outside Build/Export", async () => {
+        const outcomeJob = {
+            id: "outcome-job-1", projectId: "/games/sample-slot", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/sample-slot/outcomelibrary",
+            status: "running", createdAt: 1, progress: {stage: "Analyzing outcomes", unit: "records", current: "2", total: "4"},
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [outcomeJob]}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        expect(await screen.findByText("Analyzing outcomes")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Cancel"})).toBeInTheDocument();
+    });
+
     it("discovers active common jobs and obtains server-validated confirmation with the affected operation before Close", async () => {
         const user = userEvent.setup();
         let closeAttempts = 0;

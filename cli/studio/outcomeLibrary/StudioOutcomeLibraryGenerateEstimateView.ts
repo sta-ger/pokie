@@ -18,6 +18,18 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           readonly strategy: OutcomeLibraryGenerationStrategy;
           readonly expectedRawWork: number | string;
           readonly warnings: readonly string[];
+          /**
+           * Unique records, serialized bytes and elapsed duration cannot be
+           * inferred from raw reel-stop cardinality alone.  Keep that
+           * uncertainty explicit rather than displaying a false precision.
+           */
+          readonly operationalEstimates: {
+              readonly recordCount: "unknown";
+              readonly outputSize: "unknown";
+              readonly memoryRisk: "unknown";
+              readonly diskRisk: "unknown";
+              readonly likelyDuration: "unknown";
+          };
           // The exact deterministic sample execution will use when this is a
           // sampled/bounded request. Kept decimal-safe for browser clients.
           readonly sampleSize?: number | string;

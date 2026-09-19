@@ -810,6 +810,7 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             }
 
             expect(result.bundleDir).toBe(StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
+            expect(result.resolvedBundleDir).toBe(path.join(projectRoot, StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR));
             expect(fs.existsSync(path.join(projectRoot, "outcomelibrary", "manifest.json"))).toBe(true);
             expect(result.files.length).toBeGreaterThan(0);
             expect(result.mode.modeName).toBe("base");
@@ -817,7 +818,10 @@ describe("StudioOutcomeLibraryGenerateService", () => {
             expect(result.mode.outcomeCount).toBe(4);
             expect(result.mode.totalWeight).toBe(6);
             expect(result.mode.hash).toEqual(expect.any(String));
+            expect(result.byteSize).toEqual(expect.any(Number));
             expect(result.generator.strategy).toBe("exact");
+            expect(result.generator.game).toEqual({id: "fixture-slot", name: "Fixture Slot", version: "1.0.0"});
+            expect(result.generator.configHash).toBeUndefined();
             expect(result.generator.pokieVersion).toBe(POKIE_VERSION);
             expect(result.coverage).toBe(1);
             expect(result.selector).toEqual({kind: "bundle", bundleDir: "outcomelibrary", modeName: "base"});

@@ -29,6 +29,7 @@ import type {
     StudioOutcomeLibraryGenerateJobView,
     StudioOutcomeLibraryGenerateEstimateView,
     StudioProjectCapability,
+    StudioJobView,
 } from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {
@@ -48,6 +49,7 @@ import {ErrorState} from "../common/ErrorState";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {IssueList} from "../common/IssueList";
 import {LoadingState} from "../common/LoadingState";
+import {JobProgressCard} from "../common/JobProgressCard";
 import {PageSection} from "../common/PageSection";
 import {QuickActions} from "../common/QuickActions";
 import {PathInput} from "../common/PathInput";
@@ -121,14 +123,20 @@ type OutcomeLibraryGenerationOptions = {
 type OutcomeLibraryRunView =
     | {status: "idle"}
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView}
-    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>}
+    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
-    | {status: "error"; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
+    | {status: "error"; jobId?: string; recovery?: StudioJobView["recovery"]; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>}
     | {status: "error"; result?: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>; message?: string};
+
+function describeCompletedOutcomeLibrarySelector(selector: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>["selector"]): string {
+    if (selector.kind === "bundle") return `bundle ${selector.bundleDir}, mode ${selector.modeName}`;
+    if (selector.kind === "json") return `JSON ${selector.path}`;
+    return `Stake Engine ${selector.stakeDir}, mode ${selector.modeName}`;
+}
 
 function describeGenerateResultError(view: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>): string {
     return describeOutcomeLibraryGenerationTerminalOutcome(view);
@@ -211,6 +219,8 @@ function TargetCard({
     onGenerateOutcomeLibrary,
     onCancelOutcomeLibrary,
     onResumeOutcomeLibrary,
+    onFeatureOutcomeLibraryRecoveryAction,
+    onInspectOutcomeLibrary,
     outcomeLibraryGenerationOptions,
     onOutcomeLibraryGenerationOptionsChange,
     deployment,
@@ -235,6 +245,8 @@ function TargetCard({
     onGenerateOutcomeLibrary: () => void;
     onCancelOutcomeLibrary: () => void;
     onResumeOutcomeLibrary: () => void;
+    onFeatureOutcomeLibraryRecoveryAction?: (jobId: string) => void;
+    onInspectOutcomeLibrary: (path: string) => void;
     outcomeLibraryGenerationOptions: OutcomeLibraryGenerationOptions;
     onOutcomeLibraryGenerationOptionsChange: (options: OutcomeLibraryGenerationOptions) => void;
     deployment: DeploymentManager;
@@ -255,6 +267,13 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    const operationalEstimates = outcomeLibraryPreflight.status !== "ok" ? undefined : outcomeLibraryPreflight.result.operationalEstimates ?? {
+        recordCount: "unknown",
+        outputSize: "unknown",
+        memoryRisk: "unknown",
+        diskRisk: "unknown",
+        likelyDuration: "unknown",
+    } as const;
 
     return (
         <div style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}>
@@ -312,54 +331,8 @@ function TargetCard({
                             onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, mode: event.currentTarget.value})
                         }
                     />
-                    <Group align="start" grow mt="sm">
-                        <TextInput
-                            label="Output destination"
-                            description="Project-relative bundle directory (for example, libraries/release). Absolute and outside-project paths are not supported; existing modes are preserved safely."
-                            value={outcomeLibraryGenerationOptions.outDir}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})
-                            }
-                        />
-                        <TextInput
-                            label="Library identity"
-                            description="Optional stable library ID; blank uses the game and mode."
-                            value={outcomeLibraryGenerationOptions.libraryId}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})
-                            }
-                        />
-                    </Group>
-                    <Group align="start" grow mt="sm">
-                        <TextInput
-                            label="Stake"
-                            description="Optional positive stake recorded on generated outcomes."
-                            inputMode="decimal"
-                            value={outcomeLibraryGenerationOptions.stake}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})
-                            }
-                        />
-                        <TextInput
-                            label="Configuration identity"
-                            description="Optional loaded configuration identity to verify; it never overrides the loaded game provenance."
-                            value={outcomeLibraryGenerationOptions.configHash}
-                            onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})
-                            }
-                        />
-                    </Group>
-                    <TextInput
-                        mt="sm"
-                        label="Max outcome space size"
-                        description="Exact generation stops above this many reel-stop combinations. Raise it only when the full library is practical to generate and store."
-                        inputMode="numeric"
-                        value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
-                        onChange={(event) =>
-                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})
-                        }
-                    />
                     <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
+                    <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
                     <Group gap="xs" mt={4}>
                         {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
                             <Button key={generation} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
@@ -368,24 +341,65 @@ function TargetCard({
                         ))}
                     </Group>
                     {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
-                        <Group align="start" grow mt="sm">
+                        <TextInput
+                            mt="sm"
+                            label="Sample size"
+                            description="Number of deterministic reel-stop draws to include."
+                            inputMode="numeric"
+                            value={outcomeLibraryGenerationOptions.sampleSize}
+                            onChange={(event) =>
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
+                            }
+                        />
+                    )}
+                    <AdvancedDisclosure label="Advanced generation controls">
+                        <Group align="start" grow>
                             <TextInput
-                                label="Sample size"
-                                description="Number of deterministic reel-stop draws to include."
-                                inputMode="numeric"
-                                value={outcomeLibraryGenerationOptions.sampleSize}
-                                onChange={(event) =>
-                                    onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
-                                }
+                                label="Output destination"
+                                description="Project-relative bundle directory; existing modes are preserved safely."
+                                value={outcomeLibraryGenerationOptions.outDir}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})}
                             />
                             <TextInput
+                                label="Library identity"
+                                description="Optional stable library ID; blank uses the game and mode."
+                                value={outcomeLibraryGenerationOptions.libraryId}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})}
+                            />
+                        </Group>
+                        <Group align="start" grow mt="sm">
+                            <TextInput
+                                label="Stake"
+                                description="Optional positive stake recorded on generated outcomes."
+                                inputMode="decimal"
+                                value={outcomeLibraryGenerationOptions.stake}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})}
+                            />
+                            <TextInput
+                                label="Configuration identity"
+                                description="Optional loaded configuration identity to verify; it never overrides loaded provenance."
+                                value={outcomeLibraryGenerationOptions.configHash}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})}
+                            />
+                        </Group>
+                        <TextInput
+                            mt="sm"
+                            label="Max outcome space size"
+                            description="Raise only when the complete library is practical to generate and store."
+                            inputMode="numeric"
+                            value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
+                            onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})}
+                        />
+                        {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
+                            <TextInput
+                                mt="sm"
                                 label="Coverage seed"
                                 description="Saved with the generated library so this sample can be reproduced."
                                 value={outcomeLibraryGenerationOptions.seed}
                                 onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, seed: event.currentTarget.value})}
                             />
-                        </Group>
-                    )}
+                        )}
+                    </AdvancedDisclosure>
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
                     {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
                     {outcomeLibraryPreflight.status === "error" && (
@@ -398,6 +412,11 @@ function TargetCard({
                         <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
                             {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
                             {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
+                        </Text>
+                    )}
+                    {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
+                        <Text size="xs" c="dimmed">
+                            Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
                         </Text>
                     )}
                     {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
@@ -413,15 +432,23 @@ function TargetCard({
                         Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
                     {outcomeLibraryRun.status === "running" && (
-                        <>
-                            <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
-                            <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>
-                        </>
+                        outcomeLibraryRun.job.durableProgress !== undefined
+                            ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
+                            : <>
+                                <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
+                                {outcomeLibraryRun.job.status !== "cancelling" && !outcomeLibraryRun.job.cancellationRequested &&
+                                    <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>}
+                            </>
                     )}
                     {outcomeLibraryRun.status === "error" && (
                         <>
                             <ErrorState message={outcomeLibraryRun.message} />
                             {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
+                            {outcomeLibraryRun.jobId !== undefined && outcomeLibraryRun.recovery !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
+                                <Button size="xs" variant="light" mt="xs" onClick={() => onFeatureOutcomeLibraryRecoveryAction(outcomeLibraryRun.jobId!)}>
+                                    {outcomeLibraryRun.recovery.action === "resume" ? "Resume" : "Retry"}
+                                </Button>
+                            )}
                             <PlannerSummary plan={outcomeLibraryRun.plan} />
                         </>
                     )}
@@ -434,11 +461,28 @@ function TargetCard({
                                     ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
                                     : ""}
                                 {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
-                                {outcomeLibraryRun.result.bundleDir}.{" "}
-                                <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.bundleDir)}>
-                                    Open output folder
-                                </Button>
+                                {outcomeLibraryRun.result.bundleDir}.
                             </Text>
+                            <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
+                                {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
+                            <QuickActions>
+                                <Button size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
+                                {outputActionsUnavailable ? (
+                                    <>
+                                        <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
+                                        <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
+                                    </>
+                                ) : <>
+                                    <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.resolvedBundleDir)}>Open output folder</Button>
+                                    <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.resolvedBundleDir)}>Reveal output</Button>
+                                </>}
+                                {outcomeLibraryRun.result.warnings.map((warning) => <Text size="xs" c="orange" key={`${warning.code}:${warning.message}`}>{warning.message}</Text>)}
+                                <AdvancedDisclosure label="Inspect completed library">
+                                    <Text size="xs">Hash: {outcomeLibraryRun.result.mode.hash}. Library: {outcomeLibraryRun.result.mode.libraryId}. Total weight: {outcomeLibraryRun.result.mode.totalWeight.toLocaleString()}.</Text>
+                                    <Text size="xs">Coverage: {outcomeLibraryRun.result.generator.strategy}; raw work {String(outcomeLibraryRun.result.generator.sampledRawCount)} / {String(outcomeLibraryRun.result.generator.totalOutcomeSpaceSize)}.</Text>
+                                    <Text size="xs">Selector: {describeCompletedOutcomeLibrarySelector(outcomeLibraryRun.result.selector)}. Files: {outcomeLibraryRun.result.files.join(", ")}.</Text>
+                                </AdvancedDisclosure>
+                            </QuickActions>
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
                         </>
                     )}
@@ -760,12 +804,44 @@ function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobVie
     const emitted = job.progress?.emittedOutcomes === undefined ? undefined : `${job.progress.emittedOutcomes} outcome record${job.progress.emittedOutcomes === "1" ? "" : "s"} evaluated`;
     switch (job.lifecycleStage) {
         case "finalization": return emitted === undefined ? "Finalizing generated outcomes…" : `Finalizing generated outcomes: ${emitted}…`;
+        case "writing": return "Writing Outcome Library records…";
+        case "analyzing": return "Analyzing Outcome Library outcomes…";
+        case "building-index": return "Building the native Outcome Library index…";
         case "serialization": return "Serializing Outcome Library records…";
         case "validation": return "Validating the complete Outcome Library…";
         case "publication": return "Atomically publishing the validated Outcome Library…";
         case "generation": return progress === undefined ? "Generating outcome library from this project's current build…" : `Generating outcome library: ${progress}…`;
         default: return progress === undefined ? "Preparing outcome library generation…" : `Generating outcome library: ${progress}…`;
     }
+}
+
+function toDurableOutcomeLibraryJob(job: StudioOutcomeLibraryGenerateJobView): StudioJobView {
+    return {
+        id: job.id,
+        projectId: "outcome-library-project",
+        operation: "Outcome Library generation",
+        request: {},
+        conflictKey: "outcome-library",
+        status: job.status,
+        createdAt: job.createdAt ?? job.startedAt ?? Date.now(),
+        ...(job.startedAt === undefined ? {} : {startedAt: job.startedAt}),
+        ...(job.completedAt === undefined ? {} : {completedAt: job.completedAt}),
+        ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs}),
+        ...(job.durableProgress === undefined ? {} : {progress: job.durableProgress}),
+    };
+}
+
+function outcomeLibraryJobTimestamp(job: StudioOutcomeLibraryGenerateJobView): number {
+    return job.completedAt ?? job.startedAt ?? job.createdAt ?? 0;
+}
+
+// The endpoint retains jobs across destinations and Studio restarts. Its
+// storage order is not a user-facing ordering contract, so choose the newest
+// record explicitly before allowing this feature card to own it.
+function newestOutcomeLibraryJob(jobs: readonly StudioOutcomeLibraryGenerateJobView[]): StudioOutcomeLibraryGenerateJobView | undefined {
+    return [...jobs].sort((left, right) =>
+        outcomeLibraryJobTimestamp(right) - outcomeLibraryJobTimestamp(left) || right.id.localeCompare(left.id),
+    )[0];
 }
 
 // The sole Studio Build/Export surface -- lists every applicable builder this project's own resolved
@@ -782,18 +858,31 @@ function describeOutcomeLibraryLifecycle(job: StudioOutcomeLibraryGenerateJobVie
 // auto-publish outside this machine. (The SDK's own
 // local-json-example demo target -- the one case that could ever run straight to publish:true without a
 // preview step -- is never described as a card at all here; see ExportDeployTargets.ts's own doc comment.)
-export function ExportDeployTab({capabilities: _capabilities, deployment, recoveryRequest}: {capabilities: readonly StudioProjectCapability[]; deployment: DeploymentManager; recoveryRequest?: Readonly<Record<string, unknown>>}) {
+export function ExportDeployTab({capabilities: _capabilities, deployment, recoveryRequest, onFeatureOwnedOutcomeLibraryJobChange, onFeatureOutcomeLibraryRecoveryAction}: {
+    capabilities: readonly StudioProjectCapability[];
+    deployment: DeploymentManager;
+    recoveryRequest?: Readonly<Record<string, unknown>>;
+    onFeatureOwnedOutcomeLibraryJobChange?: (jobId: string | undefined) => void;
+    onFeatureOutcomeLibraryRecoveryAction?: (jobId: string) => void;
+}) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
     const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
+    const [featureOwnedOutcomeLibraryJobId, setFeatureOwnedOutcomeLibraryJobId] = useState<string | undefined>();
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const outcomeLibraryPollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     useEffect(() => () => {
         if (outcomeLibraryPollTimer.current !== undefined) clearTimeout(outcomeLibraryPollTimer.current);
     }, []);
+    useEffect(() => {
+        onFeatureOwnedOutcomeLibraryJobChange?.(featureOwnedOutcomeLibraryJobId);
+    }, [featureOwnedOutcomeLibraryJobId, onFeatureOwnedOutcomeLibraryJobChange]);
+    useEffect(() => () => {
+        onFeatureOwnedOutcomeLibraryJobChange?.(undefined);
+    }, [onFeatureOwnedOutcomeLibraryJobChange]);
     const [outcomeLibraryGenerationOptions, setOutcomeLibraryGenerationOptions] = useState<OutcomeLibraryGenerationOptions>({
         mode: "",
         stake: "",
@@ -820,8 +909,27 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         listOutcomeLibraryGenerationJobs(fetchImpl)
             .then((jobs) => {
                 if (cancelled) return;
-                const resumable = jobs.find((job) => job.status === "cancelled" && job.result?.status === "cancelled" && job.result.checkpoint !== undefined);
-                if (resumable?.result?.status === "cancelled") setOutcomeLibraryRun({status: "cancelled", result: resumable.result});
+                const newest = newestOutcomeLibraryJob(jobs);
+                setFeatureOwnedOutcomeLibraryJobId(newest?.id);
+                if (newest === undefined) return;
+                if (newest.status === "queued" || newest.status === "running" || newest.status === "cancelling") {
+                    setOutcomeLibraryRun({status: "running", job: newest});
+                    pollOutcomeLibraryGeneration(newest.id);
+                    return;
+                }
+                if (newest.status === "completed" && newest.result?.status === "ok") {
+                    setOutcomeLibraryRun({status: "ok", result: newest.result, ...(newest.durationMs === undefined ? {} : {durationMs: newest.durationMs})});
+                    return;
+                }
+                if (newest.status === "cancelled" && newest.result?.status === "cancelled") {
+                    setOutcomeLibraryRun({status: "cancelled", result: newest.result});
+                    return;
+                }
+                if (newest.result !== undefined && newest.result.status !== "ok") {
+                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: describeGenerateResultError(newest.result), ...("error" in newest.result ? {diagnostic: newest.result.error} : {}), plan: newest.result.plan});
+                } else {
+                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: "Outcome library generation ended without a result."});
+                }
             })
             .catch(() => {
                 // Older Studio servers do not expose checkpoint discovery; the
@@ -830,6 +938,10 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         return () => {
             cancelled = true;
         };
+        // The discovery request must stay mount-scoped; depending on the
+        // polling function would rediscover and restart the same durable job
+        // after every state update it applies.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fetchImpl]);
     useEffect(() => {
         let cancelled = false;
@@ -1069,6 +1181,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             preflightToken: outcomeLibraryPreflight.result.preflightToken,
         })
             .then((job) => {
+                setFeatureOwnedOutcomeLibraryJobId(job.id);
                 setOutcomeLibraryRun({status: "running", job});
                 pollOutcomeLibraryGeneration(job.id);
             })
@@ -1088,14 +1201,15 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     function pollOutcomeLibraryGeneration(id: string): void {
         getOutcomeLibraryGenerationJob(fetchImpl, id)
             .then((job) => {
-                if (job.status === "queued" || job.status === "running") {
+                setFeatureOwnedOutcomeLibraryJobId(job.id);
+                if (job.status === "queued" || job.status === "running" || job.status === "cancelling") {
                     setOutcomeLibraryRun({status: "running", job});
                     outcomeLibraryPollTimer.current = setTimeout(() => pollOutcomeLibraryGeneration(id), 250);
                     return;
                 }
                 outcomeLibraryGuard.end();
                 if (job.status === "completed" && job.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: job.result});
+                    setOutcomeLibraryRun({status: "ok", result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
                     deployment.refreshProjectModes();
                     // The generated bundle is now canonical project state.
                     // Re-preflight every registry-backed artifact card so the
@@ -1110,9 +1224,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // check while making a clean cancellation recoverable.
                     setOutcomeLibraryPreflightRevision((revision) => revision + 1);
                 } else if (job.result !== undefined && job.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
+                    setOutcomeLibraryRun({status: "error", jobId: job.id, recovery: job.recovery, message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {
-                    setOutcomeLibraryRun({status: "error", message: "Outcome library generation ended without a result."});
+                    setOutcomeLibraryRun({status: "error", jobId: job.id, recovery: job.recovery, message: "Outcome library generation ended without a result."});
                 }
             })
             .catch((error: unknown) => {
@@ -1133,6 +1247,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         if (!outcomeLibraryGuard.begin()) return;
         resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id)
             .then((job) => {
+                setFeatureOwnedOutcomeLibraryJobId(job.id);
                 setOutcomeLibraryRun({status: "running", job});
                 pollOutcomeLibraryGeneration(job.id);
             })
@@ -1315,6 +1430,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             onGenerateOutcomeLibrary={handleGenerateOutcomeLibrary}
                                             onCancelOutcomeLibrary={handleCancelOutcomeLibrary}
                                             onResumeOutcomeLibrary={handleResumeOutcomeLibrary}
+                                            onFeatureOutcomeLibraryRecoveryAction={onFeatureOutcomeLibraryRecoveryAction}
+                                            onInspectOutcomeLibrary={(bundleDir) => openAndNavigate(bundleDir).catch((error: unknown) => setArtifactActionError(errorMessage(error)))}
                                             outcomeLibraryGenerationOptions={outcomeLibraryGenerationOptions}
                                             onOutcomeLibraryGenerationOptionsChange={setOutcomeLibraryGenerationOptions}
                                             deployment={deployment}

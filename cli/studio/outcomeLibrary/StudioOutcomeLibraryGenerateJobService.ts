@@ -12,7 +12,7 @@ import {
 import type {ValidatedOutcomeLibraryGenerateRequest} from "./validateOutcomeLibraryGenerateRequest.js";
 import {StudioJobService} from "../jobs/StudioJobService.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
-import type {StudioJobRecoveryView, StudioJobView} from "../jobs/StudioJobView.js";
+import type {StudioJobProgressView, StudioJobRecoveryView, StudioJobView} from "../jobs/StudioJobView.js";
 
 export type StudioOutcomeLibraryCheckpointView = {
     readonly id: string;
@@ -36,7 +36,18 @@ export type StudioOutcomeLibraryGenerateJobView = {
     readonly id: string;
     readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     readonly cancellationRequested: boolean;
+    /** The common durable job clock is the authority across polling and restart. */
+    readonly createdAt?: number;
+    readonly startedAt?: number;
+    readonly completedAt?: number;
+    readonly durationMs?: number;
     readonly lifecycleStage?: StudioOutcomeLibraryGenerationLifecycleStage;
+    /**
+     * Stage-local telemetry from StudioJobService.  Keep the older raw cursor
+     * below for compatibility, but never derive a writing/validation percent
+     * from that enumeration-only denominator.
+     */
+    readonly durableProgress?: StudioJobProgressView;
     readonly progress?: {readonly processedRawIndex: string; readonly progressTotal: string; readonly emittedOutcomes?: string};
     readonly result?: StudioOutcomeLibraryGenerateJobResultView;
     readonly recovery?: StudioJobRecoveryView;
@@ -140,16 +151,20 @@ export class StudioOutcomeLibraryGenerateJobService {
         }).then(() => this.run(record)).catch((error: unknown) => {
             // generate() normally converts domain failures into its result union. Keep an unexpected
             // adapter failure observable as a terminal job instead of an unhandled server rejection.
+            const failedResult: StudioOutcomeLibraryGenerateJobResultView = {
+                status: "generation-error" as const,
+                code: "studio-outcome-library-job-failed",
+                error: error instanceof Error ? error.message : String(error),
+                plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
+            };
             Object.assign(record, {
                 status: "failed" as const,
-                result: {
-                    status: "generation-error" as const,
-                    code: "studio-outcome-library-job-failed",
-                    error: error instanceof Error ? error.message : String(error),
-                    plan: createUnresolvedRuntimePlan(record.projectRoot, "outcomeLibrary"),
-                },
+                result: failedResult,
             });
-            this.jobService?.fail(record.id, error instanceof Error ? error.message : String(error), {action: "retry", reason: "Correct the reported generation problem and run it again."});
+            this.jobService?.fail(record.id, failedResult.error, {action: "retry", reason: "Correct the reported generation problem and run it again."}, {
+                summary: "Outcome Library generation failed.",
+                detail: {status: failedResult.status, result: failedResult},
+            });
         }).finally(() => {
             // Generation owns staging/partial-output cleanup and only resolves once that is
             // complete. Release the destination after that terminal boundary, never on abort.
@@ -283,21 +298,42 @@ export class StudioOutcomeLibraryGenerateJobService {
     private async run(record: JobRecord): Promise<void> {
         record.status = "running";
         this.jobService?.markRunning(record.id);
-        this.jobService?.progress(record.id, {stage: "preparing", unit: "raw combinations", current: "0", total: "0"});
+        this.jobService?.progress(record.id, {stage: "Preflight", unit: "work", current: "indeterminate", total: "indeterminate", message: "Revalidating the prepared source, configuration, and destination."});
         const result = await this.generateService.generate(record.projectRoot, {
             ...record.request,
             signal: record.controller.signal,
             onProgress: (processedRawIndex, progressTotal) => {
                 record.progress = {processedRawIndex: processedRawIndex.toString(), progressTotal: progressTotal.toString()};
-                this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
+                this.jobService?.progress(record.id, {stage: "Enumerating combinations", unit: "raw combinations", current: processedRawIndex.toString(), total: progressTotal.toString()});
             },
         }, (stage) => {
             record.lifecycleStage = stage;
-            this.jobService?.progress(record.id, {stage, unit: "raw combinations", current: record.progress?.processedRawIndex ?? "0", total: record.progress?.progressTotal ?? "0"});
+            this.jobService?.progress(record.id, {
+                stage: durableStageLabel(stage),
+                unit: "work",
+                current: "indeterminate",
+                total: "indeterminate",
+            });
         }, (emittedOutcomes) => {
+            // A generator may emit several internal finalization updates while
+            // retained-mode writing is already underway. Those values remain
+            // useful only until the public lifecycle has advanced; never turn
+            // a later poll back into a finalization stage.
+            if (record.lifecycleStage !== undefined && record.lifecycleStage !== "generation" && record.lifecycleStage !== "finalization") return;
             if (record.progress !== undefined) record.progress.emittedOutcomes = emittedOutcomes.toString();
             else record.progress = {processedRawIndex: "0", progressTotal: "0", emittedOutcomes: emittedOutcomes.toString()};
-            this.jobService?.progress(record.id, {stage: record.lifecycleStage ?? "generation", unit: "emitted outcomes", current: emittedOutcomes.toString(), total: record.progress.progressTotal});
+            this.jobService?.progress(record.id, {stage: "Deduplicating/finalizing outcomes", unit: "outcome records", current: emittedOutcomes.toString(), total: "indeterminate"});
+        }, (progress) => {
+            // A raw-combination total says nothing about a write, analysis or
+            // index-copy stage. Preserve an honest indeterminate total until
+            // the owning writer supplies a stage-local denominator.
+            this.jobService?.progress(record.id, {
+                stage: durableStageLabel(record.lifecycleStage ?? "writing"),
+                unit: progress.unit ?? "outcome records",
+                current: progress.completed.toString(),
+                total: progress.total?.toString() ?? "indeterminate",
+                message: progress.message,
+            });
         });
         if (result.status === "cancelled") {
             const cancelledResult: StudioOutcomeLibraryGenerateJobResultView = {
@@ -331,7 +367,29 @@ export class StudioOutcomeLibraryGenerateJobService {
         if (result.status === "ok") {
             this.jobService?.complete(record.id, {
                 summary: "Outcome Library generation completed.",
-                outputs: [{path: result.bundleDir, label: "Outcome Library bundle"}],
+                // bundleDir is intentionally project-relative because it is
+                // part of the selector/configuration contract. Durable host
+                // actions instead retain the server-resolved published path:
+                // a Studio process cwd is not the owning project directory.
+                outputs: [{path: result.resolvedBundleDir, label: "Outcome Library bundle"}],
+                // Keep the completion card useful after its short-lived
+                // compatibility record has gone away.  These are copied from
+                // the published result rather than reconstructed by a later
+                // UI, so the durable job remains an honest record of this
+                // exact library and generator run.
+                provenance: {
+                    game: result.generator.game,
+                    generator: {
+                        algorithm: result.generator.algorithm,
+                        strategy: result.generator.strategy,
+                        pokieVersion: result.generator.pokieVersion,
+                        ...(result.generator.configHash === undefined ? {} : {configHash: result.generator.configHash}),
+                        generatedAt: result.generator.generatedAt,
+                    },
+                    library: {id: result.mode.libraryId, hash: result.mode.hash},
+                    selector: result.selector,
+                },
+                warnings: result.warnings.map((warning) => `${warning.code}: ${warning.message}`),
                 // Preserve the operation-specific result in the single
                 // durable authority.  The old in-process record can then be
                 // discarded without making a retained terminal job opaque.
@@ -339,19 +397,36 @@ export class StudioOutcomeLibraryGenerateJobService {
             });
         } else {
             const message = "error" in result ? result.error : "Outcome Library generation failed validation.";
-            this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."});
+            this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."}, {
+                summary: "Outcome Library generation failed.",
+                detail: {status: result.status, result},
+            });
         }
         if (result.status === "ok") this.removeCheckpoint(record.projectRoot, record.id);
     }
 
     private toView(record: JobRecord): StudioOutcomeLibraryGenerateJobView {
         const common = this.jobService?.get(record.projectRoot, record.id);
+        const hasDurableProjection = common?.operation === "outcome-library-generation";
+        const isDurablyTerminal = common !== undefined && (
+            common.status === "completed" || common.status === "failed" || common.status === "cancelled" || common.status === "recovery-required"
+        );
         return {
             id: record.id,
-            status: common?.operation === "outcome-library-generation" ? common.status : record.status,
+            status: hasDurableProjection ? common.status : record.status,
             cancellationRequested: record.cancellationRequested || common?.status === "cancelling",
-            ...(record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
-            ...(record.progress === undefined ? {} : {progress: record.progress}),
+            ...(common?.durationMs === undefined ? {} : {durationMs: common.durationMs}),
+            ...(common?.createdAt === undefined ? {} : {createdAt: common.createdAt}),
+            ...(common?.startedAt === undefined ? {} : {startedAt: common.startedAt}),
+            ...(common?.completedAt === undefined ? {} : {completedAt: common.completedAt}),
+            ...(common?.progress === undefined ? {} : {durableProgress: common.progress}),
+            // The executor cursor is only meaningful while that executor is
+            // live.  Once a durable job reaches a terminal state, projecting
+            // it would make the in-process view differ from the exact record
+            // a Studio restart rehydrates.  The durable stage snapshot remains
+            // available throughout, including the final publication stage.
+            ...(isDurablyTerminal || record.lifecycleStage === undefined ? {} : {lifecycleStage: record.lifecycleStage}),
+            ...(isDurablyTerminal || record.progress === undefined ? {} : {progress: record.progress}),
             ...(record.result === undefined ? {} : {result: record.result}),
             ...(common?.recovery === undefined ? {} : {recovery: common.recovery}),
         };
@@ -366,6 +441,11 @@ export class StudioOutcomeLibraryGenerateJobService {
             id: job.id,
             status: job.status,
             cancellationRequested: job.status === "cancelling",
+            createdAt: job.createdAt,
+            ...(job.startedAt === undefined ? {} : {startedAt: job.startedAt}),
+            ...(job.completedAt === undefined ? {} : {completedAt: job.completedAt}),
+            ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs}),
+            ...(job.progress === undefined ? {} : {durableProgress: job.progress}),
             ...(outcomeLibraryResultFromDurableJob(job) === undefined ? {} : {result: outcomeLibraryResultFromDurableJob(job)}),
             ...(recovery === undefined ? {} : {recovery}),
         };
@@ -501,6 +581,20 @@ export class StudioOutcomeLibraryGenerateJobService {
         const binding = this.generateService.getPreflightBinding?.(request.preflightToken);
         return path.resolve(projectRoot, binding?.destination ?? request.outDir ?? StudioOutcomeLibraryGenerateService.DEFAULT_BUNDLE_DIR);
     }
+}
+
+function durableStageLabel(stage: StudioOutcomeLibraryGenerationLifecycleStage): string {
+    switch (stage) {
+        case "generation": return "Enumerating combinations";
+        case "finalization": return "Deduplicating/finalizing outcomes";
+        case "writing": return "Writing outcomes";
+        case "analyzing": return "Analyzing outcomes";
+        case "building-index": return "Building index";
+        case "serialization": return "Building index";
+        case "validation": return "Validating";
+        case "publication": return "Publishing";
+    }
+    throw new Error(`Unsupported Outcome Library lifecycle stage: ${stage}`);
 }
 
 function outcomeLibraryResultFromDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView["result"] | undefined {

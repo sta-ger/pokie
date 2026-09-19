@@ -9,7 +9,9 @@ import {
     getReport,
     inspectProject,
     inspectReplayArtifact,
+    checkNativePickerAvailability,
     openOutputFolder,
+    revealOutputPath,
     listRecentSpins,
     listReplays,
     listReports,
@@ -45,6 +47,7 @@ import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {usePlaySession} from "../../hooks/usePlaySession";
 import {useProjectContext} from "../../hooks/useProjectContext";
 import {useProjectJobs} from "../../hooks/useProjectJobs";
+import {useOpenProject} from "../../hooks/useOpenProject";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
@@ -435,6 +438,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    // Build/Export can provide a richer, operation-specific presentation for
+    // one Outcome Library job. Keep that ownership at durable-job granularity:
+    // concurrent destinations and retained history must continue through the
+    // common cards instead of disappearing with the whole operation.
+    const [featureOwnedOutcomeLibraryJobId, setFeatureOwnedOutcomeLibraryJobId] = useState<string | undefined>();
+    const handleFeatureOwnedOutcomeLibraryJobChange = useCallback((jobId: string | undefined): void => {
+        setFeatureOwnedOutcomeLibraryJobId(jobId);
+    }, []);
     const [recoveryJob, setRecoveryJob] = useState<StudioJobView | undefined>();
     const [newSessionRecoveryRequested, setNewSessionRecoveryRequested] = useState(false);
     const handleJobRecoveryAction = useCallback((job: StudioJobView): void => {
@@ -455,6 +466,15 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setActiveTab("exportDeploy");
         }
     }, [setActiveTab]);
+    const handleFeatureOutcomeLibraryRecoveryAction = useCallback((jobId: string): void => {
+        const job = commonJobs.jobs.find((candidate) => candidate.id === jobId);
+        if (job === undefined || job.recovery === undefined) return;
+        if (job.recovery.action === "resume") {
+            commonJobs.recover(job.id);
+            return;
+        }
+        handleJobRecoveryAction(job);
+    }, [commonJobs, handleJobRecoveryAction]);
     // The resolved ProjectHeaderView statuses that carry a `capabilities` array -- used wherever a tab's
     // own content needs its capabilities without caring whether the project is game-backed, canonical-
     // reader-backed, or an exchange-only artifact (see GameModelTab's `editable`/ExportDeployTab's
@@ -951,6 +971,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // describeUnsupportedTabMessage's diagnostic instead, below, rather than ever invoking that tab's
     // own hooks/fetches.
     const activeTabSupported = activeTabDescriptor === undefined || isTabSupported(activeTabDescriptor, header);
+    // Build/Export owns one task-oriented Outcome Library workflow, including
+    // its operation-specific retained result and recovery actions. The common
+    // durable projection remains visible on every other tab, and on this tab
+    // for every Outcome Library job the feature workflow does not own.
+    const visibleCommonJobs = activeTab === "exportDeploy"
+        ? commonJobs.jobs.filter((job) => job.id !== featureOwnedOutcomeLibraryJobId)
+        : commonJobs.jobs;
     const projectName = describeProjectName(header);
     useDocumentTitle(`${projectName} · ${activeTabLabel} · POKIE Studio`);
 
@@ -966,6 +993,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [closeError, setCloseError] = useState<string>();
     const [copyPathNotice, setCopyPathNotice] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
+    const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
+    const openAndNavigate = useOpenProject();
     const closeGuard = useDoubleSubmitGuard();
     const closeProjectAndReturnToProjects = (confirmActiveJobs = false): void => {
         if (!closeGuard.begin()) {
@@ -1011,9 +1040,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             .catch(() => setCopyPathNotice("Couldn't copy the project path. Open Advanced details to select it."));
     }
 
-    function openJobOutput(outputPath: string): void {
+    function openJobOutput(resolvedOutputPath: string): void {
         setJobOutputNotice(undefined);
-        openOutputFolder(fetchImpl, outputPath)
+        openOutputFolder(fetchImpl, resolvedOutputPath)
             .then((result) => {
                 if (result.status === "ok") {
                     setJobOutputNotice("Opened job output.");
@@ -1023,6 +1052,39 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             })
             .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
     }
+
+    function revealJobOutput(resolvedOutputPath: string): void {
+        setJobOutputNotice(undefined);
+        revealOutputPath(fetchImpl, resolvedOutputPath)
+            .then((result) => {
+                if (result.status === "ok") {
+                    setJobOutputNotice("Revealed job output.");
+                    return;
+                }
+                setJobOutputNotice(result.status === "unavailable" ? result.reason : result.message);
+            })
+            .catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
+    }
+
+    function inspectJobOutput(resolvedOutputPath: string): void {
+        setJobOutputNotice(undefined);
+        openAndNavigate(resolvedOutputPath).catch((error: unknown) => setJobOutputNotice(errorMessage(error)));
+    }
+
+    useEffect(() => {
+        let cancelled = false;
+        checkNativePickerAvailability(fetchImpl)
+            .then((view) => {
+                if (cancelled) return;
+                setJobOutputActionsUnavailableReason(view.status === "unavailable" ? view.reason : undefined);
+            })
+            .catch(() => {
+                if (!cancelled) setJobOutputActionsUnavailableReason("This Studio session cannot confirm access to its server's local output.");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchImpl]);
 
     if (header.status === "empty") {
         return (
@@ -1091,10 +1153,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             {migration.message}
                         </Alert>
                     )}
-                    {commonJobs.jobs.map((job) =>
+                    {visibleCommonJobs.map((job) =>
                         job.status === "queued" || job.status === "running" || job.status === "cancelling"
                             ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} key={job.id} />,
+                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
                     )}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
@@ -1233,7 +1295,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 />
                             )}
                             {activeTab === "exportDeploy" && (
-                                <ExportDeployTab key={projectKey ?? "no-project"} capabilities={headerCapabilities} deployment={deployment} recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" || recoveryJob?.operation === "outcome-library-generation" ? recoveryJob.request : undefined} />
+                                <ExportDeployTab
+                                    key={projectKey ?? "no-project"}
+                                    capabilities={headerCapabilities}
+                                    deployment={deployment}
+                                    recoveryRequest={recoveryJob?.operation === "artifact-build" || recoveryJob?.operation === "deployment" || recoveryJob?.operation === "outcome-library-generation" ? recoveryJob.request : undefined}
+                                    onFeatureOwnedOutcomeLibraryJobChange={handleFeatureOwnedOutcomeLibraryJobChange}
+                                    onFeatureOutcomeLibraryRecoveryAction={handleFeatureOutcomeLibraryRecoveryAction}
+                                />
                             )}
                             {activeTab === "certification" && (
                             // Same reasoning as GameModelTab's own key above -- CertificationTab owns

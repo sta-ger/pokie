@@ -9,10 +9,11 @@ import {
     OutcomeLibraryBundleWriteCancelledError,
     OutcomeLibraryBundleDestinationClaimedError,
     OutcomeLibraryBundleWriter,
+    WeightedOutcomeLibraryAnalyzer,
     WeightedOutcomeInput,
     capturePublishDirectoryOwnership,
 } from "pokie";
-import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
+import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function siblingLeftovers(outDir: string): string[] {
     const parentDir = path.dirname(outDir);
@@ -37,6 +38,18 @@ describe("OutcomeLibraryBundleWriter", () => {
 
     function modes(): OutcomeLibraryBundleModeInput[] {
         return [buildOutcomeLibraryBundleModeInput("base", "base-lib"), buildOutcomeLibraryBundleModeInput("bonus", "bonus-lib")];
+    }
+
+    // More than one native I/O batch.  Keeping this fixture here means the
+    // cancellation tests exercise the production writer's actual synchronous
+    // JSONL/index work, rather than a mock that happens to yield on its own.
+    function manyOutcomes(count = 512): WeightedOutcomeInput[] {
+        const seed = modes()[0].outcomes as WeightedOutcomeInput[];
+        return Array.from({length: count}, (_, position) => ({
+            id: String(position).padStart(4, "0"),
+            weight: 1,
+            artifact: {...seed[position % seed.length].artifact, roundId: `many-${position}`},
+        }));
     }
 
     // A genuinely async source — forces a real await boundary between outcomes, the same way a caller streaming
@@ -98,6 +111,105 @@ describe("OutcomeLibraryBundleWriter", () => {
             expect(parsedLine.weight).toBe(entry.weight);
             expect(entry.recordHash).toBe(`sha256:${crypto.createHash("sha256").update(lineBuffer).digest("hex")}`);
         }
+    });
+
+    it("reports one forward-only writer lifecycle for every mode with stage-local progress", async () => {
+        const stages: string[] = [];
+        const progress: {message: string; completed: bigint; total?: bigint; unit?: string}[] = [];
+
+        await expect(new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory(modes(), outDir, {
+            onLifecycleStage: (stage) => stages.push(stage),
+            onProgress: (entry) => progress.push(entry),
+        })).resolves.toMatchObject({issues: []});
+
+        expect(stages).toEqual(["writing", "analyzing", "building-index", "validation", "publication"]);
+        expect(progress).toEqual(expect.arrayContaining([
+            expect.objectContaining({message: expect.stringMatching(/^Analyzing Outcome mode base/), unit: "outcome records", total: BigInt(5)}),
+            expect.objectContaining({message: "Building Outcome Library index", unit: "bytes"}),
+            expect.objectContaining({message: "Publishing Outcome file manifest.json", unit: "bundle files", total: BigInt(5)}),
+        ]));
+        for (const entry of progress.filter((item) => item.total !== undefined)) {
+            expect(entry.completed <= entry.total!).toBe(true);
+        }
+    });
+
+    it("replays compact staged analysis inputs with the canonical analyzer's exact result and publishes no staging files", async () => {
+        const mode = buildOutcomeLibraryBundleModeInput("base", "base-lib");
+        const result = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([mode], outDir);
+
+        expect(result.issues).toEqual([]);
+        const manifest = JSON.parse(fs.readFileSync(path.join(outDir, "manifest.json"), "utf-8")) as OutcomeLibraryBundleManifest;
+        expect(manifest.modes[0].analysis).toEqual(new WeightedOutcomeLibraryAnalyzer().analyze(buildOutcomeLibraryBundleTestLibrary("base-lib")));
+        expect(fs.readdirSync(outDir).some((name) => name.startsWith(".analysis_") || name.startsWith(".entries_"))).toBe(false);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("honors cancellation during the cooperative analysis scan without replacing an existing destination", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const controller = new AbortController();
+        let timerRan = false;
+
+        await expect(writer.writeToDirectory([{...modes()[0], outcomes: manyOutcomes()}], outDir, {
+            signal: controller.signal,
+            onLifecycleStage: (stage) => {
+                if (stage === "analyzing") {
+                    setImmediate(() => {
+                        timerRan = true;
+                        controller.abort();
+                    });
+                }
+            },
+        })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
+
+        expect(timerRan).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("cancels during writing without replacing an existing destination or leaving staging output", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const controller = new AbortController();
+        let timerRan = false;
+        setImmediate(() => {
+            timerRan = true;
+            controller.abort();
+        });
+
+        await expect(writer.writeToDirectory([{...modes()[0], outcomes: manyOutcomes()}], outDir, {
+            signal: controller.signal,
+        })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
+
+        expect(timerRan).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("cancels while copying the native index without replacing an existing destination or leaving staging output", async () => {
+        const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
+        const controller = new AbortController();
+        let timerRan = false;
+
+        await expect(writer.writeToDirectory([{...modes()[0], outcomes: manyOutcomes()}], outDir, {
+            signal: controller.signal,
+            onLifecycleStage: (stage) => {
+                if (stage === "building-index") {
+                    setImmediate(() => {
+                        timerRan = true;
+                        controller.abort();
+                    });
+                }
+            },
+        })).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
+
+        expect(timerRan).toBe(true);
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
+        expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
     it("rejects a delayed retained-mode publication when another real writer added a sibling mode after its read revision", async () => {
@@ -271,8 +383,10 @@ describe("OutcomeLibraryBundleWriter", () => {
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
-    it("honors cancellation from the final temporary-publish callback without committing an output", async () => {
+    it("honors cancellation from the final temporary-publish callback without replacing an existing output", async () => {
         const writer = new OutcomeLibraryBundleWriter("1.3.0");
+        await writer.writeToDirectory([modes()[0]], outDir);
+        const preservedManifest = fs.readFileSync(path.join(outDir, "manifest.json"));
         const controller = new AbortController();
 
         await expect(
@@ -284,7 +398,7 @@ describe("OutcomeLibraryBundleWriter", () => {
             }),
         ).rejects.toThrow(OutcomeLibraryBundleWriteCancelledError);
 
-        expect(fs.existsSync(outDir)).toBe(false);
+        expect(fs.readFileSync(path.join(outDir, "manifest.json"))).toEqual(preservedManifest);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 
@@ -294,7 +408,9 @@ describe("OutcomeLibraryBundleWriter", () => {
 
         await expect(writer.writeToDirectory([modes()[0]], outDir, {
             assertDestinationAvailable: async () => {
-                await Promise.resolve();
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
                 assertionReached = true;
                 fs.mkdirSync(outDir);
                 fs.writeFileSync(path.join(outDir, "caller-owned.txt"), "untouched");

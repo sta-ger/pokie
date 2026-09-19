@@ -1096,6 +1096,13 @@ export type StudioOutcomeLibraryGenerateEstimateView =
           requiresBounded: boolean;
           expectedRawWork: number | string;
           warnings: string[];
+          operationalEstimates?: {
+              recordCount: "unknown";
+              outputSize: "unknown";
+              memoryRisk: "unknown";
+              diskRisk: "unknown";
+              likelyDuration: "unknown";
+          };
           sampleSize?: number | string;
           seed?: string;
           plan: StudioArtifactConversionPlan;
@@ -1136,7 +1143,10 @@ export type StudioOutcomeLibraryGenerateResultView =
     | {
           status: "ok";
           bundleDir: string;
+          /** Canonical server-resolved bundle path for inspect/open/reveal. */
+          resolvedBundleDir: string;
           files: string[];
+          byteSize?: number;
           warnings: ValidationIssue[];
           mode: {modeName: string; libraryId: string; hash: string; outcomeCount: number; totalWeight: number; rtp: number};
           generator: OutcomeLibraryGeneratorDiagnostics;
@@ -1165,7 +1175,14 @@ export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
     status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
-    lifecycleStage?: "generation" | "finalization" | "serialization" | "validation" | "publication";
+    createdAt?: number;
+    startedAt?: number;
+    completedAt?: number;
+    /** Common durable timing survives polling and Studio restart. */
+    durationMs?: number;
+    lifecycleStage?: "generation" | "finalization" | "writing" | "analyzing" | "building-index" | "serialization" | "validation" | "publication";
+    /** Authoritative common durable progress; stage units are local to that stage. */
+    durableProgress?: StudioJobView["progress"];
     progress?: {processedRawIndex: string; progressTotal: string; emittedOutcomes?: string};
     result?: StudioOutcomeLibraryGenerateResultView;
     recovery?: StudioJobView["recovery"];

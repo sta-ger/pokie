@@ -109,7 +109,10 @@ export class OutcomeLibraryArtifactBuilder implements ArtifactBuilder {
                     reportArtifactBuildProgress(options, {
                         status: "running",
                         completed: progress.completed,
-                        total: preflight.estimatedItemCount,
+                        // Writer phases use their own units (records, bytes,
+                        // bundle files). A source-library record estimate is
+                        // not a denominator for any of them.
+                        total: progress.total,
                         preflight,
                         message: progress.message,
                     });
