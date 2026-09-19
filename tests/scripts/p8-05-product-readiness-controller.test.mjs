@@ -6,11 +6,11 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix, runP805Retest} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
-const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64)};
-const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64)};
+const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64)};
+const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64)};
 const attestation = "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence.";
 const packed = {packedCli:"/tmp/pokie/dist/cli/pokie.js", packedPackage:"/tmp/pokie/pokie.tgz"};
-const runner = async ({persona, phase, candidateId, candidatePackageSha256}) => ({persona, phase, candidateId, candidatePackageSha256, auditId:`${phase}-${persona}`});
+const runner = async ({persona, phase, candidateId, candidatePackageSha256, candidateExecutableSha256}) => ({persona, phase, candidateId, candidatePackageSha256, candidateExecutableSha256, auditId:`${phase}-${persona}`});
 
 test("controller exposes fail-closed audit, freeze, post-fix, and retest phase boundaries", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-controller-"));
