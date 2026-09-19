@@ -22,6 +22,10 @@ body,
     margin-inline: auto;
 }
 
+.studio-page > * {
+    min-width: 0;
+}
+
 .studio-page :where(p, span, td, th, pre, summary) {
     overflow-wrap: anywhere;
 }
@@ -35,6 +39,16 @@ body,
 }
 
 .studio-job-card [data-job-detail] {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.studio-job-card .mantine-Group-root,
+.studio-job-details {
+    min-width: 0;
+}
+
+.studio-job-details {
     max-width: 100%;
     overflow-wrap: anywhere;
 }

@@ -45,4 +45,15 @@ describe("JobProgressCard", () => {
         expect(screen.queryByText(/Throughput:/)).toBeNull();
         dateNow.mockRestore();
     });
+
+    it("wraps the active operation controls instead of allowing a long stage to displace Cancel", () => {
+        render(<MantineProvider><JobProgressCard onCancel={() => undefined} job={{
+            id: "job-wrap", projectId: "/project", operation: "outcome-library-generation", request: {}, conflictKey: "generation",
+            status: "running", createdAt: 1,
+            progress: {stage: "A long but meaningful generation stage that must leave the cancellation control reachable", unit: "outcome records", current: "1", total: "2"},
+        }} /></MantineProvider>);
+
+        const controls = screen.getByRole("button", {name: "Cancel"}).closest(".mantine-Group-root") as HTMLElement;
+        expect(controls.style.getPropertyValue("--group-wrap")).toBe("wrap");
+    });
 });

@@ -3,6 +3,21 @@ import {fireEvent, render, screen} from "@testing-library/react";
 import {JobResultCard} from "../../../../../../cli/studio-client/src/components/common/JobResultCard";
 
 describe("JobResultCard", () => {
+    it.each([
+        ["completed", "Completed", "status", "This operation completed."],
+        ["cancelled", "Cancelled", "status", "This operation was cancelled safely."],
+        ["recovery-required", "Recovery required", "status", "This operation needs an explicit recovery action."],
+        ["failed", "Failed", "alert", "This operation failed before it could complete."],
+    ] as const)("presents %s as a distinct %s lifecycle state", (status, label, role, fallback) => {
+        render(<MantineProvider><JobResultCard job={{
+            id: `job-${status}`, projectId: "/project", operation: "artifact-build", request: {}, conflictKey: "artifact",
+            status, createdAt: 1,
+        }} /></MantineProvider>);
+
+        expect(screen.getByRole(role)).toHaveTextContent(`artifact-build · ${label}`);
+        expect(screen.getByText(fallback)).toBeInTheDocument();
+    });
+
     it("offers only retained safe output actions and the server-supported resume action", () => {
         const recover = jest.fn();
         const open = jest.fn();
@@ -110,5 +125,19 @@ describe("JobResultCard", () => {
         expect(inspect).toHaveBeenCalledWith("/owning-project/outcomelibrary");
         expect(open).toHaveBeenCalledWith("/owning-project/outcomelibrary");
         expect(reveal).toHaveBeenCalledWith("/owning-project/outcomelibrary");
+    });
+
+    it("wraps retained-output and recovery actions so every action remains reachable on a narrow surface", () => {
+        render(<MantineProvider><JobResultCard onRecover={() => undefined} onOpenOutput={() => undefined} onRevealOutput={() => undefined} job={{
+            id: "recoverable-output", projectId: "/project", operation: "artifact-build", request: {}, conflictKey: "artifact",
+            status: "recovery-required", createdAt: 1,
+            result: {outputs: [{label: "A very long generated output label", path: "/project/a-very-long-generated-output"}]},
+            recovery: {action: "resume", reason: "The saved checkpoint can be resumed safely."},
+        }} /></MantineProvider>);
+
+        const outputActions = screen.getByRole("button", {name: "Open A very long generated output label"}).closest(".mantine-Group-root") as HTMLElement;
+        const recoveryActions = screen.getByRole("button", {name: "Resume"}).closest(".mantine-Group-root") as HTMLElement;
+        expect(outputActions.style.getPropertyValue("--group-wrap")).toBe("wrap");
+        expect(recoveryActions.style.getPropertyValue("--group-wrap")).toBe("wrap");
     });
 });

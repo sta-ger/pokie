@@ -82,8 +82,8 @@ export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?:
     const elapsedMs = job.startedAt === undefined ? undefined : (job.completedAt ?? observedAt ?? job.startedAt) - job.startedAt;
     return (
         <Alert className="studio-job-card" color={job.status === "cancelling" ? "orange" : "blue"} title={`${job.operation} · ${statusLabel(job.status)}`} role="status" aria-live="polite">
-            <Group justify="space-between" align="start">
-                <div>
+            <Group justify="space-between" align="start" wrap="wrap">
+                <div style={{flex: "1 1 12rem", minWidth: 0}}>
                     <Text size="sm" data-job-detail>{job.status === "cancelling" ? "Cancellation requested; waiting for cleanup." : progress?.stage ?? "Queued"}</Text>
                     {progress !== undefined && <Text size="xs" data-job-detail>{progress.current} / {progress.total} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
                     {progress === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Progress is indeterminate while this operation prepares its next safe boundary.</Text>}
