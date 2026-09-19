@@ -1,15 +1,31 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {P805_RELEASE_DIRECTORY, validateP805ReleaseGate} from "../../scripts/p8-05-release-completion.mjs";
+import {P805_RELEASE_DIRECTORY, validateP805ReleaseCompletion, validateP805ReleaseGate} from "../../scripts/p8-05-release-completion.mjs";
 
 const candidateId = "c".repeat(40), candidatePackageSha256 = "d".repeat(64);
-const config = () => ({candidateId, candidatePackageSha256, campaignDirectory:path.resolve("docs/evidence/p8-05-product-readiness"), outputDirectory:P805_RELEASE_DIRECTORY, pc20:{candidateId, candidatePackageSha256}});
+const config = () => ({candidateId, candidatePackageSha256, campaignDirectory:path.join("/tmp", "p8-05-campaign"), outputDirectory:path.join("/tmp", "p8-05-release"), pc20:{candidateId, candidatePackageSha256}});
 
 test("refuses the PC-20 gate before a candidate-bound clean five-persona closeout", async () => {
     await assert.rejects(() => validateP805ReleaseGate(config(), {validateCampaign:async () => { throw new Error("clean retest closeout missing"); }}), /clean retest closeout missing/);
 });
 
-test("keeps the release directory canonical", () => {
+test("keeps the documented receipt location separate from an executable clean checkout", () => {
     assert.match(P805_RELEASE_DIRECTORY, /docs[\\/]evidence[\\/]p8-05-product-readiness[\\/]release$/);
+    return assert.rejects(() => validateP805ReleaseGate({...config(), campaignDirectory:path.resolve("docs/evidence/p8-05-product-readiness")}, {validateCampaign:async () => ({})}), /outside the exact-candidate checkout/i);
+});
+
+test("consumes PC-20's nested retained gate once and records its actual digest", async () => {
+    const writes = new Map();
+    const closeout = {campaignId:"campaign", candidateId, candidatePackageSha256, closeoutSha256:"e".repeat(64)};
+    const result = await validateP805ReleaseGate(config(), {validateCampaign:async () => closeout, validatePc20Gate:async () => ({gate:{gate:{candidateId, candidatePackageSha256}, sha256:"f".repeat(64), reused:false}}), exists:() => false, mkdir:async () => undefined, writeFile:async (target, contents) => writes.set(target, contents), readFile:async (target) => writes.get(target), now:() => "2026-09-19T20:00:00.000Z"});
+    assert.equal(result.pc20GateSha256, "f".repeat(64));
+    assert.equal(writes.size, 1);
+});
+
+test("completion uses the retained PC-20 lifecycle receipt rather than PC-19 completion", async () => {
+    const closeout = {campaignId:"campaign", candidateId, candidatePackageSha256, closeoutSha256:"e".repeat(64)};
+    const gate = {schemaVersion:1, kind:"p8-05-release-gate", candidateId, candidatePackageSha256, campaignId:"campaign", campaignCloseoutSha256:closeout.closeoutSha256, pc20GateSha256:"f".repeat(64), completedAt:"2026-09-19T20:00:00.000Z", chronology:["clean-retest-closeout", "check-release-and-npm-pack-smoke"]};
+    const result = await validateP805ReleaseCompletion(config(), {validateCampaign:async () => closeout, readJson:async () => ({value:gate, contents:JSON.stringify(gate)}), exists:() => false, writeFile:async () => undefined, readFile:async () => "completion", validatePc20Lifecycle:async () => ({value:{candidateId, candidatePackageSha256}, sha256:"a".repeat(64)}), now:() => "2026-09-19T20:01:00.000Z"});
+    assert.equal(result.pc20LifecycleSha256, "a".repeat(64));
 });

@@ -495,6 +495,12 @@ async function readTrustedLifecycleReceipt(config, gateSha256) {
     return {value:loaded.value, sha256:digest(loaded.contents)};
 }
 
+/** Validate a trusted publication/Drive receipt against a retained gate without rerunning PC-19. */
+export async function validatePc20CandidateLifecycleReceipt(config, gateSha256) {
+    validateConfig(config);
+    return readTrustedLifecycleReceipt(config, gateSha256);
+}
+
 export async function validatePc20ReleaseGate(config, dependencies = {}) {
     validateConfig(config);
     const services = {validatePc19:validatePc19IndependentColdStartReview, readRepositoryState, runReleaseGate, ...dependencies};
@@ -509,6 +515,21 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
     const gate = await obtainGate(config, services);
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "after the release gate");
     return {pc19, gate};
+}
+
+/**
+ * Candidate-only form of the PC-20 gate.  P8-05 reuses PC-20's real
+ * pack/smoke, ownership, retention and cleanup machinery without requiring a
+ * second phase-7 PC-19 campaign.
+ */
+export async function validatePc20CandidateReleaseGate(config, dependencies = {}) {
+    validateConfig(config);
+    const services = {readRepositoryState, runReleaseGate, ...dependencies};
+    const permitted = pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false});
+    assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, permitted), config.candidateId, "before the candidate-only release gate");
+    const gate = await obtainGate(config, services);
+    assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, permitted), config.candidateId, "after the candidate-only release gate");
+    return {gate};
 }
 
 /**
