@@ -15,10 +15,11 @@ import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {validateP805RenderedPersonaAudit} from "./p8-05-valera-browser-audit.mjs";
 
-export const P805_SCHEMA_VERSION = 3;
+export const P805_SCHEMA_VERSION = 4;
 export const P805_EVIDENCE_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "docs", "evidence", "p8-05-product-readiness");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const P805_PERSONAS = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
-export const P805_REQUIRED_EVIDENCE_KINDS = ["screenshot", "cli-transcript", "browser-log", "api-log", "error", "timing", "reproduction", "artifact"];
+export const P805_REQUIRED_EVIDENCE_KINDS = ["screenshot", "page-state", "cli-transcript", "browser-log", "api-log", "error", "timing", "reproduction", "artifact", "cleanup"];
 export const P805_REQUIRED_OBSERVATIONS = {
     mathematician:["blueprint", "par-xlsx-round-trip", "reels-paytable-modes-mechanics", "simulation-success-failure-cancellation", "simulation-rtp-volatility-features", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "certification-fairness-conditional", "build-export-output-folder", "import-export-defaults"],
     programmer:["packed-install", "npx-pokie", "recursive-help", "create-build-inspect", "validate-sim-report-diff-replay-serve-wasm", "spaces-invalid-inputs-exit-codes-ci-recovery", "build-export-output-folder"],
@@ -26,7 +27,7 @@ export const P805_REQUIRED_OBSERVATIONS = {
     "ui-ux":["onboarding-terminology-forms-progress", "reload-reconnect-recovery-cancellation-project-switch", "keyboard-responsive-accessibility"],
     "graphic-designer":["hierarchy-typography-spacing-density-controls-finish"],
 };
-const RECORDS = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json", "closeout.json"];
+const RECORDS = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json", "manifest.json", "closeout.json"];
 const BLOCKING = (finding) => finding.severity === "P0" || finding.severity === "P1" || (finding.severity === "P2" && finding.material === true);
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const commit = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
@@ -82,6 +83,28 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
     return contents;
 }
 
+function semanticObservation(contents, observation, label) {
+    let page;
+    try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed semantic page-state evidence`); }
+    if (page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== "observed" || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the claimed ${observation} operation and outcome`);
+}
+
+async function validateAuditEvidence(directory, audit, expected, label, used) {
+    const evidenceById = new Map();
+    for (const item of audit.evidence) evidenceById.set(item.evidenceId, {item, contents:await boundedEvidence(directory, item, expected, label, {after:audit.startedAt, before:audit.endedAt, used})});
+    for (const observation of P805_REQUIRED_OBSERVATIONS[audit.persona]) {
+        const evidenceId = audit.observationEvidence[observation], semantic = evidenceById.get(evidenceId), action = audit.rendered.actions.find((value) => value.observation === observation);
+        if (!semantic || semantic.item.kind !== "page-state" || !semantic.item.observationIds.includes(observation) || !action || action.evidenceId !== evidenceId) fail(`${label} lacks semantic evidence for ${observation}`);
+        semanticObservation(semantic.contents, observation, `${label} ${observation}`);
+        const screenshot = evidenceById.get(action.screenshotEvidenceId);
+        if (!screenshot || screenshot.item.kind !== "screenshot" || !screenshot.item.observationIds.includes(observation)) fail(`${label} lacks linked screenshot evidence for ${observation}`);
+    }
+    const cleanup = evidenceById.get(audit.cleanup?.evidenceId);
+    let cleanupRecord;
+    try { cleanupRecord = JSON.parse(cleanup?.contents.toString("utf8") ?? ""); } catch { fail(`${label} cleanup evidence is not machine JSON`); }
+    if (cleanup?.item.kind !== "cleanup" || cleanupRecord.kind !== "p8-05-cleanup" || cleanupRecord.processTreeDrained !== true || cleanupRecord.resourcesDrained !== true || cleanupRecord.contextRemoved !== true) fail(`${label} cleanup evidence does not prove owned resource drainage`);
+}
+
 function validateFinding(value, label) {
     if (!value || typeof value.id !== "string" || !value.id || !["P0", "P1", "P2", "P3"].includes(value.severity) || (value.severity === "P2" && typeof value.material !== "boolean") || !P805_PERSONAS.includes(value.persona) || typeof value.publicSurface !== "string" || !value.publicSurface || typeof value.reproducer !== "string" || !value.reproducer || typeof value.owner !== "string" || !value.owner || !["open", "resolved", "accepted", "blocked", "not-material"].includes(value.status)) fail(`${label} is incomplete`);
 }
@@ -123,12 +146,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         auditRecord(audit, "initial", initialCandidate, finalCandidate);
         if (Date.parse(audit.startedAt) <= Date.parse(provenance.startedAt)) fail(`initial audit ${audit.persona} predates provenance`);
         for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`initial audit ${audit.persona} reuses a clean context`); contexts.add(value); }
-        for (const item of audit.evidence) await boundedEvidence(root, item, initialCandidate, `initial ${audit.persona}`, {after:audit.startedAt, before:audit.endedAt, used});
-        for (const observation of P805_REQUIRED_OBSERVATIONS[audit.persona]) {
-            const evidenceId = audit.observationEvidence[observation];
-            const evidence = audit.evidence.find((item) => item.evidenceId === evidenceId);
-            if (!evidence || !evidence.observationIds.includes(observation)) fail(`initial ${audit.persona} lacks semantic evidence for ${observation}`);
-        }
+        await validateAuditEvidence(root, audit, initialCandidate, `initial ${audit.persona}`, used);
     }
     const frozen = records["frozen-findings.json"];
     if (frozen.schemaVersion !== P805_SCHEMA_VERSION || frozen.campaignId !== provenance.campaignId || frozen.candidateId !== initialCandidate.candidateId || frozen.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || !iso(frozen.frozenAt) || !Array.isArray(frozen.findings)) fail("frozen findings are not tied to the initial candidate");
@@ -159,7 +177,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         if (BLOCKING(finding)) {
             if (finding.status !== "resolved") fail(`release-blocking finding remains ${finding.status}: ${finding.id}`);
             const regression = regressions.regressions.find((item) => item.findingId === finding.id);
-            if (!regression || typeof regression.testPath !== "string" || !regression.testPath.startsWith("tests/") || regression.commitId !== finalCandidate.candidateId || regression.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || regression.result !== "passed" || !iso(regression.verifiedAt) || Date.parse(regression.verifiedAt) < Date.parse(frozen.frozenAt) || !Array.isArray(regression.assertions) || !regression.assertions.length || !regression.machineResultEvidence) fail(`resolved blocking finding ${finding.id} has no focused final-candidate regression`);
+            if (!regression || typeof regression.testPath !== "string" || !regression.testPath.startsWith("tests/") || !existsSync(path.join(repositoryRoot, regression.testPath)) || regression.commitId !== finalCandidate.candidateId || regression.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || regression.result !== "passed" || !iso(regression.verifiedAt) || Date.parse(regression.verifiedAt) < Date.parse(frozen.frozenAt) || !Array.isArray(regression.assertions) || !regression.assertions.length || !regression.machineResultEvidence) fail(`resolved blocking finding ${finding.id} has no focused final-candidate regression`);
             const output = await boundedEvidence(root, regression.machineResultEvidence, finalCandidate, `regression ${finding.id}`, {after:frozen.frozenAt, used});
             let result;
             try { result = JSON.parse(output.toString("utf8")); } catch { fail(`regression ${finding.id} result evidence is not machine JSON`); }
@@ -175,15 +193,19 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
         for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && Date.parse(regression.verifiedAt) > Date.parse(audit.startedAt)) fail(`retest ${audit.persona} predates regression verification`);
-        for (const item of audit.evidence) await boundedEvidence(root, item, finalCandidate, `retest ${audit.persona}`, {after:audit.startedAt, before:audit.endedAt, used});
-        for (const observation of P805_REQUIRED_OBSERVATIONS[audit.persona]) {
-            const evidenceId = audit.observationEvidence[observation];
-            const evidence = audit.evidence.find((item) => item.evidenceId === evidenceId);
-            if (!evidence || !evidence.observationIds.includes(observation)) fail(`retest ${audit.persona} lacks semantic evidence for ${observation}`);
-        }
+        await validateAuditEvidence(root, audit, finalCandidate, `retest ${audit.persona}`, used);
     }
+    const manifest = records["manifest.json"];
+    const manifestRecords = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json"];
+    if (manifest.schemaVersion !== P805_SCHEMA_VERSION || manifest.kind !== "p8-05-immutable-manifest" || manifest.campaignId !== provenance.campaignId || !manifest.records || typeof manifest.records !== "object" || !Array.isArray(manifest.evidence)) fail("immutable campaign manifest is incomplete");
+    for (const name of manifestRecords) if (manifest.records[name] !== digest(entries[RECORDS.indexOf(name)].contents)) fail(`immutable campaign manifest does not bind ${name}`);
+    const boundEvidence = new Map();
+    for (const audit of [...initial.audits, ...retests.audits]) for (const item of audit.evidence) boundEvidence.set(item.evidenceId, item.sha256);
+    for (const finding of frozen.findings) boundEvidence.set(finding.evidence.evidenceId, finding.evidence.sha256);
+    for (const regression of regressions.regressions) if (regression.machineResultEvidence) boundEvidence.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
+    if (manifest.evidence.length !== boundEvidence.size || manifest.evidence.some((item) => !item || boundEvidence.get(item.evidenceId) !== item.sha256)) fail("immutable campaign manifest does not bind the complete evidence index");
     const closeout = records["closeout.json"];
-    if (closeout.schemaVersion !== P805_SCHEMA_VERSION || closeout.campaignId !== provenance.campaignId || !iso(closeout.closedAt) || !Array.isArray(closeout.dispositions) || closeout.dispositions.length !== frozen.findings.length || closeout.releaseReady !== true || !closeout.externalAnchor || !path.isAbsolute(closeout.externalAnchor.path || "") || path.resolve(closeout.externalAnchor.path).startsWith(`${root}${path.sep}`) || closeout.externalAnchor.sha256 !== expected.closeoutAnchorSha256) fail("closeout is incomplete or lacks the verifier-supplied immutable anchor");
+    if (closeout.schemaVersion !== P805_SCHEMA_VERSION || closeout.campaignId !== provenance.campaignId || closeout.manifestSha256 !== digest(entries[RECORDS.indexOf("manifest.json")].contents) || !iso(closeout.closedAt) || !Array.isArray(closeout.dispositions) || closeout.dispositions.length !== frozen.findings.length || closeout.releaseReady !== true || !closeout.externalAnchor || !path.isAbsolute(closeout.externalAnchor.path || "") || path.resolve(closeout.externalAnchor.path).startsWith(`${root}${path.sep}`) || closeout.externalAnchor.sha256 !== expected.closeoutAnchorSha256) fail("closeout is incomplete or lacks the verifier-supplied immutable anchor");
     candidate(closeout, finalCandidate, "closeout"); unique(closeout.dispositions, "closeout dispositions", "findingId");
     if (retests.audits.some((audit) => Date.parse(audit.endedAt) >= Date.parse(closeout.closedAt))) fail("closeout must follow every clean retest");
     for (const finding of frozen.findings) {
@@ -194,16 +216,16 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     }
     if (!closeout.cleanup || closeout.cleanup.noOwnedProcessesRemain !== true || closeout.cleanup.failedOrCancelledArtifactsRemoved !== true) fail("closeout lacks cleanup attestations");
     const closeoutAnchor = await externalJson(closeout.externalAnchor.path, "trusted closeout anchor");
-    if (digest(closeoutAnchor.contents) !== expected.closeoutAnchorSha256 || closeoutAnchor.value.kind !== "p8-05-closeout-anchor" || closeoutAnchor.value.campaignId !== provenance.campaignId || closeoutAnchor.value.closeoutSha256 !== closeoutDigest(closeout) || !iso(closeoutAnchor.value.anchoredAt) || Date.parse(closeoutAnchor.value.anchoredAt) < Date.parse(closeout.closedAt)) fail("trusted closeout anchor does not bind the completed campaign");
+    if (digest(closeoutAnchor.contents) !== expected.closeoutAnchorSha256 || closeoutAnchor.value.kind !== "p8-05-closeout-anchor" || closeoutAnchor.value.campaignId !== provenance.campaignId || closeoutAnchor.value.closeoutSha256 !== closeoutDigest(closeout) || closeoutAnchor.value.manifestSha256 !== closeout.manifestSha256 || !iso(closeoutAnchor.value.anchoredAt) || Date.parse(closeoutAnchor.value.anchoredAt) < Date.parse(closeout.closedAt)) fail("trusted closeout anchor does not bind the completed campaign");
     return {campaignId:provenance.campaignId, candidateId:finalCandidate.candidateId, candidatePackageSha256:finalCandidate.candidatePackageSha256, frozenFindingsSha256:frozenDigest(frozen), closeoutSha256:closeoutDigest(closeout), closedAt:closeout.closedAt, freezeAnchorSha256:expected.freezeAnchorSha256, closeoutAnchorSha256:expected.closeoutAnchorSha256, personas:[...P805_PERSONAS]};
 }
 
-function usage() { fail("usage: --campaign-dir <absolute-path> --expected-candidate <40-char-sha> --expected-package-sha256 <sha256>"); }
+function usage() { fail("usage: --campaign-dir <absolute-path> --expected-candidate <40-char-sha> --expected-package-sha256 <sha256> --freeze-anchor-sha256 <sha256> --closeout-anchor-sha256 <sha256>"); }
 export async function main(argv = process.argv) {
     const args = argv.slice(2), values = {};
     for (let index = 0; index < args.length; index += 2) { if (!args[index]?.startsWith("--") || typeof args[index + 1] !== "string" || values[args[index]]) usage(); values[args[index]] = args[index + 1]; }
-    if (args.length !== 6 || !path.isAbsolute(values["--campaign-dir"] || "") || !values["--expected-candidate"] || !values["--expected-package-sha256"]) usage();
-    const result = await validateP805ProductReadinessCampaign(values["--campaign-dir"], {candidateId:values["--expected-candidate"], candidatePackageSha256:values["--expected-package-sha256"]});
+    if (args.length !== 10 || !path.isAbsolute(values["--campaign-dir"] || "") || !values["--expected-candidate"] || !values["--expected-package-sha256"] || !values["--freeze-anchor-sha256"] || !values["--closeout-anchor-sha256"]) usage();
+    const result = await validateP805ProductReadinessCampaign(values["--campaign-dir"], {candidateId:values["--expected-candidate"], candidatePackageSha256:values["--expected-package-sha256"], freezeAnchorSha256:values["--freeze-anchor-sha256"], closeoutAnchorSha256:values["--closeout-anchor-sha256"]});
     process.stdout.write(`P805_PRODUCT_READINESS_PASS candidate=${result.candidateId} personas=${result.personas.length}\n`);
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
