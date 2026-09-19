@@ -1014,7 +1014,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(await screen.findByText("Writing outcomes")).toBeInTheDocument();
         expect(screen.getAllByText("Writing outcomes")).toHaveLength(1);
-        expect(screen.getAllByRole("alert")).toHaveLength(2);
+        expect(screen.getAllByRole("status")).toHaveLength(2);
         expect(screen.getByText("Analyzing outcomes")).toBeInTheDocument();
         expect(screen.getAllByText("Analyzing outcomes")).toHaveLength(1);
         expect(screen.getAllByRole("button", {name: "Cancel"})).toHaveLength(2);
@@ -1064,11 +1064,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(await screen.findByText(/Generated 4 outcomes for mode "base" using exact/)).toBeInTheDocument();
         expect(screen.getAllByText(/Generated 4 outcomes for mode "base" using exact/)).toHaveLength(1);
-        expect(screen.getByText("outcome-library-generation: failed")).toBeInTheDocument();
-        expect(screen.getAllByText("outcome-library-generation: failed")).toHaveLength(1);
-        expect(screen.getByText("outcome-library-generation: cancelled")).toBeInTheDocument();
-        expect(screen.getAllByText("outcome-library-generation: cancelled")).toHaveLength(1);
-        expect(screen.queryByText("outcome-library-generation: completed")).not.toBeInTheDocument();
+        expect(screen.getByText("outcome-library-generation · Failed")).toBeInTheDocument();
+        expect(screen.getAllByText("outcome-library-generation · Failed")).toHaveLength(1);
+        expect(screen.getByText("outcome-library-generation · Cancelled")).toBeInTheDocument();
+        expect(screen.getAllByText("outcome-library-generation · Cancelled")).toHaveLength(1);
+        expect(screen.queryByText("outcome-library-generation · Completed")).not.toBeInTheDocument();
     });
 
     it("renders compatibility lifecycle fallback as the sole running status and cancellation control", async () => {

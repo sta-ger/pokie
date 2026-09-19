@@ -41,6 +41,7 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
                     </Text>
                     <IssueList title="Errors" issues={view.summary.errors} />
                     <IssueList title="Warnings" issues={view.summary.warnings} />
+                    <IssueList title="Integrity information" issues={view.summary.information} />
                 </div>
             )}
             <QuickActions>

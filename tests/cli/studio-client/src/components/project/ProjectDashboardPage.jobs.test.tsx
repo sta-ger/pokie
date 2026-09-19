@@ -27,6 +27,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
         expect(await screen.findByText("Analyzing outcomes")).toBeInTheDocument();
+        expect(screen.getByRole("heading", {name: "Studio operations"})).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Cancel"})).toBeInTheDocument();
     });
 

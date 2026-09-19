@@ -197,6 +197,7 @@ export type PokieGamePackageValidationReport = {
     game: {id: string; name: string; version: string} | null;
     errors: ValidationIssue[];
     warnings: ValidationIssue[];
+    information?: ValidationIssue[];
     suggestions: string[];
 };
 
@@ -589,7 +590,7 @@ export type ParSheetProvenance = {
 
 // POST /api/home/blueprints/par-import's own DTO — see
 // cli/studio/blueprint/StudioParSheetImportView.ts's own doc comment. "ok" here means "the file was read
-// and mapped", never "the result is error-free" -- errors/warnings are the PAR Sheet Import/Export
+// and mapped", never "the result is error-free" -- errors/warnings/information are the PAR Sheet Import/Export
 // panel's own Diagnose & map step's data, not a gate on reaching "ok".
 export type StudioParSheetImportView =
     | {
@@ -600,6 +601,8 @@ export type StudioParSheetImportView =
           conversionEvidence: ParSheetConversionEvidence;
           errors: ValidationIssue[];
           warnings: ValidationIssue[];
+          /** Additive for older Studio servers; verified provenance belongs here, never in warnings. */
+          information?: ValidationIssue[];
       }
     | {status: "load-error"; error: string};
 

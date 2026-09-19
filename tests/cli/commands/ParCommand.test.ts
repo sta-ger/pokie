@@ -150,6 +150,28 @@ describe("ParCommand", () => {
             expect(logSpy.mock.calls.map((call) => call[0]).join("\n")).toContain("Errors (1)");
         });
 
+        it("reports verified provenance as integrity information without counting it as a warning", async () => {
+            const writeFile = jest.fn();
+            const information: ValidationIssue = {
+                code: "parsheet-provenance-present",
+                severity: "info",
+                message: "The recorded hash matches the imported data.",
+            };
+            const command = new ParCommand(
+                "1.3.0",
+                createStubImporter({blueprint: fullBlueprint, provenance: undefined, issues: [information]}),
+                createStubExporter([]),
+                () => rawBlueprint,
+                writeFile,
+            );
+
+            expect(await command.run(["import", "game.xlsx"])).toBe(0);
+            const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+            expect(printed).toContain("Integrity information:");
+            expect(printed).toContain("parsheet-provenance-present");
+            expect(printed).not.toContain("Warnings (");
+        });
+
         it("--format json prints the full {blueprint, provenance, issues} result and still writes the file", async () => {
             const writeFile = jest.fn();
             const command = new ParCommand(

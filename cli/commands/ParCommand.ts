@@ -364,12 +364,13 @@ export class ParCommand implements CliCommandHandling {
         writeResult?: void | BlueprintFileWriteResult,
     ): number {
         const errors = result.issues.filter((issue) => issue.severity === "error");
-        const warnings = result.issues.filter((issue) => issue.severity !== "error");
+        const warnings = result.issues.filter((issue) => issue.severity === "warning");
+        const information = result.issues.filter((issue) => issue.severity === "info");
 
         if (format === "json") {
             console.log(JSON.stringify(result, null, 4));
         } else {
-            this.printImportSummary(inputPath, result.blueprint, errors, warnings);
+            this.printImportSummary(inputPath, result.blueprint, errors, warnings, information);
         }
 
         if (errors.length > 0) {
@@ -401,7 +402,8 @@ export class ParCommand implements CliCommandHandling {
         const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(cancellation.cleanup);
         const issues = execution.published ? execution.publication! : execution.read.issues;
         const errors = issues.filter((issue) => issue.severity === "error");
-        const warnings = issues.filter((issue) => issue.severity !== "error");
+        const warnings = issues.filter((issue) => issue.severity === "warning");
+        const information = issues.filter((issue) => issue.severity === "info");
 
         if (errors.length > 0) {
             this.printExportErrors(blueprintPath, outPath, errors);
@@ -411,6 +413,12 @@ export class ParCommand implements CliCommandHandling {
         console.log(`Exported "${blueprintPath}" to "${outPath}".`);
         for (const issue of warnings) {
             console.log(`  warning  ${issue.code}: ${issue.message}`);
+            if (issue.suggestion) {
+                console.log(`    suggestion: ${issue.suggestion}`);
+            }
+        }
+        for (const issue of information) {
+            console.log(`  info     ${issue.code}: ${issue.message}`);
             if (issue.suggestion) {
                 console.log(`    suggestion: ${issue.suggestion}`);
             }
@@ -465,7 +473,13 @@ export class ParCommand implements CliCommandHandling {
         }
     }
 
-    private printImportSummary(inputPath: string, blueprint: GameBlueprint, errors: ValidationIssue[], warnings: ValidationIssue[]): void {
+    private printImportSummary(
+        inputPath: string,
+        blueprint: GameBlueprint,
+        errors: ValidationIssue[],
+        warnings: ValidationIssue[],
+        information: ValidationIssue[],
+    ): void {
         console.log(`Imported "${inputPath}"`);
         console.log(`  game             ${blueprint.manifest.name} (id: "${blueprint.manifest.id}", v${blueprint.manifest.version})`);
         console.log(`  reels x rows     ${blueprint.reels} x ${blueprint.rows}`);
@@ -474,6 +488,15 @@ export class ParCommand implements CliCommandHandling {
         if (warnings.length > 0) {
             console.log(`\nWarnings (${warnings.length}):`);
             for (const issue of warnings) {
+                console.log(`  - ${issue.code}: ${issue.message}`);
+                if (issue.suggestion) {
+                    console.log(`    suggestion: ${issue.suggestion}`);
+                }
+            }
+        }
+        if (information.length > 0) {
+            console.log("\nIntegrity information:");
+            for (const issue of information) {
                 console.log(`  - ${issue.code}: ${issue.message}`);
                 if (issue.suggestion) {
                     console.log(`    suggestion: ${issue.suggestion}`);

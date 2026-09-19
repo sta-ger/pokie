@@ -677,12 +677,17 @@ export class StudioBlueprintService {
             // importer/writer authority.
             let result = await this.parSheetImporter.importFromFile(resolved);
             if (signal?.aborted) return {status: "load-error", error: "PAR import was cancelled after the workbook was read; no output was published."};
-            const errors = result.issues.filter((issue) => issue.severity === "error");
-            const warnings = result.issues.filter((issue) => issue.severity !== "error");
-            if (errors.length === 0 && this.parSheetImporter instanceof ParSheetImporter) {
+            const initialErrors = result.issues.filter((issue) => issue.severity === "error");
+            if (initialErrors.length === 0 && this.parSheetImporter instanceof ParSheetImporter) {
                 result = await this.prepareParApplyThroughRegistry(resolved);
                 if (signal?.aborted) return {status: "load-error", error: "PAR import was cancelled after its safe publication boundary."};
             }
+            // The registry preparation above is authoritative for the durable
+            // conversion record, so partition its final diagnostics rather
+            // than retaining a stale pre-publication classification.
+            const errors = result.issues.filter((issue) => issue.severity === "error");
+            const warnings = result.issues.filter((issue) => issue.severity === "warning");
+            const information = result.issues.filter((issue) => issue.severity === "info");
             const conversionEvidence: StudioParSheetConversionEvidence = {...(result.conversionEvidence ?? {
                 metaSheet: undefined,
                 facts: result.issues.map((issue) => ({kind: "diagnostic" as const, code: issue.code, message: issue.message, ...(issue.details === undefined ? {} : {details: issue.details})})),
@@ -699,6 +704,7 @@ export class StudioBlueprintService {
                 conversionEvidence,
                 errors,
                 warnings,
+                information,
             };
         } catch (error) {
             return {status: "load-error", error: error instanceof Error ? error.message : String(error)};

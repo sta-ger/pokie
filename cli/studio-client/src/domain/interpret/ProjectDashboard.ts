@@ -235,6 +235,7 @@ export type ValidationSummaryView = {
     valid: boolean;
     errors: ValidationIssueView[];
     warnings: ValidationIssueView[];
+    information: ValidationIssueView[];
     suggestions: string[];
     // "Are there any issues to *show*" -- warnings still render in Overview's own validation
     // diagnostics even though they don't block anything (see `blocking` below).
@@ -251,6 +252,7 @@ export function describeValidationSummary(report: PokieGamePackageValidationRepo
         valid: report.valid,
         errors: report.errors.map((issue) => ({code: issue.code, message: issue.message})),
         warnings: report.warnings.map((issue) => ({code: issue.code, message: issue.message})),
+        information: (report.information ?? []).map((issue) => ({code: issue.code, message: issue.message})),
         suggestions: report.suggestions,
         hasIssues: report.errors.length > 0 || report.warnings.length > 0,
         blocking: !report.valid || report.errors.length > 0,

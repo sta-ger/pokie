@@ -1,11 +1,93 @@
-/* Defense-in-depth: no single wide element should ever be able to force the whole page to scroll
-   horizontally -- individual wide tables/code blocks scroll within their own container instead (see
-   Table.ScrollContainer/CodeBlock usages), this is just the backstop. */
+/* The shell itself must never establish a minimum width larger than its
+   viewport.  Do not hide horizontal overflow here: that would conceal a
+   component escaping its owning scroll/wrap boundary and make its controls
+   unreachable on small screens.  Tables and code own local scrolling; normal
+   labels and diagnostics wrap in their component (see below). */
 html,
 body,
 #root {
     max-width: 100%;
-    overflow-x: hidden;
+    min-width: 0;
+}
+
+/* Keep ordinary Studio workspaces deliberately readable on wide screens while
+   letting individual tables and code blocks own their local scrolling. */
+.studio-app-main {
+    min-width: 0;
+}
+
+.studio-app-header,
+.studio-app-header-primary,
+.studio-app-breadcrumbs,
+.studio-app-breadcrumb-item,
+.studio-app-breadcrumb-current {
+    min-width: 0;
+}
+
+.studio-app-header-primary,
+.studio-app-breadcrumbs {
+    flex: 1 1 0;
+}
+
+.studio-app-breadcrumbs {
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+.studio-app-breadcrumb-current {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-app-breadcrumb-item {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-page {
+    width: min(100%, 76rem);
+    min-width: 0;
+    margin-inline: auto;
+}
+
+.studio-page > * {
+    min-width: 0;
+}
+
+.studio-page :where(p, span, td, th, pre, summary) {
+    overflow-wrap: anywhere;
+}
+
+.studio-page :where(.mantine-Alert-root, .mantine-Fieldset-root) {
+    min-width: 0;
+}
+
+.studio-job-card {
+    overflow: hidden;
+}
+
+.studio-job-card [data-job-detail] {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.studio-job-card .mantine-Group-root,
+.studio-job-details {
+    min-width: 0;
+}
+
+.studio-job-details {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+@media (min-width: 76em) {
+    .studio-page > .mantine-Stack-root,
+    .studio-page > .mantine-Group-root {
+        max-width: 68rem;
+    }
 }
 
 /* The Projects registry has a desktop table for fast comparison. When the fixed desktop navigation
@@ -99,11 +181,28 @@ body,
        (including the initially rendered Design Game editor) to a thin right-hand column. */
     #root .studio-app-main {
         --app-shell-navbar-offset: 0px !important;
+        padding-inline-start: var(--mantine-spacing-md) !important;
+        padding-inline-end: var(--mantine-spacing-md) !important;
         padding-inline: var(--mantine-spacing-md) !important;
+    }
+
+    /* The header's retained breadcrumb still exposes the guarded navigation
+       actions. On a phone the duplicate secondary action competes with that
+       path for the same single-line header width. */
+    .studio-app-header-actions {
+        display: none;
     }
 
     .project-registry-entry > td,
     .project-registry-selection:not(:empty) {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .studio-app-main {
+        padding-block: var(--mantine-spacing-sm);
+    }
+
+    .studio-page {
+        width: 100%;
     }
 }

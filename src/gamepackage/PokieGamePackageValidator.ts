@@ -64,7 +64,8 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
         issues: ValidationIssue[],
     ): PokieGamePackageValidationReport {
         const errors = issues.filter((issue) => issue.severity === "error");
-        const warnings = issues.filter((issue) => issue.severity === "warning" || issue.severity === "info");
+        const warnings = issues.filter((issue) => issue.severity === "warning");
+        const information = issues.filter((issue) => issue.severity === "info");
         const suggestions = [
             ...new Set(
                 issues
@@ -73,6 +74,6 @@ export class PokieGamePackageValidator implements PokieGamePackageValidating {
             ),
         ];
 
-        return {packageRoot, valid: errors.length === 0, game, errors, warnings, suggestions};
+        return {packageRoot, valid: errors.length === 0, game, errors, warnings, information, suggestions};
     }
 }

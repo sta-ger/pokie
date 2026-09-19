@@ -53,7 +53,13 @@ describe("Studio PAR workbook source dispatch", () => {
         expect(inspection.body).toMatchObject({packageRoot: workbookPath, valid: true});
         expect(JSON.stringify(inspection.body)).not.toContain("package.json");
         expect(validation.status).toBe(200);
-        expect(validation.body).toMatchObject({packageRoot: workbookPath, valid: true, game: {id: expect.any(String), name: expect.any(String), version: expect.any(String)}});
+        expect(validation.body).toMatchObject({
+            packageRoot: workbookPath,
+            valid: true,
+            game: {id: expect.any(String), name: expect.any(String), version: expect.any(String)},
+            information: [expect.objectContaining({code: "parsheet-provenance-present", severity: "info"})],
+        });
+        expect((validation.body as {warnings: Array<{code: string}>}).warnings).not.toContainEqual(expect.objectContaining({code: "parsheet-provenance-present"}));
         expect(JSON.stringify(validation.body)).not.toContain("package.json");
         expect(gameModel.status).toBe(200);
         expect(gameModel.body).toMatchObject({

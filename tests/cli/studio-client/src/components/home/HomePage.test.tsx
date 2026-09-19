@@ -83,7 +83,7 @@ describe("HomePage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
         expect(await screen.findByRole("heading", {name: "Home jobs"})).toBeInTheDocument();
-        expect(screen.getByText("project-open-materialization: recovery-required")).toBeInTheDocument();
+        expect(screen.getByText("project-open-materialization · Recovery required")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Retry"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/projects/open" && call.init?.body === JSON.stringify({projectRoot: "/games/recoverable"}))).toBe(true));
@@ -104,7 +104,7 @@ describe("HomePage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        await screen.findByText("design-par-import: recovery-required");
+        await screen.findByText("design-par-import · Recovery required");
         await user.click(screen.getByRole("button", {name: "Rebuild"}));
 
         const importPath = await screen.findByLabelText("PAR sheet path");
@@ -140,7 +140,7 @@ describe("HomePage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        await screen.findByText("design-build: recovery-required");
+        await screen.findByText("design-build · Recovery required");
         await user.click(screen.getByRole("button", {name: "Rebuild"}));
 
         expect(await screen.findByLabelText("Output directory (optional)")).toHaveValue("/games/recovered-package");
@@ -170,7 +170,7 @@ describe("HomePage", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
 
-        await screen.findByText("design-par-export: recovery-required");
+        await screen.findByText("design-par-export · Recovery required");
         await user.click(screen.getByRole("button", {name: "Rebuild"}));
 
         expect(await screen.findByLabelText("Export to path")).toHaveValue("/games/recovered.par.xlsx");

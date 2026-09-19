@@ -383,6 +383,8 @@ export function ParSheetImportExportPanel({
                             title={IMPORT_OUTCOME_BANNER[importOutcome].title}
                             errors={importResult.errors}
                             warnings={importResult.warnings}
+                            information={importResult.information}
+                            informationTitle="Verified integrity"
                         />
 
                         <PageSection legend="Provenance / source">

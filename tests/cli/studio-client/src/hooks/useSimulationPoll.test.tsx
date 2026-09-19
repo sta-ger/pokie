@@ -20,6 +20,35 @@ function strictModeWrapper(fetchImpl: FetchLike) {
 }
 
 describe("useSimulationPoll - StrictMode + cleanup", () => {
+    it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
+        let releaseCancel: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 2))});
+            }
+            if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
+                return new Promise((resolve) => {
+                    releaseCancel = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("cancelled", 2))});
+                });
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return new Promise(() => {
+                    // Keep the ordinary poll pending while the cancel request is observed.
+                });
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(result.current.job?.status).toBe("running"));
+        act(() => result.current.cancel());
+        expect(result.current.cancellationRequested).toBe(true);
+        act(() => releaseCancel?.());
+        await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
+        expect(result.current.cancellationRequested).toBe(false);
+    });
+
     it("keeps polling across StrictMode's dev-only mount -> cleanup -> mount cycle, instead of the second mount silently inheriting a cancelled state from the throwaway first mount", async () => {
         let getCalls = 0;
         const fetchImpl: FetchLike = (url, init) => {

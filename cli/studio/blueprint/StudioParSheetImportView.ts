@@ -13,7 +13,7 @@ export type StudioParSheetConversionEvidence = NonNullable<ParSheetImportResult[
 //
 // Unlike StudioBlueprintLoadView, a well-formed workbook always reaches "ok" even when its own mapping/
 // validation diagnostics include errors: "ok" here means "the file was read and mapped", not "the
-// result is error-free" -- errors/warnings are exactly ParSheetImportResult.issues split by severity
+// result is error-free" -- errors/warnings/information are exactly ParSheetImportResult.issues split by severity
 // (same convention as StudioBlueprintService.validate()) for the PAR Sheet Import/Export panel's own
 // Diagnose & map step to show, never re-derived or re-validated. `provenance` is the "Meta" sheet's own
 // recorded origin (see ParSheetProvenance) -- undefined only when the workbook has no "Meta" sheet at
@@ -30,5 +30,7 @@ export type StudioParSheetImportView =
           conversionEvidence: StudioParSheetConversionEvidence;
           errors: ValidationIssue[];
           warnings: ValidationIssue[];
+          /** Verified provenance and other non-warning diagnostics. */
+          information: ValidationIssue[];
       }
     | {status: "load-error"; error: string};

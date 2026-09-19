@@ -19,6 +19,12 @@ function renderWithMantine(ui: React.ReactElement) {
 }
 
 describe("Responsive / no-horizontal-page-overflow primitives", () => {
+    it("does not globally clip page overflow: every escaping surface must be repaired or locally scrollable", () => {
+        const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
+        expect(stylesheet).toMatch(/html,[\s\S]*?body,[\s\S]*?#root[\s\S]*?min-width: 0;/);
+        expect(stylesheet).not.toMatch(/html,[\s\S]*?body,[\s\S]*?#root[\s\S]*?overflow-x:\s*(?:hidden|clip)/);
+    });
+
     it("ScreenTable wraps its table in a horizontally-scrollable container instead of letting it expand the page", () => {
         renderWithMantine(<ScreenTable screen={[[LONG_UNBROKEN_TEXT, "B", "C"]]} />);
         const cell = screen.getByText(LONG_UNBROKEN_TEXT);

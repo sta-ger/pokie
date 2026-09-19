@@ -6,5 +6,7 @@ export type PokieGamePackageValidationReport = {
     game: {id: string; name: string; version: string} | null;
     errors: ValidationIssue[];
     warnings: ValidationIssue[];
+    /** Non-blocking integrity and contract observations, retained separately from warnings. */
+    information?: ValidationIssue[];
     suggestions: string[];
 };

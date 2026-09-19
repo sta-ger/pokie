@@ -135,7 +135,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
 
-        await screen.findByText("replay: recovery-required");
+        await screen.findByText("replay · Recovery required");
         await user.click(screen.getByRole("button", {name: "Retry"}));
         // Mantine NumberInput renders its editable control as text; running the recovered form
         // below verifies that the request is converted back to the numeric round value.

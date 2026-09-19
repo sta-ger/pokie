@@ -1,0 +1,33 @@
+[2026-09-19T17:57:25.888Z] VIEWPORT wide desktop: 1440x900; document overflow=false
+[2026-09-19T17:57:25.934Z] CLICK Choose a different start
+[2026-09-19T17:57:26.263Z] CLICK Generate random
+[2026-09-19T17:57:26.616Z] INPUT Name (optional)="P8-04 Studio audit — a deliberately long project name for responsive containment" through rendered browser field
+[2026-09-19T17:57:26.933Z] CLICK Generate
+[2026-09-19T17:57:27.267Z] CLICK Use this game idea
+[2026-09-19T17:57:27.574Z] CLICK Create game
+[2026-09-19T17:57:28.040Z] WORKFLOW created, registered, and opened a real long-named project through Studio's rendered Design flow.
+[2026-09-19T17:57:28.125Z] CAPTURE wide-project-overview.png: Wide 1440×900 real project Overview with long project identity; document overflow=false
+[2026-09-19T17:57:28.131Z] VIEWPORT compact desktop: 1024x768; document overflow=false
+[2026-09-19T17:57:28.146Z] CLICK Simulation
+[2026-09-19T17:57:28.471Z] INPUT Rounds="100000" through rendered browser field
+[2026-09-19T17:57:28.792Z] CLICK Run Simulation
+[2026-09-19T17:57:29.096Z] LIFECYCLE queued/running simulation: visible enabled button action Cancel
+[2026-09-19T17:57:29.157Z] CAPTURE compact-simulation-running.png: Compact 1024×768 real simulation job queued/running; document overflow=false
+[2026-09-19T17:57:29.166Z] CLICK Cancel
+[2026-09-19T17:57:29.468Z] LIFECYCLE simulation cancellation confirmation: visible enabled button action Confirm
+[2026-09-19T17:57:29.480Z] CLICK Confirm
+[2026-09-19T17:57:29.783Z] LIFECYCLE cancelling/cancelled simulation: action Cancel is no longer visible
+[2026-09-19T17:57:29.834Z] CAPTURE compact-simulation-cancelling.png: Compact 1024×768 cancellation requested; cleanup remains active; document overflow=false
+[2026-09-19T17:57:30.060Z] CAPTURE compact-simulation-cancelled.png: Compact 1024×768 real cancelled simulation result; document overflow=false
+[2026-09-19T17:57:30.060Z] WORKFLOW cancelled the rendered simulation through its confirmation and waited for the server terminal state.
+[2026-09-19T17:57:30.067Z] VIEWPORT wide desktop: 1440x900; document overflow=false
+[2026-09-19T17:57:30.080Z] CLICK Back to configuration
+[2026-09-19T17:57:30.396Z] INPUT Rounds="25" through rendered browser field
+[2026-09-19T17:57:30.711Z] CLICK Run Simulation
+[2026-09-19T17:57:31.015Z] LIFECYCLE completed simulation report: visible enabled button action Repeat simulation
+[2026-09-19T17:57:31.087Z] CAPTURE wide-simulation-completed.png: Wide 1440×900 real completed simulation report and output actions; document overflow=false
+[2026-09-19T17:57:31.087Z] WORKFLOW completed a second real simulation and rendered its durable report summary.
+[2026-09-19T17:57:31.115Z] VIEWPORT small viewport: 390x844; document overflow=false
+[2026-09-19T17:57:31.128Z] CLICK Toggle navigation
+[2026-09-19T17:57:31.484Z] CAPTURE small-navigation.png: Small 390×844 viewport with rendered navigation open after real project/job workflows; document overflow=false
+[2026-09-19T17:57:31.484Z] PASS real built Studio project creation, responsive navigation, simulation cancellation/completion, and no document-level horizontal overflow at wide, compact, and small viewports.

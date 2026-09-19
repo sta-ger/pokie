@@ -21,6 +21,7 @@ const validReport: PokieGamePackageValidationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
     errors: [],
     warnings: [],
+    information: [],
     suggestions: [],
 };
 
@@ -30,6 +31,7 @@ const invalidReport: PokieGamePackageValidationReport = {
     game: null,
     errors: [{code: "pokie-game-missing-contract-methods", severity: "error", message: "does not implement PokieGame"}],
     warnings: [{code: "some-warning", severity: "warning", message: "a warning"}],
+    information: [],
     suggestions: ["Export an object implementing PokieGame as the entry module's default export."],
 };
 
@@ -95,6 +97,18 @@ describe("ValidateCommand", () => {
         expect(printed).toContain("valid           yes");
         expect(printed).toContain("No issues found.");
 
+        logSpy.mockRestore();
+    });
+
+    it("prints package integrity information separately from warnings", async () => {
+        const command = new ValidateCommand(createStubValidator({...validReport, information: [{code: "package-integrity-verified", severity: "info", message: "The package provenance is verified."}]}));
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+
+        expect(await command.run(["./sample-slot"])).toBe(0);
+        const printed = logSpy.mock.calls.map((call) => call[0]).join("\n");
+        expect(printed).toContain("Information (1):");
+        expect(printed).toContain("package-integrity-verified");
+        expect(printed).not.toContain("Warnings (1):");
         logSpy.mockRestore();
     });
 

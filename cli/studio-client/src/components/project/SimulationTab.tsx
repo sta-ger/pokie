@@ -38,6 +38,7 @@ type FormValues = {rounds: number; seed: string; workers: number; modeName: stri
 export function SimulationTab({
     progress,
     error,
+    cancellationRequested,
     onRun,
     onCancel,
     onRetry,
@@ -58,6 +59,8 @@ export function SimulationTab({
 }: {
     progress: SimulationProgressView | undefined;
     error: string | undefined;
+    /** A cancel request accepted locally before the next durable poll catches up. */
+    cancellationRequested: boolean;
     onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
     onCancel: () => void;
     onRetry: () => void;
@@ -133,6 +136,7 @@ export function SimulationTab({
     });
 
     const active = progress !== undefined && (progress.status === "queued" || progress.status === "running" || progress.status === "cancelling");
+    const cancellationPending = cancellationRequested || progress?.status === "cancelling";
     const isTerminal = progress !== undefined && !active;
     const canRetry = progress !== undefined && (progress.status === "failed" || progress.status === "cancelled");
 
@@ -259,15 +263,16 @@ export function SimulationTab({
                     {progress !== undefined && (
                         <div>
                             <Text size="sm" mb={4}>
-                                {progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
+                                {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
                             </Text>
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
-                                {active && (
+                                {active && !cancellationPending && (
                                     <Button color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel)}>
                                         Cancel
                                     </Button>
                                 )}
+                                {cancellationPending && <Text role="status" size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
                                 {canRetry && (
                                     <Button variant="default" onClick={onRetry}>
                                         Retry

@@ -27,6 +27,7 @@ export function useSimulationPoll() {
     const [progress, setProgress] = useState<SimulationProgressView | undefined>(undefined);
     const [job, setJob] = useState<StudioSimulationJobView>();
     const [error, setError] = useState<string>();
+    const [cancellationRequested, setCancellationRequested] = useState(false);
     const currentJobId = useRef<string | undefined>(undefined);
     const cancelledRef = useRef(false);
     const generationRef = useRef(0);
@@ -63,6 +64,9 @@ export function useSimulationPoll() {
                 }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
+                if (!isSimulationActive(polledJob)) {
+                    setCancellationRequested(false);
+                }
                 if (isSimulationActive(polledJob)) {
                     timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
@@ -82,6 +86,7 @@ export function useSimulationPoll() {
         generationRef.current = generation;
         runGuardGenerationRef.current = generation;
         setError(undefined);
+        setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
         startSimulation(fetchImpl, rounds, seed, workers, modeName)
             .then((result) => {
@@ -129,6 +134,7 @@ export function useSimulationPoll() {
         setProgress(undefined);
         setJob(undefined);
         setError(undefined);
+        setCancellationRequested(false);
     }
 
     function cancel(): void {
@@ -138,6 +144,10 @@ export function useSimulationPoll() {
         }
         const generation = generationRef.current;
         cancelGuardGenerationRef.current = generation;
+        // The server can need a short safe-cleanup interval before its next
+        // poll reports `cancelling`. Reflect the accepted user intent now so
+        // the rendered Cancel action cannot be submitted twice in that gap.
+        setCancellationRequested(true);
         cancelSimulation(fetchImpl, id)
             .then((polledJob) => {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
@@ -145,10 +155,14 @@ export function useSimulationPoll() {
                 }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
+                if (!isSimulationActive(polledJob)) {
+                    setCancellationRequested(false);
+                }
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
+                    setCancellationRequested(false);
                 }
             })
             .finally(() => {
@@ -159,5 +173,5 @@ export function useSimulationPoll() {
             });
     }
 
-    return {progress, job, error, run, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    return {progress, job, error, cancellationRequested, run, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

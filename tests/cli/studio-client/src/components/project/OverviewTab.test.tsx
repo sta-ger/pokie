@@ -81,4 +81,28 @@ describe("OverviewTab", () => {
 
         expect(screen.getByText("Checking project…").closest('[role="status"]')).not.toBeNull();
     });
+
+    it("keeps verified PAR provenance observable without presenting it as a warning", () => {
+        renderWithMantine(
+            <OverviewTab
+                header={header({type: "parWorkbook"})}
+                validation={{status: "success", summary: {
+                    valid: true,
+                    errors: [],
+                    warnings: [],
+                    information: [{code: "parsheet-provenance-present", message: "The recorded hash matches the imported data."}],
+                    suggestions: [],
+                    hasIssues: false,
+                    blocking: false,
+                }}}
+                onRevalidate={() => undefined}
+                onOpenPlay={() => undefined}
+            />,
+        );
+
+        expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument();
+        expect(screen.getByText("Integrity information")).toBeInTheDocument();
+        expect(screen.getByText(/The recorded hash matches the imported data\./)).toBeInTheDocument();
+        expect(screen.queryByText("Valid, with warnings")).not.toBeInTheDocument();
+    });
 });

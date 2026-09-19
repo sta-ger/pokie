@@ -170,6 +170,7 @@ describe("describeValidationSummary", () => {
             valid: true,
             errors: [],
             warnings: [],
+            information: [],
             suggestions: [],
             hasIssues: false,
             blocking: false,
@@ -207,5 +208,20 @@ describe("describeValidationSummary", () => {
         expect(summary.hasIssues).toBe(true);
         expect(summary.warnings).toEqual([{code: "pokie-game-description-missing", message: "No description set."}]);
         expect(summary.suggestions).toEqual(["Add a description to the manifest."]);
+    });
+
+    it("keeps verified provenance observable without turning it into a validation warning", () => {
+        const summary = describeValidationSummary({
+            packageRoot: "/a/sheet.xlsx",
+            valid: true,
+            game: {id: "a", name: "A", version: "1.0.0"},
+            errors: [],
+            warnings: [],
+            information: [{code: "parsheet-provenance-present", severity: "info", message: "The recorded hash matches the imported data."}],
+            suggestions: [],
+        });
+
+        expect(summary).toMatchObject({valid: true, warnings: [], hasIssues: false, blocking: false});
+        expect(summary.information).toEqual([{code: "parsheet-provenance-present", message: "The recorded hash matches the imported data."}]);
     });
 });

@@ -15,8 +15,21 @@ describe("PokieGamePackageValidator", () => {
             game: {id: "valid-game", name: "Valid Game", version: "1.0.0"},
             errors: [],
             warnings: [],
+            information: [],
             suggestions: [],
         });
+    });
+
+    it("retains informational contract diagnostics outside the warning channel", async () => {
+        const provenance = {code: "package-provenance-verified", severity: "info" as const, message: "The package provenance is verified."};
+        const validator = new PokieGamePackageValidator(
+            () => Promise.resolve({candidate: {}, entryPath: "/games/verified/index.js", release: () => Promise.resolve()}),
+            {validate: () => [provenance]},
+        );
+
+        const report = await validator.validate("/games/verified");
+
+        expect(report).toMatchObject({valid: true, errors: [], warnings: [], information: [provenance]});
     });
 
     it("reports an error and no game when pokie.entry is missing", async () => {

@@ -35,6 +35,13 @@ function selectorLabel(selector: RecordValue): string {
     return "Retained selector metadata is incomplete.";
 }
 
+function terminalPresentation(status: Exclude<StudioJobView["status"], "queued" | "running" | "cancelling">): {color: "green" | "gray" | "orange" | "red"; label: string; fallback: string} {
+    if (status === "completed") return {color: "green", label: "Completed", fallback: "This operation completed."};
+    if (status === "cancelled") return {color: "gray", label: "Cancelled", fallback: "This operation was cancelled safely."};
+    if (status === "recovery-required") return {color: "orange", label: "Recovery required", fallback: "This operation needs an explicit recovery action."};
+    return {color: "red", label: "Failed", fallback: "This operation failed before it could complete."};
+}
+
 export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, onRevealOutput, onInspectOutput, outputActionsUnavailableReason}: {
     job: StudioJobView;
     onRecover?: (id: string) => void;
@@ -46,10 +53,8 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
     outputActionsUnavailableReason?: string;
 }) {
     if (job.status === "queued" || job.status === "running" || job.status === "cancelling") return null;
-    let color: "green" | "orange" | "red" = "red";
-    if (job.status === "completed") color = "green";
-    if (job.status === "recovery-required") color = "orange";
-    const title = `${job.operation}: ${job.status}`;
+    const presentation = terminalPresentation(job.status);
+    const title = `${job.operation} · ${presentation.label}`;
     const outcomeResult = outcomeLibraryResult(job);
     const mode = outcomeResult?.mode as RecordValue | undefined;
     const generator = outcomeResult?.generator as RecordValue | undefined;
@@ -69,9 +74,9 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
     // path for a host action when viewing an older incomplete durable record.
     const resolvedOutcomeLibraryPath = textValue(outcomeResult?.resolvedBundleDir);
     return (
-        <Alert color={color} title={title}>
+        <Alert className="studio-job-card" color={presentation.color} title={title} role={job.status === "failed" ? "alert" : "status"} aria-live={job.status === "failed" ? undefined : "polite"}>
             <Stack gap={4}>
-                <Text size="sm">{job.result?.summary ?? job.error ?? job.recovery?.reason ?? "No additional result is available."}</Text>
+                <Text size="sm" data-job-detail>{job.result?.summary ?? job.error ?? job.recovery?.reason ?? presentation.fallback}</Text>
                 {job.durationMs !== undefined && <Text size="xs">Duration: {job.durationMs}ms</Text>}
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
                 {outcomeResult !== undefined && (
@@ -87,10 +92,10 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                     </Stack>
                 )}
                 {job.result?.provenance !== undefined &&
-                    <details><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
+                    <details className="studio-job-details"><summary>Inspect provenance</summary><Text size="xs">{JSON.stringify(job.result.provenance)}</Text></details>}
                 {job.result?.detail !== undefined &&
-                    <details><summary>Inspect operation result</summary><Text size="xs">{JSON.stringify(job.result.detail)}</Text></details>}
-                <details>
+                    <details className="studio-job-details"><summary>Inspect operation result</summary><Text size="xs">{JSON.stringify(job.result.detail)}</Text></details>}
+                <details className="studio-job-details">
                     <summary>Inspect retained request</summary>
                     <Text size="xs">{JSON.stringify(job.request)}</Text>
                 </details>
@@ -99,7 +104,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                         ? resolvedOutcomeLibraryPath
                         : output.path;
                     return (
-                        <Group gap="xs" key={output.label}>
+                        <Group gap="xs" key={output.label} wrap="wrap">
                             {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}
                             {job.operation === "outcome-library-generation" && outputPath !== undefined && onInspectOutput !== undefined &&
                                 <Button size="xs" variant="subtle" onClick={() => onInspectOutput(outputPath)}>Inspect {output.label}</Button>}
@@ -108,15 +113,15 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                             {outputPath !== undefined && outputActionsUnavailableReason === undefined && onRevealOutput !== undefined &&
                                 <Button size="xs" variant="subtle" onClick={() => onRevealOutput(outputPath)}>Reveal {output.label}</Button>}
                             {outputPath !== undefined && outputActionsUnavailableReason !== undefined &&
-                                <Text size="xs">Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
+                                <Text size="xs" data-job-detail>Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
                             {output.downloadPath === undefined && (outputPath === undefined || (onOpenOutput === undefined && onRevealOutput === undefined && onInspectOutput === undefined)) &&
-                                <Text size="xs">{output.label}{outputPath === undefined ? "" : `: ${outputPath}`}</Text>}
+                                <Text size="xs" data-job-detail>{output.label}{outputPath === undefined ? "" : `: ${outputPath}`}</Text>}
                         </Group>
                     );
                 })}
-                {job.recovery !== undefined && <Text size="xs">Next: {job.recovery.action} — {job.recovery.reason}</Text>}
+                {job.recovery !== undefined && <Text size="xs" data-job-detail>Next: {job.recovery.action} — {job.recovery.reason}</Text>}
                 {job.recovery !== undefined && (
-                    <Group gap="xs">
+                    <Group gap="xs" wrap="wrap">
                         {job.recovery.action === "resume" && onRecover !== undefined &&
                             <Button size="xs" variant="light" onClick={() => onRecover(job.id)}>Resume</Button>}
                         {job.recovery.action !== "resume" && onRecoveryAction !== undefined &&

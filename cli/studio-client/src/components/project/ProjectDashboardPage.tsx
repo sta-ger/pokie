@@ -1,4 +1,4 @@
-import {Alert, Button, Table, Text, Title} from "@mantine/core";
+import {Alert, Button, Stack, Table, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -1089,7 +1089,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     if (header.status === "empty") {
         return (
             <AppShellLayout navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}>
-                <div>
+                <div className="studio-page">
                     <Text>No game is open yet. Choose a game you already started, or create a new one.</Text>
                     <Button component="a" href="#/home/design" mt="sm">Choose or create a game</Button>
                 </div>
@@ -1111,7 +1111,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             // discarding an unapplied Mechanics Editor draft or an active operation with no warning at all.
             onHomeClick={handleClose}
         >
-            <div>
+            <div className="studio-page">
                 <Title id="project-dashboard-heading" order={2}>{describeProjectName(header)}</Title>
                 {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
                 {projectKey !== undefined && (
@@ -1147,16 +1147,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 </div>
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
-                <div ref={panelRef} role="region" aria-labelledby="project-dashboard-heading" tabIndex={-1} style={{marginTop: "1rem"}}>
+                <div className="studio-page" ref={panelRef} role="region" aria-labelledby="project-dashboard-heading" tabIndex={-1} style={{marginTop: "1rem"}}>
                     {migration !== undefined && migration.destination === activeTab && (
                         <Alert color="blue" variant="light" mb="sm">
                             {migration.message}
                         </Alert>
                     )}
-                    {visibleCommonJobs.map((job) =>
-                        job.status === "queued" || job.status === "running" || job.status === "cancelling"
-                            ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                            : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
+                    {visibleCommonJobs.length > 0 && (
+                        <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
+                            <Title id="studio-operations-heading" order={3}>Studio operations</Title>
+                            <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
+                            {visibleCommonJobs.map((job) =>
+                                job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                                    ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
+                                    : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
+                            )}
+                        </Stack>
                     )}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
@@ -1189,13 +1195,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     : <Text>This {describeProjectType(header.type).toLowerCase()} can be republished from Build/Export.</Text>
                             )}
                             {activeTab === "gameModel" && (
-                            // GameModelTab owns all of its own fetch state locally (no page-level hook),
-                            // so a genuine project switch needs a full remount, not just a re-render of a
-                            // still-mounted instance holding the previous project's own projection.
-                            // `editable` is exactly BLUEPRINT_BUILD_CAPABILITY -- a saved Blueprint
-                            // Project Studio can load/save in place (see buildProjectGameModel's own doc
-                            // comment); a materialized tsPackage never carries that capability, so it
-                            // never offers Edit here.
+                                // GameModelTab owns all of its own fetch state locally (no page-level hook),
+                                // so a genuine project switch needs a full remount, not just a re-render of a
+                                // still-mounted instance holding the previous project's own projection.
+                                // `editable` is exactly BLUEPRINT_BUILD_CAPABILITY -- a saved Blueprint
+                                // Project Studio can load/save in place (see buildProjectGameModel's own doc
+                                // comment); a materialized tsPackage never carries that capability, so it
+                                // never offers Edit here.
                                 <GameModelTab
                                     key={projectKey ?? "no-project"}
                                     editable={headerCapabilities.includes(BLUEPRINT_BUILD_CAPABILITY)}
@@ -1221,12 +1227,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     key={projectKey ?? "no-project"}
                                     progress={simulation.progress}
                                     error={simulation.error}
+                                    cancellationRequested={simulation.cancellationRequested}
                                     onRun={startRun}
                                     recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {
-                                    // Clears eagerly (not just via the terminal-state effect) so the notice
-                                    // doesn't linger for the ~poll-interval it takes the job to actually
-                                    // reflect "cancelled".
+                                        // Clears eagerly (not just via the terminal-state effect) so the notice
+                                        // doesn't linger for the ~poll-interval it takes the job to actually
+                                        // reflect "cancelled".
                                         setRunAgainNotice(undefined);
                                         simulation.cancel();
                                     }}
@@ -1305,13 +1312,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 />
                             )}
                             {activeTab === "certification" && (
-                            // Same reasoning as GameModelTab's own key above -- CertificationTab owns
-                            // all of its own stepper state locally (no page-level hook).
+                                // Same reasoning as GameModelTab's own key above -- CertificationTab owns
+                                // all of its own stepper state locally (no page-level hook).
                                 <CertificationTab key={projectKey ?? "no-project"} projectRoot={projectKey} recoveryRequest={recoveryJob?.operation.includes("certification") ? recoveryJob.request : undefined} />
                             )}
                             {activeTab === "provablyFair" && (
-                            // Same reasoning as GameModelTab's own key above -- ProvablyFairTab owns
-                            // all of its own stepper state locally (no page-level hook).
+                                // Same reasoning as GameModelTab's own key above -- ProvablyFairTab owns
+                                // all of its own stepper state locally (no page-level hook).
                                 <ProvablyFairTab key={projectKey ?? "no-project"} projectRoot={projectKey} />
                             )}
                         </>

@@ -163,7 +163,7 @@ export function HomePage() {
             breadcrumbs={[]}
         >
             <DesignNavigationGuardProvider value={navigationGuard}>
-                <Stack gap="lg">
+                <Stack className="studio-page" gap="lg">
                     <div ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                         <BlueprintEditorPage
                             guided

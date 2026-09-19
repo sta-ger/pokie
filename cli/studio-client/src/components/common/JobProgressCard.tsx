@@ -4,6 +4,12 @@ import type {StudioJobView} from "../../api/types.js";
 
 const active = (status: StudioJobView["status"]): boolean => status === "queued" || status === "running" || status === "cancelling";
 
+function statusLabel(status: StudioJobView["status"]): string {
+    if (status === "cancelling") return "Cancelling";
+    if (status === "queued") return "Queued";
+    return "Running";
+}
+
 function percentFor(current: number | string | undefined, total: number | string | undefined): number | undefined {
     if (current === undefined || total === undefined) return undefined;
     try {
@@ -75,12 +81,12 @@ export function JobProgressCard({job, onCancel}: {job: StudioJobView; onCancel?:
     const percent = percentFor(progress?.current, progress?.total);
     const elapsedMs = job.startedAt === undefined ? undefined : (job.completedAt ?? observedAt ?? job.startedAt) - job.startedAt;
     return (
-        <Alert color={job.status === "cancelling" ? "orange" : "blue"} title={job.operation}>
-            <Group justify="space-between" align="start">
-                <div>
-                    <Text size="sm">{job.status === "cancelling" ? "Cancellation requested; waiting for cleanup." : progress?.stage ?? "Queued"}</Text>
-                    {progress !== undefined && <Text size="xs">{progress.current} / {progress.total} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
-                    {progress === undefined && job.status !== "queued" && <Text size="xs">Progress is indeterminate while this operation prepares its next safe boundary.</Text>}
+        <Alert className="studio-job-card" color={job.status === "cancelling" ? "orange" : "blue"} title={`${job.operation} · ${statusLabel(job.status)}`} role="status" aria-live="polite">
+            <Group justify="space-between" align="start" wrap="wrap">
+                <div style={{flex: "1 1 12rem", minWidth: 0}}>
+                    <Text size="sm" data-job-detail>{job.status === "cancelling" ? "Cancellation requested; waiting for cleanup." : progress?.stage ?? "Queued"}</Text>
+                    {progress !== undefined && <Text size="xs" data-job-detail>{progress.current} / {progress.total} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
+                    {progress === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Progress is indeterminate while this operation prepares its next safe boundary.</Text>}
                     {elapsedMs !== undefined && <Text size="xs">Elapsed: {elapsedMs}ms</Text>}
                     {rate !== undefined && <Text size="xs">Throughput: {rate.perSecond.toFixed(2)} {progress?.unit}/s · ETA: {Math.ceil(rate.etaMs)}ms</Text>}
                 </div>

@@ -55,7 +55,7 @@ export function isStaleParSheetExportRequest(requestedRevision: number, currentR
 // warnings worth reviewing before Apply" -- never a blocker.
 export type ParSheetImportOutcome = "success" | "partial" | "invalid";
 
-export function describeParSheetImportOutcome(view: {errors: readonly ValidationIssue[]; warnings: readonly ValidationIssue[]}): ParSheetImportOutcome {
+export function describeParSheetImportOutcome(view: {errors: readonly ValidationIssue[]; warnings: readonly ValidationIssue[]; information?: readonly ValidationIssue[]}): ParSheetImportOutcome {
     if (view.errors.length > 0) {
         return "invalid";
     }

@@ -2257,6 +2257,7 @@ export class StudioServer implements StudioServerHandling {
             game: {id: manifest.component.id, name: manifest.component.id, version: manifest.component.version},
             errors: [],
             warnings: [],
+            information: [],
             suggestions: [],
         };
     }
@@ -2376,6 +2377,7 @@ export class StudioServer implements StudioServerHandling {
                 game: null,
                 errors: [{code: "blueprint-load-failed", severity: "error", message: loaded.error}],
                 warnings: [],
+                information: [],
                 suggestions: [],
             };
         }
@@ -2392,6 +2394,7 @@ export class StudioServer implements StudioServerHandling {
             game: readBlueprintGameIdentity(loaded.blueprint),
             errors,
             warnings,
+            information: [],
             suggestions,
         };
     }
@@ -2425,9 +2428,10 @@ export class StudioServer implements StudioServerHandling {
         try {
             const imported = await new ParSheetImporter().importFromFile(project.rootPath);
             const errors = imported.issues.filter((issue) => issue.severity === "error");
-            const warnings = imported.issues.filter((issue) => issue.severity !== "error");
-            const suggestions = [...new Set([...errors, ...warnings].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion)))];
-            return {packageRoot: project.rootPath, valid: errors.length === 0, game: readBlueprintGameIdentity(imported.blueprint), errors, warnings, suggestions};
+            const warnings = imported.issues.filter((issue) => issue.severity === "warning");
+            const information = imported.issues.filter((issue) => issue.severity === "info");
+            const suggestions = [...new Set([...errors, ...warnings, ...information].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion)))];
+            return {packageRoot: project.rootPath, valid: errors.length === 0, game: readBlueprintGameIdentity(imported.blueprint), errors, warnings, information, suggestions};
         } catch (error) {
             return {
                 packageRoot: project.rootPath,
@@ -2435,6 +2439,7 @@ export class StudioServer implements StudioServerHandling {
                 game: null,
                 errors: [{code: "par-workbook-load-failed", severity: "error", message: error instanceof Error ? error.message : String(error)}],
                 warnings: [],
+                information: [],
                 suggestions: [],
             };
         }
@@ -2450,7 +2455,8 @@ export class StudioServer implements StudioServerHandling {
     private async validateOutcomeSourceProject(project: PokieProject): Promise<PokieGamePackageValidationReport> {
         const report = await this.outcomeSourceProjectAnalyzer.analyze(project);
         const errors = report.issues.filter((issue) => issue.severity === "error");
-        const warnings = report.issues.filter((issue) => issue.severity !== "error");
+        const warnings = report.issues.filter((issue) => issue.severity === "warning");
+        const information = report.issues.filter((issue) => issue.severity === "info");
         const suggestions = [
             ...new Set([...errors, ...warnings].map((issue) => issue.suggestion).filter((suggestion): suggestion is string => Boolean(suggestion))),
         ];
@@ -2460,6 +2466,7 @@ export class StudioServer implements StudioServerHandling {
             game: null,
             errors,
             warnings,
+            information,
             suggestions,
         };
     }

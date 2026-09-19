@@ -7,6 +7,7 @@ import {
     GameSession,
     materializeReelStrips,
     ParSheetExporting,
+    ParSheetExporter,
     ParSheetImporting,
     PokieGame,
     resolveReelStripGeneration,
@@ -465,6 +466,20 @@ describe("StudioBlueprintService", () => {
             expect(result.errors).toEqual([]);
             // No "Meta" sheet in this fixture -- ParSheetImporter's own provenance-missing warning.
             expect(result.warnings.some((issue) => issue.code === "parsheet-provenance-missing")).toBe(true);
+        });
+
+        it("keeps verified provenance in information rather than the warning DTO field", async () => {
+            const service = createService();
+            const filePath = path.join(tmpDir, "verified.par.xlsx");
+            await new ParSheetExporter("1.2.1").exportToFile(buildBlueprint(), filePath);
+
+            const result = await service.importParSheet(filePath);
+
+            expect(result.status).toBe("ok");
+            if (result.status !== "ok") return;
+            expect(result.information).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-provenance-present", severity: "info"})]));
+            expect(result.warnings.some((issue) => issue.code === "parsheet-provenance-present")).toBe(false);
+            expect(result.conversionEvidence.facts).toEqual(expect.arrayContaining([expect.objectContaining({code: "parsheet-provenance-present"})]));
         });
 
         it("surfaces mapping errors (e.g. a missing required sheet) without throwing", async () => {
