@@ -6,26 +6,10 @@ import path from "node:path";
 
 describe("P8-05 rendered Valera persona evidence", () => {
     const observations = ["onboarding-terminology-forms-progress", "reload-reconnect-recovery-cancellation-project-switch", "keyboard-responsive-accessibility"];
-    const audit = () => ({persona: "ui-ux", candidatePackageSha256: "a".repeat(64), packageIdentity: {archiveSha256: "a".repeat(64), installedCli: "/packed/node_modules/.bin/pokie", installedPackageJsonSha256: "b".repeat(64)}, cleanup: {processTreeDrained: true, resourcesDrained: true, contextRemoved: true, evidenceId: "cleanup"}, rendered: {execution: "packed-public-cli-built-studio-rendered-controls", viewports: ["wide", "compact", "narrow"], measurements: {consoleExceptions: 0, unhandledRequestFailures: 0, documentOverflow: false, inaccessiblePrimaryActions: 0, unexplainedDisabledControls: 0}, actions: observations.map((observation, index) => ({observation, evidenceId: `state-${index}`, screenshotEvidenceId: `shot-${index}`, viewport: ["wide", "compact", "narrow"][index], elapsedMs: 1, interaction: {control: "Run workflow", outcome: "observed"}})), recovery: {reloadReconnect: {observed: true, evidenceId: "e"}, projectSwitch: {observed: true, evidenceId: "e"}, staleResponseIsolation: {observed: true, evidenceId: "e"}, unsavedWorkProtection: {observed: true, evidenceId: "e"}, serverRestart: {observed: true, evidenceId: "e"}}, jobs: {success: {observed: true, evidenceId: "e"}, actionableFailure: {observed: true, evidenceId: "e"}, cooperativeCancellation: {observed: true, evidenceId: "e"}, retryWithoutPartialArtifacts: {observed: true, evidenceId: "e"}}}});
-    const invoke = (value: unknown) => execFileSync(process.execPath, ["--input-type=module", "--eval", `import {validateP805RenderedPersonaAudit as validate} from ${JSON.stringify(path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs"))}; validate(${JSON.stringify(value)});`], {encoding: "utf8", stdio: "pipe"});
+    const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
 
-    it("accepts only the real packed-launcher rendered-browser contract", () => {
-        expect(() => invoke(audit())).not.toThrow();
-        const invalid = audit();
-        invalid.rendered.execution = "component-fixture";
-        expect(() => invoke(invalid)).toThrow(/public-browser/i);
-    });
-
-    it("rejects claim-only recovery and lifecycle observations", () => {
-        const invalid = audit();
-        invalid.rendered.jobs.cooperativeCancellation.observed = false;
-        expect(() => invoke(invalid)).toThrow(/measured success\/failure\/cancellation\/retry/i);
-    });
-
-    it("rejects an audit whose action was not an executed rendered control", () => {
-        const invalid = audit();
-        Reflect.deleteProperty(invalid.rendered.actions[0], "interaction");
-        expect(() => invoke(invalid)).toThrow(/executed action evidence/i);
+    it("exposes a fail-closed public runner command instead of accepting claim objects", () => {
+        expect(() => execFileSync(process.execPath, [runner], {encoding: "utf8", stdio: "pipe"})).toThrow(/runner configuration is incomplete/i);
     });
 
     const packedPackage = process.env.P805_PACKED_PACKAGE;

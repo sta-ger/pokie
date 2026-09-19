@@ -83,10 +83,10 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
     return contents;
 }
 
-function semanticObservation(contents, observation, label) {
+function semanticObservation(contents, observation, persona, label) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed semantic page-state evidence`); }
-    if (page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== "observed" || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.interaction || typeof page.interaction.control !== "string" || !page.interaction.control || page.interaction.keyboardFocused !== true || page.interaction.outcome !== "observed" || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the claimed ${observation} operation and outcome`);
+    if (page.kind !== "p8-05-semantic-page-state" || page.operation !== observation || page.outcome !== "observed" || typeof page.route !== "string" || !["wide", "compact", "narrow"].includes(page.viewport) || !page.interaction || typeof page.interaction.control !== "string" || !page.interaction.control || page.interaction.keyboardFocused !== true || page.interaction.keyboardActivated !== true || page.interaction.outcome !== "observed" || !page.workflow || page.workflow.persona !== persona || page.workflow.source !== "rendered-keyboard-control" || !Array.isArray(page.workflow.operations) || !page.workflow.operations.includes(observation) || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean") fail(`${label} does not prove the claimed ${observation} operation and outcome`);
 }
 
 async function validateAuditEvidence(directory, audit, expected, label, used) {
@@ -95,10 +95,15 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     for (const observation of P805_REQUIRED_OBSERVATIONS[audit.persona]) {
         const evidenceId = audit.observationEvidence[observation], semantic = evidenceById.get(evidenceId), action = audit.rendered.actions.find((value) => value.observation === observation);
         if (!semantic || semantic.item.kind !== "page-state" || !semantic.item.observationIds.includes(observation) || !action || action.evidenceId !== evidenceId) fail(`${label} lacks semantic evidence for ${observation}`);
-        semanticObservation(semantic.contents, observation, `${label} ${observation}`);
+        semanticObservation(semantic.contents, observation, audit.persona, `${label} ${observation}`);
         const screenshot = evidenceById.get(action.screenshotEvidenceId);
         if (!screenshot || screenshot.item.kind !== "screenshot" || !screenshot.item.observationIds.includes(observation)) fail(`${label} lacks linked screenshot evidence for ${observation}`);
     }
+    const one = (kind) => [...evidenceById.values()].find((entry) => entry.item.kind === kind)?.contents;
+    const text = (kind) => one(kind)?.toString("utf8") ?? "";
+    let api, browser, timing, artifact;
+    try { api = JSON.parse(text("api-log")); browser = JSON.parse(text("browser-log")); timing = JSON.parse(text("timing")); artifact = JSON.parse(text("artifact")); } catch { fail(`${label} has unparsed machine workflow evidence`); }
+    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !api.some((entry) => entry?.path === "/api/project/simulations") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, timing, and artifact operations`);
     const cleanup = evidenceById.get(audit.cleanup?.evidenceId);
     let cleanupRecord;
     try { cleanupRecord = JSON.parse(cleanup?.contents.toString("utf8") ?? ""); } catch { fail(`${label} cleanup evidence is not machine JSON`); }
@@ -197,13 +202,15 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     }
     const manifest = records["manifest.json"];
     const manifestRecords = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json"];
-    if (manifest.schemaVersion !== P805_SCHEMA_VERSION || manifest.kind !== "p8-05-immutable-manifest" || manifest.campaignId !== provenance.campaignId || !manifest.records || typeof manifest.records !== "object" || !Array.isArray(manifest.evidence)) fail("immutable campaign manifest is incomplete");
+    if (manifest.schemaVersion !== P805_SCHEMA_VERSION || manifest.kind !== "p8-05-immutable-manifest" || manifest.campaignId !== provenance.campaignId || !manifest.records || typeof manifest.records !== "object" || !Array.isArray(manifest.evidence) || !Array.isArray(manifest.cleanupEvidence)) fail("immutable campaign manifest is incomplete");
     for (const name of manifestRecords) if (manifest.records[name] !== digest(entries[RECORDS.indexOf(name)].contents)) fail(`immutable campaign manifest does not bind ${name}`);
     const boundEvidence = new Map();
     for (const audit of [...initial.audits, ...retests.audits]) for (const item of audit.evidence) boundEvidence.set(item.evidenceId, item.sha256);
     for (const finding of frozen.findings) boundEvidence.set(finding.evidence.evidenceId, finding.evidence.sha256);
     for (const regression of regressions.regressions) if (regression.machineResultEvidence) boundEvidence.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
     if (manifest.evidence.length !== boundEvidence.size || manifest.evidence.some((item) => !item || boundEvidence.get(item.evidenceId) !== item.sha256)) fail("immutable campaign manifest does not bind the complete evidence index");
+    const cleanupEvidence = [...initial.audits, ...retests.audits].map((audit) => audit.cleanup?.evidenceId);
+    if (cleanupEvidence.some((id) => typeof id !== "string") || manifest.cleanupEvidence.length !== cleanupEvidence.length || manifest.cleanupEvidence.some((id, index) => id !== cleanupEvidence[index])) fail("immutable campaign manifest does not bind every measured cleanup record");
     const closeout = records["closeout.json"];
     if (closeout.schemaVersion !== P805_SCHEMA_VERSION || closeout.campaignId !== provenance.campaignId || closeout.manifestSha256 !== digest(entries[RECORDS.indexOf("manifest.json")].contents) || !iso(closeout.closedAt) || !Array.isArray(closeout.dispositions) || closeout.dispositions.length !== frozen.findings.length || closeout.releaseReady !== true || !closeout.externalAnchor || !path.isAbsolute(closeout.externalAnchor.path || "") || path.resolve(closeout.externalAnchor.path).startsWith(`${root}${path.sep}`) || closeout.externalAnchor.sha256 !== expected.closeoutAnchorSha256) fail("closeout is incomplete or lacks the verifier-supplied immutable anchor");
     candidate(closeout, finalCandidate, "closeout"); unique(closeout.dispositions, "closeout dispositions", "findingId");

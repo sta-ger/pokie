@@ -22,6 +22,10 @@ const commit = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(va
 const iso = (value) => typeof value === "string" && !Number.isNaN(Date.parse(value));
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const fail = (message) => { throw new Error(`P8-05 release completion is invalid: ${message}`); };
+function lifecycleAfterGate(lifecycle, gateCompletedAt) {
+    const times = [lifecycle?.git?.pushedAt, lifecycle?.publication?.publishedAt, lifecycle?.drive?.uploadedAt, lifecycle?.drive?.readBackAt, lifecycle?.issuedAt];
+    if (times.some((time) => !iso(time) || Date.parse(time) <= Date.parse(gateCompletedAt)) || !lifecycle?.drive || Date.parse(lifecycle.drive.uploadedAt) <= Date.parse(lifecycle.publication.publishedAt) || Date.parse(lifecycle.drive.readBackAt) <= Date.parse(lifecycle.drive.uploadedAt) || Date.parse(lifecycle.issuedAt) <= Date.parse(lifecycle.drive.readBackAt)) fail("protected lifecycle must follow the retained P8-05 gate in strict order");
+}
 
 function requiredConfig(config) {
     if (!config || !commit(config.candidateId) || !sha(config.candidatePackageSha256) || !path.isAbsolute(config.campaignDirectory || "") || !path.isAbsolute(config.outputDirectory || "") || !sha(config.freezeAnchorSha256) || !sha(config.closeoutAnchorSha256) || !config.pc20 || typeof config.pc20 !== "object") fail("config must name external campaign/release directories, trusted anchors, exact candidate, digest, and PC-20 configuration");
@@ -88,6 +92,7 @@ export async function validateP805ReleaseCompletion(config, dependencies = {}) {
     }
     const pc20 = await services.validatePc20Lifecycle(lifecycleConfig, value.pc20GateSha256);
     if (!pc20?.value || pc20.value.candidateId !== config.candidateId || pc20.value.candidatePackageSha256 !== config.candidatePackageSha256) fail("PC-20 final lifecycle receipt is not this release candidate");
+    lifecycleAfterGate(pc20.value, value.completedAt);
     const output = completionPath(config.candidateId, config.outputDirectory);
     if (services.exists(output)) {
         const existing = await services.readJson(output, "P8-05 final completion receipt");
@@ -96,8 +101,7 @@ export async function validateP805ReleaseCompletion(config, dependencies = {}) {
         return {...receipt, sha256:digest(existing.contents), reused:true};
     }
     const completedAt = services.now();
-    const lifecycleTimes = [pc20.value.git?.pushedAt, pc20.value.publication?.publishedAt, pc20.value.drive?.uploadedAt, pc20.value.drive?.readBackAt, pc20.value.issuedAt];
-    if (!iso(completedAt) || lifecycleTimes.some((time) => !iso(time) || Date.parse(time) <= Date.parse(value.completedAt)) || Date.parse(completedAt) <= Date.parse(pc20.value.issuedAt)) fail("protected lifecycle must follow closeout and gate before final completion");
+    if (!iso(completedAt) || Date.parse(completedAt) <= Date.parse(pc20.value.issuedAt)) fail("protected lifecycle must follow closeout and gate before final completion");
     const receipt = {schemaVersion:P805_RELEASE_SCHEMA_VERSION, kind:"p8-05-final-lifecycle", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, campaignCloseoutSha256:closeout.closeoutSha256, p805GateSha256:digest(gate.contents), pc20LifecycleSha256:pc20.sha256, pc20Completion:pc20.value, completedAt, chronology:["clean-retest-closeout", "check-release-and-npm-pack-smoke", "integration-push", "publication", "drive-upload", "drive-read-back", "final-completion"]};
     await services.writeFile(output, `${JSON.stringify(receipt, null, 2)}\n`, {flag:"wx"});
     return {...receipt, sha256:digest(await services.readFile(output))};
