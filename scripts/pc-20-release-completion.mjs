@@ -229,7 +229,11 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
     return records;
 }
 
-function createOwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret) {
+// This is also used by the P8-05 packed-browser runner.  Keeping the tracker
+// here means that a campaign audit uses the same spawn-time, signed ownership
+// protocol as the release gate instead of taking an unverifiable late `ps`
+// snapshot of a browser or Studio server.
+export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret) {
     const ownedProcesses = new Map();
     const ownedResources = new Map();
     let captureFailure;
@@ -363,7 +367,7 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         const nodeOptions = [env.NODE_OPTIONS, resourceRegistryPath ? `--require=${ownershipHook}` : ""].filter(Boolean).join(" ");
         if (!resourceRegistryPath) fail("release gate ownership registry path is required");
         child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, NODE_OPTIONS:nodeOptions}});
-        tracker = createOwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
+        tracker = createPc20OwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
         for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.rememberProcess(processId);
         child.stdout?.on("data", (chunk) => { output += chunk; });
         child.stderr?.on("data", (chunk) => { errorOutput += chunk; });

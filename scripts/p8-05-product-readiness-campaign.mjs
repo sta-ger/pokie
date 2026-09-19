@@ -140,6 +140,20 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         const contract = P805_WORKFLOW_CONTRACTS[audit.persona][action.observation];
         if (!api.some((entry) => entry?.observation === action.observation && entry.method === contract.method && entry.path === contract.api && entry.bodyKind === (contract.body ?? null) && sha(entry.bodySha256) && sha(entry.responseSha256) && entry.status >= 200 && entry.status < 400)) fail(`${label} lacks a correlated machine request for ${action.observation}`);
     }
+    // Recovery must be a captured runtime result, not a collection of booleans
+    // copied into `rendered`.  In particular reports use their own `id` (not a
+    // fictional `simulationId`), so the cancellation assertion is only useful
+    // when the captured list proves that the cancelled job id is absent.
+    let runtime;
+    for (const entry of evidenceById.values()) {
+        if (entry.item.kind !== "page-state") continue;
+        try {
+            const value = JSON.parse(entry.contents.toString("utf8"));
+            if (value?.kind === "p8-05-runtime-observation") runtime = {value, evidenceId:entry.item.evidenceId};
+        } catch { /* semantic page-state parsing above reports its own error */ }
+    }
+    const recoveryNames = ["reloadReconnect", "projectSwitch", "staleResponseIsolation", "unsavedWorkProtection", "serverRestart"], runtimeRecovery = runtime?.value?.recovery, cancelledId = runtime?.value?.outcomes?.cancelledSimulationId, reports = runtime?.value?.outcomes?.reports;
+    if (!runtime || recoveryNames.some((name) => runtimeRecovery?.[name] !== true) || runtime.value.jobs?.success?.status !== "completed" || runtime.value.jobs?.actionableFailure === undefined || runtime.value.jobs?.cooperativeCancellation?.status !== "cancelled" || typeof runtime.value.jobs?.retryWithoutPartialArtifacts?.id !== "string" || typeof cancelledId !== "string" || !Array.isArray(reports) || reports.some((report) => report?.id === cancelledId) || runtime.value.outcomes?.cancelledReportAbsent !== true || Object.values(audit.rendered.recovery ?? {}).some((value) => value?.evidenceId !== runtime.evidenceId) || Object.values(audit.rendered.jobs ?? {}).some((value) => value?.evidenceId !== runtime.evidenceId)) fail(`${label} lacks captured recovery, terminal-job, and cancelled-report identity evidence`);
     const cleanup = evidenceById.get(audit.cleanup?.evidenceId);
     let cleanupRecord;
     try { cleanupRecord = JSON.parse(cleanup?.contents.toString("utf8") ?? ""); } catch { fail(`${label} cleanup evidence is not machine JSON`); }

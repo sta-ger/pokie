@@ -31,6 +31,12 @@ test("refuses retained P8-05 receipts whose bytes no longer match the verifier d
     await assert.rejects(() => validateP805ReleaseGate({...config(), retainedP805GateReceiptSha256:sha256(JSON.stringify(gate))}, {validateCampaign:async () => closeout, exists:() => true, readJson:async () => ({value:gate, contents:"tampered"})}), /trusted digest/i);
 });
 
+test("refuses a trusted retained P8-05 gate when its recorded PC-20 end differs", async () => {
+    const closeout = {campaignId:"campaign", candidateId, candidatePackageSha256, closeoutSha256:"e".repeat(64), closedAt:"2026-09-19T19:00:00.000Z"};
+    const gate = {schemaVersion:1, kind:"p8-05-release-gate", candidateId, candidatePackageSha256, campaignId:"campaign", campaignCloseoutSha256:closeout.closeoutSha256, pc20GateSha256:"f".repeat(64), pc20GateEndedAt:"2026-09-19T19:44:00.000Z", completedAt:"2026-09-19T20:00:00.000Z", chronology:["clean-retest-closeout", "check-release-and-npm-pack-smoke"]};
+    await assert.rejects(() => validateP805ReleaseGate({...config(), retainedP805GateReceiptSha256:sha256(JSON.stringify(gate))}, {validateCampaign:async () => closeout, exists:() => true, readJson:async () => ({value:gate, contents:JSON.stringify(gate)}), validateRetainedPc20Gate:async () => ({gate:{candidateId, candidatePackageSha256, startedAt:"2026-09-19T19:30:00.000Z", endedAt:"2026-09-19T19:45:00.000Z"}, sha256:"f".repeat(64)})}), /artifacts or chronology drifted/i);
+});
+
 test("completion uses the retained PC-20 lifecycle receipt rather than PC-19 completion", async () => {
     const closeout = {campaignId:"campaign", candidateId, candidatePackageSha256, closeoutSha256:"e".repeat(64), closedAt:"2026-09-19T19:00:00.000Z"};
     const gate = {schemaVersion:1, kind:"p8-05-release-gate", candidateId, candidatePackageSha256, campaignId:"campaign", campaignCloseoutSha256:closeout.closeoutSha256, pc20GateSha256:"f".repeat(64), pc20GateEndedAt:"2026-09-19T19:50:00.000Z", completedAt:"2026-09-19T20:00:00.000Z", chronology:["clean-retest-closeout", "check-release-and-npm-pack-smoke"]};
