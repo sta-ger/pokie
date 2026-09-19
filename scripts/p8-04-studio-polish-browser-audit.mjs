@@ -145,7 +145,10 @@ async function waitForText(text, label, timeout) {
 async function createProject() {
     await clickText("New Blueprint");
     await waitForText("Create Blueprint Project", "real New Blueprint dialog");
-    await clickText("Random");
+    // This is the accessible name of the actual dialog control. Keep this
+    // tied to the rendered product wording so the audit catches a broken
+    // entry point instead of silently exercising a fixture-only route.
+    await clickText("Generate random");
     await waitForText("Seed (optional)", "real random blueprint controls");
     // This deliberately exercises containment of a real, long project label
     // through creation, registration, reopening and the project dashboard.
@@ -153,9 +156,9 @@ async function createProject() {
     await fillField("Name (optional)", name);
     await clickText("Generate");
     await waitForText("Generated", "real random blueprint result", 120_000);
-    await clickText("Use this blueprint");
-    await waitForText("Create Project", "real guided blueprint editor");
-    await clickText("Create Project");
+    await clickText("Use this game idea");
+    await waitForText("Create game", "real guided blueprint editor");
+    await clickText("Create game");
     await waitForText("Close project", "created real project dashboard", 120_000);
     await waitForText(name, "long project name on the real project dashboard");
     note("WORKFLOW created, registered, and opened a real long-named project through Studio's rendered Design flow.");
