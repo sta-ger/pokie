@@ -92,25 +92,25 @@ export function AppShellLayout({
     return (
         <AppShell header={{height: 60}} navbar={{width: 260, breakpoint: "sm", collapsed: {mobile: !opened}}} padding="md">
             <AppShell.Header>
-                <Group h="100%" px="md" justify="space-between" wrap="nowrap">
-                    <Group wrap="nowrap">
+                <Group className="studio-app-header" h="100%" px="md" justify="space-between" wrap="nowrap">
+                    <Group className="studio-app-header-primary" wrap="nowrap">
                         <Burger ref={burgerRef} opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
                         {breadcrumbs.length === 0 ? (
                             <BrandLink onHomeClick={onHomeClick} underline="never" c="inherit">
                                 <Title order={3}>POKIE Studio</Title>
                             </BrandLink>
                         ) : (
-                            <Breadcrumbs>
+                            <Breadcrumbs className="studio-app-breadcrumbs">
                                 <BrandLink onHomeClick={onHomeClick} underline="hover" size="sm" fw={700}>
                                     POKIE Studio
                                 </BrandLink>
                                 {breadcrumbs.map((crumb, index) =>
                                     crumb.onClick ? (
-                                        <Anchor key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
+                                        <Anchor className="studio-app-breadcrumb-item" key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
                                             {crumb.label}
                                         </Anchor>
                                     ) : (
-                                        <Text key={index} size="sm" c="dimmed">
+                                        <Text className="studio-app-breadcrumb-current" key={index} size="sm" c="dimmed">
                                             {crumb.label}
                                         </Text>
                                     ),
@@ -118,7 +118,7 @@ export function AppShellLayout({
                             </Breadcrumbs>
                         )}
                     </Group>
-                    {headerRight}
+                    {headerRight !== undefined && <div className="studio-app-header-actions">{headerRight}</div>}
                 </Group>
             </AppShell.Header>
             <AppShell.Navbar p="md">

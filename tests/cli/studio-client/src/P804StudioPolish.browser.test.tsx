@@ -31,9 +31,13 @@ describe("P8-04 Studio polish browser audit", () => {
                 },
             });
             expect(result.error).toBeUndefined();
-            expect(result.status).toBe(0);
             const transcript = readFileSync(resolve(evidence, "AUDIT-TRANSCRIPT.txt"), "utf8");
+            if (result.status !== 0) throw new Error(`${result.stdout}\n${result.stderr}\n${transcript}`);
             expect(transcript).toContain("WORKFLOW created, registered, and opened a real long-named project");
+            expect(transcript).toContain("LIFECYCLE queued/running simulation: visible enabled button action Cancel");
+            expect(transcript).toContain("LIFECYCLE simulation cancellation confirmation: visible enabled button action Confirm");
+            expect(transcript).toContain("LIFECYCLE cancelling/cancelled simulation: action Cancel is no longer visible");
+            expect(transcript).toContain("LIFECYCLE completed simulation report: visible enabled button action Repeat simulation");
             expect(transcript).toContain("WORKFLOW cancelled the rendered simulation");
             expect(transcript).toContain("WORKFLOW completed a second real simulation");
             expect(transcript).toContain("VIEWPORT wide desktop: 1440x900; document overflow=false");

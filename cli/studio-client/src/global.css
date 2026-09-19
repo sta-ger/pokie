@@ -16,6 +16,36 @@ body,
     min-width: 0;
 }
 
+.studio-app-header,
+.studio-app-header-primary,
+.studio-app-breadcrumbs,
+.studio-app-breadcrumb-item,
+.studio-app-breadcrumb-current {
+    min-width: 0;
+}
+
+.studio-app-header-primary,
+.studio-app-breadcrumbs {
+    flex: 1 1 0;
+}
+
+.studio-app-breadcrumbs {
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+.studio-app-breadcrumb-current {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.studio-app-breadcrumb-item {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .studio-page {
     width: min(100%, 76rem);
     min-width: 0;
@@ -151,7 +181,16 @@ body,
        (including the initially rendered Design Game editor) to a thin right-hand column. */
     #root .studio-app-main {
         --app-shell-navbar-offset: 0px !important;
+        padding-inline-start: var(--mantine-spacing-md) !important;
+        padding-inline-end: var(--mantine-spacing-md) !important;
         padding-inline: var(--mantine-spacing-md) !important;
+    }
+
+    /* The header's retained breadcrumb still exposes the guarded navigation
+       actions. On a phone the duplicate secondary action competes with that
+       path for the same single-line header width. */
+    .studio-app-header-actions {
+        display: none;
     }
 
     .project-registry-entry > td,
