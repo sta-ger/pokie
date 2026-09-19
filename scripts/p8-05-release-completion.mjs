@@ -42,6 +42,18 @@ async function readJson(target, label) {
     try { return {contents, value:JSON.parse(contents)}; } catch { fail(`${label} is not JSON`); }
 }
 
+/** The index is not decorative: it is the immutable join between the campaign,
+ * exact packed archive, retained gate and final lifecycle receipt.  Reuse must
+ * therefore authenticate it just as it authenticates the two receipts. */
+async function validateRetainedEvidenceIndex(config, closeout, retainedGate, pc20LifecycleSha256, gateContents, completionContents, services) {
+    if (!sha(config.retainedP805EvidenceIndexSha256)) fail("reusing a retained P8-05 completion requires a verifier-supplied evidence-index digest");
+    const index = await services.readJson(evidenceIndexPath(config.candidateId, config.outputDirectory), "P8-05 final evidence index");
+    if (digest(index.contents) !== config.retainedP805EvidenceIndexSha256) fail("retained P8-05 evidence index digest differs from the trusted digest");
+    const value = index.value;
+    if (value.schemaVersion !== P805_RELEASE_SCHEMA_VERSION || value.kind !== "p8-05-final-evidence-index" || value.candidateId !== config.candidateId || value.candidatePackageSha256 !== config.candidatePackageSha256 || value.campaignId !== closeout.campaignId || value.campaignManifestSha256 !== closeout.manifestSha256 || value.campaignCloseoutSha256 !== closeout.closeoutSha256 || value.archiveSha256 !== retainedGate.gate.archiveSha256 || value.p805GateSha256 !== digest(gateContents) || value.pc20GateSha256 !== retainedGate.sha256 || value.pc20LifecycleSha256 !== pc20LifecycleSha256 || value.completionSha256 !== digest(completionContents) || !iso(value.completedAt)) fail("retained P8-05 evidence index drifted from its campaign, archive, gate, or completion receipt");
+    return value;
+}
+
 /** Run/retain the one PC-20 gate only after a valid new-candidate retest. */
 export async function validateP805ReleaseGate(config, dependencies = {}) {
     requiredConfig(config);
@@ -106,7 +118,8 @@ export async function validateP805ReleaseCompletion(config, dependencies = {}) {
         if (digest(existing.contents) !== config.retainedP805CompletionReceiptSha256) fail("retained P8-05 completion receipt digest differs from the trusted digest");
         const receipt = existing.value;
         if (receipt.schemaVersion !== P805_RELEASE_SCHEMA_VERSION || receipt.kind !== "p8-05-final-lifecycle" || receipt.candidateId !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256 || receipt.campaignCloseoutSha256 !== closeout.closeoutSha256 || receipt.p805GateSha256 !== digest(gate.contents) || receipt.pc20LifecycleSha256 !== pc20.sha256 || !iso(receipt.completedAt) || JSON.stringify(receipt.chronology) !== JSON.stringify(["clean-retest-closeout", "check-release-and-npm-pack-smoke", "integration-push", "publication", "drive-upload", "drive-read-back", "final-completion"])) fail("existing P8-05 completion record drifted");
-        return {...receipt, sha256:digest(existing.contents), reused:true};
+        const evidenceIndex = await validateRetainedEvidenceIndex(config, closeout, retainedGate, pc20.sha256, gate.contents, existing.contents, services);
+        return {...receipt, sha256:digest(existing.contents), evidenceIndex, reused:true};
     }
     const completedAt = services.now();
     if (!iso(completedAt) || Date.parse(completedAt) <= Date.parse(pc20.value.issuedAt)) fail("protected lifecycle must follow closeout and gate before final completion");

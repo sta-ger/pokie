@@ -15,12 +15,12 @@ describe("P8-05 rendered Valera persona evidence", () => {
     const packedPackage = process.env.P805_PACKED_PACKAGE;
     const candidateId = process.env.P805_CANDIDATE;
     it("runs the actual packed launcher, Studio browser workflow, and owned-resource cleanup when the controller supplies its packed candidate", async () => {
-        // The controller provides a freshly packed candidate.  This test intentionally does
-        // not manufacture an archive: npm-pack/release ownership stays with the controller.
-        if (!packedPackage || !candidateId) {
-            expect(packedPackage ?? candidateId).toBeUndefined();
-            return;
-        }
+        // This is deliberately not a conditional no-op.  Packaging stays under
+        // controller ownership, but a controller that asks for this focused
+        // browser check must provide the exact packed candidate it intends to
+        // approve; otherwise there is no executable campaign evidence.
+        expect(packedPackage).toEqual(expect.any(String));
+        expect(candidateId).toEqual(expect.any(String));
         expect(candidateId).toMatch(/^[a-f0-9]{40}$/i);
         const {runP805ValeraBrowserAudit} = await import("../../../../../scripts/p8-05-valera-browser-audit.mjs");
         const output = await mkdtemp(path.join(tmpdir(), "p8-05-real-runner-"));
