@@ -73,6 +73,24 @@ function validateConfig(config) {
     if (packageJson.name !== config.packageName || packageJson.version !== config.packageVersion) fail("config package name/version differs from the accepted candidate package identity");
 }
 
+/** Candidate-only consumers (P8-05 and the protected publisher) must not be
+ * forced to carry unrelated, mutable PC-19 review/freeze inputs. */
+function validateCandidateConfig(config, {lifecycle = false} = {}) {
+    if (!config || typeof config !== "object") fail("config must be an object");
+    if (!gitSha(config.candidateId) || !sha(config.candidatePackageSha256)) fail("a verifier-supplied exact candidate SHA and package digest are required");
+    for (const key of ["outputDirectory", "repositoryDirectory"]) if (!path.isAbsolute(required(config[key], key))) fail(`${key} must be an absolute path`);
+    if (path.resolve(config.outputDirectory) !== PC20_EVIDENCE_DIRECTORY) fail("outputDirectory must be the canonical PC-20 evidence directory");
+    if (path.resolve(config.repositoryDirectory) !== repositoryRoot) fail("repositoryDirectory must be this repository root");
+    if (lifecycle) {
+        if (!path.isAbsolute(required(config.lifecycleReceiptPath, "lifecycleReceiptPath")) || !sha(config.lifecycleReceiptSha256)) fail("candidate lifecycle validation requires a trusted lifecycle receipt and digest");
+        if (path.resolve(config.lifecycleReceiptPath).startsWith(`${path.resolve(config.outputDirectory)}${path.sep}`)) fail("external lifecycle receipt must be outside mutable PC-20 evidence");
+    }
+    required(config.packageName, "packageName"); required(config.packageVersion, "packageVersion");
+    let packageJson;
+    try { packageJson = JSON.parse(commandResult("git", ["show", `${config.candidateId}:package.json`], repositoryRoot)); } catch { fail("the accepted candidate must contain a readable package.json"); }
+    if (packageJson.name !== config.packageName || packageJson.version !== config.packageVersion) fail("config package name/version differs from the accepted candidate package identity");
+}
+
 function commandResult(command, args, cwd) {
     const result = spawnSync(command, args, {cwd, encoding:"utf8"});
     if (result.error) fail(`could not run ${command}: ${result.error.message}`);
@@ -497,7 +515,7 @@ async function readTrustedLifecycleReceipt(config, gateSha256) {
 
 /** Validate a trusted publication/Drive receipt against a retained gate without rerunning PC-19. */
 export async function validatePc20CandidateLifecycleReceipt(config, gateSha256) {
-    validateConfig(config);
+    validateCandidateConfig(config, {lifecycle:true});
     return readTrustedLifecycleReceipt(config, gateSha256);
 }
 
@@ -523,7 +541,7 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
  * second phase-7 PC-19 campaign.
  */
 export async function validatePc20CandidateReleaseGate(config, dependencies = {}) {
-    validateConfig(config);
+    validateCandidateConfig(config);
     const services = {readRepositoryState, runReleaseGate, ...dependencies};
     const permitted = pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false});
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, permitted), config.candidateId, "before the candidate-only release gate");
@@ -541,7 +559,7 @@ export async function validatePc20CandidateReleaseGate(config, dependencies = {}
  * review inputs.
  */
 export async function validatePc20RetainedReleaseGate(config, dependencies = {}) {
-    validateConfig(config);
+    validateCandidateConfig(config);
     const services = {readRepositoryState, ...dependencies};
     const paths = outputPaths(config);
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "before the authorized lifecycle");

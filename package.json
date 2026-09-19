@@ -62,6 +62,7 @@
         "audit:studio-polish": "node scripts/p8-04-studio-polish-browser-audit.mjs",
         "audit:product-readiness": "node scripts/p8-05-product-readiness-campaign.mjs",
         "audit:product-readiness:browser": "node scripts/p8-05-valera-browser-audit.mjs",
+        "audit:product-readiness:campaign": "node scripts/p8-05-product-readiness-controller.mjs",
         "release:p8-05": "node scripts/p8-05-release-completion.mjs",
         "release:p8-05:gate": "node scripts/p8-05-release-completion.mjs --gate-only",
         "dev-studio-client": "npm run build-cli && node scripts/start-studio-client-dev.mjs",

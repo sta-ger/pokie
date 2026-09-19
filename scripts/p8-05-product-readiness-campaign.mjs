@@ -15,7 +15,7 @@ import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {validateP805RenderedPersonaAudit} from "./p8-05-valera-browser-audit.mjs";
 
-export const P805_SCHEMA_VERSION = 2;
+export const P805_SCHEMA_VERSION = 3;
 export const P805_EVIDENCE_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "docs", "evidence", "p8-05-product-readiness");
 export const P805_PERSONAS = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
 export const P805_REQUIRED_EVIDENCE_KINDS = ["screenshot", "cli-transcript", "browser-log", "api-log", "error", "timing", "reproduction", "artifact"];
@@ -39,6 +39,10 @@ const frozenDigest = (frozen) => {
     const {externalAnchor, ...payload} = frozen;
     return digest(`${JSON.stringify(payload, null, 2)}\n`);
 };
+const closeoutDigest = (closeout) => {
+    const {externalAnchor, ...payload} = closeout;
+    return digest(`${JSON.stringify(payload, null, 2)}\n`);
+};
 const fail = (message) => { throw new Error(`P8-05 product-readiness evidence is invalid: ${message}`); };
 const relative = (value) => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]+/).includes("..");
 const unique = (items, label, property = "id") => {
@@ -57,9 +61,14 @@ async function json(directory, name) {
     try { contents = await readFile(target, "utf8"); } catch { fail(`${name} cannot be read`); }
     try { return {contents, value:JSON.parse(contents)}; } catch { fail(`${name} is not JSON`); }
 }
+async function externalJson(target, label) {
+    let contents;
+    try { contents = await readFile(target, "utf8"); } catch { fail(`${label} cannot be read`); }
+    try { return {contents, value:JSON.parse(contents)}; } catch { fail(`${label} is not JSON`); }
+}
 
 async function boundedEvidence(directory, record, expected, label, {after, before, used} = {}) {
-    if (!record || typeof record.evidenceId !== "string" || !record.evidenceId || !relative(record.path) || !sha(record.sha256) || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 1 || record.sizeBytes > 5 * 1024 * 1024 || !iso(record.capturedAt) || typeof record.kind !== "string" || !record.kind) fail(`${label} lacks bounded evidence metadata`);
+    if (!record || typeof record.evidenceId !== "string" || !record.evidenceId || !relative(record.path) || !sha(record.sha256) || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 1 || record.sizeBytes > 5 * 1024 * 1024 || !iso(record.capturedAt) || typeof record.kind !== "string" || !record.kind || !Array.isArray(record.observationIds) || !record.observationIds.every((value) => typeof value === "string" && value)) fail(`${label} lacks bounded evidence metadata`);
     candidate(record, expected, `${label} evidence`);
     if ((after && Date.parse(record.capturedAt) < Date.parse(after)) || (before && Date.parse(record.capturedAt) > Date.parse(before))) fail(`${label} evidence timestamp is outside its audit`);
     if (used?.has(record.evidenceId)) fail(`${label} reuses evidence ${record.evidenceId}`);
@@ -70,6 +79,7 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
     try { [contents, file] = await Promise.all([readFile(target), stat(target)]); } catch { fail(`${label} evidence is missing: ${record.path}`); }
     if (contents.length !== record.sizeBytes || file.size !== record.sizeBytes || digest(contents) !== record.sha256) fail(`${label} evidence digest or size differs from its record`);
     if (!noSecrets(contents.toString("utf8"))) fail(`${label} evidence contains a credential-like value`);
+    return contents;
 }
 
 function validateFinding(value, label) {
@@ -85,7 +95,7 @@ function frozenFields(initial, later) {
 function auditRecord(record, phase, initial, finalCandidate) {
     const timings = record?.timings;
     const timingNames = ["startupMs", "projectCreationMs", "validationMs", "buildMs", "simulationMs", "replayMs", "cancellationMs"];
-    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || P805_REQUIRED_OBSERVATIONS[record.persona].some((required) => !record.observations.includes(required)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] < 0 || timings[name] > 30 * 60 * 1000)) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
+    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || P805_REQUIRED_OBSERVATIONS[record.persona].some((required) => !record.observations.includes(required)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] < 0 || timings[name] > 30 * 60 * 1000)) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
     candidate(record, phase === "initial" ? initial : finalCandidate, `${phase} audit ${record.persona}`);
     validateP805RenderedPersonaAudit(record);
 }
@@ -96,7 +106,7 @@ function auditRecord(record, phase, initial, finalCandidate) {
  */
 export async function validateP805ProductReadinessCampaign(directory, expected) {
     const root = path.resolve(directory);
-    if (!expected || !commit(expected.candidateId) || !sha(expected.candidatePackageSha256)) fail("a verifier-supplied retest candidate and package digest are required");
+    if (!expected || !commit(expected.candidateId) || !sha(expected.candidatePackageSha256) || !sha(expected.freezeAnchorSha256) || !sha(expected.closeoutAnchorSha256)) fail("verifier-supplied retest candidate, package digest, freeze anchor digest, and closeout anchor digest are required");
     for (const name of RECORDS) if (!existsSync(path.join(root, name))) fail(`missing required campaign record ${name}`);
     const entries = await Promise.all(RECORDS.map((name) => json(root, name)));
     const records = Object.fromEntries(RECORDS.map((name, index) => [name, entries[index].value]));
@@ -111,19 +121,25 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     unique(initial.audits, "initial audits", "persona");
     for (const audit of initial.audits) {
         auditRecord(audit, "initial", initialCandidate, finalCandidate);
+        if (Date.parse(audit.startedAt) <= Date.parse(provenance.startedAt)) fail(`initial audit ${audit.persona} predates provenance`);
         for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`initial audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         for (const item of audit.evidence) await boundedEvidence(root, item, initialCandidate, `initial ${audit.persona}`, {after:audit.startedAt, before:audit.endedAt, used});
+        for (const observation of P805_REQUIRED_OBSERVATIONS[audit.persona]) {
+            const evidenceId = audit.observationEvidence[observation];
+            const evidence = audit.evidence.find((item) => item.evidenceId === evidenceId);
+            if (!evidence || !evidence.observationIds.includes(observation)) fail(`initial ${audit.persona} lacks semantic evidence for ${observation}`);
+        }
     }
     const frozen = records["frozen-findings.json"];
     if (frozen.schemaVersion !== P805_SCHEMA_VERSION || frozen.campaignId !== provenance.campaignId || frozen.candidateId !== initialCandidate.candidateId || frozen.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || !iso(frozen.frozenAt) || !Array.isArray(frozen.findings)) fail("frozen findings are not tied to the initial candidate");
     if (initial.audits.some((audit) => Date.parse(audit.endedAt) >= Date.parse(frozen.frozenAt))) fail("finding freeze must follow every initial audit");
-    if (!frozen.externalAnchor || !path.isAbsolute(frozen.externalAnchor.path) || path.resolve(frozen.externalAnchor.path).startsWith(`${root}${path.sep}`) || !sha(frozen.externalAnchor.sha256) || !iso(frozen.externalAnchor.anchoredAt) || Date.parse(frozen.externalAnchor.anchoredAt) < Date.parse(frozen.frozenAt)) fail("finding freeze lacks an external append-only anchor");
+    if (!frozen.externalAnchor || !path.isAbsolute(frozen.externalAnchor.path) || path.resolve(frozen.externalAnchor.path).startsWith(`${root}${path.sep}`) || frozen.externalAnchor.sha256 !== expected.freezeAnchorSha256 || !iso(frozen.externalAnchor.anchoredAt) || Date.parse(frozen.externalAnchor.anchoredAt) < Date.parse(frozen.frozenAt)) fail("finding freeze lacks the verifier-supplied immutable anchor");
     let anchorContents;
     try { anchorContents = await readFile(frozen.externalAnchor.path, "utf8"); } catch { fail("external finding-freeze anchor is unreadable"); }
-    if (digest(anchorContents) !== frozen.externalAnchor.sha256) fail("external finding-freeze anchor digest differs");
+    if (digest(anchorContents) !== expected.freezeAnchorSha256) fail("external finding-freeze anchor digest differs from verifier anchor");
     let anchor;
     try { anchor = JSON.parse(anchorContents); } catch { fail("external finding-freeze anchor is not JSON"); }
-    if (anchor.campaignId !== provenance.campaignId || anchor.candidateId !== initialCandidate.candidateId || anchor.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || anchor.frozenFindingsSha256 !== frozenDigest(frozen) || anchor.initialAuditsSha256 !== digest(entries[1].contents) || anchor.appendOnly !== true || !iso(anchor.anchoredAt) || Date.parse(anchor.anchoredAt) < Date.parse(frozen.frozenAt)) fail("external finding-freeze anchor does not bind the initial audit and frozen register");
+    if (anchor.kind !== "p8-05-freeze-anchor" || anchor.campaignId !== provenance.campaignId || anchor.candidateId !== initialCandidate.candidateId || anchor.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || anchor.frozenFindingsSha256 !== frozenDigest(frozen) || anchor.initialAuditsSha256 !== digest(entries[1].contents) || typeof anchor.receiptId !== "string" || !anchor.receiptId || !iso(anchor.anchoredAt) || Date.parse(anchor.anchoredAt) < Date.parse(frozen.frozenAt)) fail("external finding-freeze anchor does not bind the initial audit and frozen register");
     unique(frozen.findings, "frozen findings");
     for (const item of frozen.findings) { validateFinding(item, `frozen finding ${item?.id ?? "unknown"}`); await boundedEvidence(root, item.evidence, initialCandidate, `frozen finding ${item.id}`, {after:provenance.startedAt, before:frozen.frozenAt, used}); }
     const findingRegister = records["finding-register.json"];
@@ -143,7 +159,11 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         if (BLOCKING(finding)) {
             if (finding.status !== "resolved") fail(`release-blocking finding remains ${finding.status}: ${finding.id}`);
             const regression = regressions.regressions.find((item) => item.findingId === finding.id);
-            if (!regression || typeof regression.testPath !== "string" || !regression.testPath.startsWith("tests/") || regression.commitId !== finalCandidate.candidateId || regression.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || regression.result !== "passed" || !iso(regression.verifiedAt) || Date.parse(regression.verifiedAt) < Date.parse(frozen.frozenAt) || !Array.isArray(regression.assertions) || !regression.assertions.length) fail(`resolved blocking finding ${finding.id} has no focused final-candidate regression`);
+            if (!regression || typeof regression.testPath !== "string" || !regression.testPath.startsWith("tests/") || regression.commitId !== finalCandidate.candidateId || regression.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || regression.result !== "passed" || !iso(regression.verifiedAt) || Date.parse(regression.verifiedAt) < Date.parse(frozen.frozenAt) || !Array.isArray(regression.assertions) || !regression.assertions.length || !regression.machineResultEvidence) fail(`resolved blocking finding ${finding.id} has no focused final-candidate regression`);
+            const output = await boundedEvidence(root, regression.machineResultEvidence, finalCandidate, `regression ${finding.id}`, {after:frozen.frozenAt, used});
+            let result;
+            try { result = JSON.parse(output.toString("utf8")); } catch { fail(`regression ${finding.id} result evidence is not machine JSON`); }
+            if (result.kind !== "p8-05-regression-result" || result.testPath !== regression.testPath || result.candidateId !== finalCandidate.candidateId || result.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || result.passed !== true || !iso(result.completedAt) || Date.parse(result.completedAt) < Date.parse(regression.verifiedAt)) fail(`regression ${finding.id} result evidence does not prove the claimed machine result`);
         }
     }
     const retests = records["retests.json"];
@@ -153,11 +173,17 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     for (const audit of retests.audits) {
         auditRecord(audit, "retest", initialCandidate, finalCandidate);
         for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
-        if (Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates the finding freeze`);
+        if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
+        for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && Date.parse(regression.verifiedAt) > Date.parse(audit.startedAt)) fail(`retest ${audit.persona} predates regression verification`);
         for (const item of audit.evidence) await boundedEvidence(root, item, finalCandidate, `retest ${audit.persona}`, {after:audit.startedAt, before:audit.endedAt, used});
+        for (const observation of P805_REQUIRED_OBSERVATIONS[audit.persona]) {
+            const evidenceId = audit.observationEvidence[observation];
+            const evidence = audit.evidence.find((item) => item.evidenceId === evidenceId);
+            if (!evidence || !evidence.observationIds.includes(observation)) fail(`retest ${audit.persona} lacks semantic evidence for ${observation}`);
+        }
     }
     const closeout = records["closeout.json"];
-    if (closeout.schemaVersion !== P805_SCHEMA_VERSION || closeout.campaignId !== provenance.campaignId || !iso(closeout.closedAt) || !Array.isArray(closeout.dispositions) || closeout.dispositions.length !== frozen.findings.length || closeout.releaseReady !== true || closeout.appendOnly !== true) fail("closeout is incomplete or not append-only");
+    if (closeout.schemaVersion !== P805_SCHEMA_VERSION || closeout.campaignId !== provenance.campaignId || !iso(closeout.closedAt) || !Array.isArray(closeout.dispositions) || closeout.dispositions.length !== frozen.findings.length || closeout.releaseReady !== true || !closeout.externalAnchor || !path.isAbsolute(closeout.externalAnchor.path || "") || path.resolve(closeout.externalAnchor.path).startsWith(`${root}${path.sep}`) || closeout.externalAnchor.sha256 !== expected.closeoutAnchorSha256) fail("closeout is incomplete or lacks the verifier-supplied immutable anchor");
     candidate(closeout, finalCandidate, "closeout"); unique(closeout.dispositions, "closeout dispositions", "findingId");
     if (retests.audits.some((audit) => Date.parse(audit.endedAt) >= Date.parse(closeout.closedAt))) fail("closeout must follow every clean retest");
     for (const finding of frozen.findings) {
@@ -167,7 +193,9 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         if (BLOCKING(finding) && disposition.status !== "resolved") fail(`closeout leaves release-blocking finding ${finding.id} unresolved`);
     }
     if (!closeout.cleanup || closeout.cleanup.noOwnedProcessesRemain !== true || closeout.cleanup.failedOrCancelledArtifactsRemoved !== true) fail("closeout lacks cleanup attestations");
-    return {campaignId:provenance.campaignId, candidateId:finalCandidate.candidateId, candidatePackageSha256:finalCandidate.candidatePackageSha256, frozenFindingsSha256:frozenDigest(frozen), closeoutSha256:digest(entries[6].contents), personas:[...P805_PERSONAS]};
+    const closeoutAnchor = await externalJson(closeout.externalAnchor.path, "trusted closeout anchor");
+    if (digest(closeoutAnchor.contents) !== expected.closeoutAnchorSha256 || closeoutAnchor.value.kind !== "p8-05-closeout-anchor" || closeoutAnchor.value.campaignId !== provenance.campaignId || closeoutAnchor.value.closeoutSha256 !== closeoutDigest(closeout) || !iso(closeoutAnchor.value.anchoredAt) || Date.parse(closeoutAnchor.value.anchoredAt) < Date.parse(closeout.closedAt)) fail("trusted closeout anchor does not bind the completed campaign");
+    return {campaignId:provenance.campaignId, candidateId:finalCandidate.candidateId, candidatePackageSha256:finalCandidate.candidatePackageSha256, frozenFindingsSha256:frozenDigest(frozen), closeoutSha256:closeoutDigest(closeout), closedAt:closeout.closedAt, freezeAnchorSha256:expected.freezeAnchorSha256, closeoutAnchorSha256:expected.closeoutAnchorSha256, personas:[...P805_PERSONAS]};
 }
 
 function usage() { fail("usage: --campaign-dir <absolute-path> --expected-candidate <40-char-sha> --expected-package-sha256 <sha256>"); }
