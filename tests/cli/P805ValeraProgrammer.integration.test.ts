@@ -26,7 +26,8 @@ describe("P8-05 Valera Programmer public path", () => {
         const run = (...args: string[]) => execFileSync(process.execPath, [launcher, ...args], {encoding: "utf8"});
         try {
             expect(existsSync(launcher)).toBe(true);
-            for (const args of [["--help"], ["build", "--help"], ["certification", "--help"], ["fairness", "--help"], ["par", "--help"], ["reel", "--help"], ["serve", "--help"]]) {
+            const publicCommands = ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"];
+            for (const args of [["--help"], ...publicCommands.map((command) => [command, "--help"]), ["certification", "build", "--help"], ["certification", "verify", "--help"], ["fairness", "seed-commit", "--help"], ["fairness", "commit", "--help"], ["fairness", "reveal", "--help"], ["fairness", "verify", "--help"], ["par", "import", "--help"], ["par", "export", "--help"], ["reel", "generate", "--help"]]) {
                 expect(run(...args)).toContain("Usage:");
             }
             expect(run("create", "Valera Programmer", "--random", "--seed", "805", "--out", blueprint)).toContain("created");
@@ -39,5 +40,5 @@ describe("P8-05 Valera Programmer public path", () => {
         } finally {
             rmSync(workspace, {recursive: true, force: true});
         }
-    }, 90_000);
+    }, 240_000);
 });

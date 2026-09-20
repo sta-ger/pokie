@@ -199,6 +199,16 @@ async function campaignFixture() {
                     unsavedWorkProtection: true,
                     serverRestart: true,
                 },
+                reload: {
+                    activeJobId: "simulation-active-reload",
+                    terminal: {id: "simulation-active-reload", status: "cancelled"},
+                    discoveredAfterReload: true,
+                },
+                staleResponse: {
+                    responseCount: 1,
+                    sourceRoute: "#/project/first/overview",
+                    destinationRoute: "#/project/second/overview",
+                },
                 jobs: {
                     success: {id: "simulation-completed", status: "completed"},
                     actionableFailure: {error: "Rounds must be positive"},
@@ -251,6 +261,7 @@ async function campaignFixture() {
                 candidateExecutableReceiptIssuer: "pack-verifier",
                 candidateTreeManifestCandidateId: candidate.candidateId,
                 candidateTreeManifestSha256: "e".repeat(64),
+                candidateTreeObjectId: "9".repeat(40),
             }),
         );
         const artifactBytes = await readFile(path.join(directory, artifact.path));
@@ -276,6 +287,7 @@ async function campaignFixture() {
                 candidateExecutableFiles: 1,
                 candidateTreeManifestCandidateId: candidate.candidateId,
                 candidateTreeManifestSha256: "e".repeat(64),
+                candidateTreeObjectId: "9".repeat(40),
             },
             startedAt: stamp(offset),
             endedAt: stamp(offset + 40),
@@ -563,6 +575,24 @@ test("requires browser defects to be frozen initially and absent after retest", 
         await fixture.cleanup();
     }
 });
+
+test("rejects a route-only reload claim without an active durable job and delayed stale response", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const audits = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), audit = audits.audits[0];
+        const runtimeEntry = audit.evidence.find((item) => item.kind === "page-state" && !item.observationIds.length);
+        const value = JSON.parse(await readFile(path.join(fixture.directory, runtimeEntry.path), "utf8"));
+        value.reload.discoveredAfterReload = false;
+        await writeFile(path.join(fixture.directory, runtimeEntry.path), JSON.stringify(value));
+        const bytes = await readFile(path.join(fixture.directory, runtimeEntry.path));
+        runtimeEntry.sha256 = hash(bytes);
+        runtimeEntry.sizeBytes = bytes.length;
+        await writeFile(path.join(fixture.directory, "retests.json"), `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured recovery/i);
+    } finally {
+        await fixture.cleanup();
+    }
+});
 test("rejects an archive whose executable manifest no longer matches the verifier-supplied candidate manifest", async () => {
     const fixture = await campaignFixture();
     try {
@@ -588,6 +618,21 @@ test("rejects campaign-authored executable provenance without its external verif
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
             /does not prove its installed archive executable contents/i,
+        );
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("rejects provenance drift when the verifier receipt is paired with a different candidate tree", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const file = path.join(fixture.directory, "retests.json"), value = JSON.parse(await readFile(file, "utf8"));
+        value.audits[0].packageIdentity.candidateTreeObjectId = "0".repeat(40);
+        await writeFile(file, `${JSON.stringify(value)}\n`);
+        await assert.rejects(
+            () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
+            /workflow evidence does not prove|installed archive executable contents/i,
         );
     } finally {
         await fixture.cleanup();
