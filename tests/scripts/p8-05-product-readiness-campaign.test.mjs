@@ -53,7 +53,7 @@ const timings = {
 const semantic = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${observation}`,
-        result = {id: jobId, status: "completed", observation},
+        result = contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation}] : {id: jobId, status: "completed", observation},
         responseSha256 = hash(JSON.stringify(result)),
         route = `/#/project/fixture/${contract.route}`,
         interaction = {
@@ -151,7 +151,7 @@ async function campaignFixture() {
         ).entries())
             artifacts.push(await evidence(candidate, kind, stamp(offset + 2 + index), observations));
         const actions = [],
-            apiEntries = [{path: "/api/health"}];
+            apiEntries = [{path: "/api/health"}], browserEvents = [];
         for (const [index, observation] of observations.entries()) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation],
                 viewport = ["wide", "compact", "narrow"][index % 3],
@@ -171,6 +171,10 @@ async function campaignFixture() {
                 browserRequestId: `browser-${observation}`,
                 initiator: "rendered-control",
             });
+            browserEvents.push(
+                {method: "Network.requestWillBeSent", params: {requestId: `browser-${observation}`, request: {url: `http://127.0.0.1${contract.api}`, method: contract.method, ...(contract.body === undefined ? {} : {postData: contract.body})}}},
+                {method: "Network.responseReceived", params: {requestId: `browser-${observation}`, response: {status: 200}}},
+            );
             if (contract.method === "POST") apiEntries.push({
                 observation,
                 method: "GET",
@@ -180,6 +184,7 @@ async function campaignFixture() {
                 browserRequestId: `poll-${observation}`,
                 initiator: "rendered-poll",
             });
+            if (contract.method === "POST") browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${observation}`, request: {url: `http://127.0.0.1${contract.api}/jobs/${source.result.id}`, method: "GET"}}});
             actions.push({
                 observation,
                 route: source.route,
@@ -219,9 +224,17 @@ async function campaignFixture() {
                 },
                 staleResponse: {
                     responseCount: 1,
+                    delayedRequestId: "delayed-project-context",
+                    completedAfterSwitch: true,
                     sourceRoute: "#/project/first/overview",
                     destinationRoute: "#/project/second/overview",
                 },
+                unsavedWork: {
+                    editedControl: "Game basics name",
+                    protectionText: "You have unsaved changes to this game model section. Leave and lose them?",
+                    preserved: true,
+                },
+                restart: {activeJobId: "simulation-restart", recovered: true},
                 jobs: {
                     success: {id: "simulation-completed", status: "completed"},
                     actionableFailure: {error: "Rounds must be positive"},
@@ -241,6 +254,11 @@ async function campaignFixture() {
         const apiBytes = await readFile(path.join(directory, apiEvidence.path));
         apiEvidence.sha256 = hash(apiBytes);
         apiEvidence.sizeBytes = apiBytes.length;
+        const browserEvidence = artifacts.find((item) => item.kind === "browser-log");
+        await writeFile(path.join(directory, browserEvidence.path), JSON.stringify(browserEvents));
+        const browserBytes = await readFile(path.join(directory, browserEvidence.path));
+        browserEvidence.sha256 = hash(browserBytes);
+        browserEvidence.sizeBytes = browserBytes.length;
         const cleanup = artifacts.find((item) => item.kind === "cleanup");
         await writeFile(
             path.join(directory, cleanup.path),
@@ -585,6 +603,33 @@ test("rejects an HTTP-success semantic record whose completed terminal result ac
     } finally {
         await fixture.cleanup();
     }
+});
+
+test("rejects an HTTP-success report observation with no completed report or browser request provenance", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "simulation-rtp-volatility-features"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.terminal.result = [];
+        semantic.terminal.resultSha256 = hash(JSON.stringify(semantic.terminal.result));
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects a semantic record that is not present in the captured browser network log", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], browserEvidence = audit.evidence.find((item) => item.kind === "browser-log"), target = path.join(fixture.directory, browserEvidence.path);
+        await writeFile(target, "[]");
+        browserEvidence.sha256 = hash("[]");
+        browserEvidence.sizeBytes = 2;
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /browser request and response/i);
+    } finally { await fixture.cleanup(); }
 });
 test("requires browser defects to be frozen initially and absent after retest", async () => {
     const fixture = await campaignFixture();
