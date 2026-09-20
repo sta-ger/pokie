@@ -33,21 +33,18 @@ async function externalAnchor(anchor, expectedKind, expected) {
     return value;
 }
 
-async function runAudits(config, phase, candidateValue, dependencies) {
-    // A public campaign must always use the packed runner.  Allowing a caller
-    // to replace it made the controller itself a claim generator: a green
-    // controller result could contain five fabricated audit objects without
-    // ever starting the installed CLI or Studio.  Test doubles remain
-    // available only behind an explicit, non-configurable dependency flag.
-    if (dependencies.runAudit && dependencies.runAudit !== runP805ValeraBrowserAudit && dependencies.allowTestAuditRunner !== true) fail("public audit phases cannot substitute the packed runner");
-    const services = {runAudit:dependencies.runAudit ?? runP805ValeraBrowserAudit, now, ...dependencies}; packed(config, `${phase} audit`);
+async function runAudits(config, phase, candidateValue) {
+    // This is intentionally not injectable.  A controller that accepts audit
+    // objects (or a replacement collector) can mint a green campaign without
+    // ever launching the installed package and rendered Studio surface.
+    packed(config, `${phase} audit`);
     const audits = [];
     // Sequential execution guarantees per-persona process ownership and avoids a
     // shared random Studio port being mistaken for clean-room reuse.
     for (const persona of P805_PERSONAS) {
-        try { audits.push(await services.runAudit({persona, phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage})); }
+        try { audits.push(await runP805ValeraBrowserAudit({persona, workflowPersonas:[persona], phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage})); }
         catch (error) {
-            const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, persona, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:services.now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
+            const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, persona, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
             await writeRecord(config.directory, `${phase}-${persona}-audit.failed.json`, failure);
             throw error;
         }
@@ -59,7 +56,7 @@ export async function runP805InitialAudit(config, dependencies = {}) {
     base(config); candidate(config.initialCandidate, "initial candidate"); packed(config, "initial audit"); if (!config.provenance?.campaignId || config.provenance.cleanRoomAttestation !== "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence.") fail("initial audit requires the clean-room provenance attestation");
     await (dependencies.mkdir ?? mkdir)(config.directory, {recursive:true}); if (existsSync(recordPath(config.directory, "PROVENANCE.json"))) fail("initial campaign provenance is append-only");
     const startedAt = (dependencies.now ?? now)(); await writeRecord(config.directory, "PROVENANCE.json", {schemaVersion:P805_SCHEMA_VERSION, ...config.provenance, startedAt, initialCandidate:config.initialCandidate});
-    const audits = await runAudits(config, "initial", config.initialCandidate, dependencies); await writeRecord(config.directory, "initial-audits.json", {schemaVersion:P805_SCHEMA_VERSION, campaignId:config.provenance.campaignId, audits}); return audits;
+    const audits = await runAudits(config, "initial", config.initialCandidate); await writeRecord(config.directory, "initial-audits.json", {schemaVersion:P805_SCHEMA_VERSION, campaignId:config.provenance.campaignId, audits}); return audits;
 }
 
 /** Prepare a freeze payload before asking the external verifier to anchor it.
@@ -93,7 +90,7 @@ export async function runP805PostFix(config) {
 }
 
 export async function runP805Retest(config, dependencies = {}) {
-    base(config); candidate(config.retestCandidate, "retest candidate"); await record(config.directory, "frozen-findings.json"); await record(config.directory, "regressions.json"); if (existsSync(recordPath(config.directory, "retests.json"))) fail("retests are append-only"); const startedAt = (dependencies.now ?? now)(), audits = await runAudits(config, "retest", config.retestCandidate, dependencies), provenance = await record(config.directory, "PROVENANCE.json"); await writeRecord(config.directory, "retests.json", {schemaVersion:P805_SCHEMA_VERSION, campaignId:provenance.value.campaignId, startedAt, audits}); return audits;
+    base(config); candidate(config.retestCandidate, "retest candidate"); await record(config.directory, "frozen-findings.json"); await record(config.directory, "regressions.json"); if (existsSync(recordPath(config.directory, "retests.json"))) fail("retests are append-only"); const startedAt = (dependencies.now ?? now)(), audits = await runAudits(config, "retest", config.retestCandidate), provenance = await record(config.directory, "PROVENANCE.json"); await writeRecord(config.directory, "retests.json", {schemaVersion:P805_SCHEMA_VERSION, campaignId:provenance.value.campaignId, startedAt, audits}); return audits;
 }
 
 export async function prepareP805Closeout(config) {
