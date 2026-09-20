@@ -62,6 +62,21 @@ async function terminate(child) {
     await new Promise((resolveExit) => child.once("exit", resolveExit));
 }
 
+async function closeChromium() {
+    // Chromium owns profile writers below its browser process.  Asking the
+    // browser to close through CDP lets it drain those writers before the
+    // per-run profile is removed; SIGTERM alone can report the launcher dead
+    // while a profile descendant is still finishing its final write.
+    if (cdp !== undefined) {
+        try {
+            await cdp.send("Browser.close");
+        } catch {
+            // The browser may already have exited after a failed workflow.
+        }
+    }
+    await terminate(chromium);
+}
+
 async function connect(devtoolsPort) {
     const target = await (await fetch(`http://127.0.0.1:${devtoolsPort}/json/new?${encodeURIComponent("about:blank")}`, {method: "PUT"})).json();
     const socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -151,7 +166,13 @@ async function run() {
     // Cancel control is the stable user-visible distinction between those two
     // cards and proves this is an attached, active card rather than an old
     // terminal result with a similarly named operation.
-    const hasActiveJobCard = (operation) => evaluate(`(() => [...document.querySelectorAll('[role="alert"]')].some((card) => card.textContent?.includes(${JSON.stringify(operation)}) && [...card.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Cancel')))()`);
+    const hasActiveJobCard = (operation) => evaluate(`(() => [...document.querySelectorAll('[role="status"]')].some((card) => card.textContent?.includes(${JSON.stringify(operation)}) && [...card.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Cancel')))()`);
+    // Terminal cards deliberately use the product's human-readable status
+    // title ("simulation · Completed"), rather than a transport-oriented
+    // `operation: status` string.  Match the rendered title so this browser
+    // contract verifies the user-visible reattachment boundary instead of a
+    // stale internal presentation convention.
+    const hasTerminalJobCard = (operation, status) => evaluate(`(() => [...document.querySelectorAll('.studio-job-card')].some((card) => card.getAttribute('role') === 'status' && card.textContent?.includes(${JSON.stringify(`${operation} · ${status}`)})))()`);
     const click = async (label) => {
         const point = await evaluate(`(() => { const node = [...document.querySelectorAll('button,a,[role=button]')].find((item) => item.textContent?.trim() === ${JSON.stringify(label)} && !item.disabled); if (!node) return undefined; const rect = node.getBoundingClientRect(); return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}; })()`);
         assert.notEqual(point, undefined, `missing rendered control ${label}`);
@@ -176,7 +197,7 @@ async function run() {
         return job.status === "completed";
     }, "retained terminal simulation");
     await cdp.send("Page.reload", {ignoreCache: true});
-    await waitFor(async () => (await text()).includes("simulation: completed"), "terminal job reattachment after reload");
+    await waitFor(async () => await hasTerminalJobCard("simulation", "Completed"), "terminal job reattachment after reload");
 
     const active = await post(baseUrl, "/api/project/simulations", {rounds: 1_000_000, seed: "durable-browser-active"});
     assert.equal(active.status, 202);
@@ -292,8 +313,8 @@ async function run() {
     const reopened = await post(baseUrl, "/api/home/projects/open", {projectRoot: secondProjectRoot});
     assert.equal(reopened.status, 200);
     await cdp.send("Page.reload", {ignoreCache: true});
-    await waitFor(async () => (await text()).includes("simulation: recovery-required"), "restart recovery card");
-    await waitFor(async () => (await text()).includes("outcome-library-generation: cancelled") && (await text()).includes("Resume"), "retained exact-checkpoint resume action");
+    await waitFor(async () => await hasTerminalJobCard("simulation", "Recovery required"), "restart recovery card");
+    await waitFor(async () => await hasTerminalJobCard("outcome-library-generation", "Cancelled") && (await text()).includes("Resume"), "retained exact-checkpoint resume action");
     const exactResume = await post(baseUrl, `/api/project/outcome-libraries/generate/jobs/${exactJobId}/resume`, {});
     assert.equal(exactResume.status, 202);
     assert.equal(exactResume.body.job.id, exactJobId);
@@ -302,7 +323,7 @@ async function run() {
         return job.status === "completed" && job.result?.status === "ok";
     }, "validated exact-checkpoint resume completion", 180_000);
     await cdp.send("Page.reload", {ignoreCache: true});
-    await waitFor(async () => (await text()).includes("outcome-library-generation: completed"), "resumed terminal result reopening");
+    await waitFor(async () => await hasTerminalJobCard("outcome-library-generation", "Completed"), "resumed terminal result reopening");
 }
 
 async function execute() {
@@ -310,10 +331,10 @@ async function execute() {
         await run();
         console.log("PASS real Chromium Studio durable jobs workflow");
     } finally {
+    await closeChromium();
     cdp?.close();
-    await terminate(chromium);
     await terminate(studio);
-    if (profile !== undefined) await rm(profile, {recursive: true, force: true});
+    if (profile !== undefined) await rm(profile, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
     }
 }
 
