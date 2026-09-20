@@ -160,7 +160,10 @@ async function run() {
     }, "Chromium CDP");
     cdp = await connect(devtoolsPort);
     const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, awaitPromise: true, returnByValue: true})).result.value;
-    const text = () => evaluate("document.body.innerText");
+    // CDP can observe the just-created target before its initial about:blank
+    // document has a body.  Treat that transient render state as an empty
+    // screen and let the existing bounded public-page wait retry it.
+    const text = async () => (await evaluate("document.body?.innerText")) ?? "";
     // Active jobs render JobProgressCard, whose title is the operation (rather
     // than the terminal card's `${operation}: ${status}` title).  A rendered
     // Cancel control is the stable user-visible distinction between those two

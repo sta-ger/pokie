@@ -147,6 +147,7 @@ export function GameModelTab({
             title: "Unsaved changes",
             children: "You have unsaved changes to this game model section. Leave and lose them?",
             labels: {confirm: "Leave", cancel: "Stay"},
+            controlIds: {confirm: "game-model-unsaved-leave", cancel: "game-model-unsaved-stay"},
         },
         () => setEditState({status: "viewing"}),
     );

@@ -6,6 +6,8 @@ export type NavigationBlockerConfirmModal = {
     title: string;
     children: string;
     labels: {confirm: string; cancel: string};
+    /** Stable public identities for a workflow that must survive a blocked route transition. */
+    controlIds?: {confirm: string; cancel: string};
 };
 
 // The shared "a pending router transition (browser Back/Forward, or any in-app navigate() call) needs
@@ -35,6 +37,8 @@ export function useNavigationBlockerConfirm(
             withCloseButton: false,
             closeOnEscape: false,
             closeOnClickOutside: false,
+            confirmProps: confirmModal.controlIds === undefined ? undefined : {id: confirmModal.controlIds.confirm},
+            cancelProps: confirmModal.controlIds === undefined ? undefined : {id: confirmModal.controlIds.cancel},
             onConfirm: () => {
                 onLeave?.();
                 blocker.proceed();

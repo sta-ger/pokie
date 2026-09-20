@@ -1112,6 +1112,7 @@ export function BlueprintEditorPage({
                 <div>
                     <QuickActions>
                         <Button
+                            id="blueprint-create-game"
                             onClick={handleGuidedSave}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
