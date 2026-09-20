@@ -41,4 +41,41 @@ describe("P8-05 Valera Programmer public path", () => {
             rmSync(workspace, {recursive: true, force: true});
         }
     }, 240_000);
+
+    it("packs the current candidate, installs its public launcher, and keeps npx and semantic failure behavior", () => {
+        // Keep the CLI proof independent from the repository's dist launcher.
+        // The browser runner consumes the same verifier-owned archive, but this
+        // focused contract makes a broken packed bin or npx entry point fail at
+        // the programmer boundary before a rendered workflow can mask it.
+        const candidate = execFileSync("git", ["rev-parse", "HEAD"], {encoding: "utf8"}).trim();
+        const candidateDirectory = mkdtempSync(path.join(tmpdir(), "pokie-p8-05-packed-cli-"));
+        const installation = path.join(candidateDirectory, "installation");
+        const sourceArchiveDirectory = path.join(candidateDirectory, "source");
+        const sourceArchive = () => JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024})) as Array<{filename: string}>;
+        try {
+            const packed = sourceArchive();
+            expect(packed).toHaveLength(1);
+            const source = path.join(sourceArchiveDirectory, packed[0].filename);
+            const archive = path.join(candidateDirectory, "candidate-package.tgz");
+            const receipt = path.join(candidateDirectory, "candidate-executable-receipt.json");
+            execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "p8-05-candidate-package-verifier.mjs"), "--source-archive", source, "--candidate-archive", archive, "--candidate", candidate, "--receipt", receipt], {encoding: "utf8", stdio: "pipe"});
+            execFileSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installation, archive], {encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
+            const launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
+            const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "pokie", "package.json"), "utf8")) as {gitHead?: string};
+            const run = (...args: string[]) => execFileSync(launcher, args, {encoding: "utf8", stdio: "pipe"});
+            const blueprint = path.join(candidateDirectory, "Valera packed blueprint.json");
+            const wasm = path.join(candidateDirectory, "Valera packed artifact.wasm");
+
+            expect(installedPackage.gitHead).toBe(candidate);
+            expect(run("--help")).toContain("Usage:");
+            expect(execFileSync("npx", ["--no-install", "--prefix", installation, "pokie", "--help"], {encoding: "utf8", stdio: "pipe"})).toContain("Usage:");
+            expect(run("create", "Valera Packed Programmer", "--random", "--seed", "805", "--out", blueprint)).toContain("created");
+            expect(run("build", blueprint, "--target", "wasm", "--out", wasm)).toContain("Artifact \"wasm\" built");
+            expect(run("validate", wasm)).toContain("valid           yes");
+            expect(run("run", wasm, "--seed", "p8-05-packed-programmer")).toContain("POKIE WASM round");
+            expect(() => run("validate", path.join(candidateDirectory, "missing blueprint.json"))).toThrow();
+        } finally {
+            rmSync(candidateDirectory, {recursive: true, force: true});
+        }
+    }, 300_000);
 });

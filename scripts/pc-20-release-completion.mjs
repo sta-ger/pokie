@@ -233,7 +233,8 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
 // here means that a campaign audit uses the same spawn-time, signed ownership
 // protocol as the release gate instead of taking an unverifiable late `ps`
 // snapshot of a browser or Studio server.
-export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret) {
+export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret, {captureIntervalMs = 10} = {}) {
+    if (!Number.isSafeInteger(captureIntervalMs) || captureIntervalMs < 10 || captureIntervalMs > 5_000) fail("release gate ownership tracker capture interval is invalid");
     const ownedProcesses = new Map();
     const ownedResources = new Map();
     let captureFailure;
@@ -289,7 +290,7 @@ export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRe
         }
         if (final && captureFailure) throw captureFailure;
     };
-    const timer = setInterval(() => capture(), 10);
+    const timer = setInterval(() => capture(), captureIntervalMs);
     return {ownedProcesses, ownedResources, capture, rememberProcess, stop:() => clearInterval(timer)};
 }
 
