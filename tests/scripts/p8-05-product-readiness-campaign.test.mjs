@@ -51,11 +51,13 @@ const timings = {
 };
 const semantic = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
-        result = {status: "completed", observation},
+        jobId = `job-${observation}`,
+        result = {id: jobId, status: "completed", observation},
         responseSha256 = hash(JSON.stringify(result)),
         route = `/#/project/fixture/${contract.route}`,
         interaction = {
             control: contract.actionControl ?? contract.control,
+            matchedLabel: contract.actionControlMatch === "prefix" ? `${contract.actionControl} (base)` : contract.actionControl ?? contract.control,
             keyboardFocused: true,
             keyboardActivated: true,
             activation: "keyboard",
@@ -90,7 +92,8 @@ const semantic = (persona, observation, contract, viewport) => {
                 resultSha256: responseSha256,
                 artifact: contract.artifact ?? null,
                 result,
-                source: "response",
+                source: contract.method === "POST" ? "rendered-poll" : "response",
+                ...(contract.method === "POST" ? {jobId} : {}),
             },
             workflow: {
                 persona,
@@ -166,6 +169,15 @@ async function campaignFixture() {
                 payload: source.result,
                 browserRequestId: `browser-${observation}`,
                 initiator: "rendered-control",
+            });
+            if (contract.method === "POST") apiEntries.push({
+                observation,
+                method: "GET",
+                path: `${contract.api}/jobs/${source.result.id}`,
+                status: 200,
+                payload: source.result,
+                browserRequestId: `poll-${observation}`,
+                initiator: "rendered-poll",
             });
             actions.push({
                 observation,
@@ -553,6 +565,21 @@ test("rejects relabelled rendered workflow evidence and unmeasured timings", asy
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
             /evidence digest or size differs/i,
         );
+    } finally {
+        await fixture.cleanup();
+    }
+});
+test("rejects an HTTP-success semantic record whose completed terminal result actually failed", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.terminal.result.status = "failed";
+        await writeFile(target, JSON.stringify(semantic));
+        const bytes = await readFile(target);
+        evidence.sha256 = hash(bytes);
+        evidence.sizeBytes = bytes.length;
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome/i);
     } finally {
         await fixture.cleanup();
     }
