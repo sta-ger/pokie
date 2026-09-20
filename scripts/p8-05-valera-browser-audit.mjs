@@ -388,7 +388,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // render controls with the same labels.
         const activateSimulationControl = async ({controlId, label, observation, cursor, method, confirmationId = undefined}) => {
             const focusButton = () => evaluate(`(() => { const button = document.getElementById(${JSON.stringify(controlId)}); const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length); if (!(button instanceof HTMLButtonElement) || button.disabled || !visible(button) || button.textContent?.trim() !== ${JSON.stringify(label)}) return false; button.focus(); return document.activeElement === button; })()`);
-            const focused = await focusButton();
+            // Recovery is asynchronous after a reload: the page first reads
+            // its server-owned job list, then restores the Simulation tab's
+            // local poll state.  Wait for that public state transition rather
+            // than racing it with a synthetic cancellation request.
+            const focused = await waitFor(focusButton, `${observation} rendered ${label} control`);
             if (!focused) fail(`Studio did not expose an enabled rendered ${label} control for ${observation}`);
             if (confirmationId !== undefined) {
                 const focusConfirmation = () => evaluate(`(() => { const button = document.getElementById(${JSON.stringify(confirmationId)}); if (!(button instanceof HTMLButtonElement) || button.disabled) return false; button.focus(); return document.activeElement === button; })()`);
@@ -491,7 +495,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const route = `${projectBaseRoute}/${screen}`;
                 if (contract.control !== state.navigationControl) fail(`${screen} contract navigation does not match its public control state`);
                 await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[viewport], deviceScaleFactor:1});
-                await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}`});
+                // Overview is the dashboard's default route.  Starting an
+                // Overview observation there would turn keyboard activation
+                // into a no-op and let its context request predate the
+                // interaction.  Enter it from a different rendered screen so
+                // the recorded request is caused by the public control.
+                const shellRoute = screen === "overview" ? `${projectBaseRoute}/gameModel` : projectBaseRoute;
+                await cdp.send("Page.navigate", {url:`${origin}/${shellRoute}`});
                 await waitFor(() => evaluate("document.readyState === 'complete' && !!document.querySelector('main, [role=main], nav') && document.body.innerText.trim().length > 40"), `${screen} public shell`);
                 const navigation = await focusStableScreenControl(screen, state.navigationControl, state.navigationControlId, "button,a");
                 if (!navigation?.keyboardFocused || !navigation.enabled) fail(`${screen} has no enabled public ${state.navigationControl} navigation for ${observation}`);
@@ -568,9 +578,22 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // cancelled through the rendered workflow immediately afterwards, so
         // this value is a durability window rather than work the audit waits
         // to complete.
-        const durableProbeRounds = 1_000_000_000;
+        // This must remain inside Studio's public request boundary.  A value
+        // above the server limit merely records a 400 validation failure and
+        // never creates the durable job that the reload/cancel state machine
+        // is meant to exercise.  The maximum accepted request gives the
+        // browser a reliable active-work window while still proving the
+        // rendered form and API's real validation contract.
+        const durableProbeRounds = 2_000_000;
         const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", durableProbeRounds), reloadCursor = cdp.events.length;
         await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await waitFor(async () => { const event = cdp.events.slice(reloadCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
+        // A running job intentionally disables sibling tab navigation, so
+        // the real recovery state is the public, reloadable Simulation route
+        // itself.  This is a browser route transition, not an API shortcut;
+        // the subsequent Cancel remains the stable rendered keyboard control
+        // that owns the cancellation request.
+        await cdp.send("Page.navigate", {url:`${origin}/${createdProjectBaseRoute}/simulation`});
+        await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Run Simulation')"), "active-job reload Simulation recovery state");
         const activeReloadCancellation = await activateSimulationControl({controlId:"simulation-cancel", label:"Cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", confirmationId:"simulation-cancel-confirm"}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"]);
         const projectBaseRoute = createdProjectBaseRoute, viewports = ["wide", "compact", "narrow"], actions = [], workflows = options.workflowPersonas.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => viewports.map((viewport) => ({persona, observation, viewport}))));
         for (const {persona, observation, viewport} of workflows) {

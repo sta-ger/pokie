@@ -38,7 +38,12 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(receipt.candidateId).toBe(candidate);
             const personas = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
             try {
-                execFileSync(process.execPath, [runner, "--persona", "mathematician", "--workflow-personas", personas.join(","), "--phase", "initial", "--candidate", candidate, "--package-sha256", createHash("sha256").update(archive).digest("hex"), "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 900_000});
+                // Every declared persona operation is now exercised at all
+                // three public breakpoints.  Keep the child and Jest budgets
+                // aligned with that real packed-browser workload so the test
+                // cannot terminate its owned runner mid-cleanup and leave an
+                // incomplete candidate receipt behind.
+                execFileSync(process.execPath, [runner, "--persona", "mathematician", "--workflow-personas", personas.join(","), "--phase", "initial", "--candidate", candidate, "--package-sha256", createHash("sha256").update(archive).digest("hex"), "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 1_650_000});
             } catch (error) {
                 const stderr = (error as {stderr?: Buffer | string}).stderr;
                 throw new Error(`packed runner failed: ${Buffer.isBuffer(stderr) ? stderr.toString("utf8") : stderr ?? String(error)}`);
@@ -60,5 +65,5 @@ describe("P8-05 rendered Valera persona evidence", () => {
             await rm(output, {recursive: true, force: true});
             await rm(candidateDirectory, {recursive: true, force: true});
         }
-    }, 1_000_000);
+    }, 1_800_000);
 });
