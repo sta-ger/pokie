@@ -84,7 +84,7 @@ const semantic = (persona, observation, contract, viewport) => {
             viewport,
             screen: {name: contract.route, region: screen.region, navigationControl: screen.navigationControl, terminalText: screen.result},
             control: {id: contract.actionControlId ?? screen.navigationControlId, role: "button", accessibleName: matchedLabel, enabled: true},
-            precondition: {enabled: true, accessibleName: matchedLabel, region: screen.region},
+            precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: matchedLabel, region: screen.region},
             interaction,
             request: {
                 path: contract.api,
@@ -224,7 +224,7 @@ async function campaignFixture() {
                 domControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
                 identityAttribute: "id",
                 browserRequestId: `browser-${observation}`,
-                precondition: {enabled: true, accessibleName: source.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
+                precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: source.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
                 visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256, changedAfterRequest: true},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: source.interaction,

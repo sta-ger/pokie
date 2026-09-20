@@ -1,19 +1,26 @@
 import {modals} from "@mantine/modals";
 import {useCallback} from "react";
 
+export type ConfirmControlIds = {
+    confirm?: string;
+    cancel?: string;
+};
+
 // Replaces confirmDangerousAction.ts's window.confirm() wrapper with a Mantine confirm modal (see
 // requirement 4 -- modals are explicitly one of the Mantine components to use). Same 7 call sites, same
 // message text, same gating semantics -- the only real change is that confirmation is now asynchronous
 // (a modal callback) rather than a synchronous boolean return, so callers move the gated action into
 // `onConfirm` instead of `if (!confirm) return`.
-export function useConfirm(): (message: string, onConfirm: () => void, onCancel?: () => void) => void {
-    return useCallback((message: string, onConfirm: () => void, onCancel?: () => void) => {
+export function useConfirm(): (message: string, onConfirm: () => void, onCancel?: () => void, controlIds?: ConfirmControlIds) => void {
+    return useCallback((message: string, onConfirm: () => void, onCancel?: () => void, controlIds?: ConfirmControlIds) => {
         modals.openConfirmModal({
             title: "Please confirm",
             children: message,
             labels: {confirm: "Confirm", cancel: "Cancel"},
             onConfirm,
             onCancel,
+            confirmProps: controlIds?.confirm === undefined ? undefined : {id: controlIds.confirm},
+            cancelProps: controlIds?.cancel === undefined ? undefined : {id: controlIds.cancel},
         });
     }, []);
 }

@@ -268,7 +268,7 @@ export function SimulationTab({
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (
-                                    <Button id="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel)}>
+                                    <Button id="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel, undefined, {confirm: "simulation-cancel-confirm", cancel: "simulation-cancel-dismiss"})}>
                                         Cancel
                                     </Button>
                                 )}
