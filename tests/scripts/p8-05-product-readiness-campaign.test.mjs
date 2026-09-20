@@ -53,7 +53,7 @@ const timings = {
 const semantic = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${observation}`,
-        result = contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation}] : {id: jobId, status: "completed", observation},
+        result = contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation, downloadPath: `/downloads/${jobId}.json`}] : {id: jobId, status: "completed", observation, ...(contract.artifact === undefined ? {} : {outputPath: `/outputs/${jobId}`})},
         responseSha256 = hash(JSON.stringify(result)),
         route = `/#/project/fixture/${contract.route}`,
         interaction = {
@@ -95,6 +95,12 @@ const semantic = (persona, observation, contract, viewport) => {
                 result,
                 source: contract.poll ? "rendered-poll" : "response",
                 ...(contract.poll ? {jobId, pollPath: contract.poll.replace("{id}", encodeURIComponent(jobId))} : {}),
+            },
+            renderedTerminal: {
+                text: `The rendered ${observation} result completed.`,
+                textSha256: hash(`The rendered ${observation} result completed.`),
+                resultSha256: responseSha256,
+                observedAt: stamp(1),
             },
             workflow: {
                 persona,
@@ -588,6 +594,20 @@ test("rejects relabelled rendered workflow evidence and unmeasured timings", asy
     } finally {
         await fixture.cleanup();
     }
+});
+
+test("rejects semantic drift when a rewritten record no longer binds its rendered terminal result", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.renderedTerminal.resultSha256 = "0".repeat(64);
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+    } finally { await fixture.cleanup(); }
 });
 test("rejects an HTTP-success semantic record whose completed terminal result actually failed", async () => {
     const fixture = await campaignFixture();
