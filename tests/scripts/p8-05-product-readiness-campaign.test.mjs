@@ -30,6 +30,7 @@ const stamp = (offset) => new Date(Date.parse("2026-09-19T20:00:00.000Z") + offs
 const rendered = {
     execution: "packed-public-cli-built-studio-rendered-controls",
     viewports: ["wide", "compact", "narrow"],
+    responsive: ["wide", "compact", "narrow"].map((viewport) => ({viewport, overflow: false, visibleFocus: true, screenshotEvidenceId: `responsive-${viewport}`})),
     measurements: {
         consoleExceptions: 0,
         unhandledRequestFailures: 0,
@@ -416,6 +417,7 @@ async function campaignFixture() {
         candidatePackageSha256: retest.candidatePackageSha256,
         passed: true,
         resultSha256: hash(`${JSON.stringify(regressionResult)}\n`),
+        authentication: {scheme: "verifier-owned-digest", verifierId: "independent-test-controller", attestedResultSha256: hash(`${JSON.stringify(regressionResult)}\n`)},
         completedAt: stamp(903),
     })}\n`;
     await writeFile(regressionReceipt, receiptContents);
@@ -664,4 +666,24 @@ test("rejects provenance drift when the verifier receipt is paired with a differ
     } finally {
         await fixture.cleanup();
     }
+});
+
+test("rejects a regression receipt that lacks verifier-owned authentication", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const regressions = JSON.parse(await readFile(path.join(fixture.directory, "regressions.json"), "utf8")),
+            evidence = regressions.regressions[0].machineResultEvidence,
+            result = JSON.parse(await readFile(path.join(fixture.directory, evidence.path), "utf8")),
+            receipt = JSON.parse(await readFile(result.receipt.path, "utf8"));
+        delete receipt.authentication;
+        const receiptContents = `${JSON.stringify(receipt)}\n`;
+        await writeFile(result.receipt.path, receiptContents);
+        result.receipt.sha256 = hash(receiptContents);
+        const resultContents = `${JSON.stringify(result)}\n`;
+        await writeFile(path.join(fixture.directory, evidence.path), resultContents);
+        evidence.sha256 = hash(resultContents);
+        evidence.sizeBytes = Buffer.byteLength(resultContents);
+        await writeFile(path.join(fixture.directory, "regressions.json"), `${JSON.stringify(regressions)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}));
+    } finally { await fixture.cleanup(); }
 });

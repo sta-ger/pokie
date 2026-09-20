@@ -16,7 +16,7 @@ test("controller exposes fail-closed audit, freeze, post-fix, and retest phase b
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-controller-"));
     try {
         await assert.rejects(() => runP805Freeze({directory, frozenFindings:{findings:[]}}), /PROVENANCE/i);
-        const audits = await runP805InitialAudit({directory, initialCandidate:initial, provenance:{campaignId:"p8-05-controller", cleanRoomAttestation:attestation}, ...packed}, {runAudit:runner});
+        const audits = await runP805InitialAudit({directory, initialCandidate:initial, provenance:{campaignId:"p8-05-controller", cleanRoomAttestation:attestation}, ...packed}, {runAudit:runner, allowTestAuditRunner:true});
         assert.equal(audits.length, 5);
         await assert.rejects(() => runP805PostFix({directory, retestCandidate:retest, findingRegister:{}, regressions:{}}), /frozen-findings/i);
         await assert.rejects(() => runP805Freeze({directory}), /frozen-findings-payload/i);
@@ -27,7 +27,7 @@ test("controller exposes fail-closed audit, freeze, post-fix, and retest phase b
         const anchorSha256 = (await import("node:crypto")).createHash("sha256").update(await readFile(anchorPath)).digest("hex");
         await runP805Freeze({directory, freezeAnchor:{path:anchorPath, sha256:anchorSha256}});
         await runP805PostFix({directory, retestCandidate:retest, findingRegister:{findings:[]}, regressions:{regressions:[]}});
-        const retests = await runP805Retest({directory, retestCandidate:retest, ...packed}, {runAudit:runner});
+        const retests = await runP805Retest({directory, retestCandidate:retest, ...packed}, {runAudit:runner, allowTestAuditRunner:true});
         assert.equal(retests.length, 5);
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
@@ -37,4 +37,14 @@ test("controller publishes distinct phase commands and refuses missing phase pay
     for (const phase of ["initial-audit", "prepare-freeze", "freeze", "post-fix", "retest", "prepare-closeout", "closeout"]) {
         assert.throws(() => execFileSync(process.execPath, [controller, phase], {encoding:"utf8", stdio:"pipe"}), (error) => /usage/i.test(String(error.stderr)));
     }
+});
+
+test("controller refuses a supplied audit object outside its explicit test seam", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-controller-real-runner-"));
+    try {
+        await assert.rejects(
+            () => runP805InitialAudit({directory, initialCandidate:initial, provenance:{campaignId:"p8-05-controller-real", cleanRoomAttestation:attestation}, ...packed}, {runAudit:runner}),
+            /cannot substitute the packed runner/i,
+        );
+    } finally { await rm(directory, {recursive:true, force:true}); }
 });

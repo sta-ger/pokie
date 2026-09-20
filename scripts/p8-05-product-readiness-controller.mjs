@@ -34,7 +34,13 @@ async function externalAnchor(anchor, expectedKind, expected) {
 }
 
 async function runAudits(config, phase, candidateValue, dependencies) {
-    const services = {runAudit:runP805ValeraBrowserAudit, now, ...dependencies}; packed(config, `${phase} audit`);
+    // A public campaign must always use the packed runner.  Allowing a caller
+    // to replace it made the controller itself a claim generator: a green
+    // controller result could contain five fabricated audit objects without
+    // ever starting the installed CLI or Studio.  Test doubles remain
+    // available only behind an explicit, non-configurable dependency flag.
+    if (dependencies.runAudit && dependencies.runAudit !== runP805ValeraBrowserAudit && dependencies.allowTestAuditRunner !== true) fail("public audit phases cannot substitute the packed runner");
+    const services = {runAudit:dependencies.runAudit ?? runP805ValeraBrowserAudit, now, ...dependencies}; packed(config, `${phase} audit`);
     const audits = [];
     // Sequential execution guarantees per-persona process ownership and avoids a
     // shared random Studio port being mistaken for clean-room reuse.

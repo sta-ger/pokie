@@ -197,7 +197,7 @@ function qualityDefects(audit) {
         ["focus", measurements.visibleFocus === true ? 0 : 1],
         ["performance", Object.values(audit.performance ?? {}).some((entry) => entry?.classification === "regression") ? 1 : 0],
     ].filter(([, count]) => count > 0).map(([kind]) => kind);
-    if (!Array.isArray(audit.rendered?.defects) || defects.some((kind) => !audit.rendered.defects.some((defect) => defect?.kind === kind && typeof defect.evidenceId === "string"))) fail(`${audit.phase} ${audit.persona} does not retain every measured browser defect as evidence`);
+    if (!Array.isArray(audit.rendered?.defects) || defects.some((kind) => !audit.rendered.defects.some((defect) => defect?.kind === kind && typeof defect.evidenceId === "string" && defect.evidenceId))) fail(`${audit.phase} ${audit.persona} does not retain every measured browser defect as evidence`);
     return defects;
 }
 
@@ -240,7 +240,8 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     for (const item of frozen.findings) { validateFinding(item, `frozen finding ${item?.id ?? "unknown"}`); await boundedEvidence(root, item.evidence, initialCandidate, `frozen finding ${item.id}`, {after:provenance.startedAt, before:frozen.frozenAt, used}); }
     for (const audit of initial.audits) for (const defect of qualityDefects(audit)) {
         const measured = audit.rendered.defects.find((value) => value.kind === defect);
-        if (!frozen.findings.some((finding) => finding.persona === audit.persona && finding.evidence?.evidenceId === measured?.evidenceId && finding.measurement?.kind === defect && finding.measurement?.evidenceId === measured?.evidenceId)) fail(`initial ${audit.persona} ${defect} defect was not frozen against its measured evidence`);
+        const evidence = audit.evidence.find((item) => item.evidenceId === measured?.evidenceId);
+        if (!evidence || !["browser-log", "page-state", "timing"].includes(evidence.kind) || !frozen.findings.some((finding) => finding.persona === audit.persona && finding.evidence?.evidenceId === measured?.evidenceId && finding.evidence?.sha256 === evidence.sha256 && finding.measurement?.kind === defect && finding.measurement?.evidenceId === measured?.evidenceId && finding.measurement?.sha256 === evidence.sha256)) fail(`initial ${audit.persona} ${defect} defect was not frozen against its measured evidence`);
     }
     const findingRegister = records["finding-register.json"];
     if (findingRegister.schemaVersion !== P805_SCHEMA_VERSION || findingRegister.campaignId !== provenance.campaignId || !Array.isArray(findingRegister.findings)) fail("finding register is incomplete");
@@ -269,7 +270,8 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
             const machineReceipt = await externalJson(receipt.path, `regression ${finding.id} machine receipt`);
             if (machineReceipts.has(receipt.sha256)) fail(`regression ${finding.id} reuses an independently authenticated machine receipt`);
             machineReceipts.add(receipt.sha256);
-            if (digest(machineReceipt.contents) !== receipt.sha256 || machineReceipt.value?.kind !== "p8-05-machine-receipt" || typeof machineReceipt.value?.issuer !== "string" || !machineReceipt.value.issuer || typeof machineReceipt.value?.receiptId !== "string" || !machineReceipt.value.receiptId || machineReceipt.value?.candidateId !== finalCandidate.candidateId || machineReceipt.value?.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || machineReceipt.value?.testPath !== regression.testPath || machineReceipt.value?.passed !== true || machineReceipt.value?.resultSha256 !== digest(`${JSON.stringify(resultPayload)}\n`) || !iso(machineReceipt.value?.completedAt) || Date.parse(machineReceipt.value.completedAt) < Date.parse(result.completedAt)) fail(`regression ${finding.id} machine receipt is not an independent authenticated result`);
+            const authentication = machineReceipt.value?.authentication;
+            if (digest(machineReceipt.contents) !== receipt.sha256 || machineReceipt.value?.kind !== "p8-05-machine-receipt" || typeof machineReceipt.value?.issuer !== "string" || !machineReceipt.value.issuer || typeof machineReceipt.value?.receiptId !== "string" || !machineReceipt.value.receiptId || !authentication || authentication.scheme !== "verifier-owned-digest" || typeof authentication.verifierId !== "string" || !authentication.verifierId || authentication.attestedResultSha256 !== digest(`${JSON.stringify(resultPayload)}\n`) || machineReceipt.value?.candidateId !== finalCandidate.candidateId || machineReceipt.value?.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || machineReceipt.value?.testPath !== regression.testPath || machineReceipt.value?.passed !== true || machineReceipt.value?.resultSha256 !== digest(`${JSON.stringify(resultPayload)}\n`) || !iso(machineReceipt.value?.completedAt) || Date.parse(machineReceipt.value.completedAt) < Date.parse(result.completedAt)) fail(`regression ${finding.id} machine receipt is not an independent authenticated result`);
         }
     }
     const retests = records["retests.json"];
