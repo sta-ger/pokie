@@ -29,6 +29,8 @@ export function NavTabs<T extends string>({items, active, onSelect}: {items: Nav
                         component="button"
                         type="button"
                         id={item.auditControlId}
+                        data-pokie-lifecycle="navigation"
+                        data-pokie-lifecycle-route={item.value}
                         label={item.label}
                         active={item.value === active}
                         aria-current={item.value === active ? "page" : undefined}

@@ -231,7 +231,7 @@ export function SimulationTab({
                     </Text>
                     <QuickActions>
                         <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
-                        <Button id="simulation-run" type="submit" loading={progress?.status === "queued"} disabled={active}>
+                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active}>
                             Run Simulation
                         </Button>
                     </QuickActions>
@@ -268,13 +268,13 @@ export function SimulationTab({
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (
-                                    <Button id="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel, undefined, {confirm: "simulation-cancel-confirm", cancel: "simulation-cancel-dismiss"})}>
+                                    <Button id="simulation-cancel" data-pokie-lifecycle="recovery" data-pokie-lifecycle-operation="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel, undefined, {confirm: "simulation-cancel-confirm", cancel: "simulation-cancel-dismiss"})}>
                                         Cancel
                                     </Button>
                                 )}
-                                {cancellationPending && <Text role="status" size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
+                                {cancellationPending && <Text role="status" aria-live="polite" data-pokie-lifecycle-result="simulation" size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
                                 {canRetry && (
-                                    <Button id="simulation-retry" variant="default" onClick={onRetry}>
+                                    <Button id="simulation-retry" data-pokie-lifecycle="recovery" data-pokie-lifecycle-operation="simulation-retry" variant="default" onClick={onRetry}>
                                         Retry
                                     </Button>
                                 )}

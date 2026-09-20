@@ -427,6 +427,8 @@ function TargetCard({
                         mt="sm"
                         onClick={onGenerateOutcomeLibrary}
                         id="outcome-library-generate"
+                        data-pokie-lifecycle="operation"
+                        data-pokie-lifecycle-operation="outcome-library"
                         loading={outcomeLibraryRun.status === "running"}
                         disabled={outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded")}
                     >
@@ -573,7 +575,7 @@ function TargetCard({
                             )}
                         </>
                     )}
-                    <Button id={`artifact-build-${card.artifactTarget}`} size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
+                    <Button id={`artifact-build-${card.artifactTarget}`} data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="artifact-build" size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
                         Build
                     </Button>
                     {artifactBuildRun.status === "running" && (

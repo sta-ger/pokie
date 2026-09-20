@@ -69,6 +69,7 @@ const semantic = (persona, observation, contract, viewport) => {
             routeAfterActivation: route,
             stableControlId: contract.actionControlId ?? screen.navigationControlId,
             identityAttribute: "id",
+            lifecycle: contract.body === undefined ? {kind: "navigation", value: contract.route} : {kind: "operation", value: contract.body},
         };
     return {
         bodySha256,
