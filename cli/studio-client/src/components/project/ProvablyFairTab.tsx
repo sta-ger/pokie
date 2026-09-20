@@ -312,7 +312,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         mb="sm"
                     />
                     <QuickActions>
-                        <Button onClick={runConfigure} loading={configureView.status === "loading"} disabled={!isConfigureValid(fields)}>
+                        <Button id="fairness-compute-commitments" onClick={runConfigure} loading={configureView.status === "loading"} disabled={!isConfigureValid(fields)}>
                             Compute commitments
                         </Button>
                     </QuickActions>

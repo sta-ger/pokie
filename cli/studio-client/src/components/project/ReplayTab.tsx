@@ -448,7 +448,7 @@ export function ReplayTab({
                             key={form.key("round")}
                         />
                         <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                        <Button type="submit">Load</Button>
+                        <Button id="replay-load" type="submit">Load</Button>
                     </QuickActions>
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select

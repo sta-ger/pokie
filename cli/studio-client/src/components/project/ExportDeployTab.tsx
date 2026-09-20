@@ -426,6 +426,7 @@ function TargetCard({
                         size="xs"
                         mt="sm"
                         onClick={onGenerateOutcomeLibrary}
+                        id="outcome-library-generate"
                         loading={outcomeLibraryRun.status === "running"}
                         disabled={outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded")}
                     >
@@ -572,7 +573,7 @@ function TargetCard({
                             )}
                         </>
                     )}
-                    <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
+                    <Button id={`artifact-build-${card.artifactTarget}`} size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
                         Build
                     </Button>
                     {artifactBuildRun.status === "running" && (

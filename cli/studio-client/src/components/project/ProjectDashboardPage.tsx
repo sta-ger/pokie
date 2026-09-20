@@ -166,14 +166,14 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // own canonical reader/analysis/draw for an "outcome-source" one) -- see the render tree below, never a
 // second, capability-gated tab of its own.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
-    {value: "overview", label: "Overview"},
-    {value: "gameModel", label: "Game Model"},
-    {value: "play", label: "Play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "simulation", label: "Simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
-    {value: "exportDeploy", label: "Build/Export", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
-    {value: "certification", label: "Certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
-    {value: "provablyFair", label: "Provably Fair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
+    {value: "overview", label: "Overview", auditControlId: "project-tab:overview"},
+    {value: "gameModel", label: "Game Model", auditControlId: "project-tab:gameModel"},
+    {value: "play", label: "Play", auditControlId: "project-tab:play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "simulation", label: "Simulation", auditControlId: "project-tab:simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", auditControlId: "project-tab:replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
+    {value: "exportDeploy", label: "Build/Export", auditControlId: "project-tab:exportDeploy", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
+    {value: "certification", label: "Certification", auditControlId: "project-tab:certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
+    {value: "provablyFair", label: "Provably Fair", auditControlId: "project-tab:provablyFair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {

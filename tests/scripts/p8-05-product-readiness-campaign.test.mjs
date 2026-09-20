@@ -67,6 +67,8 @@ const semantic = (persona, observation, contract, viewport) => {
             keyboardActivated: true,
             activation: "keyboard",
             routeAfterActivation: route,
+            stableControlId: contract.actionControlId ?? screen.navigationControlId,
+            identityAttribute: "id",
         };
     return {
         bodySha256,
@@ -81,7 +83,7 @@ const semantic = (persona, observation, contract, viewport) => {
             route,
             viewport,
             screen: {name: contract.route, region: screen.region, navigationControl: screen.navigationControl, terminalText: screen.result},
-            control: {id: `p8-05:${contract.route}:${actionControl}`, role: "button", accessibleName: matchedLabel, enabled: true},
+            control: {id: contract.actionControlId ?? screen.navigationControlId, role: "button", accessibleName: matchedLabel, enabled: true},
             precondition: {enabled: true, accessibleName: matchedLabel, region: screen.region},
             interaction,
             request: {
@@ -110,6 +112,7 @@ const semantic = (persona, observation, contract, viewport) => {
                 textSha256: hash(`The rendered ${observation} result completed.`),
                 resultSha256: responseSha256,
                 observedAt: stamp(1),
+                changedAfterRequest: true,
             },
             workflow: {
                 persona,
@@ -200,7 +203,7 @@ async function campaignFixture() {
                 initiator: "rendered-poll",
             });
             if (contract.poll) browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${observation}`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(source.result.id))}`, method: "GET"}}});
-            actions.push({
+            for (const actionViewport of ["wide", "compact", "narrow"]) actions.push({
                 observation,
                 route: source.route,
                 expectedControl: contract.control,
@@ -213,14 +216,17 @@ async function campaignFixture() {
                 terminal: {status: "completed", resultSha256: source.responseSha256},
                 evidenceId: page.evidenceId,
                 screenshotEvidenceId: screenshot.evidenceId,
-                viewport,
+                viewport: actionViewport,
                 elapsedMs: 1,
                 screenState: contract.route,
                 screenNavigationControl: P805_SCREEN_CONTROL_STATES[contract.route].navigationControl,
-                stableControlId: `p8-05:${contract.route}:${contract.actionControl ?? contract.control}`,
+                stableControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
+                domControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
+                identityAttribute: "id",
                 browserRequestId: `browser-${observation}`,
                 precondition: {enabled: true, accessibleName: source.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256, changedAfterRequest: true},
+                accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: source.interaction,
             });
         }

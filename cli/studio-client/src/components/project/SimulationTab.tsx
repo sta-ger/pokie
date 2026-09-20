@@ -231,7 +231,7 @@ export function SimulationTab({
                     </Text>
                     <QuickActions>
                         <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
-                        <Button type="submit" loading={progress?.status === "queued"} disabled={active}>
+                        <Button id="simulation-run" type="submit" loading={progress?.status === "queued"} disabled={active}>
                             Run Simulation
                         </Button>
                     </QuickActions>
@@ -268,13 +268,13 @@ export function SimulationTab({
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (
-                                    <Button color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel)}>
+                                    <Button id="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel)}>
                                         Cancel
                                     </Button>
                                 )}
                                 {cancellationPending && <Text role="status" size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
                                 {canRetry && (
-                                    <Button variant="default" onClick={onRetry}>
+                                    <Button id="simulation-retry" variant="default" onClick={onRetry}>
                                         Retry
                                     </Button>
                                 )}
