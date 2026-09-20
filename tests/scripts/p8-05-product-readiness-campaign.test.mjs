@@ -59,7 +59,6 @@ const semantic = (persona, observation, contract, viewport) => {
             keyboardFocused: true,
             keyboardActivated: true,
             activation: "keyboard",
-            outcome: contract.terminal,
             routeAfterActivation: route,
         };
     return {
@@ -71,7 +70,7 @@ const semantic = (persona, observation, contract, viewport) => {
         contents: JSON.stringify({
             kind: "p8-05-semantic-page-state",
             operation: observation,
-            outcome: contract.terminal,
+            expectedOutcome: contract.terminal,
             route,
             viewport,
             interaction,
@@ -86,11 +85,12 @@ const semantic = (persona, observation, contract, viewport) => {
                 initiator: "rendered-control",
             },
             terminal: {
-                status: contract.terminal,
+                status: "completed",
                 complete: true,
                 resultSha256: responseSha256,
                 artifact: contract.artifact ?? null,
                 result,
+                source: "response",
             },
             workflow: {
                 persona,
@@ -176,7 +176,8 @@ async function campaignFixture() {
                 expectedBodyKind: contract.body ?? null,
                 expectedApi: contract.api,
                 expectedArtifact: contract.artifact ?? null,
-                terminal: contract.terminal,
+                expectedTerminal: contract.terminal,
+                terminal: {status: "completed", resultSha256: source.responseSha256},
                 evidenceId: page.evidenceId,
                 screenshotEvidenceId: screenshot.evidenceId,
                 viewport,
