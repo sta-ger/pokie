@@ -93,8 +93,8 @@ const semantic = (persona, observation, contract, viewport) => {
                 resultSha256: responseSha256,
                 artifact: contract.artifact ?? null,
                 result,
-                source: contract.method === "POST" ? "rendered-poll" : "response",
-                ...(contract.method === "POST" ? {jobId} : {}),
+                source: contract.poll ? "rendered-poll" : "response",
+                ...(contract.poll ? {jobId, pollPath: contract.poll.replace("{id}", encodeURIComponent(jobId))} : {}),
             },
             workflow: {
                 persona,
@@ -175,16 +175,16 @@ async function campaignFixture() {
                 {method: "Network.requestWillBeSent", params: {requestId: `browser-${observation}`, request: {url: `http://127.0.0.1${contract.api}`, method: contract.method, ...(contract.body === undefined ? {} : {postData: contract.body})}}},
                 {method: "Network.responseReceived", params: {requestId: `browser-${observation}`, response: {status: 200}}},
             );
-            if (contract.method === "POST") apiEntries.push({
+            if (contract.poll) apiEntries.push({
                 observation,
                 method: "GET",
-                path: `${contract.api}/jobs/${source.result.id}`,
+                path: contract.poll.replace("{id}", encodeURIComponent(source.result.id)),
                 status: 200,
                 payload: source.result,
                 browserRequestId: `poll-${observation}`,
                 initiator: "rendered-poll",
             });
-            if (contract.method === "POST") browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${observation}`, request: {url: `http://127.0.0.1${contract.api}/jobs/${source.result.id}`, method: "GET"}}});
+            if (contract.poll) browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${observation}`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(source.result.id))}`, method: "GET"}}});
             actions.push({
                 observation,
                 route: source.route,
@@ -603,6 +603,20 @@ test("rejects an HTTP-success semantic record whose completed terminal result ac
     } finally {
         await fixture.cleanup();
     }
+});
+
+test("rejects a durable result whose browser poll is from a different public job workflow", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "simulation-success-failure-cancellation"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.terminal.pollPath = `/api/project/replays/${semantic.terminal.jobId}`;
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome/i);
+    } finally { await fixture.cleanup(); }
 });
 
 test("rejects an HTTP-success report observation with no completed report or browser request provenance", async () => {
