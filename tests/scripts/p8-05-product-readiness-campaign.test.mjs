@@ -17,11 +17,13 @@ const initial = {
         candidateId: "1".repeat(40),
         candidatePackageSha256: "a".repeat(64),
         candidateExecutableSha256: "c".repeat(64),
+        candidateExecutableReceipt: {path: "/tmp/p8-05-initial-executable-receipt.json", sha256: "e".repeat(64)},
     },
     retest = {
         candidateId: "2".repeat(40),
         candidatePackageSha256: "b".repeat(64),
         candidateExecutableSha256: "d".repeat(64),
+        candidateExecutableReceipt: {path: "/tmp/p8-05-retest-executable-receipt.json", sha256: "f".repeat(64)},
     };
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const stamp = (offset) => new Date(Date.parse("2026-09-19T20:00:00.000Z") + offset).toISOString();
@@ -243,6 +245,9 @@ async function campaignFixture() {
                 installedPackageJsonSha256: "f".repeat(64),
                 declaredCandidateExecutableSha256: candidate.candidateExecutableSha256,
                 candidateExecutableSha256: candidate.candidateExecutableSha256,
+                candidateExecutableReceiptSha256: candidate.candidateExecutableReceipt.sha256,
+                candidateExecutableReceiptId: "pack-verifier-receipt",
+                candidateExecutableReceiptIssuer: "pack-verifier",
                 candidateTreeManifestCandidateId: candidate.candidateId,
                 candidateTreeManifestSha256: "e".repeat(64),
             }),
@@ -264,6 +269,9 @@ async function campaignFixture() {
                 installedPackageJsonSha256: "f".repeat(64),
                 declaredCandidateExecutableSha256: candidate.candidateExecutableSha256,
                 candidateExecutableSha256: candidate.candidateExecutableSha256,
+                candidateExecutableReceiptSha256: candidate.candidateExecutableReceipt.sha256,
+                candidateExecutableReceiptId: "pack-verifier-receipt",
+                candidateExecutableReceiptIssuer: "pack-verifier",
                 candidateExecutableFiles: 1,
                 candidateTreeManifestCandidateId: candidate.candidateId,
                 candidateTreeManifestSha256: "e".repeat(64),
@@ -560,6 +568,21 @@ test("rejects an archive whose executable manifest no longer matches the verifie
         const file = path.join(fixture.directory, "retests.json"),
             value = JSON.parse(await readFile(file, "utf8"));
         value.audits[0].packageIdentity.candidateExecutableSha256 = "0".repeat(64);
+        await writeFile(file, `${JSON.stringify(value)}\n`);
+        await assert.rejects(
+            () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
+            /does not prove its installed archive executable contents/i,
+        );
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("rejects campaign-authored executable provenance without its external verifier receipt", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const file = path.join(fixture.directory, "retests.json"), value = JSON.parse(await readFile(file, "utf8"));
+        delete value.audits[0].packageIdentity.candidateExecutableReceiptSha256;
         await writeFile(file, `${JSON.stringify(value)}\n`);
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),

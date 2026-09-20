@@ -21,7 +21,7 @@ async function writeRecord(directory, name, value) { await writeFile(recordPath(
 // The executable manifest is supplied by the pack-producing controller, not
 // derived from the archive being audited.  This closes the "same package.json,
 // different executable" substitution hole before a persona command runs.
-function candidate(value, name) { if (!value || !commit(value.candidateId) || !sha(value.candidatePackageSha256) || !sha(value.candidateExecutableSha256)) fail(`${name} must name an immutable candidate, package digest, and executable manifest digest`); }
+function candidate(value, name) { if (!value || !commit(value.candidateId) || !sha(value.candidatePackageSha256) || !sha(value.candidateExecutableSha256) || !path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") || !sha(value?.candidateExecutableReceipt?.sha256)) fail(`${name} must name an immutable candidate, package digest, executable manifest digest, and external executable receipt`); }
 function base(config) { if (!config || !path.isAbsolute(config.directory ?? "")) fail("configuration requires an absolute campaign directory"); }
 function packed(config, name) { if (!path.isAbsolute(config?.packedCli ?? "") || !path.isAbsolute(config?.packedPackage ?? "")) fail(`${name} requires a packed CLI and package archive`); }
 async function externalAnchor(anchor, expectedKind, expected) {
@@ -39,7 +39,7 @@ async function runAudits(config, phase, candidateValue, dependencies) {
     // Sequential execution guarantees per-persona process ownership and avoids a
     // shared random Studio port being mistaken for clean-room reuse.
     for (const persona of P805_PERSONAS) {
-        try { audits.push(await services.runAudit({persona, phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage})); }
+        try { audits.push(await services.runAudit({persona, phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage})); }
         catch (error) {
             const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, persona, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:services.now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
             await writeRecord(config.directory, `${phase}-${persona}-audit.failed.json`, failure);
