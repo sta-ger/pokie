@@ -506,6 +506,16 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
 
     const simulation = useSimulationPoll();
 
+    // A reload recreates the hook, but the server-owned project-job list
+    // remains authoritative. Reattach only to its active simulation record so
+    // the Run step restores the real Cancel/Retry state rather than leaving a
+    // durable job visible only in the generic history cards.
+    useEffect(() => {
+        if (projectKey === undefined || simulation.currentJobId !== undefined) return;
+        const activeSimulation = commonJobs.jobs.find((job) => job.operation === "simulation" && (job.status === "queued" || job.status === "running" || job.status === "cancelling"));
+        if (activeSimulation !== undefined) simulation.restore(activeSimulation.id);
+    }, [commonJobs.jobs, projectKey, simulation.currentJobId, simulation.restore]);
+
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
     const [reportDetail, setReportDetail] = useState<ReportDetailState>({status: "empty"});

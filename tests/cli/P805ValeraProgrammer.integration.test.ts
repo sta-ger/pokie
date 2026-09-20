@@ -1,4 +1,4 @@
-import {existsSync, mkdtempSync, readFileSync, rmSync} from "fs";
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync} from "fs";
 import {execFileSync} from "child_process";
 import {tmpdir} from "os";
 import path from "path";
@@ -51,7 +51,10 @@ describe("P8-05 Valera Programmer public path", () => {
         const candidateDirectory = mkdtempSync(path.join(tmpdir(), "pokie-p8-05-packed-cli-"));
         const installation = path.join(candidateDirectory, "installation");
         const sourceArchiveDirectory = path.join(candidateDirectory, "source");
-        const sourceArchive = () => JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024})) as Array<{filename: string}>;
+        const sourceArchive = () => {
+            mkdirSync(sourceArchiveDirectory, {recursive: true});
+            return JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024})) as Array<{filename: string}>;
+        };
         try {
             const packed = sourceArchive();
             expect(packed).toHaveLength(1);
@@ -63,12 +66,14 @@ describe("P8-05 Valera Programmer public path", () => {
             const launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
             const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "pokie", "package.json"), "utf8")) as {gitHead?: string};
             const run = (...args: string[]) => execFileSync(launcher, args, {encoding: "utf8", stdio: "pipe"});
+            const npxLauncher = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js");
             const blueprint = path.join(candidateDirectory, "Valera packed blueprint.json");
             const wasm = path.join(candidateDirectory, "Valera packed artifact.wasm");
 
             expect(installedPackage.gitHead).toBe(candidate);
             expect(run("--help")).toContain("Usage:");
-            expect(execFileSync("npx", ["--no-install", "--prefix", installation, "pokie", "--help"], {encoding: "utf8", stdio: "pipe"})).toContain("Usage:");
+            expect(existsSync(npxLauncher)).toBe(true);
+            expect(execFileSync(process.execPath, [npxLauncher, "--no-install", "--prefix", installation, "pokie", "--help"], {encoding: "utf8", stdio: "pipe"})).toContain("Usage:");
             expect(run("create", "Valera Packed Programmer", "--random", "--seed", "805", "--out", blueprint)).toContain("created");
             expect(run("build", blueprint, "--target", "wasm", "--out", wasm)).toContain("Artifact \"wasm\" built");
             expect(run("validate", wasm)).toContain("valid           yes");

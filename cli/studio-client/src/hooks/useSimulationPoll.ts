@@ -114,6 +114,24 @@ export function useSimulationPoll() {
             });
     }
 
+    /**
+     * Reattach a newly mounted dashboard to a server-owned simulation.  The
+     * job id comes from the durable project-job discovery surface, not from
+     * route or session memory, so a reload retains the same public Cancel and
+     * Retry controls as the original run.
+     */
+    function restore(id: string): void {
+        if (currentJobId.current !== undefined) {
+            return;
+        }
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        currentJobId.current = id;
+        setError(undefined);
+        setCancellationRequested(false);
+        poll(id, generation);
+    }
+
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
     // never show a trace of the previous one's simulation. Clears `currentJobId` first (so a poll response
     // already in flight from the old project, once it lands, fails the `currentJobId.current !== id`
@@ -173,5 +191,5 @@ export function useSimulationPoll() {
             });
     }
 
-    return {progress, job, error, cancellationRequested, run, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    return {progress, job, error, cancellationRequested, run, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

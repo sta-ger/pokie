@@ -8,6 +8,7 @@ import {
     P805_PERSONAS,
     P805_REQUIRED_EVIDENCE_KINDS,
     P805_REQUIRED_OBSERVATIONS,
+    P805_SCREEN_CONTROL_STATES,
     P805_SCHEMA_VERSION,
     P805_WORKFLOW_CONTRACTS,
     validateP805ProductReadinessCampaign,
@@ -56,9 +57,12 @@ const semantic = (persona, observation, contract, viewport) => {
         result = contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation, downloadPath: `/downloads/${jobId}.json`}] : {id: jobId, status: "completed", observation, ...(contract.artifact === undefined ? {} : {outputPath: `/outputs/${jobId}`})},
         responseSha256 = hash(JSON.stringify(result)),
         route = `/#/project/fixture/${contract.route}`,
+        screen = P805_SCREEN_CONTROL_STATES[contract.route],
+        actionControl = contract.actionControl ?? contract.control,
+        matchedLabel = contract.actionControlMatch === "prefix" ? `${contract.actionControl} (base)` : actionControl,
         interaction = {
-            control: contract.actionControl ?? contract.control,
-            matchedLabel: contract.actionControlMatch === "prefix" ? `${contract.actionControl} (base)` : contract.actionControl ?? contract.control,
+            control: actionControl,
+            matchedLabel,
             keyboardFocused: true,
             keyboardActivated: true,
             activation: "keyboard",
@@ -76,6 +80,9 @@ const semantic = (persona, observation, contract, viewport) => {
             expectedOutcome: contract.terminal,
             route,
             viewport,
+            screen: {name: contract.route, region: screen.region, navigationControl: screen.navigationControl, terminalText: screen.result},
+            control: {id: `p8-05:${contract.route}:${actionControl}`, role: "button", accessibleName: matchedLabel, enabled: true},
+            precondition: {enabled: true, accessibleName: matchedLabel, region: screen.region},
             interaction,
             request: {
                 path: contract.api,
@@ -97,6 +104,8 @@ const semantic = (persona, observation, contract, viewport) => {
                 ...(contract.poll ? {jobId, pollPath: contract.poll.replace("{id}", encodeURIComponent(jobId))} : {}),
             },
             renderedTerminal: {
+                state: "rendered",
+                observedAfterRequestId: `browser-${observation}`,
                 text: `The rendered ${observation} result completed.`,
                 textSha256: hash(`The rendered ${observation} result completed.`),
                 resultSha256: responseSha256,
@@ -206,6 +215,12 @@ async function campaignFixture() {
                 screenshotEvidenceId: screenshot.evidenceId,
                 viewport,
                 elapsedMs: 1,
+                screenState: contract.route,
+                screenNavigationControl: P805_SCREEN_CONTROL_STATES[contract.route].navigationControl,
+                stableControlId: `p8-05:${contract.route}:${contract.actionControl ?? contract.control}`,
+                browserRequestId: `browser-${observation}`,
+                precondition: {enabled: true, accessibleName: source.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256},
                 interaction: source.interaction,
             });
         }
@@ -609,6 +624,21 @@ test("rejects semantic drift when a rewritten record no longer binds its rendere
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
     } finally { await fixture.cleanup(); }
 });
+
+test("rejects a rendered terminal captured without the browser request that produced it", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.renderedTerminal.observedAfterRequestId = "unrelated-browser-request";
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+    } finally { await fixture.cleanup(); }
+});
+
 test("rejects an HTTP-success semantic record whose completed terminal result actually failed", async () => {
     const fixture = await campaignFixture();
     try {

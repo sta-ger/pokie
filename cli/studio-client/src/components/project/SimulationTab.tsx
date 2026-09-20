@@ -148,7 +148,7 @@ export function SimulationTab({
     const prevStatusRef = useRef<string | undefined>(undefined);
     useEffect(() => {
         const status = progress?.status;
-        if (status === "queued") {
+        if (status === "queued" || status === "running" || status === "cancelling") {
             setActiveStep(1);
         }
         const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running" || prevStatusRef.current === "cancelling";

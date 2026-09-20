@@ -20,6 +20,25 @@ function strictModeWrapper(fetchImpl: FetchLike) {
 }
 
 describe("useSimulationPoll - StrictMode + cleanup", () => {
+    it("reattaches to a durable active job after reload so its public cancellation state is restored", async () => {
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("cancelled", 2))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 2))});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.restore("job-1"));
+        await waitFor(() => expect(result.current.job?.status).toBe("running"));
+        expect(result.current.currentJobId).toBe("job-1");
+        act(() => result.current.cancel());
+        await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
+    });
+
     it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
         let releaseCancel: (() => void) | undefined;
         const fetchImpl: FetchLike = (url, init) => {
