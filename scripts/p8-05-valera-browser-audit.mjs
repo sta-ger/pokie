@@ -58,9 +58,25 @@ async function connect(devtools) {
     await new Promise((resolve, reject) => { socket.once("open", resolve); socket.once("error", reject); });
     let id = 0;
     const pending = new Map(), events = [];
+    // Chromium emits a high-volume stream of data/loading notifications for
+    // every Studio bundle.  Retaining all of them makes each later
+    // `slice(cursor).find(...)` progressively more expensive and can turn the
+    // packed whole-file workflow into the very performance regression it is
+    // intended to detect.  Keep the machine-observable events that bind a
+    // browser action to its request/result and those needed for diagnostics.
+    const retainedEvents = new Set([
+        "Network.requestWillBeSent",
+        "Network.responseReceived",
+        "Network.loadingFailed",
+        "Runtime.exceptionThrown",
+        "Log.entryAdded",
+    ]);
     socket.on("message", (raw) => {
         const value = JSON.parse(raw.toString());
-        if (value.id === undefined) { events.push(value); return; }
+        if (value.id === undefined) {
+            if (retainedEvents.has(value.method)) events.push(value);
+            return;
+        }
         const job = pending.get(value.id);
         if (!job) return;
         pending.delete(value.id);
