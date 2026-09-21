@@ -9,6 +9,33 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it("revalidates the rendered project context after an Outcome Library terminal receipt enables Certification", async () => {
+        let contextRequests = 0;
+        const completedOutcomeLibraryJob = {
+            id: "outcome-job-completed", projectId: "/games/sample-slot", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/sample-slot/outcomelibrary",
+            status: "completed", createdAt: 1,
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => {
+                contextRequests += 1;
+                return contextRequests === 1
+                    ? {ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}
+                    : {ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "outcomeLibrary", capabilities: ["outcomeLibrary.read"]}};
+            },
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [completedOutcomeLibraryJob]}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        expect(await screen.findByRole("button", {name: "Certification"})).toBeEnabled();
+        expect(contextRequests).toBeGreaterThanOrEqual(2);
+    });
+
     it("keeps an Outcome Library durable job visible through the common card outside Build/Export", async () => {
         const outcomeJob = {
             id: "outcome-job-1", projectId: "/games/sample-slot", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/sample-slot/outcomelibrary",

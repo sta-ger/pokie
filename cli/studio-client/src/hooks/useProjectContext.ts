@@ -21,7 +21,7 @@ function projectContextErrorDetail(error: unknown): string {
 // `requestedProjectRoot` is taken from a project-scoped history route. It must be made current on
 // the server before any dashboard data is read: the server intentionally owns one active project,
 // while browser history may point back to an earlier one.
-export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderView {
+export function useProjectContext(requestedProjectRoot?: string, refreshGeneration = 0): ProjectHeaderView {
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
@@ -93,7 +93,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
             cancelled = true;
             clearTimeout(timeoutId);
         };
-    }, [fetchImpl, openWithConfirmation, requestedProjectRoot]);
+    }, [fetchImpl, openWithConfirmation, refreshGeneration, requestedProjectRoot]);
 
     return header;
 }

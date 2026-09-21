@@ -93,6 +93,11 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         await user.click(run);
 
         expect(await screen.findByText("line")).toBeInTheDocument();
+        const lifecycleResult = container.querySelector('[data-pokie-lifecycle-result="replay"]');
+        expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
+        const replayArtifact = lifecycleResult?.querySelector('[data-pokie-lifecycle-artifact="replay-descriptor"]');
+        expect(replayArtifact).toHaveAccessibleName("Download replay JSON");
+        expect(replayArtifact).toHaveAttribute("href", expect.stringContaining(`/api/project/replays/${job.id}/download`));
 
         // Orientation: the real 3x3 grid (3 reels x 3 rows), symbols exactly as captured live.
         const cells = Array.from(container.querySelectorAll<HTMLElement>("[data-cell]"));

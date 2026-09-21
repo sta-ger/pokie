@@ -1041,16 +1041,25 @@ export function ReplayTab({
                                         </Alert>
                                     )}
                                     {error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
-                                    <Text
+                                    <div
                                         role="status"
                                         aria-live="polite"
                                         data-pokie-lifecycle-result="replay"
                                         data-pokie-lifecycle-terminal={progress.status}
-                                        size="sm"
-                                        mb={4}
                                     >
-                                        {progress.status} — {progress.completedRounds}/{progress.round} rounds
-                                    </Text>
+                                        <Text size="sm" mb={4}>
+                                            {progress.status} — {progress.completedRounds}/{progress.round} rounds
+                                        </Text>
+                                        {/* This is the completed replay's real public artifact, kept with the
+                                            terminal status rather than in the page-wide action footer. A person
+                                            can now reach the result and its JSON through one rendered operation
+                                            receipt, including when a descriptor has no visual game screen. */}
+                                        {!active && result && exportReady && (
+                                            <Anchor data-pokie-lifecycle-artifact="replay-descriptor" href={buildReplayDownloadUrl(result.id)} download>
+                                                Download replay JSON
+                                            </Anchor>
+                                        )}
+                                    </div>
                                     <Progress value={progress.percent} mb="sm" />
                                 </div>
                             )}
@@ -1163,11 +1172,6 @@ export function ReplayTab({
                     <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin)}>
                         Download JSON
                     </Button>
-                )}
-                {findMethod !== "spin" && result && exportReady && (
-                    <Anchor href={buildReplayDownloadUrl(result.id)} download>
-                        Download JSON
-                    </Anchor>
                 )}
                 {!exportReady && (
                     <Button variant="default" disabled>

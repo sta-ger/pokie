@@ -448,7 +448,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${destination}${migrationSearch(tab)}`, {replace: true});
     }, [navigate, requestedMigration, requestedProjectRoot, tab]);
 
-    const header = useProjectContext(requestedProjectRoot);
+    const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
+    const header = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
             ? header.projectRoot
@@ -458,6 +459,21 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const capabilityRefreshJobsRef = useRef(new Set<string>());
+    useEffect(() => {
+        // An outcome-library job can add the source-reading capability that
+        // exposes Certification. Refresh the real project header once its
+        // durable terminal record arrives, so the next public navigation is
+        // available without asking users to reload Studio.
+        const completedOutcomeLibraryJob = commonJobs.jobs.find((job) =>
+            job.operation.includes("outcome-library") &&
+            ["completed", "success"].includes(job.status) &&
+            !capabilityRefreshJobsRef.current.has(job.id),
+        );
+        if (completedOutcomeLibraryJob === undefined) return;
+        capabilityRefreshJobsRef.current.add(completedOutcomeLibraryJob.id);
+        setContextRefreshGeneration((generation) => generation + 1);
+    }, [commonJobs.jobs]);
     // Build/Export can provide a richer, operation-specific presentation for
     // one Outcome Library job. Keep that ownership at durable-job granularity:
     // concurrent destinations and retained history must continue through the
