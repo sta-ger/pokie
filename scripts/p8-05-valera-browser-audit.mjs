@@ -329,10 +329,22 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // not "complete" a page click by making an unrelated Node-side fetch:
         // that was a convenient audit shortcut, but it hid broken forms and
         // disabled controls from the campaign.
+        // `responseReceived` can precede the point where DevTools exposes
+        // bytes for a small JSON response. Retry that read briefly, while
+        // retaining the original browser request id; a failed response never
+        // becomes a Node-side substitute request.
+        const readBrowserResponseBody = async (requestId, label) => {
+            let lastError;
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+                try { return await cdp.send("Network.getResponseBody", {requestId}); }
+                catch (error) { lastError = error; await wait(125); }
+            }
+            throw new Error(`${label} browser response body was unavailable: ${String(lastError)}`);
+        };
         const browserRequest = async (contract, observation, cursor) => {
             const requestEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === contract.api) || false, `${observation} rendered request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === requestEvent.params.requestId) || false, `${observation} rendered response`);
-            const response = await cdp.send("Network.getResponseBody", {requestId:requestEvent.params.requestId}), body = response.body ?? "", payload = JSON.parse(body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:requestEvent.params.requestId, initiator:"rendered-control"};
+            const response = await readBrowserResponseBody(requestEvent.params.requestId, observation), body = response.body ?? "", payload = JSON.parse(body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:requestEvent.params.requestId, initiator:"rendered-control"};
             api.push(entry);
             if (entry.method !== contract.method || entry.status < 200 || entry.status >= 400 || payload?.ok === false || payload?.success === false || payload?.valid === false || payload?.error !== undefined || (Array.isArray(payload) && payload.length === 0) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(payload?.status)) fail(`${observation} rendered control did not produce a successful semantic response`);
             const started = payload?.job ?? payload, jobId = started?.id;
@@ -357,7 +369,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const event = cdp.events.slice(cursor).findLast((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
                 if (!event) return false;
                 try {
-                    const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), result = JSON.parse(body.body || "{}");
+                    const body = await readBrowserResponseBody(event.params.requestId, observation), result = JSON.parse(body.body || "{}");
                     return !["queued", "running", "cancelling", "pending"].includes(result?.status) ? {event, result} : false;
                 } catch { return false; }
             }, `${observation} rendered terminal job`);
@@ -371,7 +383,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const browserStartRequest = async (contract, observation, cursor, expectedStatuses = [202]) => {
             const requestEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === contract.api) || false, `${observation} rendered start request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === requestEvent.params.requestId) || false, `${observation} rendered start response`);
-            const response = await cdp.send("Network.getResponseBody", {requestId:requestEvent.params.requestId}), payload = JSON.parse(response.body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:requestEvent.params.requestId, initiator:"rendered-control"};
+            const response = await readBrowserResponseBody(requestEvent.params.requestId, observation), payload = JSON.parse(response.body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:requestEvent.params.requestId, initiator:"rendered-control"};
             api.push(entry);
             if (entry.method !== contract.method || !expectedStatuses.includes(entry.status) || (expectedStatuses.includes(202) && (typeof payload?.id !== "string" || !payload.id))) fail(`${observation} rendered workflow did not produce its expected public response`);
             return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor};
@@ -382,7 +394,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // pinning this recovery path to its first queued response.
                 const event = cdp.events.slice(cursor).findLast((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === pathname);
                 if (!event) return false;
-                try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "{}"); return statuses.includes(payload?.status) ? {event, payload} : false; } catch { return false; }
+                try { const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"); return statuses.includes(payload?.status) ? {event, payload} : false; } catch { return false; }
             }, `${observation} rendered terminal result`);
             api.push({observation, method:"GET", path:pathname, status:terminal.event.params.response.status, payload:terminal.payload, browserRequestId:terminal.event.params.requestId, initiator:"rendered-poll"});
             return terminal.payload;
@@ -425,7 +437,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             } else await pressEnter();
             const event = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method) || false, `${observation} rendered ${label} request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.responseReceived" && value.params.requestId === event.params.requestId) || false, `${observation} rendered ${label} response`);
-            const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "{}"), entry = {observation, method:event.params.request.method, path:new URL(event.params.request.url).pathname, bodySha256:digest(event.params.request.postData ?? ""), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:event.params.requestId, initiator:"rendered-control"};
+            const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"), entry = {observation, method:event.params.request.method, path:new URL(event.params.request.url).pathname, bodySha256:digest(event.params.request.postData ?? ""), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:event.params.requestId, initiator:"rendered-control"};
             api.push(entry); return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor};
         };
         const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202]) => {
@@ -494,15 +506,22 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return input.value === value;
         })()`);
         const prepareScreenOperation = async (body, viewport, observation) => {
-            if (body === "artifact-build") return setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`));
-            if (body === "simulation") return setScreenField("Rounds", "1");
-            if (body === "replay") return setScreenField("Target round number in a new replay session", "1");
-            if (body === "certification") return setScreenField("Source outcome-library bundle directory", outcomeBundle);
+            if (body === "artifact-build") return waitFor(
+                () => setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`)),
+                `${observation} product-owned artifact destination`,
+            );
+            const setRequiredScreenField = (label, value) => waitFor(
+                () => setScreenField(label, value),
+                `${observation} product-owned ${label} field`,
+            );
+            if (body === "simulation") return setRequiredScreenField("Rounds", "1");
+            if (body === "replay") return setRequiredScreenField("Target round number in a new replay session", "1");
+            if (body === "certification") return setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
             if (body === "fairness") {
-                const source = await setScreenField("Source outcome-library bundle directory", outcomeBundle);
-                const mode = await setScreenField("Mode name", "base");
-                const server = await setScreenField("Server seed", "p8-05-server-seed");
-                const client = await setScreenField("Client seed", "p8-05-client-seed");
+                const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
+                const mode = await setRequiredScreenField("Mode name", "base");
+                const server = await setRequiredScreenField("Server seed", "p8-05-server-seed");
+                const client = await setRequiredScreenField("Client seed", "p8-05-client-seed");
                 return source && mode && server && client;
             }
             return true;

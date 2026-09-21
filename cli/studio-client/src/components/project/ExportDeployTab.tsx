@@ -513,7 +513,12 @@ function TargetCard({
                         fileFilters={artifactFileFilters(card.artifactTarget)}
                         browseTitle={artifactDestinationTitle(card.artifactTarget)}
                         browseId={`artifact-${card.artifactTarget}-destination`}
-                        data-pokie-lifecycle-field={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
+                        // This belongs to the editable control, not PathInput's
+                        // layout wrapper. The packed browser collector reads the
+                        // rendered input before it can enable Build, so keeping
+                        // the contract on the actual form field prevents a
+                        // route-level adapter from claiming a configured build.
+                        attributes={card.artifactTarget === "parWorkbook" ? {input: {"data-pokie-lifecycle-field": "artifact-build-destination"}} : undefined}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
                         onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}

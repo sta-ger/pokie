@@ -51,6 +51,23 @@ describe("PathInput", () => {
         localStorage.clear();
     });
 
+    it("places explicit input attributes on the editable field rather than its layout wrapper", () => {
+        const {fetchImpl} = createRoutedFakeFetch({});
+
+        renderWithProviders(
+            <PathInput
+                label="Build destination"
+                value=""
+                onChange={() => undefined}
+                onPathSelected={() => undefined}
+                attributes={{input: {"data-pokie-lifecycle-field": "artifact-build-destination"}}}
+            />,
+            {fetchImpl},
+        );
+
+        expect(screen.getByRole("textbox", {name: "Build destination"})).toHaveAttribute("data-pokie-lifecycle-field", "artifact-build-destination");
+    });
+
     it("shows a contextual permission-denied status and remediation (never the raw backend message) when focused", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
