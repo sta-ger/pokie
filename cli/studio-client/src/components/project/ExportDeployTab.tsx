@@ -983,17 +983,21 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         })
             .then((result) => {
                 if (cancelled) return;
-                setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
                 if (result.status === "ok" && result.defaults !== undefined) {
-                    // Never overwrite an explicit choice with a later preflight.
-                    setOutcomeLibraryGenerationOptions((current) => {
-                        const maxOutcomeSpaceSize = current.maxOutcomeSpaceSize || String(result.defaults.maxExactOutcomeSpaceSize);
-                        const sampleSize = current.sampleSize || String(result.defaults.boundedSample.sampleSize);
-                        const seed = current.seed || result.defaults.boundedSample.seed;
-                        if (maxOutcomeSpaceSize === current.maxOutcomeSpaceSize && sampleSize === current.sampleSize && seed === current.seed) return current;
-                        return {...current, maxOutcomeSpaceSize, sampleSize, seed};
-                    });
+                    const maxOutcomeSpaceSize = outcomeLibraryGenerationOptions.maxOutcomeSpaceSize || String(result.defaults.maxExactOutcomeSpaceSize);
+                    const sampleSize = outcomeLibraryGenerationOptions.sampleSize || String(result.defaults.boundedSample.sampleSize);
+                    const seed = outcomeLibraryGenerationOptions.seed || result.defaults.boundedSample.seed;
+                    if (maxOutcomeSpaceSize !== outcomeLibraryGenerationOptions.maxOutcomeSpaceSize || sampleSize !== outcomeLibraryGenerationOptions.sampleSize || seed !== outcomeLibraryGenerationOptions.seed) {
+                        // The token is bound to every request option. Do not
+                        // leave the action enabled for the render that fills
+                        // in server defaults: that frame otherwise combines a
+                        // prior token with the next request body.
+                        setOutcomeLibraryPreflight({status: "loading"});
+                        setOutcomeLibraryGenerationOptions((current) => ({...current, maxOutcomeSpaceSize, sampleSize, seed}));
+                        return;
+                    }
                 }
+                setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
             })
             .catch((error: unknown) => {
                 if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library preflight", errorMessage(error))});

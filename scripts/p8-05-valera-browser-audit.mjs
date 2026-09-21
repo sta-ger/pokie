@@ -318,6 +318,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // React's actual public action owner was never invoked.
         const pressEnter = async () => {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", text:"\r", unmodifiedText:"\r", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
+            // Keep one physical key activation long enough for a portal-backed
+            // confirmation button to receive its native default action before
+            // the matching key-up. This is not a retry: every transaction
+            // still emits exactly one key-down/key-up pair for its control.
+            await wait(50);
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
         };
         // A semantic observation is only valid when the browser itself issued
@@ -342,7 +347,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === requestEvent.params.requestId) || false, `${observation} rendered response`);
             const response = await readBrowserResponseBody(requestEvent.params.requestId, observation), body = response.body ?? "", payload = JSON.parse(body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:requestEvent.params.requestId, initiator:"rendered-control"};
             api.push(entry);
-            if (entry.method !== contract.method || entry.status < 200 || entry.status >= 400 || payload?.ok === false || payload?.success === false || payload?.valid === false || payload?.error !== undefined || (Array.isArray(payload) && payload.length === 0) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(payload?.status)) fail(`${observation} rendered control did not produce a successful semantic response`);
+            if (entry.method !== contract.method || entry.status < 200 || entry.status >= 400 || payload?.ok === false || payload?.success === false || payload?.valid === false || payload?.error !== undefined || (Array.isArray(payload) && payload.length === 0) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(payload?.status)) fail(`${observation} rendered control did not produce a successful semantic response (HTTP ${entry.status}: ${JSON.stringify(payload)})`);
             const started = payload?.job ?? payload, jobId = started?.id;
             // Only contracts with an explicit durable-job route may be
             // polled.  Several public Studio operations (PAR export,
@@ -432,7 +437,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 transaction.confirmation = {required:true, state:"visible", control:confirmationControl};
                 transaction.keyboardActivations.push({phase:"confirmation", controlId:confirmationControl.stableControlId, count:1});
                 await pressEnter();
-                transaction.confirmation.state = "confirmed";
+                transaction.confirmation.state = "activated";
             }
             return transaction;
         };
@@ -441,6 +446,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const event = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method) || false, `${observation} rendered ${operation} request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.responseReceived" && value.params.requestId === event.params.requestId) || false, `${observation} rendered ${operation} response`);
             const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"), entry = {observation, method:event.params.request.method, path:new URL(event.params.request.url).pathname, bodySha256:digest(event.params.request.postData ?? ""), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:event.params.requestId, initiator:"rendered-control"};
+            if (transaction.confirmation.required) transaction.confirmation.state = "confirmed";
             api.push(entry); return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor, transaction};
         };
         const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202]) => {
