@@ -197,6 +197,27 @@ export function SimulationTab({
 
     return (
         <div>
+            {/*
+             * This status is deliberately outside the Run step.  A completed
+             * simulation advances straight to Review, but its operation
+             * receipt must remain rendered there so assistive technology (and
+             * users returning to the result) can still tell which request
+             * reached which terminal state.  The stable lifecycle attributes
+             * are product UI, not audit-only data: they bind the visible
+             * progress/result to the Run Simulation control's operation.
+             */}
+            {progress !== undefined && (
+                <Text
+                    role="status"
+                    aria-live="polite"
+                    data-pokie-lifecycle-result="simulation"
+                    data-pokie-lifecycle-terminal={progress.status}
+                    size="sm"
+                    mb={4}
+                >
+                    Simulation {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
+                </Text>
+            )}
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Configure" description="Set rounds" aria-current={activeStep === 0 ? "step" : undefined} />
                 <Stepper.Step
@@ -262,16 +283,6 @@ export function SimulationTab({
                     {error && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
                     {progress !== undefined && (
                         <div>
-                            <Text
-                                role="status"
-                                aria-live="polite"
-                                data-pokie-lifecycle-result="simulation"
-                                data-pokie-lifecycle-terminal={progress.status}
-                                size="sm"
-                                mb={4}
-                            >
-                                {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
-                            </Text>
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (
@@ -407,7 +418,7 @@ export function SimulationTab({
 
             <PageSection legend="Recent runs">
                 <QuickActions>
-                    <Button variant="default" size="xs" onClick={onRefreshRecentRuns}>
+                    <Button id="simulation-refresh-reports" data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="simulation-reports" variant="default" size="xs" onClick={onRefreshRecentRuns}>
                         Refresh
                     </Button>
                 </QuickActions>
@@ -416,6 +427,24 @@ export function SimulationTab({
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (
                     <>
+                        <div data-pokie-lifecycle-result="simulation-reports" data-pokie-lifecycle-terminal="completed">
+                            <Text role="status" aria-live="polite" size="xs" c="dimmed">
+                                Loaded {recentRunEntries.length} simulation report{recentRunEntries.length === 1 ? "" : "s"}.
+                            </Text>
+                            {recentRunEntries.length > 0 && (
+                                <Button
+                                    data-pokie-lifecycle-artifact="simulation-report"
+                                    size="xs"
+                                    variant="subtle"
+                                    onClick={() => {
+                                        onOpenHistoric(recentRunEntries[0]);
+                                        setActiveStep(2);
+                                    }}
+                                >
+                                    Open latest report
+                                </Button>
+                            )}
+                        </div>
                         <BoundedListPager
                             itemLabel="runs"
                             itemCount={recentRunEntries.length}

@@ -38,8 +38,8 @@ export const P805_WORKFLOW_CONTRACTS = {
         "par-xlsx-round-trip": {route:"exportDeploy", control:"Build/Export", actionControl:"Build", actionControlId:"artifact-build-parWorkbook", method:"POST", api:"/api/project/artifacts/build", body:"artifact-build", poll:"/api/project/artifacts/build/{id}", artifact:"xlsx", terminal:"round-trip"},
         "reels-paytable-modes-mechanics": {route:"gameModel", control:"Game Model", method:"GET", api:"/api/project/gameModel", terminal:"model-visible"},
         "simulation-success-failure-cancellation": {route:"simulation", control:"Simulation", actionControl:"Run Simulation", actionControlId:"simulation-run", method:"POST", api:"/api/project/simulations", body:"simulation", poll:"/api/project/simulations/{id}", terminal:"cancelled-and-retry-completed"},
-        "simulation-rtp-volatility-features": {route:"simulation", control:"Simulation", method:"GET", api:"/api/project/reports", artifact:"simulation-report", terminal:"report-completed"},
-        "outcome-library-report-diff-replay": {route:"exportDeploy", control:"Build/Export", actionControl:"Generate exact outcome library", actionControlId:"outcome-library-generate", actionControlMatch:"prefix", method:"POST", api:"/api/project/outcome-libraries/generate", body:"outcome-library", poll:"/api/project/outcome-libraries/generate/jobs/{id}", artifact:"outcome-library", terminal:"library-generated"},
+        "simulation-rtp-volatility-features": {route:"simulation", control:"Simulation", actionControl:"Refresh", actionControlId:"simulation-refresh-reports", method:"GET", api:"/api/project/reports", body:"simulation-reports", artifact:"simulation-report", terminal:"report-completed"},
+        "outcome-library-report-diff-replay": {route:"exportDeploy", control:"Build/Export", actionControl:"Generate exact outcome library", actionControlId:"outcome-library-generate", actionControlMatch:"prefix", method:"POST", api:"/api/project/outcome-libraries/generate/jobs", body:"outcome-library", poll:"/api/project/outcome-libraries/generate/jobs/{id}", artifact:"outcome-library", terminal:"library-generated"},
         "replay-artifact-success-failure-recovery": {route:"replay", control:"Replay", actionControl:"Load", actionControlId:"replay-load", method:"POST", api:"/api/project/replays", body:"replay", poll:"/api/project/replays/{id}", artifact:"replay-descriptor", terminal:"failure-and-recovery"},
         "certification-conditional": {route:"certification", control:"Certification", actionControl:"Validate source bundle", actionControlId:"certification-validate-source", method:"POST", api:"/api/project/certification/validate-source", body:"certification", artifact:"certification-preflight", terminal:"conditional-state"},
         "fairness-conditional": {route:"provablyFair", control:"Provably Fair", actionControl:"Compute commitments", actionControlId:"fairness-compute-commitments", method:"POST", api:"/api/project/fairness/configure", body:"fairness", artifact:"fairness-proof", terminal:"conditional-state"},
@@ -152,12 +152,18 @@ function semanticObservation(contents, observation, persona, label) {
     // assess an artifact workflow after the rendered terminal result names
     // an output that can be opened or downloaded.
     const requiresPublishedArtifact = ["round-trip", "artifact-completed", "library-generated", "report-completed", "output-written"].includes(contract?.terminal);
+    // Some public list endpoints intentionally return a compact summary with
+    // no transport path.  The rendered result must then expose the concrete
+    // Open/download control; accepting a list merely because it is nonempty
+    // would again turn a route-level refresh into a claimed output.
+    const renderedArtifact = page.renderedTerminal?.lifecycle?.artifact;
     const publishedArtifact = !requiresPublishedArtifact ? true : (
         typeof terminalResult?.outputPath === "string" ||
         typeof terminalResult?.downloadPath === "string" ||
         typeof terminalResult?.path === "string" ||
         (Array.isArray(terminalResult?.outputs) && terminalResult.outputs.some((output) => typeof output?.path === "string" || typeof output?.downloadPath === "string")) ||
-        (Array.isArray(terminalResult) && terminalResult.some((item) => typeof item?.path === "string" || typeof item?.downloadPath === "string"))
+        (Array.isArray(terminalResult) && terminalResult.some((item) => typeof item?.path === "string" || typeof item?.downloadPath === "string")) ||
+        (renderedArtifact?.name === contract?.artifact && typeof renderedArtifact.accessibleName === "string" && renderedArtifact.accessibleName.trim().length > 0)
     );
     // Write-producing controls are only observations after the page has
     // polled the durable record.  A 202 or a 200 wrapper is an acceptance,
