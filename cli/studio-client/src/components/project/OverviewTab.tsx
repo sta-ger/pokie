@@ -28,8 +28,14 @@ function describeAddedToStudio(origin: StudioProjectOrigin | undefined): string 
 // the removed ValidationTab's own rendering, minus its own standalone "Run Validate" entry point (this
 // one lives inline, next to everything else Overview already reports).
 function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationView; onRevalidate: () => void}) {
+    const terminal = view.status === "success" ? "completed" : view.status;
     return (
-        <div>
+        <div
+            role="status"
+            aria-live="polite"
+            data-pokie-lifecycle-result="project-validation"
+            data-pokie-lifecycle-terminal={terminal}
+        >
             {(view.status === "idle" || view.status === "loading") && <LoadingState label="Checking project…" />}
             {view.status === "error" && <ErrorState message={describeProjectActionError("This validation check", view.message)} />}
             {view.status === "success" && (
@@ -45,7 +51,15 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
                 </div>
             )}
             <QuickActions>
-                <Button variant="default" size="xs" onClick={onRevalidate} loading={view.status === "loading"}>
+                <Button
+                    id="project-validation-run"
+                    variant="default"
+                    size="xs"
+                    data-pokie-lifecycle="operation"
+                    data-pokie-lifecycle-operation="project-validation"
+                    onClick={onRevalidate}
+                    loading={view.status === "loading"}
+                >
                     Re-check project
                 </Button>
             </QuickActions>

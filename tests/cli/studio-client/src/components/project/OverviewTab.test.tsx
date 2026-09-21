@@ -79,7 +79,11 @@ describe("OverviewTab", () => {
     it("announces the automatic validation check as a polite status update while it's in flight", () => {
         renderWithMantine(<OverviewTab header={header()} validation={{status: "loading"}} onRevalidate={() => undefined} onOpenPlay={() => undefined} />);
 
-        expect(screen.getByText("Checking project…").closest('[role="status"]')).not.toBeNull();
+        const status = screen.getByText("Checking project…").closest('[data-pokie-lifecycle-result="project-validation"]');
+        expect(status).not.toBeNull();
+        expect(status).toHaveAttribute("data-pokie-lifecycle-result", "project-validation");
+        expect(status).toHaveAttribute("data-pokie-lifecycle-terminal", "loading");
+        expect(screen.getByRole("button", {name: "Re-check project"})).toHaveAttribute("data-pokie-lifecycle-operation", "project-validation");
     });
 
     it("keeps verified PAR provenance observable without presenting it as a warning", () => {
@@ -104,5 +108,6 @@ describe("OverviewTab", () => {
         expect(screen.getByText("Integrity information")).toBeInTheDocument();
         expect(screen.getByText(/The recorded hash matches the imported data\./)).toBeInTheDocument();
         expect(screen.queryByText("Valid, with warnings")).not.toBeInTheDocument();
+        expect(screen.getByText("Valid — no issues found.").closest('[data-pokie-lifecycle-result="project-validation"]')).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
     });
 });

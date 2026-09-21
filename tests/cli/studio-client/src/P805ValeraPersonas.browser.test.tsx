@@ -75,6 +75,15 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     {phase: "confirmation", controlId: transaction.confirmation.control?.stableControlId, count: 1},
                 ]);
             }
+            expect(pageState.transactions.projectValidation).toEqual(expect.objectContaining({
+                operation: "project-validation",
+                control: expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null}),
+                confirmation: {required: false, state: "not-required", control: null},
+                keyboardActivations: [{phase: "operation", controlId: expect.any(String), count: 1}],
+                request: expect.objectContaining({method: "GET", path: "/api/project/validate", status: 200, browserRequestId: expect.any(String)}),
+                terminal: expect.objectContaining({status: "completed", source: "response", causedByRequestId: expect.any(String)}),
+            }));
+            expect(pageState.transactions.projectValidation.terminal.causedByRequestId).toBe(pageState.transactions.projectValidation.request.browserRequestId);
             for (const name of ["activeReloadStart", "activeReloadCancellation", "simulationSuccess", "replaySuccess", "replayRecovery", "cancellableSimulation", "cooperativeCancellation", "simulationRetry", "restartSimulation"]) {
                 const transaction = pageState.transactions[name];
                 expect(transaction.request).toEqual(expect.objectContaining({browserRequestId: expect.any(String), method: expect.any(String), path: expect.any(String), status: expect.any(Number), responseSha256: expect.stringMatching(/^[a-f0-9]{64}$/)}));
