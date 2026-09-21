@@ -15,6 +15,11 @@ export type ConfirmControlIds = {
 // `onConfirm` instead of `if (!confirm) return`.
 export function useConfirm(): (message: string, onConfirm: () => void, onCancel?: () => void, controlIds?: ConfirmControlIds) => void {
     return useCallback((message: string, onConfirm: () => void, onCancel?: () => void, controlIds?: ConfirmControlIds) => {
+        // Every confirmation is an observable product transaction.  Callers
+        // may supply a domain operation, while ordinary confirmations retain
+        // a stable generic identity instead of disappearing behind a portal
+        // with anonymous buttons.
+        const operation = controlIds?.operation ?? "confirmation";
         modals.openConfirmModal({
             title: "Please confirm",
             children: message,
@@ -26,15 +31,15 @@ export function useConfirm(): (message: string, onConfirm: () => void, onCancel?
             // need a stable identity expose the same operation on both modal
             // controls, allowing a keyboard workflow to read the rendered
             // lifecycle before it activates exactly one confirmation button.
-            confirmProps: controlIds?.confirm === undefined ? undefined : {
-                id: controlIds.confirm,
+            confirmProps: {
+                id: controlIds?.confirm ?? `pokie-${operation}-confirm`,
                 "data-pokie-confirmation": "confirm",
-                "data-pokie-confirmation-operation": controlIds.operation,
+                "data-pokie-confirmation-operation": operation,
             },
-            cancelProps: controlIds?.cancel === undefined ? undefined : {
-                id: controlIds.cancel,
+            cancelProps: {
+                id: controlIds?.cancel ?? `pokie-${operation}-dismiss`,
                 "data-pokie-confirmation": "cancel",
-                "data-pokie-confirmation-operation": controlIds.operation,
+                "data-pokie-confirmation-operation": operation,
             },
         });
     }, []);

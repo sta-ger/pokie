@@ -8,6 +8,8 @@ export type NavigationBlockerConfirmModal = {
     labels: {confirm: string; cancel: string};
     /** Stable public identities for a workflow that must survive a blocked route transition. */
     controlIds?: {confirm: string; cancel: string};
+    /** Product-owned lifecycle name exposed by both rendered confirmation controls. */
+    operation?: string;
 };
 
 // The shared "a pending router transition (browser Back/Forward, or any in-app navigate() call) needs
@@ -32,13 +34,22 @@ export function useNavigationBlockerConfirm(
         if (blocker.state !== "blocked") {
             return;
         }
+        const operation = confirmModal.operation ?? "navigation-blocker";
         modals.openConfirmModal({
             ...confirmModal,
             withCloseButton: false,
             closeOnEscape: false,
             closeOnClickOutside: false,
-            confirmProps: confirmModal.controlIds === undefined ? undefined : {id: confirmModal.controlIds.confirm},
-            cancelProps: confirmModal.controlIds === undefined ? undefined : {id: confirmModal.controlIds.cancel},
+            confirmProps: {
+                id: confirmModal.controlIds?.confirm ?? `pokie-${operation}-confirm`,
+                "data-pokie-confirmation": "confirm",
+                "data-pokie-confirmation-operation": operation,
+            },
+            cancelProps: {
+                id: confirmModal.controlIds?.cancel ?? `pokie-${operation}-dismiss`,
+                "data-pokie-confirmation": "cancel",
+                "data-pokie-confirmation-operation": operation,
+            },
             onConfirm: () => {
                 onLeave?.();
                 blocker.proceed();

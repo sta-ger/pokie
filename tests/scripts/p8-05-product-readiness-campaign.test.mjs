@@ -60,6 +60,8 @@ const transaction = (operation, controlId, accessibleName, confirmed = false) =>
     keyboardActivations: confirmed
         ? [{phase: "operation", controlId, count: 1}, {phase: "confirmation", controlId: "simulation-cancel-confirm", count: 1}]
         : [{phase: "operation", controlId, count: 1}],
+    request: {browserRequestId: `runtime-${operation}`, method: "POST", path: `/api/project/${operation}`, status: 200, responseSha256: hash(`response-${operation}`)},
+    terminal: {status: "completed", resultSha256: hash(`terminal-${operation}`), source: "rendered-poll", pollPath: `/api/project/${operation}/job`, browserRequestId: `terminal-${operation}`, causedByRequestId: `runtime-${operation}`},
 });
 const semantic = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
@@ -274,6 +276,7 @@ async function campaignFixture() {
                     cancellableSimulation: transaction("simulation", "simulation-run", "Run Simulation"),
                     cooperativeCancellation: transaction("simulation-cancel", "simulation-cancel", "Cancel", true),
                     simulationRetry: transaction("simulation-retry", "simulation-retry", "Retry"),
+                    restartSimulation: transaction("simulation", "simulation-run", "Run Simulation"),
                 },
                 recovery: {
                     reloadReconnect: true,
