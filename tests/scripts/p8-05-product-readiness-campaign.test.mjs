@@ -51,6 +51,16 @@ const timings = {
     replayMs: 1,
     cancellationMs: 1,
 };
+const transaction = (operation, controlId, accessibleName, confirmed = false) => ({
+    operation,
+    control: {stableControlId: controlId, identityAttribute: "id", accessibleName, enabled: true, disabled: false, disabledExplanation: null},
+    confirmation: confirmed
+        ? {required: true, state: "confirmed", control: {stableControlId: "simulation-cancel-confirm", identityAttribute: "id", accessibleName: "Confirm", enabled: true, disabled: false, disabledExplanation: null}}
+        : {required: false, state: "not-required", control: null},
+    keyboardActivations: confirmed
+        ? [{phase: "operation", controlId, count: 1}, {phase: "confirmation", controlId: "simulation-cancel-confirm", count: 1}]
+        : [{phase: "operation", controlId, count: 1}],
+});
 const semantic = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${observation}`,
@@ -69,13 +79,20 @@ const semantic = (persona, observation, contract, viewport) => {
             routeAfterActivation: route,
             stableControlId: contract.actionControlId ?? screen.navigationControlId,
             identityAttribute: "id",
-            lifecycle: contract.body === undefined ? {kind: "navigation", value: contract.route} : {kind: "operation", value: contract.body},
+            lifecycle: (contract.operation ?? contract.body) === undefined ? {kind: "navigation", value: contract.route} : {kind: "operation", value: contract.operation ?? contract.body},
+        },
+        transaction = {
+            operation: contract.operation ?? contract.body ?? contract.route,
+            control: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", accessibleName: matchedLabel, enabled: true, disabled: false, disabledExplanation: null},
+            confirmation: {required: false, state: "not-required", control: null},
+            keyboardActivations: [{phase: "operation", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1}],
         };
     return {
         bodySha256,
         responseSha256,
         result,
         interaction,
+        transaction,
         route,
         contents: JSON.stringify({
             kind: "p8-05-semantic-page-state",
@@ -87,6 +104,7 @@ const semantic = (persona, observation, contract, viewport) => {
             control: {id: contract.actionControlId ?? screen.navigationControlId, role: "button", accessibleName: matchedLabel, enabled: true},
             precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: matchedLabel, region: screen.region},
             interaction,
+            transaction,
             request: {
                 path: contract.api,
                 method: contract.method,
@@ -235,6 +253,7 @@ async function campaignFixture() {
                 visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256, changedAfterRequest: true},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: source.interaction,
+                transaction: source.transaction,
             });
         }
         const runtime = await evidence(
@@ -244,6 +263,18 @@ async function campaignFixture() {
             [],
             JSON.stringify({
                 kind: "p8-05-runtime-observation",
+                transactions: {
+                    activeReloadStart: transaction("simulation", "simulation-run", "Run Simulation"),
+                    activeReloadCancellation: transaction("simulation-cancel", "simulation-cancel", "Cancel", true),
+                    simulationFailure: transaction("simulation", "simulation-run", "Run Simulation"),
+                    simulationSuccess: transaction("simulation", "simulation-run", "Run Simulation"),
+                    replayFailure: transaction("replay", "replay-load", "Load"),
+                    replaySuccess: transaction("replay", "replay-load", "Load"),
+                    replayRecovery: transaction("replay", "replay-load", "Load"),
+                    cancellableSimulation: transaction("simulation", "simulation-run", "Run Simulation"),
+                    cooperativeCancellation: transaction("simulation-cancel", "simulation-cancel", "Cancel", true),
+                    simulationRetry: transaction("simulation-retry", "simulation-retry", "Retry"),
+                },
                 recovery: {
                     reloadReconnect: true,
                     projectSwitch: true,
@@ -720,6 +751,20 @@ test("rejects a semantic record that is not present in the captured browser netw
         browserEvidence.sizeBytes = 2;
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /browser request and response/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects a semantic record without its one-activation rendered transaction receipt", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), value = JSON.parse(await readFile(target, "utf8"));
+        delete value.transaction;
+        const contents = JSON.stringify(value);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /screen-specific public control/i);
     } finally { await fixture.cleanup(); }
 });
 test("requires browser defects to be frozen initially and absent after retest", async () => {

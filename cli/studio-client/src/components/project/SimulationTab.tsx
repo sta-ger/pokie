@@ -286,7 +286,7 @@ export function SimulationTab({
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (
-                                    <Button id="simulation-cancel" data-pokie-lifecycle="recovery" data-pokie-lifecycle-operation="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel, undefined, {confirm: "simulation-cancel-confirm", cancel: "simulation-cancel-dismiss"})}>
+                                    <Button id="simulation-cancel" data-pokie-lifecycle="recovery" data-pokie-lifecycle-operation="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel, undefined, {confirm: "simulation-cancel-confirm", cancel: "simulation-cancel-dismiss", operation: "simulation-cancel"})}>
                                         Cancel
                                     </Button>
                                 )}
