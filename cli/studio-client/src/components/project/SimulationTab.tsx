@@ -230,7 +230,7 @@ export function SimulationTab({
                         When it finishes, review the summary here or export the full report.
                     </Text>
                     <QuickActions>
-                        <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
+                        <NumberInput label="Rounds" min={1} step={1} required data-pokie-lifecycle-field="simulation-rounds" {...form.getInputProps("rounds")} key={form.key("rounds")} />
                         <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active}>
                             Run Simulation
                         </Button>

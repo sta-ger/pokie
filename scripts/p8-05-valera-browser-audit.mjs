@@ -487,7 +487,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         })()`);
         const setScreenField = async (label, value) => evaluate(`(() => {
             const label = [...document.querySelectorAll('label')].find((item) => item.textContent?.trim() === ${JSON.stringify(label)});
-            const input = label?.htmlFor ? document.getElementById(label.htmlFor) : [...document.querySelectorAll('input,textarea')].find((item) => item.getAttribute('aria-label') === ${JSON.stringify(label)});
+            // Mantine associates some composite inputs through their input
+            // name rather than a label htmlFor.  Read that relationship from
+            // the rendered form; do not invent a runner-only control id.
+            const input = label?.htmlFor ? document.getElementById(label.htmlFor) : [...document.querySelectorAll('input,textarea')].find((item) => item.getAttribute('aria-label') === ${JSON.stringify(label)} || item.getAttribute('name') === ${JSON.stringify(label.toLowerCase().replaceAll(/[^a-z0-9]+/g, ""))});
             if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) || input.disabled) return false;
             const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
             Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(input, ${JSON.stringify(value)});
@@ -514,7 +517,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 () => setScreenField(label, value),
                 `${observation} product-owned ${label} field`,
             );
-            if (body === "simulation") return setRequiredScreenField("Rounds", "1");
+            if (body === "simulation") return waitFor(
+                () => setLifecycleField("simulation-rounds", "1"),
+                `${observation} product-owned simulation rounds field`,
+            );
             if (body === "replay") return setRequiredScreenField("Target round number in a new replay session", "1");
             if (body === "certification") return setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
             if (body === "fairness") {
