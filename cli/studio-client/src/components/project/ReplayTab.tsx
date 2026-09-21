@@ -439,6 +439,7 @@ export function ReplayTab({
                             this number -- it never seeks into or looks up an existing session's history, so the
                             label/description here say so plainly rather than reading like a round lookup. */}
                         <NumberInput
+                            id="replay-target-round"
                             label="Target round number in a new replay session"
                             description="Reproducing plays a brand-new session forward from round 1 up to this round -- it doesn't look up an existing recorded round."
                             min={1}

@@ -342,11 +342,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             throw new Error(`${label} browser response body was unavailable: ${String(lastError)}`);
         };
-        const browserRequest = async (contract, observation, cursor) => {
-            const requestEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === contract.api) || false, `${observation} rendered request`);
+        const browserRequest = async (contract, observation, cursor, transaction) => {
+            if (!transaction) fail(`${observation} has no rendered operation transaction`);
+            const requestEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === contract.api && event.params.request.method === contract.method) || false, `${observation} rendered request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === requestEvent.params.requestId) || false, `${observation} rendered response`);
             const response = await readBrowserResponseBody(requestEvent.params.requestId, observation), body = response.body ?? "", payload = JSON.parse(body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:requestEvent.params.requestId, initiator:"rendered-control"};
             api.push(entry);
+            transaction.request = {browserRequestId:entry.browserRequestId, method:entry.method, path:entry.path, status:entry.status, responseSha256:entry.responseSha256};
             if (entry.method !== contract.method || entry.status < 200 || entry.status >= 400 || payload?.ok === false || payload?.success === false || payload?.valid === false || payload?.error !== undefined || (Array.isArray(payload) && payload.length === 0) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(payload?.status)) fail(`${observation} rendered control did not produce a successful semantic response (HTTP ${entry.status}: ${JSON.stringify(payload)})`);
             const started = payload?.job ?? payload, jobId = started?.id;
             // Only contracts with an explicit durable-job route may be
@@ -355,7 +357,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // completed semantic result directly; treating any response that
             // happens to contain an id as a job made those controls wait for a
             // request the page never performs.
-            if (!contract.poll) return {...entry, terminal:{status:started?.status ?? "success", result:started, resultSha256:digest(JSON.stringify(started)), jobId:undefined, source:"response"}};
+            if (!contract.poll) {
+                const terminal = {status:started?.status ?? "success", result:started, resultSha256:digest(JSON.stringify(started)), jobId:undefined, source:"response"};
+                transaction.terminal = {status:terminal.status, resultSha256:terminal.resultSha256, source:terminal.source};
+                return {...entry, terminal};
+            }
             if (typeof jobId !== "string" || !jobId) fail(`${observation} rendered control did not return the durable job required by its contract`);
             // Retain the *first terminal durable record*, including a failed
             // or cancelled one.  Polling only for a success used to turn a
@@ -376,7 +382,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }, `${observation} rendered terminal job`);
             api.push({observation, method:"GET", path:new URL(terminalEvent.event.params.response.url).pathname, status:terminalEvent.event.params.response.status, payload:terminalEvent.result, browserRequestId:terminalEvent.event.params.requestId, initiator:"rendered-poll"});
             if (!["completed", "success", "ok", "valid", "partial"].includes(terminalEvent.result?.status) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(terminalEvent.result?.result?.status)) fail(`${observation} rendered control reached terminal ${terminalEvent.result?.status ?? "unknown"}`);
-            return {...entry, terminal:{status:terminalEvent.result.status, result:terminalEvent.result, resultSha256:digest(JSON.stringify(terminalEvent.result)), jobId, pollPath:contract.poll.replace("{id}", encodeURIComponent(jobId)), source:"rendered-poll"}};
+            const terminal = {status:terminalEvent.result.status, result:terminalEvent.result, resultSha256:digest(JSON.stringify(terminalEvent.result)), jobId, pollPath:contract.poll.replace("{id}", encodeURIComponent(jobId)), source:"rendered-poll"};
+            transaction.terminal = {status:terminal.status, resultSha256:terminal.resultSha256, source:terminal.source, pollPath:terminal.pollPath};
+            return {...entry, terminal};
         };
         // Recovery probes must start work through the same rendered form as a
         // user.  Unlike browserRequest this deliberately stops at the 202 so
@@ -441,11 +449,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             return transaction;
         };
-        const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, confirmation = false}) => {
+        const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, path:expectedPath, confirmation = false}) => {
             const transaction = await beginRenderedTransaction({lifecycle, operation, observation, confirmation});
-            const event = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method) || false, `${observation} rendered ${operation} request`);
+            const event = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method && (expectedPath === undefined || new URL(value.params.request.url).pathname === expectedPath)) || false, `${observation} rendered ${operation} request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.responseReceived" && value.params.requestId === event.params.requestId) || false, `${observation} rendered ${operation} response`);
             const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"), entry = {observation, method:event.params.request.method, path:new URL(event.params.request.url).pathname, bodySha256:digest(event.params.request.postData ?? ""), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:event.params.requestId, initiator:"rendered-control"};
+            transaction.request = {browserRequestId:entry.browserRequestId, method:entry.method, path:entry.path, status:entry.status, responseSha256:entry.responseSha256};
             if (transaction.confirmation.required) transaction.confirmation.state = "confirmed";
             api.push(entry); return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor, transaction};
         };
@@ -454,7 +463,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Run Simulation')"), `${observation} rendered simulation form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setLifecycleField("simulation-rounds", String(rounds)), `${observation} rendered simulation rounds`)) fail(`Studio did not accept simulation rounds for ${observation}`);
-            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST"});
+            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations"});
             if (!expectedStatuses.includes(started.response.status) || (expectedStatuses.includes(202) && typeof started.payload?.id !== "string")) fail(`${observation} rendered simulation did not produce its expected public response`);
             return started;
         };
@@ -462,8 +471,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/replay`});
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Load')"), `${observation} rendered replay form`);
             const cursor = cdp.events.length;
-            if (!await waitFor(() => setScreenField("Target round number in a new replay session", String(round)), `${observation} rendered replay round`)) fail(`Studio did not accept replay target for ${observation}`);
-            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"replay", observation, cursor, method:"POST"});
+            if (!await waitFor(() => setReplayRound(String(round)), `${observation} rendered replay round`)) fail(`Studio did not accept replay target for ${observation}`);
+            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"replay", observation, cursor, method:"POST", path:"/api/project/replays"});
             if (!expectedStatuses.includes(started.response.status) || (expectedStatuses.includes(202) && typeof started.payload?.id !== "string")) fail(`${observation} rendered replay did not produce its expected public response`);
             return started;
         };
@@ -507,6 +516,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event('change', {bubbles:true}));
             return input.value === ${JSON.stringify(value)};
         })()`);
+        const setReplayRound = async (value) => evaluate(`(() => {
+            const input = document.getElementById("replay-target-round");
+            if (!(input instanceof HTMLInputElement) || input.disabled) return false;
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, ${JSON.stringify(value)});
+            input.dispatchEvent(new Event("input", {bubbles:true}));
+            input.dispatchEvent(new Event("change", {bubbles:true}));
+            return input.value === ${JSON.stringify(value)};
+        })()`);
         const setLifecycleField = async (field, value) => evaluate(`(() => {
             const field = ${JSON.stringify(field)}, value = ${JSON.stringify(value)};
             const input = [...document.querySelectorAll('input,textarea')].find((item) => item.getAttribute('data-pokie-lifecycle-field') === field);
@@ -530,7 +547,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 () => setLifecycleField("simulation-rounds", "1"),
                 `${observation} product-owned simulation rounds field`,
             );
-            if (body === "replay") return setRequiredScreenField("Target round number in a new replay session", "1");
+            if (body === "replay") return waitFor(() => setReplayRound("1"), `${observation} product-owned replay round field`);
             if (body === "certification") return setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
             if (body === "fairness") {
                 const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
@@ -581,8 +598,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // card with a similarly-labelled Build button.
                 transaction = await beginRenderedTransaction({lifecycle:"operation", operation:contract.operation ?? contract.body, observation});
                 interaction = transaction.control;
-                entry = await browserRequest(contract, observation, cursor);
-            } else entry = await browserRequest(contract, observation, entered.navigationCursor);
+                entry = await browserRequest(contract, observation, cursor, transaction);
+            } else entry = await browserRequest(contract, observation, entered.navigationCursor, transaction);
             process.stderr.write(`P805_SCREEN_STATE observation=${observation} screen=${screen} phase=terminal\n`);
             interaction.keyboardActivated = true;
             interaction.activation = "keyboard";
@@ -711,7 +728,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // stable Cancel control below; waiting for the hidden configure text
         // would turn a successful restored job into a false timeout.
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.endsWith('/simulation')"), "active-job reload Simulation recovery navigation");
-        const activeReloadCancellation = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", confirmation:true}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"]);
+        const activeReloadCancellation = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, confirmation:true}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"]);
         const projectBaseRoute = createdProjectBaseRoute, viewports = ["wide", "compact", "narrow"], actions = [], workflows = options.workflowPersonas.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => viewports.map((viewport) => ({persona, observation, viewport}))));
         for (const {persona, observation, viewport} of workflows) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation], actionStart = Date.now(), primaryPersona = options.persona;
