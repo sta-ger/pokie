@@ -513,6 +513,7 @@ function TargetCard({
                         fileFilters={artifactFileFilters(card.artifactTarget)}
                         browseTitle={artifactDestinationTitle(card.artifactTarget)}
                         browseId={`artifact-${card.artifactTarget}-destination`}
+                        data-pokie-lifecycle-field={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
                         onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
@@ -575,7 +576,20 @@ function TargetCard({
                             )}
                         </>
                     )}
-                    <Button id={`artifact-build-${card.artifactTarget}`} data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="artifact-build" size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
+                    {/* The PAR workbook is the public round-trip/build proof.
+                        Other cards retain their own operation identity so a
+                        collector cannot accidentally activate a disabled
+                        sibling card and call it the PAR workflow. */}
+                    <Button
+                        id={`artifact-build-${card.artifactTarget}`}
+                        data-pokie-lifecycle="operation"
+                        data-pokie-lifecycle-operation={card.artifactTarget === "parWorkbook" ? "artifact-build" : `artifact-build-${card.artifactTarget}`}
+                        size="xs"
+                        mt="sm"
+                        onClick={() => onBuildArtifact(card.artifactTarget!)}
+                        loading={artifactBuildRun.status === "running"}
+                        disabled={!canBuildArtifact}
+                    >
                         Build
                     </Button>
                     {artifactBuildRun.status === "running" && (

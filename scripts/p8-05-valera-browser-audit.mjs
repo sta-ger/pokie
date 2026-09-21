@@ -483,7 +483,18 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event('change', {bubbles:true}));
             return input.value === ${JSON.stringify(value)};
         })()`);
-        const prepareScreenOperation = async (body) => {
+        const setLifecycleField = async (field, value) => evaluate(`(() => {
+            const field = ${JSON.stringify(field)}, value = ${JSON.stringify(value)};
+            const input = [...document.querySelectorAll('input,textarea')].find((item) => item.getAttribute('data-pokie-lifecycle-field') === field);
+            if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) || input.disabled) return false;
+            const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+            Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(input, value);
+            input.dispatchEvent(new Event('input', {bubbles:true}));
+            input.dispatchEvent(new Event('change', {bubbles:true}));
+            return input.value === value;
+        })()`);
+        const prepareScreenOperation = async (body, viewport, observation) => {
+            if (body === "artifact-build") return setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`));
             if (body === "simulation") return setScreenField("Rounds", "1");
             if (body === "replay") return setScreenField("Target round number in a new replay session", "1");
             if (body === "certification") return setScreenField("Source outcome-library bundle directory", outcomeBundle);
@@ -510,8 +521,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const shellRoute = screen === "overview" ? `${projectBaseRoute}/gameModel` : projectBaseRoute;
                 await cdp.send("Page.navigate", {url:`${origin}/${shellRoute}`});
                 await waitFor(() => evaluate("document.readyState === 'complete' && !!document.querySelector('main, [role=main], nav') && document.body.innerText.trim().length > 40"), `${screen} public shell`);
-                const navigation = await focusLifecycleControl("navigation", screen, "button,a");
-                if (!navigation?.keyboardFocused || !navigation.enabled) fail(`${screen} has no enabled public ${state.navigationControl} navigation for ${observation}`);
+                // Capability-driven tabs mount after the project context has
+                // rendered.  The collector observes that public transition
+                // instead of assuming that a document-ready shell has already
+                // enabled every navigation control.
+                const navigation = await waitFor(async () => {
+                    const control = await focusLifecycleControl("navigation", screen, "button,a");
+                    return control?.keyboardFocused && control.enabled ? control : false;
+                }, `${screen} enabled public ${state.navigationControl} navigation for ${observation}`);
                 const navigationCursor = cdp.events.length;
                 await pressEnter();
                 await waitFor(() => evaluate(`location.hash === ${JSON.stringify(route)}`), `${screen} public navigation for ${observation}`);
@@ -525,10 +542,16 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const entered = await stateMachine.enter(projectBaseRoute, viewport, observation, contract);
             let interaction = entered.navigation, entry;
             if (contract.body) {
-                if (!await prepareScreenOperation(contract.body)) fail(`${screen} did not accept required ${contract.body} values for ${observation}`);
+                if (!await prepareScreenOperation(contract.body, viewport, observation)) fail(`${screen} did not accept required ${contract.body} values for ${observation}`);
                 const cursor = cdp.events.length;
-                interaction = await focusLifecycleControl("operation", contract.body, "button");
-                if (!interaction?.keyboardFocused || !interaction.enabled) fail(`${screen} did not expose an enabled product-owned operation control for ${observation}`);
+                // Preflights are product-owned asynchronous state.  Wait for
+                // the rendered, declared operation to become enabled rather
+                // than racing its loading state or falling back to another
+                // card with a similarly-labelled Build button.
+                interaction = await waitFor(async () => {
+                    const control = await focusLifecycleControl("operation", contract.body, "button");
+                    return control?.keyboardFocused && control.enabled ? control : false;
+                }, `${screen} enabled product-owned operation control for ${observation}`);
                 await pressEnter();
                 entry = await browserRequest(contract, observation, cursor);
             } else entry = await browserRequest(contract, observation, entered.navigationCursor);
