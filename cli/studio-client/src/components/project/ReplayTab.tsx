@@ -449,7 +449,7 @@ export function ReplayTab({
                             key={form.key("round")}
                         />
                         <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                        <Button id="replay-load" type="submit" data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="replay">Load</Button>
+                        <Button id="replay-load" type="submit" data-pokie-lifecycle="precondition" data-pokie-lifecycle-operation="replay-target">Load</Button>
                     </QuickActions>
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
@@ -983,6 +983,9 @@ export function ReplayTab({
                             <QuickActions>
                                 {!jobLoaded && (
                                     <Button
+                                        id="replay-run"
+                                        data-pokie-lifecycle="operation"
+                                        data-pokie-lifecycle-operation="replay"
                                         disabled={reproduceDisabled}
                                         onClick={() => {
                                             onRun(

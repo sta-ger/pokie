@@ -466,6 +466,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Load')"), `${observation} rendered replay form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setReplayRound(String(round)), `${observation} rendered replay round`)) fail(`Studio did not accept replay target for ${observation}`);
+            // Loading the replay target is its own rendered precondition.  A
+            // recovery replay must traverse it just as the persona matrix
+            // does; otherwise it waits for an operation control that the UI
+            // correctly has not rendered yet.
+            await activateRenderedPrecondition("replay-target", observation);
+            await waitFor(() => evaluate("!!document.getElementById('replay-run')"), `${observation} rendered replay run control`);
             const started = await activateRenderedTransaction({lifecycle:"operation", operation:"replay", observation, cursor, method:"POST", path:"/api/project/replays"});
             if (!expectedStatuses.includes(started.response.status) || (expectedStatuses.includes(202) && typeof started.payload?.id !== "string")) fail(`${observation} rendered replay did not produce its expected public response`);
             return started;
@@ -518,6 +524,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event("change", {bubbles:true}));
             return input.value === ${JSON.stringify(value)};
         })()`);
+        const activateRenderedPrecondition = async (operation, observation) => {
+            const control = await waitFor(async () => {
+                const candidate = await focusLifecycleControl("precondition", operation, "button,a");
+                return candidate?.keyboardFocused ? candidate : false;
+            }, `${observation} rendered ${operation} precondition`);
+            if (!control.enabled) fail(`Studio rendered ${operation} precondition disabled for ${observation}: ${control.disabledExplanation ?? "no explanation"}`);
+            await pressEnter();
+            return control;
+        };
         const setLifecycleField = async (field, value) => evaluate(`(() => {
             const field = ${JSON.stringify(field)}, value = ${JSON.stringify(value)};
             const input = [...document.querySelectorAll('input,textarea')].find((item) => item.getAttribute('data-pokie-lifecycle-field') === field);
@@ -541,7 +556,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 () => setLifecycleField("simulation-rounds", "1"),
                 `${observation} product-owned simulation rounds field`,
             );
-            if (body === "replay") return waitFor(() => setReplayRound("1"), `${observation} product-owned replay round field`);
+            if (body === "replay") {
+                if (!await waitFor(() => setReplayRound("1"), `${observation} product-owned replay round field`)) return false;
+                await activateRenderedPrecondition("replay-target", observation);
+                return waitFor(() => evaluate("!!document.getElementById('replay-run')"), `${observation} rendered replay run control`);
+            }
             if (body === "certification") return setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
             if (body === "fairness") {
                 const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
@@ -626,6 +645,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const terminal = result.getAttribute('data-pokie-lifecycle-terminal');
                 if (!terminal || ['idle', 'queued', 'running', 'loading', 'cancelling'].includes(terminal)) return false;
                 const artifact = [...result.querySelectorAll('[data-pokie-lifecycle-artifact]')].find((item) => visible(item));
+                // A durable terminal status can render one paint before its
+                // result affordance.  The operation receipt is complete only
+                // once the required rendered artifact is actually available;
+                // returning the early status would recreate the timing gap
+                // this transaction contract is meant to close.
+                if (${JSON.stringify(Boolean(contract.body && contract.artifact))} && (!artifact || !accessibleName(artifact))) return false;
                 return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact)} : null};
             })()`), `${observation} product-owned lifecycle result`);
             if (contract.body && contract.artifact && (!lifecycleResult.artifact?.name || !lifecycleResult.artifact.accessibleName)) fail(`${observation} did not render a visible product-owned ${contract.artifact} artifact affordance`);
