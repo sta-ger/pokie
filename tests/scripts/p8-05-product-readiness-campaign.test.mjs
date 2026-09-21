@@ -114,6 +114,12 @@ const semantic = (persona, observation, contract, viewport) => {
                 resultSha256: responseSha256,
                 observedAt: stamp(1),
                 changedAfterRequest: true,
+                lifecycle: {
+                    role: "status",
+                    terminal: "completed",
+                    text: `The rendered ${observation} lifecycle result completed.`,
+                    artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`},
+                },
             },
             workflow: {
                 persona,
@@ -637,6 +643,20 @@ test("rejects a rendered terminal captured without the browser request that prod
     try {
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
         semantic.renderedTerminal.observedAfterRequestId = "unrelated-browser-request";
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects a rendered terminal without its product-owned lifecycle receipt", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        delete semantic.renderedTerminal.lifecycle;
         const contents = JSON.stringify(semantic);
         await writeFile(target, contents);
         evidence.sha256 = hash(contents);

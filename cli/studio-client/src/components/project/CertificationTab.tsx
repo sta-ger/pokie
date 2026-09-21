@@ -448,17 +448,19 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     <ErrorState message={describePathActionError("The certification bundle directory", validateView.error)} />
                 )}
                 {validateOutcome !== undefined && (
-                    <OutcomeBanner
-                        color={OUTCOME_BANNER[validateOutcome].color}
-                        icon={OUTCOME_BANNER[validateOutcome].icon}
-                        title={OUTCOME_BANNER[validateOutcome].title}
-                        errors={validateView.status === "ok" ? validateView.errors : []}
-                        warnings={validateView.status === "ok" ? validateView.warnings : []}
-                    />
+                    <div role="status" aria-live="polite" data-pokie-lifecycle-result="certification" data-pokie-lifecycle-terminal={validateOutcome}>
+                        <OutcomeBanner
+                            color={OUTCOME_BANNER[validateOutcome].color}
+                            icon={OUTCOME_BANNER[validateOutcome].icon}
+                            title={OUTCOME_BANNER[validateOutcome].title}
+                            errors={validateView.status === "ok" ? validateView.errors : []}
+                            warnings={validateView.status === "ok" ? validateView.warnings : []}
+                        />
+                    </div>
                 )}
                 {buildReachable && !hasIncompleteModeRow ? (
                     <QuickActions>
-                        <Button onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
+                        <Button data-pokie-lifecycle-artifact="certification-preflight" onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
                     </QuickActions>
                 ) : (
                     <IssueList title="Before you can continue" issues={buildContinueBlockers().map((message) => ({message}))} />

@@ -262,7 +262,14 @@ export function SimulationTab({
                     {error && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
                     {progress !== undefined && (
                         <div>
-                            <Text size="sm" mb={4}>
+                            <Text
+                                role="status"
+                                aria-live="polite"
+                                data-pokie-lifecycle-result="simulation"
+                                data-pokie-lifecycle-terminal={progress.status}
+                                size="sm"
+                                mb={4}
+                            >
                                 {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
                             </Text>
                             <Progress value={progress.percent} mb="sm" />
@@ -303,7 +310,7 @@ export function SimulationTab({
                             <SimulationSummaryCard outcome={outcome} />
                             <QuickActions>
                                 {outcome.kind === "completed" && (
-                                    <Button variant="default" onClick={toggleFullReport}>
+                                    <Button data-pokie-lifecycle-artifact="simulation-report" variant="default" onClick={toggleFullReport}>
                                         {fullReportOpened ? "Hide full report" : "Open full report"}
                                     </Button>
                                 )}

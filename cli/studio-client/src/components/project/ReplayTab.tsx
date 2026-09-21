@@ -1037,7 +1037,14 @@ export function ReplayTab({
                                         </Alert>
                                     )}
                                     {error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
-                                    <Text size="sm" mb={4}>
+                                    <Text
+                                        role="status"
+                                        aria-live="polite"
+                                        data-pokie-lifecycle-result="replay"
+                                        data-pokie-lifecycle-terminal={progress.status}
+                                        size="sm"
+                                        mb={4}
+                                    >
                                         {progress.status} — {progress.completedRounds}/{progress.round} rounds
                                     </Text>
                                     <Progress value={progress.percent} mb="sm" />
@@ -1094,13 +1101,15 @@ export function ReplayTab({
                             )}
 
                             {jobLoaded && !active && result?.artifact && (
-                                <RoundArtifactInspector
-                                    artifact={result.artifact}
-                                    comparison={findMethod === "artifact" ? comparison : undefined}
-                                    stateBefore={result.stateBefore}
-                                    stateAfter={result.stateAfter}
-                                    credits={result.credits}
-                                />
+                                <div data-pokie-lifecycle-artifact="replay-descriptor">
+                                    <RoundArtifactInspector
+                                        artifact={result.artifact}
+                                        comparison={findMethod === "artifact" ? comparison : undefined}
+                                        stateBefore={result.stateBefore}
+                                        stateAfter={result.stateAfter}
+                                        credits={result.credits}
+                                    />
+                                </div>
                             )}
                             {jobLoaded && !active && result && !result.artifact && (
                                 <div>

@@ -456,7 +456,7 @@ function TargetCard({
                         </>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <>
+                        <div role="status" aria-live="polite" data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -469,7 +469,7 @@ function TargetCard({
                             <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                 {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
+                                <Button data-pokie-lifecycle-artifact="outcome-library" size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
                                 {outputActionsUnavailable ? (
                                     <>
                                         <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
@@ -487,7 +487,7 @@ function TargetCard({
                                 </AdvancedDisclosure>
                             </QuickActions>
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
-                        </>
+                        </div>
                     )}
                     {outcomeLibraryRun.status === "cancelled" && (
                         <>
@@ -613,7 +613,7 @@ function TargetCard({
                     )}
                     {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
                     {artifactBuildRun.status === "ok" && (
-                        <>
+                        <div role="status" aria-live="polite" data-pokie-lifecycle-result="artifact-build" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                                 {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
@@ -649,7 +649,7 @@ function TargetCard({
                                 </Text>
                             )}
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result)}>
+                                <Button data-pokie-lifecycle-artifact="artifact-build-output" size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result)}>
                                     Open as Project
                                 </Button>
                                 <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
@@ -676,7 +676,7 @@ function TargetCard({
                                     </Button>
                                 )}
                             </QuickActions>
-                        </>
+                        </div>
                     )}
                 </>
             )}

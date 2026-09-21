@@ -5,6 +5,7 @@ import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
     closeProject,
+    getProjectContext,
     getReplay,
     getReport,
     inspectProject,
@@ -405,15 +406,34 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const activeTab: ProjectTab = isProjectTab(tab) ? tab : (requestedMigration?.destination ?? "overview");
     const migratedFrom = new URLSearchParams(location.search).get("migrated");
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
+    const navigationRequestIdRef = useRef(0);
+    const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string}>({tab: activeTab, status: "rendered"});
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
             const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+            const requestId = ++navigationRequestIdRef.current;
+            setNavigationLifecycle({tab: value, status: "loading"});
             navigate(`${routePrefix}/${value}`);
+            // Tab content keeps its own domain-specific data hooks, while this
+            // small refresh confirms that the product still owns the active
+            // project after a public navigation. It gives the rendered nav
+            // lifecycle a browser request and an actionable terminal state.
+            getProjectContext(fetchImpl)
+                .then(() => {
+                    if (requestId === navigationRequestIdRef.current) {
+                        setNavigationLifecycle({tab: value, status: "rendered"});
+                    }
+                })
+                .catch((error: unknown) => {
+                    if (requestId === navigationRequestIdRef.current) {
+                        setNavigationLifecycle({tab: value, status: "error", message: errorMessage(error)});
+                    }
+                });
         },
-        [navigate, requestedProjectRoot],
+        [fetchImpl, navigate, requestedProjectRoot],
     );
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
@@ -1157,12 +1177,33 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 </div>
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
-                <div className="studio-page" ref={panelRef} role="region" aria-labelledby="project-dashboard-heading" tabIndex={-1} style={{marginTop: "1rem"}}>
+                <div
+                    className="studio-page"
+                    ref={panelRef}
+                    role="region"
+                    aria-labelledby="project-dashboard-heading"
+                    tabIndex={-1}
+                    style={{marginTop: "1rem"}}
+                >
                     {migration !== undefined && migration.destination === activeTab && (
                         <Alert color="blue" variant="light" mb="sm">
                             {migration.message}
                         </Alert>
                     )}
+                    {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error" && (
+                        <ErrorState message={`Could not refresh this project after navigation: ${navigationLifecycle.message ?? "Unknown error"}`} />
+                    )}
+                    <Text
+                        role="status"
+                        aria-live="polite"
+                        data-pokie-lifecycle-result="navigation"
+                        data-pokie-lifecycle-route={activeTab}
+                        data-pokie-lifecycle-terminal={navigationLifecycle.tab === activeTab ? navigationLifecycle.status : "loading"}
+                        size="xs"
+                        c="dimmed"
+                    >
+                        {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "loading" ? `Opening ${activeTabLabel}…` : `${activeTabLabel} ready`}
+                    </Text>
                     {visibleCommonJobs.length > 0 && (
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>

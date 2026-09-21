@@ -104,20 +104,27 @@ async function connect(devtools) {
 function optionsFrom(argv) { const args = argv.slice(2), values = {}; for (let index = 0; index < args.length; index += 2) { if (!args[index]?.startsWith("--") || values[args[index]] || args[index + 1] === undefined) fail("usage: --persona <persona> --phase <initial|retest> --candidate <sha> --package-sha256 <sha> --candidate-executable-sha256 <sha> --candidate-executable-receipt <absolute-json> --candidate-executable-receipt-sha256 <sha256> --packed-package <absolute-tgz> --output <absolute-path> [--packed-cli <absolute-path>] [--workflow-personas <comma-separated-personas>]"); values[args[index]] = args[index + 1]; } const persona = values["--persona"]; return {persona, workflowPersonas:(values["--workflow-personas"] ?? persona ?? "").split(",").filter(Boolean), phase:values["--phase"], candidateId:values["--candidate"], candidatePackageSha256:values["--package-sha256"], candidateExecutableSha256:values["--candidate-executable-sha256"], candidateExecutableReceipt:{path:values["--candidate-executable-receipt"], sha256:values["--candidate-executable-receipt-sha256"]}, packedPackage:values["--packed-package"], output:values["--output"], packedCli:values["--packed-cli"] ?? path.join(root, "dist/cli/pokie.js")}; }
 function validOptions(value) { return P805_PERSONAS.includes(value?.persona) && Array.isArray(value?.workflowPersonas) && value.workflowPersonas.length > 0 && value.workflowPersonas.every((persona) => P805_PERSONAS.includes(persona)) && new Set(value.workflowPersonas).size === value.workflowPersonas.length && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
 
-function childResult(child, label, expectedExitCode = 0) {
+function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000) {
     return new Promise((resolve, reject) => {
         let stdout = "", stderr = "";
         let settled = false;
+        const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            child.kill("SIGTERM");
+            reject(new Error(`${label} exceeded its ${timeoutMs}ms public-command budget`));
+        }, timeoutMs);
         const complete = (code, signal) => {
             if (settled) return;
             settled = true;
+            clearTimeout(timer);
             const result = {label, exitCode:code, signal, stdout, stderr};
             if (expectedExitCode !== undefined && code !== expectedExitCode) reject(new Error(`${label} exited ${code ?? "null"}: ${stderr || stdout}`));
             else resolve(result);
         };
         child.stdout?.on("data", (chunk) => { stdout += chunk.toString(); });
         child.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
-        child.once("error", (error) => { if (!settled) { settled = true; reject(error); } });
+        child.once("error", (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } });
         child.once("exit", complete);
         // A few wrapped launchers close their handles before Node delivers an
         // exit notification.  The close status is still the public command's
@@ -257,7 +264,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const installedCli = path.join(installationRoot, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie"), installedPackageJson = path.join(installationRoot, "node_modules", "pokie", "package.json"); if (!services.exists(installedCli) || !services.exists(installedPackageJson)) fail("packed package installation did not expose its pokie launcher and package metadata"); installedPackageBytes = await services.readFile(installedPackageJson); const candidatePackage = spawnSync("git", ["show", `${options.candidateId}:package.json`], {cwd:root, encoding:"buffer"}); if (candidatePackage.status !== 0 || !candidatePackage.stdout?.length) fail("declared candidate does not expose package.json for archive binding"); candidatePackageJsonBytes = Buffer.from(candidatePackage.stdout); let installedPackage, candidateManifest; try { installedPackage = JSON.parse(installedPackageBytes.toString("utf8")); candidateManifest = JSON.parse(candidatePackageJsonBytes.toString("utf8")); } catch { fail("installed packed package metadata is not JSON"); } if (installedPackage?.name !== candidateManifest?.name || installedPackage?.version !== candidateManifest?.version || installedPackage?.gitHead !== options.candidateId) fail("installed archive package metadata is not bound to the declared candidate");
         const candidateTreeManifest = candidateTreeExecutableManifest(options.candidateId), candidateReceipt = await trustedCandidateExecutableReceipt(options.candidateExecutableReceipt, options.candidateId, options.candidatePackageSha256, options.candidateExecutableSha256, services, options.output);
         if (candidateReceipt.candidateTreeManifestSha256 !== candidateTreeManifest.sha256 || candidateReceipt.candidateTreeObjectId !== candidateTreeManifest.tree) fail("candidate executable receipt does not bind the declared candidate tree manifest");
-        candidateExecutable = await candidateExecutableManifest(path.join(installationRoot, "node_modules", "pokie"), options.candidateId, services); if (candidateExecutable.sha256 !== options.candidateExecutableSha256) fail("packed archive executable manifest differs from the verifier-supplied declared candidate manifest"); const packedEnvironment = {...process.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot, PATH:`${path.dirname(installedCli)}${path.delimiter}${process.env.PATH ?? ""}`}; const runPackedCli = async (label, args, expectedExitCode = 0) => { const commandOwnership = ownershipEnvironment(label), child = own(label, services.spawn(installedCli, args, {cwd:context.workspace, env:{...packedEnvironment, ...commandOwnership.env}, stdio:"pipe"}), commandOwnership); let result; try { result = await childResult(child, label, expectedExitCode); } finally { await settleChild(child); } transcript.push(`[${services.now()}] ${label} ${args.join(" ")}\n${result.stdout}${result.stderr}`); return result; };
+        candidateExecutable = await candidateExecutableManifest(path.join(installationRoot, "node_modules", "pokie"), options.candidateId, services); if (candidateExecutable.sha256 !== options.candidateExecutableSha256) fail("packed archive executable manifest differs from the verifier-supplied declared candidate manifest"); const packedEnvironment = {...process.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot, PATH:`${path.dirname(installedCli)}${path.delimiter}${process.env.PATH ?? ""}`}; const runPackedCli = async (label, args, expectedExitCode = 0) => { process.stderr.write(`P805_CLI command=${label} phase=start\n`); const commandOwnership = ownershipEnvironment(label), child = own(label, services.spawn(installedCli, args, {cwd:context.workspace, env:{...packedEnvironment, ...commandOwnership.env}, stdio:"pipe"}), commandOwnership); let result; try { result = await childResult(child, label, expectedExitCode); } finally { await settleChild(child); } transcript.push(`[${services.now()}] ${label} ${args.join(" ")}\n${result.stdout}${result.stderr}`); process.stderr.write(`P805_CLI command=${label} phase=complete\n`); return result; };
         const blueprint = path.join(context.workspace, "Valera audit blueprint.json"), workbook = path.join(context.workspace, "Valera audit.xlsx"), importedBlueprint = path.join(context.workspace, "Valera imported blueprint.json"), wasm = path.join(context.workspace, "Valera audit.wasm"), packageRoot = path.join(context.workspace, "Valera audit package"), simulationReport = path.join(context.workspace, "Valera simulation report.json"), renderedReport = path.join(context.workspace, "Valera simulation report.md"), diffReport = path.join(context.workspace, "Valera simulation diff.json"), replayArtifact = path.join(context.workspace, "Valera replay.json"), outcomeBundle = path.join(context.workspace, "Valera outcomes"), certificationConfig = path.join(context.workspace, "Valera certification config.json"), certificationBundle = path.join(context.workspace, "Valera certification"), serverSeed = path.join(context.workspace, "Valera server seed.txt"), seedCommitment = path.join(context.workspace, "Valera seed commitment.json"), roundCommitment = path.join(context.workspace, "Valera round commitment.json"), fairnessProof = path.join(context.workspace, "Valera fairness proof.json");
         const requireOutput = async (label, target) => { if (!services.exists(target)) fail(`${label} did not create its declared output ${target}`); };
         await runPackedCli("packed CLI create", ["create", "Valera audit", "--random", "--seed", "805", "--out", blueprint]); await requireOutput("packed CLI create", blueprint);
@@ -304,7 +311,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         for (const args of [["--help"], ...publicHelp.map((command) => [command, "--help"]), ["certification", "build", "--help"], ["certification", "verify", "--help"], ["fairness", "seed-commit", "--help"], ["fairness", "commit", "--help"], ["fairness", "reveal", "--help"], ["fairness", "verify", "--help"], ["par", "import", "--help"], ["par", "export", "--help"], ["reel", "generate", "--help"]]) await runPackedCli(`packed CLI help ${args.join("-")}`, args);
         const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js"); if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable"); const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help"); await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);
         const startStudio = () => { const studioOwnership = ownershipEnvironment("studio"), child = own("studio", services.spawn(installedCli, ["--no-open", "--host", "127.0.0.1", "--port", String(port)], {cwd:context.workspace, detached:process.platform !== "win32", env:{...packedEnvironment, ...studioOwnership.env}, stdio:"pipe"}), studioOwnership); child.stdout?.on("data", (chunk) => transcript.push(chunk.toString())); child.stderr?.on("data", (chunk) => { errors.push(chunk.toString()); transcript.push(chunk.toString()); }); return child; }; const started = Date.now(); transcript.push(`[${services.now()}] START installed packed public CLI ${installedCli}`); studio = startStudio(); await waitFor(async () => { try { const response = await fetch(`${origin}/api/health`); api.push({path:"/api/health", status:response.status}); return response.ok; } catch { return false; } }, "built Studio API"); timings.startupMs = Date.now() - started;
-        const browserOwnership = ownershipEnvironment("browser", true); browser = own("browser", services.spawn(services.chromium, ["--headless=new", "--no-sandbox", "--no-first-run", `--user-data-dir=${context.browserProfile}`, `--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${devtoolsPort}`, "about:blank"], {detached:process.platform !== "win32", env:browserOwnership.env, stdio:"pipe"}), browserOwnership); await waitFor(async () => { try { return Array.isArray(await responseJson(`${devtools}/json/list`)); } catch { return false; } }, "fresh browser profile"); cdp = await connect(devtools); const evaluate = async (source) => (await cdp.send("Runtime.evaluate", {expression:source, returnByValue:true, awaitPromise:true})).result.value;
+        const browserOwnership = ownershipEnvironment("browser", true); browser = own("browser", services.spawn(services.chromium, ["--headless=new", "--no-sandbox", "--no-first-run", `--user-data-dir=${context.browserProfile}`, `--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${devtoolsPort}`, "about:blank"], {detached:process.platform !== "win32", env:browserOwnership.env, stdio:"pipe"}), browserOwnership); await waitFor(async () => { try { return Array.isArray(await responseJson(`${devtools}/json/list`)); } catch { return false; } }, "fresh browser profile"); cdp = await connect(devtools); const evaluate = async (source) => { const result = await cdp.send("Runtime.evaluate", {expression:source, returnByValue:true, awaitPromise:true}); if (result.exceptionDetails) fail(`rendered browser evaluation failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "unknown exception"}`); return result.result.value; };
         // Chromium's headless DevTools target needs the native virtual-key
         // code as well as the DOM key name to perform a button's default
         // keyboard activation.  Without it, focus evidence was recorded but
@@ -542,7 +549,58 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         ? {text:text.slice(0, 1600), live} : false;
                 })()`);
             }, `${observation} rendered terminal state`);
-            const state = await evaluate("(()=>{const visible=(item)=>!!(item.offsetWidth||item.offsetHeight||item.getClientRects().length), controls=[...document.querySelectorAll('button,a,input,select,textarea')], disabled=controls.filter((item)=>item.disabled&&visible(item)), disabledWithExplanation=disabled.filter((item)=>{const ids=(item.getAttribute('aria-describedby')||'').split(/\\s+/).filter(Boolean); return ids.length>0&&ids.every((id)=>{const description=document.getElementById(id); return description&&visible(description)&&!!description.textContent?.trim();});}); const focus=document.activeElement instanceof HTMLElement?document.activeElement:null, style=focus?getComputedStyle(focus):undefined; return {title:document.title,text:document.body.innerText.slice(0,1600),controls:controls.map((item)=>({id:item.id,label:(item.innerText||item.getAttribute('aria-label')||item.name||'').trim(),disabled:!!item.disabled,accessible:!!(item.innerText||item.getAttribute('aria-label')||item.getAttribute('aria-labelledby')||item.name)})).filter((item)=>item.label),overflow:document.documentElement.scrollWidth>window.innerWidth,accessibility:{namedRegions:[...document.querySelectorAll('main,[role=main],[role=region],nav')].filter(visible).map((item)=>item.getAttribute('aria-label')||item.getAttribute('aria-labelledby')||item.id).filter(Boolean),visibleFocus:!!focus&&document.activeElement===focus&&!!style&&(style.outlineStyle!=='none'||style.boxShadow!=='none'),disabledControls:disabled.length,explainedDisabledControls:disabledWithExplanation.length,unexplainedDisabledControls:disabled.length-disabledWithExplanation.length}})()");
+            // A text delta alone is not an operation receipt: unrelated page
+            // activity can change it. The product publishes a lifecycle result
+            // beside the control's own screen, including any visible artifact
+            // affordance. Read this contract after the correlated browser
+            // request has completed; the collector never creates it.
+            const lifecycle = contract.body ? "operation" : "navigation", lifecycleValue = contract.body ?? contract.route;
+            const lifecycleResult = await waitFor(async () => evaluate(`(() => {
+                const lifecycle = ${JSON.stringify(lifecycle)}, value = ${JSON.stringify(lifecycleValue)};
+                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+                const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
+                const result = [...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item) => visible(item) && item.getAttribute('data-pokie-lifecycle-result') === (lifecycle === 'operation' ? value : 'navigation') && (lifecycle === 'operation' || item.getAttribute('data-pokie-lifecycle-route') === value));
+                if (!(result instanceof HTMLElement)) return false;
+                const terminal = result.getAttribute('data-pokie-lifecycle-terminal');
+                if (!terminal || ['idle', 'queued', 'running', 'loading', 'cancelling'].includes(terminal)) return false;
+                const artifact = [...result.querySelectorAll('[data-pokie-lifecycle-artifact]')].find((item) => visible(item));
+                return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact)} : null};
+            })()`), `${observation} product-owned lifecycle result`);
+            if (contract.body && contract.artifact && (!lifecycleResult.artifact?.name || !lifecycleResult.artifact.accessibleName)) fail(`${observation} did not render a visible product-owned ${contract.artifact} artifact affordance`);
+            const productState = await evaluate(`(() => {
+                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+                const controls = [...document.querySelectorAll("button,a,input,select,textarea")].filter(visible);
+                const disabled = controls.filter((item) => item.disabled);
+                const hasDisabledExplanation = (item) => {
+                    if (item.getAttribute("title")) return true;
+                    const ids = (item.getAttribute("aria-describedby") || "").split(/\\s+/).filter(Boolean);
+                    return ids.length > 0 && ids.every((id) => {
+                        const description = document.getElementById(id);
+                        return description && visible(description) && Boolean(description.textContent?.trim());
+                    });
+                };
+                const explainedDisabledControls = disabled.filter(hasDisabledExplanation).length;
+                const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                const style = focus ? getComputedStyle(focus) : undefined;
+                return {
+                    title: document.title,
+                    text: document.body.innerText.slice(0, 1600),
+                    controls: controls.map((item) => ({
+                        id: item.id,
+                        label: (item.innerText || item.getAttribute("aria-label") || item.name || "").trim(),
+                        disabled: Boolean(item.disabled),
+                        accessible: Boolean(item.innerText || item.getAttribute("aria-label") || item.getAttribute("aria-labelledby") || item.name),
+                    })).filter((item) => item.label),
+                    overflow: document.documentElement.scrollWidth > window.innerWidth,
+                    accessibility: {
+                        namedRegions: [...document.querySelectorAll("main,[role=main],[role=region],nav")].filter(visible).map((item) => item.getAttribute("aria-label") || item.getAttribute("aria-labelledby") || item.id).filter(Boolean),
+                        visibleFocus: Boolean(focus) && document.activeElement === focus && Boolean(style) && (style.outlineStyle !== "none" || style.boxShadow !== "none"),
+                        disabledControls: disabled.length,
+                        explainedDisabledControls,
+                        unexplainedDisabledControls: disabled.length - explainedDisabledControls,
+                    },
+                };
+            })()`);
             const screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:true});
             const screenshotEvidenceId = await save("screenshot", `${viewport}-${observation}.png`, Buffer.from(screenshot.data, "base64"), [observation]);
             const semantic = {kind:"p8-05-semantic-page-state", operation:observation, expectedOutcome:contract.terminal, route:entered.route, viewport,
@@ -551,10 +609,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 precondition:{enabled:interaction.enabled, disabled:interaction.disabled, disabledExplanation:interaction.disabledExplanation, accessibleName:interaction.accessibleName, region:stateMachine.region}, interaction,
                 request:{path:contract.api, method:contract.method, bodyKind:contract.body ?? null, bodySha256:entry.bodySha256, responseSha256:entry.responseSha256, status:entry.status, browserRequestId:entry.browserRequestId, initiator:entry.initiator},
                 terminal:{...entry.terminal, complete:true, artifact:contract.artifact ?? null},
-                renderedTerminal:{state:"rendered", observedAfterRequestId:entry.browserRequestId, text:terminalText.text, liveText:terminalText.live, textSha256:digest(terminalText.text), resultSha256:entry.terminal.resultSha256, observedAt:services.now(), changedAfterRequest:terminalText.text !== beforeActionText || terminalText.live.length > 0},
-                workflow:{persona:options.persona, source:"rendered-control", expectedApi:contract.api, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedArtifact:contract.artifact ?? null, terminal:contract.terminal}, state};
+                renderedTerminal:{state:"rendered", observedAfterRequestId:entry.browserRequestId, text:terminalText.text, liveText:terminalText.live, textSha256:digest(terminalText.text), resultSha256:entry.terminal.resultSha256, observedAt:services.now(), changedAfterRequest:terminalText.text !== beforeActionText || terminalText.live.length > 0, lifecycle:lifecycleResult},
+                workflow:{persona:options.persona, source:"rendered-control", expectedApi:contract.api, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedArtifact:contract.artifact ?? null, terminal:contract.terminal}, state:productState};
             const evidenceId = await save("page-state", `${viewport}-${observation}.json`, JSON.stringify(semantic), [observation]);
-            return {evidenceId, screenshotEvidenceId, state, interaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, screen, screenNavigationControl:stateMachine.navigationControl, precondition:semantic.precondition, visibleTerminal:semantic.renderedTerminal};
+            return {evidenceId, screenshotEvidenceId, state:productState, interaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, screen, screenNavigationControl:stateMachine.navigationControl, precondition:semantic.precondition, visibleTerminal:semantic.renderedTerminal};
         };
         const creation = Date.now();
         await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});

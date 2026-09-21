@@ -324,7 +324,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                     )}
                     {configureView.status === "invalid" && <ErrorState message={configureView.message} />}
                     {configureView.status === "ok" && (
-                        <div>
+                        <div role="status" aria-live="polite" data-pokie-lifecycle-result="fairness" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" c="dimmed" mb="sm">
                                 {describeFairnessCommitmentPublishOrder()}
                             </Text>
@@ -356,7 +356,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                                 <CodeBlock>{JSON.stringify({serverSeedCommitment: configureView.serverSeedCommitment, commitment: configureView.commitment}, null, 2)}</CodeBlock>
                             </AdvancedDisclosure>
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(1)}>Continue to Generate/inspect proof</Button>
+                                <Button data-pokie-lifecycle-artifact="fairness-commitment" onClick={() => setActiveStep(1)}>Continue to Generate/inspect proof</Button>
                             </QuickActions>
                         </div>
                     )}
