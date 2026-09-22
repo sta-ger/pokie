@@ -39,7 +39,7 @@ export function validateP805RenderedPersonaAudit(audit) {
         if (operation === undefined) continue;
         const formState = action.transaction?.formState, requiresEditableForm = action.transaction?.stateClass === "editable-submission";
         if (!requiresEditableForm && formState !== undefined) fail(`rendered ${audit.persona} audit records editable fields for non-editable ${operation}`);
-        if (requiresEditableForm && (formState?.operation !== operation || formState.capturedBeforeSubmission !== true || formState.actionControl?.stableControlId !== action.transaction.control?.stableControlId || formState.actionControl?.identityAttribute !== "id" || formState.actionControl?.visible !== true || typeof formState.actionControl?.accessibleName !== "string" || !formState.actionControl.accessibleName || formState.actionControl?.validation?.valid !== true || typeof formState.actionControl?.validation?.message !== "string" || !Array.isArray(formState.fields) || formState.fields.length === 0 || formState.fields.some((field) => typeof field?.stableControlId !== "string" || !field.stableControlId || field.identityAttribute !== "id" || field.visible !== true || typeof field.accessibleName !== "string" || !field.accessibleName || typeof field.value !== "string" || field.disabled !== false || typeof field.required !== "boolean" || field.validation?.valid !== true || typeof field.validation.message !== "string"))) fail(`rendered ${audit.persona} audit lacks valid DOM-derived form state before ${operation} submission`);
+        if (requiresEditableForm && (formState?.operation !== operation || formState.capturedBeforeSubmission !== true || formState.scope?.identityAttribute !== "data-pokie-lifecycle-form" || formState.scope?.value !== operation || typeof formState.scope?.tagName !== "string" || !formState.scope.tagName || formState.actionControl?.stableControlId !== action.transaction.control?.stableControlId || formState.actionControl?.identityAttribute !== "id" || formState.actionControl?.visible !== true || typeof formState.actionControl?.accessibleName !== "string" || !formState.actionControl.accessibleName || formState.actionControl?.validation?.valid !== true || typeof formState.actionControl?.validation?.message !== "string" || !Array.isArray(formState.fields) || formState.fields.length === 0 || formState.fields.some((field) => typeof field?.stableControlId !== "string" || !field.stableControlId || field.identityAttribute !== "id" || field.visible !== true || typeof field.accessibleName !== "string" || !field.accessibleName || typeof field.value !== "string" || field.disabled !== false || typeof field.required !== "boolean" || field.validation?.valid !== true || typeof field.validation.message !== "string"))) fail(`rendered ${audit.persona} audit lacks valid DOM-derived form state before ${operation} submission`);
     }
     for (const name of ["reloadReconnect", "projectSwitch", "staleResponseIsolation", "unsavedWorkProtection", "serverRestart"]) if (rendered.recovery?.[name]?.observed !== true || !rendered.recovery[name].evidenceId) fail(`rendered ${audit.persona} audit lacks measured recovery observations`);
     for (const name of ["success", "actionableFailure", "cooperativeCancellation", "retryWithoutPartialArtifacts"]) if (rendered.jobs?.[name]?.observed !== true || !rendered.jobs[name].evidenceId) fail(`rendered ${audit.persona} audit lacks measured success/failure/cancellation/retry observations`);
@@ -441,7 +441,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // to the person.  Each rendered control receives one keyboard
         // activation; a confirmation is a second, explicit lifecycle phase,
         // never an Enter/Space retry race.
-        const captureRenderedEditableFields = async () => evaluate(`(() => {
+        const captureRenderedOperationFields = async (operation, observation) => waitFor(() => evaluate(`(() => {
             const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
             const accessibleName = (item) => {
                 const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
@@ -450,7 +450,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') : '';
                 return (item.getAttribute('aria-label') || labelledBy || labels || item.getAttribute('name') || '').trim();
             };
-            return [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+            const form = document.querySelector('[data-pokie-lifecycle-form="' + ${JSON.stringify(operation)} + '"]');
+            if (!(form instanceof HTMLElement) || !visible(form)) return false;
+            const fields = [...form.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
                 const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
                 return {
                     stableControlId:item.id,
@@ -463,10 +465,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
                 };
             });
-        })()`);
-        const captureRenderedFormState = async (operation, observation, requiresEditableForm, preparedFields = [], requireValid = true) => {
+            return {scope:{identityAttribute:'data-pokie-lifecycle-form', value:operation, tagName:form.tagName.toLowerCase()}, fields};
+        })()`), `${observation} rendered ${operation} form fields`);
+        const captureRenderedFormState = async (operation, observation, requiresEditableForm, preparedFormState, requireValid = true) => {
             const formState = await waitFor(() => evaluate(`(() => {
-                const operation = ${JSON.stringify(operation)}, requiresEditableForm = ${JSON.stringify(requiresEditableForm)}, requireValid = ${JSON.stringify(requireValid)};
+                const operation = ${JSON.stringify(operation)}, requiresEditableForm = ${JSON.stringify(requiresEditableForm)}, preparedFormState = ${JSON.stringify(preparedFormState ?? null)}, requireValid = ${JSON.stringify(requireValid)};
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => {
                     const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
@@ -481,7 +484,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // state, but it does not submit editable form data.  Do not
                 // accidentally capture an unrelated visible form elsewhere on
                 // the screen and call it the Refresh request's input.
-                const fields = requiresEditableForm && ${JSON.stringify(preparedFields)}.length === 0 ? [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+                const form = action.closest('[data-pokie-lifecycle-form="' + operation + '"]');
+                const scope = form instanceof HTMLElement && visible(form)
+                    ? {identityAttribute:'data-pokie-lifecycle-form', value:operation, tagName:form.tagName.toLowerCase()}
+                    : preparedFormState?.scope;
+                const fields = requiresEditableForm && preparedFormState === null ? (form instanceof HTMLElement && visible(form) ? [...form.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
                     const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
                     return {
                         stableControlId:item.id,
@@ -493,14 +500,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         required:item.required,
                         validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
                     };
-                }) : ${JSON.stringify(preparedFields)};
+                }) : []) : preparedFormState.fields;
                 // An intentionally invalid submission (the recovery/error
                 // path) still needs the exact same DOM receipt as a valid
                 // one.  Preserve its browser validation state instead of
                 // making the runner skip directly to a server request.
                 if ((requiresEditableForm && fields.length === 0) || fields.some((field) => !field.stableControlId || !field.accessibleName || (requireValid && !field.validation.valid) || field.disabled)) return false;
                 const validatableAction = action instanceof HTMLButtonElement || action instanceof HTMLInputElement || action instanceof HTMLSelectElement || action instanceof HTMLTextAreaElement;
-                return {operation, capturedBeforeSubmission:true, actionControl:{stableControlId:action.id, identityAttribute:'id', visible:true, accessibleName:accessibleName(action), validation:{valid:!validatableAction || action.checkValidity(), message:validatableAction ? action.validationMessage : ''}}, fields};
+                if (requiresEditableForm && (scope?.identityAttribute !== 'data-pokie-lifecycle-form' || scope.value !== operation || typeof scope.tagName !== 'string' || !scope.tagName)) return false;
+                return {operation, capturedBeforeSubmission:true, scope, actionControl:{stableControlId:action.id, identityAttribute:'id', visible:true, accessibleName:accessibleName(action), validation:{valid:!validatableAction || action.checkValidity(), message:validatableAction ? action.validationMessage : ''}}, fields};
             })()`), `${observation} visible rendered form state for ${operation}`);
             return formState;
         };
@@ -579,7 +587,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), `${observation} rendered simulation form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setLifecycleField("simulation-rounds", String(rounds)), `${observation} rendered simulation rounds`)) fail(`Studio did not accept simulation rounds for ${observation}`);
-            const formState = await captureRenderedFormState("simulation", observation, true, [], expectedStatuses.includes(400) === false);
+            const formState = await captureRenderedFormState("simulation", observation, true, undefined, expectedStatuses.includes(400) === false);
             const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations", formState, stateClass:"editable-submission"});
             if (!expectedStatuses.includes(started.response.status) || (expectedStatuses.includes(202) && typeof started.payload?.id !== "string")) fail(`${observation} rendered simulation did not produce its expected public response`);
             return started;
@@ -715,8 +723,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // transition hides it.  The later transaction still reads
                 // the Validate button from the rendered DOM; this only
                 // preserves the actual form state that enabled it.
-                const fields = source ? await captureRenderedEditableFields() : [];
-                if (source && (fields.length === 0 || fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation?.valid || field.disabled))) return false;
+                const formState = source ? await captureRenderedOperationFields("certification", observation) : undefined;
+                if (source && (formState.fields.length === 0 || formState.fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation?.valid || field.disabled))) return false;
                 // Validation is deliberately a separate first-time-user step:
                 // entering a source only enables the product's Continue
                 // control.  Traverse that real, labelled precondition before
@@ -725,7 +733,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 if (source && !await evaluate("!!document.querySelector('[data-pokie-lifecycle=\"operation\"][data-pokie-lifecycle-operation=\"certification\"]')")) {
                     await activateRenderedPrecondition("certification-validate", observation);
                 }
-                return source ? {fields} : false;
+                return source ? {formState} : false;
             }
             if (body === "fairness") {
                 const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
@@ -846,7 +854,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // configured, valid DOM submission from this exact control.
                 const stateClass = p805TransactionStateClass(contract);
                 const formState = stateClass === "editable-submission"
-                    ? await captureRenderedFormState(operation, observation, true, preparedOperation?.fields ?? [])
+                    ? await captureRenderedFormState(operation, observation, true, preparedOperation?.formState)
                     : undefined;
                 beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
                 transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState, stateClass});

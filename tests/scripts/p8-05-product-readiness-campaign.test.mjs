@@ -93,6 +93,7 @@ const semantic = (persona, observation, contract, viewport) => {
             ...(transactionState === "editable-submission" ? {formState: {
                 operation: contract.operation ?? contract.body,
                 capturedBeforeSubmission: true,
+                scope: {identityAttribute: "data-pokie-lifecycle-form", value: contract.operation ?? contract.body, tagName: "form"},
                 actionControl: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", visible: true, accessibleName: matchedLabel, validation: {valid: true, message: ""}},
                 fields: [{stableControlId: `field-${observation}`, identityAttribute: "id", visible: true, accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
             }} : {}),
@@ -820,6 +821,19 @@ test("rejects an empty Configure form receipt for a read-only rendered report re
     try {
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "simulation-rtp-volatility-features"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), value = JSON.parse(await readFile(target, "utf8"));
         value.transaction.formState = {operation: "simulation-reports", capturedBeforeSubmission: true, actionControl: {stableControlId: value.transaction.control.stableControlId, identityAttribute: "id", visible: true, accessibleName: value.transaction.control.accessibleName, validation: {valid: true, message: ""}}, fields: []};
+        const contents = JSON.stringify(value);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction/i);
+    } finally { await fixture.cleanup(); }
+});
+test("rejects editable submission fields without their rendered operation form scope", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "simulation-success-failure-cancellation"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), value = JSON.parse(await readFile(target, "utf8"));
+        delete value.transaction.formState.scope;
         const contents = JSON.stringify(value);
         await writeFile(target, contents);
         evidence.sha256 = hash(contents);

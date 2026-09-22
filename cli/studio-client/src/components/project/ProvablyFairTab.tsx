@@ -263,7 +263,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
             </Stepper>
 
             {activeStep === 0 && (
-                <div>
+                <div data-pokie-lifecycle-form="fairness">
                     {configureOutdated && (
                         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
                             Outdated -- a seed or mode field changed since the last Compute commitments run.

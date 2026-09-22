@@ -432,7 +432,7 @@ export function ReplayTab({
             />
 
             {findMethod === "seedRound" && (
-                <form onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined))}>
+                <form data-pokie-lifecycle-form="replay" onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined))}>
                     <QuickActions>
                         {/* Confirmed against StudioReplayExecutionService.run(): Reproduce below creates a brand-new
                             game session (game.createSession()) and plays it forward through round 1, 2, ... up to

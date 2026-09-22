@@ -150,6 +150,9 @@ function semanticObservation(contents, observation, persona, label) {
     const validRenderedForm = transactionState !== "editable-submission" ? configuredForm === undefined : (
         configuredForm?.operation === operation &&
         configuredForm.capturedBeforeSubmission === true &&
+        configuredForm.scope?.identityAttribute === "data-pokie-lifecycle-form" &&
+        configuredForm.scope?.value === operation &&
+        typeof configuredForm.scope?.tagName === "string" && configuredForm.scope.tagName.length > 0 &&
         configuredForm.actionControl?.stableControlId === stableControlId &&
         configuredForm.actionControl?.identityAttribute === "id" &&
         configuredForm.actionControl?.visible === true &&

@@ -248,6 +248,7 @@ export function SimulationTab({
 
             {activeStep === 0 && (
                 <form
+                    data-pokie-lifecycle-form="simulation"
                     onSubmit={form.onSubmit((values) =>
                         onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined),
                     )}

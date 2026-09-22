@@ -557,7 +557,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
             </Stepper>
 
             {activeStep === 0 && (
-                <div>
+                <div data-pokie-lifecycle-form="certification">
                     <Text size="xs" c="dimmed" mb="sm">
                         Select/configure is saved automatically to this browser tab&apos;s session storage as you
                         type -- it survives switching tabs and reloading the page, but is lost once this tab

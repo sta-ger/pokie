@@ -267,6 +267,9 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    let lifecycleForm: string | undefined;
+    if (card.kind === "outcomeLibrary") lifecycleForm = "outcome-library";
+    else if (card.kind === "buildArtifact") lifecycleForm = "artifact-build";
     const operationalEstimates = outcomeLibraryPreflight.status !== "ok" ? undefined : outcomeLibraryPreflight.result.operationalEstimates ?? {
         recordCount: "unknown",
         outputSize: "unknown",
@@ -276,7 +279,10 @@ function TargetCard({
     } as const;
 
     return (
-        <div style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}>
+        <div
+            data-pokie-lifecycle-form={lifecycleForm}
+            style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}
+        >
             <Group gap="xs" mb={4}>
                 <Text fw={600}>{card.label}</Text>
                 <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
@@ -519,7 +525,7 @@ function TargetCard({
                         // rendered input before it can enable Build, so keeping
                         // the contract on the actual form field prevents a
                         // route-level adapter from claiming a configured build.
-                        attributes={card.artifactTarget === "parWorkbook" ? {input: {"data-pokie-lifecycle-field": "artifact-build-destination"}} : undefined}
+                        attributes={card.artifactTarget === "parWorkbook" ? {input: {id: "artifact-build-destination", "data-pokie-lifecycle-field": "artifact-build-destination"}} : undefined}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
                         onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
