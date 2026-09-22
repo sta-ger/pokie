@@ -680,7 +680,13 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         <Button variant="default" onClick={handleAddMode}>
                             Add mode
                         </Button>
-                        <Button onClick={() => setActiveStep(1)} disabled={!validateReachable}>
+                        <Button
+                            id="certification-continue-validate"
+                            data-pokie-lifecycle="precondition"
+                            data-pokie-lifecycle-operation="certification-validate"
+                            onClick={() => setActiveStep(1)}
+                            disabled={!validateReachable}
+                        >
                             Continue to Validate
                         </Button>
                     </QuickActions>

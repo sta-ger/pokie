@@ -612,7 +612,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (await evaluate("!!document.querySelector('[data-pokie-lifecycle-field=\"simulation-rounds\"]')")) return;
             const configured = await waitFor(() => evaluate(`(() => {
                 const item = document.querySelector('[data-pokie-lifecycle-step="simulation-configure"]');
-                if (!(item instanceof HTMLElement) || item.id !== 'simulation-configure' || item.getAttribute('aria-disabled') === 'true') return false;
+                // Mantine retains aria-disabled while it reconciles a prior
+                // completed step.  That advisory attribute must not override
+                // the native enabled state of its keyboard-operable step
+                // button: the product test surface proves Configure remains
+                // usable after a completed simulation.  Read the actual DOM
+                // control state and let the keyboard activation verify the
+                // transition instead of rejecting a stale ARIA snapshot.
+                if (!(item instanceof HTMLElement) || item.id !== 'simulation-configure' || ('disabled' in item && Boolean(item.disabled))) return false;
                 item.focus();
                 return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
             })()`), `${observation} rendered simulation Configure step`);
@@ -663,7 +670,18 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 await activateRenderedPrecondition("replay-target", observation);
                 return waitFor(() => evaluate("!!document.getElementById('replay-run')"), `${observation} rendered replay run control`);
             }
-            if (body === "certification") return setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
+            if (body === "certification") {
+                const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
+                // Validation is deliberately a separate first-time-user step:
+                // entering a source only enables the product's Continue
+                // control.  Traverse that real, labelled precondition before
+                // looking up the subsequent Validate operation, rather than
+                // treating a configured field as an invisible submission.
+                if (source && !await evaluate("!!document.querySelector('[data-pokie-lifecycle=\"operation\"][data-pokie-lifecycle-operation=\"certification\"]')")) {
+                    await activateRenderedPrecondition("certification-validate", observation);
+                }
+                return source;
+            }
             if (body === "fairness") {
                 const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
                 const mode = await setRequiredScreenField("Mode name", "base");
@@ -727,8 +745,16 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // proves that the following public control performs the
                 // observed navigation.
                 const shellRoute = screen === "overview" ? `${projectBaseRoute}/gameModel` : `${projectBaseRoute}/overview`;
+                const shellScreen = screen === "overview" ? "gameModel" : "overview";
                 await cdp.send("Page.navigate", {url:`${origin}/${shellRoute}`});
-                await waitFor(() => evaluate("document.readyState === 'complete' && !!document.querySelector('main, [role=main], nav') && document.body.innerText.trim().length > 40"), `${screen} public shell`);
+                // Page.navigate changes the hash before React has necessarily
+                // reconciled the dashboard's capability-driven tab.  Starting
+                // the next keyboard interaction against that previous DOM can
+                // focus an already-selected control and make its context
+                // receipt look like a navigation.  Wait for both the scoped
+                // route and the product's active navigation control so the
+                // observed key press begins from the opposite rendered tab.
+                await waitFor(() => evaluate(`document.readyState === 'complete' && location.hash === ${JSON.stringify(shellRoute)} && !!document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route="${shellScreen}"][aria-current="page"]') && !!document.querySelector('main, [role=main], nav') && document.body.innerText.trim().length > 40`), `${screen} active public shell`);
                 // Capability-driven tabs mount after the project context has
                 // rendered.  The collector observes that public transition
                 // instead of assuming that a document-ready shell has already
