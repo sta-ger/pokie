@@ -86,6 +86,12 @@ const semantic = (persona, observation, contract, viewport) => {
         transaction = {
             operation: contract.operation ?? contract.body ?? contract.route,
             control: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", accessibleName: matchedLabel, enabled: true, disabled: false, disabledExplanation: null},
+            ...((contract.operation ?? contract.body) === undefined ? {} : {formState: {
+                operation: contract.operation ?? contract.body,
+                capturedBeforeSubmission: true,
+                actionControl: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", accessibleName: matchedLabel},
+                fields: [{stableControlId: `field-${observation}`, identityAttribute: "id", accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
+            }}),
             confirmation: {required: false, state: "not-required", control: null},
             keyboardActivations: [{phase: "operation", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1}],
         };

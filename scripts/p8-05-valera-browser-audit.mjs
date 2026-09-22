@@ -34,6 +34,12 @@ export function validateP805RenderedPersonaAudit(audit) {
     if (!audit.packageIdentity || audit.packageIdentity.archiveSha256 !== audit.candidatePackageSha256 || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.candidatePackageJsonSha256 ?? "") || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.declaredCandidateExecutableSha256 ?? "") || audit.packageIdentity.candidateExecutableSha256 !== audit.packageIdentity.declaredCandidateExecutableSha256 || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.candidateExecutableReceiptSha256 ?? "") || typeof audit.packageIdentity.candidateExecutableReceiptId !== "string" || !audit.packageIdentity.candidateExecutableReceiptId || typeof audit.packageIdentity.candidateExecutableReceiptIssuer !== "string" || !audit.packageIdentity.candidateExecutableReceiptIssuer || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.candidateTreeManifestSha256 ?? "") || !/^[a-f0-9]{40}$/i.test(audit.packageIdentity.candidateTreeObjectId ?? "") || audit.packageIdentity.candidateTreeManifestCandidateId !== audit.candidateId || !Number.isSafeInteger(audit.packageIdentity.candidateExecutableFiles) || audit.packageIdentity.candidateExecutableFiles < 1 || audit.packageIdentity.archiveGitHead !== audit.candidateId || typeof audit.packageIdentity.installedCli !== "string" || !audit.packageIdentity.installedCli || !audit.packageIdentity.installedPackageJsonSha256) fail(`rendered ${audit.persona} audit does not prove its installed archive executable contents are this candidate`);
     if (!Array.isArray(rendered.responsive) || !["wide", "compact", "narrow"].every((viewport) => rendered.responsive.some((measurement) => measurement?.viewport === viewport && measurement?.overflow === false && measurement?.visibleFocus === true && measurement?.screenshotEvidenceId))) fail(`rendered ${audit.persona} audit lacks measured wide, compact, and narrow responsive states`);
     for (const persona of workflowPersonas) for (const observation of P805_REQUIRED_OBSERVATIONS[persona]) for (const viewport of ["wide", "compact", "narrow"]) { const contract = P805_WORKFLOW_CONTRACTS[persona][observation], action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === persona && value?.observation === observation && value?.viewport === viewport), state = contract && P805_SCREEN_CONTROL_STATES[contract.route], operation = contract?.operation ?? contract?.body, expectedLifecycle = operation ? {kind:"operation", value:operation} : {kind:"navigation", value:contract?.route}; if (!contract || !state || !action || typeof action.route !== "string" || !action.route.endsWith(`/project/${contract.route}`) && !action.route.endsWith(`/${contract.route}`) || action.screenState !== contract.route || action.screenNavigationControl !== state.navigationControl || typeof action.stableControlId !== "string" || !action.stableControlId || action.domControlId !== action.stableControlId || action.identityAttribute !== "id" || action.interaction?.stableControlId !== action.stableControlId || action.interaction?.identityAttribute !== "id" || action.interaction?.lifecycle?.kind !== expectedLifecycle.kind || action.interaction?.lifecycle?.value !== expectedLifecycle.value || action.precondition?.enabled !== true || action.precondition?.disabled !== false || action.precondition?.disabledExplanation !== null || action.precondition?.accessibleName !== action.interaction?.matchedLabel || !action.transaction || action.transaction.control?.stableControlId !== action.stableControlId || action.transaction.control?.accessibleName !== action.interaction?.matchedLabel || action.transaction.control?.enabled !== true || action.transaction.control?.disabled !== false || action.transaction.control?.disabledExplanation !== null || action.transaction.confirmation?.required !== false || action.transaction.confirmation?.state !== "not-required" || action.transaction.keyboardActivations?.length !== 1 || action.transaction.keyboardActivations[0]?.count !== 1 || action.transaction.keyboardActivations[0]?.controlId !== action.stableControlId || typeof action.browserRequestId !== "string" || !action.browserRequestId || action.visibleTerminal?.state !== "rendered" || action.visibleTerminal?.changedAfterRequest !== true || action.visibleTerminal?.observedAfterRequestId !== action.browserRequestId || action.visibleTerminal?.resultSha256 !== action.terminal?.resultSha256 || action.expectedControl !== contract.control || (action.expectedMethod !== undefined && (action.expectedMethod !== contract.method || action.expectedBodyKind !== (contract.body ?? null))) || action.expectedApi !== contract.api || action.expectedArtifact !== (contract.artifact ?? null) || action.expectedTerminal !== contract.terminal || !action.terminal || !["completed", "success", "ok", "valid", "partial"].includes(action.terminal.status) || !/^[a-f0-9]{64}$/i.test(action.terminal.resultSha256 ?? "") || !action.evidenceId || !action.screenshotEvidenceId || !Number.isSafeInteger(action.elapsedMs) || action.elapsedMs <= 0 || !action.interaction || action.interaction.keyboardFocused !== true || action.interaction.keyboardActivated !== true || action.interaction.activation !== "keyboard" || !Array.isArray(action.accessibility?.namedRegions) || action.accessibility.namedRegions.length === 0 || action.accessibility.visibleFocus !== true || !Number.isSafeInteger(action.accessibility.unexplainedDisabledControls) || action.accessibility.unexplainedDisabledControls < 0) fail(`rendered ${persona} audit lacks a DOM-bound three-viewport action for ${observation}`); }
+    for (const action of rendered.actions) {
+        const operation = action?.interaction?.lifecycle?.kind === "operation" ? action.interaction.lifecycle.value : undefined;
+        if (operation === undefined) continue;
+        const formState = action.transaction?.formState;
+        if (formState?.operation !== operation || formState.capturedBeforeSubmission !== true || formState.actionControl?.stableControlId !== action.transaction.control?.stableControlId || formState.actionControl?.identityAttribute !== "id" || typeof formState.actionControl?.accessibleName !== "string" || !formState.actionControl.accessibleName || !Array.isArray(formState.fields) || formState.fields.length === 0 || formState.fields.some((field) => typeof field?.stableControlId !== "string" || !field.stableControlId || field.identityAttribute !== "id" || typeof field.accessibleName !== "string" || !field.accessibleName || typeof field.value !== "string" || field.disabled !== false || typeof field.required !== "boolean" || field.validation?.valid !== true || typeof field.validation.message !== "string")) fail(`rendered ${audit.persona} audit lacks valid DOM-derived form state before ${operation} submission`);
+    }
     for (const name of ["reloadReconnect", "projectSwitch", "staleResponseIsolation", "unsavedWorkProtection", "serverRestart"]) if (rendered.recovery?.[name]?.observed !== true || !rendered.recovery[name].evidenceId) fail(`rendered ${audit.persona} audit lacks measured recovery observations`);
     for (const name of ["success", "actionableFailure", "cooperativeCancellation", "retryWithoutPartialArtifacts"]) if (rendered.jobs?.[name]?.observed !== true || !rendered.jobs[name].evidenceId) fail(`rendered ${audit.persona} audit lacks measured success/failure/cancellation/retry observations`);
     if (!audit.cleanup || audit.cleanup.processTreeDrained !== true || audit.cleanup.resourcesDrained !== true || audit.cleanup.contextRemoved !== true || !audit.cleanup.evidenceId) fail(`rendered ${audit.persona} audit lacks machine-measured cleanup`);
@@ -417,9 +423,53 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // to the person.  Each rendered control receives one keyboard
         // activation; a confirmation is a second, explicit lifecycle phase,
         // never an Enter/Space retry race.
-        const beginRenderedTransaction = async ({lifecycle, operation, observation, confirmation = false}) => {
+        const captureRenderedFormState = async (operation, observation) => {
+            const formState = await evaluate(`(() => {
+                const operation = ${JSON.stringify(operation)};
+                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+                const accessibleName = (item) => {
+                    const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
+                        .map((id) => document.getElementById(id)?.textContent?.trim()).filter(Boolean).join(' ');
+                    const labels = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement
+                        ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') : '';
+                    return (item.getAttribute('aria-label') || labelledBy || labels || item.getAttribute('name') || '').trim();
+                };
+                const action = [...document.querySelectorAll('button,a')].find((item) => visible(item) && item.getAttribute('data-pokie-lifecycle') === 'operation' && item.getAttribute('data-pokie-lifecycle-operation') === operation);
+                if (!(action instanceof HTMLElement) || !action.id) return false;
+                const fields = [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+                    const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
+                    return {
+                        stableControlId:item.id,
+                        identityAttribute:'id',
+                        accessibleName:accessibleName(item),
+                        value:item.value,
+                        disabled:item.disabled,
+                        required:item.required,
+                        validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
+                    };
+                });
+                if (fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation.valid || field.disabled)) return false;
+                return {operation, capturedBeforeSubmission:true, actionControl:{stableControlId:action.id, identityAttribute:'id', accessibleName:accessibleName(action)}, fields};
+            })()`);
+            if (!formState) fail(`${observation} did not expose valid visible rendered form state for ${operation}`);
+            return formState;
+        };
+        const focusCapturedLifecycleControl = async (lifecycle, operation, stableControlId) => evaluate(`(() => {
+            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+            const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
+            const item = document.getElementById(${JSON.stringify(stableControlId)});
+            if (!(item instanceof HTMLElement) || !visible(item) || item.getAttribute('data-pokie-lifecycle') !== ${JSON.stringify(lifecycle)} || item.getAttribute('data-pokie-lifecycle-operation') !== ${JSON.stringify(operation)}) return null;
+            const disabled = 'disabled' in item && Boolean(item.disabled);
+            const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
+            const disabledExplanation = item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null;
+            item.focus();
+            return document.activeElement === item ? {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:true, enabled:!disabled, disabled, disabledExplanation, accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id', lifecycle:{kind:${JSON.stringify(lifecycle)}, value:${JSON.stringify(operation)}}} : null;
+        })()`);
+        const beginRenderedTransaction = async ({lifecycle, operation, observation, confirmation = false, formState}) => {
             const control = await waitFor(async () => {
-                const candidate = await focusLifecycleControl(lifecycle, operation, "button,a");
+                const candidate = formState === undefined
+                    ? await focusLifecycleControl(lifecycle, operation, "button,a")
+                    : await focusCapturedLifecycleControl(lifecycle, operation, formState.actionControl.stableControlId);
                 // The collector records the disabled state and explanation
                 // from the real control, then waits for Studio's own
                 // preflight to enable it. This avoids converting a transient
@@ -429,7 +479,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }, `${observation} rendered ${operation} control`);
             const transaction = {
                 operation,
-                control,
+                // Persist the name that was exposed while the form was valid
+                // and ready to submit. Preflight may replace the button text
+                // during the same click, but it cannot change this DOM id.
+                control:formState === undefined ? control : {...control, control:formState.actionControl.accessibleName, matchedLabel:formState.actionControl.accessibleName, accessibleName:formState.actionControl.accessibleName},
+                ...(formState === undefined ? {} : {formState}),
                 confirmation: {required:confirmation, state:confirmation ? "opening" : "not-required", control:null},
                 keyboardActivations:[{phase:"operation", controlId:control.stableControlId, count:1}],
             };
@@ -658,7 +712,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // the rendered, declared operation to become enabled rather
                 // than racing its loading state or falling back to another
                 // card with a similarly-labelled Build button.
-                transaction = await beginRenderedTransaction({lifecycle:"operation", operation:contract.operation ?? contract.body, observation});
+                const operation = contract.operation ?? contract.body;
+                // The durable request is only eligible after the actual visible
+                // form state is read.  This closes the old route-plus-request
+                // adapter: a later poll must now be causally preceded by one
+                // configured, valid DOM submission from this exact control.
+                const formState = await captureRenderedFormState(operation, observation);
+                transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState});
+                if (transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
                 interaction = transaction.control;
                 entry = await browserRequest(contract, observation, cursor, transaction);
             } else entry = await browserRequest(contract, observation, entered.navigationCursor, transaction);
