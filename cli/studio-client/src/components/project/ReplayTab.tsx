@@ -445,6 +445,7 @@ export function ReplayTab({
                             min={1}
                             step={1}
                             required
+                            data-pokie-lifecycle-field="replay-round"
                             {...form.getInputProps("round")}
                             key={form.key("round")}
                         />

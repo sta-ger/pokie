@@ -74,7 +74,15 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
     // path for a host action when viewing an older incomplete durable record.
     const resolvedOutcomeLibraryPath = textValue(outcomeResult?.resolvedBundleDir);
     return (
-        <Alert className="studio-job-card" color={presentation.color} title={title} role={job.status === "failed" ? "alert" : "status"} aria-live={job.status === "failed" ? undefined : "polite"}>
+        <Alert
+            className="studio-job-card"
+            color={presentation.color}
+            title={title}
+            role={job.status === "failed" ? "alert" : "status"}
+            aria-live={job.status === "failed" ? undefined : "polite"}
+            data-pokie-lifecycle-result={job.operation}
+            data-pokie-lifecycle-terminal={job.status}
+        >
             <Stack gap={4}>
                 <Text size="sm" data-job-detail>{job.result?.summary ?? job.error ?? job.recovery?.reason ?? presentation.fallback}</Text>
                 {job.durationMs !== undefined && <Text size="xs">Duration: {job.durationMs}ms</Text>}
@@ -104,7 +112,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                         ? resolvedOutcomeLibraryPath
                         : output.path;
                     return (
-                        <Group gap="xs" key={output.label} wrap="wrap">
+                        <Group gap="xs" key={output.label} wrap="wrap" data-pokie-lifecycle-artifact={output.label}>
                             {output.downloadPath !== undefined && <Anchor size="xs" href={output.downloadPath}>Download {output.label}</Anchor>}
                             {job.operation === "outcome-library-generation" && outputPath !== undefined && onInspectOutput !== undefined &&
                                 <Button size="xs" variant="subtle" onClick={() => onInspectOutput(outputPath)}>Inspect {output.label}</Button>}

@@ -9,6 +9,35 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it("revalidates context for every rendered terminal durable receipt", async () => {
+        let contextRequests = 0;
+        const completedArtifactJob = {
+            id: "artifact-job-completed", projectId: "/games/sample-slot", operation: "artifact-build", request: {}, conflictKey: "artifact-build:/games/sample-slot",
+            status: "completed", createdAt: 1, result: {summary: "Artifact build completed.", outputs: [{label: "PAR workbook", path: "/games/sample-slot/output.xlsx"}]},
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => {
+                contextRequests += 1;
+                return {ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}};
+            },
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [completedArtifactJob]}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        const receipt = await screen.findByRole("status", {name: /artifact-build · completed/i});
+        expect(receipt).toHaveAttribute("data-pokie-lifecycle-result", "artifact-build");
+        expect(receipt).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
+        expect(receipt.querySelector('[data-pokie-lifecycle-artifact="PAR workbook"]')).toBeInTheDocument();
+        await screen.findByText("Artifact build completed.");
+        expect(contextRequests).toBeGreaterThanOrEqual(2);
+    });
+
     it("revalidates the rendered project context after an Outcome Library terminal receipt enables Certification", async () => {
         let contextRequests = 0;
         const completedOutcomeLibraryJob = {

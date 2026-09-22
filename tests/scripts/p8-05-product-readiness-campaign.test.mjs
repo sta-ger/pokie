@@ -96,6 +96,15 @@ const semantic = (persona, observation, contract, viewport) => {
         interaction,
         transaction,
         route,
+        contextRevalidation: {
+            browserRequestId: `context-${observation}`,
+            method: "GET",
+            path: "/api/project/context",
+            status: 200,
+            responseSha256: hash(JSON.stringify({status: "loaded"})),
+            projectStatus: "loaded",
+            completedBeforeSelection: true,
+        },
         contents: JSON.stringify({
             kind: "p8-05-semantic-page-state",
             operation: observation,
@@ -107,6 +116,15 @@ const semantic = (persona, observation, contract, viewport) => {
             precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: matchedLabel, region: screen.region},
             interaction,
             transaction,
+            contextRevalidation: {
+                browserRequestId: `context-${observation}`,
+                method: "GET",
+                path: "/api/project/context",
+                status: 200,
+                responseSha256: hash(JSON.stringify({status: "loaded"})),
+                projectStatus: "loaded",
+                completedBeforeSelection: true,
+            },
             request: {
                 path: contract.api,
                 method: contract.method,
@@ -206,6 +224,20 @@ async function campaignFixture() {
             artifacts.push(screenshot, page);
             apiEntries.push({
                 observation,
+                method: "GET",
+                path: "/api/project/context",
+                status: 200,
+                payload: {status: "loaded"},
+                browserRequestId: source.contextRevalidation.browserRequestId,
+                responseSha256: source.contextRevalidation.responseSha256,
+                initiator: "rendered-navigation-context",
+            });
+            browserEvents.push(
+                {method: "Network.requestWillBeSent", params: {requestId: source.contextRevalidation.browserRequestId, request: {url: "http://127.0.0.1/api/project/context", method: "GET"}}},
+                {method: "Network.responseReceived", params: {requestId: source.contextRevalidation.browserRequestId, response: {status: 200}}},
+            );
+            apiEntries.push({
+                observation,
                 method: contract.method,
                 path: contract.api,
                 bodyKind: contract.body ?? null,
@@ -251,6 +283,7 @@ async function campaignFixture() {
                 domControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
                 identityAttribute: "id",
                 browserRequestId: `browser-${observation}`,
+                contextRevalidation: source.contextRevalidation,
                 precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: source.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
                 visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256, changedAfterRequest: true},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},

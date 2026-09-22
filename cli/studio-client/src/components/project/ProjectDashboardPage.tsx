@@ -408,6 +408,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
     const navigationRequestIdRef = useRef(0);
     const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string}>({tab: activeTab, status: "rendered"});
+    // This generation is deliberately shared by a completed durable operation
+    // and a public tab transition. A capability-changing operation must refresh
+    // the product-owned context before its dependent tab can be selected; the
+    // tab transition repeats that same boundary rather than trusting a cached
+    // page header from before the user's latest action.
+    const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
@@ -416,24 +422,28 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
             const requestId = ++navigationRequestIdRef.current;
             setNavigationLifecycle({tab: value, status: "loading"});
-            navigate(`${routePrefix}/${value}`);
-            // Tab content keeps its own domain-specific data hooks, while this
-            // small refresh confirms that the product still owns the active
-            // project after a public navigation. It gives the rendered nav
-            // lifecycle a browser request and an actionable terminal state.
+            // Do not let a dependent workflow mount against the header that
+            // preceded a durable operation. The rendered navigation control
+            // owns this context read, and only its successful response may
+            // advance the route. `useProjectContext` then consumes the same
+            // fresh generation to update the capability-driven tab list.
             getProjectContext(fetchImpl)
                 .then(() => {
                     if (requestId === navigationRequestIdRef.current) {
+                        setContextRefreshGeneration((generation) => generation + 1);
+                        navigate(`${routePrefix}/${value}`);
                         setNavigationLifecycle({tab: value, status: "rendered"});
                     }
                 })
                 .catch((error: unknown) => {
                     if (requestId === navigationRequestIdRef.current) {
-                        setNavigationLifecycle({tab: value, status: "error", message: errorMessage(error)});
+                        // Keep the currently rendered workflow selected when
+                        // its prerequisite context cannot be revalidated.
+                        setNavigationLifecycle({tab: activeTab, status: "error", message: errorMessage(error)});
                     }
                 });
         },
-        [fetchImpl, navigate, requestedProjectRoot],
+        [activeTab, fetchImpl, navigate, requestedProjectRoot],
     );
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
@@ -448,7 +458,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${destination}${migrationSearch(tab)}`, {replace: true});
     }, [navigate, requestedMigration, requestedProjectRoot, tab]);
 
-    const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
     const header = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
@@ -461,17 +470,22 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
     const capabilityRefreshJobsRef = useRef(new Set<string>());
     useEffect(() => {
-        // An outcome-library job can add the source-reading capability that
-        // exposes Certification. Refresh the real project header once its
-        // durable terminal record arrives, so the next public navigation is
-        // available without asking users to reload Studio.
-        const completedOutcomeLibraryJob = commonJobs.jobs.find((job) =>
-            job.operation.includes("outcome-library") &&
-            ["completed", "success"].includes(job.status) &&
+        // A terminal durable record is the only product-owned signal that an
+        // operation may have changed project capabilities, artifacts, or its
+        // dependent workflow's preconditions. Revalidate after *every*
+        // terminal operation (not just Outcome Library generation) so each
+        // rendered receipt and the next enabled public control derive from
+        // the same current server context.
+        const terminalJobs = commonJobs.jobs.filter((job) =>
+            ["completed", "success", "failed", "cancelled", "recovery-required"].includes(job.status) &&
             !capabilityRefreshJobsRef.current.has(job.id),
         );
-        if (completedOutcomeLibraryJob === undefined) return;
-        capabilityRefreshJobsRef.current.add(completedOutcomeLibraryJob.id);
+        if (terminalJobs.length === 0) return;
+        // Job discovery returns retained history as one list. Mark the whole
+        // observed terminal batch before refreshing so an initial list of
+        // receipts produces one coherent context revalidation, rather than a
+        // cascade of unmounting refreshes between dependent controls.
+        terminalJobs.forEach((job) => capabilityRefreshJobsRef.current.add(job.id));
         setContextRefreshGeneration((generation) => generation + 1);
     }, [commonJobs.jobs]);
     // Build/Export can provide a richer, operation-specific presentation for

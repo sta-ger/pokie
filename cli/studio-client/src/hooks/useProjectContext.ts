@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {getProjectContext, ProjectOpenError} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
@@ -25,6 +25,11 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
+    const headerRef = useRef(header);
+
+    useEffect(() => {
+        headerRef.current = header;
+    }, [header]);
 
     useEffect(() => {
         let cancelled = false;
@@ -51,10 +56,18 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         if (requestedProjectRoot === undefined) {
             poll(POLL_MAX_ATTEMPTS);
         } else {
-            // Do not leave the previous dashboard visible while restoring a historical route. The
-            // caller's keyed route remount already clears local state; this explicit loading header
-            // also prevents project-scoped requests until the server has accepted the requested root.
-            setHeader({status: "loading", projectRoot: requestedProjectRoot});
+            const retainedHeader = headerRef.current;
+            const revalidatingCurrentProject =
+                (retainedHeader.status === "loaded" || retainedHeader.status === "outcome-source" || retainedHeader.status === "artifact") &&
+                retainedHeader.projectRoot === requestedProjectRoot;
+            // Do not leave a previous project's dashboard visible while restoring a historical route.
+            // A same-project capability refresh is different: preserve the rendered terminal receipt
+            // and its dependent form while the fresh context arrives. Clearing the header here used
+            // to unmount Replay after an earlier durable receipt, leaving its public Load action with
+            // no corresponding Run control even though the server had accepted the request.
+            if (!revalidatingCurrentProject) {
+                setHeader({status: "loading", projectRoot: requestedProjectRoot});
+            }
             getProjectContext(fetchImpl)
                 .then((dashboard) => {
                     if (cancelled) {

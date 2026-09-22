@@ -527,14 +527,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event('change', {bubbles:true}));
             return input.value === ${JSON.stringify(value)};
         })()`);
-        const setReplayRound = async (value) => evaluate(`(() => {
-            const input = document.getElementById("replay-target-round");
-            if (!(input instanceof HTMLInputElement) || input.disabled) return false;
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, ${JSON.stringify(value)});
-            input.dispatchEvent(new Event("input", {bubbles:true}));
-            input.dispatchEvent(new Event("change", {bubbles:true}));
-            return input.value === ${JSON.stringify(value)};
-        })()`);
+        const setReplayRound = async (value) => setLifecycleField("replay-round", value);
         const activateRenderedPrecondition = async (operation, observation) => {
             const control = await waitFor(async () => {
                 const candidate = await focusLifecycleControl("precondition", operation, "button,a");
@@ -614,8 +607,21 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const navigationCursor = cdp.events.length;
                 const navigationTransaction = await beginRenderedTransaction({lifecycle:"navigation", operation:screen, observation});
                 const navigation = navigationTransaction.control;
+                // The navigation control's request is a product transition,
+                // not a route-marker convenience. Wait for its own fresh
+                // context response before accepting the route that depends on
+                // it, and retain that response beside the following operation
+                // receipt. This makes a new capability visible only after the
+                // durable operation and its owning context have both settled.
+                const contextRequest = await waitFor(() => cdp.events.slice(navigationCursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/project/context" && event.params.request.method === "GET") || false, `${screen} rendered project-context revalidation request`);
+                const contextResponse = await waitFor(() => cdp.events.slice(navigationCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === contextRequest.params.requestId) || false, `${screen} rendered project-context revalidation response`);
+                const contextBody = await readBrowserResponseBody(contextRequest.params.requestId, `${screen} rendered project-context revalidation`);
+                const contextPayload = JSON.parse(contextBody.body || "{}");
+                if (!contextPayload || ["empty", "error", "loading"].includes(contextPayload.status)) fail(`${screen} navigation did not receive a usable product context`);
+                const contextRevalidation = {browserRequestId:contextRequest.params.requestId, method:"GET", path:"/api/project/context", status:contextResponse.params.response.status, responseSha256:digest(JSON.stringify(contextPayload)), projectStatus:contextPayload.status, completedBeforeSelection:true};
+                api.push({observation, ...contextRevalidation, payload:contextPayload, initiator:"rendered-navigation-context"});
                 await waitFor(() => evaluate(`location.hash === ${JSON.stringify(route)}`), `${screen} public navigation for ${observation}`);
-                return {route, navigation, navigationCursor, navigationTransaction};
+                return {route, navigation, navigationCursor, navigationTransaction, contextRevalidation};
             },
         }]));
         const runScreenControlState = async (projectBaseRoute, viewport, observation, contract) => {
@@ -724,8 +730,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 terminal:{...entry.terminal, complete:true, artifact:contract.artifact ?? null},
                 renderedTerminal:{state:"rendered", observedAfterRequestId:entry.browserRequestId, text:terminalText.text, liveText:terminalText.live, textSha256:digest(terminalText.text), resultSha256:entry.terminal.resultSha256, observedAt:services.now(), changedAfterRequest:terminalText.text !== beforeActionText || terminalText.live.length > 0, lifecycle:lifecycleResult},
                 workflow:{persona:options.persona, source:"rendered-control", expectedApi:contract.api, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedArtifact:contract.artifact ?? null, terminal:contract.terminal}, state:productState};
+            semantic.contextRevalidation = entered.contextRevalidation;
             const evidenceId = await save("page-state", `${viewport}-${observation}.json`, JSON.stringify(semantic), [observation]);
-            return {evidenceId, screenshotEvidenceId, state:productState, interaction, transaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, screen, screenNavigationControl:stateMachine.navigationControl, precondition:semantic.precondition, visibleTerminal:semantic.renderedTerminal};
+            return {evidenceId, screenshotEvidenceId, state:productState, interaction, transaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, contextRevalidation:entered.contextRevalidation, screen, screenNavigationControl:stateMachine.navigationControl, precondition:semantic.precondition, visibleTerminal:semantic.renderedTerminal};
         };
         const creation = Date.now();
         await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
@@ -794,7 +801,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             try { page = await runScreenControlState(projectBaseRoute, viewport, observation, contract); } finally { options.persona = primaryPersona; }
             actions.push({persona, observation, route:`${projectBaseRoute}/${contract.route}`, viewport, elapsedMs:Date.now() - actionStart,
                 pageTextLength:page.state.text.length, controlCount:page.state.controls.length, overflow:page.state.overflow,
-                screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:page.state.accessibility,
+                screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:page.state.accessibility,
                 expectedControl:contract.control, expectedMethod:contract.method,
                 expectedBodyKind:contract.body ?? null, expectedApi:contract.api, expectedArtifact:contract.artifact ?? null,
                 expectedTerminal:contract.terminal, terminal:page.terminal, interaction:page.interaction, transaction:page.transaction,
