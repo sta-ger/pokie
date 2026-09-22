@@ -56,6 +56,7 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
                     variant="default"
                     size="xs"
                     data-pokie-lifecycle="operation"
+                    data-pokie-transaction-state="read-only-operation"
                     data-pokie-lifecycle-operation="project-validation"
                     onClick={onRevalidate}
                     loading={view.status === "loading"}

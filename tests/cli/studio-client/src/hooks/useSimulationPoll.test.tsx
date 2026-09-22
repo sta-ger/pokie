@@ -20,6 +20,33 @@ function strictModeWrapper(fetchImpl: FetchLike) {
 }
 
 describe("useSimulationPoll - StrictMode + cleanup", () => {
+    it("clears an optimistic queued state after a rejected start so a corrected rendered Configure submission can run", async () => {
+        let starts = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                starts += 1;
+                return starts === 1
+                    ? Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({message: "Rounds exceed the configured durable-job limit."})})
+                    : Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(1_000_001, undefined, 1));
+        await waitFor(() => expect(result.current.error).toContain("HTTP 400"));
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.currentJobId).toBeUndefined();
+
+        act(() => result.current.run(1, undefined, 1));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(starts).toBe(2);
+    });
+
     it("reattaches to a durable active job after reload so its public cancellation state is restored", async () => {
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {

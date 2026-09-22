@@ -428,6 +428,7 @@ function TargetCard({
                         onClick={onGenerateOutcomeLibrary}
                         id="outcome-library-generate"
                         data-pokie-lifecycle="operation"
+                        data-pokie-transaction-state="editable-submission"
                         data-pokie-lifecycle-operation="outcome-library"
                         loading={outcomeLibraryRun.status === "running"}
                         disabled={outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded")}
@@ -588,6 +589,7 @@ function TargetCard({
                     <Button
                         id={`artifact-build-${card.artifactTarget}`}
                         data-pokie-lifecycle="operation"
+                        data-pokie-transaction-state="editable-submission"
                         data-pokie-lifecycle-operation={card.artifactTarget === "parWorkbook" ? "artifact-build" : `artifact-build-${card.artifactTarget}`}
                         size="xs"
                         mt="sm"

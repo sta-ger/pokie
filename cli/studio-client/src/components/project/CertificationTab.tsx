@@ -437,7 +437,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     round -- a preflight check you can run before committing to a build.
                 </Text>
                 <QuickActions>
-                    <Button id="certification-validate-source" data-pokie-lifecycle="operation" data-pokie-lifecycle-operation="certification" onClick={runValidate} loading={validateView.status === "loading"}>
+                    <Button id="certification-validate-source" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="certification" onClick={runValidate} loading={validateView.status === "loading"}>
                         Validate source bundle
                     </Button>
                 </QuickActions>

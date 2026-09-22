@@ -11,6 +11,7 @@ import {
     P805_SCREEN_CONTROL_STATES,
     P805_SCHEMA_VERSION,
     P805_WORKFLOW_CONTRACTS,
+    p805TransactionStateClass,
     validateP805ProductReadinessCampaign,
 } from "../../scripts/p8-05-product-readiness-campaign.mjs";
 
@@ -72,6 +73,7 @@ const semantic = (persona, observation, contract, viewport) => {
         screen = P805_SCREEN_CONTROL_STATES[contract.route],
         actionControl = contract.actionControl ?? contract.control,
         matchedLabel = contract.actionControlMatch === "prefix" ? `${contract.actionControl} (base)` : actionControl,
+        transactionState = p805TransactionStateClass(contract),
         interaction = {
             control: actionControl,
             matchedLabel,
@@ -81,17 +83,19 @@ const semantic = (persona, observation, contract, viewport) => {
             routeAfterActivation: route,
             stableControlId: contract.actionControlId ?? screen.navigationControlId,
             identityAttribute: "id",
+            transactionState,
             lifecycle: (contract.operation ?? contract.body) === undefined ? {kind: "navigation", value: contract.route} : {kind: "operation", value: contract.operation ?? contract.body},
         },
         transaction = {
             operation: contract.operation ?? contract.body ?? contract.route,
+            stateClass: transactionState,
             control: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", accessibleName: matchedLabel, enabled: true, disabled: false, disabledExplanation: null},
-            ...((contract.operation ?? contract.body) === undefined ? {} : {formState: {
+            ...(transactionState === "editable-submission" ? {formState: {
                 operation: contract.operation ?? contract.body,
                 capturedBeforeSubmission: true,
-                actionControl: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", accessibleName: matchedLabel},
-                fields: contract.method === "GET" ? [] : [{stableControlId: `field-${observation}`, identityAttribute: "id", accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
-            }}),
+                actionControl: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", visible: true, accessibleName: matchedLabel, validation: {valid: true, message: ""}},
+                fields: [{stableControlId: `field-${observation}`, identityAttribute: "id", visible: true, accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
+            }} : {}),
             confirmation: {required: false, state: "not-required", control: null},
             keyboardActivations: [{phase: "operation", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1}],
         };
@@ -169,6 +173,7 @@ const semantic = (persona, observation, contract, viewport) => {
             workflow: {
                 persona,
                 source: "rendered-control",
+                transactionState,
                 expectedApi: contract.api,
                 expectedMethod: contract.method,
                 expectedBodyKind: contract.body ?? null,
@@ -808,6 +813,19 @@ test("rejects a semantic record without its one-activation rendered transaction 
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /screen-specific public control/i);
+    } finally { await fixture.cleanup(); }
+});
+test("rejects an empty Configure form receipt for a read-only rendered report refresh", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "simulation-rtp-volatility-features"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), value = JSON.parse(await readFile(target, "utf8"));
+        value.transaction.formState = {operation: "simulation-reports", capturedBeforeSubmission: true, actionControl: {stableControlId: value.transaction.control.stableControlId, identityAttribute: "id", visible: true, accessibleName: value.transaction.control.accessibleName, validation: {valid: true, message: ""}}, fields: []};
+        const contents = JSON.stringify(value);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction/i);
     } finally { await fixture.cleanup(); }
 });
 test("requires browser defects to be frozen initially and absent after retest", async () => {

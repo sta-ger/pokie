@@ -103,6 +103,14 @@ export function useSimulationPoll() {
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation)) {
+                    // A rejected start has no durable job to poll. Clear the
+                    // optimistic queued state so Configure is immediately
+                    // usable for the person's corrected, next submission.
+                    // Leaving it queued made the rendered Run button remain
+                    // disabled after an actionable server diagnostic.
+                    currentJobId.current = undefined;
+                    setJob(undefined);
+                    setProgress(undefined);
                     setError(errorMessage(err));
                 }
             })

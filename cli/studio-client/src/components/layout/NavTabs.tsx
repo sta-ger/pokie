@@ -30,6 +30,7 @@ export function NavTabs<T extends string>({items, active, onSelect}: {items: Nav
                         type="button"
                         id={item.auditControlId}
                         data-pokie-lifecycle="navigation"
+                        data-pokie-transaction-state="navigation"
                         data-pokie-lifecycle-route={item.value}
                         label={item.label}
                         active={item.value === active}

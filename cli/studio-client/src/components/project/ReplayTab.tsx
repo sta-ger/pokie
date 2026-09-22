@@ -986,6 +986,7 @@ export function ReplayTab({
                                     <Button
                                         id="replay-run"
                                         data-pokie-lifecycle="operation"
+                                        data-pokie-transaction-state="editable-submission"
                                         data-pokie-lifecycle-operation="replay"
                                         disabled={reproduceDisabled}
                                         onClick={() => {
