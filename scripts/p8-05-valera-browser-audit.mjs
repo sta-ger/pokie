@@ -673,6 +673,40 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             return true;
         };
+        // Certification consumes an outcome-library project while Provably
+        // Fair consumes a runnable package.  Open both through the rendered
+        // Projects import flow before their corresponding workflow states;
+        // merely pointing a blueprint route at those tabs would make their
+        // intentionally capability-gated controls disappear.
+        const openImportedProject = async (projectLocation, observation) => {
+            await cdp.send("Page.navigate", {url:`${origin}/#/home/projects`});
+            await waitFor(() => evaluate("document.readyState === 'complete' && !!document.getElementById('project-import-location') && !!document.getElementById('project-import-check')"), `${observation} rendered project import controls`);
+            const locationSet = await evaluate(`(() => {
+                const input = document.getElementById('project-import-location');
+                if (!(input instanceof HTMLInputElement) || input.disabled) return false;
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, ${JSON.stringify(projectLocation)});
+                input.dispatchEvent(new Event('input', {bubbles:true}));
+                input.dispatchEvent(new Event('change', {bubbles:true}));
+                return input.value === ${JSON.stringify(projectLocation)};
+            })()`);
+            if (!locationSet) fail(`${observation} could not set the rendered project import location`);
+            const activate = async (id, label) => {
+                const focused = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item; })()`);
+                if (!focused) fail(`${observation} did not expose its rendered ${label} control`);
+                await pressEnter();
+            };
+            await activate("project-import-check", "Check game");
+            await waitFor(() => evaluate("document.body.innerText.includes('Found a') && !!document.getElementById('project-import-add')"), `${observation} rendered project import preview`);
+            await activate("project-import-add", "Add to projects");
+            await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
+            const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item; })()`);
+            if (!opened) fail(`${observation} did not expose the rendered imported-project Open control`);
+            await pressEnter();
+            await waitFor(() => evaluate("location.hash.includes('/project/')"), `${observation} rendered imported project dashboard`);
+            const route = await evaluate("location.hash");
+            if (typeof route !== "string" || !/^#\/project(?:\/[^/]+){1,2}$/.test(route)) fail(`${observation} did not open a project-scoped imported route`);
+            return route.replace(/\/[^/]+$/, "");
+        };
         const screenControlStates = Object.fromEntries(Object.entries(P805_SCREEN_CONTROL_STATES).map(([screen, state]) => [screen, {
             ...state,
             async enter(projectBaseRoute, viewport, observation, contract) {
@@ -896,13 +930,16 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // would turn a successful restored job into a false timeout.
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.endsWith('/simulation')"), "active-job reload Simulation recovery navigation");
         const activeReloadCancellation = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, confirmation:true}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"], [activeReload.transaction, activeReloadCancellation.transaction]);
+        const outcomeLibraryProjectBaseRoute = await openImportedProject(outcomeBundle, "certification outcome-library import");
+        const runtimeProjectBaseRoute = await openImportedProject(packageRoot, "fairness runtime-package import");
         const projectBaseRoute = createdProjectBaseRoute, viewports = ["wide", "compact", "narrow"], actions = [], workflows = options.workflowPersonas.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => viewports.map((viewport) => ({persona, observation, viewport}))));
         for (const {persona, observation, viewport} of workflows) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation], actionStart = Date.now(), primaryPersona = options.persona;
             options.persona = persona;
             let page;
-            try { page = await runScreenControlState(projectBaseRoute, viewport, observation, contract); } finally { options.persona = primaryPersona; }
-            actions.push({persona, observation, route:`${projectBaseRoute}/${contract.route}`, viewport, elapsedMs:Date.now() - actionStart,
+            const workflowProjectBaseRoute = contract.route === "certification" ? outcomeLibraryProjectBaseRoute : contract.route === "provablyFair" ? runtimeProjectBaseRoute : projectBaseRoute;
+            try { page = await runScreenControlState(workflowProjectBaseRoute, viewport, observation, contract); } finally { options.persona = primaryPersona; }
+            actions.push({persona, observation, route:`${workflowProjectBaseRoute}/${contract.route}`, viewport, elapsedMs:Date.now() - actionStart,
                 pageTextLength:page.state.text.length, controlCount:page.state.controls.length, overflow:page.state.overflow,
                 screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:page.state.accessibility,
                 expectedControl:contract.control, expectedMethod:contract.method,
