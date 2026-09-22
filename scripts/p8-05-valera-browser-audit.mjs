@@ -466,6 +466,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202]) => {
             await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/simulation`});
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Run Simulation')"), `${observation} rendered simulation form`);
+            await ensureSimulationConfigure(observation);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setLifecycleField("simulation-rounds", String(rounds)), `${observation} rendered simulation rounds`)) fail(`Studio did not accept simulation rounds for ${observation}`);
             const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations"});
@@ -528,6 +529,23 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return input.value === ${JSON.stringify(value)};
         })()`);
         const setReplayRound = async (value) => setLifecycleField("replay-round", value);
+        // A restored terminal job intentionally opens its Review step.  The
+        // next first-time-user run must explicitly return to Configure through
+        // the product's own keyboard-operable step control before it can set
+        // its request fields.  This is not an audit-side state reset: read the
+        // stable identity from the rendered DOM and activate that real control.
+        const ensureSimulationConfigure = async (observation) => {
+            if (await evaluate("!!document.querySelector('[data-pokie-lifecycle-field=\"simulation-rounds\"]')")) return;
+            const configured = await waitFor(() => evaluate(`(() => {
+                const item = document.querySelector('[data-pokie-lifecycle-step="simulation-configure"]');
+                if (!(item instanceof HTMLElement) || item.id !== 'simulation-configure' || item.getAttribute('aria-disabled') === 'true') return false;
+                item.focus();
+                return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
+            })()`), `${observation} rendered simulation Configure step`);
+            if (configured.stableControlId !== "simulation-configure" || configured.identityAttribute !== "id") fail(`${observation} did not expose its rendered Configure control identity`);
+            await pressEnter();
+            await waitFor(() => evaluate("!!document.querySelector('[data-pokie-lifecycle-field=\"simulation-rounds\"]')"), `${observation} rendered simulation Configure form`);
+        };
         const activateRenderedPrecondition = async (operation, observation) => {
             const control = await waitFor(async () => {
                 const candidate = await focusLifecycleControl("precondition", operation, "button,a");
@@ -559,10 +577,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 () => setScreenField(label, value),
                 `${observation} product-owned ${label} field`,
             );
-            if (body === "simulation") return waitFor(
-                () => setLifecycleField("simulation-rounds", "1"),
+            if (body === "simulation") {
+                await ensureSimulationConfigure(observation);
+                return waitFor(
+                    () => setLifecycleField("simulation-rounds", "1"),
                 `${observation} product-owned simulation rounds field`,
-            );
+                );
+            }
             if (body === "replay") {
                 if (!await waitFor(() => setReplayRound("1"), `${observation} product-owned replay round field`)) return false;
                 await activateRenderedPrecondition("replay-target", observation);

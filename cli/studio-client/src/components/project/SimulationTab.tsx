@@ -219,7 +219,13 @@ export function SimulationTab({
                 </Text>
             )}
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Configure" description="Set rounds" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    id="simulation-configure"
+                    data-pokie-lifecycle-step="simulation-configure"
+                    label="Configure"
+                    description="Set rounds"
+                    aria-current={activeStep === 0 ? "step" : undefined}
+                />
                 <Stepper.Step
                     label="Run"
                     description="Watch progress"
