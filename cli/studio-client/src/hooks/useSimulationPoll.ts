@@ -29,6 +29,10 @@ export function useSimulationPoll() {
     const [error, setError] = useState<string>();
     const [cancellationRequested, setCancellationRequested] = useState(false);
     const currentJobId = useRef<string | undefined>(undefined);
+    // A terminal view can outlive the in-memory job snapshot while a reload
+    // or recovery reconciliation settles. Keep the real request that created
+    // it so Retry remains a public operation, never a visible no-op.
+    const lastRequestRef = useRef<{rounds: number; seed: string | undefined; workers: number; modeName: string | undefined} | undefined>(undefined);
     const cancelledRef = useRef(false);
     const generationRef = useRef(0);
     const runGuardGenerationRef = useRef<number | undefined>(undefined);
@@ -63,6 +67,7 @@ export function useSimulationPoll() {
                     return;
                 }
                 setJob(polledJob);
+                lastRequestRef.current = {rounds: polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName};
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
@@ -85,6 +90,7 @@ export function useSimulationPoll() {
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         runGuardGenerationRef.current = generation;
+        lastRequestRef.current = {rounds, seed, workers, modeName};
         setError(undefined);
         setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
@@ -153,6 +159,7 @@ export function useSimulationPoll() {
         runGuard.end();
         cancelGuard.end();
         currentJobId.current = undefined;
+        lastRequestRef.current = undefined;
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = undefined;
@@ -199,5 +206,12 @@ export function useSimulationPoll() {
             });
     }
 
-    return {progress, job, error, cancellationRequested, run, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    function retry(): void {
+        const request = lastRequestRef.current;
+        if (request !== undefined) {
+            run(request.rounds, request.seed, request.workers, request.modeName);
+        }
+    }
+
+    return {progress, job, error, cancellationRequested, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

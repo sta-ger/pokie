@@ -342,7 +342,14 @@ export function SimulationTab({
                                         Back to configuration
                                     </Button>
                                 )}
-                                <Button variant="default" onClick={onRetry}>
+                                <Button
+                                    id="simulation-retry"
+                                    data-pokie-lifecycle="recovery"
+                                    data-pokie-transaction-state="recovery-operation"
+                                    data-pokie-lifecycle-operation="simulation-retry"
+                                    variant="default"
+                                    onClick={onRetry}
+                                >
                                     Repeat simulation
                                 </Button>
                             </QuickActions>

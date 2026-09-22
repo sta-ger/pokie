@@ -1333,9 +1333,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                         setRunAgainNotice(undefined);
                                         simulation.cancel();
                                     }}
-                                    onRetry={() =>
-                                        simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers, simulation.job.modeName)
-                                    }
+                                    onRetry={simulation.retry}
                                     recentRuns={reportsView}
                                     recentRunsError={reportsError}
                                     onRefreshRecentRuns={refreshReports}

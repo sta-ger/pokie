@@ -68,8 +68,10 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
 
     it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
         let releaseCancel: (() => void) | undefined;
+        let starts = 0;
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/project/simulations" && init?.method === "POST") {
+                starts += 1;
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 2))});
             }
             if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
@@ -93,6 +95,8 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         act(() => releaseCancel?.());
         await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
         expect(result.current.cancellationRequested).toBe(false);
+        act(() => result.current.retry());
+        await waitFor(() => expect(starts).toBe(2));
     });
 
     it("keeps polling across StrictMode's dev-only mount -> cleanup -> mount cycle, instead of the second mount silently inheriting a cancelled state from the throwaway first mount", async () => {
