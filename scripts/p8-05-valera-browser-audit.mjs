@@ -229,12 +229,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // descendant.  A 10ms full process-table scan can starve the CDP
         // event loop itself on a busy verifier host, so use a bounded cadence
         // while retaining spawn-time records and final drainage validation.
-        if (ownerOptions.resourceRegistryPath) record.tracker = createPc20OwnershipTracker(child?.pid, ownerOptions.resourceRegistryPath, ownerOptions.resourceRegistrySecret, {captureIntervalMs:250});
+        // Node children are authenticated by the preload at acquisition and
+        // each detached browser root is synchronously registered above.  A
+        // five-second reconciliation is consequently a fallback for native
+        // reparenting, not the primary ownership boundary.  Polling `ps` four
+        // times per second for both Chromium and Studio starves their CDP
+        // event loop on a busy verifier host and can make the bounded runner
+        // time out before it reaches any rendered workflow.
+        if (ownerOptions.resourceRegistryPath) record.tracker = createPc20OwnershipTracker(child?.pid, ownerOptions.resourceRegistryPath, ownerOptions.resourceRegistrySecret, {captureIntervalMs:5_000});
         // Sample continuously enough to retain short-lived descendants, while
         // leaving the packed workflow enough CPU to measure its own behavior.
         // A 10ms synchronous `ps` loop made the observer itself a material
         // performance regression in the whole-file runner.
-        record.descendantSampler = setInterval(() => { for (const [pid, identity] of descendants(record.pid)) record.ownedProcesses.set(pid, identity); record.tracker?.capture(); }, 1_000);
+        record.descendantSampler = setInterval(() => { for (const [pid, identity] of descendants(record.pid)) record.ownedProcesses.set(pid, identity); record.tracker?.capture(); }, 5_000);
         ownership.push(record); childOwners.set(child, record); return child;
     };
     // Drain completed commands promptly.  Retaining every finished command's
@@ -539,7 +546,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         };
         const setLifecycleField = async (field, value) => evaluate(`(() => {
             const field = ${JSON.stringify(field)}, value = ${JSON.stringify(value)};
-            const input = [...document.querySelectorAll('input,textarea')].find((item) => item.getAttribute('data-pokie-lifecycle-field') === field);
+            const marker = document.querySelector('[data-pokie-lifecycle-field="' + field + '"]');
+            const input = marker instanceof HTMLInputElement || marker instanceof HTMLTextAreaElement
+                ? marker
+                : marker?.querySelector('input,textarea');
             if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) || input.disabled) return false;
             const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
             Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(input, value);
@@ -586,7 +596,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // into a no-op and let its context request predate the
                 // interaction.  Enter it from a different rendered screen so
                 // the recorded request is caused by the public control.
-                const shellRoute = screen === "overview" ? `${projectBaseRoute}/gameModel` : projectBaseRoute;
+                // Never start a keyboard navigation transaction from the
+                // ambiguous `/project/:tab` compatibility route.  Entering
+                // that route makes the legacy resolver race the tab's own
+                // keyboard activation and can replace a real Replay request
+                // with its fallback Overview route.  A different *scoped*
+                // dashboard tab preserves the project identity and still
+                // proves that the following public control performs the
+                // observed navigation.
+                const shellRoute = screen === "overview" ? `${projectBaseRoute}/gameModel` : `${projectBaseRoute}/overview`;
                 await cdp.send("Page.navigate", {url:`${origin}/${shellRoute}`});
                 await waitFor(() => evaluate("document.readyState === 'complete' && !!document.querySelector('main, [role=main], nav') && document.body.innerText.trim().length > 40"), `${screen} public shell`);
                 // Capability-driven tabs mount after the project context has
