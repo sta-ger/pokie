@@ -456,14 +456,14 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                             errors={validateView.status === "ok" ? validateView.errors : []}
                             warnings={validateView.status === "ok" ? validateView.warnings : []}
                         />
+                        {buildReachable && !hasIncompleteModeRow ? (
+                            <QuickActions>
+                                <Button data-pokie-lifecycle-artifact="certification-preflight" onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
+                            </QuickActions>
+                        ) : (
+                            <IssueList title="Before you can continue" issues={buildContinueBlockers().map((message) => ({message}))} />
+                        )}
                     </div>
-                )}
-                {buildReachable && !hasIncompleteModeRow ? (
-                    <QuickActions>
-                        <Button data-pokie-lifecycle-artifact="certification-preflight" onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
-                    </QuickActions>
-                ) : (
-                    <IssueList title="Before you can continue" issues={buildContinueBlockers().map((message) => ({message}))} />
                 )}
             </div>
         );

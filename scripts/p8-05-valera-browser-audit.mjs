@@ -440,7 +440,29 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // to the person.  Each rendered control receives one keyboard
         // activation; a confirmation is a second, explicit lifecycle phase,
         // never an Enter/Space retry race.
-        const captureRenderedFormState = async (operation, observation, requiresEditableForm) => {
+        const captureRenderedEditableFields = async () => evaluate(`(() => {
+            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+            const accessibleName = (item) => {
+                const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
+                    .map((id) => document.getElementById(id)?.textContent?.trim()).filter(Boolean).join(' ');
+                const labels = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement
+                    ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') : '';
+                return (item.getAttribute('aria-label') || labelledBy || labels || item.getAttribute('name') || '').trim();
+            };
+            return [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+                const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
+                return {
+                    stableControlId:item.id,
+                    identityAttribute:'id',
+                    accessibleName:accessibleName(item),
+                    value:item.value,
+                    disabled:item.disabled,
+                    required:item.required,
+                    validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
+                };
+            });
+        })()`);
+        const captureRenderedFormState = async (operation, observation, requiresEditableForm, preparedFields = []) => {
             const formState = await waitFor(() => evaluate(`(() => {
                 const operation = ${JSON.stringify(operation)}, requiresEditableForm = ${JSON.stringify(requiresEditableForm)};
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
@@ -457,7 +479,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // state, but it does not submit editable form data.  Do not
                 // accidentally capture an unrelated visible form elsewhere on
                 // the screen and call it the Refresh request's input.
-                const fields = requiresEditableForm ? [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+                const fields = requiresEditableForm && ${JSON.stringify(preparedFields)}.length === 0 ? [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
                     const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
                     return {
                         stableControlId:item.id,
@@ -468,7 +490,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         required:item.required,
                         validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
                     };
-                }) : [];
+                }) : ${JSON.stringify(preparedFields)};
                 if ((requiresEditableForm && fields.length === 0) || fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation.valid || field.disabled)) return false;
                 return {operation, capturedBeforeSubmission:true, actionControl:{stableControlId:action.id, identityAttribute:'id', accessibleName:accessibleName(action)}, fields};
             })()`), `${observation} visible rendered form state for ${operation}`);
@@ -672,6 +694,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             if (body === "certification") {
                 const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
+                // The validation action lives on the next step, so read the
+                // configured source form before that legitimate product
+                // transition hides it.  The later transaction still reads
+                // the Validate button from the rendered DOM; this only
+                // preserves the actual form state that enabled it.
+                const fields = source ? await captureRenderedEditableFields() : [];
+                if (source && (fields.length === 0 || fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation?.valid || field.disabled))) return false;
                 // Validation is deliberately a separate first-time-user step:
                 // entering a source only enables the product's Continue
                 // control.  Traverse that real, labelled precondition before
@@ -680,7 +709,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 if (source && !await evaluate("!!document.querySelector('[data-pokie-lifecycle=\"operation\"][data-pokie-lifecycle-operation=\"certification\"]')")) {
                     await activateRenderedPrecondition("certification-validate", observation);
                 }
-                return source;
+                return source ? {fields} : false;
             }
             if (body === "fairness") {
                 const source = await setRequiredScreenField("Source outcome-library bundle directory", outcomeBundle);
@@ -787,7 +816,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const entered = await stateMachine.enter(projectBaseRoute, viewport, observation, contract);
             let interaction = entered.navigation, transaction = entered.navigationTransaction, entry, beforeActionText = entered.beforeActionText;
             if (contract.body || contract.operation) {
-                if (contract.body && !await prepareScreenOperation(contract.body, viewport, observation)) fail(`${screen} did not accept required ${contract.body} values for ${observation}`);
+                const preparedOperation = contract.body ? await prepareScreenOperation(contract.body, viewport, observation) : undefined;
+                if (contract.body && !preparedOperation) fail(`${screen} did not accept required ${contract.body} values for ${observation}`);
                 const cursor = cdp.events.length;
                 // Preflights are product-owned asynchronous state.  Wait for
                 // the rendered, declared operation to become enabled rather
@@ -798,7 +828,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // form state is read.  This closes the old route-plus-request
                 // adapter: a later poll must now be causally preceded by one
                 // configured, valid DOM submission from this exact control.
-                const formState = await captureRenderedFormState(operation, observation, contract.method !== "GET");
+                const formState = await captureRenderedFormState(operation, observation, contract.method !== "GET", preparedOperation?.fields ?? []);
                 beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
                 transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState});
                 if (transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
