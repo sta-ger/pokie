@@ -21,10 +21,20 @@ function projectContextErrorDetail(error: unknown): string {
 // `requestedProjectRoot` is taken from a project-scoped history route. It must be made current on
 // the server before any dashboard data is read: the server intentionally owns one active project,
 // while browser history may point back to an earlier one.
-export function useProjectContext(requestedProjectRoot?: string, refreshGeneration = 0): ProjectHeaderView {
+export type ProjectContextRefresh = {
+    header: ProjectHeaderView;
+    /** The latest caller-owned refresh generation whose context is rendered. */
+    completedRefreshGeneration: number;
+    /** The latest caller-owned refresh generation that rendered a diagnostic. */
+    failedRefreshGeneration: number;
+};
+
+export function useProjectContext(requestedProjectRoot?: string, refreshGeneration = 0): ProjectContextRefresh {
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
+    const [completedRefreshGeneration, setCompletedRefreshGeneration] = useState(0);
+    const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
     const headerRef = useRef(header);
 
     useEffect(() => {
@@ -35,13 +45,21 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         let cancelled = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+        const publishDashboard = (dashboard: Parameters<typeof describeProjectHeader>[0]): void => {
+            setHeader(describeProjectHeader(dashboard));
+            // Consumers that need a capability refresh before selecting a
+            // dependent workflow wait for this acknowledgement, rather than
+            // treating the request start or an older page header as proof.
+            setCompletedRefreshGeneration(refreshGeneration);
+        };
+
         const poll = (attemptsLeft: number): void => {
             getProjectContext(fetchImpl)
                 .then((dashboard) => {
                     if (cancelled) {
                         return;
                     }
-                    setHeader(describeProjectHeader(dashboard));
+                    publishDashboard(dashboard);
                     if (dashboard.status === "loading" && attemptsLeft > 0) {
                         timeoutId = setTimeout(() => poll(attemptsLeft - 1), POLL_INTERVAL_MS);
                     }
@@ -49,6 +67,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
                 .catch((error: unknown) => {
                     if (!cancelled) {
                         setHeader(describeProjectContextFailure("", errorMessage(error)));
+                        setFailedRefreshGeneration(refreshGeneration);
                     }
                 });
         };
@@ -77,7 +96,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
                     // navigating. Reuse that freshly loaded context; only a historical route whose
                     // root differs from the server's current one needs another open request.
                     if (dashboard.status !== "empty" && dashboard.projectRoot === requestedProjectRoot) {
-                        setHeader(describeProjectHeader(dashboard));
+                        publishDashboard(dashboard);
                         if (dashboard.status === "loading") {
                             timeoutId = setTimeout(() => poll(POLL_MAX_ATTEMPTS - 1), POLL_INTERVAL_MS);
                         }
@@ -92,12 +111,14 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
                         .catch((error: unknown) => {
                             if (!cancelled) {
                                 setHeader(describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error)));
+                                setFailedRefreshGeneration(refreshGeneration);
                             }
                         });
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
                         setHeader(describeProjectContextFailure(requestedProjectRoot, errorMessage(error)));
+                        setFailedRefreshGeneration(refreshGeneration);
                     }
                 });
         }
@@ -108,5 +129,5 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         };
     }, [fetchImpl, openWithConfirmation, refreshGeneration, requestedProjectRoot]);
 
-    return header;
+    return {header, completedRefreshGeneration, failedRefreshGeneration};
 }

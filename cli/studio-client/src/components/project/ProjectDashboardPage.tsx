@@ -5,7 +5,6 @@ import {useLocation, useNavigate, useParams} from "react-router-dom";
 import {
     buildReportDownloadUrl,
     closeProject,
-    getProjectContext,
     getReplay,
     getReport,
     inspectProject,
@@ -251,7 +250,7 @@ export function ProjectDashboardRoute() {
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
     const navigate = useNavigate();
-    const header = useProjectContext();
+    const {header} = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : (legacyProjectRouteMigration(tab)?.destination ?? "overview");
     const upgradeStartedRef = useRef(false);
 
@@ -414,37 +413,50 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // tab transition repeats that same boundary rather than trusting a cached
     // page header from before the user's latest action.
     const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
+    const contextRefreshGenerationRef = useRef(0);
+    const [pendingNavigation, setPendingNavigation] = useState<{requestId: number; tab: ProjectTab; refreshGeneration: number} | undefined>();
+    const {header, completedRefreshGeneration, failedRefreshGeneration} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
-            const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
             const requestId = ++navigationRequestIdRef.current;
+            const requiredRefreshGeneration = contextRefreshGenerationRef.current + 1;
+            contextRefreshGenerationRef.current = requiredRefreshGeneration;
             setNavigationLifecycle({tab: value, status: "loading"});
             // Do not let a dependent workflow mount against the header that
             // preceded a durable operation. The rendered navigation control
-            // owns this context read, and only its successful response may
-            // advance the route. `useProjectContext` then consumes the same
-            // fresh generation to update the capability-driven tab list.
-            getProjectContext(fetchImpl)
-                .then(() => {
-                    if (requestId === navigationRequestIdRef.current) {
-                        setContextRefreshGeneration((generation) => generation + 1);
-                        navigate(`${routePrefix}/${value}`);
-                        setNavigationLifecycle({tab: value, status: "rendered"});
-                    }
-                })
-                .catch((error: unknown) => {
-                    if (requestId === navigationRequestIdRef.current) {
-                        // Keep the currently rendered workflow selected when
-                        // its prerequisite context cannot be revalidated.
-                        setNavigationLifecycle({tab: activeTab, status: "error", message: errorMessage(error)});
-                    }
-                });
+            // requests a new product context, and its target is held here
+            // until that exact generation has been rendered into the
+            // capability-driven dashboard. A request receipt alone cannot
+            // select a dependent tab while stale capabilities remain visible.
+            setPendingNavigation({requestId, tab: value, refreshGeneration: requiredRefreshGeneration});
+            setContextRefreshGeneration(requiredRefreshGeneration);
         },
-        [activeTab, fetchImpl, navigate, requestedProjectRoot],
+        [],
     );
+
+    useEffect(() => {
+        if (pendingNavigation !== undefined && failedRefreshGeneration >= pendingNavigation.refreshGeneration) {
+            // Keep the current workflow selected and expose the freshly
+            // rendered context diagnostic when its prerequisite cannot be
+            // revalidated. A failed request must not turn into a stale route.
+            setNavigationLifecycle({tab: activeTab, status: "error", message: header.status === "error" ? header.message : "The project context could not be refreshed."});
+            setPendingNavigation(undefined);
+            return;
+        }
+        if (pendingNavigation === undefined || completedRefreshGeneration < pendingNavigation.refreshGeneration) {
+            return;
+        }
+        if (pendingNavigation.requestId !== navigationRequestIdRef.current) {
+            return;
+        }
+        const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+        navigate(`${routePrefix}/${pendingNavigation.tab}`);
+        setNavigationLifecycle({tab: pendingNavigation.tab, status: "rendered"});
+        setPendingNavigation(undefined);
+    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, requestedProjectRoot]);
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
     // default route; doing the same for a project means a stale bookmark/reload never leaves an
@@ -458,7 +470,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${destination}${migrationSearch(tab)}`, {replace: true});
     }, [navigate, requestedMigration, requestedProjectRoot, tab]);
 
-    const header = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
             ? header.projectRoot
@@ -486,7 +497,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // receipts produces one coherent context revalidation, rather than a
         // cascade of unmounting refreshes between dependent controls.
         terminalJobs.forEach((job) => capabilityRefreshJobsRef.current.add(job.id));
-        setContextRefreshGeneration((generation) => generation + 1);
+        setContextRefreshGeneration((generation) => {
+            const refreshedGeneration = generation + 1;
+            contextRefreshGenerationRef.current = refreshedGeneration;
+            return refreshedGeneration;
+        });
     }, [commonJobs.jobs]);
     // Build/Export can provide a richer, operation-specific presentation for
     // one Outcome Library job. Keep that ownership at durable-job granularity:
@@ -564,7 +579,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         if (projectKey === undefined || simulation.currentJobId !== undefined) return;
         const activeSimulation = commonJobs.jobs.find((job) => job.operation === "simulation" && (job.status === "queued" || job.status === "running" || job.status === "cancelling"));
         if (activeSimulation !== undefined) simulation.restore(activeSimulation.id);
-    }, [commonJobs.jobs, projectKey, simulation.currentJobId, simulation.restore]);
+    }, [commonJobs.jobs, projectKey, simulation]);
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();

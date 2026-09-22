@@ -1,5 +1,6 @@
 import {screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
@@ -9,6 +10,46 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it("holds a dependent workflow selection until its fresh rendered project context has completed", async () => {
+        const user = userEvent.setup();
+        const projectContext = {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]};
+        let holdNextContext = false;
+        let resolveHeldContext: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url) => {
+            const [pathname] = url.split("?");
+            const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
+            if (pathname === "/api/project/context") {
+                if (holdNextContext) {
+                    holdNextContext = false;
+                    return new Promise((resolve) => {
+                        resolveHeldContext = () => resolve(response(projectContext));
+                    });
+                }
+                return Promise.resolve(response(projectContext));
+            }
+            if (pathname === "/api/project/jobs") return Promise.resolve(response({jobs: []}));
+            if (pathname === "/api/project/inspect") return Promise.resolve(response({packageRoot: "/games/sample-slot", valid: true, generated: false}));
+            if (pathname === "/api/project/reports" || pathname === "/api/project/replays" || pathname === "/api/project/deployment/targets") return Promise.resolve(response([]));
+            if (pathname === "/api/project/validate") return Promise.resolve(response({packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}));
+            throw new Error(`Unexpected request: ${pathname}`);
+        };
+
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "Sample Slot"});
+        const overviewPath = router.state.location.pathname;
+        holdNextContext = true;
+
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+
+        expect(resolveHeldContext).toBeDefined();
+        expect(router.state.location.pathname).toBe(overviewPath);
+        expect(screen.queryByRole("button", {name: "Run Simulation"})).not.toBeInTheDocument();
+
+        resolveHeldContext?.();
+
+        expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+    });
+
     it("revalidates context for every rendered terminal durable receipt", async () => {
         let contextRequests = 0;
         const completedArtifactJob = {
