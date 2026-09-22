@@ -142,13 +142,14 @@ function semanticObservation(contents, observation, persona, label) {
     const correctRenderedControl = contract?.actionControlMatch === "prefix" ? typeof matchedControl === "string" && matchedControl.startsWith(activatedControl) : matchedControl === undefined || matchedControl === activatedControl;
     const terminalResult = page.terminal?.result;
     const configuredForm = operation === undefined ? undefined : page.transaction?.formState;
+    const requiresEditableForm = contract?.method !== "GET";
     const validRenderedForm = operation === undefined || (
         configuredForm?.operation === operation &&
         configuredForm.capturedBeforeSubmission === true &&
         configuredForm.actionControl?.stableControlId === stableControlId &&
         configuredForm.actionControl?.identityAttribute === "id" &&
         typeof configuredForm.actionControl?.accessibleName === "string" && configuredForm.actionControl.accessibleName.trim().length > 0 &&
-        Array.isArray(configuredForm.fields) && configuredForm.fields.length > 0 &&
+        Array.isArray(configuredForm.fields) && (requiresEditableForm ? configuredForm.fields.length > 0 : configuredForm.fields.length === 0) &&
         configuredForm.fields.every((field) => typeof field?.stableControlId === "string" && field.stableControlId.length > 0 && field.identityAttribute === "id" && typeof field.accessibleName === "string" && field.accessibleName.trim().length > 0 && typeof field.value === "string" && typeof field.disabled === "boolean" && typeof field.required === "boolean" && field.disabled === false && field.validation?.valid === true && typeof field.validation.message === "string")
     );
     // `expectedOutcome` is a contract label, not evidence.  The saved result

@@ -37,8 +37,8 @@ export function validateP805RenderedPersonaAudit(audit) {
     for (const action of rendered.actions) {
         const operation = action?.interaction?.lifecycle?.kind === "operation" ? action.interaction.lifecycle.value : undefined;
         if (operation === undefined) continue;
-        const formState = action.transaction?.formState;
-        if (formState?.operation !== operation || formState.capturedBeforeSubmission !== true || formState.actionControl?.stableControlId !== action.transaction.control?.stableControlId || formState.actionControl?.identityAttribute !== "id" || typeof formState.actionControl?.accessibleName !== "string" || !formState.actionControl.accessibleName || !Array.isArray(formState.fields) || formState.fields.length === 0 || formState.fields.some((field) => typeof field?.stableControlId !== "string" || !field.stableControlId || field.identityAttribute !== "id" || typeof field.accessibleName !== "string" || !field.accessibleName || typeof field.value !== "string" || field.disabled !== false || typeof field.required !== "boolean" || field.validation?.valid !== true || typeof field.validation.message !== "string")) fail(`rendered ${audit.persona} audit lacks valid DOM-derived form state before ${operation} submission`);
+        const formState = action.transaction?.formState, requiresEditableForm = action.expectedMethod !== "GET";
+        if (formState?.operation !== operation || formState.capturedBeforeSubmission !== true || formState.actionControl?.stableControlId !== action.transaction.control?.stableControlId || formState.actionControl?.identityAttribute !== "id" || typeof formState.actionControl?.accessibleName !== "string" || !formState.actionControl.accessibleName || !Array.isArray(formState.fields) || (requiresEditableForm && formState.fields.length === 0) || (!requiresEditableForm && formState.fields.length !== 0) || formState.fields.some((field) => typeof field?.stableControlId !== "string" || !field.stableControlId || field.identityAttribute !== "id" || typeof field.accessibleName !== "string" || !field.accessibleName || typeof field.value !== "string" || field.disabled !== false || typeof field.required !== "boolean" || field.validation?.valid !== true || typeof field.validation.message !== "string")) fail(`rendered ${audit.persona} audit lacks valid DOM-derived form state before ${operation} submission`);
     }
     for (const name of ["reloadReconnect", "projectSwitch", "staleResponseIsolation", "unsavedWorkProtection", "serverRestart"]) if (rendered.recovery?.[name]?.observed !== true || !rendered.recovery[name].evidenceId) fail(`rendered ${audit.persona} audit lacks measured recovery observations`);
     for (const name of ["success", "actionableFailure", "cooperativeCancellation", "retryWithoutPartialArtifacts"]) if (rendered.jobs?.[name]?.observed !== true || !rendered.jobs[name].evidenceId) fail(`rendered ${audit.persona} audit lacks measured success/failure/cancellation/retry observations`);
@@ -423,20 +423,24 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // to the person.  Each rendered control receives one keyboard
         // activation; a confirmation is a second, explicit lifecycle phase,
         // never an Enter/Space retry race.
-        const captureRenderedFormState = async (operation, observation) => {
-            const formState = await evaluate(`(() => {
-                const operation = ${JSON.stringify(operation)};
+        const captureRenderedFormState = async (operation, observation, requiresEditableForm) => {
+            const formState = await waitFor(() => evaluate(`(() => {
+                const operation = ${JSON.stringify(operation)}, requiresEditableForm = ${JSON.stringify(requiresEditableForm)};
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => {
                     const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
                         .map((id) => document.getElementById(id)?.textContent?.trim()).filter(Boolean).join(' ');
                     const labels = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement
                         ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') : '';
-                    return (item.getAttribute('aria-label') || labelledBy || labels || item.getAttribute('name') || '').trim();
+                    return (item.getAttribute('aria-label') || labelledBy || labels || item.innerText || item.textContent || item.getAttribute('name') || '').trim();
                 };
                 const action = [...document.querySelectorAll('button,a')].find((item) => visible(item) && item.getAttribute('data-pokie-lifecycle') === 'operation' && item.getAttribute('data-pokie-lifecycle-operation') === operation);
                 if (!(action instanceof HTMLElement) || !action.id) return false;
-                const fields = [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+                // A refresh/navigation-style GET still has a rendered control
+                // state, but it does not submit editable form data.  Do not
+                // accidentally capture an unrelated visible form elsewhere on
+                // the screen and call it the Refresh request's input.
+                const fields = requiresEditableForm ? [...document.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
                     const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
                     return {
                         stableControlId:item.id,
@@ -447,11 +451,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         required:item.required,
                         validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
                     };
-                });
-                if (fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation.valid || field.disabled)) return false;
+                }) : [];
+                if ((requiresEditableForm && fields.length === 0) || fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation.valid || field.disabled)) return false;
                 return {operation, capturedBeforeSubmission:true, actionControl:{stableControlId:action.id, identityAttribute:'id', accessibleName:accessibleName(action)}, fields};
-            })()`);
-            if (!formState) fail(`${observation} did not expose valid visible rendered form state for ${operation}`);
+            })()`), `${observation} visible rendered form state for ${operation}`);
             return formState;
         };
         const focusCapturedLifecycleControl = async (lifecycle, operation, stableControlId) => evaluate(`(() => {
@@ -717,7 +720,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // form state is read.  This closes the old route-plus-request
                 // adapter: a later poll must now be causally preceded by one
                 // configured, valid DOM submission from this exact control.
-                const formState = await captureRenderedFormState(operation, observation);
+                const formState = await captureRenderedFormState(operation, observation, contract.method !== "GET");
                 transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState});
                 if (transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
                 interaction = transaction.control;

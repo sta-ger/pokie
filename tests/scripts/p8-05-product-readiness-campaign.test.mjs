@@ -90,7 +90,7 @@ const semantic = (persona, observation, contract, viewport) => {
                 operation: contract.operation ?? contract.body,
                 capturedBeforeSubmission: true,
                 actionControl: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", accessibleName: matchedLabel},
-                fields: [{stableControlId: `field-${observation}`, identityAttribute: "id", accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
+                fields: contract.method === "GET" ? [] : [{stableControlId: `field-${observation}`, identityAttribute: "id", accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
             }}),
             confirmation: {required: false, state: "not-required", control: null},
             keyboardActivations: [{phase: "operation", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1}],
