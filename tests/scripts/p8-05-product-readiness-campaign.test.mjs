@@ -153,6 +153,7 @@ const semantic = (persona, observation, contract, viewport) => {
             renderedTerminal: {
                 state: "rendered",
                 observedAfterRequestId: `browser-${observation}`,
+                beforeTextSha256: hash(`Before ${observation} request.`),
                 text: `The rendered ${observation} result completed.`,
                 textSha256: hash(`The rendered ${observation} result completed.`),
                 resultSha256: responseSha256,

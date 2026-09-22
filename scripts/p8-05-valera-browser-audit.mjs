@@ -103,7 +103,24 @@ async function connect(devtools) {
     for (const method of ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]) await send(method);
     const close = async () => {
         if (socket.readyState === WebSocket.CLOSED) return;
-        await new Promise((resolve) => { socket.once("close", resolve); socket.close(); });
+        // A failed rendered operation can leave Chromium's DevTools target in
+        // a closing state without delivering the WebSocket close event.  The
+        // runner must still reach its ownership-drain finally path on that
+        // error/cancellation branch; waiting indefinitely here turns one
+        // rejected workflow into an orphaned Studio/browser pair.
+        await new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                socket.removeListener("close", onClose);
+                socket.terminate();
+                resolve();
+            }, 1_000);
+            const onClose = () => {
+                clearTimeout(timeout);
+                resolve();
+            };
+            socket.once("close", onClose);
+            socket.close();
+        });
     };
     return {send, events, close};
 }
@@ -683,6 +700,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // instead of assuming that a document-ready shell has already
                 // enabled every navigation control.
                 const navigationCursor = cdp.events.length;
+                const beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
                 const navigationTransaction = await beginRenderedTransaction({lifecycle:"navigation", operation:screen, observation});
                 const navigation = navigationTransaction.control;
                 // The navigation control's request is a product transition,
@@ -699,7 +717,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const contextRevalidation = {browserRequestId:contextRequest.params.requestId, method:"GET", path:"/api/project/context", status:contextResponse.params.response.status, responseSha256:digest(JSON.stringify(contextPayload)), projectStatus:contextPayload.status, completedBeforeSelection:true};
                 api.push({observation, ...contextRevalidation, payload:contextPayload, initiator:"rendered-navigation-context"});
                 await waitFor(() => evaluate(`location.hash === ${JSON.stringify(route)}`), `${screen} public navigation for ${observation}`);
-                return {route, navigation, navigationCursor, navigationTransaction, contextRevalidation};
+                return {route, navigation, navigationCursor, navigationTransaction, contextRevalidation, beforeActionText};
             },
         }]));
         const runScreenControlState = async (projectBaseRoute, viewport, observation, contract) => {
@@ -707,7 +725,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (!stateMachine) fail(`${observation} has no declared public screen state`);
             process.stderr.write(`P805_SCREEN_STATE observation=${observation} screen=${screen} phase=enter\n`);
             const entered = await stateMachine.enter(projectBaseRoute, viewport, observation, contract);
-            let interaction = entered.navigation, transaction = entered.navigationTransaction, entry;
+            let interaction = entered.navigation, transaction = entered.navigationTransaction, entry, beforeActionText = entered.beforeActionText;
             if (contract.body || contract.operation) {
                 if (contract.body && !await prepareScreenOperation(contract.body, viewport, observation)) fail(`${screen} did not accept required ${contract.body} values for ${observation}`);
                 const cursor = cdp.events.length;
@@ -721,6 +739,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // adapter: a later poll must now be causally preceded by one
                 // configured, valid DOM submission from this exact control.
                 const formState = await captureRenderedFormState(operation, observation, contract.method !== "GET");
+                beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
                 transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState});
                 if (transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
                 interaction = transaction.control;
@@ -730,7 +749,6 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             interaction.keyboardActivated = true;
             interaction.activation = "keyboard";
             interaction.routeAfterActivation = await evaluate("location.hash");
-            const beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
             const terminalText = await waitFor(async () => {
                 return evaluate(`(() => {
                     const text = document.body.innerText;
@@ -813,7 +831,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 precondition:{enabled:interaction.enabled, disabled:interaction.disabled, disabledExplanation:interaction.disabledExplanation, accessibleName:interaction.accessibleName, region:stateMachine.region}, interaction, transaction,
                 request:{path:contract.api, method:contract.method, bodyKind:contract.body ?? null, bodySha256:entry.bodySha256, responseSha256:entry.responseSha256, status:entry.status, browserRequestId:entry.browserRequestId, initiator:entry.initiator},
                 terminal:{...entry.terminal, complete:true, artifact:contract.artifact ?? null},
-                renderedTerminal:{state:"rendered", observedAfterRequestId:entry.browserRequestId, text:terminalText.text, liveText:terminalText.live, textSha256:digest(terminalText.text), resultSha256:entry.terminal.resultSha256, observedAt:services.now(), changedAfterRequest:terminalText.text !== beforeActionText || terminalText.live.length > 0, lifecycle:lifecycleResult},
+                renderedTerminal:{state:"rendered", observedAfterRequestId:entry.browserRequestId, text:terminalText.text, liveText:terminalText.live, beforeTextSha256:digest(beforeActionText), textSha256:digest(terminalText.text), resultSha256:entry.terminal.resultSha256, observedAt:services.now(), changedAfterRequest:terminalText.text !== beforeActionText || terminalText.live.length > 0, lifecycle:lifecycleResult},
                 workflow:{persona:options.persona, source:"rendered-control", expectedApi:contract.api, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedArtifact:contract.artifact ?? null, terminal:contract.terminal}, state:productState};
             semantic.contextRevalidation = entered.contextRevalidation;
             const evidenceId = await save("page-state", `${viewport}-${observation}.json`, JSON.stringify(semantic), [observation]);
