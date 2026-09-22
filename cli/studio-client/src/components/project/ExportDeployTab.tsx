@@ -525,7 +525,11 @@ function TargetCard({
                         // rendered input before it can enable Build, so keeping
                         // the contract on the actual form field prevents a
                         // route-level adapter from claiming a configured build.
-                        attributes={card.artifactTarget === "parWorkbook" ? {input: {id: "artifact-build-destination", "data-pokie-lifecycle-field": "artifact-build-destination"}} : undefined}
+                        attributes={card.artifactTarget === "parWorkbook" ? {input: {
+                            id: "artifact-build-destination",
+                            "aria-label": "PAR workbook build destination",
+                            "data-pokie-lifecycle-field": "artifact-build-destination",
+                        }} : undefined}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
                         onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}

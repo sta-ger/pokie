@@ -441,7 +441,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // to the person.  Each rendered control receives one keyboard
         // activation; a confirmation is a second, explicit lifecycle phase,
         // never an Enter/Space retry race.
-        const captureRenderedOperationFields = async (operation, observation) => waitFor(() => evaluate(`(() => {
+        const captureRenderedOperationFields = async (operation, observation, lifecycleField) => waitFor(() => evaluate(`(() => {
+            const lifecycleField = ${JSON.stringify(lifecycleField ?? null)};
             const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
             const accessibleName = (item) => {
                 const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
@@ -450,7 +451,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') : '';
                 return (item.getAttribute('aria-label') || labelledBy || labels || item.getAttribute('name') || '').trim();
             };
-            const form = document.querySelector('[data-pokie-lifecycle-form="' + ${JSON.stringify(operation)} + '"]');
+            const forms = [...document.querySelectorAll('[data-pokie-lifecycle-form="' + ${JSON.stringify(operation)} + '"]')]
+                .filter((candidate) => candidate instanceof HTMLElement && visible(candidate));
+            // Build/Export can render several registry cards. The transaction
+            // must read the card that contains this public field, never the
+            // first similarly-classed sibling in DOM order.
+            const form = lifecycleField === null
+                ? forms[0]
+                : forms.find((candidate) => candidate.querySelector('[data-pokie-lifecycle-field="' + lifecycleField + '"]') !== null);
             if (!(form instanceof HTMLElement) || !visible(form)) return false;
             const fields = [...form.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
                 const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
@@ -465,7 +473,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     validation:{valid:validatable ? item.checkValidity() : false, message:validatable ? item.validationMessage : ''},
                 };
             });
-            return {scope:{identityAttribute:'data-pokie-lifecycle-form', value:operation, tagName:form.tagName.toLowerCase()}, fields};
+            return {scope:{identityAttribute:'data-pokie-lifecycle-form', value:${JSON.stringify(operation)}, tagName:form.tagName.toLowerCase()}, fields};
         })()`), `${observation} rendered ${operation} form fields`);
         const captureRenderedFormState = async (operation, observation, requiresEditableForm, preparedFormState, requireValid = true) => {
             const formState = await waitFor(() => evaluate(`(() => {
@@ -696,10 +704,23 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return input.value === value;
         })()`);
         const prepareScreenOperation = async (body, viewport, observation) => {
-            if (body === "artifact-build") return waitFor(
-                () => setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`)),
-                `${observation} product-owned artifact destination`,
-            );
+            if (body === "artifact-build") {
+                const configured = await waitFor(
+                    () => setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`)),
+                    `${observation} product-owned artifact destination`,
+                );
+                if (!configured) return false;
+                // Changing a destination deliberately starts the product's
+                // asynchronous preflight. Capture this exact visible form
+                // while it is still the public editable state that received
+                // the person's value, rather than sampling it later from an
+                // arbitrary screen after the preflight has reconciled.
+                const formState = await captureRenderedOperationFields("artifact-build", observation, "artifact-build-destination");
+                if (formState.fields.length === 0 || formState.fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation?.valid || field.disabled)) {
+                    fail(`${observation} rendered artifact-build form is not an enabled, valid, named DOM submission state: ${JSON.stringify(formState)}`);
+                }
+                return {formState};
+            }
             const setRequiredScreenField = (label, value) => waitFor(
                 () => setScreenField(label, value),
                 `${observation} product-owned ${label} field`,
