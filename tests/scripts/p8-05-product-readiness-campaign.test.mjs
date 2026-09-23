@@ -445,9 +445,17 @@ async function campaignFixture() {
         const artifactBytes = await readFile(path.join(directory, artifact.path));
         artifact.sha256 = hash(artifactBytes);
         artifact.sizeBytes = artifactBytes.length;
-        const measured = runtime.evidenceId;
+        const measured = runtime.evidenceId, auditId = `${phase}-${persona}`;
+        await mkdir(path.join(directory, "checkpoints"), {recursive: true});
+        const checkpointReceipts = await Promise.all(actions.map(async (action, index) => {
+            const sequence = index + 1, receiptId = `${auditId}-checkpoint-${sequence}`,
+                capturedAt = stamp(offset + 50 + sequence), relativePath = `checkpoints/${phase}-${persona}-${sequence}.json`,
+                contents = `${JSON.stringify({schemaVersion: 1, kind: "p8-05-packed-workflow-checkpoint", receiptId, auditId, runNonce: `${phase}-${persona}-fixture`, sequence, status: "passed", capturedAt, candidateId: candidate.candidateId, candidatePackageSha256: candidate.candidatePackageSha256, phase, persona: action.persona ?? persona, observation: action.observation, viewport: action.viewport, action})}\n`;
+            await writeFile(path.join(directory, relativePath), contents);
+            return {receiptId, path: relativePath, sha256: hash(contents), sizeBytes: Buffer.byteLength(contents), capturedAt, candidateId: candidate.candidateId, candidatePackageSha256: candidate.candidatePackageSha256, persona: action.persona ?? persona, observation: action.observation, viewport: action.viewport, actionSha256: hash(JSON.stringify(action))};
+        }));
         return {
-            auditId: `${phase}-${persona}`,
+            auditId,
             persona,
             phase,
             ...candidate,
@@ -468,7 +476,7 @@ async function campaignFixture() {
                 candidateTreeObjectId: "9".repeat(40),
             },
             startedAt: stamp(offset),
-            endedAt: stamp(offset + 40),
+            endedAt: stamp(offset + 100),
             cleanContext: {
                 workspace: `/tmp/p8-05-${phase}-${persona}-work`,
                 configurationRoot: `/tmp/p8-05-${phase}-${persona}-config`,
@@ -490,6 +498,8 @@ async function campaignFixture() {
                 contextRemoved: true,
                 evidenceId: cleanup.evidenceId,
             },
+            checkpointReceipts,
+            finalResult: {status: "passed", aggregation: "verified-checkpoint-receipts-only", chunks: checkpointReceipts.length, checkpointReceiptSha256s: checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId: cleanup.evidenceId},
             rendered: {
                 ...rendered,
                 defects: [],
@@ -701,6 +711,60 @@ test("requires every evidence kind, verifier anchors, semantic bindings, final-c
     } finally {
         await fixture.cleanup();
     }
+});
+test("rejects missing, duplicate, stale, and cross-candidate packed checkpoint receipts", async () => {
+    for (const mutate of [
+        (audit) => audit.checkpointReceipts.pop(),
+        (audit) => audit.checkpointReceipts.push({...audit.checkpointReceipts[0]}),
+        (audit) => { audit.checkpointReceipts[0].capturedAt = "2000-01-01T00:00:00.000Z"; },
+        (audit) => { audit.checkpointReceipts[0].candidateId = initial.candidateId; },
+    ]) {
+        const fixture = await campaignFixture();
+        try {
+            const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
+            mutate(audits.audits[0]);
+            await writeFile(record, `${JSON.stringify(audits)}\n`);
+            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+        } finally { await fixture.cleanup(); }
+    }
+});
+test("rejects a content-equivalent packed checkpoint substituted into another viewport slot", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], [wide, compact] = audit.checkpointReceipts.filter((receipt) => receipt.observation === audit.rendered.actions[0].observation).slice(0, 2), copied = await readFile(path.join(fixture.directory, wide.path));
+        await writeFile(path.join(fixture.directory, compact.path), copied);
+        compact.sha256 = hash(copied);
+        compact.sizeBytes = copied.length;
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+    } finally { await fixture.cleanup(); }
+});
+test("rejects a checkpoint receipt substituted across persona slots", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), [mathematician, programmer] = audits.audits, source = mathematician.checkpointReceipts[0], target = programmer.checkpointReceipts[0];
+        target.persona = source.persona;
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+    } finally { await fixture.cleanup(); }
+});
+test("rejects a checkpoint receipt relabelled to an undeclared workflow slot", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
+        audits.audits[0].checkpointReceipts[0].observation = "substituted-workflow";
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+    } finally { await fixture.cleanup(); }
+});
+test("rejects a final result whose receipt aggregate drifts from verified chunks", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
+        audits.audits[0].finalResult.checkpointReceiptSha256s.reverse();
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint receipt|final result/i);
+    } finally { await fixture.cleanup(); }
 });
 test("fails closed on mutable chronology and context claims", async () => {
     const fixture = await campaignFixture();
