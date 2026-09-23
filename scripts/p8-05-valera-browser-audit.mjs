@@ -382,15 +382,25 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         };
         const browserRequest = async (contract, observation, cursor, transaction) => {
             if (!transaction) fail(`${observation} has no rendered operation transaction`);
-            const requestCandidates = await waitFor(() => {
-                const candidates = cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === contract.api && event.params.request.method === contract.method);
-                return candidates.length === 1 ? candidates : false;
-            }, `${observation} single rendered request`);
-            // Chromium allocates this identity.  Once selected, every receipt
+            // The request window begins immediately before the keyboard
+            // activation, not while the runner is still reading form state or
+            // waiting for preflight.  That boundary is what makes this a
+            // receipt for the rendered control instead of an equivalent
+            // background request from the surrounding screen.
+            const activationCursor = transaction.browserEventCursor;
+            if (!Number.isSafeInteger(activationCursor) || activationCursor < cursor) fail(`${observation} has no browser event boundary for its rendered activation`);
+            // Select one browser-created request event after the keyboard
+            // activation, then carry its Chromium identity through every
+            // subsequent lookup. React may legitimately issue a second
+            // freshness read of the same path; rejecting that rendered
+            // reality for not being "exactly one" used to make Game Model
+            // navigation time out even though the first public request had a
+            // complete, independently verifiable request id.
+            const requestEvent = await waitFor(() => cdp.events.slice(activationCursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === contract.api && event.params.request.method === contract.method) || false, `${observation} rendered request identity`);
+            // Chromium allocates this identity. Once selected, every receipt
             // below is retrieved by request ID, never content-equivalence.
-            const browserRequestId = requestCandidates[0].params.requestId;
-            const requestEvent = cdp.events.slice(cursor).find((event) => event.method === "Network.requestWillBeSent" && event.params.requestId === browserRequestId);
-            const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === browserRequestId) || false, `${observation} rendered response`);
+            const browserRequestId = requestEvent.params.requestId;
+            const responseEvent = await waitFor(() => cdp.events.slice(activationCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === browserRequestId) || false, `${observation} rendered response`);
             if (!requestEvent) fail(`${observation} lost its selected browser request identity`);
             const response = await readBrowserResponseBody(browserRequestId, observation), body = response.body ?? "", payload = JSON.parse(body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId, initiator:"rendered-control"};
             api.push(entry);
@@ -419,7 +429,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // terminal record.  Select the newest browser response so an
                 // earlier active snapshot cannot permanently mask the
                 // completed public state.
-                const event = cdp.events.slice(cursor).findLast((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
+                const event = cdp.events.slice(activationCursor).findLast((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === expectedPath);
                 if (!event) return false;
                 try {
                     const body = await readBrowserResponseBody(event.params.requestId, observation), result = JSON.parse(body.body || "{}");
@@ -577,6 +587,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 confirmation: {required:confirmation, state:confirmation ? "opening" : "not-required", control:null},
                 keyboardActivations:[{phase:"operation", controlId:control.stableControlId, count:1}],
             };
+            transaction.browserEventCursor = cdp.events.length;
             await pressEnter();
             if (confirmation) {
                 const confirmationControl = await waitFor(() => evaluate(`(() => {
@@ -593,6 +604,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 if (!confirmationControl.enabled) fail(`Studio rendered ${operation} confirmation disabled: ${confirmationControl.disabledExplanation ?? "no explanation"}`);
                 transaction.confirmation = {required:true, state:"visible", control:confirmationControl};
                 transaction.keyboardActivations.push({phase:"confirmation", controlId:confirmationControl.stableControlId, count:1});
+                transaction.browserEventCursor = cdp.events.length;
                 await pressEnter();
                 transaction.confirmation.state = "activated";
             }
@@ -600,8 +612,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         };
         const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, path:expectedPath, confirmation = false, formState, stateClass = "read-only-operation", control}) => {
             const transaction = await beginRenderedTransaction({lifecycle, operation, observation, confirmation, formState, stateClass, control});
-            const event = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method && (expectedPath === undefined || new URL(value.params.request.url).pathname === expectedPath)) || false, `${observation} rendered ${operation} request`);
-            const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.responseReceived" && value.params.requestId === event.params.requestId) || false, `${observation} rendered ${operation} response`);
+            const activationCursor = transaction.browserEventCursor;
+            if (!Number.isSafeInteger(activationCursor) || activationCursor < cursor) fail(`${observation} has no browser event boundary for its rendered ${operation} activation`);
+            const event = await waitFor(() => cdp.events.slice(activationCursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method && (expectedPath === undefined || new URL(value.params.request.url).pathname === expectedPath)) || false, `${observation} rendered ${operation} request`);
+            const responseEvent = await waitFor(() => cdp.events.slice(activationCursor).find((value) => value.method === "Network.responseReceived" && value.params.requestId === event.params.requestId) || false, `${observation} rendered ${operation} response`);
             const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"), entry = {observation, method:event.params.request.method, path:new URL(event.params.request.url).pathname, bodySha256:digest(event.params.request.postData ?? ""), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:event.params.requestId, initiator:"rendered-control"};
             transaction.request = {browserRequestId:entry.browserRequestId, method:entry.method, path:entry.path, status:entry.status, responseSha256:entry.responseSha256};
             if (transaction.confirmation.required) transaction.confirmation.state = "confirmed";
@@ -674,6 +688,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:document.activeElement === item,
                 enabled:!disabled, disabled, disabledExplanation, accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(),
                 stableControlId:item.id, identityAttribute:'id', transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:lifecycle, value}};
+        })()`);
+        // Recovery controls are not part of the persona operation matrix, but
+        // they still have to be found from the live product DOM.  This helper
+        // deliberately takes a DOM predicate rather than a control id: its
+        // receipt is the actual id/name/focus state that the browser exposed.
+        const focusRenderedControl = async (selector, predicateSource) => evaluate(`(() => {
+            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+            const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
+            const predicate = ${predicateSource};
+            const item = [...document.querySelectorAll(${JSON.stringify(selector)})].find((candidate) => candidate instanceof HTMLElement && visible(candidate) && predicate(candidate, accessibleName(candidate)));
+            if (!(item instanceof HTMLElement) || ('disabled' in item && Boolean(item.disabled))) return null;
+            item.focus();
+            return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:accessibleName(item), keyboardFocused:true, enabled:true, disabled:false} : null;
         })()`);
         const setScreenField = async (label, value) => evaluate(`(() => {
             const label = [...document.querySelectorAll('label')].find((item) => item.textContent?.trim() === ${JSON.stringify(label)});
@@ -886,8 +913,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // it, and retain that response beside the following operation
                 // receipt. This makes a new capability visible only after the
                 // durable operation and its owning context have both settled.
-                const contextRequest = await waitFor(() => cdp.events.slice(navigationCursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/project/context" && event.params.request.method === "GET") || false, `${screen} rendered project-context revalidation request`);
-                const contextResponse = await waitFor(() => cdp.events.slice(navigationCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === contextRequest.params.requestId) || false, `${screen} rendered project-context revalidation response`);
+                const activationCursor = navigationTransaction.browserEventCursor;
+                if (!Number.isSafeInteger(activationCursor) || activationCursor < navigationCursor) fail(`${screen} has no browser event boundary for its rendered navigation activation`);
+                const contextRequest = await waitFor(() => cdp.events.slice(activationCursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/project/context" && event.params.request.method === "GET") || false, `${screen} rendered project-context revalidation request`);
+                const contextResponse = await waitFor(() => cdp.events.slice(activationCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === contextRequest.params.requestId) || false, `${screen} rendered project-context revalidation response`);
                 const contextBody = await readBrowserResponseBody(contextRequest.params.requestId, `${screen} rendered project-context revalidation`);
                 const contextPayload = JSON.parse(contextBody.body || "{}");
                 if (!contextPayload || ["empty", "error", "loading"].includes(contextPayload.status)) fail(`${screen} navigation did not receive a usable product context`);
@@ -1131,19 +1160,22 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const replayStart = Date.now(), replayFailure = await startRenderedReplay(projectBaseRoute, "replay artifact failure", 100_001, [400]), replay = await startRenderedReplay(projectBaseRoute, "successful replay"); if (replayFailure.response.status !== 400 || replay.response.status !== 202 || typeof replay.payload?.id !== "string") fail("Studio did not demonstrate rendered replay artifact failure and rendered replay creation"); const replayTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replay.payload.id)}`, "successful replay", replay.cursor, ["completed"], replay.transaction); const replayArtifactInspection = await startRenderedReplay(projectBaseRoute, "replay artifact recovery"); if (!replayArtifactInspection.response.ok) fail("Studio did not recover from replay artifact failure through its rendered control"); const replayRecoveryTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replayArtifactInspection.payload.id)}`, "replay artifact recovery", replayArtifactInspection.cursor, ["completed"], replay.transaction); if (replayRecoveryTerminal.status !== "completed") fail("Studio did not reach a recovered rendered replay terminal"); timings.replayMs = Date.now() - replayStart;
         const cancellationStart = Date.now(), cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", retryProbeRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]); const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation"}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"}); timings.cancellationMs = Date.now() - cancellationStart;
         await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/gameModel`}); await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Game Model')"), "rendered unsaved-work editor");
-        const editedControl = await evaluate("(() => { const edit = [...document.querySelectorAll('[data-pokie-game-model-action=\"edit\"]')].find((item) => item.getAttribute('data-pokie-game-model-section') === 'basics' && item instanceof HTMLButtonElement); if (!(edit instanceof HTMLButtonElement) || edit.disabled) return null; edit.focus(); return document.activeElement === edit ? {id:edit.id, accessibleName:(edit.getAttribute('aria-label') || edit.innerText || edit.textContent || '').trim()} : null; })()");
-        if (!editedControl?.id || !editedControl.accessibleName) fail("Studio did not expose a keyboard-operable Game Model edit control");
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", windowsVirtualKeyCode:13}); await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13});
+        // The current project decides which Game Model sections are editable.
+        // Select the first enabled rendered Edit control and record its actual
+        // section/id rather than prescribing a runner-owned `basics` locator.
+        const editedControl = await focusRenderedControl("[data-pokie-game-model-action]", "(item, name) => item.getAttribute('data-pokie-game-model-action') === 'edit' && typeof item.getAttribute('data-pokie-game-model-section') === 'string' && name.length > 0");
+        if (!editedControl?.stableControlId || !editedControl.accessibleName || !editedControl.keyboardFocused) fail("Studio did not expose a keyboard-operable Game Model edit control");
+        await pressEnter();
         const dirtyInput = await waitFor(() => evaluate("(() => { const input = [...document.querySelectorAll('input,textarea')].find((item) => !item.disabled); if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return null; const setter = Object.getOwnPropertyDescriptor(input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype, 'value')?.set; setter?.call(input, `${input.value} P8-05 unsaved`); input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return input.getAttribute('aria-label') || input.name || 'Game Model field'; })()") || false, "rendered unsaved edit");
         const recoveryBefore = await evaluate("location.hash");
-        const overview = await evaluate("(() => { const item=document.getElementById('project-tab:overview'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled) || item.textContent?.trim() !== 'Overview') return false; item.focus(); return document.activeElement === item; })()");
-        if (!overview) fail("Studio did not expose an Overview navigation control for unsaved-work protection");
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", windowsVirtualKeyCode:13}); await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13});
+        const overview = await focusLifecycleControl("navigation", "overview", "button,a");
+        if (!overview?.keyboardFocused || !overview.stableControlId || !overview.accessibleName) fail("Studio did not expose an Overview navigation control for unsaved-work protection");
+        await pressEnter();
         const protectionText = await waitFor(() => evaluate("document.body.innerText.match(/You have unsaved[^\\n]*/i)?.[0] || false"), "rendered unsaved-work protection");
-        const cancelUnsaved = await evaluate("(() => { const item=document.getElementById('game-model-unsaved-stay'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Stay') return false; item.focus(); return document.activeElement === item; })()");
-        if (!cancelUnsaved) fail("Studio did not expose an unsaved-work cancel control");
-        await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", windowsVirtualKeyCode:13}); await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13});
-        const unsavedWork = {editedControl:dirtyInput, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
+        const cancelUnsaved = await focusRenderedControl("[data-pokie-confirmation]", "(item, name) => item.getAttribute('data-pokie-confirmation') === 'cancel' && name.length > 0");
+        if (!cancelUnsaved?.keyboardFocused || !cancelUnsaved.stableControlId || !cancelUnsaved.accessibleName) fail("Studio did not expose an unsaved-work cancel control");
+        await pressEnter();
+        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:overview.stableControlId, identityAttribute:overview.identityAttribute, accessibleName:overview.accessibleName, keyboardFocused:overview.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
         const staleCursor = cdp.events.length;
         await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
         await waitFor(() => evaluate("document.body.innerText.includes('Create game')"), "project-switch source");

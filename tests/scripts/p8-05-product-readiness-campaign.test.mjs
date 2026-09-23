@@ -375,6 +375,9 @@ async function campaignFixture() {
                 },
                 unsavedWork: {
                     editedControl: "Game basics name",
+                    editControl: {stableControlId: "game-model-basics-edit", identityAttribute: "id", accessibleName: "Edit", keyboardFocused: true, keyboardActivations: 1},
+                    navigationControl: {stableControlId: "project-tab:overview", identityAttribute: "id", accessibleName: "Overview", keyboardFocused: true, keyboardActivations: 1},
+                    cancelControl: {stableControlId: "game-model-unsaved-stay", identityAttribute: "id", accessibleName: "Stay", keyboardFocused: true, keyboardActivations: 1},
                     protectionText: "You have unsaved changes to this game model section. Leave and lose them?",
                     preserved: true,
                 },
@@ -754,6 +757,35 @@ test("rejects cross-viewport substitution of an otherwise content-equivalent bro
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], wide = audit.rendered.actions.find((item) => item.viewport === "wide"), compact = audit.rendered.actions.find((item) => item.viewport === "compact"), wideEvidence = audit.evidence.find((item) => item.evidenceId === wide.evidenceId), compactEvidence = audit.evidence.find((item) => item.evidenceId === compact.evidenceId), widePage = JSON.parse(await readFile(path.join(fixture.directory, wideEvidence.path), "utf8")), compactPath = path.join(fixture.directory, compactEvidence.path), compactPage = JSON.parse(await readFile(compactPath, "utf8"));
         compactPage.request.browserRequestId = widePage.request.browserRequestId;
         compactPage.renderedTerminal.observedAfterRequestId = widePage.request.browserRequestId;
+        const contents = JSON.stringify(compactPage);
+        await writeFile(compactPath, contents);
+        compactEvidence.sha256 = hash(contents);
+        compactEvidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses browser request/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects cross-viewport substitution of a context request identity", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], wide = audit.rendered.actions.find((item) => item.viewport === "wide"), compact = audit.rendered.actions.find((item) => item.viewport === "compact"), wideEvidence = audit.evidence.find((item) => item.evidenceId === wide.evidenceId), compactEvidence = audit.evidence.find((item) => item.evidenceId === compact.evidenceId), widePage = JSON.parse(await readFile(path.join(fixture.directory, wideEvidence.path), "utf8")), compactPath = path.join(fixture.directory, compactEvidence.path), compactPage = JSON.parse(await readFile(compactPath, "utf8"));
+        compactPage.contextRevalidation.browserRequestId = widePage.contextRevalidation.browserRequestId;
+        const contents = JSON.stringify(compactPage);
+        await writeFile(compactPath, contents);
+        compactEvidence.sha256 = hash(contents);
+        compactEvidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses browser request/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects cross-viewport substitution of a terminal poll identity", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], wide = audit.rendered.actions.find((item) => item.viewport === "wide" && P805_WORKFLOW_CONTRACTS[audit.persona][item.observation].poll !== undefined), compact = audit.rendered.actions.find((item) => item.observation === wide.observation && item.viewport === "compact"), wideEvidence = audit.evidence.find((item) => item.evidenceId === wide.evidenceId), compactEvidence = audit.evidence.find((item) => item.evidenceId === compact.evidenceId), widePage = JSON.parse(await readFile(path.join(fixture.directory, wideEvidence.path), "utf8")), compactPath = path.join(fixture.directory, compactEvidence.path), compactPage = JSON.parse(await readFile(compactPath, "utf8"));
+        if (widePage.terminal.source !== "rendered-poll" || compactPage.terminal.source !== "rendered-poll") throw new Error("fixture requires durable workflow pages");
+        compactPage.terminal.browserRequestId = widePage.terminal.browserRequestId;
         const contents = JSON.stringify(compactPage);
         await writeFile(compactPath, contents);
         compactEvidence.sha256 = hash(contents);
