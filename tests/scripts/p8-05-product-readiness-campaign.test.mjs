@@ -181,7 +181,12 @@ const semantic = (persona, observation, contract, viewport) => {
                 expectedArtifact: contract.artifact ?? null,
                 terminal: contract.terminal,
             },
-            state: {text: "Studio controls", controls: [], overflow: false},
+            state: {
+                text: "Studio controls",
+                controls: [],
+                overflow: false,
+                accessibility: {namedRegions: [screen.region], visibleFocus: true, unexplainedDisabledControls: 0},
+            },
         }),
     };
 };
@@ -230,11 +235,7 @@ async function campaignFixture() {
             apiEntries = [{path: "/api/health"}], browserEvents = [];
         for (const [index, observation] of observations.entries()) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation],
-                viewport = ["wide", "compact", "narrow"][index % 3],
-                source = semantic(persona, observation, contract, viewport),
-                screenshot = await evidence(candidate, "screenshot", stamp(offset + 20), [observation]),
-                page = await evidence(candidate, "page-state", stamp(offset + 21), [observation], source.contents);
-            artifacts.push(screenshot, page);
+                source = semantic(persona, observation, contract, "wide");
             apiEntries.push({
                 observation,
                 method: "GET",
@@ -275,9 +276,17 @@ async function campaignFixture() {
                 initiator: "rendered-poll",
             });
             if (contract.poll) browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${observation}`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(source.result.id))}`, method: "GET"}}});
-            for (const actionViewport of ["wide", "compact", "narrow"]) actions.push({
+            for (const actionViewport of ["wide", "compact", "narrow"]) {
+                // A responsive record must contain the actual state captured
+                // at that viewport.  Reusing a wide JSON/screenshot under a
+                // compact action is precisely the drift the campaign rejects.
+                const viewportSource = semantic(persona, observation, contract, actionViewport),
+                    screenshot = await evidence(candidate, "screenshot", stamp(offset + 20 + index), [observation]),
+                    page = await evidence(candidate, "page-state", stamp(offset + 21 + index), [observation], viewportSource.contents);
+                artifacts.push(screenshot, page);
+                actions.push({
                 observation,
-                route: source.route,
+                route: viewportSource.route,
                 expectedControl: contract.control,
                 expectedActionControl: contract.actionControl ?? contract.control,
                 expectedMethod: contract.method,
@@ -285,24 +294,26 @@ async function campaignFixture() {
                 expectedApi: contract.api,
                 expectedArtifact: contract.artifact ?? null,
                 expectedTerminal: contract.terminal,
-                terminal: {status: "completed", resultSha256: source.responseSha256},
+                terminal: {status: "completed", resultSha256: viewportSource.responseSha256},
                 evidenceId: page.evidenceId,
                 screenshotEvidenceId: screenshot.evidenceId,
                 viewport: actionViewport,
                 elapsedMs: 1,
+                overflow: false,
                 screenState: contract.route,
                 screenNavigationControl: P805_SCREEN_CONTROL_STATES[contract.route].navigationControl,
                 stableControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
                 domControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
                 identityAttribute: "id",
                 browserRequestId: `browser-${observation}`,
-                contextRevalidation: source.contextRevalidation,
-                precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: source.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: source.responseSha256, changedAfterRequest: true},
+                contextRevalidation: viewportSource.contextRevalidation,
+                precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: viewportSource.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
-                interaction: source.interaction,
-                transaction: source.transaction,
-            });
+                interaction: viewportSource.interaction,
+                transaction: viewportSource.transaction,
+                });
+            }
         }
         const runtime = await evidence(
             candidate,
@@ -702,6 +713,30 @@ test("rejects relabelled rendered workflow evidence and unmeasured timings", asy
     } finally {
         await fixture.cleanup();
     }
+});
+
+test("rejects a compact workflow action that reuses a wide rendered DOM state", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions.find((item) => item.viewport === "compact"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.viewport = "wide";
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses wide semantic state for compact/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects a combined audit whose non-primary persona lacks its own workflow records", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
+        audits.audits[0].workflowPersonas = ["mathematician", "producer"];
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /producer audit lacks a DOM-bound three-viewport action/i);
+    } finally { await fixture.cleanup(); }
 });
 
 test("rejects semantic drift when a rewritten record no longer binds its rendered terminal result", async () => {
