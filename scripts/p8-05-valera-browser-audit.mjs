@@ -475,9 +475,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             });
             return {scope:{identityAttribute:'data-pokie-lifecycle-form', value:${JSON.stringify(operation)}, tagName:form.tagName.toLowerCase()}, fields};
         })()`), `${observation} rendered ${operation} form fields`);
-        const captureRenderedFormState = async (operation, observation, requiresEditableForm, preparedFormState, requireValid = true) => {
+        // Editable fields belong to an editable-submission control, not to a
+        // generic operation name.  Read the rendered control first and only
+        // then collect the form that makes that exact control submittable.
+        // This keeps list/refresh controls from inheriting a nearby Configure
+        // form merely because they share an operation's screen.
+        const captureRenderedEditableFormState = async (operation, observation, actionControlId, preparedFormState, requireValid = true) => {
             const formState = await waitFor(() => evaluate(`(() => {
-                const operation = ${JSON.stringify(operation)}, requiresEditableForm = ${JSON.stringify(requiresEditableForm)}, preparedFormState = ${JSON.stringify(preparedFormState ?? null)}, requireValid = ${JSON.stringify(requireValid)};
+                const operation = ${JSON.stringify(operation)}, actionControlId = ${JSON.stringify(actionControlId)}, preparedFormState = ${JSON.stringify(preparedFormState ?? null)}, requireValid = ${JSON.stringify(requireValid)};
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => {
                     const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean)
@@ -486,17 +491,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') : '';
                     return (item.getAttribute('aria-label') || labelledBy || labels || item.innerText || item.textContent || item.getAttribute('name') || '').trim();
                 };
-                const action = [...document.querySelectorAll('button,a')].find((item) => visible(item) && item.getAttribute('data-pokie-lifecycle') === 'operation' && item.getAttribute('data-pokie-lifecycle-operation') === operation);
-                if (!(action instanceof HTMLElement) || !action.id) return false;
-                // A refresh/navigation-style GET still has a rendered control
-                // state, but it does not submit editable form data.  Do not
-                // accidentally capture an unrelated visible form elsewhere on
-                // the screen and call it the Refresh request's input.
+                const action = document.getElementById(actionControlId);
+                if (!(action instanceof HTMLElement) || !visible(action) || action.getAttribute('data-pokie-lifecycle') !== 'operation' || action.getAttribute('data-pokie-lifecycle-operation') !== operation || action.getAttribute('data-pokie-transaction-state') !== 'editable-submission') return false;
                 const form = action.closest('[data-pokie-lifecycle-form="' + operation + '"]');
                 const scope = form instanceof HTMLElement && visible(form)
                     ? {identityAttribute:'data-pokie-lifecycle-form', value:operation, tagName:form.tagName.toLowerCase()}
                     : preparedFormState?.scope;
-                const fields = requiresEditableForm && preparedFormState === null ? (form instanceof HTMLElement && visible(form) ? [...form.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
+                const fields = preparedFormState === null ? (form instanceof HTMLElement && visible(form) ? [...form.querySelectorAll('input,textarea,select')].filter((item) => visible(item)).map((item) => {
                     const validatable = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement;
                     return {
                         stableControlId:item.id,
@@ -513,9 +514,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // path) still needs the exact same DOM receipt as a valid
                 // one.  Preserve its browser validation state instead of
                 // making the runner skip directly to a server request.
-                if ((requiresEditableForm && fields.length === 0) || fields.some((field) => !field.stableControlId || !field.accessibleName || (requireValid && !field.validation.valid) || field.disabled)) return false;
+                if (fields.length === 0 || fields.some((field) => !field.stableControlId || !field.accessibleName || (requireValid && !field.validation.valid) || field.disabled)) return false;
                 const validatableAction = action instanceof HTMLButtonElement || action instanceof HTMLInputElement || action instanceof HTMLSelectElement || action instanceof HTMLTextAreaElement;
-                if (requiresEditableForm && (scope?.identityAttribute !== 'data-pokie-lifecycle-form' || scope.value !== operation || typeof scope.tagName !== 'string' || !scope.tagName)) return false;
+                if (scope?.identityAttribute !== 'data-pokie-lifecycle-form' || scope.value !== operation || typeof scope.tagName !== 'string' || !scope.tagName) return false;
                 return {operation, capturedBeforeSubmission:true, scope, actionControl:{stableControlId:action.id, identityAttribute:'id', visible:true, accessibleName:accessibleName(action), validation:{valid:!validatableAction || action.checkValidity(), message:validatableAction ? action.validationMessage : ''}}, fields};
             })()`), `${observation} visible rendered form state for ${operation}`);
             return formState;
@@ -531,7 +532,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             item.focus();
             return document.activeElement === item ? {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:true, enabled:!disabled, disabled, disabledExplanation, accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id', transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:${JSON.stringify(lifecycle)}, value:${JSON.stringify(operation)}}} : null;
         })()`);
-        const beginRenderedTransaction = async ({lifecycle, operation, observation, confirmation = false, formState, stateClass}) => {
+        const renderedTransactionControl = async ({lifecycle, operation, observation, expectedStateClass, formState}) => {
             const control = await waitFor(async () => {
                 const candidate = formState === undefined
                     ? await focusLifecycleControl(lifecycle, operation, "button,a")
@@ -541,8 +542,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // preflight to enable it. This avoids converting a transient
                 // rendered loading state into an audit-side retry or a
                 // separate API call.
-                return candidate?.keyboardFocused && candidate.enabled && candidate.transactionState === stateClass ? candidate : false;
+                return candidate?.keyboardFocused && candidate.enabled && typeof candidate.transactionState === "string" && candidate.transactionState.length > 0 ? candidate : false;
             }, `${observation} rendered ${operation} control`);
+            if (expectedStateClass !== undefined && control.transactionState !== expectedStateClass) fail(`${observation} rendered ${operation} state class ${control.transactionState} does not match ${expectedStateClass}`);
+            return control;
+        };
+        const beginRenderedTransaction = async ({lifecycle, operation, observation, confirmation = false, formState, stateClass, control:capturedControl}) => {
+            const control = capturedControl ?? await renderedTransactionControl({lifecycle, operation, observation, expectedStateClass:stateClass, formState});
+            if (control.transactionState !== stateClass) fail(`${observation} transaction state was not derived from its rendered control`);
+            if (formState !== undefined && control.transactionState !== "editable-submission") fail(`${observation} recorded editable fields for a ${control.transactionState} control`);
             const transaction = {
                 operation,
                 stateClass,
@@ -575,8 +583,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             return transaction;
         };
-        const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, path:expectedPath, confirmation = false, formState, stateClass = "read-only-operation"}) => {
-            const transaction = await beginRenderedTransaction({lifecycle, operation, observation, confirmation, formState, stateClass});
+        const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, path:expectedPath, confirmation = false, formState, stateClass = "read-only-operation", control}) => {
+            const transaction = await beginRenderedTransaction({lifecycle, operation, observation, confirmation, formState, stateClass, control});
             const event = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method && (expectedPath === undefined || new URL(value.params.request.url).pathname === expectedPath)) || false, `${observation} rendered ${operation} request`);
             const responseEvent = await waitFor(() => cdp.events.slice(cursor).find((value) => value.method === "Network.responseReceived" && value.params.requestId === event.params.requestId) || false, `${observation} rendered ${operation} response`);
             const response = await readBrowserResponseBody(event.params.requestId, observation), payload = JSON.parse(response.body || "{}"), entry = {observation, method:event.params.request.method, path:new URL(event.params.request.url).pathname, bodySha256:digest(event.params.request.postData ?? ""), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId:event.params.requestId, initiator:"rendered-control"};
@@ -595,8 +603,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), `${observation} rendered simulation form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setLifecycleField("simulation-rounds", String(rounds)), `${observation} rendered simulation rounds`)) fail(`Studio did not accept simulation rounds for ${observation}`);
-            const formState = await captureRenderedFormState("simulation", observation, true, undefined, expectedStatuses.includes(400) === false);
-            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations", formState, stateClass:"editable-submission"});
+            const control = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation, expectedStateClass:"editable-submission"});
+            const formState = await captureRenderedEditableFormState("simulation", observation, control.stableControlId, undefined, expectedStatuses.includes(400) === false);
+            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations", formState, stateClass:"editable-submission", control});
             if (!expectedStatuses.includes(started.response.status) || (expectedStatuses.includes(202) && typeof started.payload?.id !== "string")) fail(`${observation} rendered simulation did not produce its expected public response`);
             return started;
         };
@@ -618,8 +627,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (preparedFormState.fields.length === 0 || preparedFormState.fields.some((field) => !field.stableControlId || !field.accessibleName || field.disabled || !field.validation?.valid)) fail(`Studio did not expose a valid rendered replay target form for ${observation}`);
             await activateRenderedPrecondition("replay-target", observation);
             await waitFor(() => evaluate("!!document.getElementById('replay-run')"), `${observation} rendered replay run control`);
-            const formState = await captureRenderedFormState("replay", observation, true, preparedFormState);
-            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"replay", observation, cursor, method:"POST", path:"/api/project/replays", formState, stateClass:"editable-submission"});
+            const control = await renderedTransactionControl({lifecycle:"operation", operation:"replay", observation, expectedStateClass:"editable-submission"});
+            const formState = await captureRenderedEditableFormState("replay", observation, control.stableControlId, preparedFormState);
+            const started = await activateRenderedTransaction({lifecycle:"operation", operation:"replay", cursor, method:"POST", path:"/api/project/replays", formState, stateClass:"editable-submission", control});
             if (!expectedStatuses.includes(started.response.status) || (expectedStatuses.includes(202) && typeof started.payload?.id !== "string")) fail(`${observation} rendered replay did not produce its expected public response`);
             return started;
         };
@@ -891,12 +901,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // form state is read.  This closes the old route-plus-request
                 // adapter: a later poll must now be causally preceded by one
                 // configured, valid DOM submission from this exact control.
-                const stateClass = p805TransactionStateClass(contract);
+                const expectedStateClass = p805TransactionStateClass(contract);
+                const control = await renderedTransactionControl({lifecycle:"operation", operation, observation, expectedStateClass});
+                // The control's state class is a rendered public fact.  It
+                // decides whether this transaction may carry form fields;
+                // the contract is only a fail-closed expectation afterwards.
+                const stateClass = control.transactionState;
                 const formState = stateClass === "editable-submission"
-                    ? await captureRenderedFormState(operation, observation, true, preparedOperation?.formState)
+                    ? await captureRenderedEditableFormState(operation, observation, control.stableControlId, preparedOperation?.formState)
                     : undefined;
                 beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
-                transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState, stateClass});
+                transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState, stateClass, control});
                 if (formState !== undefined && transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
                 interaction = transaction.control;
                 entry = await browserRequest(contract, observation, cursor, transaction);
@@ -1036,8 +1051,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // is meant to exercise.  The maximum accepted request gives the
         // browser a reliable active-work window while still proving the
         // rendered form and API's real validation contract.
-        const durableProbeRounds = 2_000_000;
-        const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", durableProbeRounds), reloadCursor = cdp.events.length;
+        // Reload needs a durable request that survives the full browser
+        // transition. Retry deliberately repeats its captured request, so
+        // cancellation uses a separate, shorter real job that can still be
+        // cancelled through the rendered control and then finish in the
+        // browser-owned terminal-result window.
+        const simulationRoundLimit = 2_000_000;
+        const reloadProbeRounds = 1_000_000;
+        const retryProbeRounds = 100_000;
+        const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", reloadProbeRounds), reloadCursor = cdp.events.length;
         await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await waitFor(async () => { const event = cdp.events.slice(reloadCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
         // A running job intentionally disables sibling tab navigation, so
         // the real recovery state is the public, reloadable Simulation route
@@ -1085,14 +1107,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // keeps the error workflow an actual valid DOM submission whose 400
         // diagnostic belongs to the rendered request, rather than a native
         // validation bubble with no public request receipt.
-        const failure = await startRenderedSimulation(projectBaseRoute, "actionable simulation failure", durableProbeRounds + 1, [400]), simulationStart = Date.now(), simulation = await startRenderedSimulation(projectBaseRoute, "successful simulation", 1); if (failure.response.status !== 400 || simulation.response.status !== 202 || typeof simulation.payload?.id !== "string") fail("Studio did not demonstrate an actionable rendered simulation failure and successful rendered job creation"); const simulationId = simulation.payload.id, simulationTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(simulationId)}`, "successful simulation", simulation.cursor, ["completed"], simulation.transaction); timings.simulationMs = Date.now() - simulationStart;
+        const failure = await startRenderedSimulation(projectBaseRoute, "actionable simulation failure", simulationRoundLimit + 1, [400]), simulationStart = Date.now(), simulation = await startRenderedSimulation(projectBaseRoute, "successful simulation", 1); if (failure.response.status !== 400 || simulation.response.status !== 202 || typeof simulation.payload?.id !== "string") fail("Studio did not demonstrate an actionable rendered simulation failure and successful rendered job creation"); const simulationId = simulation.payload.id, simulationTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(simulationId)}`, "successful simulation", simulation.cursor, ["completed"], simulation.transaction); timings.simulationMs = Date.now() - simulationStart;
         // A non-positive round is correctly disabled by the rendered form and
         // therefore cannot be used as a fabricated request failure.  100001
         // is a valid browser value just above Studio's server replay limit,
         // so this takes one enabled public Run activation to the correlated
         // 400 response before the normal recovery replay is attempted.
         const replayStart = Date.now(), replayFailure = await startRenderedReplay(projectBaseRoute, "replay artifact failure", 100_001, [400]), replay = await startRenderedReplay(projectBaseRoute, "successful replay"); if (replayFailure.response.status !== 400 || replay.response.status !== 202 || typeof replay.payload?.id !== "string") fail("Studio did not demonstrate rendered replay artifact failure and rendered replay creation"); const replayTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replay.payload.id)}`, "successful replay", replay.cursor, ["completed"], replay.transaction); const replayArtifactInspection = await startRenderedReplay(projectBaseRoute, "replay artifact recovery"); if (!replayArtifactInspection.response.ok) fail("Studio did not recover from replay artifact failure through its rendered control"); const replayRecoveryTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replayArtifactInspection.payload.id)}`, "replay artifact recovery", replayArtifactInspection.cursor, ["completed"], replay.transaction); if (replayRecoveryTerminal.status !== "completed") fail("Studio did not reach a recovered rendered replay terminal"); timings.replayMs = Date.now() - replayStart;
-        const cancellationStart = Date.now(), cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", durableProbeRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]); const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation"}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reports.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"}); timings.cancellationMs = Date.now() - cancellationStart;
+        const cancellationStart = Date.now(), cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", retryProbeRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]); const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation"}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"}); timings.cancellationMs = Date.now() - cancellationStart;
         await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/gameModel`}); await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Game Model')"), "rendered unsaved-work editor");
         const editedControl = await evaluate("(() => { const edit = document.getElementById('game-model-basics-edit'); if (!(edit instanceof HTMLButtonElement) || edit.disabled || edit.textContent?.trim() !== 'Edit') return null; edit.focus(); return document.activeElement === edit ? edit.id : null; })()");
         if (!editedControl) fail("Studio did not expose a keyboard-operable Game Model edit control");
@@ -1118,7 +1140,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const recoveryAfter = await evaluate("location.hash"), staleResponses = cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived"), delayedResponse = staleResponses.at(-1);
         await cdp.send("Page.navigate", {url:`${origin}${recoveryAfter}`});
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "stale-response isolation navigation");
-        const restartProjectBaseRoute = recoveryAfter.replace(/\/[^/]+$/, ""); await cdp.send("Page.navigate", {url:`${origin}/${restartProjectBaseRoute}/simulation`}); await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), "rendered restart-recovery simulation form"); await ensureSimulationConfigure("restart recovery"); const restartCursor = cdp.events.length; if (!await waitFor(() => setLifecycleField("simulation-rounds", "1000000"), "rendered restart-recovery simulation rounds")) fail("Studio did not accept the rendered restart-recovery rounds"); const restartFormState = await captureRenderedFormState("simulation", "restart recovery", true); const restartJob = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation:"restart recovery", cursor:restartCursor, method:"POST", formState:restartFormState, stateClass:"editable-submission"}); if (restartJob.response.status !== 202 || typeof restartJob.payload?.id !== "string") fail("Studio did not start a rendered active job before restart");
+        const restartProjectBaseRoute = recoveryAfter.replace(/\/[^/]+$/, ""); await cdp.send("Page.navigate", {url:`${origin}/${restartProjectBaseRoute}/simulation`}); await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), "rendered restart-recovery simulation form"); await ensureSimulationConfigure("restart recovery"); const restartCursor = cdp.events.length; if (!await waitFor(() => setLifecycleField("simulation-rounds", "1000000"), "rendered restart-recovery simulation rounds")) fail("Studio did not accept the rendered restart-recovery rounds"); const restartControl = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation:"restart recovery", expectedStateClass:"editable-submission"}); const restartFormState = await captureRenderedEditableFormState("simulation", "restart recovery", restartControl.stableControlId); const restartJob = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation:"restart recovery", cursor:restartCursor, method:"POST", formState:restartFormState, stateClass:"editable-submission", control:restartControl}); if (restartJob.response.status !== 202 || typeof restartJob.payload?.id !== "string") fail("Studio did not start a rendered active job before restart");
         const priorStudio = studio, restartDrain = await terminate(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart"); const restartRecoveryCursor = cdp.events.length; await cdp.send("Page.navigate", {url:`${origin}${recoveryAfter}`}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "Studio server restart recovery"); const restartJobs = await waitFor(async () => { const event = cdp.events.slice(restartRecoveryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartRecovered = restartList.some((job) => job?.id === restartJob.payload.id && !["queued", "running", "cancelling"].includes(job?.status)); api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation:typeof delayedResponse?.params?.requestId === "string" && await evaluate("location.hash === " + JSON.stringify(recoveryAfter)), unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered}; if (!Object.values(recovery).every(Boolean)) fail("Studio recovery controls did not produce measured results");
         const restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id);
         if (restartRecovered && restartTerminal) restartJob.transaction.terminal = {status:restartTerminal.status, resultSha256:digest(JSON.stringify(restartTerminal)), source:"rendered-poll", pollPath:"/api/project/jobs", browserRequestId:restartJobs.event.params.requestId, causedByRequestId:restartJob.transaction.request?.browserRequestId};
