@@ -66,7 +66,10 @@ const transaction = (operation, controlId, accessibleName, confirmed = false) =>
 });
 const semantic = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
-        jobId = `job-${observation}`,
+        jobId = `job-${persona}-${observation}-${viewport}`,
+        actionRequestId = `browser-${persona}-${observation}-${viewport}`,
+        contextRequestId = `context-${persona}-${observation}-${viewport}`,
+        pollRequestId = `poll-${persona}-${observation}-${viewport}`,
         result = contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation, downloadPath: `/downloads/${jobId}.json`}] : {id: jobId, status: "completed", observation, ...(contract.artifact === undefined ? {} : {outputPath: `/outputs/${jobId}`})},
         responseSha256 = hash(JSON.stringify(result)),
         route = `/#/project/fixture/${contract.route}`,
@@ -108,7 +111,7 @@ const semantic = (persona, observation, contract, viewport) => {
         transaction,
         route,
         contextRevalidation: {
-            browserRequestId: `context-${observation}`,
+            browserRequestId: contextRequestId,
             method: "GET",
             path: "/api/project/context",
             status: 200,
@@ -128,7 +131,7 @@ const semantic = (persona, observation, contract, viewport) => {
             interaction,
             transaction,
             contextRevalidation: {
-                browserRequestId: `context-${observation}`,
+                browserRequestId: contextRequestId,
                 method: "GET",
                 path: "/api/project/context",
                 status: 200,
@@ -143,7 +146,7 @@ const semantic = (persona, observation, contract, viewport) => {
                 bodySha256,
                 responseSha256,
                 status: 200,
-                browserRequestId: `browser-${observation}`,
+                browserRequestId: actionRequestId,
                 initiator: "rendered-control",
             },
             terminal: {
@@ -153,11 +156,11 @@ const semantic = (persona, observation, contract, viewport) => {
                 artifact: contract.artifact ?? null,
                 result,
                 source: contract.poll ? "rendered-poll" : "response",
-                ...(contract.poll ? {jobId, pollPath: contract.poll.replace("{id}", encodeURIComponent(jobId))} : {}),
+                ...(contract.poll ? {jobId, pollPath: contract.poll.replace("{id}", encodeURIComponent(jobId)), browserRequestId: pollRequestId} : {}),
             },
             renderedTerminal: {
                 state: "rendered",
-                observedAfterRequestId: `browser-${observation}`,
+                observedAfterRequestId: actionRequestId,
                 beforeTextSha256: hash(`Before ${observation} request.`),
                 text: `The rendered ${observation} result completed.`,
                 textSha256: hash(`The rendered ${observation} result completed.`),
@@ -259,12 +262,12 @@ async function campaignFixture() {
                 responseSha256: source.responseSha256,
                 status: 200,
                 payload: source.result,
-                browserRequestId: `browser-${observation}`,
+                browserRequestId: source.actionRequestId ?? `browser-${persona}-${observation}-wide`,
                 initiator: "rendered-control",
             });
             browserEvents.push(
-                {method: "Network.requestWillBeSent", params: {requestId: `browser-${observation}`, request: {url: `http://127.0.0.1${contract.api}`, method: contract.method, ...(contract.body === undefined ? {} : {postData: contract.body})}}},
-                {method: "Network.responseReceived", params: {requestId: `browser-${observation}`, response: {status: 200}}},
+                {method: "Network.requestWillBeSent", params: {requestId: source.actionRequestId ?? `browser-${persona}-${observation}-wide`, request: {url: `http://127.0.0.1${contract.api}`, method: contract.method, ...(contract.body === undefined ? {} : {postData: contract.body})}}},
+                {method: "Network.responseReceived", params: {requestId: source.actionRequestId ?? `browser-${persona}-${observation}-wide`, response: {status: 200}}},
             );
             if (contract.poll) apiEntries.push({
                 observation,
@@ -272,10 +275,10 @@ async function campaignFixture() {
                 path: contract.poll.replace("{id}", encodeURIComponent(source.result.id)),
                 status: 200,
                 payload: source.result,
-                browserRequestId: `poll-${observation}`,
+                browserRequestId: source.pollRequestId ?? `poll-${persona}-${observation}-wide`,
                 initiator: "rendered-poll",
             });
-            if (contract.poll) browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${observation}`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(source.result.id))}`, method: "GET"}}});
+            if (contract.poll) browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: source.pollRequestId ?? `poll-${persona}-${observation}-wide`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(source.result.id))}`, method: "GET"}}});
             for (const actionViewport of ["wide", "compact", "narrow"]) {
                 // A responsive record must contain the actual state captured
                 // at that viewport.  Reusing a wide JSON/screenshot under a
@@ -283,6 +286,22 @@ async function campaignFixture() {
                 const viewportSource = semantic(persona, observation, contract, actionViewport),
                     screenshot = await evidence(candidate, "screenshot", stamp(offset + 20 + index), [observation]),
                     page = await evidence(candidate, "page-state", stamp(offset + 21 + index), [observation], viewportSource.contents);
+                if (actionViewport !== "wide") {
+                    apiEntries.push(
+                        {observation, method: "GET", path: "/api/project/context", status: 200, payload: {status: "loaded"}, browserRequestId: viewportSource.contextRevalidation.browserRequestId, responseSha256: viewportSource.contextRevalidation.responseSha256, initiator: "rendered-navigation-context"},
+                        {observation, method: contract.method, path: contract.api, bodyKind: contract.body ?? null, bodySha256: viewportSource.bodySha256, responseSha256: viewportSource.responseSha256, status: 200, payload: viewportSource.result, browserRequestId: `browser-${persona}-${observation}-${actionViewport}`, initiator: "rendered-control"},
+                    );
+                    browserEvents.push(
+                        {method: "Network.requestWillBeSent", params: {requestId: viewportSource.contextRevalidation.browserRequestId, request: {url: "http://127.0.0.1/api/project/context", method: "GET"}}},
+                        {method: "Network.responseReceived", params: {requestId: viewportSource.contextRevalidation.browserRequestId, response: {status: 200}}},
+                        {method: "Network.requestWillBeSent", params: {requestId: `browser-${persona}-${observation}-${actionViewport}`, request: {url: `http://127.0.0.1${contract.api}`, method: contract.method, ...(contract.body === undefined ? {} : {postData: contract.body})}}},
+                        {method: "Network.responseReceived", params: {requestId: `browser-${persona}-${observation}-${actionViewport}`, response: {status: 200}}},
+                    );
+                    if (contract.poll) {
+                        apiEntries.push({observation, method: "GET", path: contract.poll.replace("{id}", encodeURIComponent(viewportSource.result.id)), status: 200, payload: viewportSource.result, browserRequestId: `poll-${persona}-${observation}-${actionViewport}`, initiator: "rendered-poll"});
+                        browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: `poll-${persona}-${observation}-${actionViewport}`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(viewportSource.result.id))}`, method: "GET"}}});
+                    }
+                }
                 artifacts.push(screenshot, page);
                 actions.push({
                 observation,
@@ -305,10 +324,10 @@ async function campaignFixture() {
                 stableControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
                 domControlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId,
                 identityAttribute: "id",
-                browserRequestId: `browser-${observation}`,
+                browserRequestId: `browser-${persona}-${observation}-${actionViewport}`,
                 contextRevalidation: viewportSource.contextRevalidation,
                 precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: viewportSource.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${observation}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: viewportSource.interaction,
                 transaction: viewportSource.transaction,
@@ -726,6 +745,21 @@ test("rejects a compact workflow action that reuses a wide rendered DOM state", 
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses wide semantic state for compact/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects cross-viewport substitution of an otherwise content-equivalent browser request", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], wide = audit.rendered.actions.find((item) => item.viewport === "wide"), compact = audit.rendered.actions.find((item) => item.viewport === "compact"), wideEvidence = audit.evidence.find((item) => item.evidenceId === wide.evidenceId), compactEvidence = audit.evidence.find((item) => item.evidenceId === compact.evidenceId), widePage = JSON.parse(await readFile(path.join(fixture.directory, wideEvidence.path), "utf8")), compactPath = path.join(fixture.directory, compactEvidence.path), compactPage = JSON.parse(await readFile(compactPath, "utf8"));
+        compactPage.request.browserRequestId = widePage.request.browserRequestId;
+        compactPage.renderedTerminal.observedAfterRequestId = widePage.request.browserRequestId;
+        const contents = JSON.stringify(compactPage);
+        await writeFile(compactPath, contents);
+        compactEvidence.sha256 = hash(contents);
+        compactEvidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses browser request/i);
     } finally { await fixture.cleanup(); }
 });
 
