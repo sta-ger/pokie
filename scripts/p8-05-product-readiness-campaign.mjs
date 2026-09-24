@@ -27,6 +27,22 @@ export const P805_REQUIRED_OBSERVATIONS = {
     "ui-ux":["onboarding-terminology-forms-progress", "reload-reconnect-recovery-cancellation-project-switch", "keyboard-responsive-accessibility"],
     "graphic-designer":["hierarchy-typography-spacing-density-controls-finish"],
 };
+/** Validate the parent-owned tuple ledger before a controller may consume it.
+ * This is deliberately independent from the legacy five-audit campaign
+ * record: a parent has to prove that it accepted every immutable child tuple,
+ * in sequence, rather than infer completion from a persona-sized summary. */
+export function validateP805TupleProofLedger(ledger, expected) {
+    const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => `${persona}/${observation}/${viewport}`)));
+    if (!ledger || ledger.kind !== "p8-05-process-isolated-packed-proof" || ledger.status !== "passed" || ledger.candidateId !== expected?.candidateId || ledger.candidatePackageSha256 !== expected?.candidatePackageSha256 || !Array.isArray(ledger.children) || !Array.isArray(ledger.acceptedReceipts) || ledger.children.length !== tuples.length || ledger.acceptedReceipts.length !== tuples.length || ledger.finalResult?.status !== "passed" || ledger.finalResult?.children !== tuples.length || ledger.finalResult?.checkpointReceipts !== tuples.length || ledger.finalResult?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only") fail("tuple proof ledger does not prove a complete passing child matrix");
+    const accepted = new Set();
+    for (const [index, child] of ledger.children.entries()) {
+        const tuple = child?.tuple, key = `${tuple?.persona}/${tuple?.observation}/${tuple?.viewport}`, receipt = ledger.acceptedReceipts[index];
+        if (key !== tuples[index] || accepted.has(key) || child?.worker?.pid === ledger.parent?.pid || !child?.tupleReceiptPath || !sha(child?.tupleReceiptSha256) || !child?.cleanupPath || !sha(child?.cleanupSha256) || child?.exitCode !== 0 || child?.signal !== null || JSON.stringify(receipt?.tuple) !== JSON.stringify(tuple) || !sha(receipt?.receiptSha256) || !sha(receipt?.cleanupSha256)) fail(`tuple proof ledger has a missing, duplicate, cross-persona, cross-viewport, or unclean child ${key}`);
+        accepted.add(key);
+    }
+    if (accepted.size !== tuples.length) fail("tuple proof ledger has an incomplete accepted child matrix");
+    return ledger;
+}
 // This is an evidence contract, not a list of pages to visit.  Each audit
 // observation must name the public operation that caused it, its rendered
 // control, the server activity it expects to see, and the durable result that

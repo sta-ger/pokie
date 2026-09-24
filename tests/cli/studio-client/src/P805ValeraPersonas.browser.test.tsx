@@ -47,12 +47,12 @@ describe("P8-05 rendered Valera persona evidence", () => {
             const personas = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
             const packageSha256 = createHash("sha256").update(archive).digest("hex");
             // The exact-candidate parent is a real process too.  It spawns
-            // one fresh child per persona, reads each child-owned immutable
-            // receipt before proceeding, and publishes the aggregate only
-            // after every packed CLI/Studio workflow has exited cleanly.
+            // one fresh child for every persona/observation/viewport tuple,
+            // validates that child's immutable receipt and cleanup before the
+            // next tuple, and publishes a passing aggregate only after the
+            // complete packed CLI/Studio matrix has exited cleanly.
             execFileSync(process.execPath, [runner, "--persona", "all", "--phase", "initial", "--candidate", candidate, "--package-sha256", packageSha256, "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 22_500_000});
-            const audits = await Promise.all(personas.map(async (persona) => JSON.parse(await readFile(path.join(output, `initial-${persona}-audit.json`), "utf8"))));
-            const audit = audits[0];
+            const audit = JSON.parse(await readFile(path.join(output, "initial-mathematician--blueprint--wide-audit.json"), "utf8"));
             expect(audit.packageIdentity.archiveSha256).toBe(audit.candidatePackageSha256);
             expect(audit.candidatePackageSha256).toBe(packageSha256);
             expect(audit.workflowPersonas).toEqual([audit.persona]);
@@ -97,7 +97,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 const actions = audit.rendered.actions.filter((action: {persona: string}) => action.persona === auditedPersona);
                 expect(actions.length).toBeGreaterThan(0);
                 for (const action of actions as Array<{observation: string; viewport: string; expectedControl: string; expectedMethod: string; expectedApi: string; expectedBodyKind: string | null; expectedArtifact: string | null; screenState: string; screenNavigationControl: string; stableControlId: string; domControlId: string; identityAttribute: string; browserRequestId: string; contextRevalidation: {browserRequestId: string; method: string; path: string; status: number; responseSha256: string; projectStatus: string; completedBeforeSelection: boolean}; interaction: {matchedLabel: string; stableControlId: string; identityAttribute: string; transactionState: string; lifecycle: {kind: string; value: string}}; transaction: {operation: string; stateClass: string; control: {stableControlId: string; accessibleName: string; enabled: boolean; disabled: boolean; disabledExplanation: null}; formState?: {operation: string; capturedBeforeSubmission: boolean; scope: {identityAttribute: string; value: string; tagName: string}; actionControl: {stableControlId: string; identityAttribute: string; visible: boolean; accessibleName: string; validation: {valid: boolean; message: string}}; fields: Array<{stableControlId: string; identityAttribute: string; visible: boolean; accessibleName: string; value: string; disabled: boolean; required: boolean; validation: {valid: boolean; message: string}}>}; confirmation: {required: boolean; state: string; control: null}; keyboardActivations: Array<{phase: string; controlId: string; count: number}>; request: {browserRequestId: string; method: string; path: string; status: number; responseSha256: string}; terminal: {resultSha256: string; source: string}}; precondition: {enabled: boolean; disabled: boolean; disabledExplanation: null; accessibleName: string}; accessibility: {namedRegions: string[]; visibleFocus: boolean; unexplainedDisabledControls: number}; visibleTerminal: {state: string; changedAfterRequest: boolean; observedAfterRequestId: string; beforeTextSha256: string; textSha256: string; resultSha256: string; lifecycle: {role: string; terminal: string; text: string; artifact: {name: string; accessibleName: string} | null}}; terminal: {resultSha256: string}; evidenceId: string; screenshotEvidenceId: string; elapsedMs: number}>) {
-                    expect(["wide", "compact", "narrow"].filter((viewport) => actions.some((candidate: {observation: string; viewport: string}) => candidate.observation === action.observation && candidate.viewport === viewport))).toHaveLength(3);
+                    expect(actions.filter((candidate: {observation: string; viewport: string}) => candidate.observation === action.observation && candidate.viewport === action.viewport)).toHaveLength(1);
                     let expectedTransactionState = "editable-submission";
                     if (action.interaction.lifecycle.kind === "navigation") expectedTransactionState = "navigation";
                     else if (action.expectedMethod === "GET") expectedTransactionState = "read-only-operation";
@@ -154,14 +154,22 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(audit.evidence.some((item: {kind: string}) => item.kind === "screenshot")).toBe(true);
             const aggregatePath = path.join(output, "initial-process-isolated-packed-proof.json");
             const aggregate = JSON.parse(await readFile(aggregatePath, "utf8"));
-            expect(aggregate).toEqual(expect.objectContaining({schemaVersion: 1, kind: "p8-05-process-isolated-packed-proof", candidateId: candidate, candidatePackageSha256: packageSha256, status: "passed", parent: expect.objectContaining({pid: expect.any(Number), processIdentity: expect.any(String), nonce: expect.any(String)}), finalResult: expect.objectContaining({status: "passed", children: personas.length, aggregation: "independently-verified-immutable-child-receipts-only"})}));
-            expect(aggregate.children).toHaveLength(personas.length);
-            expect(aggregate.children.map((child) => child.persona)).toEqual(personas);
-            expect(aggregate.children.map((child) => child.workflowPersonas)).toEqual(personas.map((persona) => [persona]));
-            expect(new Set(aggregate.children.map((child) => child.auditSha256)).size).toBe(personas.length);
-            expect(new Set(aggregate.children.map((child) => child.worker.nonce)).size).toBe(personas.length);
+            const requiredObservations: Record<string, string[]> = {
+                mathematician: ["blueprint", "par-xlsx-round-trip", "reels-paytable-modes-mechanics", "simulation-success-failure-cancellation", "simulation-rtp-volatility-features", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "certification-conditional", "fairness-conditional", "build-export-output-folder", "import-export-defaults"],
+                programmer: ["packed-install", "npx-pokie", "recursive-help", "create-build-inspect", "validate-sim-report-diff-replay-serve-wasm", "spaces-invalid-inputs-exit-codes-ci-recovery", "build-export-output-folder"],
+                producer: ["product-framing", "end-to-end-navigation", "trust"],
+                "ui-ux": ["onboarding-terminology-forms-progress", "reload-reconnect-recovery-cancellation-project-switch", "keyboard-responsive-accessibility"],
+                "graphic-designer": ["hierarchy-typography-spacing-density-controls-finish"],
+            };
+            const expectedTuples = personas.flatMap((persona) => requiredObservations[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => `${persona}/${observation}/${viewport}`)));
+            expect(aggregate).toEqual(expect.objectContaining({schemaVersion: 1, kind: "p8-05-process-isolated-packed-proof", candidateId: candidate, candidatePackageSha256: packageSha256, status: "passed", parent: expect.objectContaining({pid: expect.any(Number), processIdentity: expect.any(String), nonce: expect.any(String)}), finalResult: expect.objectContaining({status: "passed", children: expectedTuples.length, checkpointReceipts: expectedTuples.length, aggregation: "independently-verified-immutable-tuple-child-receipts-only"})}));
+            expect(aggregate.children).toHaveLength(expectedTuples.length);
+            expect(aggregate.acceptedReceipts).toHaveLength(expectedTuples.length);
+            expect(aggregate.children.map((child) => `${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`)).toEqual(expectedTuples);
+            expect(new Set(aggregate.children.map((child) => child.auditSha256)).size).toBe(expectedTuples.length);
+            expect(new Set(aggregate.children.map((child) => child.worker.nonce)).size).toBe(expectedTuples.length);
             expect(new Set(aggregate.children.flatMap((child) => child.checkpointReceiptSha256s)).size).toBe(aggregate.children.reduce((count, child) => count + child.checkpointReceiptSha256s.length, 0));
-            expect(aggregate.children.every((child) => child.exitCode === 0 && child.signal === null && child.worker.pid !== aggregate.parent.pid)).toBe(true);
+            expect(aggregate.children.every((child) => child.exitCode === 0 && child.signal === null && child.worker.pid !== aggregate.parent.pid && child.tupleReceiptPath && child.tupleReceiptSha256 && child.cleanupPath && child.cleanupSha256)).toBe(true);
         } finally {
             await rm(output, {recursive: true, force: true});
             await rm(candidateDirectory, {recursive: true, force: true});

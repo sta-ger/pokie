@@ -12,6 +12,7 @@ import {
     P805_SCHEMA_VERSION,
     P805_WORKFLOW_CONTRACTS,
     p805TransactionStateClass,
+    validateP805TupleProofLedger,
     validateP805ProductReadinessCampaign,
 } from "../../scripts/p8-05-product-readiness-campaign.mjs";
 
@@ -1107,4 +1108,22 @@ test("rejects a regression receipt that lacks verifier-owned authentication", as
         await writeFile(path.join(fixture.directory, "regressions.json"), `${JSON.stringify(regressions)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}));
     } finally { await fixture.cleanup(); }
+});
+
+test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-persona, cross-viewport, and unclean child substitutions", () => {
+    const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+    const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, parent:{pid:1}, children:tuples.map((tuple, index) => ({tuple, worker:{pid:index + 2}, tupleReceiptPath:`receipt-${index}.json`, tupleReceiptSha256:"c".repeat(64), cleanupPath:`cleanup-${index}.json`, cleanupSha256:"d".repeat(64), exitCode:0, signal:null})), acceptedReceipts:tuples.map((tuple, index) => ({tuple, receiptSha256:"e".repeat(63) + (index % 10), cleanupSha256:"f".repeat(63) + (index % 10)})), finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
+    validateP805TupleProofLedger(ledger, initial);
+    for (const mutate of [
+        (value) => value.children.pop(),
+        (value) => { value.children[1].tuple = value.children[0].tuple; },
+        (value) => { value.children.at(-1).tuple = {...value.children.at(-1).tuple, persona:value.children[0].tuple.persona}; },
+        (value) => { value.children.at(-1).tuple = {...value.children.at(-1).tuple, viewport:value.children[0].tuple.viewport}; },
+        (value) => { value.candidateId = retest.candidateId; },
+        (value) => { value.children[0].cleanupSha256 = "not-a-digest"; },
+    ]) {
+        const candidate = structuredClone(ledger);
+        mutate(candidate);
+        assert.throws(() => validateP805TupleProofLedger(candidate, initial), /tuple proof ledger/i);
+    }
 });
