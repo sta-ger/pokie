@@ -429,15 +429,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await wait(50);
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
         };
-        // The runner uses native keyboard activation for every public
-        // control. Mantine navigation begins its context-refresh transition
-        // from Enter, while form/action buttons retain their stable Space
-        // key-up default. Selecting by lifecycle keeps this distinction in
-        // the rendered product contract instead of guessing from a tag name
-        // or bypassing the control with a click.
-        const activateFocusedControl = async (lifecycle = "operation") => {
-            if (lifecycle === "navigation") await pressEnter();
-            else await pressSpace();
+        // Use the focused DOM control's rendered role to select its native
+        // keyboard activation. Mantine can render a navigation as a button
+        // (Space key-up) or an anchor (Enter); a route must therefore follow
+        // the actual control the browser exposed, never a guessed lifecycle
+        // shortcut or an audit-side navigation.
+        const activateFocusedControl = async (lifecycle = "operation", control) => {
+            if (control?.role === "button" || lifecycle !== "navigation") await pressSpace();
+            else await pressEnter();
         };
         const clickCapturedControl = async (stableControlId) => {
             const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; const box=item.getBoundingClientRect(); return box.width>0&&box.height>0 ? {x:box.left+box.width/2,y:box.top+box.height/2} : null;})()`);
@@ -850,8 +849,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const candidate = await focusLifecycleControl("navigation", route, "button,a");
                 return candidate?.keyboardFocused && candidate.enabled ? candidate : false;
             }, `${observation} rendered ${route} navigation control`);
-            await activateFocusedControl("navigation");
-            await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`);
+            await activateFocusedControl("navigation", control);
+            try {
+                await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);
+            } catch (error) {
+                const rendered = await evaluate(`(() => ({route:location.hash, control:document.getElementById(${JSON.stringify(control.stableControlId)})?.outerHTML?.slice(0, 500), active:[...document.querySelectorAll('[data-pokie-lifecycle="navigation"][aria-current="page"]')].map((item) => ({id:item.id, route:item.getAttribute('data-pokie-lifecycle-route'), name:(item.innerText || item.textContent || '').trim()})), terminal:[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].map((item) => ({route:item.getAttribute('data-pokie-lifecycle-route'), terminal:item.getAttribute('data-pokie-lifecycle-terminal'), text:(item.textContent || '').trim()})), text:document.body.innerText.slice(0, 1000)}))()`);
+                throw new Error(`${error instanceof Error ? error.message : String(error)}; rendered navigation state: ${JSON.stringify(rendered)}`);
+            }
             return control;
         };
         const navigateProjectTab = async (projectBaseRoute, tab, observation, force = false) => {
@@ -865,6 +869,29 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const home = await waitFor(() => focusRenderedControl("button,a", "(_item, name) => name === 'Your projects'"), `${observation} rendered Your projects breadcrumb`);
                 if (!home?.keyboardFocused) fail(`${observation} did not expose its rendered Your projects breadcrumb`);
                 await activateFocusedControl();
+                // Closing a project can surface the product's real active-job
+                // confirmation. Follow that visible recovery dialog through
+                // its own keyboard-operable lifecycle control instead of
+                // treating a stalled close as permission to navigate away.
+                // A clean close never renders this control.
+                let confirmedClose = false;
+                await waitFor(async () => {
+                    if (await evaluate("location.hash === '#/home/projects'")) return true;
+                    const confirmation = await evaluate(`(() => {
+                        const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+                        const item = [...document.querySelectorAll('[data-pokie-confirmation="confirm"]')]
+                            .find((candidate) => candidate instanceof HTMLElement && visible(candidate) && !('disabled' in candidate && Boolean(candidate.disabled)));
+                        if (!(item instanceof HTMLElement)) return null;
+                        item.focus();
+                        return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:(item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim()} : null;
+                    })()`);
+                    if (!confirmation) return false;
+                    if (confirmedClose) fail(`${observation} project-close confirmation remained visible after its one keyboard activation`);
+                    if (!confirmation.stableControlId || confirmation.identityAttribute !== "id" || !confirmation.accessibleName) fail(`${observation} project-close confirmation lacks a rendered public control identity`);
+                    confirmedClose = true;
+                    await activateFocusedControl();
+                    return false;
+                }, `${observation} rendered project close confirmation or navigation`);
                 await waitFor(() => evaluate("location.hash === '#/home/projects'"), `${observation} rendered project close navigation`);
             }
             await navigateRenderedControl(tab, expectedRoute, observation);
@@ -1008,7 +1035,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // dashboard tab preserves the project identity and still
                 // proves that the following public control performs the
                 // observed navigation.
-                const shellScreen = screen === "overview" ? "gameModel" : "overview";
+                const shellScreen = screen === "overview" ? "gameModel" : "overview", shellRoute = `${projectBaseRoute}/${shellScreen}`;
                 await navigateProjectTab(projectBaseRoute, shellScreen, `${observation} source screen`);
                 // The preceding keyboard navigation changes the hash before
                 // React has necessarily reconciled the dashboard's
@@ -1273,7 +1300,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const activeReloadCancellation = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, confirmation:true, stateClass:"recovery-operation"}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"], [activeReload.transaction, activeReloadCancellation.transaction]);
         const outcomeLibraryProjectBaseRoute = await openImportedProject(outcomeBundle, "certification outcome-library import");
         const runtimeProjectBaseRoute = await openImportedProject(packageRoot, "fairness runtime-package import");
-        const projectBaseRoute = createdProjectBaseRoute, viewports = ["wide", "compact", "narrow"], actions = [], workflows = options.tuple ? [options.tuple] : options.workflowPersonas.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => viewports.map((viewport) => ({persona, observation, viewport}))));
+        // The preceding import workflows intentionally replace Studio's
+        // server-side current project. Re-enter the primary Blueprint through
+        // the rendered Projects import path before collecting its workflows;
+        // retaining the old route would make a visible control operate on the
+        // runtime package while the receipt merely *claimed* the Blueprint.
+        const projectBaseRoute = await openImportedProject(blueprint, "primary Blueprint workflow import"), viewports = ["wide", "compact", "narrow"], actions = [], workflows = options.tuple ? [options.tuple] : options.workflowPersonas.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => viewports.map((viewport) => ({persona, observation, viewport}))));
         for (const {persona, observation, viewport} of workflows) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation], actionStart = Date.now(), primaryPersona = options.persona;
             options.persona = persona;
@@ -1329,11 +1361,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await waitFor(() => evaluate("document.readyState === 'complete' && document.getElementById('blueprint-create-game') instanceof HTMLButtonElement"), "rendered Design Game unsaved-work editor");
         const editedControl = await waitFor(() => evaluate(`(() => {
             const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
-            const name = (item) => item.getAttribute('aria-label') || [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') || item.getAttribute('name') || '';
-            const item = [...document.querySelectorAll('input,textarea')].find((candidate) => (candidate instanceof HTMLInputElement || candidate instanceof HTMLTextAreaElement) && visible(candidate) && !candidate.disabled && candidate.type !== 'hidden' && name(candidate).trim().length > 0);
-            if (!(item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement)) return false;
+            const item = [...document.querySelectorAll('input')].find((candidate) => candidate instanceof HTMLInputElement && visible(candidate) && !candidate.disabled && candidate.type !== 'hidden' && [...candidate.labels || []].some((label) => label.textContent?.trim() === 'Game name'));
+            if (!(item instanceof HTMLInputElement)) return false;
             item.focus();
-            return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:name(item).trim(), keyboardFocused:true, enabled:true, disabled:false} : false;
+            const accessibleName = [...item.labels || []].map((label) => label.textContent?.trim()).find(Boolean) || item.getAttribute('aria-label') || item.name || '';
+            return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName, keyboardFocused:true, enabled:true, disabled:false} : false;
         })()`), "rendered editable Design Game field");
         if (!editedControl?.stableControlId || !editedControl.accessibleName || !editedControl.keyboardFocused) fail("Studio did not expose a keyboard-operable Design Game field");
         await cdp.send("Input.insertText", {text:" P805 unsaved"});
@@ -1346,12 +1378,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return control?.keyboardFocused ? control : false;
         }, "rendered Projects navigation control");
         if (!projects?.keyboardFocused || !projects.stableControlId || !projects.accessibleName) fail("Studio did not expose a Projects navigation control for unsaved-work protection");
-        await activateFocusedControl("navigation");
-        await waitFor(() => evaluate("location.hash === '#/home/projects' && document.body.innerText.includes('Projects')"), "rendered Projects navigation");
         const recoveryBefore = await evaluate("location.hash");
-        const openProject = await waitFor(() => focusRenderedControl("[data-pokie-project-location]", "(_item, name) => name.length > 0"), "rendered project Open control for unsaved-work protection");
-        if (!openProject?.keyboardFocused || !openProject.stableControlId || !openProject.accessibleName) fail("Studio did not expose a project Open control for unsaved-work protection");
-        await activateFocusedControl();
+        await activateFocusedControl("navigation", projects);
+        // The actual public navigation is intentionally blocked by the dirty
+        // draft. A route change here would prove the opposite of recovery:
+        // wait for the rendered dialog and preserve the draft with its real
+        // Stay control.
         const protectionText = await waitFor(() => evaluate("document.body.innerText.match(/You have unsaved[^\\n]*/i)?.[0] || false"), "rendered unsaved-work protection");
         const cancelUnsaved = await waitFor(async () => {
             // Mantine owns the confirm dialog's buttons.  Its public cancel
@@ -1363,7 +1395,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         }, "rendered unsaved-work cancel control");
         if (!cancelUnsaved?.keyboardFocused || !cancelUnsaved.stableControlId || !cancelUnsaved.accessibleName) fail("Studio did not expose an unsaved-work cancel control");
         await activateFocusedControl();
-        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:openProject.stableControlId, identityAttribute:openProject.identityAttribute, accessibleName:openProject.accessibleName, keyboardFocused:openProject.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
+        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:projects.stableControlId, identityAttribute:projects.identityAttribute, accessibleName:projects.accessibleName, keyboardFocused:projects.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
         const staleCursor = cdp.events.length;
         await navigateHome("design", "project-switch source");
         await waitFor(() => evaluate("document.body.innerText.includes('Create game')"), "project-switch source");
@@ -1389,7 +1421,7 @@ async function readChildTupleReceipt(receiptPath, cleanupPath, expected, childPi
     try { [receiptBytes, cleanupBytes] = await Promise.all([readFile(receiptPath), readFile(cleanupPath)]); receipt = JSON.parse(receiptBytes.toString("utf8")); cleanup = JSON.parse(cleanupBytes.toString("utf8")); }
     catch { fail(`packed ${expected.persona}/${expected.observation}/${expected.viewport} child did not publish its tuple receipt and cleanup record`); }
     const checkpoint = receipt?.checkpointReceipt, action = receipt?.action;
-    if (receipt?.schemaVersion !== 1 || receipt.kind !== "p8-05-packed-tuple-receipt" || receipt.status !== "passed" || receipt.phase !== expected.phase || receipt.candidateId !== expected.candidateId || receipt.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(receipt.tuple) !== JSON.stringify(expected.tuple) || receipt.worker?.pid !== childPid || !checkpoint || checkpoint.persona !== expected.persona || checkpoint.observation !== expected.observation || checkpoint.viewport !== expected.viewport || checkpoint.candidateId !== expected.candidateId || checkpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || checkpoint.actionSha256 !== digest(JSON.stringify(action)) || cleanup?.schemaVersion !== 1 || cleanup.kind !== "p8-05-packed-tuple-cleanup" || cleanup.phase !== expected.phase || cleanup.candidateId !== expected.candidateId || cleanup.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(cleanup.tuple) !== JSON.stringify(expected.tuple) || cleanup.worker?.pid !== childPid || cleanup.cleanup?.processTreeDrained !== true || cleanup.cleanup?.resourcesDrained !== true || cleanup.cleanup?.contextRemoved !== true || !cleanup.cleanupEvidenceId) fail(`packed ${expected.persona}/${expected.observation}/${expected.viewport} child receipt is stale, substituted, or lacks cleanup`);
+    if (receipt?.schemaVersion !== 1 || receipt.kind !== "p8-05-packed-tuple-receipt" || receipt.status !== "passed" || receipt.phase !== expected.phase || receipt.candidateId !== expected.candidateId || receipt.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(receipt.tuple) !== JSON.stringify(expected.tuple) || receipt.worker?.pid !== childPid || !receipt.auditId || !checkpoint || checkpoint.persona !== expected.persona || checkpoint.observation !== expected.observation || checkpoint.viewport !== expected.viewport || checkpoint.candidateId !== expected.candidateId || checkpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || checkpoint.workerPid !== childPid || checkpoint.actionSha256 !== digest(JSON.stringify(action)) || cleanup?.schemaVersion !== 1 || cleanup.kind !== "p8-05-packed-tuple-cleanup" || cleanup.phase !== expected.phase || cleanup.candidateId !== expected.candidateId || cleanup.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(cleanup.tuple) !== JSON.stringify(expected.tuple) || cleanup.worker?.pid !== childPid || cleanup.cleanup?.exit !== "success" || cleanup.cleanup?.processTreeDrained !== true || cleanup.cleanup?.resourcesDrained !== true || cleanup.cleanup?.contextRemoved !== true || !cleanup.cleanupEvidenceId) fail(`packed ${expected.persona}/${expected.observation}/${expected.viewport} child receipt is stale, substituted, or lacks cleanup`);
     return {receipt, cleanup, receiptPath:path.basename(receiptPath), receiptSha256:digest(receiptBytes), cleanupPath:path.basename(cleanupPath), cleanupSha256:digest(cleanupBytes)};
 }
 async function readChildAudit(output, phase, persona, candidateId, candidatePackageSha256, childPid, tuple) {
@@ -1424,26 +1456,31 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
     const services = {spawn, mkdir, now, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), workerPids = new Set(), tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
     await services.mkdir(options.output, {recursive:true});
     for (const tuple of tuples) {
-        const childStartedAt = services.now(), stem = tupleFileStem(tuple), receiptPath = path.join(options.output, `${options.phase}-${stem}-tuple-receipt.json`), cleanupPath = path.join(options.output, `${options.phase}-${stem}-tuple-cleanup.json`), args = [fileURLToPath(import.meta.url), "--persona", tuple.persona, "--workflow-personas", tuple.persona, "--observation", tuple.observation, "--viewport", tuple.viewport, "--tuple-receipt", receiptPath, "--tuple-cleanup", cleanupPath, "--phase", options.phase, "--candidate", options.candidateId, "--package-sha256", options.candidatePackageSha256, "--candidate-executable-sha256", options.candidateExecutableSha256, "--candidate-executable-receipt", options.candidateExecutableReceipt.path, "--candidate-executable-receipt-sha256", options.candidateExecutableReceipt.sha256, "--packed-package", options.packedPackage, "--packed-cli", options.packedCli, "--output", options.output], child = services.spawn(process.execPath, args, {cwd:root, env:process.env, stdio:"pipe"});
-        let result;
-        try { result = await childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, 4_500_000); }
+        const childStartedAt = services.now(), stem = tupleFileStem(tuple), receiptPath = path.join(options.output, `${options.phase}-${stem}-tuple-receipt.json`), cleanupPath = path.join(options.output, `${options.phase}-${stem}-tuple-cleanup.json`), args = [fileURLToPath(import.meta.url), "--persona", tuple.persona, "--workflow-personas", tuple.persona, "--observation", tuple.observation, "--viewport", tuple.viewport, "--tuple-receipt", receiptPath, "--tuple-cleanup", cleanupPath, "--phase", options.phase, "--candidate", options.candidateId, "--package-sha256", options.candidatePackageSha256, "--candidate-executable-sha256", options.candidateExecutableSha256, "--candidate-executable-receipt", options.candidateExecutableReceipt.path, "--candidate-executable-receipt-sha256", options.candidateExecutableReceipt.sha256, "--packed-package", options.packedPackage, "--packed-cli", options.packedCli, "--output", options.output];
+        let child, result;
+        try {
+            child = services.spawn(process.execPath, args, {cwd:root, env:process.env, stdio:"pipe"});
+            result = await childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, 4_500_000);
+            const tupleReceipt = await readChildTupleReceipt(receiptPath, cleanupPath, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
+            const published = await readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.pid, tuple);
+            const checkpoint = published.audit.checkpointReceipts.find((value) => value.receiptId === tupleReceipt.receipt.checkpointReceipt.receiptId);
+            if (!checkpoint || checkpoint.workerPid !== child.pid || tupleReceipt.receipt.auditId !== published.audit.auditId || checkpoint.sha256 !== tupleReceipt.receipt.checkpointReceipt.sha256 || checkpoint.actionSha256 !== tupleReceipt.receipt.checkpointReceipt.actionSha256 || JSON.stringify(tupleReceipt.receipt.action) !== JSON.stringify(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport)) || tupleReceipt.cleanup.cleanupEvidenceId !== published.audit.cleanup.evidenceId) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child receipts do not bind the accepted rendered checkpoint, audit, and cleanup`);
+            if (workerPids.has(published.audit.worker.pid) || published.audit.worker.pid === parent.pid) fail(`packed ${tuple.persona} worker process identity is not isolated`);
+            workerPids.add(published.audit.worker.pid);
+            for (const receipt of published.audit.checkpointReceipts) {
+                if (receiptHashes.has(receipt.sha256)) fail(`packed ${tuple.persona} worker substituted content-equivalent checkpoint evidence`);
+                receiptHashes.add(receipt.sha256);
+            }
+            audits.push(published.audit);
+            acceptedReceipts.push({tuple, ...tupleReceipt});
+            children.push({tuple, worker:published.audit.worker, auditPath:published.auditPath, auditSha256:published.auditSha256, tupleReceiptPath:tupleReceipt.receiptPath, tupleReceiptSha256:tupleReceipt.receiptSha256, cleanupPath:tupleReceipt.cleanupPath, cleanupSha256:tupleReceipt.cleanupSha256, checkpointReceiptSha256s:published.audit.checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId:published.audit.cleanup.evidenceId, startedAt:childStartedAt, endedAt:services.now(), exitCode:result.exitCode, signal:result.signal});
+        }
         catch (error) {
-            await terminate(child).catch(() => undefined);
+            if (child) await terminate(child).catch(() => undefined);
             const failure = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"failed", failedTuple:tuple, acceptedReceipts, children, failure:{message:error instanceof Error ? error.message : String(error), cleanup:"drain-requested"}};
             await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.failed.json`), `${JSON.stringify(failure, null, 2)}\n`);
             fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker failed after preserving ${acceptedReceipts.length} accepted tuple receipts: ${error instanceof Error ? error.message : String(error)}`);
         }
-        const tupleReceipt = await readChildTupleReceipt(receiptPath, cleanupPath, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
-        const published = await readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.pid, tuple);
-        if (workerPids.has(published.audit.worker.pid) || published.audit.worker.pid === parent.pid) fail(`packed ${tuple.persona} worker process identity is not isolated`);
-        workerPids.add(published.audit.worker.pid);
-        for (const receipt of published.audit.checkpointReceipts) {
-            if (receiptHashes.has(receipt.sha256)) fail(`packed ${tuple.persona} worker substituted content-equivalent checkpoint evidence`);
-            receiptHashes.add(receipt.sha256);
-        }
-        audits.push(published.audit);
-        acceptedReceipts.push({tuple, ...tupleReceipt});
-        children.push({tuple, worker:published.audit.worker, auditPath:published.auditPath, auditSha256:published.auditSha256, tupleReceiptPath:tupleReceipt.receiptPath, tupleReceiptSha256:tupleReceipt.receiptSha256, cleanupPath:tupleReceipt.cleanupPath, cleanupSha256:tupleReceipt.cleanupSha256, checkpointReceiptSha256s:published.audit.checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId:published.audit.cleanup.evidenceId, startedAt:childStartedAt, endedAt:services.now(), exitCode:result.exitCode, signal:result.signal});
     }
     const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"passed", children, acceptedReceipts, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
     await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`), `${JSON.stringify(ledger, null, 2)}\n`);

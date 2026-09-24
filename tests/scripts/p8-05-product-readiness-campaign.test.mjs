@@ -866,7 +866,7 @@ test("rejects a combined audit whose non-primary persona lacks its own workflow 
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
         audits.audits[0].workflowPersonas = ["mathematician", "producer"];
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /producer audit lacks a DOM-bound three-viewport action/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /producer audit lacks a DOM-bound (three-viewport |tuple )action/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1112,7 +1112,7 @@ test("rejects a regression receipt that lacks verifier-owned authentication", as
 
 test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-persona, cross-viewport, and unclean child substitutions", () => {
     const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
-    const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, parent:{pid:1}, children:tuples.map((tuple, index) => ({tuple, worker:{pid:index + 2}, tupleReceiptPath:`receipt-${index}.json`, tupleReceiptSha256:"c".repeat(64), cleanupPath:`cleanup-${index}.json`, cleanupSha256:"d".repeat(64), exitCode:0, signal:null})), acceptedReceipts:tuples.map((tuple, index) => ({tuple, receiptSha256:"e".repeat(63) + (index % 10), cleanupSha256:"f".repeat(63) + (index % 10)})), finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
+    const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, parent:{pid:1}, children:tuples.map((tuple, index) => ({tuple, worker:{pid:index + 2}, tupleReceiptPath:`receipt-${index}.json`, tupleReceiptSha256:"c".repeat(63) + (index % 10), cleanupPath:`cleanup-${index}.json`, cleanupSha256:"d".repeat(63) + (index % 10), cleanupEvidenceId:`cleanup-${index}`, exitCode:0, signal:null})), acceptedReceipts:tuples.map((tuple, index) => ({tuple, receiptPath:`receipt-${index}.json`, receiptSha256:"c".repeat(63) + (index % 10), cleanupPath:`cleanup-${index}.json`, cleanupSha256:"d".repeat(63) + (index % 10), receipt:{schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, auditId:`audit-${index}`, checkpointReceipt:{candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, actionSha256:"a".repeat(64)}}, cleanup:{schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, cleanup:{exit:"success", processTreeDrained:true, resourcesDrained:true, contextRemoved:true}, cleanupEvidenceId:`cleanup-${index}`}})), finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
     validateP805TupleProofLedger(ledger, initial);
     for (const mutate of [
         (value) => value.children.pop(),
@@ -1121,6 +1121,8 @@ test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-pers
         (value) => { value.children.at(-1).tuple = {...value.children.at(-1).tuple, viewport:value.children[0].tuple.viewport}; },
         (value) => { value.candidateId = retest.candidateId; },
         (value) => { value.children[0].cleanupSha256 = "not-a-digest"; },
+        (value) => { value.acceptedReceipts[0].receipt.candidateId = retest.candidateId; },
+        (value) => { value.acceptedReceipts[0].cleanup.cleanup.exit = "error"; },
     ]) {
         const candidate = structuredClone(ledger);
         mutate(candidate);

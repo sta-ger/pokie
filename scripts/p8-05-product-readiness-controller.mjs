@@ -48,7 +48,11 @@ async function runAudits(config, phase, candidateValue) {
         return proof.audits;
     } catch (error) {
         const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
-        await writeRecord(config.directory, `${phase}-process-isolated-packed-proof.failed.json`, failure);
+        // The packed parent owns its immutable tuple failure ledger.  Keep
+        // the controller's phase envelope distinct so it can preserve that
+        // ledger rather than attempting an append-only overwrite on a spawn,
+        // timeout, cancellation, or receipt-validation failure.
+        await writeRecord(config.directory, `${phase}-audit-failure.json`, failure);
         throw error;
     }
 }
