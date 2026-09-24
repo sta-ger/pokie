@@ -170,6 +170,26 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(new Set(aggregate.children.map((child) => child.worker.nonce)).size).toBe(expectedTuples.length);
             expect(new Set(aggregate.children.flatMap((child) => child.checkpointReceiptSha256s)).size).toBe(aggregate.children.reduce((count, child) => count + child.checkpointReceiptSha256s.length, 0));
             expect(aggregate.children.every((child) => child.exitCode === 0 && child.signal === null && child.worker.pid !== aggregate.parent.pid && child.tupleReceiptPath && child.tupleReceiptSha256 && child.cleanupPath && child.cleanupSha256)).toBe(true);
+            const immutableArtifacts = new Set<string>();
+            for (const [index, child] of (aggregate.children as Array<{tuple: {persona: string; observation: string; viewport: string}; auditSha256: string; tupleReceiptPath: string; tupleReceiptSha256: string; cleanupPath: string; cleanupSha256: string; checkpointReceiptSha256s: string[]; cleanupEvidenceId: string}>).entries()) {
+                const accepted = aggregate.acceptedReceipts[index] as {receipt: {auditId: string; tuple: unknown; cleanupEvidenceId: string; cleanupSha256: string; checkpointReceipt: {actionSha256: string}}; cleanup: {cleanupEvidenceId: string; cleanup: {exit: string; processTreeDrained: boolean; resourcesDrained: boolean; contextRemoved: boolean}}};
+                const [tupleReceiptBytes, cleanupBytes, auditBytes] = await Promise.all([readFile(path.join(output, child.tupleReceiptPath)), readFile(path.join(output, child.cleanupPath)), readFile(path.join(output, `initial-${child.tuple.persona}--${child.tuple.observation.replaceAll(/[^a-z0-9]+/gi, "-")}--${child.tuple.viewport}-audit.json`))]);
+                const tupleReceipt = JSON.parse(tupleReceiptBytes.toString("utf8"));
+                const cleanup = JSON.parse(cleanupBytes.toString("utf8"));
+                expect(createHash("sha256").update(tupleReceiptBytes).digest("hex")).toBe(child.tupleReceiptSha256);
+                expect(createHash("sha256").update(cleanupBytes).digest("hex")).toBe(child.cleanupSha256);
+                expect(createHash("sha256").update(auditBytes).digest("hex")).toBe(child.auditSha256);
+                expect(tupleReceipt).toEqual(expect.objectContaining({status: "passed", tuple: child.tuple, cleanupEvidenceId: child.cleanupEvidenceId, cleanupSha256: child.cleanupSha256, auditId: expect.any(String)}));
+                expect(cleanup).toEqual(expect.objectContaining({tuple: child.tuple, cleanupEvidenceId: child.cleanupEvidenceId, cleanup: expect.objectContaining({exit: "success", processTreeDrained: true, resourcesDrained: true, contextRemoved: true})}));
+                expect(accepted.receipt.cleanupEvidenceId).toBe(cleanup.cleanupEvidenceId);
+                expect(accepted.receipt.cleanupSha256).toBe(child.cleanupSha256);
+                expect(accepted.cleanup.cleanupEvidenceId).toBe(child.cleanupEvidenceId);
+                expect(accepted.receipt.checkpointReceipt.actionSha256).toEqual(expect.any(String));
+                for (const artifact of [child.auditSha256, child.tupleReceiptSha256, child.cleanupSha256, ...child.checkpointReceiptSha256s]) {
+                    expect(immutableArtifacts.has(artifact)).toBe(false);
+                    immutableArtifacts.add(artifact);
+                }
+            }
         } finally {
             await rm(output, {recursive: true, force: true});
             await rm(candidateDirectory, {recursive: true, force: true});
