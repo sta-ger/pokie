@@ -6,8 +6,8 @@ import {mkdir, readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805ProductReadinessCampaign} from "./p8-05-product-readiness-campaign.mjs";
-import {runP805ValeraBrowserAudit} from "./p8-05-valera-browser-audit.mjs";
+import {P805_SCHEMA_VERSION, validateP805ProductReadinessCampaign} from "./p8-05-product-readiness-campaign.mjs";
+import {runP805ProcessIsolatedPackedProof} from "./p8-05-valera-browser-audit.mjs";
 
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const commit = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
@@ -38,18 +38,18 @@ async function runAudits(config, phase, candidateValue) {
     // objects (or a replacement collector) can mint a green campaign without
     // ever launching the installed package and rendered Studio surface.
     packed(config, `${phase} audit`);
-    const audits = [];
-    // Sequential execution guarantees per-persona process ownership and avoids a
-    // shared random Studio port being mistaken for clean-room reuse.
-    for (const persona of P805_PERSONAS) {
-        try { audits.push(await runP805ValeraBrowserAudit({persona, workflowPersonas:[persona], phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage})); }
-        catch (error) {
-            const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, persona, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
-            await writeRecord(config.directory, `${phase}-${persona}-audit.failed.json`, failure);
-            throw error;
-        }
+    // The controller owns a parent ledger, but every user-visible workflow is
+    // run by a newly spawned worker.  Calling the audit function here would
+    // let an in-process campaign claim process isolation without ever proving
+    // the packed child boundary.
+    try {
+        const proof = await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage});
+        return proof.audits;
+    } catch (error) {
+        const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
+        await writeRecord(config.directory, `${phase}-process-isolated-packed-proof.failed.json`, failure);
+        throw error;
     }
-    return audits;
 }
 
 export async function runP805InitialAudit(config, dependencies = {}) {

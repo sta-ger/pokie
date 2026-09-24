@@ -164,6 +164,7 @@ async function connect(devtools, initialUrl = "about:blank") {
 }
 function optionsFrom(argv) { const args = argv.slice(2), values = {}; for (let index = 0; index < args.length; index += 2) { if (!args[index]?.startsWith("--") || values[args[index]] || args[index + 1] === undefined) fail("usage: --persona <persona> --phase <initial|retest> --candidate <sha> --package-sha256 <sha> --candidate-executable-sha256 <sha> --candidate-executable-receipt <absolute-json> --candidate-executable-receipt-sha256 <sha256> --packed-package <absolute-tgz> --output <absolute-path> [--packed-cli <absolute-path>] [--workflow-personas <comma-separated-personas>]"); values[args[index]] = args[index + 1]; } const persona = values["--persona"]; return {persona, workflowPersonas:(values["--workflow-personas"] ?? persona ?? "").split(",").filter(Boolean), phase:values["--phase"], candidateId:values["--candidate"], candidatePackageSha256:values["--package-sha256"], candidateExecutableSha256:values["--candidate-executable-sha256"], candidateExecutableReceipt:{path:values["--candidate-executable-receipt"], sha256:values["--candidate-executable-receipt-sha256"]}, packedPackage:values["--packed-package"], output:values["--output"], packedCli:values["--packed-cli"] ?? path.join(root, "dist/cli/pokie.js")}; }
 function validOptions(value) { return P805_PERSONAS.includes(value?.persona) && Array.isArray(value?.workflowPersonas) && value.workflowPersonas.length > 0 && value.workflowPersonas.every((persona) => P805_PERSONAS.includes(persona)) && new Set(value.workflowPersonas).size === value.workflowPersonas.length && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
+function validProcessProofOptions(value) { return value?.persona === "all" && value.workflowPersonas.length === 1 && value.workflowPersonas[0] === "all" && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
 
 function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000) {
     return new Promise((resolve, reject) => {
@@ -1375,5 +1376,55 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     } catch (error) { thrown = error; } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) registerPc20OwnedResource({kind:"browser", resourceId:owner.resourceId, pid:owner.pid, processIdentity:owner.identity}, "released", {POKIE_PC20_RESOURCE_REGISTRY:owner.resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:owner.resourceRegistrySecret}); owner.tracker?.capture({final:true}); for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainProcessTree(owner.child, 5_000, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } }
     if (thrown) throw thrown; validateP805RenderedPersonaAudit(audit); return audit;
 }
-async function main(argv = process.argv) { const options = optionsFrom(argv); const audit = await runP805ValeraBrowserAudit(options); await writeImmutableReceipt(path.join(options.output, `${options.phase}-${options.persona}-audit.json`), `${JSON.stringify(audit, null, 2)}\n`); process.stdout.write(`P805_VALERA_AUDIT_PASS persona=${audit.persona} phase=${audit.phase}\n`); }
+async function readChildAudit(output, phase, persona, candidateId, candidatePackageSha256, childPid) {
+    const auditPath = path.join(output, `${phase}-${persona}-audit.json`);
+    let bytes, audit;
+    try { bytes = await readFile(auditPath); audit = JSON.parse(bytes.toString("utf8")); }
+    catch { fail(`packed ${persona} worker did not publish its immutable audit receipt`); }
+    if (audit?.persona !== persona || audit?.phase !== phase || audit?.candidateId !== candidateId || audit?.candidatePackageSha256 !== candidatePackageSha256 || audit?.worker?.pid !== childPid || !Array.isArray(audit?.workflowPersonas) || audit.workflowPersonas.length !== 1 || audit.workflowPersonas[0] !== persona) fail(`packed ${persona} worker receipt is stale, cross-candidate, or not owned by its spawned process`);
+    validateP805RenderedPersonaAudit(audit);
+    const receiptIds = new Set(), receiptPaths = new Set(), receiptHashes = new Set();
+    for (const receipt of audit.checkpointReceipts ?? []) {
+        const target = path.resolve(output, receipt?.path ?? "");
+        if (!target.startsWith(`${path.resolve(output)}${path.sep}`) || receiptIds.has(receipt.receiptId) || receiptPaths.has(receipt.path) || receiptHashes.has(receipt.sha256)) fail(`packed ${persona} worker has duplicate or escaping checkpoint receipts`);
+        let contents, checkpoint;
+        try { contents = await readFile(target); checkpoint = JSON.parse(contents.toString("utf8")); }
+        catch { fail(`packed ${persona} worker checkpoint receipt is unreadable`); }
+        const action = audit.rendered.actions.find((value) => value?.persona === receipt.persona && value?.observation === receipt.observation && value?.viewport === receipt.viewport);
+        if (digest(contents) !== receipt.sha256 || checkpoint?.kind !== "p8-05-packed-workflow-checkpoint" || checkpoint.auditId !== audit.auditId || checkpoint.worker?.pid !== childPid || checkpoint.candidateId !== candidateId || checkpoint.candidatePackageSha256 !== candidatePackageSha256 || !action || receipt.actionSha256 !== digest(JSON.stringify(action)) || JSON.stringify(checkpoint.action) !== JSON.stringify(action)) fail(`packed ${persona} worker checkpoint does not bind its rendered action and candidate`);
+        receiptIds.add(receipt.receiptId); receiptPaths.add(receipt.path); receiptHashes.add(receipt.sha256);
+    }
+    return {audit, auditPath:path.basename(auditPath), auditSha256:digest(bytes)};
+}
+
+/**
+ * Parent-owned proof ledger.  The parent deliberately never imports or calls
+ * a persona workflow: every audit is a fresh Node worker which installs the
+ * candidate, launches its public CLI and rendered Studio, publishes its own
+ * receipts, and exits before the next persona starts.
+ */
+export async function runP805ProcessIsolatedPackedProof(options, dependencies = {}) {
+    if (!validProcessProofOptions(options)) fail("process-isolated runner configuration is incomplete");
+    const services = {spawn, mkdir, now, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], receiptHashes = new Set(), workerPids = new Set();
+    await services.mkdir(options.output, {recursive:true});
+    for (const persona of P805_PERSONAS) {
+        const childStartedAt = services.now(), args = [fileURLToPath(import.meta.url), "--persona", persona, "--workflow-personas", persona, "--phase", options.phase, "--candidate", options.candidateId, "--package-sha256", options.candidatePackageSha256, "--candidate-executable-sha256", options.candidateExecutableSha256, "--candidate-executable-receipt", options.candidateExecutableReceipt.path, "--candidate-executable-receipt-sha256", options.candidateExecutableReceipt.sha256, "--packed-package", options.packedPackage, "--packed-cli", options.packedCli, "--output", options.output], child = services.spawn(process.execPath, args, {cwd:root, env:process.env, stdio:"pipe"});
+        let result;
+        try { result = await childResult(child, `packed ${persona} workflow worker`, 0, 4_500_000); }
+        catch (error) { await terminate(child).catch(() => undefined); fail(`packed ${persona} workflow worker failed before publishing its proof: ${error instanceof Error ? error.message : String(error)}`); }
+        const published = await readChildAudit(options.output, options.phase, persona, options.candidateId, options.candidatePackageSha256, child.pid);
+        if (workerPids.has(published.audit.worker.pid) || published.audit.worker.pid === parent.pid) fail(`packed ${persona} worker process identity is not isolated`);
+        workerPids.add(published.audit.worker.pid);
+        for (const receipt of published.audit.checkpointReceipts) {
+            if (receiptHashes.has(receipt.sha256)) fail(`packed ${persona} worker substituted content-equivalent checkpoint evidence`);
+            receiptHashes.add(receipt.sha256);
+        }
+        audits.push(published.audit);
+        children.push({persona, worker:published.audit.worker, workflowPersonas:published.audit.workflowPersonas, auditPath:published.auditPath, auditSha256:published.auditSha256, checkpointReceiptSha256s:published.audit.checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId:published.audit.cleanup.evidenceId, startedAt:childStartedAt, endedAt:services.now(), exitCode:result.exitCode, signal:result.signal});
+    }
+    const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"passed", children, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-child-receipts-only"}};
+    await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`), `${JSON.stringify(ledger, null, 2)}\n`);
+    return {ledger, audits};
+}
+async function main(argv = process.argv) { const options = optionsFrom(argv); if (options.persona === "all") { const proof = await runP805ProcessIsolatedPackedProof(options); process.stdout.write(`P805_VALERA_PROCESS_ISOLATED_PROOF_PASS phase=${proof.ledger.phase}\n`); return; } const audit = await runP805ValeraBrowserAudit(options); await writeImmutableReceipt(path.join(options.output, `${options.phase}-${options.persona}-audit.json`), `${JSON.stringify(audit, null, 2)}\n`); process.stdout.write(`P805_VALERA_AUDIT_PASS persona=${audit.persona} phase=${audit.phase}\n`); }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().then(() => process.exit(0)).catch((error) => { process.stderr.write(`${error.stack ?? error}\n`); process.exitCode = 1; });

@@ -1,6 +1,6 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, readFile, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
@@ -46,22 +46,12 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(receipt.candidateId).toBe(candidate);
             const personas = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
             const packageSha256 = createHash("sha256").update(archive).digest("hex");
-            const audits = [];
-            for (const persona of personas) {
-                try {
-                    // Every persona gets a fresh worker, packed install, CLI,
-                    // Studio server, browser profile, and cleanup boundary.
-                    // A child checkpoints each viewport before advancing, so a
-                    // parent cannot replace a failed persona with equivalent
-                    // observations emitted by another process.
-                    execFileSync(process.execPath, [runner, "--persona", persona, "--workflow-personas", persona, "--phase", "initial", "--candidate", candidate, "--package-sha256", packageSha256, "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 4_500_000});
-                } catch (error) {
-                    const stderr = (error as {stderr?: Buffer | string}).stderr;
-                    throw new Error(`packed ${persona} workflow worker failed: ${Buffer.isBuffer(stderr) ? stderr.toString("utf8") : stderr ?? String(error)}`);
-                }
-                const personaAudit = JSON.parse(await readFile(path.join(output, `initial-${persona}-audit.json`), "utf8"));
-                audits.push(personaAudit);
-            }
+            // The exact-candidate parent is a real process too.  It spawns
+            // one fresh child per persona, reads each child-owned immutable
+            // receipt before proceeding, and publishes the aggregate only
+            // after every packed CLI/Studio workflow has exited cleanly.
+            execFileSync(process.execPath, [runner, "--persona", "all", "--phase", "initial", "--candidate", candidate, "--package-sha256", packageSha256, "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 22_500_000});
+            const audits = await Promise.all(personas.map(async (persona) => JSON.parse(await readFile(path.join(output, `initial-${persona}-audit.json`), "utf8"))));
             const audit = audits[0];
             expect(audit.packageIdentity.archiveSha256).toBe(audit.candidatePackageSha256);
             expect(audit.candidatePackageSha256).toBe(packageSha256);
@@ -162,43 +152,16 @@ describe("P8-05 rendered Valera persona evidence", () => {
             }
             expect(audit.cleanup).toEqual(expect.objectContaining({processTreeDrained: true, resourcesDrained: true, contextRemoved: true}));
             expect(audit.evidence.some((item: {kind: string}) => item.kind === "screenshot")).toBe(true);
-            // The parent only publishes this receipt after it has read and
-            // hash-checked every child-owned audit and every child has proved
-            // its own cleanup.  `wx` keeps a restarted parent from replacing
-            // an earlier aggregate with a content-equivalent substitute.
             const aggregatePath = path.join(output, "initial-process-isolated-packed-proof.json");
-            const aggregate = {
-                schemaVersion: 1,
-                kind: "p8-05-process-isolated-packed-proof",
-                candidateId: candidate,
-                candidatePackageSha256: packageSha256,
-                status: "passed",
-                children: await Promise.all(audits.map(async (personaAudit) => {
-                    const target = path.join(output, `initial-${personaAudit.persona}-audit.json`),
-                        contents = await readFile(target);
-                    return {
-                        auditId: personaAudit.auditId,
-                        persona: personaAudit.persona,
-                        worker: personaAudit.worker,
-                        workflowPersonas: personaAudit.workflowPersonas,
-                        startedAt: personaAudit.startedAt,
-                        endedAt: personaAudit.endedAt,
-                        auditPath: path.basename(target),
-                        auditSha256: createHash("sha256").update(contents).digest("hex"),
-                        checkpointReceiptSha256s: personaAudit.checkpointReceipts.map((checkpoint: {sha256: string}) => checkpoint.sha256),
-                        cleanupEvidenceId: personaAudit.cleanup.evidenceId,
-                    };
-                })),
-            };
-            await writeFile(aggregatePath, `${JSON.stringify(aggregate)}\n`, {flag: "wx"});
-            const aggregateContents = await readFile(aggregatePath, "utf8");
-            expect(JSON.parse(aggregateContents)).toEqual(aggregate);
+            const aggregate = JSON.parse(await readFile(aggregatePath, "utf8"));
+            expect(aggregate).toEqual(expect.objectContaining({schemaVersion: 1, kind: "p8-05-process-isolated-packed-proof", candidateId: candidate, candidatePackageSha256: packageSha256, status: "passed", parent: expect.objectContaining({pid: expect.any(Number), processIdentity: expect.any(String), nonce: expect.any(String)}), finalResult: expect.objectContaining({status: "passed", children: personas.length, aggregation: "independently-verified-immutable-child-receipts-only"})}));
             expect(aggregate.children).toHaveLength(personas.length);
             expect(aggregate.children.map((child) => child.persona)).toEqual(personas);
             expect(aggregate.children.map((child) => child.workflowPersonas)).toEqual(personas.map((persona) => [persona]));
             expect(new Set(aggregate.children.map((child) => child.auditSha256)).size).toBe(personas.length);
             expect(new Set(aggregate.children.map((child) => child.worker.nonce)).size).toBe(personas.length);
             expect(new Set(aggregate.children.flatMap((child) => child.checkpointReceiptSha256s)).size).toBe(aggregate.children.reduce((count, child) => count + child.checkpointReceiptSha256s.length, 0));
+            expect(aggregate.children.every((child) => child.exitCode === 0 && child.signal === null && child.worker.pid !== aggregate.parent.pid)).toBe(true);
         } finally {
             await rm(output, {recursive: true, force: true});
             await rm(candidateDirectory, {recursive: true, force: true});
