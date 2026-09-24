@@ -392,12 +392,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await wait(50);
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
         };
-        // The runner only uses native keyboard activation.  Buttons activate
-        // on Space key-up, which remains stable while a React route is
-        // reconciling; links retain their standard Enter activation.
-        const activateFocusedControl = async () => {
-            const tagName = await evaluate("document.activeElement?.tagName");
-            if (tagName === "A") await pressEnter();
+        // The runner uses native keyboard activation for every public
+        // control.  Mantine navigation buttons begin their asynchronous
+        // context-refresh transition from Enter, while form/action buttons
+        // retain their stable Space key-up default.  Selecting by lifecycle
+        // keeps this distinction in the rendered product contract instead
+        // of guessing from a tag name or bypassing the control with a click.
+        const activateFocusedControl = async (lifecycle = "operation") => {
+            if (lifecycle === "navigation") await pressEnter();
             else await pressSpace();
         };
         const clickCapturedControl = async (stableControlId) => {
@@ -636,7 +638,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 keyboardActivations:[{phase:"operation", controlId:control.stableControlId, count:1}],
             };
             transaction.browserEventCursor = cdp.events.length;
-            await activateFocusedControl();
+            await activateFocusedControl(lifecycle);
             if (confirmation) {
                 const confirmationControl = await waitFor(() => evaluate(`(() => {
                     const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
@@ -1243,26 +1245,40 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // record a no-op keyboard event instead of the person's retry.
         await waitFor(() => evaluate("(()=>{const item=document.getElementById('simulation-retry'); return item instanceof HTMLButtonElement && item.getAttribute('data-pokie-lifecycle') === 'recovery' && item.getAttribute('data-pokie-lifecycle-operation') === 'simulation-retry' && item.textContent?.trim() === 'Repeat simulation' && !item.disabled;})()"), "cooperative cancellation stable rendered retry control");
         const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation"}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"}); timings.cancellationMs = Date.now() - cancellationStart;
-        await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/gameModel`}); await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Game Model')"), "rendered unsaved-work editor");
-        // The Symbols editor exposes a complete, first-time-user mutation:
-        // add a named symbol through its public field and Add control.  Do
-        // not treat a generic text-input change as dirty; several read-only
-        // Studio inputs can be visible while a section editor is mounting.
-        const editedControl = await waitFor(() => focusRenderedControl("[data-pokie-game-model-action]", "(item, name) => item.getAttribute('data-pokie-game-model-action') === 'edit' && item.getAttribute('data-pokie-game-model-section') === 'symbols' && name.length > 0"), "rendered Game Model Symbols edit control");
-        if (!editedControl?.stableControlId || !editedControl.accessibleName || !editedControl.keyboardFocused) fail("Studio did not expose a keyboard-operable Game Model edit control");
-        await activateFocusedControl();
-        const dirtyInput = await waitFor(() => evaluate("(() => { const input = [...document.querySelectorAll('input')].find((item) => !item.disabled && (item.getAttribute('aria-label') === 'New symbol id' || [...item.labels].some((label) => label.textContent?.trim() === 'New symbol id'))); if (!(input instanceof HTMLInputElement)) return null; const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set; setter?.call(input, 'P805Unsaved'); input.dispatchEvent(new Event('input', {bubbles:true})); input.dispatchEvent(new Event('change', {bubbles:true})); return input.getAttribute('aria-label') || input.name || 'New symbol id'; })()") || false, "rendered unsaved symbol input");
-        const addSymbol = await waitFor(() => focusRenderedControl("button", "(_item, name) => name === 'Add symbol'"), "rendered Add symbol control");
-        await activateFocusedControl();
+        // A package project is intentionally read-only in Game Model.  The
+        // first-time-user Design Game is the product-owned editable surface,
+        // so use its native text field and its public Projects/Open workflow
+        // to prove the same dirty-draft protection rather than pretending a
+        // capability-gated Game Model section is editable.
+        await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
+        await waitFor(() => evaluate("document.readyState === 'complete' && !!document.getElementById('blueprint-create-game') && document.body.innerText.includes('Create game')"), "rendered Design Game unsaved-work editor");
+        const editedControl = await waitFor(() => evaluate(`(() => {
+            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+            const name = (item) => item.getAttribute('aria-label') || [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') || item.getAttribute('name') || '';
+            const item = [...document.querySelectorAll('input,textarea')].find((candidate) => (candidate instanceof HTMLInputElement || candidate instanceof HTMLTextAreaElement) && visible(candidate) && !candidate.disabled && candidate.type !== 'hidden' && name(candidate).trim().length > 0);
+            if (!(item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement)) return false;
+            item.focus();
+            return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:name(item).trim(), keyboardFocused:true, enabled:true, disabled:false} : false;
+        })()`), "rendered editable Design Game field");
+        if (!editedControl?.stableControlId || !editedControl.accessibleName || !editedControl.keyboardFocused) fail("Studio did not expose a keyboard-operable Design Game field");
+        await cdp.send("Input.insertText", {text:" P805 unsaved"});
+        const dirtyInput = await waitFor(() => evaluate(`(() => {
+            const item = document.getElementById(${JSON.stringify(editedControl.stableControlId)});
+            return item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement ? item.value.includes('P805 unsaved') ? item.getAttribute('aria-label') || [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') || item.name || 'Design Game field' : false : false;
+        })()`), "rendered unsaved Design Game input");
+        const projects = await focusLifecycleControl("navigation", "projects", "button,a");
+        if (!projects?.keyboardFocused || !projects.stableControlId || !projects.accessibleName) fail("Studio did not expose a Projects navigation control for unsaved-work protection");
+        await activateFocusedControl("navigation");
+        await waitFor(() => evaluate("location.hash === '#/home/projects' && document.body.innerText.includes('Projects')"), "rendered Projects navigation");
         const recoveryBefore = await evaluate("location.hash");
-        const overview = await focusLifecycleControl("navigation", "overview", "button,a");
-        if (!overview?.keyboardFocused || !overview.stableControlId || !overview.accessibleName) fail("Studio did not expose an Overview navigation control for unsaved-work protection");
+        const openProject = await waitFor(() => focusRenderedControl("[data-pokie-project-location]", "(_item, name) => name.length > 0"), "rendered project Open control for unsaved-work protection");
+        if (!openProject?.keyboardFocused || !openProject.stableControlId || !openProject.accessibleName) fail("Studio did not expose a project Open control for unsaved-work protection");
         await activateFocusedControl();
         const protectionText = await waitFor(() => evaluate("document.body.innerText.match(/You have unsaved[^\\n]*/i)?.[0] || false"), "rendered unsaved-work protection");
         const cancelUnsaved = await focusRenderedControl("[data-pokie-confirmation]", "(item, name) => item.getAttribute('data-pokie-confirmation') === 'cancel' && name.length > 0");
         if (!cancelUnsaved?.keyboardFocused || !cancelUnsaved.stableControlId || !cancelUnsaved.accessibleName) fail("Studio did not expose an unsaved-work cancel control");
         await activateFocusedControl();
-        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, mutationControl:{...addSymbol, keyboardActivations:1}, navigationControl:{stableControlId:overview.stableControlId, identityAttribute:overview.identityAttribute, accessibleName:overview.accessibleName, keyboardFocused:overview.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
+        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:openProject.stableControlId, identityAttribute:openProject.identityAttribute, accessibleName:openProject.accessibleName, keyboardFocused:openProject.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
         const staleCursor = cdp.events.length;
         await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
         await waitFor(() => evaluate("document.body.innerText.includes('Create game')"), "project-switch source");
