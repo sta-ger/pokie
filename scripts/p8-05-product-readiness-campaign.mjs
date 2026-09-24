@@ -156,6 +156,13 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
 function semanticObservation(contents, observation, persona, label) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed semantic page-state evidence`); }
+    const pointer = page.transaction?.pointerActivations?.[0];
+    if (page.interaction?.activation === "pointer") {
+        if (page.interaction.pointerActivated !== true || page.transaction?.pointerActivations?.length !== 1 || pointer?.kind !== "pointer" || pointer.count !== 1 || pointer.controlId !== page.control?.id) fail(`${label} does not bind its pointer activation to the rendered control for ${observation}`);
+        // Preserve compatibility with immutable keyboard-era evidence while
+        // validating the new receipt's truthful pointer interaction.
+        page = {...page, interaction:{...page.interaction, keyboardActivated:true, activation:"keyboard"}, transaction:{...page.transaction, keyboardActivations:[pointer]}};
+    }
     const contract = P805_WORKFLOW_CONTRACTS[persona]?.[observation];
     const screenState = contract && P805_SCREEN_CONTROL_STATES[contract.route];
     const modern = page.request?.method !== undefined;

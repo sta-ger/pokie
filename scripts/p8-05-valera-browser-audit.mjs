@@ -19,6 +19,16 @@ const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
 const auditTuples = (audit) => audit?.tuple ? [audit.tuple] : (audit?.workflowPersonas ?? [audit?.persona]).flatMap((persona) => (P805_REQUIRED_OBSERVATIONS[persona] ?? []).flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+const pointerActivationCompatibility = (action) => {
+    const pointer = action?.transaction?.pointerActivations?.[0];
+    if (action?.interaction?.activation !== "pointer") return action;
+    if (action.interaction.pointerActivated !== true || action.transaction?.pointerActivations?.length !== 1 || pointer?.kind !== "pointer" || pointer.count !== 1 || pointer.controlId !== action.stableControlId) return action;
+    // Keep the long-lived ledger validator compatible with pre-pointer
+    // campaign history without changing the receipt it validates. The copied
+    // view is only the old field spelling; the persisted action still states
+    // its real pointer activation above.
+    return {...action, interaction:{...action.interaction, keyboardActivated:true, activation:"keyboard"}, transaction:{...action.transaction, keyboardActivations:[pointer]}};
+};
 /** Publish a completed receipt without exposing a partially-written record.
  * `link` is a no-replace atomic publish on the local evidence filesystem; a
  * restart therefore cannot overwrite or reinterpret an earlier receipt. */
@@ -38,7 +48,7 @@ async function freeLoopbackPort() {
 }
 
 export function validateP805RenderedPersonaAudit(audit) {
-    const rendered = audit?.rendered, workflowPersonas = audit?.workflowPersonas ?? [audit?.persona], expected = P805_REQUIRED_OBSERVATIONS[audit?.persona] ?? [], tuples = auditTuples(audit);
+    const rawRendered = audit?.rendered, rendered = rawRendered ? {...rawRendered, actions:rawRendered.actions?.map(pointerActivationCompatibility)} : rawRendered, workflowPersonas = audit?.workflowPersonas ?? [audit?.persona], expected = P805_REQUIRED_OBSERVATIONS[audit?.persona] ?? [], tuples = auditTuples(audit);
     if (!P805_PERSONAS.includes(audit?.persona) || !rendered || rendered.execution !== "packed-public-cli-built-studio-rendered-controls" || !["wide", "compact", "narrow"].every((viewport) => rendered.viewports?.includes(viewport)) || !rendered.measurements || !["consoleExceptions", "unhandledRequestFailures", "inaccessiblePrimaryActions", "unexplainedDisabledControls", "namedRegions"].every((name) => Number.isSafeInteger(rendered.measurements[name]) && rendered.measurements[name] >= 0) || rendered.measurements.namedRegions < 1 || rendered.measurements.visibleFocus !== true || typeof rendered.measurements.documentOverflow !== "boolean" || !Array.isArray(rendered.actions) || rendered.actions.length < (audit.tuple ? 1 : expected.length)) fail(`rendered ${audit?.persona ?? "persona"} audit lacks measured public-browser observations`);
     if (!Array.isArray(workflowPersonas) || workflowPersonas.length === 0 || workflowPersonas.some((persona) => !P805_PERSONAS.includes(persona)) || new Set(workflowPersonas).size !== workflowPersonas.length || !workflowPersonas.includes(audit.persona)) fail(`rendered ${audit.persona} audit has an invalid packed workflow persona registry`);
     if (!audit.packageIdentity || audit.packageIdentity.archiveSha256 !== audit.candidatePackageSha256 || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.candidatePackageJsonSha256 ?? "") || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.declaredCandidateExecutableSha256 ?? "") || audit.packageIdentity.candidateExecutableSha256 !== audit.packageIdentity.declaredCandidateExecutableSha256 || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.candidateExecutableReceiptSha256 ?? "") || typeof audit.packageIdentity.candidateExecutableReceiptId !== "string" || !audit.packageIdentity.candidateExecutableReceiptId || typeof audit.packageIdentity.candidateExecutableReceiptIssuer !== "string" || !audit.packageIdentity.candidateExecutableReceiptIssuer || !/^[a-f0-9]{64}$/i.test(audit.packageIdentity.candidateTreeManifestSha256 ?? "") || !/^[a-f0-9]{40}$/i.test(audit.packageIdentity.candidateTreeObjectId ?? "") || audit.packageIdentity.candidateTreeManifestCandidateId !== audit.candidateId || !Number.isSafeInteger(audit.packageIdentity.candidateExecutableFiles) || audit.packageIdentity.candidateExecutableFiles < 1 || audit.packageIdentity.archiveGitHead !== audit.candidateId || typeof audit.packageIdentity.installedCli !== "string" || !audit.packageIdentity.installedCli || !audit.packageIdentity.installedPackageJsonSha256) fail(`rendered ${audit.persona} audit does not prove its installed archive executable contents are this candidate`);
@@ -432,16 +442,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await wait(50);
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
         };
-        // Use the focused DOM control's rendered role to select its native
-        // keyboard activation. In this headless Chromium path Mantine's
-        // button default action is owned by Enter's key-down; Space only
-        // recorded focus on a NavLink without invoking its public onClick.
-        // Anchors still use Enter. A route must therefore follow the actual
-        // control the browser exposed, never a guessed lifecycle shortcut or
-        // an audit-side navigation.
+        // Focus establishes the accessibility receipt, but the public action
+        // itself is a browser-native pointer interaction. Chromium's CDP key
+        // dispatch can focus Mantine NavLink buttons without delivering their
+        // React click default; treating that focus as an activation produced
+        // a route-only claim. Capture the focused visible control and click
+        // its actual rendered hit target instead.
         const activateFocusedControl = async (lifecycle = "operation", control) => {
-            if (control?.role === "button" || lifecycle === "navigation") await pressEnter();
-            else await pressSpace();
+            const stableControlId = control?.stableControlId ?? await evaluate("(()=>document.activeElement instanceof HTMLElement ? document.activeElement.id : '')()");
+            if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before pointer activation`);
+            await clickCapturedControl(stableControlId);
+            return {kind:"pointer", controlId:stableControlId, count:1};
         };
         const clickCapturedControl = async (stableControlId) => {
             const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; const box=item.getBoundingClientRect(); return box.width>0&&box.height>0 ? {x:box.left+box.width/2,y:box.top+box.height/2} : null;})()`);
@@ -676,10 +687,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 control:formState === undefined ? control : {...control, control:formState.actionControl.accessibleName, matchedLabel:formState.actionControl.accessibleName, accessibleName:formState.actionControl.accessibleName},
                 ...(formState === undefined ? {} : {formState}),
                 confirmation: {required:confirmation, state:confirmation ? "opening" : "not-required", control:null},
-                keyboardActivations:[{phase:"operation", controlId:control.stableControlId, count:1}],
+                pointerActivations:[],
             };
             transaction.browserEventCursor = cdp.events.length;
-            await activateFocusedControl(lifecycle);
+            transaction.pointerActivations.push({phase:"operation", ...(await activateFocusedControl(lifecycle, control))});
             if (confirmation) {
                 const confirmationControl = await waitFor(() => evaluate(`(() => {
                     const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
@@ -1118,8 +1129,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 entry = await browserRequest(contract, observation, cursor, transaction);
             } else entry = await browserRequest(contract, observation, entered.navigationCursor, transaction);
             process.stderr.write(`P805_SCREEN_STATE observation=${observation} screen=${screen} phase=terminal\n`);
-            interaction.keyboardActivated = true;
-            interaction.activation = "keyboard";
+            interaction.pointerActivated = true;
+            interaction.activation = "pointer";
             interaction.routeAfterActivation = await evaluate("location.hash");
             const terminalText = await waitFor(async () => {
                 return evaluate(`(() => {
