@@ -267,6 +267,10 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    const outcomeLibraryDisabled = outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
+    const outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
+        ? "Outcome Library generation becomes available after its preflight succeeds."
+        : "Choose sampled or conditional bounded coverage before generating this Outcome Library.";
     let lifecycleForm: string | undefined;
     if (card.kind === "outcomeLibrary") lifecycleForm = "outcome-library";
     else if (card.kind === "buildArtifact") lifecycleForm = "artifact-build";
@@ -437,7 +441,8 @@ function TargetCard({
                         data-pokie-transaction-state="editable-submission"
                         data-pokie-lifecycle-operation="outcome-library"
                         loading={outcomeLibraryRun.status === "running"}
-                        disabled={outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded")}
+                        disabled={outcomeLibraryDisabled}
+                        title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
                     >
                         Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
@@ -683,7 +688,13 @@ function TargetCard({
                                 <Button data-pokie-lifecycle-artifact="artifact-build-output" size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result)}>
                                     Open as Project
                                 </Button>
-                                <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
+                                <Button
+                                    size="xs"
+                                    variant="default"
+                                    onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)}
+                                    disabled={addedToProjects}
+                                    title={addedToProjects ? "This output is already in Your projects." : undefined}
+                                >
                                     {addedToProjects ? "Added to Projects" : "Add to Projects"}
                                 </Button>
                                 {outputActionsUnavailable ? (
@@ -719,6 +730,7 @@ function TargetCard({
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
                         disabled={card.deploymentTarget === undefined}
+                        title={card.deploymentTarget === undefined ? "Register and select a deployment target before checking compatibility." : undefined}
                         onClick={() => {
                             if (card.deploymentTarget !== undefined) {
                                 deployment.run(false, card.deploymentTarget);
@@ -734,6 +746,7 @@ function TargetCard({
                             ml="xs"
                             loading={isActiveTarget && deployment.runLoading}
                             disabled={card.deploymentTarget === undefined}
+                            title={card.deploymentTarget === undefined ? "Register and select a deployment target before publishing." : undefined}
                             onClick={() => deployment.run(true, card.deploymentTarget)}
                         >
                             Publish
