@@ -1021,8 +1021,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 await activateFocusedControl("operation", control);
             };
             await activate("project-import-check", "Check game");
-            await waitFor(() => evaluate("document.body.innerText.includes('Found a') && !!document.getElementById('project-import-add')"), `${observation} rendered project import preview`);
-            await activate("project-import-add", "Add to projects");
+            const importState = await waitFor(() => evaluate(`(() => {
+                const registered = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]');
+                const preview = document.body.innerText.includes('Found a') && !!document.getElementById('project-import-add');
+                return preview ? 'preview' : registered instanceof HTMLElement ? 'registered' : false;
+            })()`), `${observation} rendered project import preview or existing registered project`);
+            if (importState === "preview") await activate("project-import-add", "Add to projects");
             await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
             const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
             if (!opened?.stableControlId) fail(`${observation} did not expose the rendered imported-project Open control`);
