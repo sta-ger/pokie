@@ -1,6 +1,6 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm} from "node:fs/promises";
+import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
@@ -16,6 +16,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
         // This test owns the local candidate.  It deliberately does not accept
         // controller-provided environment receipts, so a green result cannot
         // be a configuration-only branch or a stale external archive.
+        const worktree = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {cwd: process.cwd(), encoding: "utf8"});
+        if (worktree.trim()) throw new Error("the packed candidate must be built from a clean committed worktree");
         const candidate = execFileSync("git", ["rev-parse", "HEAD"], {cwd: process.cwd(), encoding: "utf8"}).trim();
         const candidateDirectory = await mkdtemp(path.join(tmpdir(), "p8-05-packed-candidate-"));
         const output = await mkdtemp(path.join(tmpdir(), "p8-05-real-runner-"));
@@ -43,33 +45,45 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(receipt.authentication.scheme).toBe("verifier-owned-candidate-tree");
             expect(receipt.candidateId).toBe(candidate);
             const personas = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
-            try {
-                // Every declared persona operation is now exercised at all
-                // three public breakpoints.  Keep the child and Jest budgets
-                // aligned with that real packed-browser workload so the test
-                // cannot terminate its owned runner mid-cleanup and leave an
-                // incomplete candidate receipt behind.
-                execFileSync(process.execPath, [runner, "--persona", "mathematician", "--workflow-personas", personas.join(","), "--phase", "initial", "--candidate", candidate, "--package-sha256", createHash("sha256").update(archive).digest("hex"), "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 4_500_000});
-            } catch (error) {
-                const stderr = (error as {stderr?: Buffer | string}).stderr;
-                throw new Error(`packed runner failed: ${Buffer.isBuffer(stderr) ? stderr.toString("utf8") : stderr ?? String(error)}`);
+            const packageSha256 = createHash("sha256").update(archive).digest("hex");
+            const audits = [];
+            for (const persona of personas) {
+                try {
+                    // Every persona gets a fresh worker, packed install, CLI,
+                    // Studio server, browser profile, and cleanup boundary.
+                    // A child checkpoints each viewport before advancing, so a
+                    // parent cannot replace a failed persona with equivalent
+                    // observations emitted by another process.
+                    execFileSync(process.execPath, [runner, "--persona", persona, "--workflow-personas", persona, "--phase", "initial", "--candidate", candidate, "--package-sha256", packageSha256, "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 4_500_000});
+                } catch (error) {
+                    const stderr = (error as {stderr?: Buffer | string}).stderr;
+                    throw new Error(`packed ${persona} workflow worker failed: ${Buffer.isBuffer(stderr) ? stderr.toString("utf8") : stderr ?? String(error)}`);
+                }
+                const personaAudit = JSON.parse(await readFile(path.join(output, `initial-${persona}-audit.json`), "utf8"));
+                audits.push(personaAudit);
             }
-            const audit = JSON.parse(await readFile(path.join(output, "initial-mathematician-audit.json"), "utf8"));
+            const audit = audits[0];
             expect(audit.packageIdentity.archiveSha256).toBe(audit.candidatePackageSha256);
-            expect(audit.workflowPersonas).toEqual(personas);
-            expect(audit.finalResult).toEqual(expect.objectContaining({status: "passed", aggregation: "verified-checkpoint-receipts-only", chunks: audit.rendered.actions.length, checkpointReceiptSha256s: audit.checkpointReceipts.map((receipt: {sha256: string}) => receipt.sha256), cleanupEvidenceId: expect.any(String)}));
+            expect(audit.candidatePackageSha256).toBe(packageSha256);
+            expect(audit.workflowPersonas).toEqual([audit.persona]);
+            expect(audit.worker).toEqual(expect.objectContaining({pid: expect.any(Number), processIdentity: expect.any(String), nonce: expect.any(String), startedAt: expect.any(String)}));
+            expect(audit.finalResult).toEqual(expect.objectContaining({status: "passed", aggregation: "verified-checkpoint-receipts-only", chunks: audit.rendered.actions.length, checkpointReceiptSha256s: audit.checkpointReceipts.map((checkpoint: {sha256: string}) => checkpoint.sha256), cleanupEvidenceId: expect.any(String)}));
             expect(audit.checkpointReceipts).toHaveLength(audit.rendered.actions.length);
+            expect(audit.cleanup).toEqual(expect.objectContaining({processTreeDrained: true, resourcesDrained: true, contextRemoved: true}));
             const checkpointSlots = new Set<string>();
-            for (const receipt of audit.checkpointReceipts as Array<{receiptId: string; path: string; sha256: string; candidateId: string; candidatePackageSha256: string; persona: string; observation: string; viewport: string; actionSha256: string}>) {
-                const contents = await readFile(path.join(output, receipt.path));
+            for (const checkpointReceipt of audit.checkpointReceipts as Array<{receiptId: string; path: string; sha256: string; candidateId: string; candidatePackageSha256: string; workerPid: number; workerNonce: string; persona: string; observation: string; viewport: string; actionSha256: string}>) {
+                const contents = await readFile(path.join(output, checkpointReceipt.path));
                 const checkpoint = JSON.parse(contents.toString("utf8"));
-                const action = audit.rendered.actions.find((candidate: {persona: string; observation: string; viewport: string}) => candidate.persona === receipt.persona && candidate.observation === receipt.observation && candidate.viewport === receipt.viewport);
-                expect(checkpointSlots.has(`${receipt.persona}/${receipt.observation}/${receipt.viewport}`)).toBe(false);
-                checkpointSlots.add(`${receipt.persona}/${receipt.observation}/${receipt.viewport}`);
-                expect(createHash("sha256").update(contents).digest("hex")).toBe(receipt.sha256);
-                expect(checkpoint).toEqual(expect.objectContaining({kind: "p8-05-packed-workflow-checkpoint", receiptId: receipt.receiptId, candidateId: candidate, candidatePackageSha256: audit.candidatePackageSha256, persona: receipt.persona, observation: receipt.observation, viewport: receipt.viewport, action}));
-                expect(createHash("sha256").update(JSON.stringify(action)).digest("hex")).toBe(receipt.actionSha256);
+                const action = audit.rendered.actions.find((candidate: {persona: string; observation: string; viewport: string}) => candidate.persona === checkpointReceipt.persona && candidate.observation === checkpointReceipt.observation && candidate.viewport === checkpointReceipt.viewport);
+                expect(checkpointSlots.has(`${checkpointReceipt.persona}/${checkpointReceipt.observation}/${checkpointReceipt.viewport}`)).toBe(false);
+                checkpointSlots.add(`${checkpointReceipt.persona}/${checkpointReceipt.observation}/${checkpointReceipt.viewport}`);
+                expect(createHash("sha256").update(contents).digest("hex")).toBe(checkpointReceipt.sha256);
+                expect(checkpoint).toEqual(expect.objectContaining({kind: "p8-05-packed-workflow-checkpoint", receiptId: checkpointReceipt.receiptId, auditId: audit.auditId, worker: audit.worker, candidateId: candidate, candidatePackageSha256: audit.candidatePackageSha256, persona: checkpointReceipt.persona, observation: checkpointReceipt.observation, viewport: checkpointReceipt.viewport, action}));
+                expect(checkpointReceipt.workerPid).toBe(audit.worker.pid);
+                expect(checkpointReceipt.workerNonce).toBe(audit.worker.nonce);
+                expect(createHash("sha256").update(JSON.stringify(action)).digest("hex")).toBe(checkpointReceipt.actionSha256);
             }
+            expect(checkpointSlots.size).toBe(audit.rendered.actions.length);
             const evidenceContents = async (evidenceId: string): Promise<unknown> => {
                 const evidence = audit.evidence.find((item: {evidenceId: string}) => item.evidenceId === evidenceId);
                 expect(evidence).toBeDefined();
@@ -89,8 +103,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     requestOwners.set(requestId, `${action.persona}/${action.viewport}/${action.observation}/${kind}`);
                 }
             }
-            for (const persona of personas) {
-                const actions = audit.rendered.actions.filter((action: {persona: string}) => action.persona === persona);
+            for (const auditedPersona of audit.workflowPersonas as string[]) {
+                const actions = audit.rendered.actions.filter((action: {persona: string}) => action.persona === auditedPersona);
                 expect(actions.length).toBeGreaterThan(0);
                 for (const action of actions as Array<{observation: string; viewport: string; expectedControl: string; expectedMethod: string; expectedApi: string; expectedBodyKind: string | null; expectedArtifact: string | null; screenState: string; screenNavigationControl: string; stableControlId: string; domControlId: string; identityAttribute: string; browserRequestId: string; contextRevalidation: {browserRequestId: string; method: string; path: string; status: number; responseSha256: string; projectStatus: string; completedBeforeSelection: boolean}; interaction: {matchedLabel: string; stableControlId: string; identityAttribute: string; transactionState: string; lifecycle: {kind: string; value: string}}; transaction: {operation: string; stateClass: string; control: {stableControlId: string; accessibleName: string; enabled: boolean; disabled: boolean; disabledExplanation: null}; formState?: {operation: string; capturedBeforeSubmission: boolean; scope: {identityAttribute: string; value: string; tagName: string}; actionControl: {stableControlId: string; identityAttribute: string; visible: boolean; accessibleName: string; validation: {valid: boolean; message: string}}; fields: Array<{stableControlId: string; identityAttribute: string; visible: boolean; accessibleName: string; value: string; disabled: boolean; required: boolean; validation: {valid: boolean; message: string}}>}; confirmation: {required: boolean; state: string; control: null}; keyboardActivations: Array<{phase: string; controlId: string; count: number}>; request: {browserRequestId: string; method: string; path: string; status: number; responseSha256: string}; terminal: {resultSha256: string; source: string}}; precondition: {enabled: boolean; disabled: boolean; disabledExplanation: null; accessibleName: string}; accessibility: {namedRegions: string[]; visibleFocus: boolean; unexplainedDisabledControls: number}; visibleTerminal: {state: string; changedAfterRequest: boolean; observedAfterRequestId: string; beforeTextSha256: string; textSha256: string; resultSha256: string; lifecycle: {role: string; terminal: string; text: string; artifact: {name: string; accessibleName: string} | null}}; terminal: {resultSha256: string}; evidenceId: string; screenshotEvidenceId: string; elapsedMs: number}>) {
                     expect(["wide", "compact", "narrow"].filter((viewport) => actions.some((candidate: {observation: string; viewport: string}) => candidate.observation === action.observation && candidate.viewport === viewport))).toHaveLength(3);
@@ -148,9 +162,46 @@ describe("P8-05 rendered Valera persona evidence", () => {
             }
             expect(audit.cleanup).toEqual(expect.objectContaining({processTreeDrained: true, resourcesDrained: true, contextRemoved: true}));
             expect(audit.evidence.some((item: {kind: string}) => item.kind === "screenshot")).toBe(true);
+            // The parent only publishes this receipt after it has read and
+            // hash-checked every child-owned audit and every child has proved
+            // its own cleanup.  `wx` keeps a restarted parent from replacing
+            // an earlier aggregate with a content-equivalent substitute.
+            const aggregatePath = path.join(output, "initial-process-isolated-packed-proof.json");
+            const aggregate = {
+                schemaVersion: 1,
+                kind: "p8-05-process-isolated-packed-proof",
+                candidateId: candidate,
+                candidatePackageSha256: packageSha256,
+                status: "passed",
+                children: await Promise.all(audits.map(async (personaAudit) => {
+                    const target = path.join(output, `initial-${personaAudit.persona}-audit.json`),
+                        contents = await readFile(target);
+                    return {
+                        auditId: personaAudit.auditId,
+                        persona: personaAudit.persona,
+                        worker: personaAudit.worker,
+                        workflowPersonas: personaAudit.workflowPersonas,
+                        startedAt: personaAudit.startedAt,
+                        endedAt: personaAudit.endedAt,
+                        auditPath: path.basename(target),
+                        auditSha256: createHash("sha256").update(contents).digest("hex"),
+                        checkpointReceiptSha256s: personaAudit.checkpointReceipts.map((checkpoint: {sha256: string}) => checkpoint.sha256),
+                        cleanupEvidenceId: personaAudit.cleanup.evidenceId,
+                    };
+                })),
+            };
+            await writeFile(aggregatePath, `${JSON.stringify(aggregate)}\n`, {flag: "wx"});
+            const aggregateContents = await readFile(aggregatePath, "utf8");
+            expect(JSON.parse(aggregateContents)).toEqual(aggregate);
+            expect(aggregate.children).toHaveLength(personas.length);
+            expect(aggregate.children.map((child) => child.persona)).toEqual(personas);
+            expect(aggregate.children.map((child) => child.workflowPersonas)).toEqual(personas.map((persona) => [persona]));
+            expect(new Set(aggregate.children.map((child) => child.auditSha256)).size).toBe(personas.length);
+            expect(new Set(aggregate.children.map((child) => child.worker.nonce)).size).toBe(personas.length);
+            expect(new Set(aggregate.children.flatMap((child) => child.checkpointReceiptSha256s)).size).toBe(aggregate.children.reduce((count, child) => count + child.checkpointReceiptSha256s.length, 0));
         } finally {
             await rm(output, {recursive: true, force: true});
             await rm(candidateDirectory, {recursive: true, force: true});
         }
-    }, 4_800_000);
+    }, 40_000_000);
 });

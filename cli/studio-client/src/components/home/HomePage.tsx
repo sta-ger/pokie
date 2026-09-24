@@ -20,8 +20,8 @@ import {useOpenProject} from "../../hooks/useOpenProject";
 export type HomeTab = "design" | "projects";
 
 const HOME_TABS: NavTabItem<HomeTab>[] = [
-    {value: "design", label: "Start a game"},
-    {value: "projects", label: "Projects"},
+    {value: "design", label: "Start a game", auditControlId: "home-tab:design"},
+    {value: "projects", label: "Projects", auditControlId: "home-tab:projects"},
 ];
 
 function isHomeTab(value: string | undefined): value is HomeTab {

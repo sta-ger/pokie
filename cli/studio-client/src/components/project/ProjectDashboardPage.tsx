@@ -238,8 +238,21 @@ function ProjectOpeningErrorState({message, detail, onReturnToProjects}: {messag
 // A route with a project root must remount the dashboard when browser history changes that root.
 // ProjectDashboardPage owns several long-lived runtime hooks, and retaining an A instance while the
 // server has already switched to B would leave A's session/run identifiers actionable against B.
+function decodeProjectRouteRoot(value: string): string {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
 export function ProjectDashboardRoute() {
-    const {projectRoot} = useParams<{projectRoot: string}>();
+    const {projectRoot: encodedProjectRoot} = useParams<{projectRoot: string}>();
+    // Project locations are encoded into the scoped URL.  Preserve the
+    // server's native path when a rendered tab refreshes its context; passing
+    // the encoded segment back to the opener turns every slash into `%2F`
+    // again and makes a keyboard navigation look like a missing project.
+    const projectRoot = encodedProjectRoot === undefined ? undefined : decodeProjectRouteRoot(encodedProjectRoot);
     return <ProjectDashboardPage key={projectRoot ?? "current-project"} requestedProjectRoot={projectRoot} />;
 }
 
