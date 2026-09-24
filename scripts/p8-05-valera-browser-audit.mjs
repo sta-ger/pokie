@@ -2,7 +2,7 @@
 /** Execute one isolated, packed-CLI and rendered-Studio P8-05 persona audit. */
 import {createHash, randomBytes} from "node:crypto";
 import {spawn, spawnSync} from "node:child_process";
-import {mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
+import {link, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {createServer} from "node:net";
@@ -18,6 +18,15 @@ const digest = (value) => createHash("sha256").update(value).digest("hex");
 const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
+/** Publish a completed receipt without exposing a partially-written record.
+ * `link` is a no-replace atomic publish on the local evidence filesystem; a
+ * restart therefore cannot overwrite or reinterpret an earlier receipt. */
+async function writeImmutableReceipt(target, contents, services = {writeFile, link, rm}) {
+    const staged = `${target}.${randomBytes(16).toString("hex")}.partial`;
+    await services.writeFile(staged, contents, {flag:"wx"});
+    try { await services.link(staged, target); }
+    finally { await services.rm(staged, {force:true}); }
+}
 async function freeLoopbackPort() {
     const server = createServer();
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -83,8 +92,8 @@ async function waitFor(predicate, label, timeout = 30000) {
 function descendants(pid) { const listing = process.platform === "win32" ? "" : (spawnSync("ps", ["-eo", "pid=,ppid=,pgid="], {encoding:"utf8"}).stdout || ""), processes = new Map(); let rootGroup; for (const line of listing.split("\n")) { const match = /^\s*(\d+)\s+(\d+)\s+(\d+)/.exec(line); if (match) { const details = {parent:Number(match[2]), group:Number(match[3])}; processes.set(Number(match[1]), details); if (Number(match[1]) === pid) rootGroup = details.group; } } const owned = new Map(); if (Number.isInteger(pid) && pid > 0) owned.set(pid, processIdentity(pid)); let changed = true; while (changed) { changed = false; for (const [child, details] of processes) if ((owned.has(details.parent) || (rootGroup !== undefined && details.group === rootGroup)) && !owned.has(child)) { owned.set(child, processIdentity(child)); changed = true; } } return owned; }
 async function terminate(child) { if (!child?.pid) return {processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[]}; const result = await drainProcessTree(child, 5_000, descendants(child.pid)); if (!result.processTreeDrained || !result.resourcesDrained) fail("owned Studio/browser process tree could not be drained"); return result; }
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
-async function connect(devtools) {
-    const target = await responseJson(`${devtools}/json/new?${encodeURIComponent("about:blank")}`, {method:"PUT"}), socket = new WebSocket(target.webSocketDebuggerUrl);
+async function connect(devtools, initialUrl = "about:blank") {
+    const target = await responseJson(`${devtools}/json/new?${encodeURIComponent(initialUrl)}`, {method:"PUT"}), socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => { socket.once("open", resolve); socket.once("error", reject); });
     let id = 0;
     const pending = new Map(), events = [];
@@ -251,8 +260,8 @@ async function trustedCandidateExecutableReceipt(receipt, candidateId, packageSh
 /** Runs one persona in a fresh workspace, configuration root, and browser profile. */
 export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     if (!validOptions(options)) fail("runner configuration is incomplete");
-    const services = {spawn, mkdir, mkdtemp, readFile, rm, writeFile, exists:existsSync, chromium:process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", npm:process.env.npm_execpath ? process.execPath : "npm", npmArgs:process.env.npm_execpath ? [process.env.npm_execpath] : [], now, ...dependencies}, startedAt = services.now(), nonce = digest(`${startedAt}:${options.phase}:${options.persona}:${Math.random()}`).slice(0, 16), auditId = `${options.phase}-${options.persona}-${nonce}`, worker = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce, startedAt}, base = await services.mkdtemp(path.join(tmpdir(), `p8-05-${options.phase}-${options.persona}-`)), context = {workspace:path.join(base, "workspace"), configurationRoot:path.join(base, "configuration"), browserProfile:path.join(base, "browser-profile"), reused:false}, installationRoot = path.join(base, "packed-install"), port = await freeLoopbackPort(), devtoolsPort = await freeLoopbackPort(), origin = `http://127.0.0.1:${port}`, devtools = `http://127.0.0.1:${devtoolsPort}`, evidence = [], checkpointReceipts = [], transcript = [], api = [], errors = [], observationEvidence = {}, timings = {startupMs:0, projectCreationMs:0, validationMs:0, buildMs:0, simulationMs:0, replayMs:0, cancellationMs:0};
-    const save = async (kind, name, content, observationIds = []) => { const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content), relativePath = path.join(options.phase, options.persona, nonce, name), target = path.join(options.output, relativePath); await services.mkdir(path.dirname(target), {recursive:true}); await services.writeFile(target, bytes, {flag:"wx"}); const evidenceId = `${options.phase}-${options.persona}-${nonce}-${kind}-${evidence.length + 1}`; evidence.push({evidenceId, kind, path:relativePath, sha256:digest(bytes), sizeBytes:bytes.length, capturedAt:services.now(), candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, observationIds}); for (const observation of observationIds) if (!observationEvidence[observation]) observationEvidence[observation] = evidenceId; return evidenceId; };
+    const services = {spawn, link, mkdir, mkdtemp, readFile, rm, writeFile, exists:existsSync, chromium:process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", npm:process.env.npm_execpath ? process.execPath : "npm", npmArgs:process.env.npm_execpath ? [process.env.npm_execpath] : [], now, ...dependencies}, startedAt = services.now(), nonce = digest(`${startedAt}:${options.phase}:${options.persona}:${Math.random()}`).slice(0, 16), auditId = `${options.phase}-${options.persona}-${nonce}`, worker = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce, startedAt}, base = await services.mkdtemp(path.join(tmpdir(), `p8-05-${options.phase}-${options.persona}-`)), context = {workspace:path.join(base, "workspace"), configurationRoot:path.join(base, "configuration"), browserProfile:path.join(base, "browser-profile"), reused:false}, installationRoot = path.join(base, "packed-install"), port = await freeLoopbackPort(), devtoolsPort = await freeLoopbackPort(), origin = `http://127.0.0.1:${port}`, devtools = `http://127.0.0.1:${devtoolsPort}`, evidence = [], checkpointReceipts = [], transcript = [], api = [], errors = [], observationEvidence = {}, timings = {startupMs:0, projectCreationMs:0, validationMs:0, buildMs:0, simulationMs:0, replayMs:0, cancellationMs:0};
+    const save = async (kind, name, content, observationIds = []) => { const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content), relativePath = path.join(options.phase, options.persona, nonce, name), target = path.join(options.output, relativePath); await services.mkdir(path.dirname(target), {recursive:true}); await writeImmutableReceipt(target, bytes, services); const evidenceId = `${options.phase}-${options.persona}-${nonce}-${kind}-${evidence.length + 1}`; evidence.push({evidenceId, kind, path:relativePath, sha256:digest(bytes), sizeBytes:bytes.length, capturedAt:services.now(), candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, observationIds}); for (const observation of observationIds) if (!observationEvidence[observation]) observationEvidence[observation] = evidenceId; return evidenceId; };
     // The aggregate audit may only reference receipts written immediately
     // after a real public workflow chunk settles.  This prevents closeout
     // from substituting an equivalent action from another viewport/persona.
@@ -262,7 +271,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             receipt = {schemaVersion:1, kind:"p8-05-packed-workflow-checkpoint", receiptId, auditId, runNonce:nonce, worker, sequence, status:"passed", capturedAt:services.now(), candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, phase:options.phase, persona:action.persona, observation:action.observation, viewport:action.viewport, action},
             contents = `${JSON.stringify(receipt)}\n`, target = path.join(options.output, relativePath);
         await services.mkdir(path.dirname(target), {recursive:true});
-        await services.writeFile(target, contents, {flag:"wx"});
+        await writeImmutableReceipt(target, contents, services);
         checkpointReceipts.push({receiptId, path:relativePath, sha256:digest(contents), sizeBytes:Buffer.byteLength(contents), capturedAt:receipt.capturedAt, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, workerNonce:worker.nonce, workerPid:worker.pid, persona:action.persona, observation:action.observation, viewport:action.viewport, actionSha256:digest(JSON.stringify(action))});
     };
     const ownership = [], childOwners = new WeakMap();
@@ -390,7 +399,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js"); if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable"); const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help"); await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);
         }
         const startStudio = () => { const studioOwnership = ownershipEnvironment("studio"), child = own("studio", services.spawn(installedCli, ["--no-open", "--host", "127.0.0.1", "--port", String(port)], {cwd:context.workspace, detached:process.platform !== "win32", env:{...packedEnvironment, ...studioOwnership.env}, stdio:"pipe"}), studioOwnership); child.stdout?.on("data", (chunk) => transcript.push(chunk.toString())); child.stderr?.on("data", (chunk) => { errors.push(chunk.toString()); transcript.push(chunk.toString()); }); return child; }; const started = Date.now(); transcript.push(`[${services.now()}] START installed packed public CLI ${installedCli}`); studio = startStudio(); await waitFor(async () => { try { const response = await fetch(`${origin}/api/health`); api.push({path:"/api/health", status:response.status}); return response.ok; } catch { return false; } }, "built Studio API"); timings.startupMs = Date.now() - started;
-        const browserOwnership = ownershipEnvironment("browser", true); browser = own("browser", services.spawn(services.chromium, ["--headless=new", "--no-sandbox", "--no-first-run", `--user-data-dir=${context.browserProfile}`, `--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${devtoolsPort}`, "about:blank"], {detached:process.platform !== "win32", env:browserOwnership.env, stdio:"pipe"}), browserOwnership); await waitFor(async () => { try { return Array.isArray(await responseJson(`${devtools}/json/list`)); } catch { return false; } }, "fresh browser profile"); cdp = await connect(devtools); const evaluate = async (source) => { const result = await cdp.send("Runtime.evaluate", {expression:source, returnByValue:true, awaitPromise:true}); if (result.exceptionDetails) fail(`rendered browser evaluation failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "unknown exception"}`); return result.result.value; };
+        // Loading the public Studio entry point is browser startup, not a
+        // workflow transition. Every subsequent route change is activated
+        // through the live rendered navigation control below.
+        const browserOwnership = ownershipEnvironment("browser", true); browser = own("browser", services.spawn(services.chromium, ["--headless=new", "--no-sandbox", "--no-first-run", `--user-data-dir=${context.browserProfile}`, `--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${devtoolsPort}`, "about:blank"], {detached:process.platform !== "win32", env:browserOwnership.env, stdio:"pipe"}), browserOwnership); await waitFor(async () => { try { return Array.isArray(await responseJson(`${devtools}/json/list`)); } catch { return false; } }, "fresh browser profile"); cdp = await connect(devtools, `${origin}/#/home/design`); const evaluate = async (source) => { const result = await cdp.send("Runtime.evaluate", {expression:source, returnByValue:true, awaitPromise:true}); if (result.exceptionDetails) fail(`rendered browser evaluation failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "unknown exception"}`); return result.result.value; };
         // Chromium's headless DevTools target needs the native virtual-key
         // code as well as the DOM key name to perform a button's default
         // keyboard activation.  Without it, focus evidence was recorded but
@@ -694,7 +706,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             api.push(entry); return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor, transaction};
         };
         const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202]) => {
-            await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/simulation`});
+            await navigateProjectTab(projectBaseRoute, "simulation", observation);
             await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.endsWith('/simulation')"), `${observation} rendered simulation route`);
             // A server-side validation diagnostic intentionally leaves a
             // person on the Run step.  Return through the same rendered
@@ -711,7 +723,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return started;
         };
         const startRenderedReplay = async (projectBaseRoute, observation, round = 1, expectedStatuses = [202]) => {
-            await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}/replay`});
+            await navigateProjectTab(projectBaseRoute, "replay", observation);
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Load')"), `${observation} rendered replay form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setReplayRound(String(round)), `${observation} rendered replay round`)) fail(`Studio did not accept replay target for ${observation}`);
@@ -821,6 +833,34 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await activateFocusedControl();
             return control;
         };
+        // CDP is an observer/keyboard transport, never a route adapter.  A
+        // route becomes eligible only after the product's visible navigation
+        // control received its keyboard activation.
+        const navigateRenderedControl = async (route, expectedRoute, observation) => {
+            if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
+            const control = await waitFor(async () => {
+                const candidate = await focusLifecycleControl("navigation", route, "button,a");
+                return candidate?.keyboardFocused && candidate.enabled ? candidate : false;
+            }, `${observation} rendered ${route} navigation control`);
+            await activateFocusedControl("navigation");
+            await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`);
+            return control;
+        };
+        const navigateProjectTab = async (projectBaseRoute, tab, observation, force = false) => {
+            const expectedRoute = `${projectBaseRoute}/${tab}`;
+            if (!force && await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
+            await navigateRenderedControl(tab, expectedRoute, observation);
+        };
+        const navigateHome = async (tab, observation) => {
+            const expectedRoute = `#/home/${tab}`;
+            if (!await evaluate("location.hash.startsWith('#/home/')")) {
+                const home = await waitFor(() => focusRenderedControl("button,a", "(_item, name) => name === 'Your projects'"), `${observation} rendered Your projects breadcrumb`);
+                if (!home?.keyboardFocused) fail(`${observation} did not expose its rendered Your projects breadcrumb`);
+                await activateFocusedControl();
+                await waitFor(() => evaluate("location.hash === '#/home/projects'"), `${observation} rendered project close navigation`);
+            }
+            await navigateRenderedControl(tab, expectedRoute, observation);
+        };
         const setLifecycleField = async (field, value) => evaluate(`(() => {
             const field = ${JSON.stringify(field)}, value = ${JSON.stringify(value)};
             const marker = document.querySelector('[data-pokie-lifecycle-field="' + field + '"]');
@@ -913,7 +953,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // merely pointing a blueprint route at those tabs would make their
         // intentionally capability-gated controls disappear.
         const openImportedProject = async (projectLocation, observation) => {
-            await cdp.send("Page.navigate", {url:`${origin}/#/home/projects`});
+            await navigateHome("projects", observation);
             await waitFor(() => evaluate("document.readyState === 'complete' && !!document.getElementById('project-import-location') && !!document.getElementById('project-import-check')"), `${observation} rendered project import controls`);
             const locationSet = await evaluate(`(() => {
                 const input = document.getElementById('project-import-location');
@@ -960,16 +1000,16 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // dashboard tab preserves the project identity and still
                 // proves that the following public control performs the
                 // observed navigation.
-                const shellRoute = screen === "overview" ? `${projectBaseRoute}/gameModel` : `${projectBaseRoute}/overview`;
                 const shellScreen = screen === "overview" ? "gameModel" : "overview";
-                await cdp.send("Page.navigate", {url:`${origin}/${shellRoute}`});
-                // Page.navigate changes the hash before React has necessarily
-                // reconciled the dashboard's capability-driven tab.  Starting
-                // the next keyboard interaction against that previous DOM can
-                // focus an already-selected control and make its context
-                // receipt look like a navigation.  Wait for both the scoped
-                // route and the product's active navigation control so the
-                // observed key press begins from the opposite rendered tab.
+                await navigateProjectTab(projectBaseRoute, shellScreen, `${observation} source screen`);
+                // The preceding keyboard navigation changes the hash before
+                // React has necessarily reconciled the dashboard's
+                // capability-driven tab. Starting the next keyboard
+                // interaction against that previous DOM can focus an already
+                // selected control and make its context receipt look like a
+                // navigation. Wait for both the scoped route and the
+                // product's active navigation control so the observed key
+                // press begins from the opposite rendered tab.
                 await waitFor(() => evaluate(`document.readyState === 'complete' && location.hash === ${JSON.stringify(shellRoute)} && !!document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route="${shellScreen}"][aria-current="page"]') && !!document.querySelector('main, [role=main], nav') && document.body.innerText.trim().length > 40`), `${screen} active public shell`);
                 // Capability-driven tabs mount after the project context has
                 // rendered.  The collector observes that public transition
@@ -1135,8 +1175,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // persistent Home navigation; otherwise the visible mobile drawer is
         // closed and its hidden Projects control cannot receive a real key.
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions.wide, deviceScaleFactor:1});
-        await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
-        await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Create game')"), "Studio create-game control");
+        await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === '#/home/design' && document.body.innerText.includes('Create game')"), "Studio create-game control");
         const created = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item; })()");
         if (!created) fail("rendered Studio did not expose an enabled keyboard-focusable Create game control");
         await activateFocusedControl();
@@ -1149,7 +1188,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // Follow the rendered Overview control through its request and visible
         // terminal state so its receipt shares the transaction contract used
         // for every other public operation below.
-        await cdp.send("Page.navigate", {url:`${origin}/${createdProjectBaseRoute}/overview`});
+        // Ensure Overview is reached from a different rendered project tab so
+        // validation cannot inherit a URL-selected state from browser setup.
+        await navigateProjectTab(createdProjectBaseRoute, "gameModel", "project validation source");
+        await navigateProjectTab(createdProjectBaseRoute, "overview", "project validation");
         await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.includes('Re-check project')"), "rendered project validation control");
         const validationStart = Date.now(), validationCursor = cdp.events.length;
         const validation = await activateRenderedTransaction({lifecycle:"operation", operation:"project-validation", observation:"project validation", cursor:validationCursor, method:"GET", path:"/api/project/validate", stateClass:"read-only-operation"});
@@ -1193,13 +1235,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const retryProbeRounds = 100_000;
         const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", reloadProbeRounds), reloadCursor = cdp.events.length;
         await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await waitFor(async () => { const event = cdp.events.slice(reloadCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
-        // A running job intentionally disables sibling tab navigation, so
-        // the real recovery state is the public, reloadable Simulation route
-        // itself.  This is a browser route transition, not an API shortcut;
-        // the subsequent Cancel remains the stable rendered keyboard control
-        // that owns the cancellation request.
+        // A running job intentionally disables sibling tab navigation. The
+        // reload restored the real public Simulation screen, so no route
+        // adapter may intervene before the rendered Cancel control owns its
+        // request.
         const recoveryNavigationCursor = cdp.events.length;
-        await cdp.send("Page.navigate", {url:`${origin}/${createdProjectBaseRoute}/simulation`});
+        await waitFor(() => evaluate("location.hash.endsWith('/simulation')"), "active-job reload Simulation recovery screen");
         // An active job deliberately replaces the Configure form, including
         // its "Run Simulation" label, with the Run-step progress surface.
         // The recovery contract is therefore the route followed by its own
@@ -1247,7 +1288,6 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const responsive = [];
         for (const [viewport, dimensions] of [["wide", {width:1440, height:900, mobile:false}], ["compact", {width:960, height:800, mobile:false}], ["narrow", {width:390, height:844, mobile:true}]]) {
             await cdp.send("Emulation.setDeviceMetricsOverride", {...dimensions, deviceScaleFactor:1});
-            await cdp.send("Page.navigate", {url:`${origin}/${projectBaseRoute}`});
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.trim().length > 40"), `${viewport} responsive Studio state`);
             const state = await evaluate("(()=>{const item=[...document.querySelectorAll('button,a,input,select,textarea')].find((value)=>!value.disabled&&!!(value.offsetWidth||value.offsetHeight||value.getClientRects().length)); item?.focus(); const style=item?getComputedStyle(item):undefined; return {overflow:document.documentElement.scrollWidth>window.innerWidth,visibleFocus:!!item&&document.activeElement===item&&!!style&&(style.outlineStyle!=='none'||style.boxShadow!=='none')};})()"), screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false}), screenshotEvidenceId = await save("screenshot", `responsive-${viewport}.png`, Buffer.from(screenshot.data, "base64"));
             responsive.push({viewport, ...state, screenshotEvidenceId});
@@ -1277,7 +1317,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // so use its native text field and its public Projects/Open workflow
         // to prove the same dirty-draft protection rather than pretending a
         // capability-gated Game Model section is editable.
-        await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
+        await navigateHome("design", "unsaved-work source");
         await waitFor(() => evaluate("document.readyState === 'complete' && document.getElementById('blueprint-create-game') instanceof HTMLButtonElement"), "rendered Design Game unsaved-work editor");
         const editedControl = await waitFor(() => evaluate(`(() => {
             const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
@@ -1317,17 +1357,16 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await activateFocusedControl();
         const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:openProject.stableControlId, identityAttribute:openProject.identityAttribute, accessibleName:openProject.accessibleName, keyboardFocused:openProject.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
         const staleCursor = cdp.events.length;
-        await cdp.send("Page.navigate", {url:`${origin}/#/home/design`});
+        await navigateHome("design", "project-switch source");
         await waitFor(() => evaluate("document.body.innerText.includes('Create game')"), "project-switch source");
         const switched = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item; })()");
         if (!switched) fail("Studio did not expose a Create game control for keyboard project switching");
         await activateFocusedControl();
         await waitFor(() => evaluate(`location.hash !== ${JSON.stringify(recoveryBefore)} && location.hash.includes('/project/')`), "keyboard project switch");
         const recoveryAfter = await evaluate("location.hash"), staleResponses = cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived"), delayedResponse = staleResponses.at(-1);
-        await cdp.send("Page.navigate", {url:`${origin}${recoveryAfter}`});
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "stale-response isolation navigation");
-        const restartProjectBaseRoute = recoveryAfter.replace(/\/[^/]+$/, ""); await cdp.send("Page.navigate", {url:`${origin}/${restartProjectBaseRoute}/simulation`}); await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), "rendered restart-recovery simulation form"); await ensureSimulationConfigure("restart recovery"); const restartCursor = cdp.events.length; if (!await waitFor(() => setLifecycleField("simulation-rounds", "1000000"), "rendered restart-recovery simulation rounds")) fail("Studio did not accept the rendered restart-recovery rounds"); const restartControl = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation:"restart recovery", expectedStateClass:"editable-submission"}); const restartFormState = await captureRenderedEditableFormState("simulation", "restart recovery", restartControl.stableControlId); const restartJob = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation:"restart recovery", cursor:restartCursor, method:"POST", formState:restartFormState, stateClass:"editable-submission", control:restartControl}); if (restartJob.response.status !== 202 || typeof restartJob.payload?.id !== "string") fail("Studio did not start a rendered active job before restart");
-        const priorStudio = studio, restartDrain = await terminate(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart"); const restartRecoveryCursor = cdp.events.length; await cdp.send("Page.navigate", {url:`${origin}${recoveryAfter}`}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "Studio server restart recovery"); const restartJobs = await waitFor(async () => { const event = cdp.events.slice(restartRecoveryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartRecovered = restartList.some((job) => job?.id === restartJob.payload.id && !["queued", "running", "cancelling"].includes(job?.status)); api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation:typeof delayedResponse?.params?.requestId === "string" && await evaluate("location.hash === " + JSON.stringify(recoveryAfter)), unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered}; if (!Object.values(recovery).every(Boolean)) fail("Studio recovery controls did not produce measured results");
+        const restartProjectBaseRoute = recoveryAfter.replace(/\/[^/]+$/, ""); await navigateProjectTab(restartProjectBaseRoute, "simulation", "restart recovery"); await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), "rendered restart-recovery simulation form"); await ensureSimulationConfigure("restart recovery"); const restartCursor = cdp.events.length; if (!await waitFor(() => setLifecycleField("simulation-rounds", "1000000"), "rendered restart-recovery simulation rounds")) fail("Studio did not accept the rendered restart-recovery rounds"); const restartControl = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation:"restart recovery", expectedStateClass:"editable-submission"}); const restartFormState = await captureRenderedEditableFormState("simulation", "restart recovery", restartControl.stableControlId); const restartJob = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation:"restart recovery", cursor:restartCursor, method:"POST", formState:restartFormState, stateClass:"editable-submission", control:restartControl}); if (restartJob.response.status !== 202 || typeof restartJob.payload?.id !== "string") fail("Studio did not start a rendered active job before restart");
+        const priorStudio = studio, restartDrain = await terminate(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart"); const restartRecoveryCursor = cdp.events.length; await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "Studio server restart recovery"); const restartJobs = await waitFor(async () => { const event = cdp.events.slice(restartRecoveryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartRecovered = restartList.some((job) => job?.id === restartJob.payload.id && !["queued", "running", "cancelling"].includes(job?.status)); api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation:typeof delayedResponse?.params?.requestId === "string" && await evaluate("location.hash === " + JSON.stringify(recoveryAfter)), unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered}; if (!Object.values(recovery).every(Boolean)) fail("Studio recovery controls did not produce measured results");
         const restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id);
         if (restartRecovered && restartTerminal) restartJob.transaction.terminal = {status:restartTerminal.status, resultSha256:digest(JSON.stringify(restartTerminal)), source:"rendered-poll", pollPath:"/api/project/jobs", browserRequestId:restartJobs.event.params.requestId, causedByRequestId:restartJob.transaction.request?.browserRequestId};
         const observations = P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:{responseCount:staleResponses.length, delayedRequestId:delayedResponse?.params?.requestId, completedAfterSwitch:typeof delayedResponse?.params?.requestId === "string", sourceRoute:recoveryBefore, destinationRoute:recoveryAfter}, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
@@ -1336,5 +1375,5 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     } catch (error) { thrown = error; } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) registerPc20OwnedResource({kind:"browser", resourceId:owner.resourceId, pid:owner.pid, processIdentity:owner.identity}, "released", {POKIE_PC20_RESOURCE_REGISTRY:owner.resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:owner.resourceRegistrySecret}); owner.tracker?.capture({final:true}); for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainProcessTree(owner.child, 5_000, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } }
     if (thrown) throw thrown; validateP805RenderedPersonaAudit(audit); return audit;
 }
-async function main(argv = process.argv) { const options = optionsFrom(argv); const audit = await runP805ValeraBrowserAudit(options); await writeFile(path.join(options.output, `${options.phase}-${options.persona}-audit.json`), `${JSON.stringify(audit, null, 2)}\n`, {flag:"wx"}); process.stdout.write(`P805_VALERA_AUDIT_PASS persona=${audit.persona} phase=${audit.phase}\n`); }
+async function main(argv = process.argv) { const options = optionsFrom(argv); const audit = await runP805ValeraBrowserAudit(options); await writeImmutableReceipt(path.join(options.output, `${options.phase}-${options.persona}-audit.json`), `${JSON.stringify(audit, null, 2)}\n`); process.stdout.write(`P805_VALERA_AUDIT_PASS persona=${audit.persona} phase=${audit.phase}\n`); }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().then(() => process.exit(0)).catch((error) => { process.stderr.write(`${error.stack ?? error}\n`); process.exitCode = 1; });
