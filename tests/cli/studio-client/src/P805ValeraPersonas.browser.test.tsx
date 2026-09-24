@@ -113,44 +113,50 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     expect(Boolean(action.expectedControl) && (/^\/api\//).test(action.expectedApi) && action.screenState.length > 0 && action.screenNavigationControl === action.expectedControl && Boolean(action.stableControlId) && action.domControlId === action.stableControlId && action.identityAttribute === "id" && action.contextRevalidation.method === "GET" && action.contextRevalidation.path === "/api/project/context" && action.contextRevalidation.status >= 200 && action.contextRevalidation.status < 400 && (/^[a-f0-9]{64}$/i).test(action.contextRevalidation.responseSha256) && ["loaded", "outcome-source", "artifact"].includes(action.contextRevalidation.projectStatus) && action.contextRevalidation.completedBeforeSelection && Boolean(action.contextRevalidation.browserRequestId) && action.interaction.stableControlId === action.stableControlId && action.interaction.identityAttribute === "id" && action.interaction.transactionState === expectedTransactionState && Boolean(action.interaction.lifecycle.kind) && Boolean(action.interaction.lifecycle.value) && Boolean(action.browserRequestId) && action.precondition.enabled && !action.precondition.disabled && action.precondition.disabledExplanation === null && action.precondition.accessibleName === action.interaction.matchedLabel && action.transaction.operation === action.interaction.lifecycle.value && action.transaction.stateClass === expectedTransactionState && action.transaction.control.stableControlId === action.stableControlId && action.transaction.control.accessibleName === action.interaction.matchedLabel && action.transaction.control.enabled && !action.transaction.control.disabled && action.transaction.control.disabledExplanation === null && (requiresEditableForm ? formState !== undefined && formState.operation === action.transaction.operation && formState.capturedBeforeSubmission && formState.actionControl.stableControlId === action.transaction.control.stableControlId && formState.actionControl.identityAttribute === "id" && formState.actionControl.accessibleName === action.transaction.control.accessibleName && formState.fields.length > 0 && formState.fields.every((field) => field.identityAttribute === "id" && Boolean(field.stableControlId) && Boolean(field.accessibleName) && !field.disabled && field.validation.valid && typeof field.validation.message === "string") : formState === undefined) && !action.transaction.confirmation.required && action.transaction.confirmation.state === "not-required" && action.transaction.confirmation.control === null && action.transaction.keyboardActivations.length === 1 && action.transaction.keyboardActivations[0].phase === "operation" && action.transaction.keyboardActivations[0].controlId === action.stableControlId && action.transaction.keyboardActivations[0].count === 1 && action.transaction.request.browserRequestId === action.browserRequestId && action.transaction.request.method === action.expectedMethod && action.transaction.request.path === action.expectedApi && action.transaction.request.status >= 200 && action.transaction.request.status < 400 && (/^[a-f0-9]{64}$/i).test(action.transaction.request.responseSha256) && action.transaction.terminal.resultSha256 === action.terminal.resultSha256 && ["response", "rendered-poll"].includes(action.transaction.terminal.source) && action.visibleTerminal.state === "rendered" && action.visibleTerminal.changedAfterRequest && action.visibleTerminal.observedAfterRequestId === action.browserRequestId && (/^[a-f0-9]{64}$/i).test(action.visibleTerminal.beforeTextSha256) && (/^[a-f0-9]{64}$/i).test(action.visibleTerminal.textSha256) && action.visibleTerminal.beforeTextSha256 !== action.visibleTerminal.textSha256 && action.visibleTerminal.resultSha256 === action.terminal.resultSha256 && Boolean(action.visibleTerminal.lifecycle.role) && Boolean(action.visibleTerminal.lifecycle.terminal) && Boolean(action.visibleTerminal.lifecycle.text) && (action.expectedBodyKind === null || action.expectedArtifact === null || (action.visibleTerminal.lifecycle.artifact?.name === action.expectedArtifact && Boolean(action.visibleTerminal.lifecycle.artifact.accessibleName))) && (/^[a-f0-9]{64}$/i).test(action.terminal.resultSha256) && action.accessibility.namedRegions.length > 0 && action.accessibility.visibleFocus && action.accessibility.unexplainedDisabledControls === 0 && Boolean(action.evidenceId) && Boolean(action.screenshotEvidenceId) && action.elapsedMs > 0).toBe(true);
                 }
             }
-            const pageState = await evidenceContents(audit.rendered.recovery.cooperativeCancellation.evidenceId) as {transactions: Record<string, {operation: string; control: {stableControlId: string; accessibleName: string; enabled: boolean; disabled: boolean; disabledExplanation: null}; formState?: {operation: string; capturedBeforeSubmission: boolean; actionControl: {stableControlId: string; identityAttribute: string; accessibleName: string}; fields: Array<{stableControlId: string; identityAttribute: string; accessibleName: string; value: string; disabled: boolean; validation: {valid: boolean; message: string}}>} ; confirmation: {required: boolean; state: string; control: {stableControlId: string; accessibleName: string; enabled: boolean; disabled: boolean; disabledExplanation: null} | null; activation?: {kind: string; controlId: string; count: number}}; keyboardActivations: Array<{phase: string; controlId: string; count: number}>; request: {browserRequestId: string; method: string; path: string; status: number; responseSha256: string}; terminal: {status: string; resultSha256: string; source: string; pollPath: string; browserRequestId: string; causedByRequestId: string}}>; unsavedWork: {editControl: {stableControlId: string; identityAttribute: string; accessibleName: string; keyboardFocused: boolean; keyboardActivations: number}; navigationControl: {stableControlId: string; identityAttribute: string; accessibleName: string; keyboardActivations: number}; cancelControl: {stableControlId: string; identityAttribute: string; accessibleName: string; keyboardFocused: boolean; keyboardActivations: number}}};
-            const confirmedTransactions = [pageState.transactions.activeReloadCancellation, pageState.transactions.cooperativeCancellation];
-            for (const transaction of confirmedTransactions) {
-                expect(transaction.operation).toBe("simulation-cancel");
-                expect(transaction.control).toEqual(expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null}));
-                expect(transaction.confirmation).toEqual(expect.objectContaining({required: true, state: "confirmed", control: expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null})}));
-                expect(transaction.keyboardActivations).toEqual([{phase: "operation", controlId: transaction.control.stableControlId, count: 1}]);
-                expect(transaction.confirmation.activation).toEqual({kind: "pointer", controlId: transaction.confirmation.control?.stableControlId, count: 1});
-            }
-            expect(pageState.transactions.projectValidation).toEqual(expect.objectContaining({
-                operation: "project-validation",
-                control: expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null}),
-                confirmation: {required: false, state: "not-required", control: null},
-                keyboardActivations: [{phase: "operation", controlId: expect.any(String), count: 1}],
-                request: expect.objectContaining({method: "GET", path: "/api/project/validate", status: 200, browserRequestId: expect.any(String)}),
-                terminal: expect.objectContaining({status: "completed", source: "response", causedByRequestId: expect.any(String)}),
-            }));
-            expect(pageState.transactions.projectValidation.terminal.causedByRequestId).toBe(pageState.transactions.projectValidation.request.browserRequestId);
-            for (const control of [pageState.unsavedWork.editControl, pageState.unsavedWork.navigationControl, pageState.unsavedWork.cancelControl]) {
-                expect(control).toEqual(expect.objectContaining({stableControlId: expect.any(String), identityAttribute: "id", accessibleName: expect.any(String), keyboardActivations: 1}));
-            }
-            for (const name of ["activeReloadStart", "activeReloadCancellation", "simulationSuccess", "replaySuccess", "replayRecovery", "cancellableSimulation", "cooperativeCancellation", "simulationRetry", "restartSimulation"]) {
-                const transaction = pageState.transactions[name];
-                expect(transaction.request).toEqual(expect.objectContaining({browserRequestId: expect.any(String), method: expect.any(String), path: expect.any(String), status: expect.any(Number), responseSha256: expect.stringMatching(/^[a-f0-9]{64}$/)}));
-                expect(transaction.terminal).toEqual(expect.objectContaining({resultSha256: expect.stringMatching(/^[a-f0-9]{64}$/), source: "rendered-poll", pollPath: expect.any(String), browserRequestId: expect.any(String), causedByRequestId: transaction.request.browserRequestId}));
-            }
-            // Durable recovery starts share the same form-state-first
-            // contract as the persona matrix.  A route change plus an API
-            // call must not be enough to manufacture a simulation or replay
-            // lifecycle receipt.
-            for (const name of ["activeReloadStart", "simulationFailure", "simulationSuccess", "replayFailure", "replaySuccess", "replayRecovery", "cancellableSimulation", "restartSimulation"]) {
-                const transaction = pageState.transactions[name];
-                expect(transaction.formState).toEqual(expect.objectContaining({
-                    operation: transaction.operation,
-                    capturedBeforeSubmission: true,
-                    actionControl: expect.objectContaining({stableControlId: transaction.control.stableControlId, identityAttribute: "id", accessibleName: transaction.control.accessibleName}),
-                    fields: expect.arrayContaining([expect.objectContaining({identityAttribute: "id", stableControlId: expect.any(String), accessibleName: expect.any(String), disabled: false, validation: expect.objectContaining({valid: expect.any(Boolean), message: expect.any(String)})})]),
+            expect(audit.workflowScope).toEqual(expect.objectContaining({kind: "p8-05-single-tuple-workflow-scope", tuple: audit.tuple, recoveryRequired: false, scopeEvidenceId: expect.any(String)}));
+            expect(audit.workflowScope.bootstrap.length).toBeGreaterThanOrEqual(3);
+            expect(audit.rendered.recovery).toEqual({});
+            expect(audit.rendered.jobs).toEqual({});
+            if (!audit.tuple) {
+                const pageState = await evidenceContents(audit.rendered.recovery.cooperativeCancellation.evidenceId) as {transactions: Record<string, {operation: string; control: {stableControlId: string; accessibleName: string; enabled: boolean; disabled: boolean; disabledExplanation: null}; formState?: {operation: string; capturedBeforeSubmission: boolean; actionControl: {stableControlId: string; identityAttribute: string; accessibleName: string}; fields: Array<{stableControlId: string; identityAttribute: string; accessibleName: string; value: string; disabled: boolean; validation: {valid: boolean; message: string}}>} ; confirmation: {required: boolean; state: string; control: {stableControlId: string; accessibleName: string; enabled: boolean; disabled: boolean; disabledExplanation: null} | null; activation?: {kind: string; controlId: string; count: number}}; keyboardActivations: Array<{phase: string; controlId: string; count: number}>; request: {browserRequestId: string; method: string; path: string; status: number; responseSha256: string}; terminal: {status: string; resultSha256: string; source: string; pollPath: string; browserRequestId: string; causedByRequestId: string}}>; unsavedWork: {editControl: {stableControlId: string; identityAttribute: string; accessibleName: string; keyboardFocused: boolean; keyboardActivations: number}; navigationControl: {stableControlId: string; identityAttribute: string; accessibleName: string; keyboardActivations: number}; cancelControl: {stableControlId: string; identityAttribute: string; accessibleName: string; keyboardFocused: boolean; keyboardActivations: number}}};
+                const confirmedTransactions = [pageState.transactions.activeReloadCancellation, pageState.transactions.cooperativeCancellation];
+                for (const transaction of confirmedTransactions) {
+                    expect(transaction.operation).toBe("simulation-cancel");
+                    expect(transaction.control).toEqual(expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null}));
+                    expect(transaction.confirmation).toEqual(expect.objectContaining({required: true, state: "confirmed", control: expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null})}));
+                    expect(transaction.keyboardActivations).toEqual([{phase: "operation", controlId: transaction.control.stableControlId, count: 1}]);
+                    expect(transaction.confirmation.activation).toEqual({kind: "pointer", controlId: transaction.confirmation.control?.stableControlId, count: 1});
+                }
+                expect(pageState.transactions.projectValidation).toEqual(expect.objectContaining({
+                    operation: "project-validation",
+                    control: expect.objectContaining({enabled: true, disabled: false, disabledExplanation: null}),
+                    confirmation: {required: false, state: "not-required", control: null},
+                    keyboardActivations: [{phase: "operation", controlId: expect.any(String), count: 1}],
+                    request: expect.objectContaining({method: "GET", path: "/api/project/validate", status: 200, browserRequestId: expect.any(String)}),
+                    terminal: expect.objectContaining({status: "completed", source: "response", causedByRequestId: expect.any(String)}),
                 }));
+                expect(pageState.transactions.projectValidation.terminal.causedByRequestId).toBe(pageState.transactions.projectValidation.request.browserRequestId);
+                for (const control of [pageState.unsavedWork.editControl, pageState.unsavedWork.navigationControl, pageState.unsavedWork.cancelControl]) {
+                    expect(control).toEqual(expect.objectContaining({stableControlId: expect.any(String), identityAttribute: "id", accessibleName: expect.any(String), keyboardActivations: 1}));
+                }
+                for (const name of ["activeReloadStart", "activeReloadCancellation", "simulationSuccess", "replaySuccess", "replayRecovery", "cancellableSimulation", "cooperativeCancellation", "simulationRetry", "restartSimulation"]) {
+                    const transaction = pageState.transactions[name];
+                    expect(transaction.request).toEqual(expect.objectContaining({browserRequestId: expect.any(String), method: expect.any(String), path: expect.any(String), status: expect.any(Number), responseSha256: expect.stringMatching(/^[a-f0-9]{64}$/)}));
+                    expect(transaction.terminal).toEqual(expect.objectContaining({resultSha256: expect.stringMatching(/^[a-f0-9]{64}$/), source: "rendered-poll", pollPath: expect.any(String), browserRequestId: expect.any(String), causedByRequestId: transaction.request.browserRequestId}));
+                }
+                // Durable recovery starts share the same form-state-first
+                // contract as the persona matrix.  A route change plus an API
+                // call must not be enough to manufacture a simulation or replay
+                // lifecycle receipt.
+                for (const name of ["activeReloadStart", "simulationFailure", "simulationSuccess", "replayFailure", "replaySuccess", "replayRecovery", "cancellableSimulation", "restartSimulation"]) {
+                    const transaction = pageState.transactions[name];
+                    expect(transaction.formState).toEqual(expect.objectContaining({
+                        operation: transaction.operation,
+                        capturedBeforeSubmission: true,
+                        actionControl: expect.objectContaining({stableControlId: transaction.control.stableControlId, identityAttribute: "id", accessibleName: transaction.control.accessibleName}),
+                        fields: expect.arrayContaining([expect.objectContaining({identityAttribute: "id", stableControlId: expect.any(String), accessibleName: expect.any(String), disabled: false, validation: expect.objectContaining({valid: expect.any(Boolean), message: expect.any(String)})})]),
+                    }));
+                }
             }
             expect(audit.cleanup).toEqual(expect.objectContaining({processTreeDrained: true, resourcesDrained: true, contextRemoved: true}));
             expect(audit.evidence.some((item: {kind: string}) => item.kind === "screenshot")).toBe(true);
