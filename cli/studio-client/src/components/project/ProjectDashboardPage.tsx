@@ -1189,7 +1189,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         <AppShellLayout
             navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
-                {label: "Your projects", onClick: handleClose},
+                {label: "Your projects", id: "project-breadcrumb-projects", onClick: handleClose},
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
             ]}

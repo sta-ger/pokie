@@ -2,7 +2,7 @@ import {Anchor, AppShell, Breadcrumbs, Burger, Group, Text, Title} from "@mantin
 import {useDisclosure, useMediaQuery} from "@mantine/hooks";
 import {createContext, useContext, useEffect, useRef, type ReactNode} from "react";
 
-export type StudioBreadcrumb = {label: string; onClick?: () => void};
+export type StudioBreadcrumb = {label: string; onClick?: () => void; id?: string};
 
 // Lets NavTabs (rendered as the `navbar` prop, already-constructed JSX from whichever page owns it)
 // close the mobile navbar drawer after a selection, without AppShellLayout needing to know anything
@@ -106,7 +106,7 @@ export function AppShellLayout({
                                 </BrandLink>
                                 {breadcrumbs.map((crumb, index) =>
                                     crumb.onClick ? (
-                                        <Anchor className="studio-app-breadcrumb-item" key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
+                                        <Anchor id={crumb.id} className="studio-app-breadcrumb-item" key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
                                             {crumb.label}
                                         </Anchor>
                                     ) : (
