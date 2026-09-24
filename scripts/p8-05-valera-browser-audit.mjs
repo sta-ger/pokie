@@ -1016,17 +1016,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`);
             if (!locationSet) fail(`${observation} could not set the rendered project import location`);
             const activate = async (id, label) => {
-                const focused = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item; })()`);
-                if (!focused) fail(`${observation} did not expose its rendered ${label} control`);
-                await activateFocusedControl();
+                const control = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
+                if (!control?.stableControlId) fail(`${observation} did not expose its rendered ${label} control`);
+                await activateFocusedControl("operation", control);
             };
             await activate("project-import-check", "Check game");
             await waitFor(() => evaluate("document.body.innerText.includes('Found a') && !!document.getElementById('project-import-add')"), `${observation} rendered project import preview`);
             await activate("project-import-add", "Add to projects");
             await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
-            const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item; })()`);
-            if (!opened) fail(`${observation} did not expose the rendered imported-project Open control`);
-            await activateFocusedControl();
+            const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
+            if (!opened?.stableControlId) fail(`${observation} did not expose the rendered imported-project Open control`);
+            await activateFocusedControl("operation", opened);
             await waitFor(() => evaluate("location.hash.includes('/project/')"), `${observation} rendered imported project dashboard`);
             const route = await evaluate("location.hash");
             if (typeof route !== "string" || !/^#\/project(?:\/[^/]+){1,2}$/.test(route)) fail(`${observation} did not open a project-scoped imported route`);
@@ -1227,9 +1227,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // closed and its hidden Projects control cannot receive a real key.
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions.wide, deviceScaleFactor:1});
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === '#/home/design' && document.body.innerText.includes('Create game')"), "Studio create-game control");
-        const created = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item; })()");
-        if (!created) fail("rendered Studio did not expose an enabled keyboard-focusable Create game control");
-        await activateFocusedControl();
+        const created = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()");
+        if (!created?.stableControlId) fail("rendered Studio did not expose an enabled focusable Create game control");
+        await activateFocusedControl("operation", created);
         await waitFor(() => evaluate("location.hash.includes('/project/')"), "rendered keyboard project creation");
         timings.projectCreationMs = Date.now() - creation;
         const createdProjectRoute = await evaluate("location.hash");
@@ -1403,7 +1403,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // the draft with the dialog's real Stay action.
         const openProject = await waitFor(() => focusRenderedControl("[data-pokie-project-location]", "(_item, name) => name.length > 0"), "rendered project Open control for unsaved-work protection");
         if (!openProject?.keyboardFocused || !openProject.stableControlId || !openProject.accessibleName) fail("Studio did not expose a project Open control for unsaved-work protection");
-        await activateFocusedControl();
+        await activateFocusedControl("navigation", openProject);
         const protectionText = await waitFor(() => evaluate("document.body.innerText.match(/You have unsaved[^\\n]*/i)?.[0] || false"), "rendered unsaved-work protection");
         const cancelUnsaved = await waitFor(async () => {
             // The shared navigation guard publishes the rendered cancel
@@ -1414,14 +1414,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return control?.keyboardFocused ? control : false;
         }, "rendered unsaved-work cancel control");
         if (!cancelUnsaved?.keyboardFocused || !cancelUnsaved.stableControlId || !cancelUnsaved.accessibleName) fail("Studio did not expose an unsaved-work cancel control");
-        await activateFocusedControl();
+        await activateFocusedControl("recovery", cancelUnsaved);
         const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:openProject.stableControlId, identityAttribute:openProject.identityAttribute, accessibleName:openProject.accessibleName, keyboardFocused:openProject.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:await evaluate(`location.hash === ${JSON.stringify(recoveryBefore)}`)};
         const staleCursor = cdp.events.length;
         await navigateHome("design", "project-switch source");
         await waitFor(() => evaluate("document.body.innerText.includes('Create game')"), "project-switch source");
-        const switched = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item; })()");
-        if (!switched) fail("Studio did not expose a Create game control for keyboard project switching");
-        await activateFocusedControl();
+        const switched = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()");
+        if (!switched?.stableControlId) fail("Studio did not expose a focusable Create game control for project switching");
+        await activateFocusedControl("operation", switched);
         await waitFor(() => evaluate(`location.hash !== ${JSON.stringify(recoveryBefore)} && location.hash.includes('/project/')`), "keyboard project switch");
         const recoveryAfter = await evaluate("location.hash"), staleResponses = cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived"), delayedResponse = staleResponses.at(-1);
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "stale-response isolation navigation");
