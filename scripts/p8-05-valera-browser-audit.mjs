@@ -449,7 +449,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // a route-only claim. Capture the focused visible control and click
         // its actual rendered hit target instead.
         const activateFocusedControl = async (lifecycle = "operation", control) => {
-            const stableControlId = control?.stableControlId ?? await evaluate("(()=>document.activeElement instanceof HTMLElement ? document.activeElement.id : '')()");
+            const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
             if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before pointer activation`);
             await clickCapturedControl(stableControlId);
             return {kind:"pointer", controlId:stableControlId, count:1};
@@ -844,7 +844,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
             })()`), `${observation} rendered simulation Configure step`);
             if (configured.stableControlId !== "simulation-configure" || configured.identityAttribute !== "id") fail(`${observation} did not expose its rendered Configure control identity`);
-            await activateFocusedControl();
+            await activateFocusedControl("operation", configured);
             await waitFor(() => evaluate("!!document.querySelector('[data-pokie-lifecycle-field=\"simulation-rounds\"]')"), `${observation} rendered simulation Configure form`);
         };
         const activateRenderedPrecondition = async (operation, observation) => {
@@ -853,7 +853,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return candidate?.keyboardFocused ? candidate : false;
             }, `${observation} rendered ${operation} precondition`);
             if (!control.enabled) fail(`Studio rendered ${operation} precondition disabled for ${observation}: ${control.disabledExplanation ?? "no explanation"}`);
-            await activateFocusedControl();
+            await activateFocusedControl("precondition", control);
             return control;
         };
         // CDP is an observer/keyboard transport, never a route adapter.  A
@@ -884,7 +884,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (!await evaluate("location.hash.startsWith('#/home/')")) {
                 const home = await waitFor(() => focusRenderedControl("button,a", "(_item, name) => name === 'Your projects'"), `${observation} rendered Your projects breadcrumb`);
                 if (!home?.keyboardFocused) fail(`${observation} did not expose its rendered Your projects breadcrumb`);
-                await activateFocusedControl();
+                await activateFocusedControl("navigation", home);
                 // Closing a project can surface the product's real active-job
                 // confirmation. Follow that visible recovery dialog through
                 // its own keyboard-operable lifecycle control instead of
@@ -905,7 +905,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     if (confirmedClose) fail(`${observation} project-close confirmation remained visible after its one keyboard activation`);
                     if (!confirmation.stableControlId || confirmation.identityAttribute !== "id" || !confirmation.accessibleName) fail(`${observation} project-close confirmation lacks a rendered public control identity`);
                     confirmedClose = true;
-                    await activateFocusedControl();
+                    await activateFocusedControl("recovery", confirmation);
                     return false;
                 }, `${observation} rendered project close confirmation or navigation`);
                 await waitFor(() => evaluate("location.hash === '#/home/projects'"), `${observation} rendered project close navigation`);
