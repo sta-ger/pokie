@@ -433,13 +433,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
         };
         // Use the focused DOM control's rendered role to select its native
-        // keyboard activation. Mantine can render a navigation as a button
-        // (Space key-up) or an anchor (Enter); a route must therefore follow
-        // the actual control the browser exposed, never a guessed lifecycle
-        // shortcut or an audit-side navigation.
+        // keyboard activation. In this headless Chromium path Mantine's
+        // button default action is owned by Enter's key-down; Space only
+        // recorded focus on a NavLink without invoking its public onClick.
+        // Anchors still use Enter. A route must therefore follow the actual
+        // control the browser exposed, never a guessed lifecycle shortcut or
+        // an audit-side navigation.
         const activateFocusedControl = async (lifecycle = "operation", control) => {
-            if (control?.role === "button" || lifecycle !== "navigation") await pressSpace();
-            else await pressEnter();
+            if (control?.role === "button" || lifecycle === "navigation") await pressEnter();
+            else await pressSpace();
         };
         const clickCapturedControl = async (stableControlId) => {
             const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; const box=item.getBoundingClientRect(); return box.width>0&&box.height>0 ? {x:box.left+box.width/2,y:box.top+box.height/2} : null;})()`);
