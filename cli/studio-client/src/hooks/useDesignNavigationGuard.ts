@@ -85,6 +85,23 @@ export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuar
             return new Promise<void>((resolve, reject) => {
                 modals.openConfirmModal({
                     ...CONFIRM_MODAL,
+                    // The guarded-action branch opens before a router
+                    // transition exists, so it does not pass through
+                    // useNavigationBlockerConfirm. Give its real Mantine
+                    // controls the same public lifecycle identity; a packed
+                    // browser workflow can then prove the visible Stay action
+                    // that preserved the draft, rather than a label-only
+                    // modal claim.
+                    confirmProps: {
+                        id: "design-navigation-guard-leave",
+                        "data-pokie-confirmation": "confirm",
+                        "data-pokie-confirmation-operation": "design-navigation-guard",
+                    },
+                    cancelProps: {
+                        id: "design-navigation-guard-stay",
+                        "data-pokie-confirmation": "cancel",
+                        "data-pokie-confirmation-operation": "design-navigation-guard",
+                    },
                     onConfirm: () => {
                         suppressNextBlockRef.current = true;
                         action()

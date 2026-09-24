@@ -328,7 +328,7 @@ async function campaignFixture() {
                 browserRequestId: `browser-${persona}-${observation}-${actionViewport}`,
                 contextRevalidation: viewportSource.contextRevalidation,
                 precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: viewportSource.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`}}},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: viewportSource.interaction,
                 transaction: viewportSource.transaction,
