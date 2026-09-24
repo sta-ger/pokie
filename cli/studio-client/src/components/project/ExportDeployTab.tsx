@@ -267,6 +267,11 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    let artifactBuildDisabledReason = "Fix the displayed build preflight issue before building this artifact.";
+    if (artifactBuildRun.status === "running") artifactBuildDisabledReason = "This artifact is already building. Wait for it to finish or cancel it before starting another build.";
+    else if (artifactPreview.status === "loading") artifactBuildDisabledReason = "Waiting for the build destination preflight to finish.";
+    else if (artifactPreview.status === "conflict") artifactBuildDisabledReason = "Choose a different destination before building; Studio will not overwrite existing files.";
+    else if (artifactPreview.status === "unsupported") artifactBuildDisabledReason = "This project cannot build this artifact until the displayed prerequisite is available.";
     const outcomeLibraryDisabled = outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
     const outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
         ? "Outcome Library generation becomes available after its preflight succeeds."
@@ -611,6 +616,7 @@ function TargetCard({
                         onClick={() => onBuildArtifact(card.artifactTarget!)}
                         loading={artifactBuildRun.status === "running"}
                         disabled={!canBuildArtifact}
+                        title={!canBuildArtifact ? artifactBuildDisabledReason : undefined}
                     >
                         Build
                     </Button>

@@ -144,10 +144,12 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         const recentRunsSection = screen.getByText("Recent runs").closest("fieldset") as HTMLElement;
         await waitFor(() => expect(within(recentRunsSection).getByText("Showing runs 1–50 of 150.")).toBeInTheDocument());
         expect(within(recentRunsSection).getAllByRole("listitem")).toHaveLength(50);
+        expect(within(recentRunsSection).getByRole("button", {name: "Previous 50 runs"})).toHaveAttribute("title", "There are no earlier runs.");
 
         await user.click(within(recentRunsSection).getByRole("button", {name: "Next 50 runs"}));
         await user.click(within(recentRunsSection).getByRole("button", {name: "Next 50 runs"}));
         expect(within(recentRunsSection).getByText("Showing runs 101–150 of 150.")).toBeInTheDocument();
+        expect(within(recentRunsSection).getByRole("button", {name: "Next 50 runs"})).toHaveAttribute("title", "There are no later runs.");
         await user.click(within(recentRunsSection).getAllByRole("button", {name: "Open"})[49]);
         await waitFor(() => expect(openedLastRun).toBe(true));
     });
