@@ -655,7 +655,13 @@ function TargetCard({
                     )}
                     {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
                     {artifactBuildRun.status === "ok" && (
-                        <div role="status" aria-live="polite" data-pokie-lifecycle-result="artifact-build" data-pokie-lifecycle-terminal="completed">
+                        <div
+                            role="status"
+                            aria-live="polite"
+                            data-pokie-lifecycle-result="artifact-build"
+                            data-pokie-lifecycle-result-control={`artifact-build-${card.artifactTarget}`}
+                            data-pokie-lifecycle-terminal="completed"
+                        >
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                                 {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}

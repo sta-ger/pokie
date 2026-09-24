@@ -1667,7 +1667,12 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
             await user.click(await within(buildArtifactSection).findByRole("button", {name: "Build"}));
 
-            expect(await within(buildArtifactSection).findByRole("button", {name: "Open as Project"})).toBeEnabled();
+            const openAsProject = await within(buildArtifactSection).findByRole("button", {name: "Open as Project"});
+            expect(openAsProject).toBeEnabled();
+            // The completed PAR result belongs to this exact rendered Build
+            // control. A sibling artifact card's completed status cannot
+            // satisfy the workbook's lifecycle receipt.
+            expect(openAsProject.closest("[data-pokie-lifecycle-result]")).toHaveAttribute("data-pokie-lifecycle-result-control", "artifact-build-parWorkbook");
             expect(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"})).toBeEnabled();
             expect(within(buildArtifactSection).getByRole("button", {name: "Reveal file"})).toBeEnabled();
 
