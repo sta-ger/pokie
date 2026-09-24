@@ -205,9 +205,27 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(accepted.receipt.cleanupSha256).toBe(child.cleanupSha256);
                 expect(accepted.cleanup.cleanupEvidenceId).toBe(child.cleanupEvidenceId);
                 expect(accepted.receipt.checkpointReceipt.actionSha256).toEqual(expect.any(String));
+                const audit = JSON.parse(auditBytes.toString("utf8")) as {workflowScope: {bootstrap: Array<{kind: string; purpose: string; publicWorkflow: string; output?: string; evidenceId: string}>}; evidence: Array<{kind: string; path: string}>};
+                const bootstrap = audit.workflowScope.bootstrap.map(({evidenceId: _evidenceId, ...entry}) => entry);
+                const sourcePurpose = child.tuple.observation === "fairness-conditional" ? "fairness-source" : "certification-source";
+                const expectedBootstrap = [
+                    {kind: "packed-package-install", purpose: "mandatory-local-bootstrap", publicWorkflow: child.tuple.observation},
+                    {kind: "packed-cli-create", purpose: "mandatory-local-bootstrap", publicWorkflow: child.tuple.observation},
+                    {kind: "studio-project-create", purpose: "mandatory-local-bootstrap", publicWorkflow: child.tuple.observation},
+                    ...(["certification-conditional", "trust"].includes(child.tuple.observation) ? [
+                        {kind: "outcome-library-source-bundle", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "outcome-bundle"},
+                        {kind: "studio-import-outcome-bundle", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "outcome-bundle"},
+                    ] : []),
+                    ...(child.tuple.observation === "fairness-conditional" ? [
+                        {kind: "outcome-library-source-bundle", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "outcome-bundle"},
+                        {kind: "runtime-package", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "runtime-package"},
+                        {kind: "studio-import-runtime-package", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "runtime-package"},
+                    ] : []),
+                ];
+                expect(bootstrap).toEqual(expectedBootstrap);
+                expect(audit.workflowScope.bootstrap.every((entry) => typeof entry.evidenceId === "string" && entry.evidenceId.length > 0)).toBe(true);
                 const cliReceipt = tupleCliReceipts[`${child.tuple.persona}/${child.tuple.observation}`];
                 if (cliReceipt) {
-                    const audit = JSON.parse(auditBytes.toString("utf8")) as {evidence: Array<{kind: string; path: string}>};
                     const transcriptEvidence = audit.evidence.find((item) => item.kind === "cli-transcript");
                     expect(transcriptEvidence).toBeDefined();
                     expect(await readFile(path.join(output, transcriptEvidence!.path), "utf8")).toContain(cliReceipt);
