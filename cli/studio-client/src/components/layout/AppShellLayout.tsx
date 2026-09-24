@@ -94,7 +94,7 @@ export function AppShellLayout({
             <AppShell.Header>
                 <Group className="studio-app-header" h="100%" px="md" justify="space-between" wrap="nowrap">
                     <Group className="studio-app-header-primary" wrap="nowrap">
-                        <Burger ref={burgerRef} opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
+                        <Burger id="studio-navigation-toggle" ref={burgerRef} opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
                         {breadcrumbs.length === 0 ? (
                             <BrandLink onHomeClick={onHomeClick} underline="never" c="inherit">
                                 <Title order={3}>POKIE Studio</Title>

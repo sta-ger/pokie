@@ -253,9 +253,9 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         if (!semantic || semantic.item.kind !== "page-state" || !semantic.item.observationIds.includes(observation) || !action) fail(`${label} lacks ${persona} ${viewport} semantic evidence for ${observation}`);
         const page = semanticObservation(semantic.contents, observation, persona, `${label} ${persona} ${viewport} ${observation}`);
         if (page.viewport !== viewport) fail(`${label} ${persona} ${observation} reuses ${page.viewport} semantic state for ${viewport}`);
-        const requestOwner = `${persona} ${viewport} ${observation} action`, contextOwner = `${persona} ${viewport} ${observation} context`;
+        const requestOwner = `${persona} ${viewport} ${observation} action`, contextOwner = `${persona} ${viewport} ${observation} context`, sharedNavigationContext = page.contextRevalidation.browserRequestId === page.request.browserRequestId;
         claimBrowserRequestId(page.request.browserRequestId, requestOwner);
-        claimBrowserRequestId(page.contextRevalidation.browserRequestId, contextOwner);
+        if (!sharedNavigationContext) claimBrowserRequestId(page.contextRevalidation.browserRequestId, contextOwner);
         if (page.request.browserRequestId === page.contextRevalidation.browserRequestId) fail(`${label} ${persona} ${viewport} ${observation} substitutes its action request for context`);
         // Select the machine record once, by Chromium's request identity,
         // before comparing any semantic fields.  Method/path/body equality is
@@ -276,7 +276,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         })());
         const browserResponse = browser?.find?.((event) => event?.method === "Network.responseReceived" && event.params?.requestId === page.request.browserRequestId && event.params?.response?.status === page.request.status);
         if (!browserRequest || !browserResponse) fail(`${label} ${persona} ${viewport} ${observation} does not bind its semantic record to the captured browser request and response`);
-        const contextRequest = apiByBrowserRequestId(page.contextRevalidation.browserRequestId, contextOwner);
+        const contextRequest = apiByBrowserRequestId(page.contextRevalidation.browserRequestId, sharedNavigationContext ? requestOwner : contextOwner);
         const browserContextRequest = browser?.find?.((event) => event?.method === "Network.requestWillBeSent" && event.params?.requestId === page.contextRevalidation.browserRequestId && (() => { try { return new URL(event.params.request?.url).pathname === "/api/project/context" && event.params.request?.method === "GET"; } catch { return false; } })());
         const browserContextResponse = browser?.find?.((event) => event?.method === "Network.responseReceived" && event.params?.requestId === page.contextRevalidation.browserRequestId && event.params?.response?.status === page.contextRevalidation.status);
         if (!contextRequest || !browserContextRequest || !browserContextResponse) fail(`${label} ${persona} ${viewport} ${observation} does not bind its selected workflow to a fresh rendered project-context revalidation`);

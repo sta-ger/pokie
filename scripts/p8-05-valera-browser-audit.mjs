@@ -61,14 +61,18 @@ export function validateP805RenderedPersonaAudit(audit) {
     if (!audit?.finalResult || audit.finalResult.status !== "passed" || audit.finalResult.aggregation !== "verified-checkpoint-receipts-only" || audit.finalResult.chunks !== expectedChunks || !Array.isArray(receipts) || receipts.length !== expectedChunks || !Array.isArray(audit.finalResult.checkpointReceiptSha256s) || audit.finalResult.checkpointReceiptSha256s.length !== expectedChunks || !audit.finalResult.cleanupEvidenceId) fail(`rendered ${audit?.persona ?? "persona"} audit lacks a checkpointed packed final result`);
     const receiptIds = new Set(), receiptActions = new Set();
     for (const receipt of receipts) {
-        const action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === receipt?.persona && value?.observation === receipt?.observation && value?.viewport === receipt?.viewport), actionKey = `${receipt?.persona}/${receipt?.observation}/${receipt?.viewport}`;
-        if (!receipt || typeof receipt.receiptId !== "string" || !receipt.receiptId || receiptIds.has(receipt.receiptId) || receiptActions.has(actionKey) || receipt.candidateId !== audit.candidateId || receipt.candidatePackageSha256 !== audit.candidatePackageSha256 || receipt.persona === undefined || receipt.observation === undefined || receipt.viewport === undefined || !action || receipt.actionSha256 !== digest(JSON.stringify(action))) fail(`rendered ${audit?.persona ?? "persona"} audit has a missing, duplicate, stale, or substituted checkpoint receipt`);
+        // Validate the compatibility view above, but authenticate the exact
+        // persisted pointer action.  Hashing the compatibility projection
+        // would make a valid immutable checkpoint look substituted merely
+        // because validation exposes its legacy keyboard-shaped fields.
+        const action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === receipt?.persona && value?.observation === receipt?.observation && value?.viewport === receipt?.viewport), rawAction = rawRendered?.actions?.find((value) => (value?.persona ?? audit.persona) === receipt?.persona && value?.observation === receipt?.observation && value?.viewport === receipt?.viewport), actionKey = `${receipt?.persona}/${receipt?.observation}/${receipt?.viewport}`;
+        if (!receipt || typeof receipt.receiptId !== "string" || !receipt.receiptId || receiptIds.has(receipt.receiptId) || receiptActions.has(actionKey) || receipt.candidateId !== audit.candidateId || receipt.candidatePackageSha256 !== audit.candidatePackageSha256 || receipt.persona === undefined || receipt.observation === undefined || receipt.viewport === undefined || !action || !rawAction || receipt.actionSha256 !== digest(JSON.stringify(rawAction))) fail(`rendered ${audit?.persona ?? "persona"} audit has a missing, duplicate, stale, or substituted checkpoint receipt`);
         receiptIds.add(receipt.receiptId); receiptActions.add(actionKey);
     }
     for (const {persona, observation, viewport} of tuples) if (!receiptActions.has(`${persona}/${observation}/${viewport}`)) fail(`rendered ${audit?.persona ?? "persona"} audit lacks a checkpoint receipt for ${persona}/${observation}/${viewport}`);
     if (JSON.stringify(audit.finalResult.checkpointReceiptSha256s) !== JSON.stringify(receipts.map((receipt) => receipt.sha256))) fail(`rendered ${audit?.persona ?? "persona"} audit final result does not aggregate its verified checkpoint receipts`);
     const identityLedger = new Map();
-    for (const action of rendered.actions) for (const [kind, browserRequestId] of [["action", action?.browserRequestId], ["context", action?.contextRevalidation?.browserRequestId], ...(action?.terminal?.source === "rendered-poll" ? [["poll", action.terminal.browserRequestId]] : [])]) {
+    for (const action of rendered.actions) for (const [kind, browserRequestId] of [["action", action?.browserRequestId], ...(action?.contextRevalidation?.browserRequestId === action?.browserRequestId ? [] : [["context", action?.contextRevalidation?.browserRequestId]]), ...(action?.terminal?.source === "rendered-poll" ? [["poll", action.terminal.browserRequestId]] : [])]) {
         if (typeof browserRequestId !== "string" || !browserRequestId) fail(`rendered ${audit.persona} audit lacks a ${kind} browser request identity`);
         const prior = identityLedger.get(browserRequestId);
         if (prior) fail(`rendered ${audit.persona} audit reuses ${kind} browser request ${browserRequestId} after ${prior}`);
@@ -381,7 +385,68 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // campaign as hidden setup. The legacy persona-sized invocation
             // retains that matrix for backward-compatible campaign records.
             fullCliMatrix = !options.tuple && options.workflowPersonas.includes("programmer");
-        if (!fullCliMatrix) {
+        const runTupleCliWorkflow = async () => {
+            if (!options.tuple) return;
+            const {persona, observation} = options.tuple;
+            // A packed child is not a convenient sample of the CLI suite.
+            // Each named Programmer observation owns the installed public
+            // commands that make its terminal claim true.  Keeping these
+            // branches here also prevents a later generic setup command from
+            // impersonating a help, error, WASM, or artifact workflow.
+            if (persona === "programmer") {
+                if (observation === "npx-pokie") {
+                    const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js");
+                    if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable");
+                    const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help");
+                    await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);
+                }
+                if (observation === "recursive-help") for (const args of [["--help"], ...["build", "certification", "fairness", "par", "reel", "sim", "replay", "serve"].map((command) => [command, "--help"]), ["certification", "build", "--help"], ["certification", "verify", "--help"], ["fairness", "seed-commit", "--help"], ["fairness", "commit", "--help"], ["fairness", "reveal", "--help"], ["fairness", "verify", "--help"], ["par", "import", "--help"], ["par", "export", "--help"], ["reel", "generate", "--help"]]) await runPackedCli(`packed CLI help ${args.join("-")}`, args);
+                if (observation === "create-build-inspect") {
+                    await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
+                    await runPackedCli("packed CLI inspect", ["inspect", packageRoot]);
+                }
+                if (observation === "validate-sim-report-diff-replay-serve-wasm") {
+                    await runPackedCli("packed CLI WASM build", ["build", blueprint, "--target", "wasm", "--out", wasm]); await requireOutput("packed CLI WASM build", wasm);
+                    await runPackedCli("packed CLI WASM inspect", ["inspect", wasm]); await runPackedCli("packed CLI WASM validate", ["validate", wasm]); await runPackedCli("packed CLI WASM run", ["run", wasm, "--seed", "p8-05-wasm"]);
+                    await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
+                    await runPackedCli("packed CLI sim", ["sim", packageRoot, "--rounds", "10", "--seed", "p8-05", "--out", simulationReport]); await requireOutput("packed CLI sim", simulationReport);
+                    await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
+                    await runPackedCli("packed CLI diff", ["diff", simulationReport, simulationReport, "--out", diffReport]); await requireOutput("packed CLI diff", diffReport);
+                    await runPackedCli("packed CLI replay", ["replay", packageRoot, "--seed", "p8-05", "--round", "1", "--out", replayArtifact]); await requireOutput("packed CLI replay", replayArtifact);
+                    const servePort = await freeLoopbackPort(), serveOwnership = ownershipEnvironment("packed-cli-serve"), serveChild = own("packed CLI serve", services.spawn(installedCli, ["serve", packageRoot, "--host", "127.0.0.1", "--port", String(servePort)], {cwd:context.workspace, env:{...packedEnvironment, ...serveOwnership.env}, stdio:"pipe"}), serveOwnership);
+                    let serveOutput = "";
+                    serveChild.stdout?.on("data", (chunk) => { serveOutput += chunk.toString(); }); serveChild.stderr?.on("data", (chunk) => { serveOutput += chunk.toString(); });
+                    await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${servePort}`)).status < 500 && /POKIE dev server listening/.test(serveOutput); } catch { return false; } }, "packed CLI serve");
+                    transcript.push(`[${services.now()}] packed CLI serve ${packageRoot} --port ${servePort}`); await settleChild(serveChild);
+                }
+                if (observation === "spaces-invalid-inputs-exit-codes-ci-recovery") {
+                    await runPackedCli("packed CLI CI validate", ["validate", blueprint, "--format", "json"]);
+                    await runPackedCli("packed CLI invalid-input recovery", ["validate", path.join(context.workspace, "missing blueprint.json")], 1);
+                }
+                if (observation === "build-export-output-folder") {
+                    await runPackedCli("packed CLI PAR build", ["build", blueprint, "--target", "parWorkbook", "--out", workbook]); await requireOutput("packed CLI PAR build", workbook);
+                }
+            }
+            if (persona === "mathematician") {
+                if (observation === "par-xlsx-round-trip") {
+                    await runPackedCli("packed CLI PAR build", ["build", blueprint, "--target", "parWorkbook", "--out", workbook]); await requireOutput("packed CLI PAR build", workbook);
+                    await runPackedCli("packed CLI PAR import", ["par", "import", workbook, "--out", importedBlueprint]); await requireOutput("packed CLI PAR import", importedBlueprint);
+                }
+                if (observation === "reels-paytable-modes-mechanics") { await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]); }
+                if (observation === "import-export-defaults") { await runPackedCli("packed CLI PAR export", ["par", "export", blueprint, "--out", workbook]); await requireOutput("packed CLI PAR export", workbook); }
+            }
+        };
+        if (options.tuple) {
+            const setupStart = Date.now();
+            if (requiresRuntimeBootstrap) {
+                await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
+            }
+            if (requiresOutcomeBootstrap) {
+                await runPackedCli("packed CLI Outcome Library export", ["export", blueprint, "--to", "outcomes", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
+            }
+            await runTupleCliWorkflow();
+            timings.buildMs = Date.now() - setupStart;
+        } else if (!fullCliMatrix) {
             const setupStart = Date.now();
             if (!options.tuple || requiresRuntimeBootstrap) {
                 await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
@@ -531,7 +596,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // happens to contain an id as a job made those controls wait for a
             // request the page never performs.
             if (!contract.poll) {
-                const terminal = {status:started?.status ?? "success", result:started, resultSha256:digest(JSON.stringify(started)), jobId:undefined, source:"response"};
+                // Context/navigation endpoints expose their resource state
+                // (for example `loaded`), not an operation outcome.  The
+                // visible lifecycle result is the terminal outcome while the
+                // complete response remains bound verbatim below.
+                const terminalStatus = ["completed", "success", "ok", "valid", "partial"].includes(started?.status) ? started.status : "success";
+                const terminal = {status:terminalStatus, result:started, resultSha256:digest(JSON.stringify(started)), jobId:undefined, source:"response"};
                 transaction.terminal = {status:terminal.status, resultSha256:terminal.resultSha256, source:terminal.source};
                 return {...entry, terminal};
             }
@@ -876,6 +946,27 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // control received its keyboard activation.
         const navigateRenderedControl = async (route, expectedRoute, observation) => {
             if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
+            // On a narrow viewport Mantine retains the tab buttons in its
+            // collapsed drawer.  Their DOM presence is not a visible public
+            // control and clicking their off-canvas coordinates is not a user
+            // workflow.  Open the product's own Burger first, then obtain the
+            // tab from the visible drawer exactly as a phone user would.
+            const drawerOpened = await evaluate(`(() => {
+                const item = document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]');
+                if (!(item instanceof HTMLElement)) return false;
+                const box = item.getBoundingClientRect();
+                return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight;
+            })()`);
+            if (!drawerOpened) {
+                const burger = await waitFor(() => evaluate(`(() => {
+                    const item = [...document.querySelectorAll('button')].find((candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label') === 'Toggle navigation' && !candidate.disabled);
+                    if (!(item instanceof HTMLElement)) return false;
+                    item.focus();
+                    return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
+                })()`), `${observation} rendered narrow navigation drawer control`);
+                await activateFocusedControl("navigation-drawer", burger);
+                await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight; })()`), `${observation} rendered narrow navigation drawer`);
+            }
             const control = await waitFor(async () => {
                 const candidate = await focusLifecycleControl("navigation", route, "button,a");
                 return candidate?.keyboardFocused && candidate.enabled ? candidate : false;

@@ -83,7 +83,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
             for (const action of audit.rendered.actions as Array<{persona: string; viewport: string; observation: string; browserRequestId: string; contextRevalidation: {browserRequestId: string}; terminal: {source: string; browserRequestId?: string}}>) {
                 const identities = [
                     ["action", action.browserRequestId],
-                    ["context", action.contextRevalidation.browserRequestId],
+                    ...(action.contextRevalidation.browserRequestId === action.browserRequestId ? [] : [["context", action.contextRevalidation.browserRequestId] as const]),
                     ...(action.terminal.source === "rendered-poll" ? [["poll", action.terminal.browserRequestId] as const] : []),
                 ];
                 for (const [kind, requestId] of identities) {
@@ -178,6 +178,18 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(new Set(aggregate.children.map((child) => child.worker.nonce)).size).toBe(expectedTuples.length);
             expect(new Set(aggregate.children.flatMap((child) => child.checkpointReceiptSha256s)).size).toBe(aggregate.children.reduce((count, child) => count + child.checkpointReceiptSha256s.length, 0));
             expect(aggregate.children.every((child) => child.exitCode === 0 && child.signal === null && child.worker.pid !== aggregate.parent.pid && child.tupleReceiptPath && child.tupleReceiptSha256 && child.cleanupPath && child.cleanupSha256)).toBe(true);
+            const tupleCliReceipts: Record<string, string> = {
+                "programmer/npx-pokie": "PACKED_NPX_HELP",
+                "programmer/recursive-help": "packed CLI help --help",
+                "programmer/create-build-inspect": "packed CLI inspect",
+                "programmer/validate-sim-report-diff-replay-serve-wasm": "packed CLI serve",
+                "programmer/spaces-invalid-inputs-exit-codes-ci-recovery": "packed CLI invalid-input recovery",
+                "programmer/build-export-output-folder": "packed CLI PAR build",
+                "mathematician/par-xlsx-round-trip": "packed CLI PAR import",
+                "mathematician/reels-paytable-modes-mechanics": "packed CLI reels",
+                "mathematician/certification-conditional": "packed CLI Outcome Library export",
+                "mathematician/fairness-conditional": "packed CLI package build",
+            };
             const immutableArtifacts = new Set<string>();
             for (const [index, child] of (aggregate.children as Array<{tuple: {persona: string; observation: string; viewport: string}; auditSha256: string; tupleReceiptPath: string; tupleReceiptSha256: string; cleanupPath: string; cleanupSha256: string; checkpointReceiptSha256s: string[]; cleanupEvidenceId: string}>).entries()) {
                 const accepted = aggregate.acceptedReceipts[index] as {receipt: {auditId: string; tuple: unknown; cleanupEvidenceId: string; cleanupSha256: string; checkpointReceipt: {actionSha256: string}}; cleanup: {cleanupEvidenceId: string; cleanup: {exit: string; processTreeDrained: boolean; resourcesDrained: boolean; contextRemoved: boolean}}};
@@ -193,6 +205,13 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(accepted.receipt.cleanupSha256).toBe(child.cleanupSha256);
                 expect(accepted.cleanup.cleanupEvidenceId).toBe(child.cleanupEvidenceId);
                 expect(accepted.receipt.checkpointReceipt.actionSha256).toEqual(expect.any(String));
+                const cliReceipt = tupleCliReceipts[`${child.tuple.persona}/${child.tuple.observation}`];
+                if (cliReceipt) {
+                    const audit = JSON.parse(auditBytes.toString("utf8")) as {evidence: Array<{kind: string; path: string}>};
+                    const transcriptEvidence = audit.evidence.find((item) => item.kind === "cli-transcript");
+                    expect(transcriptEvidence).toBeDefined();
+                    expect(await readFile(path.join(output, transcriptEvidence!.path), "utf8")).toContain(cliReceipt);
+                }
                 for (const artifact of [child.auditSha256, child.tupleReceiptSha256, child.cleanupSha256, ...child.checkpointReceiptSha256s]) {
                     expect(immutableArtifacts.has(artifact)).toBe(false);
                     immutableArtifacts.add(artifact);
