@@ -102,7 +102,16 @@ async function connect(devtools) {
         "Log.entryAdded",
     ]);
     socket.on("message", (raw) => {
-        const value = JSON.parse(raw.toString());
+        // Do this inexpensive envelope check before JSON.parse.  Chromium
+        // continues to emit high-volume unneeded protocol notifications while
+        // Studio renders a long-running job; parsing every one starves the
+        // audit's timer and prevents the first real control from being
+        // reached.  Responses always have an id, and only this small set of
+        // event envelopes contributes evidence, so ignored frames cannot
+        // become a hidden workflow result.
+        const contents = raw.toString();
+        if (!contents.includes('"id"') && ![...retainedEvents].some((method) => contents.includes(`"method":"${method}"`))) return;
+        const value = JSON.parse(contents);
         if (value.id === undefined) {
             if (retainedEvents.has(value.method)) events.push(value);
             return;
