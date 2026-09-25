@@ -1337,10 +1337,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // rendered.  The collector observes that public transition
                 // instead of assuming that a document-ready shell has already
                 // enabled every navigation control.
-                await revealRenderedNavigationControl(screen, observation);
+                // Keep the exact visible control that the drawer exposed.
+                // Looking it up again below is a state-class substitution
+                // seam on narrow screens: Mantine may finish its drawer
+                // transition between the successful hit-test and the second
+                // lookup, leaving only an off-canvas DOM sibling.  The
+                // captured control remains the one real public control whose
+                // activation owns this navigation transaction.
+                const navigationControl = await revealRenderedNavigationControl(screen, observation);
                 const navigationCursor = cdp.events.length;
                 const beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
-                const navigationTransaction = await beginRenderedTransaction({lifecycle:"navigation", operation:screen, observation, stateClass:"navigation"});
+                const navigationTransaction = await beginRenderedTransaction({lifecycle:"navigation", operation:screen, observation, stateClass:"navigation", control:navigationControl});
                 const navigation = navigationTransaction.control;
                 // The navigation control's request is a product transition,
                 // not a route-marker convenience. Wait for its own fresh
