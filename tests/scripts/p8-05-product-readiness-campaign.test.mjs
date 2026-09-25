@@ -65,7 +65,7 @@ const transaction = (operation, controlId, accessibleName, confirmed = false) =>
     request: {browserRequestId: `runtime-${operation}`, method: "POST", path: `/api/project/${operation}`, status: 200, responseSha256: hash(`response-${operation}`)},
     terminal: {status: "completed", resultSha256: hash(`terminal-${operation}`), source: "rendered-poll", pollPath: `/api/project/${operation}/job`, browserRequestId: `terminal-${operation}`, causedByRequestId: `runtime-${operation}`},
 });
-const semantic = (persona, observation, contract, viewport) => {
+const liveDomTransaction = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${persona}-${observation}-${viewport}`,
         actionRequestId = `browser-${persona}-${observation}-${viewport}`,
@@ -127,7 +127,7 @@ const semantic = (persona, observation, contract, viewport) => {
             completedBeforeSelection: true,
         },
         contents: JSON.stringify({
-            kind: "p8-05-semantic-page-state",
+            kind: "p8-05-live-dom-transaction",
             operation: observation,
             expectedOutcome: contract.terminal,
             route,
@@ -250,14 +250,14 @@ async function campaignFixture() {
         const observations = P805_REQUIRED_OBSERVATIONS[persona],
             artifacts = [];
         for (const [index, kind] of P805_REQUIRED_EVIDENCE_KINDS.filter(
-            (kind) => !["page-state", "screenshot"].includes(kind),
+            (kind) => !["live-dom-transaction", "page-state", "screenshot"].includes(kind),
         ).entries())
             artifacts.push(await evidence(candidate, kind, stamp(offset + 2 + index), observations));
         const actions = [],
             apiEntries = [{path: "/api/health"}], browserEvents = [];
         for (const [index, observation] of observations.entries()) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation],
-                source = semantic(persona, observation, contract, "wide");
+                source = liveDomTransaction(persona, observation, contract, "wide");
             apiEntries.push({
                 observation,
                 method: "GET",
@@ -302,9 +302,9 @@ async function campaignFixture() {
                 // A responsive record must contain the actual state captured
                 // at that viewport.  Reusing a wide JSON/screenshot under a
                 // compact action is precisely the drift the campaign rejects.
-                const viewportSource = semantic(persona, observation, contract, actionViewport),
+                const viewportSource = liveDomTransaction(persona, observation, contract, actionViewport),
                     screenshot = await evidence(candidate, "screenshot", stamp(offset + 20 + index), [observation]),
-                    page = await evidence(candidate, "page-state", stamp(offset + 21 + index), [observation], viewportSource.contents);
+                    page = await evidence(candidate, "live-dom-transaction", stamp(offset + 21 + index), [observation], viewportSource.contents);
                 if (actionViewport !== "wide") {
                     apiEntries.push(
                         {observation, method: "GET", path: "/api/project/context", status: 200, payload: {status: "loaded"}, browserRequestId: viewportSource.contextRevalidation.browserRequestId, responseSha256: viewportSource.contextRevalidation.responseSha256, initiator: "rendered-navigation-context"},
@@ -719,7 +719,7 @@ async function campaignFixture() {
         },
     };
 }
-test("requires every evidence kind, verifier anchors, semantic bindings, final-candidate regression and persona retest", async () => {
+test("requires every evidence kind, verifier anchors, live-DOM bindings, final-candidate regression and persona retest", async () => {
     const fixture = await campaignFixture();
     try {
         assert.equal(
@@ -820,7 +820,7 @@ test("rejects relabelled rendered workflow evidence and unmeasured timings", asy
     }
 });
 
-test("rejects a compact workflow action that reuses a wide rendered DOM state", async () => {
+test("rejects a compact workflow action that reuses a wide live-DOM transaction", async () => {
     const fixture = await campaignFixture();
     try {
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions.find((item) => item.viewport === "compact"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
@@ -830,7 +830,21 @@ test("rejects a compact workflow action that reuses a wide rendered DOM state", 
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses wide semantic state for compact/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses wide live-DOM transaction for compact/i);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects the legacy semantic page-state format as a tuple interaction substitute", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits[0], action = audit.rendered.actions[0], evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), transaction = JSON.parse(await readFile(target, "utf8"));
+        transaction.kind = "p8-05-semantic-page-state";
+        const contents = JSON.stringify(transaction);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction/i);
     } finally { await fixture.cleanup(); }
 });
 
