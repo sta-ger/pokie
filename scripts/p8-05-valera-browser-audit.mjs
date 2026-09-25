@@ -1967,7 +1967,13 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             // it but cannot replace, mutate, or merely relabel it between its
             // own startup validation and the parent's ledger advancement.
             await services.validateSharedRuntime({root:runtime.root, receipt:runtime.receipt}, options, services);
-            if (published.audit.packageIdentity?.sharedRuntimeReceiptSha256 !== runtime.receipt.sha256 || published.audit.packageIdentity?.sharedRuntimeRoot !== runtime.root) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child substituted the parent immutable runtime identity (receipt ${published.audit.packageIdentity?.sharedRuntimeReceiptSha256 ?? "missing"}/${runtime.receipt.sha256}, root ${published.audit.packageIdentity?.sharedRuntimeRoot ?? "missing"}/${runtime.root})`);
+            const expectedRuntimeCli = path.join(runtime.root, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie"), reportedRuntimeReceipt = published.audit.packageIdentity?.sharedRuntimeReceiptSha256, reportedRuntimeRoot = published.audit.packageIdentity?.sharedRuntimeRoot;
+            // The child may not merely repeat a parent-owned receipt pointer:
+            // its recorded public launcher must resolve inside the one runtime
+            // the parent authenticated both before and after the child run.
+            // Keep the optional echo fields as corroboration for older audit
+            // projections whose JSON serializer omits undefined fields.
+            if (published.audit.packageIdentity?.installedCli !== expectedRuntimeCli || reportedRuntimeReceipt !== undefined && reportedRuntimeReceipt !== runtime.receipt.sha256 || reportedRuntimeRoot !== undefined && reportedRuntimeRoot !== runtime.root) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child substituted the parent immutable runtime identity (launcher ${published.audit.packageIdentity?.installedCli ?? "missing"}/${expectedRuntimeCli}, receipt ${reportedRuntimeReceipt ?? "missing"}/${runtime.receipt.sha256}, root ${reportedRuntimeRoot ?? "missing"}/${runtime.root})`);
             const checkpoint = published.audit.checkpointReceipts.find((value) => value.receiptId === tupleReceipt.receipt.checkpointReceipt.receiptId);
             validatePackedTupleAction(tupleReceipt.receipt.action, tuple);
             validatePackedTupleAction(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport), tuple);
