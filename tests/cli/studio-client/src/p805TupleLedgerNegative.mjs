@@ -15,11 +15,30 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 let spawned = 0;
 const cleanupKinds = [];
 const receiptFor = (tuple, pid) => {
-    const action = {persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport};
+    const result = {status:"completed", observation:tuple.observation};
+    const action = {
+        persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport,
+        route:"/#/project/fixture/overview", stableControlId:"project-tab:overview", browserRequestId:`browser-${pid}`,
+        expectedMethod:"GET", expectedBodyKind:null, expectedApi:"/api/project/context", expectedArtifact:null, expectedTerminal:"project-context",
+        interaction:{keyboardFocused:true, keyboardActivated:true, activation:"keyboard", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}},
+        transaction:{stateClass:"navigation", control:{stableControlId:"project-tab:overview"}, keyboardActivations:[{kind:"keyboard", controlId:"project-tab:overview", count:1}], request:{browserRequestId:`browser-${pid}`, method:"GET", path:"/api/project/context"}},
+        terminal:{status:"completed", resultSha256:sha(JSON.stringify(result))},
+        visibleTerminal:{observedAfterRequestId:`browser-${pid}`, resultSha256:sha(JSON.stringify(result)), lifecycle:{controlId:"project-tab:overview", stateClass:"navigation"}},
+    };
     const checkpoint = {receiptId:`checkpoint-${pid}`, candidateId:candidate, candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, workerPid:pid, actionSha256:sha(JSON.stringify(action)), sha256:sha(`checkpoint-${pid}`)};
     const cleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:"initial", candidateId:candidate, candidatePackageSha256, tuple, worker:{pid}, cleanup:{exit:"success", processTreeDrained:true, resourcesDrained:true, contextRemoved:true}, cleanupEvidenceId:`cleanup-${pid}`};
     const receipt = {schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", phase:"initial", candidateId:candidate, candidatePackageSha256, tuple, worker:{pid}, auditId:`audit-${pid}`, checkpointReceipt:checkpoint, action, cleanupEvidenceId:cleanup.cleanupEvidenceId, cleanupSha256:sha(`cleanup-${pid}`)};
     return {action, checkpoint, cleanup, receipt};
+};
+const stateSubstitutedReceiptFor = (tuple, pid) => {
+    const value = receiptFor(tuple, pid), {action} = value;
+    action.interaction.transactionState = "read-only-operation";
+    action.transaction.stateClass = "read-only-operation";
+    action.visibleTerminal.lifecycle.stateClass = "read-only-operation";
+    value.checkpoint.actionSha256 = sha(JSON.stringify(action));
+    value.receipt.checkpointReceipt = value.checkpoint;
+    value.receipt.action = action;
+    return value;
 };
 try {
     let failure;
@@ -45,7 +64,29 @@ try {
     if (!failed || (await readdir(output)).includes("initial-process-isolated-packed-proof.json")) throw new Error("parent published an aggregate after a tuple failure");
     const ledger = JSON.parse(await readFile(path.join(output, failed), "utf8"));
     if (ledger.acceptedReceipts.length !== 1 || ledger.failedTuple.viewport !== "compact" || ledger.attemptedChild.failureKind !== "timeout" || !ledger.attemptedChild.cleanup.processTreeDrained || !ledger.attemptedChild.cleanup.resourcesDrained) throw new Error("failure ledger did not preserve the accepted receipt and timeout cleanup");
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds})}\n`);
+    const stateClassOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-state-class-negative-"));
+    try {
+        let stateClassFailure;
+        try {
+            await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(stateClassOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(stateClassOutput, "candidate.tgz"), output:stateClassOutput}, {
+                tuples:[tuples[0]],
+                exists:() => false,
+                spawn:() => Object.assign(new EventEmitter(), {pid:9200, exitCode:null, signalCode:null}),
+                childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
+                    const value = stateSubstitutedReceiptFor(expected.tuple, pid);
+                    return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
+                },
+                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
+                    const value = stateSubstitutedReceiptFor(tuple, pid);
+                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                },
+            });
+        } catch (error) { stateClassFailure = error; }
+        if (!/substitutes a state-class or rendered transaction boundary/.test(String(stateClassFailure)) || (await readdir(stateClassOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a state-class-substituted tuple receipt: ${stateClassFailure}`);
+    } finally { await rm(stateClassOutput, {recursive:true, force:true}); }
+    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, stateClassSubstitutionRejected:true})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }
