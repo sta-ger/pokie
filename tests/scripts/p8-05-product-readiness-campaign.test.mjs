@@ -176,7 +176,7 @@ const semantic = (persona, observation, contract, viewport) => {
                     terminal: "completed",
                     text: `The rendered ${observation} lifecycle result completed.`,
                     controlId: contract.actionControlId ?? screen.navigationControlId,
-                    ...(contract.actionControlId === "artifact-build-parWorkbook" ? {jobId, target: artifactResult.target, outputPath: artifactResult.outputPath} : {}),
+                    ...(contract.poll ? {jobId} : {}),
                     artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,
                         ...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: artifactResult.target, outputPath: artifactResult.outputPath} : {})},
                 },
@@ -334,7 +334,7 @@ async function campaignFixture() {
                 browserRequestId: `browser-${persona}-${observation}-${actionViewport}`,
                 contextRevalidation: viewportSource.contextRevalidation,
                 precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: viewportSource.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {controlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId, ...(contract.actionControlId === "artifact-build-parWorkbook" ? {jobId: viewportSource.result.id, target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {}), artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {})}}},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {controlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId, ...(contract.poll ? {jobId: viewportSource.result.id} : {}), artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {})}}},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: viewportSource.interaction,
                 transaction: viewportSource.transaction,
@@ -890,10 +890,10 @@ test("rejects semantic drift when a rewritten record no longer binds its rendere
     } finally { await fixture.cleanup(); }
 });
 
-test("rejects a PAR terminal whose rendered artifact belongs to a different durable job", async () => {
+test("rejects a non-PAR durable terminal whose rendered result belongs to a different job", async () => {
     const fixture = await campaignFixture();
     try {
-        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "par-xlsx-round-trip"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "outcome-library-report-diff-replay"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
         semantic.renderedTerminal.lifecycle.jobId = "job-from-a-different-tuple";
         const contents = JSON.stringify(semantic);
         await writeFile(target, contents);

@@ -13,6 +13,7 @@ import type {
 // unit-testable without a real DOM/jsdom.
 
 export type ReplayProgressView = {
+    jobId: string;
     status: StudioReplayJobView["status"];
     completedRounds: number;
     round: number;
@@ -27,6 +28,7 @@ export type ReplayProgressView = {
 export function describeReplayProgress(job: StudioReplayJobView): ReplayProgressView {
     const percent = job.round > 0 ? Math.min(100, Math.round((job.completedRounds / job.round) * 100)) : 0;
     return {
+        jobId: job.id,
         status: job.status,
         completedRounds: job.completedRounds,
         round: job.round,

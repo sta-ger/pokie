@@ -123,7 +123,7 @@ type OutcomeLibraryGenerationOptions = {
 type OutcomeLibraryRunView =
     | {status: "idle"}
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView}
-    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
+    | {status: "ok"; jobId: string; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
     | {status: "error"; jobId?: string; recovery?: StudioJobView["recovery"]; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
@@ -473,7 +473,7 @@ function TargetCard({
                         </>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-terminal="completed">
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-result-control="outcome-library-generate" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -993,7 +993,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     return;
                 }
                 if (newest.status === "completed" && newest.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: newest.result, ...(newest.durationMs === undefined ? {} : {durationMs: newest.durationMs})});
+                    setOutcomeLibraryRun({status: "ok", jobId: newest.id, result: newest.result, ...(newest.durationMs === undefined ? {} : {durationMs: newest.durationMs})});
                     return;
                 }
                 if (newest.status === "cancelled" && newest.result?.status === "cancelled") {
@@ -1288,7 +1288,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 }
                 outcomeLibraryGuard.end();
                 if (job.status === "completed" && job.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
+                    setOutcomeLibraryRun({status: "ok", jobId: job.id, result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
                     deployment.refreshProjectModes();
                     // The generated bundle is now canonical project state.
                     // Re-preflight every registry-backed artifact card so the

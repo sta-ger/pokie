@@ -35,6 +35,7 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
             aria-live="polite"
             tabIndex={-1}
             data-pokie-lifecycle-result="project-validation"
+            data-pokie-lifecycle-result-control="project-validation-run"
             data-pokie-lifecycle-terminal={terminal}
         >
             {(view.status === "idle" || view.status === "loading") && <LoadingState label="Checking project…" />}
