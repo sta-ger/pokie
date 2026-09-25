@@ -534,24 +534,28 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     label="Validate"
                     description="Preflight"
                     disabled={!validateReachable}
+                    title={validateReachable ? undefined : "Configure a valid source bundle before validation."}
                     aria-current={activeStep === 1 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Build bundle"
                     description="Sample & publish"
                     disabled={!buildReachable}
+                    title={buildReachable ? undefined : "Validate the source bundle before building certification evidence."}
                     aria-current={activeStep === 2 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Inspect"
                     description="Manifest & artifacts"
                     disabled={!inspectReachable}
+                    title={inspectReachable ? undefined : "Build a certification bundle before inspecting its manifest and artifacts."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Export"
                     description="Download manifest"
                     disabled={!inspectReachable}
+                    title={inspectReachable ? undefined : "Build a certification bundle before exporting its manifest."}
                     aria-current={activeStep === 4 ? "step" : undefined}
                 />
             </Stepper>

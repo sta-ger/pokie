@@ -543,9 +543,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // React click default; treating that focus as an activation produced
         // a route-only claim. Capture the focused visible control and click
         // its actual rendered hit target instead.
-        const activateFocusedControl = async (lifecycle = "operation", control) => {
+        const activateFocusedControl = async (lifecycle = "operation", control, transport = "pointer") => {
             const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
             if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before pointer activation`);
+            if (transport === "keyboard") {
+                // Replay replaces its review action with durable progress in
+                // the same React update that submits it.  On a narrow screen
+                // a CDP pointer release can be retargeted during that update,
+                // leaving a recorded click without the public submission.
+                // Enter is the focused button's native, keyboard-operable
+                // public activation and retains the exact rendered identity.
+                await pressEnter();
+                return {kind:"keyboard", controlId:stableControlId, count:1};
+            }
             // A compact NavLink can remain in the DOM after its drawer has
             // moved off canvas.  It is not an interactable public control
             // until its current rendered hit target is inside the viewport.
@@ -826,9 +836,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 ...(formState === undefined ? {} : {formState}),
                 confirmation: {required:confirmation, state:confirmation ? "opening" : "not-required", control:null},
                 pointerActivations:[],
+                keyboardActivations:[],
             };
             transaction.browserEventCursor = cdp.events.length;
-            transaction.pointerActivations.push({phase:"operation", ...(await activateFocusedControl(lifecycle, control))});
+            const activation = await activateFocusedControl(lifecycle, control, operation === "replay" ? "keyboard" : "pointer");
+            transaction[activation.kind === "keyboard" ? "keyboardActivations" : "pointerActivations"].push({phase:"operation", ...activation});
             if (confirmation) {
                 const confirmationControl = await waitFor(() => evaluate(`(() => {
                     const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
@@ -924,7 +936,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const lifecycle = ${JSON.stringify(lifecycle)}, value = ${JSON.stringify(value)};
             const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
             const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
-            const item = [...document.querySelectorAll(${JSON.stringify(selector)})].find((control) => visible(control) && control.getAttribute('data-pokie-lifecycle') === lifecycle && (lifecycle === 'navigation' ? control.getAttribute('data-pokie-lifecycle-route') === value : control.getAttribute('data-pokie-lifecycle-operation') === value));
+            // A collapsed Mantine navbar leaves its tab controls measurable
+            // while moving them beyond the viewport.  A layout-visible check alone would
+            // then capture that stale sibling even after the real narrow
+            // drawer was opened.  Resolve navigation from the same live
+            // hit-target boundary used for pointer activation, so the receipt
+            // always names the public control a person can actually press.
+            const hitTarget = (item) => {
+                const box = item.getBoundingClientRect();
+                if (box.width <= 0 || box.height <= 0 || box.left < 0 || box.right > window.innerWidth || box.top < 0 || box.bottom > window.innerHeight) return false;
+                const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+                return hit === item || item.contains(hit);
+            };
+            const item = [...document.querySelectorAll(${JSON.stringify(selector)})].find((control) => visible(control) && control.getAttribute('data-pokie-lifecycle') === lifecycle && (lifecycle === 'navigation' ? control.getAttribute('data-pokie-lifecycle-route') === value && hitTarget(control) : control.getAttribute('data-pokie-lifecycle-operation') === value));
             if (!(item instanceof HTMLElement)) return null;
             const disabled = 'disabled' in item && Boolean(item.disabled);
             const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
@@ -1311,8 +1335,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 entry = await browserRequest(contract, observation, cursor, transaction);
             } else entry = await browserRequest(contract, observation, entered.navigationCursor, transaction);
             process.stderr.write(`P805_SCREEN_STATE observation=${observation} screen=${screen} phase=terminal\n`);
-            interaction.pointerActivated = true;
-            interaction.activation = "pointer";
+            interaction.pointerActivated = transaction.pointerActivations.length === 1;
+            interaction.keyboardActivated = transaction.keyboardActivations.length === 1;
+            interaction.activation = transaction.keyboardActivations.length === 1 ? "keyboard" : "pointer";
             interaction.routeAfterActivation = await evaluate("location.hash");
             const terminalText = await waitFor(async () => {
                 return evaluate(`(() => {
@@ -1504,8 +1529,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`);
             if (!focus.visibleFocus || focus.namedRegions.length === 0) fail(`${observation} tuple did not retain a visible focused rendered control`);
             const action = {persona, observation, route:`${projectBaseRoute}/${contract.route}`, viewport, elapsedMs:Math.max(1, Date.now() - creation, page.elapsedMs ?? 0), pageTextLength:page.state.text.length, controlCount:page.state.controls.length, overflow:page.state.overflow, screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:{...page.state.accessibility, namedRegions:focus.namedRegions, visibleFocus:focus.visibleFocus}, expectedControl:contract.control, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedApi:contract.api, expectedArtifact:contract.artifact ?? null, expectedTerminal:contract.terminal, terminal:page.terminal, interaction:page.interaction, transaction:page.transaction, evidenceId:page.evidenceId, screenshotEvidenceId:page.screenshotEvidenceId};
-            action.interaction.pointerActivated = true;
-            action.interaction.activation = "pointer";
+            action.interaction.pointerActivated = page.transaction.pointerActivations.length === 1;
+            action.interaction.keyboardActivated = page.transaction.keyboardActivations.length === 1;
+            action.interaction.activation = page.transaction.keyboardActivations.length === 1 ? "keyboard" : "pointer";
             await saveCheckpoint(action);
             const observations = [observation], bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, renderedBootstrap}), observations), scopedBootstrap = bootstrap.map((entry) => ({...entry, evidenceId:bootstrapEvidenceId})), workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple:options.tuple, bootstrap:scopedBootstrap, recoveryRequired:false};
             workflowScope.scopeEvidenceId = await save("provenance", "workflow-scope.json", JSON.stringify(workflowScope), observations);
