@@ -13,7 +13,8 @@ import type {
 // unit-testable without a real DOM/jsdom.
 
 export type ReplayProgressView = {
-    jobId: string;
+    /** Undefined only during the local queued state before Studio receives a durable job id. */
+    jobId?: string;
     status: StudioReplayJobView["status"];
     completedRounds: number;
     round: number;

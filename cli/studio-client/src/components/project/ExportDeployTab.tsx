@@ -473,7 +473,7 @@ function TargetCard({
                         </>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-result-control="outcome-library-generate" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-terminal="completed">
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-result-control="outcome-library-generate" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -661,6 +661,7 @@ function TargetCard({
                             tabIndex={-1}
                             data-pokie-lifecycle-result="artifact-build"
                             data-pokie-lifecycle-result-control={`artifact-build-${card.artifactTarget}`}
+                            data-pokie-lifecycle-result-state="editable-submission"
                             // These values are rendered from the terminal job
                             // record that this card polled. They keep a visible
                             // PAR result tied to its own activation, rather

@@ -5,7 +5,8 @@ import type {SimulationReport, SimulationReportBreakdownComponent, StudioSimulat
 // (being pure) these are unit-testable without a real DOM/jsdom.
 
 export type SimulationProgressView = {
-    jobId: string;
+    /** Undefined only during the local queued state before Studio receives a durable job id. */
+    jobId?: string;
     status: StudioSimulationJobView["status"];
     roundsCompleted: number;
     rounds: number;

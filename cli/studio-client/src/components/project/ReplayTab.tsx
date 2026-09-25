@@ -1069,6 +1069,7 @@ export function ReplayTab({
                                         tabIndex={-1}
                                         data-pokie-lifecycle-result="replay"
                                         data-pokie-lifecycle-result-control="replay-run"
+                                        data-pokie-lifecycle-result-state="editable-submission"
                                         data-pokie-lifecycle-result-job={progress.jobId}
                                         data-pokie-lifecycle-terminal={progress.status}
                                     >

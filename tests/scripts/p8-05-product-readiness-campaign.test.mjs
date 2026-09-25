@@ -80,7 +80,10 @@ const semantic = (persona, observation, contract, viewport) => {
         screen = P805_SCREEN_CONTROL_STATES[contract.route],
         actionControl = contract.actionControl ?? contract.control,
         matchedLabel = contract.actionControlMatch === "prefix" ? `${contract.actionControl} (base)` : actionControl,
-        transactionState = p805TransactionStateClass(contract),
+        declaredTransactionState = contract.operation === undefined && contract.body === undefined
+            ? "navigation"
+            : contract.method === "GET" ? "read-only-operation" : "editable-submission",
+        transactionState = p805TransactionStateClass(declaredTransactionState),
         interaction = {
             control: actionControl,
             matchedLabel,
@@ -176,6 +179,7 @@ const semantic = (persona, observation, contract, viewport) => {
                     terminal: "completed",
                     text: `The rendered ${observation} lifecycle result completed.`,
                     controlId: contract.actionControlId ?? screen.navigationControlId,
+                    stateClass: transactionState,
                     ...(contract.poll ? {jobId} : {}),
                     artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,
                         ...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: artifactResult.target, outputPath: artifactResult.outputPath} : {})},
@@ -200,6 +204,14 @@ const semantic = (persona, observation, contract, viewport) => {
         }),
     };
 };
+
+test("transaction state classes are accepted only from rendered control or result receipts", () => {
+    assert.equal(p805TransactionStateClass("navigation"), "navigation");
+    assert.equal(p805TransactionStateClass({transactionState: "read-only-operation"}), "read-only-operation");
+    assert.equal(p805TransactionStateClass({stateClass: "editable-submission"}), "editable-submission");
+    assert.equal(p805TransactionStateClass({method: "GET", body: "audit-only-inference"}), undefined);
+    assert.equal(p805TransactionStateClass("unsupported"), undefined);
+});
 
 async function campaignFixture() {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
@@ -334,7 +346,7 @@ async function campaignFixture() {
                 browserRequestId: `browser-${persona}-${observation}-${actionViewport}`,
                 contextRevalidation: viewportSource.contextRevalidation,
                 precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: viewportSource.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {controlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId, ...(contract.poll ? {jobId: viewportSource.result.id} : {}), artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {})}}},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {controlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId, stateClass: viewportSource.transaction.stateClass, ...(contract.poll ? {jobId: viewportSource.result.id} : {}), artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {})}}},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: viewportSource.interaction,
                 transaction: viewportSource.transaction,

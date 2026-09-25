@@ -324,7 +324,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                     )}
                     {configureView.status === "invalid" && <ErrorState message={configureView.message} />}
                     {configureView.status === "ok" && (
-                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="fairness" data-pokie-lifecycle-result-control="fairness-compute-commitments" data-pokie-lifecycle-terminal="completed">
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="fairness" data-pokie-lifecycle-result-control="fairness-compute-commitments" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" c="dimmed" mb="sm">
                                 {describeFairnessCommitmentPublishOrder()}
                             </Text>

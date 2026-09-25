@@ -213,6 +213,7 @@ export function SimulationTab({
                     tabIndex={-1}
                     data-pokie-lifecycle-result="simulation"
                     data-pokie-lifecycle-result-control="simulation-run"
+                    data-pokie-lifecycle-result-state="editable-submission"
                     data-pokie-lifecycle-result-job={progress.jobId}
                     data-pokie-lifecycle-terminal={progress.status}
                     size="sm"
@@ -444,7 +445,7 @@ export function SimulationTab({
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (
                     <>
-                        <div tabIndex={-1} data-pokie-lifecycle-result="simulation-reports" data-pokie-lifecycle-result-control="simulation-refresh-reports" data-pokie-lifecycle-terminal="completed">
+                        <div tabIndex={-1} data-pokie-lifecycle-result="simulation-reports" data-pokie-lifecycle-result-control="simulation-refresh-reports" data-pokie-lifecycle-result-state="read-only-operation" data-pokie-lifecycle-terminal="completed">
                             <Text role="status" aria-live="polite" size="xs" c="dimmed">
                                 Loaded {recentRunEntries.length} simulation report{recentRunEntries.length === 1 ? "" : "s"}.
                             </Text>

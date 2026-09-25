@@ -1258,6 +1258,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         data-pokie-lifecycle-result="navigation"
                         data-pokie-lifecycle-route={activeTab}
                         data-pokie-lifecycle-result-control={`project-tab:${activeTab}`}
+                        data-pokie-lifecycle-result-state="navigation"
                         data-pokie-lifecycle-terminal={navigationLifecycle.tab === activeTab ? navigationLifecycle.status : "loading"}
                         size="xs"
                         c="dimmed"
