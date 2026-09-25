@@ -448,7 +448,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     <ErrorState message={describePathActionError("The certification bundle directory", validateView.error)} />
                 )}
                 {validateOutcome !== undefined && (
-                    <div role="status" aria-live="polite" data-pokie-lifecycle-result="certification" data-pokie-lifecycle-terminal={validateOutcome}>
+                    <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="certification" data-pokie-lifecycle-terminal={validateOutcome}>
                         <OutcomeBanner
                             color={OUTCOME_BANNER[validateOutcome].color}
                             icon={OUTCOME_BANNER[validateOutcome].icon}

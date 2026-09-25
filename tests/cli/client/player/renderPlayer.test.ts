@@ -202,6 +202,7 @@ describe("renderBetInfo / renderModeInfo", () => {
         const buttons = Array.from(el.querySelectorAll("button"));
         expect(buttons.map((b) => b.textContent)).toEqual(["10", "20"]);
         expect(buttons[0].disabled).toBe(true);
+        expect(buttons[0].title).toBe("Current bet selection");
         expect(buttons[1].disabled).toBe(false);
 
         buttons[1].dispatchEvent(new MouseEvent("click", {bubbles: true}));

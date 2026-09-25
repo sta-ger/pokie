@@ -33,6 +33,7 @@ function ValidationDiagnostics({view, onRevalidate}: {view: ProjectValidationVie
         <div
             role="status"
             aria-live="polite"
+            tabIndex={-1}
             data-pokie-lifecycle-result="project-validation"
             data-pokie-lifecycle-terminal={terminal}
         >

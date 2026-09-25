@@ -79,6 +79,7 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         await user.type(screen.getByLabelText(/Target round number in a new replay session/i), String(job.round));
         await user.type(screen.getByLabelText(/^Seed \(optional\)$/i), job.seed ?? "");
         const load = screen.getByRole("button", {name: "Load"});
+        expect(load).toHaveAttribute("type", "button");
         expect(load).toHaveAttribute("data-pokie-lifecycle", "precondition");
         expect(load).toHaveAttribute("data-pokie-lifecycle-operation", "replay-target");
         await user.click(load);
@@ -95,6 +96,7 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         expect(await screen.findByText("line")).toBeInTheDocument();
         const lifecycleResult = container.querySelector('[data-pokie-lifecycle-result="replay"]');
         expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
+        expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-result-control", "replay-run");
         const replayArtifact = lifecycleResult?.querySelector('[data-pokie-lifecycle-artifact="replay-descriptor"]');
         expect(replayArtifact).toHaveAccessibleName("Download replay JSON");
         expect(replayArtifact).toHaveAttribute("href", expect.stringContaining(`/api/project/replays/${job.id}/download`));

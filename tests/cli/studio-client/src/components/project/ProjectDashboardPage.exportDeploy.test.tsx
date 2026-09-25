@@ -1664,7 +1664,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             await screen.findByRole("heading", {name: "PAR spreadsheet"});
             await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-            const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+            const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
             await user.click(await within(buildArtifactSection).findByRole("button", {name: "Build"}));
 
             const openAsProject = await within(buildArtifactSection).findByRole("button", {name: "Open as Project"});
@@ -1672,7 +1672,13 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             // The completed PAR result belongs to this exact rendered Build
             // control. A sibling artifact card's completed status cannot
             // satisfy the workbook's lifecycle receipt.
-            expect(openAsProject.closest("[data-pokie-lifecycle-result]")).toHaveAttribute("data-pokie-lifecycle-result-control", "artifact-build-parWorkbook");
+            const terminalResult = openAsProject.closest("[data-pokie-lifecycle-result]");
+            expect(terminalResult).toHaveAttribute("data-pokie-lifecycle-result-control", "artifact-build-parWorkbook");
+            expect(terminalResult).toHaveAttribute("data-pokie-lifecycle-result-job", "job-par");
+            expect(terminalResult).toHaveAttribute("data-pokie-lifecycle-result-target", "parWorkbook");
+            expect(terminalResult).toHaveAttribute("data-pokie-lifecycle-result-output", "/games/republished-sheet.xlsx");
+            expect(openAsProject).toHaveAttribute("data-pokie-lifecycle-artifact-target", "parWorkbook");
+            expect(openAsProject).toHaveAttribute("data-pokie-lifecycle-artifact-output", "/games/republished-sheet.xlsx");
             expect(within(buildArtifactSection).getByRole("button", {name: "Add to Projects"})).toBeEnabled();
             expect(within(buildArtifactSection).getByRole("button", {name: "Reveal file"})).toBeEnabled();
 

@@ -1254,6 +1254,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     <Text
                         role="status"
                         aria-live="polite"
+                        tabIndex={-1}
                         data-pokie-lifecycle-result="navigation"
                         data-pokie-lifecycle-route={activeTab}
                         data-pokie-lifecycle-terminal={navigationLifecycle.tab === activeTab ? navigationLifecycle.status : "loading"}

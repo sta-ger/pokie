@@ -71,7 +71,7 @@ export function validateP805RenderedPersonaAudit(audit) {
     if (!Array.isArray(rendered.responsive) || !requiredViewports.every((viewport) => rendered.responsive.some((measurement) => measurement?.viewport === viewport && measurement?.overflow === false && measurement?.visibleFocus === true && measurement?.screenshotEvidenceId))) fail(`rendered ${audit.persona} audit lacks measured required responsive states`);
     if (audit.tuple && (rendered.actions.length !== 1 || auditTuples(audit).length !== 1)) fail(`rendered ${audit.persona} tuple audit contains more than its one assigned workflow`);
     if (audit.tuple && (audit.workflowScope?.kind !== "p8-05-single-tuple-workflow-scope" || JSON.stringify(audit.workflowScope.tuple) !== JSON.stringify(audit.tuple) || audit.workflowScope?.scopeEvidenceId === undefined || !Array.isArray(audit.workflowScope?.bootstrap) || JSON.stringify(audit.workflowScope.bootstrap.map(({evidenceId, ...entry}) => entry)) !== JSON.stringify(tupleBootstrapContract(audit.tuple)) || audit.workflowScope.bootstrap.some((entry) => typeof entry?.evidenceId !== "string" || !entry.evidenceId) || (audit.workflowScope?.recoveryRequired === true && audit.tuple.persona !== "ui-ux") || (audit.workflowScope?.recoveryRequired === false && (Object.keys(rendered.recovery ?? {}).length > 0 || Object.keys(rendered.jobs ?? {}).length > 0)))) fail(`rendered ${audit.persona} tuple audit has unscoped bootstrap, recovery, or cross-tuple workflow work`);
-    for (const {persona, observation, viewport} of tuples) { const contract = P805_WORKFLOW_CONTRACTS[persona][observation], action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === persona && value?.observation === observation && value?.viewport === viewport), state = contract && P805_SCREEN_CONTROL_STATES[contract.route], operation = contract?.operation ?? contract?.body, expectedLifecycle = operation ? {kind:"operation", value:operation} : {kind:"navigation", value:contract?.route}, stateClass = p805TransactionStateClass(contract), terminalControlIsBound = contract?.actionControlId !== "artifact-build-parWorkbook" || action?.visibleTerminal?.lifecycle?.controlId === action?.stableControlId; if (!contract || !state || !action || typeof action.route !== "string" || !action.route.endsWith(`/project/${contract.route}`) && !action.route.endsWith(`/${contract.route}`) || action.screenState !== contract.route || action.screenNavigationControl !== state.navigationControl || typeof action.stableControlId !== "string" || !action.stableControlId || action.domControlId !== action.stableControlId || action.identityAttribute !== "id" || action.interaction?.stableControlId !== action.stableControlId || action.interaction?.identityAttribute !== "id" || action.interaction?.transactionState !== stateClass || action.interaction?.lifecycle?.kind !== expectedLifecycle.kind || action.interaction?.lifecycle?.value !== expectedLifecycle.value || action.precondition?.enabled !== true || action.precondition?.disabled !== false || action.precondition?.disabledExplanation !== null || action.precondition?.accessibleName !== action.interaction?.matchedLabel || !action.transaction || action.transaction?.stateClass !== stateClass || action.transaction.control?.stableControlId !== action.stableControlId || action.transaction.control?.accessibleName !== action.interaction?.matchedLabel || action.transaction.control?.enabled !== true || action.transaction.control?.disabled !== false || action.transaction.control?.disabledExplanation !== null || action.transaction.confirmation?.required !== false || action.transaction.confirmation?.state !== "not-required" || !hasRenderedActivation(action, action.stableControlId) || typeof action.browserRequestId !== "string" || !action.browserRequestId || action.visibleTerminal?.state !== "rendered" || action.visibleTerminal?.changedAfterRequest !== true || action.visibleTerminal?.observedAfterRequestId !== action.browserRequestId || action.visibleTerminal?.resultSha256 !== action.terminal?.resultSha256 || (contract.artifact !== undefined && action.visibleTerminal?.lifecycle?.artifact?.name !== contract.artifact) || !terminalControlIsBound || action.expectedControl !== contract.control || (action.expectedMethod !== undefined && (action.expectedMethod !== contract.method || action.expectedBodyKind !== (contract.body ?? null))) || action.expectedApi !== contract.api || action.expectedArtifact !== (contract.artifact ?? null) || action.expectedTerminal !== contract.terminal || !action.terminal || !["completed", "success", "ok", "valid", "partial"].includes(action.terminal.status) || !/^[a-f0-9]{64}$/i.test(action.terminal.resultSha256 ?? "") || !action.evidenceId || !action.screenshotEvidenceId || !Number.isSafeInteger(action.elapsedMs) || action.elapsedMs <= 0 || action.overflow !== false || !action.interaction || !Array.isArray(action.accessibility?.namedRegions) || action.accessibility.namedRegions.length === 0 || action.accessibility.visibleFocus !== true || action.accessibility.unexplainedDisabledControls !== 0) fail(`rendered ${persona} audit lacks a DOM-bound tuple action for ${observation}/${viewport}`); }
+    for (const {persona, observation, viewport} of tuples) { const contract = P805_WORKFLOW_CONTRACTS[persona][observation], action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === persona && value?.observation === observation && value?.viewport === viewport), state = contract && P805_SCREEN_CONTROL_STATES[contract.route], operation = contract?.operation ?? contract?.body, expectedLifecycle = operation ? {kind:"operation", value:operation} : {kind:"navigation", value:contract?.route}, stateClass = p805TransactionStateClass(contract), terminalControlIsBound = contract?.actionControlId !== "artifact-build-parWorkbook" || action?.visibleTerminal?.lifecycle?.controlId === action?.stableControlId, terminalArtifact = action?.terminal?.result?.result, terminalResultIsBound = contract?.actionControlId !== "artifact-build-parWorkbook" || action?.visibleTerminal?.lifecycle?.jobId === action?.terminal?.jobId && action?.visibleTerminal?.lifecycle?.target === terminalArtifact?.target && action?.visibleTerminal?.lifecycle?.outputPath === terminalArtifact?.outputPath && action?.visibleTerminal?.lifecycle?.artifact?.target === terminalArtifact?.target && action?.visibleTerminal?.lifecycle?.artifact?.outputPath === terminalArtifact?.outputPath; if (!contract || !state || !action || typeof action.route !== "string" || !action.route.endsWith(`/project/${contract.route}`) && !action.route.endsWith(`/${contract.route}`) || action.screenState !== contract.route || action.screenNavigationControl !== state.navigationControl || typeof action.stableControlId !== "string" || !action.stableControlId || action.domControlId !== action.stableControlId || action.identityAttribute !== "id" || action.interaction?.stableControlId !== action.stableControlId || action.interaction?.identityAttribute !== "id" || action.interaction?.transactionState !== stateClass || action.interaction?.lifecycle?.kind !== expectedLifecycle.kind || action.interaction?.lifecycle?.value !== expectedLifecycle.value || action.precondition?.enabled !== true || action.precondition?.disabled !== false || action.precondition?.disabledExplanation !== null || action.precondition?.accessibleName !== action.interaction?.matchedLabel || !action.transaction || action.transaction?.stateClass !== stateClass || action.transaction.control?.stableControlId !== action.stableControlId || action.transaction.control?.accessibleName !== action.interaction?.matchedLabel || action.transaction.control?.enabled !== true || action.transaction.control?.disabled !== false || action.transaction.control?.disabledExplanation !== null || action.transaction.confirmation?.required !== false || action.transaction.confirmation?.state !== "not-required" || !hasRenderedActivation(action, action.stableControlId) || typeof action.browserRequestId !== "string" || !action.browserRequestId || action.visibleTerminal?.state !== "rendered" || action.visibleTerminal?.changedAfterRequest !== true || action.visibleTerminal?.observedAfterRequestId !== action.browserRequestId || action.visibleTerminal?.resultSha256 !== action.terminal?.resultSha256 || (contract.artifact !== undefined && action.visibleTerminal?.lifecycle?.artifact?.name !== contract.artifact) || !terminalControlIsBound || !terminalResultIsBound || action.expectedControl !== contract.control || (action.expectedMethod !== undefined && (action.expectedMethod !== contract.method || action.expectedBodyKind !== (contract.body ?? null))) || action.expectedApi !== contract.api || action.expectedArtifact !== (contract.artifact ?? null) || action.expectedTerminal !== contract.terminal || !action.terminal || !["completed", "success", "ok", "valid", "partial"].includes(action.terminal.status) || !/^[a-f0-9]{64}$/i.test(action.terminal.resultSha256 ?? "") || !action.evidenceId || !action.screenshotEvidenceId || !Number.isSafeInteger(action.elapsedMs) || action.elapsedMs <= 0 || action.overflow !== false || !action.interaction || !Array.isArray(action.accessibility?.namedRegions) || action.accessibility.namedRegions.length === 0 || action.accessibility.visibleFocus !== true || action.accessibility.unexplainedDisabledControls !== 0) fail(`rendered ${persona} audit lacks a DOM-bound tuple action for ${observation}/${viewport}`); }
     const expectedChunks = tuples.length, receipts = audit?.checkpointReceipts;
     if (!audit?.finalResult || audit.finalResult.status !== "passed" || audit.finalResult.aggregation !== "verified-checkpoint-receipts-only" || audit.finalResult.chunks !== expectedChunks || !Array.isArray(receipts) || receipts.length !== expectedChunks || !Array.isArray(audit.finalResult.checkpointReceiptSha256s) || audit.finalResult.checkpointReceiptSha256s.length !== expectedChunks || !audit.finalResult.cleanupEvidenceId) fail(`rendered ${audit?.persona ?? "persona"} audit lacks a checkpointed packed final result`);
     const receiptIds = new Set(), receiptActions = new Set();
@@ -546,14 +546,31 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const activateFocusedControl = async (lifecycle = "operation", control) => {
             const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
             if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before pointer activation`);
-            await clickCapturedControl(stableControlId);
+            // A compact NavLink can remain in the DOM after its drawer has
+            // moved off canvas.  It is not an interactable public control
+            // until its current rendered hit target is inside the viewport.
+            // Re-check that boundary for navigation just as for forms before
+            // issuing the sole browser pointer activation.
+            await clickCapturedControl(stableControlId, true, lifecycle === "precondition" || lifecycle === "navigation");
             return {kind:"pointer", controlId:stableControlId, count:1};
         };
-        const clickCapturedControl = async (stableControlId) => {
-            const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; const box=item.getBoundingClientRect(); return box.width>0&&box.height>0 ? {x:box.left+box.width/2,y:box.top+box.height/2} : null;})()`);
-            if (!point) fail("rendered confirmation control lost its visible browser click target");
-            await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", clickCount:1});
-            await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", clickCount:1});
+        const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false) => {
+            // A control can be rendered yet sit below the compact viewport.
+            // CDP accepts that off-screen coordinate without giving React a
+            // pointer event, which used to leave the Replay Load transition
+            // in its precondition state and let the tuple time out. Bring the
+            // exact captured control into the rendered viewport and prove its
+            // hit target before issuing its single browser pointer activation.
+            const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(requireViewportHit)}) item.scrollIntoView({block:'center',inline:'nearest'}); const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0; return sized&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight&&(hit===item||item.contains(hit)))) ? {x,y} : null;})()`);
+            if (!point) fail("rendered control lost its visible browser click target");
+            // Replay Load can unmount itself while accepting the target, and
+            // a narrow NavLink can reconcile its active screen on the same
+            // press. Both need the complete native pointer state through the
+            // release so React receives the public click that owns the
+            // lifecycle transition.
+            const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
+            await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
+            await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
         };
         // A semantic observation is only valid when the browser itself issued
         // the declared request after the rendered control was activated.  Do
@@ -953,7 +970,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return candidate?.keyboardFocused ? candidate : false;
             }, `${observation} rendered ${operation} precondition`);
             if (!control.enabled) fail(`Studio rendered ${operation} precondition disabled for ${observation}: ${control.disabledExplanation ?? "no explanation"}`);
-            await activateFocusedControl("precondition", control);
+            // Replay Load replaces its own control with Run. At narrow
+            // widths Chromium can retarget the release of a CDP pointer at
+            // that replacement, which either loses Load or immediately
+            // activates Run. Enter is the focused native button's real
+            // keyboard interaction, keeps the observed DOM identity, and
+            // lets the complete pointer receipt remain owned by the later
+            // rendered Run control that creates the durable replay request.
+            if (operation === "replay-target") await pressEnter();
+            else await activateFocusedControl("precondition", control);
             return control;
         };
         // CDP is an observer/keyboard transport, never a route adapter.  A
@@ -969,13 +994,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const item = document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]');
                 if (!(item instanceof HTMLElement)) return false;
                 const box = item.getBoundingClientRect();
-                return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight;
+                const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+                return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit === item || item.contains(hit));
             })()`);
             if (!drawerOpened) {
                 const compactNavigation = await evaluate("window.innerWidth <= 600");
                 if (!compactNavigation) {
                     await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
-                    await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight; })()`), `${observation} rendered desktop navigation control`);
+                    await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(), hit=document.elementFromPoint(box.left+box.width/2, box.top+box.height/2); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit===item||item.contains(hit)); })()`), `${observation} rendered desktop navigation control`);
                     return;
                 }
                 const burger = await waitFor(() => evaluate(`(() => {
@@ -985,7 +1011,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
                 })()`), `${observation} rendered narrow navigation drawer control`);
                 await activateFocusedControl("navigation-drawer", burger);
-                await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight; })()`), `${observation} rendered narrow navigation drawer`);
+                await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(), hit=document.elementFromPoint(box.left+box.width/2, box.top+box.height/2); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit===item||item.contains(hit)); })()`), `${observation} rendered narrow navigation drawer`);
             }
         };
         const navigateRenderedControl = async (route, expectedRoute, observation) => {
@@ -1301,9 +1327,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // returning the early status would recreate the timing gap
                 // this transaction contract is meant to close.
                 if (${JSON.stringify(Boolean(contract.body && contract.artifact))} && (!artifact || !accessibleName(artifact))) return false;
-                return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), controlId:result.getAttribute('data-pokie-lifecycle-result-control'), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact)} : null};
+                return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), controlId:result.getAttribute('data-pokie-lifecycle-result-control'), jobId:result.getAttribute('data-pokie-lifecycle-result-job'), target:result.getAttribute('data-pokie-lifecycle-result-target'), outputPath:result.getAttribute('data-pokie-lifecycle-result-output'), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact), target:artifact.getAttribute('data-pokie-lifecycle-artifact-target'), outputPath:artifact.getAttribute('data-pokie-lifecycle-artifact-output')} : null};
             })()`), `${observation} product-owned lifecycle result`);
             if (contract.body && contract.artifact && (!lifecycleResult.artifact?.name || !lifecycleResult.artifact.accessibleName)) fail(`${observation} did not render a visible product-owned ${contract.artifact} artifact affordance`);
+            if (contract.actionControlId === "artifact-build-parWorkbook") {
+                const terminalResult = entry.terminal?.result?.result;
+                if (lifecycleResult.controlId !== transaction.control.stableControlId || lifecycleResult.jobId !== entry.terminal?.jobId || lifecycleResult.target !== terminalResult?.target || lifecycleResult.outputPath !== terminalResult?.outputPath || lifecycleResult.artifact?.target !== terminalResult?.target || lifecycleResult.artifact?.outputPath !== terminalResult?.outputPath) fail(`${observation} rendered PAR terminal does not bind its activated control, durable job, target, and visible artifact output`);
+            }
             const productState = await evaluate(`(() => {
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => {
@@ -1406,7 +1436,34 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 renderedBootstrap = {kind:"studio-simulation-report-source", source:"rendered-control", controlId:reportSource.transaction.control.stableControlId, request:reportSource.transaction.request, terminal:{status:terminal.status, resultSha256:reportSource.transaction.terminal?.resultSha256, browserRequestId:reportSource.transaction.terminal?.browserRequestId}};
                 if (terminal.status !== "completed" || !renderedBootstrap.request?.browserRequestId || !renderedBootstrap.terminal.resultSha256) fail(`${observation} did not create its report source through a rendered Studio simulation`);
             }
-            const page = await runScreenControlState(projectBaseRoute, viewport, observation, contract), focus = await evaluate(`(()=>{const visible=(item)=>!!(item.offsetWidth||item.offsetHeight||item.getClientRects().length), item=document.getElementById(${JSON.stringify(page.interaction.stableControlId)}); if (!(item instanceof HTMLElement)||!visible(item)||item.disabled) return {namedRegions:[],visibleFocus:false}; item.focus(); const style=getComputedStyle(item); return {namedRegions:[...document.querySelectorAll('main,[role=main],[role=region],nav')].filter(visible).map((item)=>item.id||item.getAttribute('aria-label')||item.tagName), visibleFocus:document.activeElement===item&&(style.outlineStyle!=='none'||style.boxShadow!=='none')};})()`);
+            const page = await runScreenControlState(projectBaseRoute, viewport, observation, contract), focus = await evaluate(`(()=>{
+                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+                const control = document.getElementById(${JSON.stringify(page.interaction.stableControlId)});
+                // Selecting a tab in the compact drawer correctly closes that
+                // drawer, so the actual (already recorded) activating control
+                // is no longer visible.  In that case the only valid focus
+                // fallback is this transition's own visible lifecycle result,
+                // never an arbitrary enabled control from the new page.
+                const terminal = [...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item) => visible(item)
+                    && item.getAttribute('data-pokie-lifecycle-result') === ${JSON.stringify(contract.body || contract.operation ? contract.operation ?? contract.body : "navigation")}
+                    && (${JSON.stringify(Boolean(contract.body || contract.operation))} || item.getAttribute('data-pokie-lifecycle-route') === ${JSON.stringify(contract.route)})
+                    && (${JSON.stringify(page.visibleTerminal.lifecycle.controlId)} === null || item.getAttribute('data-pokie-lifecycle-result-control') === ${JSON.stringify(page.visibleTerminal.lifecycle.controlId)})
+                    && item.getAttribute('data-pokie-lifecycle-terminal') === ${JSON.stringify(page.visibleTerminal.lifecycle.terminal)});
+                const item = control instanceof HTMLElement && visible(control) && !control.disabled
+                    ? control
+                    : terminal instanceof HTMLElement && terminal.tabIndex >= -1 ? terminal : null;
+                if (!item) return {namedRegions:[], visibleFocus:false, target:null};
+                item.focus();
+                // Chromium's native focus ring is painted outside computed
+                // CSS, so outlineStyle is not a reliable accessibility
+                // signal for a real CDP focus. The focused DOM identity plus
+                // this tuple's screenshot is the rendered proof instead.
+                return {
+                    namedRegions:[...document.querySelectorAll('main,[role=main],[role=region],nav')].filter(visible).map((item)=>item.id||item.getAttribute('aria-label')||item.tagName),
+                    visibleFocus:document.activeElement===item,
+                    target:item === control ? 'control' : 'terminal-result',
+                };
+            })()`);
             if (!focus.visibleFocus || focus.namedRegions.length === 0) fail(`${observation} tuple did not retain a visible focused rendered control`);
             const action = {persona, observation, route:`${projectBaseRoute}/${contract.route}`, viewport, elapsedMs:Math.max(1, Date.now() - creation, page.elapsedMs ?? 0), pageTextLength:page.state.text.length, controlCount:page.state.controls.length, overflow:page.state.overflow, screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:{...page.state.accessibility, namedRegions:focus.namedRegions, visibleFocus:focus.visibleFocus}, expectedControl:contract.control, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedApi:contract.api, expectedArtifact:contract.artifact ?? null, expectedTerminal:contract.terminal, terminal:page.terminal, interaction:page.interaction, transaction:page.transaction, evidenceId:page.evidenceId, screenshotEvidenceId:page.screenshotEvidenceId};
             action.interaction.pointerActivated = true;
@@ -1668,7 +1725,10 @@ async function readChildAudit(output, phase, persona, candidateId, candidatePack
  */
 export async function runP805ProcessIsolatedPackedProof(options, dependencies = {}) {
     if (!validProcessProofOptions(options)) fail("process-isolated runner configuration is incomplete");
-    const services = {spawn, mkdir, now, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), immutableReceiptHashes = new Set(), workerPids = new Set(), tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+    // These boundaries are injectable only for deterministic parent-ledger
+    // tests.  The public command always uses the real packed worker, receipt
+    // reader, and process-tree drainer below.
+    const services = {spawn, mkdir, now, childResult, readChildTupleReceipt, readChildAudit, cleanupChild:terminate, exists:existsSync, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), immutableReceiptHashes = new Set(), workerPids = new Set(), tuples = dependencies.tuples ?? P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
     await services.mkdir(options.output, {recursive:true});
     const publishFailure = async (failedTuple, error, attemptedChild) => {
         const failure = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"failed", failedTuple, acceptedReceipts, children, attemptedChild, finalResult:{status:"failed", children:children.length, acceptedReceipts:acceptedReceipts.length, aggregation:"no-complete-tuple-aggregate-on-failure"}, failure:{message:error instanceof Error ? error.message : String(error), cleanup:attemptedChild?.cleanup ?? "not-spawned"}};
@@ -1685,11 +1745,17 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
         let child, result, attemptedChild;
         try {
             const auditPath = path.join(options.output, `${options.phase}-${stem}-audit.json`);
-            if ([receiptPath, cleanupPath, auditPath].some((target) => existsSync(target))) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} restart would reuse an immutable tuple artifact`);
+            if ([receiptPath, cleanupPath, auditPath].some((target) => services.exists(target))) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} restart would reuse an immutable tuple artifact`);
             child = services.spawn(process.execPath, args, {cwd:root, env:process.env, stdio:"pipe"});
-            result = await childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, 4_500_000);
-            const tupleReceipt = await readChildTupleReceipt(receiptPath, cleanupPath, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
-            const published = await readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.pid, tuple);
+            result = await services.childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, 4_500_000);
+            // A worker's own cleanup receipt is necessary but not sufficient:
+            // the parent also drains the process identity it spawned before
+            // accepting that tuple or advancing the ledger.  This covers a
+            // detached descendant surviving a seemingly normal child exit.
+            const parentCleanup = await services.cleanupChild(child, "success");
+            if (!parentCleanup.processTreeDrained || !parentCleanup.resourcesDrained) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} parent cleanup failed after worker success`);
+            const tupleReceipt = await services.readChildTupleReceipt(receiptPath, cleanupPath, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
+            const published = await services.readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.pid, tuple);
             const checkpoint = published.audit.checkpointReceipts.find((value) => value.receiptId === tupleReceipt.receipt.checkpointReceipt.receiptId);
             if (published.audit.rendered.actions.length !== 1 || published.audit.checkpointReceipts.length !== 1 || !checkpoint || checkpoint.workerPid !== child.pid || tupleReceipt.receipt.auditId !== published.audit.auditId || checkpoint.sha256 !== tupleReceipt.receipt.checkpointReceipt.sha256 || checkpoint.actionSha256 !== tupleReceipt.receipt.checkpointReceipt.actionSha256 || JSON.stringify(tupleReceipt.receipt.action) !== JSON.stringify(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport)) || tupleReceipt.cleanup.cleanupEvidenceId !== published.audit.cleanup.evidenceId || tupleReceipt.receipt.cleanupEvidenceId !== tupleReceipt.cleanup.cleanupEvidenceId || tupleReceipt.receipt.cleanupSha256 !== tupleReceipt.cleanupSha256) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child receipts do not bind the accepted rendered checkpoint, audit, and cleanup`);
             if (workerPids.has(published.audit.worker.pid) || published.audit.worker.pid === parent.pid) fail(`packed ${tuple.persona} worker process identity is not isolated`);
@@ -1704,12 +1770,13 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             }
             audits.push(published.audit);
             acceptedReceipts.push({tuple, ...tupleReceipt});
-            children.push({tuple, worker:published.audit.worker, auditPath:published.auditPath, auditSha256:published.auditSha256, tupleReceiptPath:tupleReceipt.receiptPath, tupleReceiptSha256:tupleReceipt.receiptSha256, cleanupPath:tupleReceipt.cleanupPath, cleanupSha256:tupleReceipt.cleanupSha256, checkpointReceiptSha256s:published.audit.checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId:published.audit.cleanup.evidenceId, startedAt:childStartedAt, endedAt:services.now(), exitCode:result.exitCode, signal:result.signal});
+            children.push({tuple, worker:published.audit.worker, auditPath:published.auditPath, auditSha256:published.auditSha256, tupleReceiptPath:tupleReceipt.receiptPath, tupleReceiptSha256:tupleReceipt.receiptSha256, cleanupPath:tupleReceipt.cleanupPath, cleanupSha256:tupleReceipt.cleanupSha256, checkpointReceiptSha256s:published.audit.checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId:published.audit.cleanup.evidenceId, parentCleanup, startedAt:childStartedAt, endedAt:services.now(), exitCode:result.exitCode, signal:result.signal});
         }
         catch (error) {
             let cleanup;
-            if (child) { try { cleanup = await terminate(child); } catch (drainError) { cleanup = {processTreeDrained:false, resourcesDrained:false, error:String(drainError)}; } }
-            attemptedChild = {tuple, worker:child?.pid ? {pid:child.pid, processIdentity:processIdentity(child.pid)} : undefined, startedAt:childStartedAt, endedAt:services.now(), exitCode:result?.exitCode ?? child?.exitCode ?? null, signal:result?.signal ?? child?.signalCode ?? null, cleanup:cleanup ?? {processTreeDrained:true, resourcesDrained:true, status:"not-spawned"}};
+            const failureKind = child ? (/cancel/i.test(String(error)) ? "cancellation" : /timeout|exceeded/i.test(String(error)) ? "timeout" : "failure") : "spawn-failure";
+            try { cleanup = await services.cleanupChild(child, failureKind); } catch (drainError) { cleanup = {processTreeDrained:false, resourcesDrained:false, error:String(drainError)}; }
+            attemptedChild = {tuple, worker:child?.pid ? {pid:child.pid, processIdentity:processIdentity(child.pid)} : undefined, startedAt:childStartedAt, endedAt:services.now(), exitCode:result?.exitCode ?? child?.exitCode ?? null, signal:result?.signal ?? child?.signalCode ?? null, cleanup:cleanup ?? {processTreeDrained:false, resourcesDrained:false, status:"cleanup-not-run"}, failureKind};
             await publishFailure(tuple, error, attemptedChild);
             fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker failed after preserving ${acceptedReceipts.length} accepted tuple receipts: ${error instanceof Error ? error.message : String(error)}`);
         }

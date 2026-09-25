@@ -470,6 +470,7 @@ function renderOptionsRow(
         button.className = `${classPrefix}-option` + (value === currentValue ? ` ${classPrefix}-option-selected` : "");
         button.textContent = value;
         button.disabled = value === currentValue;
+        if (button.disabled) button.title = `Current ${classPrefix === "player-bet" ? "bet" : "mode"} selection`;
         button.setAttribute("aria-pressed", value === currentValue ? "true" : "false");
         button.setAttribute("aria-label", `Select ${classPrefix === "player-bet" ? "bet" : "mode"} ${value}`);
         button.addEventListener("click", () => onSelect(value));

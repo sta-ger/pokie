@@ -80,6 +80,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
             title={title}
             role={job.status === "failed" ? "alert" : "status"}
             aria-live={job.status === "failed" ? undefined : "polite"}
+            tabIndex={-1}
             data-pokie-lifecycle-result={job.operation}
             data-pokie-lifecycle-terminal={job.status}
         >

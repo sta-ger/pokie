@@ -71,7 +71,10 @@ const semantic = (persona, observation, contract, viewport) => {
         actionRequestId = `browser-${persona}-${observation}-${viewport}`,
         contextRequestId = `context-${persona}-${observation}-${viewport}`,
         pollRequestId = `poll-${persona}-${observation}-${viewport}`,
-        result = contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation, downloadPath: `/downloads/${jobId}.json`}] : {id: jobId, status: "completed", observation, ...(contract.artifact === undefined ? {} : {outputPath: `/outputs/${jobId}`})},
+        artifactResult = {target: "parWorkbook", outputPath: `/outputs/${jobId}`},
+        result = contract.actionControlId === "artifact-build-parWorkbook"
+            ? {id: jobId, status: "completed", result: artifactResult}
+            : contract.terminal === "report-completed" ? [{id: jobId, status: "completed", observation, downloadPath: `/downloads/${jobId}.json`}] : {id: jobId, status: "completed", observation, ...(contract.artifact === undefined ? {} : {outputPath: `/outputs/${jobId}`})},
         responseSha256 = hash(JSON.stringify(result)),
         route = `/#/project/fixture/${contract.route}`,
         screen = P805_SCREEN_CONTROL_STATES[contract.route],
@@ -172,7 +175,10 @@ const semantic = (persona, observation, contract, viewport) => {
                     role: "status",
                     terminal: "completed",
                     text: `The rendered ${observation} lifecycle result completed.`,
-                    artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`},
+                    controlId: contract.actionControlId ?? screen.navigationControlId,
+                    ...(contract.actionControlId === "artifact-build-parWorkbook" ? {jobId, target: artifactResult.target, outputPath: artifactResult.outputPath} : {}),
+                    artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,
+                        ...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: artifactResult.target, outputPath: artifactResult.outputPath} : {})},
                 },
             },
             workflow: {
@@ -314,7 +320,7 @@ async function campaignFixture() {
                 expectedApi: contract.api,
                 expectedArtifact: contract.artifact ?? null,
                 expectedTerminal: contract.terminal,
-                terminal: {status: "completed", resultSha256: viewportSource.responseSha256},
+                terminal: {status: "completed", resultSha256: viewportSource.responseSha256, result: viewportSource.result, ...(contract.poll ? {jobId: viewportSource.result.id} : {})},
                 evidenceId: page.evidenceId,
                 screenshotEvidenceId: screenshot.evidenceId,
                 viewport: actionViewport,
@@ -328,7 +334,7 @@ async function campaignFixture() {
                 browserRequestId: `browser-${persona}-${observation}-${actionViewport}`,
                 contextRevalidation: viewportSource.contextRevalidation,
                 precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: viewportSource.interaction.matchedLabel, region: P805_SCREEN_CONTROL_STATES[contract.route].region},
-                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`}}},
+                visibleTerminal: {state: "rendered", observedAfterRequestId: `browser-${persona}-${observation}-${actionViewport}`, resultSha256: viewportSource.responseSha256, changedAfterRequest: true, lifecycle: {controlId: contract.actionControlId ?? P805_SCREEN_CONTROL_STATES[contract.route].navigationControlId, ...(contract.actionControlId === "artifact-build-parWorkbook" ? {jobId: viewportSource.result.id, target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {}), artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: viewportSource.result.result.target, outputPath: viewportSource.result.result.outputPath} : {})}}},
                 accessibility: {namedRegions: [P805_SCREEN_CONTROL_STATES[contract.route].region], visibleFocus: true, unexplainedDisabledControls: 0},
                 interaction: viewportSource.interaction,
                 transaction: viewportSource.transaction,
@@ -884,6 +890,20 @@ test("rejects semantic drift when a rewritten record no longer binds its rendere
     } finally { await fixture.cleanup(); }
 });
 
+test("rejects a PAR terminal whose rendered artifact belongs to a different durable job", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "par-xlsx-round-trip"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), semantic = JSON.parse(await readFile(target, "utf8"));
+        semantic.renderedTerminal.lifecycle.jobId = "job-from-a-different-tuple";
+        const contents = JSON.stringify(semantic);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+    } finally { await fixture.cleanup(); }
+});
+
 test("rejects a rendered terminal captured without the browser request that produced it", async () => {
     const fixture = await campaignFixture();
     try {
@@ -1113,7 +1133,7 @@ test("rejects a regression receipt that lacks verifier-owned authentication", as
 test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-persona, cross-viewport, and unclean child substitutions", () => {
     const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
     const digestAt = (prefix, index) => `${prefix}${index.toString(16).padStart(63, "0")}`;
-    const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, parent:{pid:1}, children:tuples.map((tuple, index) => ({tuple, worker:{pid:index + 2}, auditPath:`audit-${index}.json`, auditSha256:digestAt("a", index), tupleReceiptPath:`receipt-${index}.json`, tupleReceiptSha256:digestAt("b", index), cleanupPath:`cleanup-${index}.json`, cleanupSha256:digestAt("c", index), checkpointReceiptSha256s:[digestAt("d", index)], cleanupEvidenceId:`cleanup-${index}`, exitCode:0, signal:null})), acceptedReceipts:tuples.map((tuple, index) => ({tuple, receiptPath:`receipt-${index}.json`, receiptSha256:digestAt("b", index), cleanupPath:`cleanup-${index}.json`, cleanupSha256:digestAt("c", index), receipt:{schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, auditId:`audit-${index}`, cleanupEvidenceId:`cleanup-${index}`, cleanupSha256:digestAt("c", index), checkpointReceipt:{candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, actionSha256:digestAt("e", index)}}, cleanup:{schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, cleanup:{exit:"success", processTreeDrained:true, resourcesDrained:true, contextRemoved:true}, cleanupEvidenceId:`cleanup-${index}`}})), finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
+    const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, parent:{pid:1}, children:tuples.map((tuple, index) => ({tuple, worker:{pid:index + 2}, auditPath:`audit-${index}.json`, auditSha256:digestAt("a", index), tupleReceiptPath:`receipt-${index}.json`, tupleReceiptSha256:digestAt("b", index), cleanupPath:`cleanup-${index}.json`, cleanupSha256:digestAt("c", index), checkpointReceiptSha256s:[digestAt("d", index)], cleanupEvidenceId:`cleanup-${index}`, parentCleanup:{processTreeDrained:true, resourcesDrained:true}, exitCode:0, signal:null})), acceptedReceipts:tuples.map((tuple, index) => ({tuple, receiptPath:`receipt-${index}.json`, receiptSha256:digestAt("b", index), cleanupPath:`cleanup-${index}.json`, cleanupSha256:digestAt("c", index), receipt:{schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, auditId:`audit-${index}`, cleanupEvidenceId:`cleanup-${index}`, cleanupSha256:digestAt("c", index), checkpointReceipt:{candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, actionSha256:digestAt("e", index)}}, cleanup:{schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, cleanup:{exit:"success", processTreeDrained:true, resourcesDrained:true, contextRemoved:true}, cleanupEvidenceId:`cleanup-${index}`}})), finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
     validateP805TupleProofLedger(ledger, initial);
     for (const mutate of [
         (value) => value.children.pop(),

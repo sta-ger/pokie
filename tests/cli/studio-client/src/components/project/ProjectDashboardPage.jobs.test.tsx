@@ -37,6 +37,7 @@ describe("ProjectDashboardPage durable jobs", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "Sample Slot"});
         expect(screen.getByRole("button", {name: "Your projects"})).toHaveAttribute("id", "project-breadcrumb-projects");
+        expect(screen.getByText("Overview ready")).toHaveAttribute("tabindex", "-1");
         const overviewPath = router.state.location.pathname;
         holdNextContext = true;
 

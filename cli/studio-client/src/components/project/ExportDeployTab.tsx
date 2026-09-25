@@ -178,7 +178,7 @@ type ArtifactBuildRunView =
     // Keep the server's last in-flight preflight with the successful result. A very small build can
     // complete between React renders; without retaining it, the user never sees the estimate that
     // governed the build they just started.
-    | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
+    | {status: "ok"; jobId: string; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
     | {status: "cancelled"; plan: StudioArtifactConversionPlan}
     | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
@@ -473,7 +473,7 @@ function TargetCard({
                         </>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <div role="status" aria-live="polite" data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-terminal="completed">
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -658,8 +658,17 @@ function TargetCard({
                         <div
                             role="status"
                             aria-live="polite"
+                            tabIndex={-1}
                             data-pokie-lifecycle-result="artifact-build"
                             data-pokie-lifecycle-result-control={`artifact-build-${card.artifactTarget}`}
+                            // These values are rendered from the terminal job
+                            // record that this card polled. They keep a visible
+                            // PAR result tied to its own activation, rather
+                            // than merely proving that some artifact card has
+                            // completed on this screen.
+                            data-pokie-lifecycle-result-job={artifactBuildRun.jobId}
+                            data-pokie-lifecycle-result-target={artifactBuildRun.result.target}
+                            data-pokie-lifecycle-result-output={artifactBuildRun.result.outputPath}
                             data-pokie-lifecycle-terminal="completed"
                         >
                             <Text size="sm" mt={4}>
@@ -697,7 +706,14 @@ function TargetCard({
                                 </Text>
                             )}
                             <QuickActions>
-                                <Button data-pokie-lifecycle-artifact="artifact-build-output" size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result)}>
+                                <Button
+                                    data-pokie-lifecycle-artifact="artifact-build-output"
+                                    data-pokie-lifecycle-artifact-target={artifactBuildRun.result.target}
+                                    data-pokie-lifecycle-artifact-output={artifactBuildRun.result.outputPath}
+                                    size="xs"
+                                    variant="default"
+                                    onClick={() => onOpenAsProject(artifactBuildRun.result)}
+                                >
                                     Open as Project
                                 </Button>
                                 <Button
@@ -1396,6 +1412,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                         ...runs,
                         [target]: {
                             status: "ok",
+                            jobId,
                             result,
                             progress: runs[target]?.status === "running" ? runs[target].progress : undefined,
                         },

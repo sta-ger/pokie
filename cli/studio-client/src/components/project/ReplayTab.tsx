@@ -341,6 +341,14 @@ export function ReplayTab({
         markLoaded(findMethod, false);
     }
 
+    // The Load control is the explicit public transition from an editable
+    // replay target to its review/run state. Keep the form submit path for
+    // keyboard users, but give its rendered button the same direct owner so
+    // a real pointer activation never has to submit the surrounding form.
+    function loadSeedRound(values: FindFormValues = form.getValues()): void {
+        loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined);
+    }
+
     const isCurrentSourceLoaded = findMethod === loadedForMethod;
     // Recreate from seed / Recent Simulation share one "loaded target" shape: the round/seed the user
     // configured, or -- reached via Recent Replays' "Inspect" shortcut, which loads a result directly
@@ -432,7 +440,7 @@ export function ReplayTab({
             />
 
             {findMethod === "seedRound" && (
-                <form data-pokie-lifecycle-form="replay" onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined))}>
+                <form data-pokie-lifecycle-form="replay" onSubmit={form.onSubmit(loadSeedRound)}>
                     <QuickActions>
                         {/* Confirmed against StudioReplayExecutionService.run(): Reproduce below creates a brand-new
                             game session (game.createSession()) and plays it forward through round 1, 2, ... up to
@@ -450,7 +458,19 @@ export function ReplayTab({
                             key={form.key("round")}
                         />
                         <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                        <Button id="replay-load" type="submit" data-pokie-lifecycle="precondition" data-pokie-lifecycle-operation="replay-target">Load</Button>
+                        <Button
+                            id="replay-load"
+                            type="button"
+                            // Commit only after the captured pointer has
+                            // completed. Updating on mouse-down can replace
+                            // Load with Run beneath that same pointer, whose
+                            // release would invoke Run and skip review.
+                            onClick={() => loadSeedRound()}
+                            data-pokie-lifecycle="precondition"
+                            data-pokie-lifecycle-operation="replay-target"
+                        >
+                            Load
+                        </Button>
                     </QuickActions>
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
@@ -1046,7 +1066,9 @@ export function ReplayTab({
                                     <div
                                         role="status"
                                         aria-live="polite"
+                                        tabIndex={-1}
                                         data-pokie-lifecycle-result="replay"
+                                        data-pokie-lifecycle-result-control="replay-run"
                                         data-pokie-lifecycle-terminal={progress.status}
                                     >
                                         <Text size="sm" mb={4}>
