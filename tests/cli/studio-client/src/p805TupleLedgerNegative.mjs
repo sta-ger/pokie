@@ -45,7 +45,8 @@ try {
     try {
         await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(output, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(output, "candidate.tgz"), output}, {
             tuples,
-            prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
+            prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
+            validateSharedRuntime:async () => undefined,
             exists:() => false,
             spawn:() => Object.assign(new EventEmitter(), {pid:8100 + spawned++, exitCode:null, signalCode:null}),
             childResult:async () => spawned === 1 ? {exitCode:0, signal:null, stdout:"", stderr:""} : Promise.reject(new Error("worker timeout")),
@@ -71,7 +72,8 @@ try {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(stateClassOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(stateClassOutput, "candidate.tgz"), output:stateClassOutput}, {
                 tuples:[tuples[0]],
-                prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
+                prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
+                validateSharedRuntime:async () => undefined,
                 exists:() => false,
                 spawn:() => Object.assign(new EventEmitter(), {pid:9200, exitCode:null, signalCode:null}),
                 childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
@@ -88,7 +90,31 @@ try {
         } catch (error) { stateClassFailure = error; }
         if (!/substitutes a state-class or rendered transaction boundary/.test(String(stateClassFailure)) || (await readdir(stateClassOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a state-class-substituted tuple receipt: ${stateClassFailure}`);
     } finally { await rm(stateClassOutput, {recursive:true, force:true}); }
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, stateClassSubstitutionRejected:true})}\n`);
+    const runtimeSubstitutionOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-runtime-substitution-negative-"));
+    try {
+        let runtimeSubstitutionFailure;
+        try {
+            await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(runtimeSubstitutionOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(runtimeSubstitutionOutput, "candidate.tgz"), output:runtimeSubstitutionOutput}, {
+                tuples:[tuples[0]],
+                prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
+                validateSharedRuntime:async () => undefined,
+                exists:() => false,
+                spawn:() => Object.assign(new EventEmitter(), {pid:9300, exitCode:null, signalCode:null}),
+                childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
+                    const value = receiptFor(expected.tuple, pid);
+                    return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
+                },
+                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
+                    const value = receiptFor(tuple, pid);
+                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{sharedRuntimeReceiptSha256:"e".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-substituted-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                },
+            });
+        } catch (error) { runtimeSubstitutionFailure = error; }
+        if (!/substituted the parent immutable runtime identity/.test(String(runtimeSubstitutionFailure)) || (await readdir(runtimeSubstitutionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a runtime-substituted tuple receipt: ${runtimeSubstitutionFailure}`);
+    } finally { await rm(runtimeSubstitutionOutput, {recursive:true, force:true}); }
+    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }

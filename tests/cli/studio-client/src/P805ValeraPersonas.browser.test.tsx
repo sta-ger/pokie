@@ -1,8 +1,14 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm} from "node:fs/promises";
+import {mkdtemp, readFile, rm, stat} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
+
+const npmCli = process.env.npm_execpath;
+const runCandidateNpm = (args: string[]) => {
+    if (!npmCli) throw new Error("the candidate package test requires npm_execpath");
+    return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
+};
 
 describe("P8-05 rendered Valera persona evidence", () => {
     const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
@@ -15,7 +21,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
     it("retains accepted tuple receipts and drains every owned child when the next tuple fails", () => {
         const fixture = path.join(process.cwd(), "tests/cli/studio-client/src/p805TupleLedgerNegative.mjs");
         const result = JSON.parse(execFileSync(process.execPath, [fixture], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe"}));
-        expect(result).toEqual({acceptedReceipts: 1, aggregatePublished: false, failureKind: "timeout", cleanupKinds: ["success", "timeout"], stateClassSubstitutionRejected: true});
+        expect(result).toEqual({acceptedReceipts: 1, aggregatePublished: false, failureKind: "timeout", cleanupKinds: ["success", "timeout"], stateClassSubstitutionRejected: true, runtimeSubstitutionRejected: true});
     });
 
     it("builds its own candidate package and executes every packed CLI and rendered Studio persona workflow", async () => {
@@ -33,13 +39,13 @@ describe("P8-05 rendered Valera persona evidence", () => {
             // a stale checked-in dist directory while asserting source-only
             // accessibility identities.
             try {
-                execFileSync("npm", ["run", "build"], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
+                runCandidateNpm(["run", "build"]);
             } catch (error) {
                 const output = error as {stdout?: Buffer | string; stderr?: Buffer | string};
                 const asText = (value: Buffer | string | undefined): string => Buffer.isBuffer(value) ? value.toString("utf8") : value ?? "";
                 throw new Error(`candidate build failed:\n${asText(output.stdout)}${asText(output.stderr)}`);
             }
-            const packed = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", candidateDirectory], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024})) as Array<{filename: string}>;
+            const packed = JSON.parse(runCandidateNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", candidateDirectory])) as Array<{filename: string}>;
             expect(packed).toHaveLength(1);
             const sourceArchivePath = path.join(candidateDirectory, packed[0].filename);
             const archivePath = path.join(candidateDirectory, "candidate-package.tgz");
@@ -192,6 +198,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
             const runtimeReceipt = JSON.parse(runtimeReceiptBytes.toString("utf8"));
             expect(createHash("sha256").update(runtimeReceiptBytes).digest("hex")).toBe(aggregate.runtime.receiptSha256);
             expect(runtimeReceipt).toEqual(expect.objectContaining({kind: "p8-05-immutable-packed-runtime", candidateId: candidate, candidatePackageSha256: packageSha256, candidateExecutableSha256: receipt.candidateExecutableSha256, installation: expect.objectContaining({count: 1}), permissions: "read-only-before-any-tuple-child"}));
+            expect((await stat(runtimeReceipt.runtimeRoot)).mode & 0o222).toBe(0);
+            expect((await stat(runtimeReceipt.packageRoot)).mode & 0o222).toBe(0);
             expect(aggregate.children).toHaveLength(expectedTuples.length);
             expect(aggregate.acceptedReceipts).toHaveLength(expectedTuples.length);
             expect(aggregate.children.map((child) => `${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`)).toEqual(expectedTuples);

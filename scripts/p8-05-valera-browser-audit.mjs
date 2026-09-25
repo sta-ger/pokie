@@ -316,15 +316,6 @@ async function makeReadOnly(directory, services) {
     await services.chmod(directory, 0o555);
 }
 
-async function makeWritable(directory, services) {
-    for (const entry of await services.readdir(directory, {withFileTypes:true})) {
-        const target = path.join(directory, entry.name);
-        if (entry.isDirectory()) await makeWritable(target, services);
-        else if (entry.isFile()) await services.chmod(target, 0o755);
-    }
-    await services.chmod(directory, 0o755);
-}
-
 async function prepareP805SharedRuntime(options, parent, services) {
     const runtimeRoot = path.join(options.output, `${options.phase}-packed-runtime-${parent.nonce}`), runtimeWorkspace = path.join(options.output, `${options.phase}-packed-runtime-workspace-${parent.nonce}`), runtimeConfiguration = path.join(options.output, `${options.phase}-packed-runtime-configuration-${parent.nonce}`), receiptPath = path.join(options.output, `${options.phase}-packed-runtime-${parent.nonce}.json`);
     await Promise.all([runtimeRoot, runtimeWorkspace, runtimeConfiguration].map((directory) => services.mkdir(directory, {recursive:true})));
@@ -1921,11 +1912,10 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
     // These boundaries are injectable only for deterministic parent-ledger
     // tests.  The public command always uses the real packed worker, receipt
     // reader, and process-tree drainer below.
-    const services = {spawn, chmod, link, mkdir, readFile, readdir, rm, stat, writeFile, now, childResult, readChildTupleReceipt, readChildAudit, cleanupChild:terminate, exists:existsSync, npm:process.env.npm_execpath ? process.execPath : "npm", npmArgs:process.env.npm_execpath ? [process.env.npm_execpath] : [], prepareRuntime:prepareP805SharedRuntime, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), immutableReceiptHashes = new Set(), workerPids = new Set(), tuples = dependencies.tuples ?? P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+    const services = {spawn, chmod, link, mkdir, readFile, readdir, rm, stat, writeFile, now, childResult, readChildTupleReceipt, readChildAudit, cleanupChild:terminate, validateSharedRuntime:trustedSharedRuntime, exists:existsSync, npm:process.env.npm_execpath ? process.execPath : "npm", npmArgs:process.env.npm_execpath ? [process.env.npm_execpath] : [], prepareRuntime:prepareP805SharedRuntime, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), immutableReceiptHashes = new Set(), workerPids = new Set(), tuples = dependencies.tuples ?? P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
     await services.mkdir(options.output, {recursive:true});
     let runtime;
     const publishFailure = async (failedTuple, error, attemptedChild) => {
-        if (runtime?.root && services.exists(runtime.root)) await makeWritable(runtime.root, services);
         const failure = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"failed", failedTuple, acceptedReceipts, children, attemptedChild, finalResult:{status:"failed", children:children.length, acceptedReceipts:acceptedReceipts.length, aggregation:"no-complete-tuple-aggregate-on-failure"}, failure:{message:error instanceof Error ? error.message : String(error), cleanup:attemptedChild?.cleanup ?? "not-spawned"}};
         await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.failed-${parent.nonce}.json`), `${JSON.stringify(failure, null, 2)}\n`);
     };
@@ -1953,6 +1943,12 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             if (!parentCleanup.processTreeDrained || !parentCleanup.resourcesDrained) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} parent cleanup failed after worker success`);
             const tupleReceipt = await services.readChildTupleReceipt(receiptPath, cleanupPath, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
             const published = await services.readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.pid, tuple);
+            // Re-authenticate the immutable parent runtime after the child has
+            // exited, before accepting any semantic receipt.  A child may use
+            // it but cannot replace, mutate, or merely relabel it between its
+            // own startup validation and the parent's ledger advancement.
+            await services.validateSharedRuntime({root:runtime.root, receipt:runtime.receipt}, options, services);
+            if (published.audit.packageIdentity?.sharedRuntimeReceiptSha256 !== runtime.receipt.sha256 || published.audit.packageIdentity?.sharedRuntimeRoot !== runtime.root) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child substituted the parent immutable runtime identity`);
             const checkpoint = published.audit.checkpointReceipts.find((value) => value.receiptId === tupleReceipt.receipt.checkpointReceipt.receiptId);
             validatePackedTupleAction(tupleReceipt.receipt.action, tuple);
             validatePackedTupleAction(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport), tuple);
@@ -1980,8 +1976,7 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker failed after preserving ${acceptedReceipts.length} accepted tuple receipts: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    if (services.exists(runtime.root)) await makeWritable(runtime.root, services);
-    const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, runtime:{root:runtime.root, receiptPath:path.basename(runtime.receipt.path), receiptSha256:runtime.receipt.sha256, installationCount:runtime.value?.installation?.count ?? 1, permissions:runtime.value?.permissions ?? "read-only-before-any-tuple-child"}, status:"passed", children, acceptedReceipts, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
+    const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, runtime:{kind:runtime.value?.kind, root:runtime.root, receiptPath:path.basename(runtime.receipt.path), receiptSha256:runtime.receipt.sha256, candidateId:runtime.value?.candidateId, candidatePackageSha256:runtime.value?.candidatePackageSha256, candidateExecutableSha256:runtime.value?.candidateExecutableSha256, archiveSha256:runtime.value?.archiveSha256, installationCount:runtime.value?.installation?.count ?? 1, permissions:runtime.value?.permissions ?? "read-only-before-any-tuple-child"}, status:"passed", children, acceptedReceipts, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
     await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`), `${JSON.stringify(ledger, null, 2)}\n`);
     return {ledger, audits};
 }
