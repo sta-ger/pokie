@@ -401,7 +401,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     let studio, browser, cdp, audit, thrown, installedPackageBytes, candidatePackageJsonBytes, candidateExecutable;
     try {
         await services.mkdir(options.output, {recursive:true}); await Promise.all([context.workspace, context.configurationRoot, context.documents, context.browserProfile, installationRoot].map((directory) => services.mkdir(directory, {recursive:true}))); const packageBytes = await services.readFile(options.packedPackage); if (digest(packageBytes) !== options.candidatePackageSha256) fail("packed package archive digest differs from declared candidate package identity");
-        const installOwnership = ownershipEnvironment("packed-package-install"), installChild = own("packed-package-install", services.spawn(services.npm, [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, options.packedPackage], {cwd:context.workspace, env:{...installOwnership.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot}, stdio:"pipe"}), installOwnership), install = await childResult(installChild, "packed package installation"); await settleChild(installChild); transcript.push(`[${services.now()}] PACKED_INSTALL\n${install.stdout}${install.stderr}`);
+        // Every tuple owns a fresh local installation of the exact archive.
+        // On a loaded verifier host npm can spend longer than the normal
+        // command budget compacting its local cache even though it has no
+        // network dependency; keep that bounded, but give the required
+        // packed-candidate boundary enough time to complete rather than
+        // discarding already accepted immutable tuple receipts as a flake.
+        const installOwnership = ownershipEnvironment("packed-package-install"), installChild = own("packed-package-install", services.spawn(services.npm, [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, options.packedPackage], {cwd:context.workspace, env:{...installOwnership.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot}, stdio:"pipe"}), installOwnership), install = await childResult(installChild, "packed package installation", 0, 300_000); await settleChild(installChild); transcript.push(`[${services.now()}] PACKED_INSTALL\n${install.stdout}${install.stderr}`);
         const installedCli = path.join(installationRoot, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie"), installedPackageJson = path.join(installationRoot, "node_modules", "pokie", "package.json"); if (!services.exists(installedCli) || !services.exists(installedPackageJson)) fail("packed package installation did not expose its pokie launcher and package metadata"); installedPackageBytes = await services.readFile(installedPackageJson); const candidatePackage = spawnSync("git", ["show", `${options.candidateId}:package.json`], {cwd:root, encoding:"buffer"}); if (candidatePackage.status !== 0 || !candidatePackage.stdout?.length) fail("declared candidate does not expose package.json for archive binding"); candidatePackageJsonBytes = Buffer.from(candidatePackage.stdout); let installedPackage, candidateManifest; try { installedPackage = JSON.parse(installedPackageBytes.toString("utf8")); candidateManifest = JSON.parse(candidatePackageJsonBytes.toString("utf8")); } catch { fail("installed packed package metadata is not JSON"); } if (installedPackage?.name !== candidateManifest?.name || installedPackage?.version !== candidateManifest?.version || installedPackage?.gitHead !== options.candidateId) fail("installed archive package metadata is not bound to the declared candidate");
         const candidateTreeManifest = candidateTreeExecutableManifest(options.candidateId), candidateReceipt = await trustedCandidateExecutableReceipt(options.candidateExecutableReceipt, options.candidateId, options.candidatePackageSha256, options.candidateExecutableSha256, services, options.output);
         if (candidateReceipt.candidateTreeManifestSha256 !== candidateTreeManifest.sha256 || candidateReceipt.candidateTreeObjectId !== candidateTreeManifest.tree) fail("candidate executable receipt does not bind the declared candidate tree manifest");
@@ -598,8 +604,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // without `buttons` and `pointerType` its visual focus was
             // captured but React never received the click that starts the
             // validation/save/navigation lifecycle.
-            await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "operation"].includes(lifecycle), lifecycle !== "navigation");
-            return {kind:"pointer", controlId:stableControlId, count:1};
+            const {focusedAtActivation} = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "operation"].includes(lifecycle), lifecycle !== "navigation");
+            return {kind:"pointer", controlId:stableControlId, count:1, focusedAtActivation};
         };
         const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit) => {
             // A control can be rendered yet sit below the compact viewport.
@@ -617,7 +623,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // lifecycle transition.
             const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
             await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
+            // Native pointer focus is observable only before a mobile
+            // navigation click legitimately closes its drawer and returns
+            // focus to the Burger. Retain that exact browser boundary with
+            // the single rendered activation instead of inferring focus from
+            // a later, post-navigation DOM snapshot.
+            const focusedAtActivation = await evaluate("document.activeElement instanceof HTMLElement && document.activeElement.id === " + JSON.stringify(stableControlId));
             await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
+            return {focusedAtActivation};
         };
         // A semantic observation is only valid when the browser itself issued
         // the declared request after the rendered control was activated.  Do
@@ -856,6 +869,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             };
             transaction.browserEventCursor = cdp.events.length;
             const activation = await activateFocusedControl(lifecycle, control, operation === "replay" ? "keyboard" : "pointer");
+            if (activation.kind === "pointer" && activation.focusedAtActivation !== true) fail(observation + " rendered " + operation + " control did not retain native focus through its pointer activation");
+            control.keyboardFocused = activation.kind === "pointer" ? activation.focusedAtActivation === true : true;
             transaction[activation.kind === "keyboard" ? "keyboardActivations" : "pointerActivations"].push({phase:"operation", ...activation});
             if (confirmation) {
                 const confirmationControl = await waitFor(() => evaluate(`(() => {
@@ -1074,14 +1089,30 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(), hit=document.elementFromPoint(box.left+box.width/2, box.top+box.height/2); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit===item||item.contains(hit)); })()`), `${observation} rendered narrow navigation drawer`);
                 }
             }
-            // Capture focus from the same final live hit target that made the
-            // drawer eligible. Looking it up again in the caller leaves a
-            // narrow-window reconciliation gap: the stale collapsed sibling
-            // can win the second lookup after the drawer has just opened.
-            return waitFor(async () => {
-                const candidate = await focusLifecycleControl("navigation", route, "button,a");
-                return candidate?.keyboardFocused && candidate.enabled ? candidate : false;
-            }, `${observation} rendered ${route} navigation control`);
+            // Resolve and focus the exact target in one browser turn.  At a
+            // narrow breakpoint Mantine can finish its drawer transition
+            // between a successful hit-test and a later DOM lookup; that
+            // second lookup then observes a still-measurable, collapsed tab
+            // instead of the control the person can use.  The receipt must
+            // therefore come from the same live target that receives focus.
+            return waitFor(() => evaluate(`(() => {
+                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+                const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
+                const item = [...document.querySelectorAll('button,a')].find((candidate) => {
+                    if (!(candidate instanceof HTMLElement) || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
+                    const box = candidate.getBoundingClientRect();
+                    if (box.width <= 0 || box.height <= 0 || box.left < 0 || box.right > window.innerWidth || box.top < 0 || box.bottom > window.innerHeight) return false;
+                    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+                    return hit === candidate || candidate.contains(hit);
+                });
+                if (!(item instanceof HTMLElement) || ('disabled' in item && Boolean(item.disabled))) return false;
+                item.focus();
+                const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
+                return {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:document.activeElement === item, enabled:true, disabled:false,
+                    disabledExplanation:item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null,
+                    accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id',
+                    transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:'navigation', value:${JSON.stringify(route)}}};
+            })()`), `${observation} rendered ${route} navigation control`);
         };
         const navigateRenderedControl = async (route, expectedRoute, observation) => {
             if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
