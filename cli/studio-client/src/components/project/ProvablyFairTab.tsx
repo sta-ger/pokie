@@ -244,6 +244,11 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                 commitment and live source bundle -- everything shown here is computed by pokie&apos;s own
                 commit-reveal services, never re-derived in this UI.
             </Text>
+            {!diagnosticsReachable && (
+                <Text id="fairness-diagnostics-unavailable" size="xs" c="dimmed" mb={4}>
+                    Review diagnostics becomes available after verification completes.
+                </Text>
+            )}
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Configure" description="Seeds & mode" aria-current={activeStep === 0 ? "step" : undefined} />
@@ -258,6 +263,8 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                     label="Review diagnostics"
                     description="Issues"
                     disabled={!diagnosticsReachable}
+                    aria-describedby={diagnosticsReachable ? undefined : "fairness-diagnostics-unavailable"}
+                    title={diagnosticsReachable ? undefined : "Review diagnostics becomes available after verification completes."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
             </Stepper>

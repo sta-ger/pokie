@@ -404,7 +404,10 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await goToSimulationTab(user);
 
         const exportStep = stepperStep("Export", "Download report");
-        expect(screen.getByRole("button", {name: exportStep})).toBeDisabled();
+        const disabledExport = screen.getByRole("button", {name: exportStep});
+        expect(disabledExport).toBeDisabled();
+        expect(disabledExport).toHaveAttribute("aria-describedby", "simulation-export-unavailable");
+        expect(screen.getByText("Export becomes available after a completed simulation report is ready.")).toBeVisible();
 
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
         await waitFor(() => expect(screen.getByRole("button", {name: exportStep})).not.toBeDisabled(), {timeout: 15000});
@@ -473,7 +476,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         screen.getByRole("button", {name: runStep}).focus();
         await user.keyboard("{Enter}");
-        expect(screen.getByText(/^completed —/)).toBeInTheDocument();
+        expect(screen.getByText(/^Simulation completed —/)).toBeInTheDocument();
 
         screen.getByRole("button", {name: reviewStep}).focus();
         await user.keyboard("{Enter}");

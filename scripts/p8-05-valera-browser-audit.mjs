@@ -407,7 +407,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // network dependency; keep that bounded, but give the required
         // packed-candidate boundary enough time to complete rather than
         // discarding already accepted immutable tuple receipts as a flake.
-        const installOwnership = ownershipEnvironment("packed-package-install"), installChild = own("packed-package-install", services.spawn(services.npm, [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, options.packedPackage], {cwd:context.workspace, env:{...installOwnership.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot}, stdio:"pipe"}), installOwnership), install = await childResult(installChild, "packed package installation", 0, 300_000); await settleChild(installChild); transcript.push(`[${services.now()}] PACKED_INSTALL\n${install.stdout}${install.stderr}`);
+        // The per-tuple installation stays fail-closed and bounded: this is
+        // a local archive with an isolated cache, not permission to retry or
+        // substitute package contents after an installation stalls.
+        const installOwnership = ownershipEnvironment("packed-package-install"), installChild = own("packed-package-install", services.spawn(services.npm, [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, options.packedPackage], {cwd:context.workspace, env:{...installOwnership.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot}, stdio:"pipe"}), installOwnership), install = await childResult(installChild, "packed package installation", 0, 900_000); await settleChild(installChild); transcript.push(`[${services.now()}] PACKED_INSTALL\n${install.stdout}${install.stderr}`);
         const installedCli = path.join(installationRoot, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie"), installedPackageJson = path.join(installationRoot, "node_modules", "pokie", "package.json"); if (!services.exists(installedCli) || !services.exists(installedPackageJson)) fail("packed package installation did not expose its pokie launcher and package metadata"); installedPackageBytes = await services.readFile(installedPackageJson); const candidatePackage = spawnSync("git", ["show", `${options.candidateId}:package.json`], {cwd:root, encoding:"buffer"}); if (candidatePackage.status !== 0 || !candidatePackage.stdout?.length) fail("declared candidate does not expose package.json for archive binding"); candidatePackageJsonBytes = Buffer.from(candidatePackage.stdout); let installedPackage, candidateManifest; try { installedPackage = JSON.parse(installedPackageBytes.toString("utf8")); candidateManifest = JSON.parse(candidatePackageJsonBytes.toString("utf8")); } catch { fail("installed packed package metadata is not JSON"); } if (installedPackage?.name !== candidateManifest?.name || installedPackage?.version !== candidateManifest?.version || installedPackage?.gitHead !== options.candidateId) fail("installed archive package metadata is not bound to the declared candidate");
         const candidateTreeManifest = candidateTreeExecutableManifest(options.candidateId), candidateReceipt = await trustedCandidateExecutableReceipt(options.candidateExecutableReceipt, options.candidateId, options.candidatePackageSha256, options.candidateExecutableSha256, services, options.output);
         if (candidateReceipt.candidateTreeManifestSha256 !== candidateTreeManifest.sha256 || candidateReceipt.candidateTreeObjectId !== candidateTreeManifest.tree) fail("candidate executable receipt does not bind the declared candidate tree manifest");
@@ -536,7 +539,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         for (const args of [["--help"], ...publicHelp.map((command) => [command, "--help"]), ["certification", "build", "--help"], ["certification", "verify", "--help"], ["fairness", "seed-commit", "--help"], ["fairness", "commit", "--help"], ["fairness", "reveal", "--help"], ["fairness", "verify", "--help"], ["par", "import", "--help"], ["par", "export", "--help"], ["reel", "generate", "--help"]]) await runPackedCli(`packed CLI help ${args.join("-")}`, args);
         const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js"); if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable"); const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help"); await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);
         }
-        const startStudio = () => { const studioOwnership = ownershipEnvironment("studio"), child = own("studio", services.spawn(installedCli, ["--no-open", "--host", "127.0.0.1", "--port", String(port)], {cwd:context.workspace, detached:process.platform !== "win32", env:{...packedEnvironment, ...studioOwnership.env}, stdio:"pipe"}), studioOwnership); child.stdout?.on("data", (chunk) => transcript.push(chunk.toString())); child.stderr?.on("data", (chunk) => { errors.push(chunk.toString()); transcript.push(chunk.toString()); }); return child; }; const started = Date.now(); transcript.push(`[${services.now()}] START installed packed public CLI ${installedCli}`); studio = startStudio(); await waitFor(async () => { try { const response = await fetch(`${origin}/api/health`); api.push({path:"/api/health", status:response.status}); return response.ok; } catch { return false; } }, "built Studio API"); timings.startupMs = Date.now() - started;
+        const startStudio = () => { const studioOwnership = ownershipEnvironment("studio"), child = own("studio", services.spawn(installedCli, ["--no-open", "--host", "127.0.0.1", "--port", String(port)], {cwd:context.workspace, detached:process.platform !== "win32", env:{...packedEnvironment, ...studioOwnership.env}, stdio:"pipe"}), studioOwnership); child.stdout?.on("data", (chunk) => transcript.push(chunk.toString())); child.stderr?.on("data", (chunk) => { errors.push(chunk.toString()); transcript.push(chunk.toString()); }); return child; }; const started = Date.now(); transcript.push(`[${services.now()}] START installed packed public CLI ${installedCli}`); studio = startStudio(); await waitFor(async () => { try { const response = await fetch(`${origin}/api/health`); api.push({path:"/api/health", status:response.status}); return response.ok; } catch { return false; } }, "built Studio API", 90_000); timings.startupMs = Date.now() - started;
         // Loading the public Studio entry point is browser startup, not a
         // workflow transition. Every subsequent route change is activated
         // through the live rendered navigation control below.
@@ -597,14 +600,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // CDP press an off-viewport coordinate and record focus without
             // delivering the product action.  Scroll and hit-test every
             // public operation at the pointer boundary instead.
-            const requiresViewportHit = ["precondition", "navigation", "operation"].includes(lifecycle);
+            // The mobile Burger is a real rendered navigation control too.
+            // It must receive the same complete native pointer sequence as
+            // the tab it exposes; omitting `buttons`/`pointerType` lets CDP
+            // focus the Burger while Mantine never receives the click, which
+            // leaves the requested tab off-canvas at the narrow breakpoint.
+            const requiresViewportHit = ["precondition", "navigation", "navigation-drawer", "operation"].includes(lifecycle);
             // Preserve the complete native pointer state for every rendered
             // public operation as well as navigation/preconditions. Mantine's
             // initial Create game action has no tab transaction attribute;
             // without `buttons` and `pointerType` its visual focus was
             // captured but React never received the click that starts the
             // validation/save/navigation lifecycle.
-            const {focusedAtActivation} = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "operation"].includes(lifecycle), lifecycle !== "navigation");
+            const {focusedAtActivation} = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation"].includes(lifecycle), lifecycle !== "navigation");
             return {kind:"pointer", controlId:stableControlId, count:1, focusedAtActivation};
         };
         const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit) => {
@@ -1061,41 +1069,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // route becomes eligible only after the product's visible navigation
         // control received its keyboard activation.
         const revealRenderedNavigationControl = async (route, observation) => {
-            // On a narrow viewport Mantine retains the tab buttons in its
-            // collapsed drawer.  Their DOM presence is not a visible public
-            // control and clicking their off-canvas coordinates is not a user
-            // workflow.  Open the product's own Burger first, then obtain the
-            // tab from the visible drawer exactly as a phone user would.
-            const drawerOpened = await evaluate(`(() => {
-                const item = document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]');
-                if (!(item instanceof HTMLElement)) return false;
-                const box = item.getBoundingClientRect();
-                const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-                return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit === item || item.contains(hit));
-            })()`);
-            if (!drawerOpened) {
-                const compactNavigation = await evaluate("window.innerWidth <= 600");
-                if (!compactNavigation) {
-                    await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
-                    await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(), hit=document.elementFromPoint(box.left+box.width/2, box.top+box.height/2); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit===item||item.contains(hit)); })()`), `${observation} rendered desktop navigation control`);
-                } else {
-                    const burger = await waitFor(() => evaluate(`(() => {
-                        const item = [...document.querySelectorAll('button')].find((candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label') === 'Toggle navigation' && !candidate.disabled);
-                        if (!(item instanceof HTMLElement)) return false;
-                        item.focus();
-                        return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
-                    })()`), `${observation} rendered narrow navigation drawer control`);
-                    await activateFocusedControl("navigation-drawer", burger);
-                    await waitFor(() => evaluate(`(() => { const item=document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]'); if (!(item instanceof HTMLElement)) return false; const box=item.getBoundingClientRect(), hit=document.elementFromPoint(box.left+box.width/2, box.top+box.height/2); return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight && (hit===item||item.contains(hit)); })()`), `${observation} rendered narrow navigation drawer`);
-                }
-            }
-            // Resolve and focus the exact target in one browser turn.  At a
-            // narrow breakpoint Mantine can finish its drawer transition
-            // between a successful hit-test and a later DOM lookup; that
-            // second lookup then observes a still-measurable, collapsed tab
-            // instead of the control the person can use.  The receipt must
-            // therefore come from the same live target that receives focus.
-            return waitFor(() => evaluate(`(() => {
+            // Find and focus one live target in the same browser turn. A
+            // narrow drawer is allowed to finish closing once a tab receives
+            // focus, so a successful visibility probe must itself return the
+            // control receipt rather than asking a later DOM lookup to find
+            // the same tab again.
+            const focusVisibleNavigationControl = () => evaluate(`(() => {
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
                 const item = [...document.querySelectorAll('button,a')].find((candidate) => {
@@ -1112,12 +1091,42 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     disabledExplanation:item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null,
                     accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id',
                     transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:'navigation', value:${JSON.stringify(route)}}};
-            })()`), `${observation} rendered ${route} navigation control`);
+            })()`);
+            // On a narrow viewport Mantine retains the tab buttons in its
+            // collapsed drawer.  Their DOM presence is not a visible public
+            // control and clicking their off-canvas coordinates is not a user
+            // workflow.  Open the product's own Burger first, then obtain the
+            // tab from the visible drawer exactly as a phone user would.
+            const visibleControl = await focusVisibleNavigationControl();
+            if (visibleControl) return visibleControl;
+            const compactNavigation = await evaluate("window.innerWidth <= 600");
+            if (!compactNavigation) {
+                await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
+                return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
+            }
+            const burger = await waitFor(() => evaluate(`(() => {
+                        const item = [...document.querySelectorAll('button')].find((candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label') === 'Toggle navigation' && !candidate.disabled);
+                        if (!(item instanceof HTMLElement)) return false;
+                        item.focus();
+                        return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
+                    })()`), `${observation} rendered narrow navigation drawer control`);
+            // The Burger is a native keyboard-operable disclosure. On narrow
+            // headless Chromium its drawer transition can begin between
+            // pointer down and pointer up, retargeting a synthetic click to
+            // the collapsing shell. Enter is one real rendered activation.
+            await activateFocusedControl("navigation-drawer", burger, "keyboard");
+            return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
         };
         const navigateRenderedControl = async (route, expectedRoute, observation) => {
             if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
             const control = await revealRenderedNavigationControl(route, observation);
-            await activateFocusedControl("navigation", control);
+            // The compact drawer can close as soon as its live tab loses the
+            // pointer hit target. Its focused button remains a real keyboard
+            // control, so use one native Enter activation at phone width;
+            // NavTabs owns that explicit keyboard lifecycle just as it owns
+            // its pointer lifecycle.
+            const compactNavigation = await evaluate("window.innerWidth <= 600");
+            await activateFocusedControl("navigation", control, compactNavigation ? "keyboard" : "pointer");
             try {
                 await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);
             } catch (error) {

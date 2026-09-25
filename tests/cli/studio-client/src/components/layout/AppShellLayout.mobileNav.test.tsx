@@ -62,6 +62,34 @@ describe("AppShellLayout - mobile navigation", () => {
         expect(document.activeElement).toBe(burger);
     });
 
+    it("opens the labelled drawer through the Burger's keyboard control", async () => {
+        const user = userEvent.setup();
+        const {burger} = renderLayout();
+
+        burger.focus();
+        await user.keyboard("{Enter}");
+
+        expect(isBurgerOpened(burger)).toBe(true);
+        expect(burger).toHaveAttribute("aria-expanded", "true");
+        expect(burger).toHaveAttribute("aria-controls", "studio-navigation-panel");
+        expect(document.getElementById("studio-navigation-panel")).toBeInTheDocument();
+    });
+
+    it("selects a visible drawer section through its keyboard control", async () => {
+        const user = userEvent.setup();
+        const {onSelect, burger} = renderLayout();
+
+        await user.click(burger);
+        const section = screen.getByRole("button", {name: "Section B"});
+        section.focus();
+        await user.keyboard("{Enter}");
+
+        expect(onSelect).toHaveBeenCalledTimes(1);
+        expect(onSelect).toHaveBeenCalledWith("b");
+        expect(isBurgerOpened(burger)).toBe(false);
+        expect(document.activeElement).toBe(burger);
+    });
+
     it("closes the navbar on Escape and returns focus to the burger", async () => {
         const user = userEvent.setup();
         const {burger} = renderLayout();

@@ -15,6 +15,10 @@ export type NavTabItem<T extends string> = {value: T; label: string; section?: s
 // collapsed) and returns focus to the Burger that opened it.
 export function NavTabs<T extends string>({items, active, onSelect}: {items: NavTabItem<T>[]; active: T; onSelect: (value: T) => void}) {
     const closeNavbar = useCloseNavbar();
+    const selectTab = (value: T): void => {
+        onSelect(value);
+        closeNavbar();
+    };
 
     return (
         <nav aria-label="Sections">
@@ -35,10 +39,7 @@ export function NavTabs<T extends string>({items, active, onSelect}: {items: Nav
                         label={item.label}
                         active={item.value === active}
                         aria-current={item.value === active ? "page" : undefined}
-                        onClick={() => {
-                            onSelect(item.value);
-                            closeNavbar();
-                        }}
+                        onClick={() => selectTab(item.value)}
                     />
                 </div>
             ))}

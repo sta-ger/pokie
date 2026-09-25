@@ -94,7 +94,17 @@ export function AppShellLayout({
             <AppShell.Header>
                 <Group className="studio-app-header" h="100%" px="md" justify="space-between" wrap="nowrap">
                     <Group className="studio-app-header-primary" wrap="nowrap">
-                        <Burger id="studio-navigation-toggle" ref={burgerRef} opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
+                        <Burger
+                            id="studio-navigation-toggle"
+                            ref={burgerRef}
+                            opened={opened}
+                            onClick={toggle}
+                            hiddenFrom="sm"
+                            size="sm"
+                            aria-label="Toggle navigation"
+                            aria-controls="studio-navigation-panel"
+                            aria-expanded={opened}
+                        />
                         {breadcrumbs.length === 0 ? (
                             <BrandLink onHomeClick={onHomeClick} underline="never" c="inherit">
                                 <Title order={3}>POKIE Studio</Title>
@@ -121,7 +131,7 @@ export function AppShellLayout({
                     {headerRight !== undefined && <div className="studio-app-header-actions">{headerRight}</div>}
                 </Group>
             </AppShell.Header>
-            <AppShell.Navbar p="md">
+            <AppShell.Navbar id="studio-navigation-panel" p="md">
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
             <AppShell.Main className="studio-app-main" style={isPhoneWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>

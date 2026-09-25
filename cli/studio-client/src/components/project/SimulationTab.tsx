@@ -222,6 +222,11 @@ export function SimulationTab({
                     Simulation {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
                 </Text>
             )}
+            {!exportReachable && (
+                <Text id="simulation-export-unavailable" size="xs" c="dimmed" mb={4}>
+                    Export becomes available after a completed simulation report is ready.
+                </Text>
+            )}
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step
                     id="simulation-configure"
@@ -246,6 +251,8 @@ export function SimulationTab({
                     label="Export"
                     description="Download report"
                     disabled={!exportReachable}
+                    aria-describedby={exportReachable ? undefined : "simulation-export-unavailable"}
+                    title={exportReachable ? undefined : "Export becomes available after a completed simulation report is ready."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
             </Stepper>

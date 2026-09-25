@@ -79,6 +79,10 @@ describe("ProjectDashboardPage - Provably Fair workflow", () => {
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await goToProvablyFairTab(user);
+        const disabledDiagnostics = screen.getByRole("button", {name: /Review diagnostics.*Issues/});
+        expect(disabledDiagnostics).toBeDisabled();
+        expect(disabledDiagnostics).toHaveAttribute("aria-describedby", "fairness-diagnostics-unavailable");
+        expect(screen.getByText("Review diagnostics becomes available after verification completes.")).toBeVisible();
         await fillConfigureStep(user);
         expect(screen.getByText("sha256:server-seed-hash")).toBeInTheDocument();
 
