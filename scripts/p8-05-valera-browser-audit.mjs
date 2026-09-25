@@ -1110,11 +1110,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         item.focus();
                         return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
                     })()`), `${observation} rendered narrow navigation drawer control`);
-            // The Burger is a native keyboard-operable disclosure. On narrow
-            // headless Chromium its drawer transition can begin between
-            // pointer down and pointer up, retargeting a synthetic click to
-            // the collapsing shell. Enter is one real rendered activation.
-            await activateFocusedControl("navigation-drawer", burger, "keyboard");
+            // This is one native pointer activation of the product's Burger.
+            // `activateFocusedControl` preserves its complete pointer state
+            // and live hit-test boundary, so Mantine receives the disclosure
+            // click before the drawer's transition can expose the tab.
+            await activateFocusedControl("navigation-drawer", burger);
             return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
         };
         const navigateRenderedControl = async (route, expectedRoute, observation) => {
