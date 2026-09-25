@@ -187,6 +187,11 @@ describe("P8-05 rendered Valera persona evidence", () => {
             };
             const expectedTuples = personas.flatMap((persona) => requiredObservations[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => `${persona}/${observation}/${viewport}`)));
             expect(aggregate).toEqual(expect.objectContaining({schemaVersion: 1, kind: "p8-05-process-isolated-packed-proof", candidateId: candidate, candidatePackageSha256: packageSha256, status: "passed", parent: expect.objectContaining({pid: expect.any(Number), processIdentity: expect.any(String), nonce: expect.any(String)}), finalResult: expect.objectContaining({status: "passed", children: expectedTuples.length, checkpointReceipts: expectedTuples.length, aggregation: "independently-verified-immutable-tuple-child-receipts-only"})}));
+            expect(aggregate.runtime).toEqual(expect.objectContaining({receiptPath: expect.any(String), receiptSha256: expect.stringMatching(/^[a-f0-9]{64}$/), installationCount: 1, permissions: "read-only-before-any-tuple-child"}));
+            const runtimeReceiptBytes = await readFile(path.join(output, aggregate.runtime.receiptPath));
+            const runtimeReceipt = JSON.parse(runtimeReceiptBytes.toString("utf8"));
+            expect(createHash("sha256").update(runtimeReceiptBytes).digest("hex")).toBe(aggregate.runtime.receiptSha256);
+            expect(runtimeReceipt).toEqual(expect.objectContaining({kind: "p8-05-immutable-packed-runtime", candidateId: candidate, candidatePackageSha256: packageSha256, candidateExecutableSha256: receipt.candidateExecutableSha256, installation: expect.objectContaining({count: 1}), permissions: "read-only-before-any-tuple-child"}));
             expect(aggregate.children).toHaveLength(expectedTuples.length);
             expect(aggregate.acceptedReceipts).toHaveLength(expectedTuples.length);
             expect(aggregate.children.map((child) => `${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`)).toEqual(expectedTuples);
@@ -221,7 +226,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(accepted.receipt.cleanupSha256).toBe(child.cleanupSha256);
                 expect(accepted.cleanup.cleanupEvidenceId).toBe(child.cleanupEvidenceId);
                 expect(accepted.receipt.checkpointReceipt.actionSha256).toEqual(expect.any(String));
-                const audit = JSON.parse(auditBytes.toString("utf8")) as {workflowScope: {bootstrap: Array<{kind: string; purpose: string; publicWorkflow: string; output?: string; evidenceId: string}>}; evidence: Array<{kind: string; path: string}>};
+                const audit = JSON.parse(auditBytes.toString("utf8")) as {packageIdentity: {sharedRuntimeReceiptSha256: string; sharedRuntimeRoot: string}; workflowScope: {bootstrap: Array<{kind: string; purpose: string; publicWorkflow: string; output?: string; evidenceId: string}>}; evidence: Array<{kind: string; path: string}>};
+                expect(audit.packageIdentity).toEqual(expect.objectContaining({sharedRuntimeReceiptSha256: aggregate.runtime.receiptSha256, sharedRuntimeRoot: runtimeReceipt.runtimeRoot}));
                 const bootstrap = audit.workflowScope.bootstrap.map(({evidenceId: _evidenceId, ...entry}) => entry);
                 const sourcePurpose = child.tuple.observation === "fairness-conditional" ? "fairness-source" : "certification-source";
                 const expectedBootstrap = [

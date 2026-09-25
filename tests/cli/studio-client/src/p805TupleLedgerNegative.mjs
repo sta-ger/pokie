@@ -45,6 +45,7 @@ try {
     try {
         await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(output, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(output, "candidate.tgz"), output}, {
             tuples,
+            prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
             exists:() => false,
             spawn:() => Object.assign(new EventEmitter(), {pid:8100 + spawned++, exitCode:null, signalCode:null}),
             childResult:async () => spawned === 1 ? {exitCode:0, signal:null, stdout:"", stderr:""} : Promise.reject(new Error("worker timeout")),
@@ -55,7 +56,7 @@ try {
             },
             readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
                 const value = receiptFor(tuple, pid);
-                return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
             },
         });
     } catch (error) { failure = error; }
@@ -70,6 +71,7 @@ try {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(stateClassOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(stateClassOutput, "candidate.tgz"), output:stateClassOutput}, {
                 tuples:[tuples[0]],
+                prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
                 exists:() => false,
                 spawn:() => Object.assign(new EventEmitter(), {pid:9200, exitCode:null, signalCode:null}),
                 childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
@@ -80,7 +82,7 @@ try {
                 },
                 readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
                     const value = stateSubstitutedReceiptFor(tuple, pid);
-                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
                 },
             });
         } catch (error) { stateClassFailure = error; }
