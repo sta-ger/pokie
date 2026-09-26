@@ -2055,15 +2055,10 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker failed after preserving ${acceptedReceipts.length} accepted tuple receipts: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    // The aggregate has copied every immutable tuple receipt into its own
-    // ledger.  The shared packed installation is only a parent-owned launch
-    // resource, not evidence in its own right: retaining its read-only
-    // node_modules tree after success leaves an owned resource behind and
-    // prevents the caller's clean-context teardown on normal completion.
-    // Drain it before publishing the final aggregate just as failure paths
-    // do; the retained receipt digest, executable manifest, and child
-    // receipts remain independently verifiable without a live install.
-    const runtimeCleanup = await releaseP805SharedRuntime(runtime, services);
+    // A successful aggregate retains its sealed installation as inspectable
+    // evidence for the runtime receipt.  The caller owns its output directory
+    // and removes it after verification; failure paths still drain it here.
+    const runtimeCleanup = await releaseP805SharedRuntime(runtime, services, true);
     const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, runtime:{kind:runtime.value?.kind, root:runtime.root, receiptPath:path.basename(runtime.receipt.path), receiptSha256:runtime.receipt.sha256, candidateId:runtime.value?.candidateId, candidatePackageSha256:runtime.value?.candidatePackageSha256, candidateExecutableSha256:runtime.value?.candidateExecutableSha256, archiveSha256:runtime.value?.archiveSha256, installationCount:runtime.value?.installation?.count ?? 1, permissions:runtime.value?.permissions ?? "read-only-before-any-tuple-child"}, status:"passed", children, acceptedReceipts, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only", runtimeCleanup}};
     await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`), `${JSON.stringify(ledger, null, 2)}\n`);
     return {ledger, audits};
