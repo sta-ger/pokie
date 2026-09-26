@@ -1811,8 +1811,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         api.push({observation:"active-job reload", method:"GET", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, status:restoredSimulation.event.params.response.status, payload:restoredSimulation.payload, browserRequestId:restoredSimulation.event.params.requestId, initiator:"rendered-reload-simulation"});
         await wait(250);
         const activeReloadCancellation = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, confirmation:true, stateClass:"recovery-operation"}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"], [activeReload.transaction, activeReloadCancellation.transaction]);
-        const outcomeLibraryProjectBaseRoute = await openImportedProject(outcomeBundle, "certification outcome-library import");
-        const runtimeProjectBaseRoute = await openImportedProject(packageRoot, "fairness runtime-package import");
+        // A tuple may prepare only the project its own declared screen uses.
+        // Importing Certification/Fairness sources during an unrelated
+        // simulation or recovery tuple both violates tuple isolation and
+        // turns an optional source import into a false prerequisite.
+        const tupleRoute = options.tuple ? P805_WORKFLOW_CONTRACTS[options.tuple.persona][options.tuple.observation].route : undefined;
+        const outcomeLibraryProjectBaseRoute = !options.tuple || tupleRoute === "certification"
+            ? await openImportedProject(outcomeBundle, "certification outcome-library import")
+            : undefined;
+        const runtimeProjectBaseRoute = !options.tuple || tupleRoute === "provablyFair"
+            ? await openImportedProject(packageRoot, "fairness runtime-package import")
+            : undefined;
         // The preceding import workflows intentionally replace Studio's
         // server-side current project. Re-enter the primary Blueprint through
         // the rendered Projects import path before collecting its workflows;
@@ -1823,7 +1832,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const contract = P805_WORKFLOW_CONTRACTS[persona][observation], actionStart = Date.now(), primaryPersona = options.persona;
             options.persona = persona;
             let page;
-            const workflowProjectBaseRoute = contract.route === "certification" ? outcomeLibraryProjectBaseRoute : contract.route === "provablyFair" ? runtimeProjectBaseRoute : projectBaseRoute;
+            const workflowProjectBaseRoute = contract.route === "certification"
+                ? outcomeLibraryProjectBaseRoute
+                : contract.route === "provablyFair"
+                    ? runtimeProjectBaseRoute
+                    : projectBaseRoute;
+            if (workflowProjectBaseRoute === undefined) fail(`${observation} is missing its declared imported-project bootstrap`);
             try { page = await runScreenControlState(workflowProjectBaseRoute, viewport, observation, contract); } finally { options.persona = primaryPersona; }
             const action = {persona, observation, route:`${workflowProjectBaseRoute}/${contract.route}`, viewport, elapsedMs:Date.now() - actionStart,
                 pageTextLength:page.state.text.length, controlCount:page.state.controls.length, overflow:page.state.overflow,
