@@ -1859,6 +1859,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const state = await evaluate("(()=>{const item=[...document.querySelectorAll('button,a,input,select,textarea')].find((value)=>!value.disabled&&!!(value.offsetWidth||value.offsetHeight||value.getClientRects().length)); item?.focus(); const style=item?getComputedStyle(item):undefined; return {overflow:document.documentElement.scrollWidth>window.innerWidth,visibleFocus:!!item&&document.activeElement===item&&!!style&&(style.outlineStyle!=='none'||style.boxShadow!=='none')};})()"), screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false}), screenshotEvidenceId = await save("screenshot", `responsive-${viewport}.png`, Buffer.from(screenshot.data, "base64"));
             responsive.push({viewport, ...state, screenshotEvidenceId});
         }
+        // The responsive proof intentionally ends at the narrow breakpoint.
+        // The compound recovery workflow that follows must operate the
+        // rendered project navigation, whose desktop controls are hidden in
+        // that breakpoint until the drawer is opened.  Restore the wide shell
+        // before starting its own transaction sequence so cancellation and
+        // replay navigation are exercised through visible public controls.
+        await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions.wide, deviceScaleFactor:1});
+        await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.trim().length > 40"), "wide compound workflow state");
         // The browser form correctly blocks its own minimum-value error, so
         // use the first value above Studio's durable-job server limit.  This
         // keeps the error workflow an actual valid DOM submission whose 400

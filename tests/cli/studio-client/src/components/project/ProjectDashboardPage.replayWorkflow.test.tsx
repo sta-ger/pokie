@@ -227,7 +227,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByText("line")).toBeInTheDocument();
         expect(screen.getByText("free-spin-triggered")).toBeInTheDocument();
 
-        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-1/download");
+        expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/job-1/download");
     }, 60000);
 
     it("reports the actual new replay session identity separately from the replay job id, alongside requested/actual round, seed, and run time", async () => {
@@ -807,7 +807,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
             /Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable:.*"screen" does not match.*"wins" must be an array\./,
         );
 
-        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-malformed/download");
+        expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/job-malformed/download");
     }, 60000);
 
     it("rejects text that isn't valid JSON without ever calling the server", async () => {
@@ -982,7 +982,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Load"}));
         await user.click(await screen.findByRole("button", {name: "Run again"}));
 
-        await waitFor(() => expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-export/download"), {
+        await waitFor(() => expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/job-export/download"), {
             timeout: 15000,
         });
         expect(screen.queryByRole("button", {name: "Download JSON"})).not.toBeInTheDocument();
@@ -1017,7 +1017,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // Picking the spin loads it immediately -- there's nothing to reproduce, so Export is ready as
         // soon as it's selected, with no separate confirmation click in between.
         await waitFor(() => expect(screen.getByRole("button", {name: "Download JSON"})).not.toBeDisabled());
-        expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("link", {name: "Download replay JSON"})).not.toBeInTheDocument();
     }, 60000);
 
     it("shows the Session Spin's own inspect view (screen, credits/bet/win, state before/after) with nothing to reproduce", async () => {
@@ -1214,7 +1214,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.type(screen.getByLabelText("Seed (optional)"), "demo-seed");
         await user.click(screen.getByRole("button", {name: "Load"}));
         await user.click(await screen.findByRole("button", {name: "Run again"}));
-        await waitFor(() => expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument(), {timeout: 15000});
+        await waitFor(() => expect(screen.getByRole("link", {name: "Download replay JSON"})).toBeInTheDocument(), {timeout: 15000});
 
         // Switch source -- the just-reproduced round/result must not linger under the new source.
         await user.click(screen.getByRole("radio", {name: "Session Spin"}));
@@ -1280,7 +1280,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await user.click(screen.getByRole("button", {name: "Load"}));
         await user.click(await screen.findByRole("button", {name: "Run again"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
-        expect(screen.getByRole("link", {name: "Download JSON"})).toBeInTheDocument();
+        expect(screen.getByRole("link", {name: "Download replay JSON"})).toBeInTheDocument();
 
         // Load a *different* target via the same source (new seed, same round) -- the prior terminal
         // replay's progress/retry/result must not linger and block reproducing this new target.
@@ -1292,7 +1292,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         expect(screen.getByRole("button", {name: "Run again"})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Run again with the same parameters"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
-        expect(screen.queryByRole("link", {name: "Download JSON"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("link", {name: "Download replay JSON"})).not.toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Download JSON"})).toBeDisabled();
 
         // The newly loaded target's own reproduction still works end to end -- scoping the stale job
@@ -1300,7 +1300,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // *does* belong to it.
         await user.click(screen.getByRole("button", {name: "Run again"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Run again with the same parameters"})).toBeInTheDocument(), {timeout: 15000});
-        expect(screen.getByRole("link", {name: "Download JSON"})).toHaveAttribute("href", "/api/project/replays/job-2/download");
+        expect(screen.getByRole("link", {name: "Download replay JSON"})).toHaveAttribute("href", "/api/project/replays/job-2/download");
     }, 60000);
 
     it("keeps distinct sessions separately visible in the recent spins list and lets the session filter narrow to just one at a time", async () => {
