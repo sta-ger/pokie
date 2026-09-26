@@ -1,6 +1,6 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm, stat, writeFile} from "node:fs/promises";
+import {chmod, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
@@ -13,6 +13,14 @@ const candidatePath = (process.env.PATH ?? "").split(path.delimiter).filter((ent
 const runCandidateNpm = (args: string[]) => {
     if (!npmCli) throw new Error("the candidate package test requires npm");
     return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", env: {...process.env, PATH: candidatePath}, stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
+};
+
+const makeWritableForCleanup = async (directory: string): Promise<void> => {
+    await chmod(directory, 0o755);
+    for (const entry of await readdir(directory, {withFileTypes: true})) {
+        const target = path.join(directory, entry.name);
+        if (entry.isDirectory()) await makeWritableForCleanup(target);
+    }
 };
 
 describe("P8-05 rendered Valera persona evidence", () => {
@@ -324,6 +332,10 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 }
             }
         } finally {
+            // The passing receipt deliberately retains a read-only packed
+            // runtime for inspection; test-owned temporary evidence must
+            // restore cleanup permissions after those assertions.
+            await makeWritableForCleanup(output);
             await rm(output, {recursive: true, force: true});
             await rm(candidateDirectory, {recursive: true, force: true});
         }
