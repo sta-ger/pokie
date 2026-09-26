@@ -596,6 +596,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (!options.tuple || requiresOutcomeBootstrap) {
                 await runPackedCli("packed CLI Outcome Library export", ["export", blueprint, "--to", "outcomes", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
             }
+            if (options.tuple) await runTupleCliWorkflow();
             timings.buildMs = Date.now() - setupStart;
         } else {
         await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]);
@@ -1673,7 +1674,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // only when that exact workflow consumes it and is retained as scoped
         // evidence beside the action; recovery remains owned by its dedicated
         // UI/UX observation below in the legacy persona-sized path.
-        if (options.tuple) {
+        if (options.tuple && !tupleRequiresCompleteWorkflow(options.tuple)) {
             const {persona, observation, viewport} = options.tuple, contract = tupleContract;
             let projectBaseRoute = createdProjectBaseRoute;
             if (contract.route === "certification") projectBaseRoute = await openImportedProject(outcomeBundle, `${observation} certification bootstrap`);

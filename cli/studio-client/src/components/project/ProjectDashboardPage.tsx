@@ -434,6 +434,19 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
+            // These two tabs do not depend on a capability refresh.  Keeping
+            // their route transition immediate preserves their public editing
+            // and unsaved-work guards while a separate refresh may still be
+            // loading; capability-dependent tabs stay behind the terminal
+            // context acknowledgement below.
+            if (ALL_PROJECT_TABS.find((tab) => tab.value === value)?.requiredCapabilities === undefined) {
+                const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+                navigationRequestIdRef.current += 1;
+                setPendingNavigation(undefined);
+                navigate(`${routePrefix}/${value}`);
+                setNavigationLifecycle({tab: value, status: "rendered"});
+                return;
+            }
             const requestId = ++navigationRequestIdRef.current;
             const requiredRefreshGeneration = contextRefreshGenerationRef.current + 1;
             contextRefreshGenerationRef.current = requiredRefreshGeneration;
@@ -447,7 +460,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setPendingNavigation({requestId, tab: value, refreshGeneration: requiredRefreshGeneration});
             setContextRefreshGeneration(requiredRefreshGeneration);
         },
-        [],
+        [navigate, requestedProjectRoot],
     );
 
     useEffect(() => {
