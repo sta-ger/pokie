@@ -9,9 +9,10 @@ import path from "node:path";
 // candidate build as part of its packed-package assertion, so invoke Node's
 // installed npm CLI directly rather than inheriting that test-launch wrapper.
 const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
+const candidatePath = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => !entry.includes("pokie-command-policy")).join(path.delimiter);
 const runCandidateNpm = (args: string[]) => {
     if (!npmCli) throw new Error("the candidate package test requires npm");
-    return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
+    return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", env: {...process.env, PATH: candidatePath}, stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
 };
 
 describe("P8-05 rendered Valera persona evidence", () => {

@@ -590,7 +590,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(outcomeLibrarySection).getByText("Purpose:")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Destination:")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Prerequisites")).toBeInTheDocument();
-        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
+        await waitFor(() => expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled());
         expect(within(outcomeLibrarySection).getByText("Adapter:")).not.toBeVisible();
         expect(within(outcomeLibrarySection).getByText("Compatibility:")).not.toBeVisible();
 
