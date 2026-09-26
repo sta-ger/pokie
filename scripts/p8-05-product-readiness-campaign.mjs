@@ -27,12 +27,14 @@ export const P805_REQUIRED_OBSERVATIONS = {
     "ui-ux":["onboarding-terminology-forms-progress", "reload-reconnect-recovery-cancellation-project-switch", "keyboard-responsive-accessibility"],
     "graphic-designer":["hierarchy-typography-spacing-density-controls-finish"],
 };
+const P805_REQUIRED_TUPLES = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+const tupleKey = (tuple) => `${tuple?.persona}/${tuple?.observation}/${tuple?.viewport}`;
 /** Validate the parent-owned tuple ledger before a controller may consume it.
  * This is deliberately independent from the legacy five-audit campaign
  * record: a parent has to prove that it accepted every immutable child tuple,
  * in sequence, rather than infer completion from a persona-sized summary. */
 export function validateP805TupleProofLedger(ledger, expected) {
-    const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => `${persona}/${observation}/${viewport}`)));
+    const tuples = P805_REQUIRED_TUPLES.map(tupleKey);
     const runtime = ledger?.runtime;
     if (!ledger || ledger.kind !== "p8-05-process-isolated-packed-proof" || ledger.status !== "passed" || ledger.candidateId !== expected?.candidateId || ledger.candidatePackageSha256 !== expected?.candidatePackageSha256 || runtime?.kind !== "p8-05-immutable-packed-runtime" || !path.isAbsolute(runtime.root ?? "") || typeof runtime.receiptPath !== "string" || path.basename(runtime.receiptPath) !== runtime.receiptPath || !sha(runtime.receiptSha256) || runtime.candidateId !== expected.candidateId || runtime.candidatePackageSha256 !== expected.candidatePackageSha256 || runtime.candidateExecutableSha256 !== expected.candidateExecutableSha256 || runtime.archiveSha256 !== expected.candidatePackageSha256 || runtime.installationCount !== 1 || runtime.permissions !== "read-only-before-any-tuple-child" || !Array.isArray(ledger.children) || !Array.isArray(ledger.acceptedReceipts) || ledger.children.length !== tuples.length || ledger.acceptedReceipts.length !== tuples.length || ledger.finalResult?.status !== "passed" || ledger.finalResult?.children !== tuples.length || ledger.finalResult?.checkpointReceipts !== tuples.length || ledger.finalResult?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only") fail("tuple proof ledger does not prove a complete passing child matrix");
     const accepted = new Set(), immutableArtifacts = new Set();
@@ -265,12 +267,15 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         if (records.length !== 1) fail(`${label} ${owner} does not resolve exactly one API record by browser request identity`);
         return records[0];
     };
+    const auditTuples = audit?.tuple === undefined
+        ? (audit.workflowPersonas ?? [audit.persona]).flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))))
+        : [audit.tuple];
     // The packed combined run writes one audit headed by its primary persona,
     // but it must not let that heading hide weaker records for the other four
     // personas.  Validate each saved screen state at the exact breakpoint
     // where its action ran; a generic project screenshot or a wide-only state
     // is not evidence for compact and narrow workflows.
-    for (const persona of audit.workflowPersonas ?? [audit.persona]) for (const observation of P805_REQUIRED_OBSERVATIONS[persona]) for (const viewport of ["wide", "compact", "narrow"]) {
+    for (const {persona, observation, viewport} of auditTuples) {
         const action = audit.rendered.actions.find((value) => (value.persona ?? audit.persona) === persona && value.observation === observation && value.viewport === viewport);
         const evidenceId = action?.evidenceId, transactionEvidence = evidenceById.get(evidenceId);
         if (!transactionEvidence || transactionEvidence.item.kind !== "live-dom-transaction" || !transactionEvidence.item.observationIds.includes(observation) || !action) fail(`${label} lacks ${persona} ${viewport} live-DOM transaction evidence for ${observation}`);
@@ -326,11 +331,17 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         if (contents.length !== receipt.sizeBytes || digest(contents) !== receipt.sha256 || checkpoint?.schemaVersion !== 1 || checkpoint.kind !== "p8-05-packed-workflow-checkpoint" || checkpoint.receiptId !== receipt.receiptId || checkpoint.auditId !== audit.auditId || typeof checkpoint.runNonce !== "string" || !checkpoint.runNonce || checkpoint.sequence !== checkpointPaths.size + 1 || checkpoint.status !== "passed" || checkpoint.capturedAt !== receipt.capturedAt || checkpoint.candidateId !== expected.candidateId || checkpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || checkpoint.phase !== audit.phase || checkpoint.persona !== receipt.persona || checkpoint.observation !== receipt.observation || checkpoint.viewport !== receipt.viewport || !action || receipt.actionSha256 !== digest(JSON.stringify(action)) || JSON.stringify(checkpoint.action) !== JSON.stringify(action)) fail(`${label} checkpoint receipt does not bind its exact DOM action, request, terminal, artifact, timing, accessibility, provenance, and viewport`);
         checkpointIds.add(receipt.receiptId); checkpointPaths.add(receipt.path); checkpointActions.add(actionKey);
     }
-    for (const persona of audit.workflowPersonas ?? [audit.persona]) for (const observation of P805_REQUIRED_OBSERVATIONS[persona] ?? []) for (const viewport of ["wide", "compact", "narrow"]) {
+    for (const {persona, observation, viewport} of auditTuples) {
         if (!checkpointActions.has(`${persona}/${observation}/${viewport}`)) fail(`${label} lacks a checkpoint receipt for ${persona}/${observation}/${viewport}`);
     }
     if (JSON.stringify(audit.finalResult?.checkpointReceiptSha256s) !== JSON.stringify((audit.checkpointReceipts ?? []).map((receipt) => receipt.sha256))) fail(`${label} final result does not aggregate only its verified checkpoint receipts`);
-    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || !text("cli-transcript").includes("packed CLI WASM run") || !text("cli-transcript").includes("packed CLI serve") || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || artifact?.candidatePackageJsonSha256 !== audit.packageIdentity.candidatePackageJsonSha256 || artifact?.installedPackageJsonSha256 !== audit.packageIdentity.installedPackageJsonSha256 || artifact?.declaredCandidateExecutableSha256 !== audit.packageIdentity.declaredCandidateExecutableSha256 || artifact?.candidateExecutableSha256 !== audit.packageIdentity.candidateExecutableSha256 || artifact?.candidateExecutableSha256 !== artifact?.declaredCandidateExecutableSha256 || artifact?.candidateExecutableReceiptSha256 !== audit.packageIdentity.candidateExecutableReceiptSha256 || artifact?.candidateExecutableReceiptId !== audit.packageIdentity.candidateExecutableReceiptId || artifact?.candidateExecutableReceiptIssuer !== audit.packageIdentity.candidateExecutableReceiptIssuer || artifact?.candidateTreeManifestCandidateId !== expected.candidateId || artifact?.candidateTreeManifestSha256 !== audit.packageIdentity.candidateTreeManifestSha256 || artifact?.candidateTreeObjectId !== audit.packageIdentity.candidateTreeObjectId || !/^[a-f0-9]{40}$/i.test(artifact?.candidateTreeObjectId ?? "") || artifact?.archiveGitHead !== expected.candidateId || audit.packageIdentity.archiveGitHead !== expected.candidateId || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, candidate binding, timing, and artifact operations`);
+    const tupleCli = audit.tuple && P805_WORKFLOW_CONTRACTS[audit.tuple.persona][audit.tuple.observation].cli;
+    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || (tupleCli && !text("cli-transcript").includes(tupleCli)) || (!audit.tuple && (!text("cli-transcript").includes("packed CLI WASM run") || !text("cli-transcript").includes("packed CLI serve"))) || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || artifact?.candidatePackageJsonSha256 !== audit.packageIdentity.candidatePackageJsonSha256 || artifact?.installedPackageJsonSha256 !== audit.packageIdentity.installedPackageJsonSha256 || artifact?.declaredCandidateExecutableSha256 !== audit.packageIdentity.declaredCandidateExecutableSha256 || artifact?.candidateExecutableSha256 !== audit.packageIdentity.candidateExecutableSha256 || artifact?.candidateExecutableSha256 !== artifact?.declaredCandidateExecutableSha256 || artifact?.candidateExecutableReceiptSha256 !== audit.packageIdentity.candidateExecutableReceiptSha256 || artifact?.candidateExecutableReceiptId !== audit.packageIdentity.candidateExecutableReceiptId || artifact?.candidateExecutableReceiptIssuer !== audit.packageIdentity.candidateExecutableReceiptIssuer || artifact?.candidateTreeManifestCandidateId !== expected.candidateId || artifact?.candidateTreeManifestSha256 !== audit.packageIdentity.candidateTreeManifestSha256 || artifact?.candidateTreeObjectId !== audit.packageIdentity.candidateTreeObjectId || !/^[a-f0-9]{40}$/i.test(artifact?.candidateTreeObjectId ?? "") || artifact?.archiveGitHead !== expected.candidateId || audit.packageIdentity.archiveGitHead !== expected.candidateId || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, candidate binding, timing, and artifact operations`);
+    // Recovery is its own UI/UX tuple in the tuple ledger.  Requiring every
+    // independently owned child to replay it would make one child execute
+    // several workflows and would erase already accepted receipts after a
+    // later recovery failure.
+    if (audit.tuple !== undefined) return;
     // Recovery must be a captured runtime result, not a collection of booleans
     // copied into `rendered`.  In particular reports use their own `id` (not a
     // fictional `simulationId`), so the cancellation assertion is only useful
@@ -367,9 +378,30 @@ function frozenFields(initial, later) {
 function auditRecord(record, phase, initial, finalCandidate) {
     const timings = record?.timings;
     const timingNames = ["startupMs", "projectCreationMs", "validationMs", "buildMs", "simulationMs", "replayMs", "cancellationMs"];
-    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || P805_REQUIRED_OBSERVATIONS[record.persona].some((required) => !record.observations.includes(required)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] <= 0 || timings[name] > 30 * 60 * 1000) || !record.performance || timingNames.some((name) => !Number.isSafeInteger(record.performance[name]?.budgetMs) || record.performance[name].budgetMs <= 0 || record.performance[name].elapsedMs !== timings[name] || !["within-budget", "regression"].includes(record.performance[name].classification))) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
+    const tuple = record?.tuple, tupleIsValid = tuple !== undefined && P805_REQUIRED_TUPLES.some((required) => tupleKey(required) === tupleKey(tuple));
+    const expectedObservations = tuple === undefined ? P805_REQUIRED_OBSERVATIONS[record?.persona] : [tuple.observation];
+    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || !expectedObservations || expectedObservations.some((required) => !record.observations.includes(required)) || (tuple !== undefined && (!tupleIsValid || record.persona !== tuple.persona || record.observations.length !== 1 || record.observations[0] !== tuple.observation)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] <= 0 || timings[name] > 30 * 60 * 1000) || !record.performance || timingNames.some((name) => !Number.isSafeInteger(record.performance[name]?.budgetMs) || record.performance[name].budgetMs <= 0 || record.performance[name].elapsedMs !== timings[name] || !["within-budget", "regression"].includes(record.performance[name].classification))) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
     candidate(record, phase === "initial" ? initial : finalCandidate, `${phase} audit ${record.persona}`);
     validateP805RenderedPersonaAudit(record);
+}
+
+/** Campaign records remain readable by the five-persona schema, while the
+ * executable collector records its stronger tuple matrix.  Never accept a
+ * partial mixture: that would let a later worker failure be hidden behind a
+ * persona aggregate. */
+export function validateP805AuditMatrix(audits, phase) {
+    if (!Array.isArray(audits)) fail(`${phase} audit record is missing audits`);
+    const tupleMatrix = audits.every((audit) => audit?.tuple !== undefined);
+    if (!tupleMatrix) {
+        if (audits.some((audit) => audit?.tuple !== undefined) || audits.length !== P805_PERSONAS.length) fail(`${phase} audit record mixes persona and tuple receipts`);
+        unique(audits, `${phase} audits`, "persona");
+        return false;
+    }
+    if (audits.length !== P805_REQUIRED_TUPLES.length) fail(`${phase} audit record must contain the complete tuple matrix`);
+    unique(audits, `${phase} audits`, "auditId");
+    const keys = audits.map((audit) => tupleKey(audit.tuple));
+    if (new Set(keys).size !== keys.length || JSON.stringify(keys) !== JSON.stringify(P805_REQUIRED_TUPLES.map(tupleKey))) fail(`${phase} audit record has a missing, duplicate, or reordered tuple receipt`);
+    return true;
 }
 
 function qualityDefects(audit) {
@@ -403,8 +435,8 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     if (initialCandidate.candidateId === finalCandidate.candidateId) fail("blind retests must use a new candidate after the initial audit");
     const used = new Set(), contexts = new Set();
     const initial = records["initial-audits.json"];
-    if (initial.schemaVersion !== P805_SCHEMA_VERSION || initial.campaignId !== provenance.campaignId || !Array.isArray(initial.audits) || initial.audits.length !== P805_PERSONAS.length) fail("initial audit record must contain exactly five personas");
-    unique(initial.audits, "initial audits", "persona");
+    if (initial.schemaVersion !== P805_SCHEMA_VERSION || initial.campaignId !== provenance.campaignId) fail("initial audit record is not bound to the campaign");
+    validateP805AuditMatrix(initial.audits, "initial");
     for (const audit of initial.audits) {
         auditRecord(audit, "initial", initialCandidate, finalCandidate);
         if (Date.parse(audit.startedAt) <= Date.parse(provenance.startedAt)) fail(`initial audit ${audit.persona} predates provenance`);
@@ -460,8 +492,8 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         }
     }
     const retests = records["retests.json"];
-    if (retests.schemaVersion !== P805_SCHEMA_VERSION || retests.campaignId !== provenance.campaignId || !Array.isArray(retests.audits) || retests.audits.length !== P805_PERSONAS.length || !iso(retests.startedAt)) fail("retest record must contain exactly five personas");
-    unique(retests.audits, "retests", "persona");
+    if (retests.schemaVersion !== P805_SCHEMA_VERSION || retests.campaignId !== provenance.campaignId || !iso(retests.startedAt)) fail("retest record is not bound to the campaign");
+    validateP805AuditMatrix(retests.audits, "retest");
     if (Date.parse(retests.startedAt) <= Date.parse(frozen.frozenAt)) fail("retests started before findings were frozen");
     for (const audit of retests.audits) {
         auditRecord(audit, "retest", initialCandidate, finalCandidate);
@@ -488,8 +520,8 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     if (retests.audits.some((audit) => Date.parse(audit.endedAt) >= Date.parse(closeout.closedAt))) fail("closeout must follow every clean retest");
     for (const finding of frozen.findings) {
         const disposition = closeout.dispositions.find((entry) => entry.findingId === finding.id);
-        const personaAudit = retests.audits.find((audit) => audit.persona === finding.persona);
-        if (!disposition || disposition.status !== (findingRegister.findings.find((entry) => entry.id === finding.id)?.status) || disposition.retestAuditId !== personaAudit?.auditId || typeof disposition.retestEvidenceId !== "string" || !personaAudit.evidence.some((item) => item.evidenceId === disposition.retestEvidenceId)) fail(`closeout lacks verified persona retest disposition for ${finding.id}`);
+        const personaAudit = retests.audits.find((audit) => audit.persona === finding.persona && audit.auditId === disposition?.retestAuditId);
+        if (!disposition || disposition.status !== (findingRegister.findings.find((entry) => entry.id === finding.id)?.status) || !personaAudit || typeof disposition.retestEvidenceId !== "string" || !personaAudit.evidence.some((item) => item.evidenceId === disposition.retestEvidenceId)) fail(`closeout lacks verified persona retest disposition for ${finding.id}`);
         if (BLOCKING(finding) && disposition.status !== "resolved") fail(`closeout leaves release-blocking finding ${finding.id} unresolved`);
     }
     if (!closeout.cleanup || closeout.cleanup.noOwnedProcessesRemain !== true || closeout.cleanup.failedOrCancelledArtifactsRemoved !== true) fail("closeout lacks cleanup attestations");

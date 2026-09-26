@@ -12,6 +12,7 @@ import {
     P805_SCHEMA_VERSION,
     P805_WORKFLOW_CONTRACTS,
     p805TransactionStateClass,
+    validateP805AuditMatrix,
     validateP805TupleProofLedger,
     validateP805ProductReadinessCampaign,
 } from "../../scripts/p8-05-product-readiness-campaign.mjs";
@@ -1154,6 +1155,15 @@ test("rejects a regression receipt that lacks verifier-owned authentication", as
         await writeFile(path.join(fixture.directory, "regressions.json"), `${JSON.stringify(regressions)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}));
     } finally { await fixture.cleanup(); }
+});
+
+test("tuple campaign matrices require every persona, observation, and viewport before closeout", () => {
+    const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+    const audits = tuples.map((tuple, index) => ({auditId:`tuple-${index}`, tuple}));
+    assert.equal(validateP805AuditMatrix(audits, "initial"), true);
+    assert.throws(() => validateP805AuditMatrix(audits.slice(1), "initial"), /complete tuple matrix/);
+    assert.throws(() => validateP805AuditMatrix([...audits.slice(0, -1), {...audits.at(-1), auditId:"duplicate-slot", tuple:audits[0].tuple}], "initial"), /missing, duplicate, or reordered/);
+    assert.throws(() => validateP805AuditMatrix([...audits.slice(0, -1), {auditId:"persona-summary"}], "initial"), /mixes persona and tuple/);
 });
 
 test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-persona, cross-viewport, and unclean child substitutions", () => {
