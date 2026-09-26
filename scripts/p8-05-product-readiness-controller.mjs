@@ -43,8 +43,12 @@ async function externalAnchor(anchor, expectedKind, expected) {
  * or publish a clean controller result before every tuple is accepted.
  */
 export function validateP805ControllerMachineProof(value, phase, candidateValue, ledgerContents) {
-    const tuples = value?.tuples;
-    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || !Array.isArray(tuples) || tuples.length === 0 || new Set(tuples).size !== tuples.length || value.audits?.count !== tuples.length || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== tuples.length || new Set(value.audits.ids).size !== tuples.length) fail("controller machine proof does not bind the exact candidate's complete packed CLI/Studio tuple ledger");
+    let ledger;
+    try { ledger = JSON.parse(ledgerContents); }
+    catch { fail("controller machine proof cannot read its packed CLI/Studio tuple ledger"); }
+    validateP805TupleProofLedger(ledger, candidateValue);
+    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), auditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId);
+    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== auditIds.length || JSON.stringify(value.audits?.ids) !== JSON.stringify(auditIds) || new Set(auditIds).size !== auditIds.length) fail("controller machine proof does not bind the exact candidate's complete packed CLI/Studio tuple ledger");
     return value;
 }
 
@@ -52,7 +56,7 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof)
     const ledger = await record(config.directory, proofLedgerName(phase));
     validateP805TupleProofLedger(ledger.value, candidateValue);
     if (digest(`${JSON.stringify(proof.ledger, null, 2)}\n`) !== digest(ledger.contents)) fail("controller re-read ledger differs from the packed parent result");
-    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), value = {
+    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), auditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), value = {
         schemaVersion:P805_SCHEMA_VERSION,
         kind:"p8-05-controller-machine-proof",
         status:"passed",
@@ -63,7 +67,10 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof)
         candidateExecutableSha256:candidateValue.candidateExecutableSha256,
         proofLedger:{path:proofLedgerName(phase), sha256:digest(ledger.contents), candidateId:ledger.value.candidateId, candidatePackageSha256:ledger.value.candidatePackageSha256, status:ledger.value.status, aggregation:ledger.value.finalResult?.aggregation},
         tuples,
-        audits:{count:proof.audits.length, ids:proof.audits.map((audit) => audit.auditId)},
+        // The handoff is derived solely from the re-read immutable ledger.
+        // In-memory audit objects are useful to write the campaign record,
+        // but may never define what the controller certifies to review.
+        audits:{count:auditIds.length, ids:auditIds},
     };
     if (existsSync(recordPath(config.directory, machineProofName(phase)))) fail("controller machine proof is append-only");
     validateP805ControllerMachineProof(value, phase, candidateValue, ledger.contents);

@@ -5,12 +5,28 @@ import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
+import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
 const attestation = "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence.";
 const packed = {packedCli:"/tmp/pokie/dist/cli/pokie.js", packedPackage:"/tmp/pokie/pokie.tgz"};
+const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+const digestAt = (prefix, index) => `${prefix}${index.toString(16).padStart(63, "0")}`;
+const machineProofLedger = () => ({
+    schemaVersion:1,
+    kind:"p8-05-process-isolated-packed-proof",
+    phase:"initial",
+    status:"passed",
+    candidateId:initial.candidateId,
+    candidatePackageSha256:initial.candidatePackageSha256,
+    parent:{pid:1},
+    runtime:{kind:"p8-05-immutable-packed-runtime", root:"/tmp/p8-05-runtime", receiptPath:"runtime.json", receiptSha256:"f".repeat(64), candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, candidateExecutableSha256:initial.candidateExecutableSha256, archiveSha256:initial.candidatePackageSha256, installationCount:1, permissions:"read-only-before-any-tuple-child"},
+    children:tuples.map((tuple, index) => ({tuple, worker:{pid:index + 2}, auditPath:`audit-${index}.json`, auditSha256:digestAt("a", index), tupleReceiptPath:`receipt-${index}.json`, tupleReceiptSha256:digestAt("b", index), cleanupPath:`cleanup-${index}.json`, cleanupSha256:digestAt("c", index), checkpointReceiptSha256s:[digestAt("d", index)], cleanupEvidenceId:`cleanup-${index}`, parentCleanup:{processTreeDrained:true, resourcesDrained:true}, exitCode:0, signal:null})),
+    acceptedReceipts:tuples.map((tuple, index) => ({tuple, receiptPath:`receipt-${index}.json`, receiptSha256:digestAt("b", index), cleanupPath:`cleanup-${index}.json`, cleanupSha256:digestAt("c", index), receipt:{schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, auditId:`audit-${index}`, cleanupEvidenceId:`cleanup-${index}`, cleanupSha256:digestAt("c", index), checkpointReceipt:{candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, actionSha256:digestAt("e", index)}}, cleanup:{schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, tuple, worker:{pid:index + 2}, cleanup:{exit:"success", processTreeDrained:true, resourcesDrained:true, contextRemoved:true}, cleanupEvidenceId:`cleanup-${index}`}})),
+    finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"},
+});
 
 test("controller exposes fail-closed audit, freeze, post-fix, and retest phase boundaries", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-controller-"));
@@ -49,7 +65,7 @@ test("controller does not expose an injected audit runner seam", async () => {
 });
 
 test("controller machine-proof handoff is bound to its exact candidate ledger", () => {
-    const ledgerContents = "{\"kind\":\"p8-05-process-isolated-packed-proof\"}\n", proof = {
+    const ledger = machineProofLedger(), ledgerContents = `${JSON.stringify(ledger)}\n`, proof = {
         schemaVersion:4,
         kind:"p8-05-controller-machine-proof",
         status:"passed",
@@ -59,10 +75,15 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
         candidatePackageSha256:initial.candidatePackageSha256,
         candidateExecutableSha256:initial.candidateExecutableSha256,
         proofLedger:{path:"initial-process-isolated-packed-proof.json", sha256:createHash("sha256").update(ledgerContents).digest("hex"), candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, status:"passed", aggregation:"independently-verified-immutable-tuple-child-receipts-only"},
-        tuples:["mathematician/blueprint/wide"],
-        audits:{count:1, ids:["audit-1"]},
+        tuples:tuples.map((tuple) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`),
+        audits:{count:tuples.length, ids:tuples.map((_tuple, index) => `audit-${index}`)},
     };
     assert.equal(validateP805ControllerMachineProof(proof, "initial", initial, ledgerContents), proof);
     assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, candidateId:retest.candidateId}}, "initial", initial, ledgerContents), /exact candidate/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, tuples:[...proof.tuples, proof.tuples[0]], audits:{count:2, ids:["audit-1", "audit-2"]}}, "initial", initial, ledgerContents), /complete packed CLI\/Studio tuple ledger/i);
+    assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, ids:["substituted-audit", ...proof.audits.ids.slice(1)]}}, "initial", initial, ledgerContents), /complete packed CLI\/Studio tuple ledger/i);
+    const incompleteLedger = structuredClone(ledger);
+    incompleteLedger.children.pop(); incompleteLedger.acceptedReceipts.pop(); incompleteLedger.finalResult.children -= 1; incompleteLedger.finalResult.checkpointReceipts -= 1;
+    const incompleteContents = `${JSON.stringify(incompleteLedger)}\n`, incompleteProof = {...proof, proofLedger:{...proof.proofLedger, sha256:createHash("sha256").update(incompleteContents).digest("hex")}, tuples:proof.tuples.slice(0, -1), audits:{count:proof.audits.count - 1, ids:proof.audits.ids.slice(0, -1)}};
+    assert.throws(() => validateP805ControllerMachineProof(incompleteProof, "initial", initial, incompleteContents), /tuple proof ledger/i);
 });
