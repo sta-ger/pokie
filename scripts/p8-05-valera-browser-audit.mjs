@@ -15,6 +15,7 @@ import {createPc20OwnershipTracker, drainProcessTree, processIdentity, registerP
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (value) => createHash("sha256").update(value).digest("hex");
+const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
@@ -1936,6 +1937,22 @@ async function readChildAudit(output, phase, persona, candidateId, candidatePack
 }
 
 /**
+ * Revalidate the handoff at the parent-owned scheduler boundary.  The file
+ * readers above verify bytes on disk, but the scheduler must not turn an
+ * injected reader (used by deterministic negative coverage) into authority
+ * for a semantic receipt.  This deliberately repeats the identity fields
+ * which bind a child, its single rendered checkpoint, and its cleanup into
+ * one atomic tuple acceptance.
+ */
+function validateParentTupleHandoff(tupleReceipt, published, expected, childPid) {
+    const receipt = tupleReceipt?.receipt, cleanup = tupleReceipt?.cleanup, audit = published?.audit, checkpoint = receipt?.checkpointReceipt, auditCheckpoint = audit?.checkpointReceipts?.[0], action = audit?.rendered?.actions?.[0];
+    const sameTuple = (value) => JSON.stringify(value) === JSON.stringify(expected.tuple);
+    if (!receipt || receipt.schemaVersion !== 1 || receipt.kind !== "p8-05-packed-tuple-receipt" || receipt.status !== "passed" || receipt.phase !== expected.phase || receipt.candidateId !== expected.candidateId || receipt.candidatePackageSha256 !== expected.candidatePackageSha256 || !sameTuple(receipt.tuple) || receipt.worker?.pid !== childPid || !receipt.auditId || !checkpoint || checkpoint.persona !== expected.persona || checkpoint.observation !== expected.observation || checkpoint.viewport !== expected.viewport || checkpoint.candidateId !== expected.candidateId || checkpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || checkpoint.workerPid !== childPid || checkpoint.actionSha256 !== digest(JSON.stringify(receipt.action)) || !sha(tupleReceipt.receiptSha256) || !sha(tupleReceipt.cleanupSha256)) fail(`packed ${expected.persona}/${expected.observation}/${expected.viewport} parent rejected a missing, stale, cross-candidate, cross-persona, or cross-viewport tuple receipt`);
+    if (!cleanup || cleanup.schemaVersion !== 1 || cleanup.kind !== "p8-05-packed-tuple-cleanup" || cleanup.phase !== expected.phase || cleanup.candidateId !== expected.candidateId || cleanup.candidatePackageSha256 !== expected.candidatePackageSha256 || !sameTuple(cleanup.tuple) || cleanup.worker?.pid !== childPid || cleanup.cleanup?.exit !== "success" || cleanup.cleanup?.processTreeDrained !== true || cleanup.cleanup?.resourcesDrained !== true || cleanup.cleanup?.contextRemoved !== true || !cleanup.cleanupEvidenceId || receipt.cleanupEvidenceId !== cleanup.cleanupEvidenceId || receipt.cleanupSha256 !== tupleReceipt.cleanupSha256) fail(`packed ${expected.persona}/${expected.observation}/${expected.viewport} parent rejected a missing or substituted cleanup receipt`);
+    if (!audit || audit.persona !== expected.persona || audit.phase !== expected.phase || audit.candidateId !== expected.candidateId || audit.candidatePackageSha256 !== expected.candidatePackageSha256 || audit.worker?.pid !== childPid || !Array.isArray(audit.workflowPersonas) || audit.workflowPersonas.length !== 1 || audit.workflowPersonas[0] !== expected.persona || !sameTuple(audit.tuple) || !Array.isArray(audit.checkpointReceipts) || audit.checkpointReceipts.length !== 1 || !Array.isArray(audit.rendered?.actions) || audit.rendered.actions.length !== 1 || !auditCheckpoint || !action || audit.auditId !== receipt.auditId || auditCheckpoint.receiptId !== checkpoint.receiptId || auditCheckpoint.persona !== expected.persona || auditCheckpoint.observation !== expected.observation || auditCheckpoint.viewport !== expected.viewport || auditCheckpoint.candidateId !== expected.candidateId || auditCheckpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || auditCheckpoint.workerPid !== childPid || auditCheckpoint.sha256 !== checkpoint.sha256 || auditCheckpoint.actionSha256 !== checkpoint.actionSha256 || JSON.stringify(action) !== JSON.stringify(receipt.action) || audit.cleanup?.evidenceId !== cleanup.cleanupEvidenceId) fail(`packed ${expected.persona}/${expected.observation}/${expected.viewport} parent rejected a duplicate, stale, or substituted semantic receipt`);
+}
+
+/**
  * Parent-owned proof ledger.  The parent deliberately never imports or calls
  * a persona workflow: it installs and authenticates one immutable candidate
  * runtime, then every audit is a fresh Node worker with its own user context
@@ -1995,6 +2012,7 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             const checkpoint = published.audit.checkpointReceipts.find((value) => value.receiptId === tupleReceipt.receipt.checkpointReceipt.receiptId);
             validatePackedTupleAction(tupleReceipt.receipt.action, tuple);
             validatePackedTupleAction(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport), tuple);
+            validateParentTupleHandoff(tupleReceipt, published, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
             if (published.audit.rendered.actions.length !== 1 || published.audit.checkpointReceipts.length !== 1 || !checkpoint || checkpoint.workerPid !== child.pid || tupleReceipt.receipt.auditId !== published.audit.auditId || checkpoint.sha256 !== tupleReceipt.receipt.checkpointReceipt.sha256 || checkpoint.actionSha256 !== tupleReceipt.receipt.checkpointReceipt.actionSha256 || JSON.stringify(tupleReceipt.receipt.action) !== JSON.stringify(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport)) || tupleReceipt.cleanup.cleanupEvidenceId !== published.audit.cleanup.evidenceId || tupleReceipt.receipt.cleanupEvidenceId !== tupleReceipt.cleanup.cleanupEvidenceId || tupleReceipt.receipt.cleanupSha256 !== tupleReceipt.cleanupSha256) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child receipts do not bind the accepted rendered checkpoint, audit, and cleanup`);
             if (workerPids.has(published.audit.worker.pid) || published.audit.worker.pid === parent.pid) fail(`packed ${tuple.persona} worker process identity is not isolated`);
             workerPids.add(published.audit.worker.pid);

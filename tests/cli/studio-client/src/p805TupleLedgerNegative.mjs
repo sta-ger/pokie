@@ -43,9 +43,9 @@ const stateSubstitutedReceiptFor = (tuple, pid) => {
 const runtime = () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}});
 const auditFor = (tuple, pid) => {
     const value = receiptFor(tuple, pid);
-    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+    return {audit:{auditId:`audit-${pid}`, persona:tuple.persona, workflowPersonas:[tuple.persona], tuple, phase:"initial", candidateId:candidate, candidatePackageSha256, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
 };
-async function retainedFailure(kind, message, mutateReceipt) {
+async function retainedFailure(kind, message, mutateReceipt, mutateAudit) {
     const directory = await mkdtemp(path.join(tmpdir(), `p8-05-parent-ledger-${kind}-`));
     let launches = 0;
     const cleanups = [];
@@ -72,7 +72,11 @@ async function retainedFailure(kind, message, mutateReceipt) {
                     mutateReceipt?.(value, pid);
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
                 },
-                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => auditFor(tuple, pid),
+                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
+                    const value = auditFor(tuple, pid);
+                    mutateAudit?.(value, pid);
+                    return value;
+                },
             });
         } catch (error) { failure = error; }
         if (!/after preserving 1 accepted tuple receipts/.test(String(failure))) throw new Error(`${kind} did not retain the accepted predecessor: ${failure}`);
@@ -98,10 +102,7 @@ try {
                 const value = receiptFor(expected.tuple, pid);
                 return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
             },
-            readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
-                const value = receiptFor(tuple, pid);
-                return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
-            },
+            readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => auditFor(tuple, pid),
         });
     } catch (error) { failure = error; }
     if (!/after preserving 1 accepted tuple receipts/.test(String(failure)) || cleanupKinds.join(",") !== "success,timeout") throw new Error(`parent did not retain the first accepted tuple while draining the timed-out second child: ${failure}; ${cleanupKinds.join(",")}`);
@@ -114,6 +115,19 @@ try {
     retainedFailureKinds["cleanup-substitution"] = await retainedFailure("failure", "cleanup substitution", (value, pid) => {
         if (pid === 10_001) value.cleanup.cleanupEvidenceId = "substituted-cleanup";
     });
+    const rejectedReceiptSubstitutions = {};
+    for (const [name, mutateReceipt, mutateAudit] of [
+        ["missing", (value, pid) => { if (pid === 10_001) delete value.receipt.checkpointReceipt; }],
+        ["stale", (value, pid) => { if (pid === 10_001) value.receipt.worker.pid = 10_000; }],
+        ["cross-candidate", (value, pid) => { if (pid === 10_001) value.receipt.candidateId = "f".repeat(40); }],
+        ["cross-persona", (value, pid) => { if (pid === 10_001) value.receipt.tuple = {...value.receipt.tuple, persona:"programmer"}; }],
+        ["cross-viewport", (value, pid) => { if (pid === 10_001) value.cleanup.tuple = {...value.cleanup.tuple, viewport:"wide"}; }],
+        ["duplicate", undefined, (value, pid) => { if (pid === 10_001) { value.audit.checkpointReceipts.push({...value.audit.checkpointReceipts[0], receiptId:"duplicate-checkpoint"}); value.audit.rendered.actions.push({...value.audit.rendered.actions[0]}); } }],
+        ["content-equivalent", undefined, (value, pid) => { if (pid === 10_001) value.auditSha256 = sha("audit-10000"); }],
+    ]) {
+        await retainedFailure("failure", `injected ${name} tuple receipt`, mutateReceipt, mutateAudit);
+        rejectedReceiptSubstitutions[name] = true;
+    }
     const stateClassOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-state-class-negative-"));
     try {
         let stateClassFailure;
@@ -132,7 +146,10 @@ try {
                 },
                 readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
                     const value = stateSubstitutedReceiptFor(tuple, pid);
-                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                    const published = auditFor(tuple, pid);
+                    published.audit.checkpointReceipts = [value.checkpoint];
+                    published.audit.rendered.actions = [value.action];
+                    return published;
                 },
             });
         } catch (error) { stateClassFailure = error; }
@@ -155,8 +172,10 @@ try {
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
                 },
                 readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
-                    const value = receiptFor(tuple, pid);
-                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"e".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-substituted-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                    const published = auditFor(tuple, pid);
+                    published.audit.packageIdentity.sharedRuntimeReceiptSha256 = "e".repeat(64);
+                    published.audit.packageIdentity.sharedRuntimeRoot = "/tmp/p8-05-substituted-runtime";
+                    return published;
                 },
             });
         } catch (error) { runtimeSubstitutionFailure = error; }
@@ -179,14 +198,16 @@ try {
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
                 },
                 readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
-                    const value = receiptFor(tuple, pid);
-                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                    const published = auditFor(tuple, pid);
+                    delete published.audit.packageIdentity.sharedRuntimeReceiptSha256;
+                    delete published.audit.packageIdentity.sharedRuntimeRoot;
+                    return published;
                 },
             });
         } catch (error) { runtimeOmissionFailure = error; }
         if (!/substituted the parent immutable runtime identity/.test(String(runtimeOmissionFailure)) || (await readdir(runtimeOmissionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a child that omitted its shared runtime proof: ${runtimeOmissionFailure}`);
     } finally { await rm(runtimeOmissionOutput, {recursive:true, force:true}); }
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
+    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }
