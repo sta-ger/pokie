@@ -114,6 +114,30 @@ try {
         } catch (error) { runtimeSubstitutionFailure = error; }
         if (!/substituted the parent immutable runtime identity/.test(String(runtimeSubstitutionFailure)) || (await readdir(runtimeSubstitutionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a runtime-substituted tuple receipt: ${runtimeSubstitutionFailure}`);
     } finally { await rm(runtimeSubstitutionOutput, {recursive:true, force:true}); }
+    const runtimeOmissionOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-runtime-omission-negative-"));
+    try {
+        let runtimeOmissionFailure;
+        try {
+            await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(runtimeOmissionOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(runtimeOmissionOutput, "candidate.tgz"), output:runtimeOmissionOutput}, {
+                tuples:[tuples[0]],
+                prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
+                validateSharedRuntime:async () => undefined,
+                exists:() => false,
+                spawn:() => Object.assign(new EventEmitter(), {pid:9400, exitCode:null, signalCode:null}),
+                childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
+                    const value = receiptFor(expected.tuple, pid);
+                    return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
+                },
+                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
+                    const value = receiptFor(tuple, pid);
+                    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+                },
+            });
+        } catch (error) { runtimeOmissionFailure = error; }
+        if (!/substituted the parent immutable runtime identity/.test(String(runtimeOmissionFailure)) || (await readdir(runtimeOmissionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a child that omitted its shared runtime proof: ${runtimeOmissionFailure}`);
+    } finally { await rm(runtimeOmissionOutput, {recursive:true, force:true}); }
     process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});

@@ -318,8 +318,17 @@ async function makeReadOnly(directory, services) {
 
 /** Only the parent may release its runtime, and only after it has stopped
  * accepting tuple receipts.  Tuple workers never receive this capability. */
-async function releaseP805SharedRuntime(runtime, services) {
+async function releaseP805SharedRuntime(runtime, services, retainEvidence = false) {
     if (!runtime?.root || !services.exists(runtime.root)) return {root:runtime?.root, removed:true, alreadyAbsent:true};
+    // A passing aggregate is itself an audit artifact.  Retain the sealed
+    // installation long enough for its receipt's immutable executable and
+    // read-only assertions to remain independently inspectable.  Failure
+    // paths still remove this parent-owned resource immediately.
+    if (retainEvidence) {
+        const writableBits = (await services.stat(runtime.root)).mode & 0o222;
+        if (writableBits !== 0) fail("parent-owned immutable packed runtime became writable before receipt retention");
+        return {root:runtime.root, removed:false, retained:true, permissions:"read-only-before-any-tuple-child"};
+    }
     const makeWritable = async (directory) => {
         for (const entry of await services.readdir(directory, {withFileTypes:true})) {
             const target = path.join(directory, entry.name);
@@ -1971,9 +1980,11 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             // The child may not merely repeat a parent-owned receipt pointer:
             // its recorded public launcher must resolve inside the one runtime
             // the parent authenticated both before and after the child run.
-            // Keep the optional echo fields as corroboration for older audit
-            // projections whose JSON serializer omits undefined fields.
-            if (published.audit.packageIdentity?.installedCli !== expectedRuntimeCli || reportedRuntimeReceipt !== undefined && reportedRuntimeReceipt !== runtime.receipt.sha256 || reportedRuntimeRoot !== undefined && reportedRuntimeRoot !== runtime.root) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child substituted the parent immutable runtime identity (launcher ${published.audit.packageIdentity?.installedCli ?? "missing"}/${expectedRuntimeCli}, receipt ${reportedRuntimeReceipt ?? "missing"}/${runtime.receipt.sha256}, root ${reportedRuntimeRoot ?? "missing"}/${runtime.root})`);
+            // The child must name both parent-owned identity receipts.  An
+            // omitted field is not a backward-compatible projection here: it
+            // leaves the aggregate unable to prove which immutable runtime
+            // supplied this tuple's public launcher.
+            if (published.audit.packageIdentity?.installedCli !== expectedRuntimeCli || reportedRuntimeReceipt !== runtime.receipt.sha256 || reportedRuntimeRoot !== runtime.root) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child substituted the parent immutable runtime identity (launcher ${published.audit.packageIdentity?.installedCli ?? "missing"}/${expectedRuntimeCli}, receipt ${reportedRuntimeReceipt ?? "missing"}/${runtime.receipt.sha256}, root ${reportedRuntimeRoot ?? "missing"}/${runtime.root})`);
             const checkpoint = published.audit.checkpointReceipts.find((value) => value.receiptId === tupleReceipt.receipt.checkpointReceipt.receiptId);
             validatePackedTupleAction(tupleReceipt.receipt.action, tuple);
             validatePackedTupleAction(published.audit.rendered.actions.find((value) => value.persona === tuple.persona && value.observation === tuple.observation && value.viewport === tuple.viewport), tuple);
@@ -2001,7 +2012,7 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker failed after preserving ${acceptedReceipts.length} accepted tuple receipts: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    const runtimeCleanup = await releaseP805SharedRuntime(runtime, services);
+    const runtimeCleanup = await releaseP805SharedRuntime(runtime, services, true);
     const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, runtime:{kind:runtime.value?.kind, root:runtime.root, receiptPath:path.basename(runtime.receipt.path), receiptSha256:runtime.receipt.sha256, candidateId:runtime.value?.candidateId, candidatePackageSha256:runtime.value?.candidatePackageSha256, candidateExecutableSha256:runtime.value?.candidateExecutableSha256, archiveSha256:runtime.value?.archiveSha256, installationCount:runtime.value?.installation?.count ?? 1, permissions:runtime.value?.permissions ?? "read-only-before-any-tuple-child"}, status:"passed", children, acceptedReceipts, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only", runtimeCleanup}};
     await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`), `${JSON.stringify(ledger, null, 2)}\n`);
     return {ledger, audits};
