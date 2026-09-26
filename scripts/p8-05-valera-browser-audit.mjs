@@ -1514,6 +1514,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // affordance. Read this contract after the correlated browser
             // request has completed; the collector never creates it.
             const lifecycle = contract.body || contract.operation ? "operation" : "navigation", lifecycleValue = contract.operation ?? contract.body ?? contract.route;
+            // The durable browser poll above has already observed this exact
+            // job's terminal record.  Studio then reconciles that record into
+            // the visible lifecycle receipt on its normal 500ms poll cadence.
+            // A packed candidate can be CPU-throttled while another tuple is
+            // draining Chromium descendants, so the old generic 30-second
+            // DOM budget could reject a real terminal result before React had
+            // painted it.  Keep the bounded wait local to this required,
+            // already-correlated rendered handoff rather than accepting the
+            // server result as a substitute for the visible receipt.
             const lifecycleResult = await waitFor(async () => evaluate(`(() => {
                 const lifecycle = ${JSON.stringify(lifecycle)}, value = ${JSON.stringify(lifecycleValue)};
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
@@ -1533,7 +1542,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // this transaction contract is meant to close.
                 if (${JSON.stringify(Boolean(contract.body && contract.artifact))} && (!artifact || !accessibleName(artifact))) return false;
                 return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), controlId:result.getAttribute('data-pokie-lifecycle-result-control'), stateClass:result.getAttribute('data-pokie-lifecycle-result-state'), jobId:result.getAttribute('data-pokie-lifecycle-result-job'), target:result.getAttribute('data-pokie-lifecycle-result-target'), outputPath:result.getAttribute('data-pokie-lifecycle-result-output'), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact), target:artifact.getAttribute('data-pokie-lifecycle-artifact-target'), outputPath:artifact.getAttribute('data-pokie-lifecycle-artifact-output')} : null};
-            })()`), `${observation} product-owned lifecycle result`);
+            })()`), `${observation} product-owned lifecycle result`, contract.poll ? 120_000 : 30_000);
             if (contract.body && contract.artifact && (!lifecycleResult.artifact?.name || !lifecycleResult.artifact.accessibleName)) fail(`${observation} did not render a visible product-owned ${contract.artifact} artifact affordance`);
             if (lifecycleResult.controlId !== transaction.control.stableControlId || lifecycleResult.stateClass !== transaction.stateClass || (contract.poll && lifecycleResult.jobId !== entry.terminal?.jobId)) fail(`${observation} rendered ${transaction.stateClass} terminal does not bind its activated control, transaction state${contract.poll ? ", and durable job" : ""}`);
             const productState = await evaluate(`(() => {

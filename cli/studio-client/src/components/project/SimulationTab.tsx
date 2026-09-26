@@ -207,20 +207,23 @@ export function SimulationTab({
              * progress/result to the Run Simulation control's operation.
              */}
             {progress !== undefined && (
-                <Text
-                    role="status"
-                    aria-live="polite"
+                <div
                     tabIndex={-1}
                     data-pokie-lifecycle-result="simulation"
                     data-pokie-lifecycle-result-control="simulation-run"
                     data-pokie-lifecycle-result-state="editable-submission"
                     data-pokie-lifecycle-result-job={progress.jobId}
                     data-pokie-lifecycle-terminal={progress.status}
-                    size="sm"
-                    mb={4}
                 >
-                    Simulation {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
-                </Text>
+                    <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
+                        Simulation {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
+                    </Text>
+                    {progress.status === "completed" && (
+                        <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
+                            Open completed simulation report
+                        </Button>
+                    )}
+                </div>
             )}
             {!exportReachable && (
                 <Text id="simulation-export-unavailable" size="xs" c="dimmed" mb={4}>
