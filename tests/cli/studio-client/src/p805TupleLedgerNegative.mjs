@@ -40,6 +40,49 @@ const stateSubstitutedReceiptFor = (tuple, pid) => {
     value.receipt.action = action;
     return value;
 };
+const runtime = () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}});
+const auditFor = (tuple, pid) => {
+    const value = receiptFor(tuple, pid);
+    return {audit:{auditId:`audit-${pid}`, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+};
+async function retainedFailure(kind, message, mutateReceipt) {
+    const directory = await mkdtemp(path.join(tmpdir(), `p8-05-parent-ledger-${kind}-`));
+    let launches = 0;
+    const cleanups = [];
+    try {
+        let failure;
+        try {
+            await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(directory, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(directory, "candidate.tgz"), output:directory}, {
+                tuples,
+                prepareRuntime:async () => runtime(),
+                validateSharedRuntime:async () => undefined,
+                exists:(target) => kind === "restart" && launches === 1 && target.includes("tuple-"),
+                spawn:() => {
+                    if (kind === "spawn-failure" && launches === 1) throw new Error(message);
+                    return Object.assign(new EventEmitter(), {pid:10_000 + launches++, exitCode:null, signalCode:null});
+                },
+                childResult:async (child) => child.pid === 10_000 || kind === "detached-descendant" ? {exitCode:0, signal:null, stdout:"", stderr:""} : Promise.reject(new Error(message)),
+                cleanupChild:async (child, cleanupKind) => {
+                    cleanups.push(cleanupKind);
+                    if (kind === "detached-descendant" && child?.pid === 10_001 && cleanupKind === "success") return {processTreeDrained:false, resourcesDrained:false};
+                    return {processTreeDrained:true, resourcesDrained:true};
+                },
+                readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
+                    const value = receiptFor(expected.tuple, pid);
+                    mutateReceipt?.(value, pid);
+                    return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
+                },
+                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => auditFor(tuple, pid),
+            });
+        } catch (error) { failure = error; }
+        if (!/after preserving 1 accepted tuple receipts/.test(String(failure))) throw new Error(`${kind} did not retain the accepted predecessor: ${failure}`);
+        const names = await readdir(directory), failed = names.find((name) => name.includes("process-isolated-packed-proof.failed-"));
+        if (!failed || names.includes("initial-process-isolated-packed-proof.json")) throw new Error(`${kind} published an aggregate after a tuple failure`);
+        const ledger = JSON.parse(await readFile(path.join(directory, failed), "utf8"));
+        if (ledger.acceptedReceipts.length !== 1 || ledger.failedTuple.viewport !== "compact" || ledger.attemptedChild.failureKind !== kind || !ledger.attemptedChild.cleanup.processTreeDrained || !ledger.attemptedChild.cleanup.resourcesDrained) throw new Error(`${kind} failure ledger did not retain the predecessor and owned cleanup`);
+        return cleanups;
+    } finally { await rm(directory, {recursive:true, force:true}); }
+}
 try {
     let failure;
     try {
@@ -66,6 +109,11 @@ try {
     if (!failed || (await readdir(output)).includes("initial-process-isolated-packed-proof.json")) throw new Error("parent published an aggregate after a tuple failure");
     const ledger = JSON.parse(await readFile(path.join(output, failed), "utf8"));
     if (ledger.acceptedReceipts.length !== 1 || ledger.failedTuple.viewport !== "compact" || ledger.attemptedChild.failureKind !== "timeout" || !ledger.attemptedChild.cleanup.processTreeDrained || !ledger.attemptedChild.cleanup.resourcesDrained) throw new Error("failure ledger did not preserve the accepted receipt and timeout cleanup");
+    const retainedFailureKinds = {};
+    for (const [kind, message] of [["failure", "injected worker failure"], ["cancellation", "injected cancellation"], ["spawn-failure", "injected spawn failure"], ["restart", "unused restart error"], ["detached-descendant", "unused detached descendant error"]]) retainedFailureKinds[kind] = await retainedFailure(kind, message);
+    retainedFailureKinds["cleanup-substitution"] = await retainedFailure("failure", "cleanup substitution", (value, pid) => {
+        if (pid === 10_001) value.cleanup.cleanupEvidenceId = "substituted-cleanup";
+    });
     const stateClassOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-state-class-negative-"));
     try {
         let stateClassFailure;
@@ -138,7 +186,7 @@ try {
         } catch (error) { runtimeOmissionFailure = error; }
         if (!/substituted the parent immutable runtime identity/.test(String(runtimeOmissionFailure)) || (await readdir(runtimeOmissionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a child that omitted its shared runtime proof: ${runtimeOmissionFailure}`);
     } finally { await rm(runtimeOmissionOutput, {recursive:true, force:true}); }
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
+    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }

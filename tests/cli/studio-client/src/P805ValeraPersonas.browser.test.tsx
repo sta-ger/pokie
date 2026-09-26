@@ -21,7 +21,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
     it("retains accepted tuple receipts and drains every owned child when the next tuple fails", () => {
         const fixture = path.join(process.cwd(), "tests/cli/studio-client/src/p805TupleLedgerNegative.mjs");
         const result = JSON.parse(execFileSync(process.execPath, [fixture], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe"}));
-        expect(result).toEqual({acceptedReceipts: 1, aggregatePublished: false, failureKind: "timeout", cleanupKinds: ["success", "timeout"], stateClassSubstitutionRejected: true, runtimeSubstitutionRejected: true});
+        expect(result).toEqual({acceptedReceipts: 1, aggregatePublished: false, failureKind: "timeout", cleanupKinds: ["success", "timeout"], retainedFailureKinds: {failure: ["success", "failure"], cancellation: ["success", "cancellation"], "spawn-failure": ["success", "spawn-failure"], restart: ["success", "restart"], "detached-descendant": ["success", "success", "detached-descendant"], "cleanup-substitution": ["success", "failure"]}, stateClassSubstitutionRejected: true, runtimeSubstitutionRejected: true});
     });
 
     it("builds its own candidate package and executes every packed CLI and rendered Studio persona workflow", async () => {

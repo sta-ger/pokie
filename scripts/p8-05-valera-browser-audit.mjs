@@ -1899,6 +1899,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     return audit;
 }
 const tupleFileStem = ({persona, observation, viewport}) => `${persona}--${observation.replaceAll(/[^a-z0-9]+/gi, "-")}--${viewport}`;
+function tupleFailureKind(error, child) {
+    const message = String(error);
+    if (!child) return /restart would reuse an immutable tuple artifact/.test(message) ? "restart" : "spawn-failure";
+    if (/parent cleanup failed after worker success|detached descendant/i.test(message)) return "detached-descendant";
+    if (/cancel/i.test(message)) return "cancellation";
+    return /timeout|exceeded/i.test(message) ? "timeout" : "failure";
+}
 async function readChildTupleReceipt(receiptPath, cleanupPath, expected, childPid) {
     let receiptBytes, cleanupBytes, receipt, cleanup;
     try { [receiptBytes, cleanupBytes] = await Promise.all([readFile(receiptPath), readFile(cleanupPath)]); receipt = JSON.parse(receiptBytes.toString("utf8")); cleanup = JSON.parse(cleanupBytes.toString("utf8")); }
@@ -2005,7 +2012,7 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
         }
         catch (error) {
             let cleanup;
-            const failureKind = child ? (/cancel/i.test(String(error)) ? "cancellation" : /timeout|exceeded/i.test(String(error)) ? "timeout" : "failure") : "spawn-failure";
+            const failureKind = tupleFailureKind(error, child);
             try { cleanup = await services.cleanupChild(child, failureKind); } catch (drainError) { cleanup = {processTreeDrained:false, resourcesDrained:false, error:String(drainError)}; }
             attemptedChild = {tuple, worker:child?.pid ? {pid:child.pid, processIdentity:processIdentity(child.pid)} : undefined, startedAt:childStartedAt, endedAt:services.now(), exitCode:result?.exitCode ?? child?.exitCode ?? null, signal:result?.signal ?? child?.signalCode ?? null, cleanup:cleanup ?? {processTreeDrained:false, resourcesDrained:false, status:"cleanup-not-run"}, failureKind};
             await publishFailure(tuple, error, attemptedChild);
