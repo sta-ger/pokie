@@ -79,7 +79,10 @@ export const P805_WORKFLOW_CONTRACTS = {
     "ui-ux": {"onboarding-terminology-forms-progress": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"labels-visible"}, "reload-reconnect-recovery-cancellation-project-switch": {route:"simulation", control:"Simulation", actionControl:"Run Simulation", actionControlId:"simulation-run", method:"POST", api:"/api/project/simulations", body:"simulation", terminal:"recovered"}, "keyboard-responsive-accessibility": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"keyboard-visible"}},
     "graphic-designer": {"hierarchy-typography-spacing-density-controls-finish": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"rendered-finish"}},
 };
-export const P805_RENDERED_TRANSACTION_STATE_CLASSES = ["navigation", "read-only-operation", "editable-submission"];
+// Recovery controls are rendered operations too. They are deliberately
+// distinct from editable submissions because Cancel/Retry acts on an
+// existing durable request rather than a form the person is submitting.
+export const P805_RENDERED_TRANSACTION_STATE_CLASSES = ["navigation", "read-only-operation", "editable-submission", "recovery-operation"];
 
 /**
  * Accept only the transaction class published by a rendered lifecycle
