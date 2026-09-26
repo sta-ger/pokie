@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
+import {createHash} from "node:crypto";
 import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
@@ -45,4 +46,23 @@ test("controller does not expose an injected audit runner seam", async () => {
             /packed package archive digest|ENOENT|no such file/i,
         );
     } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test("controller machine-proof handoff is bound to its exact candidate ledger", () => {
+    const ledgerContents = "{\"kind\":\"p8-05-process-isolated-packed-proof\"}\n", proof = {
+        schemaVersion:4,
+        kind:"p8-05-controller-machine-proof",
+        status:"passed",
+        execution:"controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix",
+        phase:"initial",
+        candidateId:initial.candidateId,
+        candidatePackageSha256:initial.candidatePackageSha256,
+        candidateExecutableSha256:initial.candidateExecutableSha256,
+        proofLedger:{path:"initial-process-isolated-packed-proof.json", sha256:createHash("sha256").update(ledgerContents).digest("hex"), candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, status:"passed", aggregation:"independently-verified-immutable-tuple-child-receipts-only"},
+        tuples:["mathematician/blueprint/wide"],
+        audits:{count:1, ids:["audit-1"]},
+    };
+    assert.equal(validateP805ControllerMachineProof(proof, "initial", initial, ledgerContents), proof);
+    assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, candidateId:retest.candidateId}}, "initial", initial, ledgerContents), /exact candidate/i);
+    assert.throws(() => validateP805ControllerMachineProof({...proof, tuples:[...proof.tuples, proof.tuples[0]], audits:{count:2, ids:["audit-1", "audit-2"]}}, "initial", initial, ledgerContents), /complete packed CLI\/Studio tuple ledger/i);
 });

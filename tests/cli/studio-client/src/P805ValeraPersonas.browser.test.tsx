@@ -1,6 +1,6 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm, stat} from "node:fs/promises";
+import {mkdtemp, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
@@ -12,6 +12,7 @@ const runCandidateNpm = (args: string[]) => {
 
 describe("P8-05 rendered Valera persona evidence", () => {
     const runner = path.join(process.cwd(), "scripts/p8-05-valera-browser-audit.mjs");
+    const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     const verifier = path.join(process.cwd(), "scripts/p8-05-candidate-package-verifier.mjs");
 
     it("exposes a fail-closed public runner command instead of accepting claim objects", () => {
@@ -58,12 +59,28 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(receipt.candidateId).toBe(candidate);
             const personas = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
             const packageSha256 = createHash("sha256").update(archive).digest("hex");
-            // The exact-candidate parent is a real process too.  It spawns
-            // one fresh child for every persona/observation/viewport tuple,
-            // validates that child's immutable receipt and cleanup before the
-            // next tuple, and publishes a passing aggregate only after the
-            // complete packed CLI/Studio matrix has exited cleanly.
-            execFileSync(process.execPath, [runner, "--persona", "all", "--phase", "initial", "--candidate", candidate, "--package-sha256", packageSha256, "--candidate-executable-sha256", receipt.candidateExecutableSha256, "--candidate-executable-receipt", receiptPath, "--candidate-executable-receipt-sha256", receiptSha256, "--packed-package", archivePath, "--output", output], {encoding: "utf8", stdio: "inherit", timeout: 22_500_000});
+            // The controller is the exact-candidate parent.  Its public
+            // initial-audit phase spawns one fresh child for every
+            // persona/observation/viewport tuple, validates that child's
+            // immutable receipt and cleanup before the next tuple, and only
+            // then hands a complete CLI/Studio matrix to independent review.
+            const controllerConfig = path.join(candidateDirectory, "controller-initial-audit.json");
+            await writeFile(controllerConfig, JSON.stringify({
+                directory: output,
+                packedCli: path.join(process.cwd(), "dist/cli/pokie.js"),
+                packedPackage: archivePath,
+                initialCandidate: {
+                    candidateId: candidate,
+                    candidatePackageSha256: packageSha256,
+                    candidateExecutableSha256: receipt.candidateExecutableSha256,
+                    candidateExecutableReceipt: {path: receiptPath, sha256: receiptSha256},
+                },
+                provenance: {
+                    campaignId: "p8-05-exact-candidate-machine-proof",
+                    cleanRoomAttestation: "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence.",
+                },
+            }));
+            execFileSync(process.execPath, [controller, "initial-audit", "--config", controllerConfig], {encoding: "utf8", stdio: "inherit", timeout: 22_500_000});
             const audit = JSON.parse(await readFile(path.join(output, "initial-mathematician--blueprint--wide-audit.json"), "utf8"));
             expect(audit.packageIdentity.archiveSha256).toBe(audit.candidatePackageSha256);
             expect(audit.candidatePackageSha256).toBe(packageSha256);
@@ -184,6 +201,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(audit.evidence.some((item: {kind: string}) => item.kind === "screenshot")).toBe(true);
             const aggregatePath = path.join(output, "initial-process-isolated-packed-proof.json");
             const aggregate = JSON.parse(await readFile(aggregatePath, "utf8"));
+            const controllerProof = JSON.parse(await readFile(path.join(output, "initial-controller-machine-proof.json"), "utf8"));
             const requiredObservations: Record<string, string[]> = {
                 mathematician: ["blueprint", "par-xlsx-round-trip", "reels-paytable-modes-mechanics", "simulation-success-failure-cancellation", "simulation-rtp-volatility-features", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "certification-conditional", "fairness-conditional", "build-export-output-folder", "import-export-defaults"],
                 programmer: ["packed-install", "npx-pokie", "recursive-help", "create-build-inspect", "validate-sim-report-diff-replay-serve-wasm", "spaces-invalid-inputs-exit-codes-ci-recovery", "build-export-output-folder"],
@@ -193,6 +211,26 @@ describe("P8-05 rendered Valera persona evidence", () => {
             };
             const expectedTuples = personas.flatMap((persona) => requiredObservations[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => `${persona}/${observation}/${viewport}`)));
             expect(aggregate).toEqual(expect.objectContaining({schemaVersion: 1, kind: "p8-05-process-isolated-packed-proof", candidateId: candidate, candidatePackageSha256: packageSha256, status: "passed", parent: expect.objectContaining({pid: expect.any(Number), processIdentity: expect.any(String), nonce: expect.any(String)}), finalResult: expect.objectContaining({status: "passed", children: expectedTuples.length, checkpointReceipts: expectedTuples.length, aggregation: "independently-verified-immutable-tuple-child-receipts-only"})}));
+            expect(controllerProof).toEqual(expect.objectContaining({
+                schemaVersion: 4,
+                kind: "p8-05-controller-machine-proof",
+                status: "passed",
+                execution: "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix",
+                phase: "initial",
+                candidateId: candidate,
+                candidatePackageSha256: packageSha256,
+                candidateExecutableSha256: receipt.candidateExecutableSha256,
+                proofLedger: {
+                    path: "initial-process-isolated-packed-proof.json",
+                    sha256: createHash("sha256").update(await readFile(aggregatePath)).digest("hex"),
+                    candidateId: candidate,
+                    candidatePackageSha256: packageSha256,
+                    status: "passed",
+                    aggregation: "independently-verified-immutable-tuple-child-receipts-only",
+                },
+                tuples: expectedTuples,
+                audits: {count: expectedTuples.length, ids: expect.arrayContaining([expect.any(String)])},
+            }));
             expect(aggregate.runtime).toEqual(expect.objectContaining({receiptPath: expect.any(String), receiptSha256: expect.stringMatching(/^[a-f0-9]{64}$/), installationCount: 1, permissions: "read-only-before-any-tuple-child"}));
             const runtimeReceiptBytes = await readFile(path.join(output, aggregate.runtime.receiptPath));
             const runtimeReceipt = JSON.parse(runtimeReceiptBytes.toString("utf8"));

@@ -24,12 +24,50 @@ async function writeRecord(directory, name, value) { await writeFile(recordPath(
 function candidate(value, name) { if (!value || !commit(value.candidateId) || !sha(value.candidatePackageSha256) || !sha(value.candidateExecutableSha256) || !path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") || !sha(value?.candidateExecutableReceipt?.sha256)) fail(`${name} must name an immutable candidate, package digest, executable manifest digest, and external executable receipt`); }
 function base(config) { if (!config || !path.isAbsolute(config.directory ?? "")) fail("configuration requires an absolute campaign directory"); }
 function packed(config, name) { if (!path.isAbsolute(config?.packedCli ?? "") || !path.isAbsolute(config?.packedPackage ?? "")) fail(`${name} requires a packed CLI and package archive`); }
+const machineProofName = (phase) => `${phase}-controller-machine-proof.json`;
+const proofLedgerName = (phase) => `${phase}-process-isolated-packed-proof.json`;
 async function externalAnchor(anchor, expectedKind, expected) {
     if (!anchor || !path.isAbsolute(anchor.path ?? "") || !sha(anchor.sha256)) fail(`${expectedKind} requires an external immutable anchor`);
     let contents, value;
     try { contents = await readFile(anchor.path, "utf8"); value = JSON.parse(contents); } catch { fail(`${expectedKind} external anchor is unreadable JSON`); }
     if (digest(contents) !== anchor.sha256 || value?.kind !== expectedKind || !iso(value.anchoredAt)) fail(`${expectedKind} external anchor digest, kind, or timestamp differs`);
     for (const [name, valueExpected] of Object.entries(expected)) if (value[name] !== valueExpected) fail(`${expectedKind} external anchor does not bind ${name}`);
+    return value;
+}
+
+/**
+ * The controller's receipt is deliberately derived only after re-reading the
+ * immutable parent ledger that its public packed runner wrote.  It is the
+ * handoff boundary between the controller-owned full candidate matrix and an
+ * independent reviewer: a caller cannot substitute an in-memory audit claim
+ * or publish a clean controller result before every tuple is accepted.
+ */
+export function validateP805ControllerMachineProof(value, phase, candidateValue, ledgerContents) {
+    const tuples = value?.tuples;
+    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || !Array.isArray(tuples) || tuples.length === 0 || new Set(tuples).size !== tuples.length || value.audits?.count !== tuples.length || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== tuples.length || new Set(value.audits.ids).size !== tuples.length) fail("controller machine proof does not bind the exact candidate's complete packed CLI/Studio tuple ledger");
+    return value;
+}
+
+async function writeControllerMachineProof(config, phase, candidateValue, proof) {
+    const ledger = await record(config.directory, proofLedgerName(phase));
+    validateP805TupleProofLedger(ledger.value, candidateValue);
+    if (digest(`${JSON.stringify(proof.ledger, null, 2)}\n`) !== digest(ledger.contents)) fail("controller re-read ledger differs from the packed parent result");
+    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), value = {
+        schemaVersion:P805_SCHEMA_VERSION,
+        kind:"p8-05-controller-machine-proof",
+        status:"passed",
+        execution:"controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix",
+        phase,
+        candidateId:candidateValue.candidateId,
+        candidatePackageSha256:candidateValue.candidatePackageSha256,
+        candidateExecutableSha256:candidateValue.candidateExecutableSha256,
+        proofLedger:{path:proofLedgerName(phase), sha256:digest(ledger.contents), candidateId:ledger.value.candidateId, candidatePackageSha256:ledger.value.candidatePackageSha256, status:ledger.value.status, aggregation:ledger.value.finalResult?.aggregation},
+        tuples,
+        audits:{count:proof.audits.length, ids:proof.audits.map((audit) => audit.auditId)},
+    };
+    if (existsSync(recordPath(config.directory, machineProofName(phase)))) fail("controller machine proof is append-only");
+    validateP805ControllerMachineProof(value, phase, candidateValue, ledger.contents);
+    await writeRecord(config.directory, machineProofName(phase), value);
     return value;
 }
 
@@ -45,6 +83,7 @@ async function runAudits(config, phase, candidateValue) {
     try {
         const proof = await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage});
         validateP805TupleProofLedger(proof.ledger, candidateValue);
+        await writeControllerMachineProof(config, phase, candidateValue, proof);
         return proof.audits;
     } catch (error) {
         const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
