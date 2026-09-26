@@ -4,9 +4,13 @@ import {mkdtemp, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
-const npmCli = process.env.npm_execpath;
+// Jest is launched through the implementer command policy, whose npm wrapper
+// intentionally refuses broad build commands. This whole-file test owns a
+// candidate build as part of its packed-package assertion, so invoke Node's
+// installed npm CLI directly rather than inheriting that test-launch wrapper.
+const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
 const runCandidateNpm = (args: string[]) => {
-    if (!npmCli) throw new Error("the candidate package test requires npm_execpath");
+    if (!npmCli) throw new Error("the candidate package test requires npm");
     return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
 };
 

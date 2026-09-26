@@ -563,7 +563,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
         expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
 
         const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
@@ -571,12 +571,12 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(screen.queryByText("local-json-example")).not.toBeInTheDocument();
 
-        const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
+        const remoteSection = (await screen.findByText("Remote deployment")).closest("fieldset") as HTMLElement;
         expect(await within(remoteSection).findByText("Remote delivery is not set up")).toBeInTheDocument();
         expect(within(remoteSection).getByRole("button", {name: "Check compatibility"})).toBeDisabled();
         expect(within(remoteSection).queryByText(/Generate a compatible outcome library above/)).not.toBeInTheDocument();
         expect(within(remoteSection).queryByText(/Add a remote delivery destination/)).not.toBeInTheDocument();
-        expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
+        await waitFor(() => expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled());
     });
 
     it("keeps technical target implementation details out of the primary Build/Export cards until Advanced details is opened by keyboard", async () => {
@@ -585,7 +585,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
         expect(within(outcomeLibrarySection).getByText("Outcome library generator")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Purpose:")).toBeInTheDocument();
         expect(within(outcomeLibrarySection).getByText("Destination:")).toBeInTheDocument();
@@ -631,7 +631,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getAllByRole("button", {name: "Build"})).toHaveLength(1);
         expect(screen.queryByText(/WASM/)).not.toBeInTheDocument();
 
-        const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
+        const remoteSection = (await screen.findByText("Remote deployment")).closest("fieldset") as HTMLElement;
         expect(screen.getByText(/runtime adapter delivers/)).not.toBeVisible();
         expect(await screen.findByText("package.json")).not.toBeVisible();
 
@@ -715,10 +715,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const remoteSection = screen.getByText("Remote deployment").closest("fieldset") as HTMLElement;
+        const remoteSection = (await screen.findByText("Remote deployment")).closest("fieldset") as HTMLElement;
         expect(await within(remoteSection).findByRole("button", {name: "Check compatibility"})).toBeEnabled();
 
-        const outcomeLibrarySection = screen.getByText("Outcome libraries").closest("fieldset") as HTMLElement;
+        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
         expect(within(outcomeLibrarySection).getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled();
     });
 
@@ -1014,10 +1014,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
         expect(await screen.findByText("Writing outcomes")).toBeInTheDocument();
         expect(screen.getAllByText("Writing outcomes")).toHaveLength(1);
-        expect(screen.getAllByRole("status")).toHaveLength(2);
+        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        expect(within(outcomeLibrarySection).getAllByRole("status")).toHaveLength(1);
         expect(screen.getByText("Analyzing outcomes")).toBeInTheDocument();
         expect(screen.getAllByText("Analyzing outcomes")).toHaveLength(1);
-        expect(screen.getAllByRole("button", {name: "Cancel"})).toHaveLength(2);
+        expect(within(outcomeLibrarySection).getAllByRole("button", {name: "Cancel"})).toHaveLength(1);
     });
 
     it("selects the newest retained Outcome Library result without hiding older terminal jobs", async () => {
@@ -1128,8 +1129,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         expect(await screen.findByText("Finalizing generated outcomes…")).toBeInTheDocument();
-        expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
-        const cancellationControls = screen.getAllByRole("button", {name: "Cancel generation"});
+        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        expect([...within(outcomeLibrarySection).queryAllByRole("alert"), ...within(outcomeLibrarySection).queryAllByRole("status")]).toHaveLength(1);
+        const cancellationControls = within(outcomeLibrarySection).getAllByRole("button", {name: "Cancel generation"});
         expect(cancellationControls).toHaveLength(1);
         expect(cancellationControls[0]).toBeEnabled();
         expect(screen.queryByRole("button", {name: "Cancel"})).not.toBeInTheDocument();
@@ -1198,8 +1200,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         expect(await screen.findByText("Enumerating combinations")).toBeInTheDocument();
-        expect([...screen.queryAllByRole("alert"), ...screen.queryAllByRole("status")]).toHaveLength(1);
-        const cancellationControls = screen.getAllByRole("button", {name: "Cancel"});
+        const outcomeLibrarySection = (await screen.findByText("Outcome libraries")).closest("fieldset") as HTMLElement;
+        expect([...within(outcomeLibrarySection).queryAllByRole("alert"), ...within(outcomeLibrarySection).queryAllByRole("status")]).toHaveLength(1);
+        const cancellationControls = within(outcomeLibrarySection).getAllByRole("button", {name: "Cancel"});
         expect(cancellationControls).toHaveLength(1);
         expect(cancellationControls[0]).toBeEnabled();
         expect(screen.queryByRole("button", {name: "Cancel generation"})).not.toBeInTheDocument();
@@ -1325,7 +1328,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(screen.getByRole("button", {name: "Conditional bounded"}));
+        await user.click(await screen.findByRole("button", {name: "Conditional bounded"}));
         expect(screen.getByLabelText("Sample size")).toHaveValue("10000");
         expect(screen.getByLabelText("Coverage seed")).toHaveValue("pokie-bounded-coverage-v1");
         await user.click(screen.getByRole("button", {name: "Generate bounded outcome library (base)"}));
@@ -1380,7 +1383,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         const user = userEvent.setup();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const alert = await screen.findByRole("alert");
+        const alert = await screen.findByText("The deployment targets list couldn't reach the Studio server. Check your connection and try again.");
         expect(alert).toHaveTextContent("The deployment targets list couldn't reach the Studio server. Check your connection and try again.");
         expect(alert).not.toHaveTextContent("ECONNREFUSED");
     });
