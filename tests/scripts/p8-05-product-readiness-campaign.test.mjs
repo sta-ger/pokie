@@ -519,6 +519,7 @@ async function campaignFixture() {
                 evidenceId: cleanup.evidenceId,
             },
             checkpointReceipts,
+            tupleReceipts: P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport, index) => ({tuple:{persona, observation, viewport}, auditId:`${auditId}-${observation}-${viewport}`, auditPath:`tuple-audits/${phase}-${persona}-${observation}-${viewport}.json`, auditSha256:hash(`${auditId}-${observation}-${viewport}-audit`), tupleReceiptPath:`tuple-receipts/${phase}-${persona}-${observation}-${viewport}.json`, tupleReceiptSha256:hash(`${auditId}-${observation}-${viewport}-receipt`), cleanupPath:`tuple-cleanup/${phase}-${persona}-${observation}-${viewport}.json`, cleanupSha256:hash(`${auditId}-${observation}-${viewport}-cleanup`), checkpointReceiptSha256s:[hash(`${auditId}-${observation}-${viewport}-checkpoint-${index}`)]}))),
             finalResult: {status: "passed", aggregation: "verified-checkpoint-receipts-only", chunks: checkpointReceipts.length, checkpointReceiptSha256s: checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId: cleanup.evidenceId},
             rendered: {
                 ...rendered,
@@ -1157,13 +1158,13 @@ test("rejects a regression receipt that lacks verifier-owned authentication", as
     } finally { await fixture.cleanup(); }
 });
 
-test("tuple campaign matrices require every persona, observation, and viewport before closeout", () => {
+test("campaign records expose exactly five persona aggregates while retaining every tuple receipt", () => {
     const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
-    const audits = tuples.map((tuple, index) => ({auditId:`tuple-${index}`, tuple}));
-    assert.equal(validateP805AuditMatrix(audits, "initial"), true);
-    assert.throws(() => validateP805AuditMatrix(audits.slice(1), "initial"), /complete tuple matrix/);
-    assert.throws(() => validateP805AuditMatrix([...audits.slice(0, -1), {...audits.at(-1), auditId:"duplicate-slot", tuple:audits[0].tuple}], "initial"), /missing, duplicate, or reordered/);
-    assert.throws(() => validateP805AuditMatrix([...audits.slice(0, -1), {auditId:"persona-summary"}], "initial"), /mixes persona and tuple/);
+    const audits = P805_PERSONAS.map((persona) => ({auditId:`aggregate-${persona}`, persona, tupleReceipts:tuples.filter((tuple) => tuple.persona === persona).map((tuple, index) => ({tuple, auditId:`tuple-${persona}-${index}`, auditPath:`audit-${persona}-${index}.json`, auditSha256:"a".repeat(64), tupleReceiptPath:`receipt-${persona}-${index}.json`, tupleReceiptSha256:"b".repeat(64), cleanupPath:`cleanup-${persona}-${index}.json`, cleanupSha256:"c".repeat(64), checkpointReceiptSha256s:["d".repeat(64)]}))}));
+    assert.equal(validateP805AuditMatrix(audits, "initial"), false);
+    assert.throws(() => validateP805AuditMatrix(audits.slice(1), "initial"), /exactly five persona aggregates/);
+    assert.throws(() => validateP805AuditMatrix([...audits.slice(0, -1), {...audits.at(-1), persona:audits[0].persona}], "initial"), /duplicate or missing persona/);
+    assert.throws(() => validateP805AuditMatrix([{auditId:"tuple", tuple:tuples[0]}, ...audits.slice(1)], "initial"), /exactly five persona aggregates/);
 });
 
 test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-persona, cross-viewport, and unclean child substitutions", () => {

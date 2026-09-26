@@ -50,7 +50,12 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
             // Consumers that need a capability refresh before selecting a
             // dependent workflow wait for this acknowledgement, rather than
             // treating the request start or an older page header as proof.
-            setCompletedRefreshGeneration(refreshGeneration);
+            // A loading context is a polling placeholder, not a rendered
+            // capability boundary.  Dashboard navigation must wait until the
+            // refresh has reached a terminal context.
+            if (dashboard.status !== "loading") {
+                setCompletedRefreshGeneration(refreshGeneration);
+            }
         };
 
         const poll = (attemptsLeft: number): void => {

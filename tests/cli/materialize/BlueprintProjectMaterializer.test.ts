@@ -391,6 +391,36 @@ describe("BlueprintProjectMaterializer", () => {
         }
     });
 
+    it("tolerates only a confirmed runtime file disappearance while computing a cache identity", () => {
+        const pokiePackageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-identity-"));
+        try {
+            const runtimeEntry = path.join(pokiePackageRoot, "dist", "cjs", "index.js");
+            fs.mkdirSync(path.dirname(runtimeEntry), {recursive: true});
+            fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "pokie", version: "1.3.0"}));
+            fs.writeFileSync(runtimeEntry, "export {};\n");
+            const realRead = fs.readFileSync.bind(fs);
+            const missing = Object.assign(new Error("gone during read"), {code: "ENOENT"});
+            const denied = Object.assign(new Error("permission denied"), {code: "EACCES"});
+            const readSpy = jest.spyOn(fs, "readFileSync").mockImplementation(((target: fs.PathOrFileDescriptor, options?: unknown) => {
+                if (target === runtimeEntry) {
+                    throw missing;
+                }
+                return realRead(target, options as never);
+            }) as typeof fs.readFileSync);
+            expect(createLocalRuntimeIdentity(pokiePackageRoot)).toMatch(/^[a-f0-9]{64}$/);
+            readSpy.mockImplementation(((target: fs.PathOrFileDescriptor, options?: unknown) => {
+                if (target === runtimeEntry) {
+                    throw denied;
+                }
+                return realRead(target, options as never);
+            }) as typeof fs.readFileSync);
+            expect(() => createLocalRuntimeIdentity(pokiePackageRoot)).toThrow("permission denied");
+            readSpy.mockRestore();
+        } finally {
+            fs.rmSync(pokiePackageRoot, {recursive: true, force: true});
+        }
+    });
+
     it("passes tsPackage projects through verbatim, invoking neither npm nor the package validator", async () => {
         const runner = createRecordingRunner();
         const packageValidator = createStubPackageValidator(validReport);

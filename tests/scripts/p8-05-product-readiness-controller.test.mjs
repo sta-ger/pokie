@@ -76,14 +76,14 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
         candidateExecutableSha256:initial.candidateExecutableSha256,
         proofLedger:{path:"initial-process-isolated-packed-proof.json", sha256:createHash("sha256").update(ledgerContents).digest("hex"), candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, status:"passed", aggregation:"independently-verified-immutable-tuple-child-receipts-only"},
         tuples:tuples.map((tuple) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`),
-        audits:{count:tuples.length, ids:tuples.map((_tuple, index) => `audit-${index}`)},
+        audits:{count:P805_PERSONAS.length, personas:P805_PERSONAS, ids:P805_PERSONAS.map((persona) => `aggregate-${persona}`), tupleReceiptAuditIds:tuples.map((_tuple, index) => `audit-${index}`)},
     };
     assert.equal(validateP805ControllerMachineProof(proof, "initial", initial, ledgerContents), proof);
     assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, candidateId:retest.candidateId}}, "initial", initial, ledgerContents), /exact candidate/i);
-    assert.throws(() => validateP805ControllerMachineProof({...proof, tuples:[...proof.tuples, proof.tuples[0]], audits:{count:2, ids:["audit-1", "audit-2"]}}, "initial", initial, ledgerContents), /complete packed CLI\/Studio tuple ledger/i);
-    assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, ids:["substituted-audit", ...proof.audits.ids.slice(1)]}}, "initial", initial, ledgerContents), /complete packed CLI\/Studio tuple ledger/i);
+    assert.throws(() => validateP805ControllerMachineProof({...proof, tuples:[...proof.tuples, proof.tuples[0]], audits:{count:2, personas:P805_PERSONAS, ids:["audit-1", "audit-2"], tupleReceiptAuditIds:proof.audits.tupleReceiptAuditIds}}, "initial", initial, ledgerContents), /five persona aggregates/i);
+    assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, tupleReceiptAuditIds:["substituted-audit", ...proof.audits.tupleReceiptAuditIds.slice(1)]}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     const incompleteLedger = structuredClone(ledger);
     incompleteLedger.children.pop(); incompleteLedger.acceptedReceipts.pop(); incompleteLedger.finalResult.children -= 1; incompleteLedger.finalResult.checkpointReceipts -= 1;
-    const incompleteContents = `${JSON.stringify(incompleteLedger)}\n`, incompleteProof = {...proof, proofLedger:{...proof.proofLedger, sha256:createHash("sha256").update(incompleteContents).digest("hex")}, tuples:proof.tuples.slice(0, -1), audits:{count:proof.audits.count - 1, ids:proof.audits.ids.slice(0, -1)}};
+    const incompleteContents = `${JSON.stringify(incompleteLedger)}\n`, incompleteProof = {...proof, proofLedger:{...proof.proofLedger, sha256:createHash("sha256").update(incompleteContents).digest("hex")}, tuples:proof.tuples.slice(0, -1), audits:{...proof.audits, tupleReceiptAuditIds:proof.audits.tupleReceiptAuditIds.slice(0, -1)}};
     assert.throws(() => validateP805ControllerMachineProof(incompleteProof, "initial", initial, incompleteContents), /tuple proof ledger/i);
 });

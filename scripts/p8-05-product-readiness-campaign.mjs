@@ -378,9 +378,9 @@ function frozenFields(initial, later) {
 function auditRecord(record, phase, initial, finalCandidate) {
     const timings = record?.timings;
     const timingNames = ["startupMs", "projectCreationMs", "validationMs", "buildMs", "simulationMs", "replayMs", "cancellationMs"];
-    const tuple = record?.tuple, tupleIsValid = tuple !== undefined && P805_REQUIRED_TUPLES.some((required) => tupleKey(required) === tupleKey(tuple));
+    const tuple = record?.tuple, tupleIsValid = tuple !== undefined && P805_REQUIRED_TUPLES.some((required) => tupleKey(required) === tupleKey(tuple)), cleanContexts = record?.cleanContexts ?? [record?.cleanContext];
     const expectedObservations = tuple === undefined ? P805_REQUIRED_OBSERVATIONS[record?.persona] : [tuple.observation];
-    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || !expectedObservations || expectedObservations.some((required) => !record.observations.includes(required)) || (tuple !== undefined && (!tupleIsValid || record.persona !== tuple.persona || record.observations.length !== 1 || record.observations[0] !== tuple.observation)) || !record.cleanContext || !path.isAbsolute(record.cleanContext.workspace) || !path.isAbsolute(record.cleanContext.configurationRoot) || !path.isAbsolute(record.cleanContext.browserProfile) || record.cleanContext.reused !== false || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] <= 0 || timings[name] > 30 * 60 * 1000) || !record.performance || timingNames.some((name) => !Number.isSafeInteger(record.performance[name]?.budgetMs) || record.performance[name].budgetMs <= 0 || record.performance[name].elapsedMs !== timings[name] || !["within-budget", "regression"].includes(record.performance[name].classification))) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
+    if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || !expectedObservations || expectedObservations.some((required) => !record.observations.includes(required)) || (tuple !== undefined && (!tupleIsValid || record.persona !== tuple.persona || record.observations.length !== 1 || record.observations[0] !== tuple.observation)) || !Array.isArray(cleanContexts) || cleanContexts.length === 0 || cleanContexts.some((context) => !context || !path.isAbsolute(context.workspace) || !path.isAbsolute(context.configurationRoot) || !path.isAbsolute(context.browserProfile) || context.reused !== false) || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] <= 0 || timings[name] > 30 * 60 * 1000) || !record.performance || timingNames.some((name) => !Number.isSafeInteger(record.performance[name]?.budgetMs) || record.performance[name].budgetMs <= 0 || record.performance[name].elapsedMs !== timings[name] || !["within-budget", "regression"].includes(record.performance[name].classification))) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
     candidate(record, phase === "initial" ? initial : finalCandidate, `${phase} audit ${record.persona}`);
     validateP805RenderedPersonaAudit(record);
 }
@@ -391,17 +391,16 @@ function auditRecord(record, phase, initial, finalCandidate) {
  * persona aggregate. */
 export function validateP805AuditMatrix(audits, phase) {
     if (!Array.isArray(audits)) fail(`${phase} audit record is missing audits`);
-    const tupleMatrix = audits.every((audit) => audit?.tuple !== undefined);
-    if (!tupleMatrix) {
-        if (audits.some((audit) => audit?.tuple !== undefined) || audits.length !== P805_PERSONAS.length) fail(`${phase} audit record mixes persona and tuple receipts`);
-        unique(audits, `${phase} audits`, "persona");
-        return false;
+    if (audits.some((audit) => audit?.tuple !== undefined) || audits.length !== P805_PERSONAS.length) fail(`${phase} audit record must contain exactly five persona aggregates, never direct tuple audits`);
+    unique(audits, `${phase} audits`, "persona");
+    if (JSON.stringify(audits.map((audit) => audit.persona)) !== JSON.stringify(P805_PERSONAS)) fail(`${phase} audit record has a missing, duplicate, or reordered persona aggregate`);
+    for (const audit of audits) {
+        // A persona record is a projection only: it is valid solely while it
+        // retains every immutable child reference it aggregates.
+        const expected = P805_REQUIRED_TUPLES.filter((tuple) => tuple.persona === audit.persona).map(tupleKey), actual = audit.tupleReceipts.map((receipt) => tupleKey(receipt?.tuple));
+        if (!Array.isArray(audit.tupleReceipts) || actual.length !== expected.length || JSON.stringify(actual) !== JSON.stringify(expected) || audit.tupleReceipts.some((receipt) => typeof receipt?.auditId !== "string" || !receipt.auditId || !sha(receipt.auditSha256) || !sha(receipt.tupleReceiptSha256) || !sha(receipt.cleanupSha256) || !Array.isArray(receipt.checkpointReceiptSha256s) || receipt.checkpointReceiptSha256s.length !== 1 || !sha(receipt.checkpointReceiptSha256s[0]) || typeof receipt.auditPath !== "string" || typeof receipt.tupleReceiptPath !== "string" || typeof receipt.cleanupPath !== "string")) fail(`${phase} ${audit.persona} aggregate omits an immutable child tuple receipt`);
     }
-    if (audits.length !== P805_REQUIRED_TUPLES.length) fail(`${phase} audit record must contain the complete tuple matrix`);
-    unique(audits, `${phase} audits`, "auditId");
-    const keys = audits.map((audit) => tupleKey(audit.tuple));
-    if (new Set(keys).size !== keys.length || JSON.stringify(keys) !== JSON.stringify(P805_REQUIRED_TUPLES.map(tupleKey))) fail(`${phase} audit record has a missing, duplicate, or reordered tuple receipt`);
-    return true;
+    return false;
 }
 
 function qualityDefects(audit) {
@@ -440,7 +439,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     for (const audit of initial.audits) {
         auditRecord(audit, "initial", initialCandidate, finalCandidate);
         if (Date.parse(audit.startedAt) <= Date.parse(provenance.startedAt)) fail(`initial audit ${audit.persona} predates provenance`);
-        for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`initial audit ${audit.persona} reuses a clean context`); contexts.add(value); }
+        for (const context of audit.cleanContexts ?? [audit.cleanContext]) for (const value of Object.values(context)) if (typeof value === "string") { if (contexts.has(value)) fail(`initial audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         await validateAuditEvidence(root, audit, initialCandidate, `initial ${audit.persona}`, used);
     }
     const frozen = records["frozen-findings.json"];
@@ -498,7 +497,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     for (const audit of retests.audits) {
         auditRecord(audit, "retest", initialCandidate, finalCandidate);
         if (qualityDefects(audit).length) fail(`clean retest ${audit.persona} retains a browser quality defect`);
-        for (const value of Object.values(audit.cleanContext)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
+        for (const context of audit.cleanContexts ?? [audit.cleanContext]) for (const value of Object.values(context)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
         for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && Date.parse(regression.verifiedAt) > Date.parse(audit.startedAt)) fail(`retest ${audit.persona} predates regression verification`);
         await validateAuditEvidence(root, audit, finalCandidate, `retest ${audit.persona}`, used);

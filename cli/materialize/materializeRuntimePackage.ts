@@ -84,7 +84,13 @@ function appendRuntimePathIdentity(identity: crypto.Hash, targetPath: string, re
         // crash on a declaration file that disappeared between lstat/read.
         try {
             identity.update(fs.readFileSync(targetPath));
-        } catch {
+        } catch (error) {
+            // Only a file removed between lstatSync and readFileSync is a
+            // harmless cache-identity race. Permission and other I/O failures
+            // remain actionable runtime preparation errors.
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+                throw error;
+            }
             identity.update(`missing-during-read:${relativePath}\0`);
         }
         identity.update("\0");

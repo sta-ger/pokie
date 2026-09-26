@@ -6,7 +6,7 @@ import {mkdir, readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {P805_SCHEMA_VERSION, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
+import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
 import {runP805ProcessIsolatedPackedProof} from "./p8-05-valera-browser-audit.mjs";
 
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
@@ -47,16 +47,16 @@ export function validateP805ControllerMachineProof(value, phase, candidateValue,
     try { ledger = JSON.parse(ledgerContents); }
     catch { fail("controller machine proof cannot read its packed CLI/Studio tuple ledger"); }
     validateP805TupleProofLedger(ledger, candidateValue);
-    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), auditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId);
-    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== auditIds.length || JSON.stringify(value.audits?.ids) !== JSON.stringify(auditIds) || new Set(auditIds).size !== auditIds.length) fail("controller machine proof does not bind the exact candidate's complete packed CLI/Studio tuple ledger");
+    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId);
+    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== P805_PERSONAS.length || JSON.stringify(value.audits?.personas) !== JSON.stringify(P805_PERSONAS) || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== P805_PERSONAS.length || new Set(value.audits.ids).size !== P805_PERSONAS.length || JSON.stringify(value.audits?.tupleReceiptAuditIds) !== JSON.stringify(tupleAuditIds) || new Set(tupleAuditIds).size !== tupleAuditIds.length) fail("controller machine proof does not bind five persona aggregates to the exact candidate's complete packed CLI/Studio tuple ledger");
     return value;
 }
 
-async function writeControllerMachineProof(config, phase, candidateValue, proof) {
+async function writeControllerMachineProof(config, phase, candidateValue, proof, audits) {
     const ledger = await record(config.directory, proofLedgerName(phase));
     validateP805TupleProofLedger(ledger.value, candidateValue);
     if (digest(`${JSON.stringify(proof.ledger, null, 2)}\n`) !== digest(ledger.contents)) fail("controller re-read ledger differs from the packed parent result");
-    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), auditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), value = {
+    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), value = {
         schemaVersion:P805_SCHEMA_VERSION,
         kind:"p8-05-controller-machine-proof",
         status:"passed",
@@ -70,12 +70,48 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof)
         // The handoff is derived solely from the re-read immutable ledger.
         // In-memory audit objects are useful to write the campaign record,
         // but may never define what the controller certifies to review.
-        audits:{count:auditIds.length, ids:auditIds},
+        audits:{count:audits.length, personas:audits.map((audit) => audit.persona), ids:audits.map((audit) => audit.auditId), tupleReceiptAuditIds:tupleAuditIds},
     };
     if (existsSync(recordPath(config.directory, machineProofName(phase)))) fail("controller machine proof is append-only");
     validateP805ControllerMachineProof(value, phase, candidateValue, ledger.contents);
     await writeRecord(config.directory, machineProofName(phase), value);
     return value;
+}
+
+/**
+ * The campaign exposes exactly one audit record per persona.  That record is
+ * a read-only aggregation of independently accepted tuple receipts; it never
+ * replaces the child ledger which remains the source of authentication.
+ */
+export function aggregateP805PersonaAudits(tupleAudits, ledger, phase, candidateValue) {
+    validateP805TupleProofLedger(ledger, candidateValue);
+    if (!Array.isArray(tupleAudits) || tupleAudits.length !== ledger.children.length) fail("persona aggregation requires every accepted immutable tuple audit");
+    return P805_PERSONAS.map((persona) => {
+        const children = ledger.children.filter((child) => child.tuple.persona === persona), audits = tupleAudits.filter((audit) => audit.persona === persona);
+        if (children.length === 0 || audits.length !== children.length || audits.some((audit) => !audit.tuple || audit.phase !== phase)) fail(`persona aggregation is missing immutable ${persona} tuple audits`);
+        const first = audits[0], timings = Object.fromEntries(Object.keys(first.timings).map((name) => [name, Math.max(...audits.map((audit) => audit.timings[name]))])), tupleReceipts = children.map((child) => {
+            const audit = audits.find((value) => value.worker?.pid === child.worker?.pid);
+            return {tuple:child.tuple, auditId:audit?.auditId, auditPath:child.auditPath, auditSha256:child.auditSha256, tupleReceiptPath:child.tupleReceiptPath, tupleReceiptSha256:child.tupleReceiptSha256, cleanupPath:child.cleanupPath, cleanupSha256:child.cleanupSha256, checkpointReceiptSha256s:child.checkpointReceiptSha256s, cleanupEvidenceId:child.cleanupEvidenceId};
+        });
+        return {
+            ...first,
+            auditId:`${phase}-${persona}-persona-aggregate-${digest(tupleReceipts.map((receipt) => receipt.auditSha256).join("\0")).slice(0, 16)}`,
+            tuple:undefined,
+            workflowScope:undefined,
+            observations:[...new Set(audits.flatMap((audit) => audit.observations))],
+            cleanContexts:audits.map((audit) => audit.cleanContext),
+            evidence:audits.flatMap((audit) => audit.evidence),
+            observationEvidence:Object.assign({}, ...audits.map((audit) => audit.observationEvidence)),
+            checkpointReceipts:audits.flatMap((audit) => audit.checkpointReceipts),
+            tupleReceipts,
+            startedAt:audits.map((audit) => audit.startedAt).sort()[0],
+            endedAt:audits.map((audit) => audit.endedAt).sort().at(-1),
+            timings,
+            performance:Object.fromEntries(Object.entries(first.performance).map(([name, value]) => [name, {...value, elapsedMs:timings[name], classification:timings[name] <= value.budgetMs ? "within-budget" : "regression"}])),
+            finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:audits.reduce((count, audit) => count + audit.checkpointReceipts.length, 0), checkpointReceiptSha256s:audits.flatMap((audit) => audit.checkpointReceipts.map((receipt) => receipt.sha256)), cleanupEvidenceId:first.cleanup.evidenceId},
+            rendered:{...first.rendered, viewports:["wide", "compact", "narrow"], responsive:["wide", "compact", "narrow"].map((viewport) => audits.find((audit) => audit.tuple.viewport === viewport)?.rendered.responsive[0]).filter(Boolean), measurements:{consoleExceptions:Math.max(...audits.map((audit) => audit.rendered.measurements.consoleExceptions)), unhandledRequestFailures:Math.max(...audits.map((audit) => audit.rendered.measurements.unhandledRequestFailures)), documentOverflow:audits.some((audit) => audit.rendered.measurements.documentOverflow), inaccessiblePrimaryActions:Math.max(...audits.map((audit) => audit.rendered.measurements.inaccessiblePrimaryActions)), unexplainedDisabledControls:Math.max(...audits.map((audit) => audit.rendered.measurements.unexplainedDisabledControls)), namedRegions:Math.max(...audits.map((audit) => audit.rendered.measurements.namedRegions)), visibleFocus:audits.every((audit) => audit.rendered.measurements.visibleFocus)}, defects:audits.flatMap((audit) => audit.rendered.defects), actions:audits.flatMap((audit) => audit.rendered.actions), recovery:Object.assign({}, ...audits.map((audit) => audit.rendered.recovery)), jobs:Object.assign({}, ...audits.map((audit) => audit.rendered.jobs))},
+        };
+    });
 }
 
 async function runAudits(config, phase, candidateValue) {
@@ -90,8 +126,9 @@ async function runAudits(config, phase, candidateValue) {
     try {
         const proof = await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, candidateExecutableSha256:candidateValue.candidateExecutableSha256, candidateExecutableReceipt:candidateValue.candidateExecutableReceipt, output:config.directory, packedCli:config.packedCli, packedPackage:config.packedPackage});
         validateP805TupleProofLedger(proof.ledger, candidateValue);
-        await writeControllerMachineProof(config, phase, candidateValue, proof);
-        return proof.audits;
+        const audits = aggregateP805PersonaAudits(proof.audits, proof.ledger, phase, candidateValue);
+        await writeControllerMachineProof(config, phase, candidateValue, proof, audits);
+        return audits;
     } catch (error) {
         const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
         // The packed parent owns its immutable tuple failure ledger.  Keep
