@@ -1504,8 +1504,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         .map((item) => item.textContent?.trim() || '').filter(Boolean).join('\\n');
                     // A route title exists before activation.  A terminal receipt
                     // must be a post-request rendered change or a live status.
+                    // Keep the visible live-region text in the captured
+                    // terminal projection. A result can be rendered below
+                    // the bounded body excerpt, so recording only the first
+                    // 1,600 body characters made a real post-request status
+                    // look byte-identical to the pre-action page.
+                    const visibleText = text.slice(0, 1600) + (live ? '\\n' + live : '');
                     return typeof text === "string" && text.trim().length > 2 && (text.slice(0, 1600) !== ${JSON.stringify(beforeActionText)} || live.length > 0)
-                        ? {text:text.slice(0, 1600), live} : false;
+                        ? {text:visibleText, live} : false;
                 })()`);
             }, `${observation} rendered terminal state`);
             // A text delta alone is not an operation receipt: unrelated page
