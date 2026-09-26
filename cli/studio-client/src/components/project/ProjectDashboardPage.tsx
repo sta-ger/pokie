@@ -434,22 +434,25 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
-            // These two tabs do not depend on a capability refresh.  Keeping
-            // their route transition immediate preserves their public editing
-            // and unsaved-work guards while a separate refresh may still be
-            // loading; capability-dependent tabs stay behind the terminal
-            // context acknowledgement below.
-            if (ALL_PROJECT_TABS.find((tab) => tab.value === value)?.requiredCapabilities === undefined) {
+            // Ordinary navigation starts a background revalidation, but does
+            // not make a terminal header that is already on screen look
+            // unavailable. A durable operation is different: its refresh is
+            // already in flight, so a capability-dependent destination must
+            // stay pending until that generation has rendered terminally.
+            if (contextRefreshGenerationRef.current <= completedRefreshGeneration) {
                 const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
                 navigationRequestIdRef.current += 1;
                 setPendingNavigation(undefined);
                 navigate(`${routePrefix}/${value}`);
                 setNavigationLifecycle({tab: value, status: "rendered"});
+                setContextRefreshGeneration((generation) => {
+                    const refreshedGeneration = generation + 1;
+                    contextRefreshGenerationRef.current = refreshedGeneration;
+                    return refreshedGeneration;
+                });
                 return;
             }
             const requestId = ++navigationRequestIdRef.current;
-            const requiredRefreshGeneration = contextRefreshGenerationRef.current + 1;
-            contextRefreshGenerationRef.current = requiredRefreshGeneration;
             setNavigationLifecycle({tab: value, status: "loading"});
             // Do not let a dependent workflow mount against the header that
             // preceded a durable operation. The rendered navigation control
@@ -457,10 +460,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             // until that exact generation has been rendered into the
             // capability-driven dashboard. A request receipt alone cannot
             // select a dependent tab while stale capabilities remain visible.
-            setPendingNavigation({requestId, tab: value, refreshGeneration: requiredRefreshGeneration});
-            setContextRefreshGeneration(requiredRefreshGeneration);
+            setPendingNavigation({requestId, tab: value, refreshGeneration: contextRefreshGenerationRef.current});
         },
-        [navigate, requestedProjectRoot],
+        [completedRefreshGeneration, navigate, requestedProjectRoot],
     );
 
     useEffect(() => {

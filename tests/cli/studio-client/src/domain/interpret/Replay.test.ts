@@ -104,6 +104,7 @@ describe("describeReplayProgress", () => {
         const job = createJob({status: "running", completedRounds: 21, round: 42, durationMs: 10});
 
         expect(describeReplayProgress(job)).toEqual({
+            jobId: "job-1",
             status: "running",
             completedRounds: 21,
             round: 42,
