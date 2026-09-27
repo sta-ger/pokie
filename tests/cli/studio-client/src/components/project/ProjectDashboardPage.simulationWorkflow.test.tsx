@@ -279,6 +279,9 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation-retry");
         expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-state", "recovery-operation");
         expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retry-job-2");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "retry-job-2");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "completed");
     }, 60000);
 
     it("cancels a running simulation via the confirm modal and shows a cancelled summary", async () => {

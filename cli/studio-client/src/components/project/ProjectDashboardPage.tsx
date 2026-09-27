@@ -1345,6 +1345,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     error={simulation.error}
                                     cancellationRequested={simulation.cancellationRequested}
                                     operation={simulation.operation}
+                                    terminalReceipt={simulation.terminalReceipt}
                                     onRun={startRun}
                                     recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {

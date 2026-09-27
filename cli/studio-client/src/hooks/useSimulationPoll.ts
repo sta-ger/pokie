@@ -9,6 +9,13 @@ import type {StudioSimulationJobView} from "../api/types";
 const POLL_INTERVAL_MS = 500;
 type SimulationOperation = "simulation" | "simulation-retry";
 
+/** The durable terminal record rendered for the public control that created it. */
+export type SimulationTerminalReceipt = Readonly<{
+    operation: SimulationOperation;
+    jobId: string;
+    status: StudioSimulationJobView["status"];
+}>;
+
 // Ports pollSimulation (500ms, uncapped -- a legitimate simulation is allowed to run as long as it
 // actually takes) -- stops once the job is terminal, or once the Simulation tab's owning page unmounts.
 // `poll` is a hoisted function declaration (not useCallback) specifically so it can call itself
@@ -32,6 +39,11 @@ export function useSimulationPoll() {
     // The terminal receipt belongs to the public control that created this
     // durable job. A Retry must not be rendered as a second, anonymous Run.
     const [operation, setOperation] = useState<SimulationOperation>("simulation");
+    // Progress is deliberately optimistic while a request is being accepted.
+    // This receipt is not: it is written only from a durable terminal job so
+    // a replaced Retry control cannot be mistaken for a status-only result.
+    const [terminalReceipt, setTerminalReceipt] = useState<SimulationTerminalReceipt>();
+    const operationRef = useRef<SimulationOperation>("simulation");
     const currentJobId = useRef<string | undefined>(undefined);
     // A terminal view can outlive the in-memory job snapshot while a reload
     // or recovery reconciliation settles. Keep the real request that created
@@ -75,6 +87,7 @@ export function useSimulationPoll() {
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status});
                 }
                 if (isSimulationActive(polledJob)) {
                     timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
@@ -95,7 +108,9 @@ export function useSimulationPoll() {
         generationRef.current = generation;
         runGuardGenerationRef.current = generation;
         lastRequestRef.current = {rounds, seed, workers, modeName};
+        operationRef.current = startedBy;
         setOperation(startedBy);
+        setTerminalReceipt(undefined);
         setError(undefined);
         setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
@@ -122,6 +137,7 @@ export function useSimulationPoll() {
                     currentJobId.current = undefined;
                     setJob(undefined);
                     setProgress(undefined);
+                    setTerminalReceipt(undefined);
                     setError(errorMessage(err));
                 }
             })
@@ -146,7 +162,9 @@ export function useSimulationPoll() {
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         currentJobId.current = id;
+        operationRef.current = "simulation";
         setOperation("simulation");
+        setTerminalReceipt(undefined);
         setError(undefined);
         setCancellationRequested(false);
         poll(id, generation);
@@ -174,6 +192,8 @@ export function useSimulationPoll() {
         setJob(undefined);
         setError(undefined);
         setCancellationRequested(false);
+        setTerminalReceipt(undefined);
+        operationRef.current = "simulation";
         setOperation("simulation");
     }
 
@@ -197,6 +217,7 @@ export function useSimulationPoll() {
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status});
                 }
             })
             .catch((err: unknown) => {
@@ -220,5 +241,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, cancellationRequested, operation, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    return {progress, job, error, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

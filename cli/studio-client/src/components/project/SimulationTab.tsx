@@ -7,6 +7,7 @@ import type {ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {useConfirm} from "../../hooks/useConfirm";
+import type {SimulationTerminalReceipt} from "../../hooks/useSimulationPoll";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {BoundedListPager} from "../common/BoundedListPager";
 import {EmptyState} from "../common/EmptyState";
@@ -40,6 +41,7 @@ export function SimulationTab({
     error,
     cancellationRequested,
     operation,
+    terminalReceipt,
     onRun,
     onCancel,
     onRetry,
@@ -64,6 +66,8 @@ export function SimulationTab({
     cancellationRequested: boolean;
     /** The rendered public control that started the current durable job. */
     operation: "simulation" | "simulation-retry";
+    /** A terminal durable job receipt, retained across the control's React replacement. */
+    terminalReceipt: SimulationTerminalReceipt | undefined;
     onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
     onCancel: () => void;
     onRetry: () => void;
@@ -142,8 +146,11 @@ export function SimulationTab({
     const cancellationPending = cancellationRequested || progress?.status === "cancelling";
     const isTerminal = progress !== undefined && !active;
     const canRetry = progress !== undefined && (progress.status === "failed" || progress.status === "cancelled");
-    const resultControlId = operation === "simulation-retry" ? "simulation-retry" : "simulation-run";
-    const resultState = operation === "simulation-retry" ? "recovery-operation" : "editable-submission";
+    const receiptOperation = terminalReceipt?.operation ?? operation;
+    const resultControlId = receiptOperation === "simulation-retry" ? "simulation-retry" : "simulation-run";
+    const resultState = receiptOperation === "simulation-retry" ? "recovery-operation" : "editable-submission";
+    const resultJobId = terminalReceipt?.jobId ?? progress?.jobId;
+    const resultStatus = terminalReceipt?.status ?? progress?.status;
 
     // Auto-advances to Run the moment a fresh run starts (Configure submit or a Recent Runs "Run
     // again", either way progress.status transitions to "queued"), and to Review the moment a run
@@ -211,20 +218,24 @@ export function SimulationTab({
              * are product UI, not audit-only data: they bind the visible
              * progress/result to the Run Simulation control's operation.
              */}
-            {progress !== undefined && (
+            {(progress !== undefined || terminalReceipt !== undefined) && (
                 <div
                     tabIndex={-1}
                     data-pokie-lifecycle-result="simulation"
                     data-pokie-lifecycle-result-control={resultControlId}
-                    data-pokie-lifecycle-result-operation={operation}
+                    data-pokie-lifecycle-result-operation={receiptOperation}
                     data-pokie-lifecycle-result-state={resultState}
-                    data-pokie-lifecycle-result-job={progress.jobId}
-                    data-pokie-lifecycle-terminal={progress.status}
+                    data-pokie-lifecycle-result-job={resultJobId}
+                    data-pokie-lifecycle-terminal={resultStatus}
+                    data-pokie-lifecycle-result-receipt={terminalReceipt === undefined ? "progress" : "durable-terminal"}
+                    data-pokie-lifecycle-result-durable-job={terminalReceipt?.jobId}
+                    data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
                 >
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
-                        {operation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
+                        {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
+                        {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
                     </Text>
-                    {progress.status === "completed" && (
+                    {resultStatus === "completed" && (
                         <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
                             Open completed simulation report
                         </Button>
