@@ -66,6 +66,30 @@ const transaction = (operation, controlId, accessibleName, confirmed = false) =>
     request: {browserRequestId: `runtime-${operation}`, method: "POST", path: `/api/project/${operation}`, status: 200, responseSha256: hash(`response-${operation}`)},
     terminal: {status: "completed", resultSha256: hash(`terminal-${operation}`), source: "rendered-poll", pollPath: `/api/project/${operation}/job`, browserRequestId: `terminal-${operation}`, causedByRequestId: `runtime-${operation}`},
 });
+const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jobId) => {
+    const requestId = `runtime-${operation}-${jobId}`,
+        resultSha256 = hash(`terminal-${operation}-${jobId}`),
+        captureKey = `capture-${operation}-${jobId}`;
+    return {
+        operation,
+        stateClass,
+        control: {stableControlId: controlId, identityAttribute: "id", accessibleName: operation === "simulation-retry" ? "Repeat simulation" : "Run Simulation", enabled: true, disabled: false, disabledExplanation: null},
+        confirmation: {required: false, state: "not-required", control: null},
+        // The fixture keeps the existing runtime keyboard inventory while
+        // the Retry receipt itself remains a native pointer transaction.
+        keyboardActivations: [{phase: "operation", controlId, count: 1}],
+        pointerActivations: [{
+            kind: "pointer", count: 1, controlId, capturedControlId: controlId, captureKey,
+            preDispatchFocus: {controlId, native: true},
+            hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
+            dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
+        }],
+        requestCount: 1,
+        request: {browserRequestId: requestId, method: "POST", path: "/api/project/simulations", status: 202, responseSha256: hash(`response-${operation}-${jobId}`)},
+        terminal: {status: terminalStatus, jobId, resultSha256, source: "rendered-poll", pollPath: `/api/project/simulations/${jobId}`, browserRequestId: `terminal-${operation}-${jobId}`, causedByRequestId: requestId},
+        postTransitionRenderedState: {capturedControlId: controlId, captureKey, controlState: "replaced", currentControlId: controlId, capturedControlConnected: false, requestId, resultSha256, renderedTerminal: true, resultControlId: controlId, resultOperation: operation, resultStateClass: stateClass, resultReceipt: "durable-terminal", resultJobId: jobId, resultTerminal: terminalStatus},
+    };
+};
 const liveDomTransaction = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${persona}-${observation}-${viewport}`,
@@ -354,7 +378,9 @@ async function campaignFixture() {
                 });
             }
         }
-        const runtime = await evidence(
+        const retryTransaction = pointerTransaction("simulation-retry", "simulation-retry", "recovery-operation", "completed", "simulation-retry"),
+            restartTransaction = pointerTransaction("simulation", "simulation-run", "editable-submission", "recovery-required", "simulation-restart"),
+            runtime = await evidence(
             candidate,
             "page-state",
             stamp(offset + 30),
@@ -371,8 +397,8 @@ async function campaignFixture() {
                     replayRecovery: transaction("replay", "replay-run", "Run again"),
                     cancellableSimulation: transaction("simulation", "simulation-run", "Run Simulation"),
                     cooperativeCancellation: transaction("simulation-cancel", "simulation-cancel", "Cancel", true),
-                    simulationRetry: transaction("simulation-retry", "simulation-retry", "Retry"),
-                    restartSimulation: transaction("simulation", "simulation-run", "Run Simulation"),
+                    simulationRetry: retryTransaction,
+                    restartSimulation: restartTransaction,
                 },
                 recovery: {
                     reloadReconnect: true,
@@ -407,6 +433,7 @@ async function campaignFixture() {
                     actionableFailure: {error: "Rounds must be positive"},
                     cooperativeCancellation: {id: "simulation-cancelled", status: "cancelled"},
                     retryWithoutPartialArtifacts: {id: "simulation-retry", status: "completed"},
+                    restartRecovery: {id: "simulation-restart", status: "recovery-required"},
                 },
                 outcomes: {
                     cancelledSimulationId: "simulation-cancelled",
@@ -534,11 +561,21 @@ async function campaignFixture() {
                         "serverRestart",
                     ].map((key) => [key, {observed: true, evidenceId: measured}]),
                 ),
-                jobs: Object.fromEntries(
-                    ["success", "actionableFailure", "cooperativeCancellation", "retryWithoutPartialArtifacts"].map(
-                        (key) => [key, {observed: true, evidenceId: measured}],
-                    ),
-                ),
+                jobs: {
+                    success: {observed: true, evidenceId: measured},
+                    actionableFailure: {observed: true, evidenceId: measured},
+                    cooperativeCancellation: {observed: true, evidenceId: measured},
+                    retryWithoutPartialArtifacts: {observed: true, evidenceId: measured, receipt: {operation: "simulation-retry", controlId: "simulation-retry", stateClass: "recovery-operation", transaction: retryTransaction}},
+                    restartRecovery: {observed: true, evidenceId: measured, receipt: {
+                        operation: "simulation", controlId: "simulation-run", stateClass: "editable-submission", transaction: restartTransaction,
+                        terminal: {status: "recovery-required", jobId: "simulation-restart", resultSha256: restartTransaction.terminal.resultSha256, causedByRequestId: restartTransaction.request.browserRequestId},
+                        rendered: {
+                            resultControlId: "simulation-run", resultOperation: "simulation", resultStateClass: "editable-submission", resultReceipt: "durable-terminal", resultJobId: "simulation-restart", resultRequestId: "simulation-restart", resultTerminal: "recovery-required", resultRecovery: "restart-reconciled", resultExecutor: "unavailable-after-restart", renderedTerminal: true,
+                            postRestartReplacementState: {capturedControlId: "simulation-run", captureKey: restartTransaction.pointerActivations[0].captureKey, controlState: "replaced-after-restart", currentControlId: "simulation-run", capturedControlConnected: false},
+                        },
+                        ownedProcessDrain: {processTreeDrained: true, resourcesDrained: true},
+                    }},
+                },
             },
             evidence: artifacts,
         };
