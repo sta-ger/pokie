@@ -33,9 +33,9 @@ const receiptFor = (tuple, pid) => {
 const pointerReceiptFor = (tuple, pid) => {
     const value = receiptFor(tuple, pid), {action} = value;
     action.interaction = {keyboardFocused:false, pointerActivated:true, activation:"pointer", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}};
-    action.transaction.pointerActivations = [{kind:"pointer", controlId:"project-tab:overview", capturedControlId:"project-tab:overview", count:1, preDispatchFocus:{controlId:"project-tab:overview", native:true}, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true}}];
+    action.transaction.pointerActivations = [{kind:"pointer", controlId:"project-tab:overview", capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, count:1, preDispatchFocus:{controlId:"project-tab:overview", native:true}, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true}}];
     action.transaction.keyboardActivations = [];
-    action.transaction.postTransitionRenderedState = {capturedControlId:"project-tab:overview", controlState:"replaced", requestId:`browser-${pid}`, resultSha256:action.terminal.resultSha256, renderedTerminal:true};
+    action.transaction.postTransitionRenderedState = {capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, controlState:"replaced", currentControlId:"project-tab:overview", capturedControlConnected:false, requestId:`browser-${pid}`, resultSha256:action.terminal.resultSha256, renderedTerminal:true};
     value.checkpoint.actionSha256 = sha(JSON.stringify(action));
     value.receipt.checkpointReceipt = value.checkpoint;
     value.receipt.action = action;
@@ -157,17 +157,17 @@ try {
                 cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
                 readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                     const value = pointerReceiptFor(expected.tuple, pid);
-                    if (pid === 9_101) delete value.receipt.action.transaction.pointerActivations[0].hitTest;
+                    if (pid === 9_101) value.receipt.action.transaction.postTransitionRenderedState.captureKey = "substituted-capture-key";
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`pointer-receipt-${pid}.json`, receiptSha256:sha(`pointer-receipt-${pid}`), cleanupPath:`pointer-cleanup-${pid}.json`, cleanupSha256:sha(`pointer-cleanup-${pid}`)};
                 },
                 readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
                     const value = pointerAuditFor(tuple, pid);
-                    if (pid === 9_101) delete value.audit.rendered.actions[0].transaction.pointerActivations[0].hitTest;
+                    if (pid === 9_101) value.audit.rendered.actions[0].transaction.postTransitionRenderedState.captureKey = "substituted-capture-key";
                     return value;
                 },
             });
         } catch (error) { pointerSemanticFailure = error; }
-        if (!/substitutes a state-class or rendered transaction boundary/.test(String(pointerSemanticFailure)) || (await readdir(pointerSemanticOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a pointer transaction without hit-tested dispatch evidence: ${pointerSemanticFailure}`);
+        if (!/substitutes a state-class or rendered transaction boundary/.test(String(pointerSemanticFailure)) || (await readdir(pointerSemanticOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a pointer transaction without a correlated captured identity: ${pointerSemanticFailure}`);
     } finally { await rm(pointerSemanticOutput, {recursive:true, force:true}); }
     const stateClassOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-state-class-negative-"));
     try {
