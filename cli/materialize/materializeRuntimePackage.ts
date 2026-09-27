@@ -88,7 +88,11 @@ function appendRuntimePathIdentity(identity: crypto.Hash, targetPath: string, re
             // Only a file removed between lstatSync and readFileSync is a
             // harmless cache-identity race. Permission and other I/O failures
             // remain actionable runtime preparation errors.
-            if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            // ENOENT alone is not a disappearance proof: mocked, mounted,
+            // or transient filesystem reads can report it while the identity
+            // input remains present.  Tolerate the cache race only after a
+            // second observation confirms that this exact input is gone.
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT" || fs.existsSync(targetPath)) {
                 throw error;
             }
             identity.update(`missing-during-read:${relativePath}\0`);
