@@ -178,11 +178,9 @@ function liveDomTransaction(contents, observation, persona, label) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed live-DOM transaction evidence`); }
     const pointer = page.transaction?.pointerActivations?.[0], keyboard = page.transaction?.keyboardActivations?.[0];
-    const renderedActivation = page.interaction?.keyboardFocused === true && (
-        page.interaction.activation === "pointer"
-            ? page.interaction.pointerActivated === true && page.transaction?.pointerActivations?.length === 1 && pointer?.kind === "pointer" && pointer.count === 1 && pointer.controlId === page.control?.id
-            : page.interaction.activation === "keyboard" && page.interaction.keyboardActivated === true && page.transaction?.keyboardActivations?.length === 1 && keyboard?.count === 1 && keyboard.controlId === page.control?.id
-    );
+    const renderedActivation = page.interaction?.activation === "pointer"
+        ? page.interaction.pointerActivated === true && page.transaction?.pointerActivations?.length === 1 && pointer?.kind === "pointer" && pointer.count === 1 && pointer.controlId === page.control?.id && pointer.capturedControlId === page.control?.id && pointer.preDispatchFocus?.controlId === page.control?.id && pointer.preDispatchFocus?.native === true && pointer.hitTest?.capturedControlId === page.control?.id && pointer.hitTest?.matchesCapturedControl === true && pointer.dispatch?.kind === "native-pointer" && pointer.dispatch?.pressed === true && pointer.dispatch?.released === true && page.transaction?.postTransitionRenderedState?.capturedControlId === page.control?.id && ["retained", "replaced", "removed"].includes(page.transaction.postTransitionRenderedState?.controlState) && page.transaction.postTransitionRenderedState?.requestId === page.request?.browserRequestId && page.transaction.postTransitionRenderedState?.resultSha256 === page.terminal?.resultSha256 && page.transaction.postTransitionRenderedState?.renderedTerminal === true
+        : page.interaction?.activation === "keyboard" && page.interaction.keyboardFocused === true && page.interaction.keyboardActivated === true && page.transaction?.keyboardActivations?.length === 1 && keyboard?.kind === "keyboard" && keyboard?.nativeFocus === true && keyboard?.preDispatchFocus?.controlId === page.control?.id && keyboard?.preDispatchFocus?.native === true && keyboard?.count === 1 && keyboard.controlId === page.control?.id;
     const contract = P805_WORKFLOW_CONTRACTS[persona]?.[observation];
     const screenState = contract && P805_SCREEN_CONTROL_STATES[contract.route];
     const modern = page.request?.method !== undefined;

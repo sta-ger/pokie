@@ -59,10 +59,9 @@ const tupleBootstrapContract = (tuple) => [
 const hasRenderedActivation = (action, controlId) => {
     const {interaction, transaction} = action ?? {};
     const pointer = transaction?.pointerActivations?.[0];
-    if (interaction?.keyboardFocused !== true) return false;
-    if (interaction.activation === "pointer") return interaction.pointerActivated === true && transaction?.pointerActivations?.length === 1 && pointer?.kind === "pointer" && pointer.count === 1 && pointer.controlId === controlId;
+    if (interaction.activation === "pointer") return interaction.pointerActivated === true && transaction?.pointerActivations?.length === 1 && pointer?.kind === "pointer" && pointer.count === 1 && pointer.controlId === controlId && pointer.capturedControlId === controlId && pointer.preDispatchFocus?.controlId === controlId && pointer.preDispatchFocus?.native === true && pointer.hitTest?.capturedControlId === controlId && pointer.hitTest?.matchesCapturedControl === true && pointer.dispatch?.kind === "native-pointer" && pointer.dispatch?.pressed === true && pointer.dispatch?.released === true && transaction?.postTransitionRenderedState?.capturedControlId === controlId && ["retained", "replaced", "removed"].includes(transaction.postTransitionRenderedState?.controlState) && transaction.postTransitionRenderedState?.requestId === transaction.request?.browserRequestId && transaction.postTransitionRenderedState?.resultSha256 === transaction.terminal?.resultSha256 && transaction.postTransitionRenderedState?.renderedTerminal === true;
     const keyboard = transaction?.keyboardActivations?.[0];
-    return interaction.activation === "keyboard" && interaction.keyboardActivated === true && transaction?.keyboardActivations?.length === 1 && keyboard?.count === 1 && keyboard.controlId === controlId;
+    return interaction.activation === "keyboard" && interaction.keyboardFocused === true && interaction.keyboardActivated === true && transaction?.keyboardActivations?.length === 1 && keyboard?.kind === "keyboard" && keyboard?.nativeFocus === true && keyboard?.preDispatchFocus?.controlId === controlId && keyboard?.preDispatchFocus?.native === true && keyboard?.count === 1 && keyboard.controlId === controlId;
 };
 /**
  * The parent ledger must authenticate the tuple action itself before it
@@ -681,8 +680,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // leaving a recorded click without the public submission.
                 // Enter is the focused button's native, keyboard-operable
                 // public activation and retains the exact rendered identity.
+                const preDispatchFocus = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); return item instanceof HTMLElement ? {controlId:item.id,native:document.activeElement===item} : null;})()`);
+                if (preDispatchFocus?.native !== true) fail(`rendered ${lifecycle} control lost native focus before keyboard activation`);
                 await pressEnter();
-                return {kind:"keyboard", controlId:stableControlId, count:1};
+                return {kind:"keyboard", controlId:stableControlId, count:1, nativeFocus:true, preDispatchFocus};
             }
             // A compact NavLink can remain in the DOM after its drawer has
             // moved off canvas.  It is not an interactable public control
@@ -719,8 +720,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // without `buttons` and `pointerType` its visual focus was
             // captured but React never received the click that starts the
             // validation/save/navigation lifecycle.
-            const {focusedAtActivation} = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), lifecycle !== "navigation");
-            return {kind:"pointer", controlId:stableControlId, count:1, focusedAtActivation};
+            const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), lifecycle !== "navigation");
+            return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
         };
         const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit) => {
             // A control can be rendered yet sit below the compact viewport.
@@ -729,7 +730,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // in its precondition state and let the tuple time out. Bring the
             // exact captured control into the rendered viewport and prove its
             // hit target before issuing its single browser pointer activation.
-            const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0; return sized&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight&&(hit===item||item.contains(hit)))) ? {x,y} : null;})()`);
+            const captureKey = randomBytes(16).toString("hex");
+            const point = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit); if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); return sized&&preDispatchFocus.native&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight&&matchesCapturedControl)) ? {x,y,capturedControlId:item.id,captureKey,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}} : null;})()`);
             if (!point) fail("rendered control lost its visible browser click target");
             // Replay Load can unmount itself while accepting the target, and
             // a narrow NavLink can reconcile its active screen on the same
@@ -740,11 +742,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // without changing its native focus. Reassert that focus at the
             // exact pointer boundary, before a successful retry is allowed
             // to reconcile and unmount its terminal-state button.
-            const focusedAtActivation = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement)) return false; item.focus(); return document.activeElement === item;})()`);
             const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
             await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
             await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
-            return {focusedAtActivation};
+            return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null}};
         };
         // A semantic observation is only valid when the browser itself issued
         // the declared request after the rendered control was activated.  Do
@@ -988,8 +989,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // recovery control, retaining the exact DOM identity at the
             // public-action boundary.
             const activation = await activateFocusedControl(lifecycle, control, transport === "keyboard" || operation === "replay" ? "keyboard" : "pointer");
-            if (activation.kind === "pointer" && activation.focusedAtActivation !== true) fail(observation + " rendered " + operation + " control did not retain native focus through its pointer activation");
-            control.keyboardFocused = activation.kind === "pointer" ? activation.focusedAtActivation === true : true;
+            if (activation.kind === "pointer" && activation.preDispatchFocus?.native !== true) fail(observation + " rendered " + operation + " control did not retain native focus through its pointer activation");
+            control.keyboardFocused = activation.preDispatchFocus?.native === true;
             transaction[activation.kind === "keyboard" ? "keyboardActivations" : "pointerActivations"].push({phase:"operation", ...activation});
             if (confirmation) {
                 const confirmationControl = await waitFor(() => evaluate(`(() => {
@@ -1578,6 +1579,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`), `${observation} product-owned lifecycle result`, contract.poll ? 120_000 : 30_000);
             if (contract.body && contract.artifact && (!lifecycleResult.artifact?.name || !lifecycleResult.artifact.accessibleName)) fail(`${observation} did not render a visible product-owned ${contract.artifact} artifact affordance`);
             if (lifecycleResult.controlId !== transaction.control.stableControlId || lifecycleResult.stateClass !== transaction.stateClass || (contract.poll && lifecycleResult.jobId !== entry.terminal?.jobId)) fail(`${observation} rendered ${transaction.stateClass} terminal does not bind its activated control, transaction state${contract.poll ? ", and durable job" : ""}`);
+            const pointerActivation = transaction.pointerActivations[0];
+            if (pointerActivation) {
+                transaction.postTransitionRenderedState = await evaluate(`(()=>{
+                    const captured = window.__p805CapturedControls?.get(${JSON.stringify(pointerActivation.captureKey)});
+                    const current = document.getElementById(${JSON.stringify(transaction.control.stableControlId)});
+                    const result = [...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item) => item instanceof HTMLElement && item.getAttribute('data-pokie-lifecycle-result-control') === ${JSON.stringify(transaction.control.stableControlId)} && item.getAttribute('data-pokie-lifecycle-result-state') === ${JSON.stringify(transaction.stateClass)} && item.getAttribute('data-pokie-lifecycle-terminal') === ${JSON.stringify(lifecycleResult.terminal)});
+                    const controlState = current === null ? 'removed' : current === captured ? 'retained' : 'replaced';
+                    return {capturedControlId:${JSON.stringify(transaction.control.stableControlId)},captureKey:${JSON.stringify(pointerActivation.captureKey)},controlState,currentControlId:current instanceof HTMLElement ? current.id : null,activeElementId:document.activeElement instanceof HTMLElement ? document.activeElement.id || null : null,requestId:${JSON.stringify(entry.browserRequestId)},resultSha256:${JSON.stringify(entry.terminal.resultSha256)},renderedTerminal:result instanceof HTMLElement};
+                })()`);
+                if (pointerActivation.capturedControlId !== transaction.control.stableControlId || pointerActivation.preDispatchFocus?.controlId !== transaction.control.stableControlId || pointerActivation.hitTest?.matchesCapturedControl !== true || pointerActivation.dispatch?.pressed !== true || pointerActivation.dispatch?.released !== true || transaction.postTransitionRenderedState.controlState === undefined || transaction.postTransitionRenderedState.requestId !== entry.browserRequestId || transaction.postTransitionRenderedState.resultSha256 !== entry.terminal.resultSha256 || transaction.postTransitionRenderedState.renderedTerminal !== true) fail(`${observation} pointer transaction lost its captured control, hit-tested dispatch, request, terminal, or post-transition rendered state`);
+            }
             const productState = await evaluate(`(() => {
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => {

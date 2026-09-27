@@ -109,7 +109,7 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
                 fields: [{stableControlId: `field-${observation}`, identityAttribute: "id", visible: true, accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
             }} : {}),
             confirmation: {required: false, state: "not-required", control: null},
-            keyboardActivations: [{phase: "operation", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1}],
+            keyboardActivations: [{phase: "operation", kind: "keyboard", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1, nativeFocus: true, preDispatchFocus: {controlId: contract.actionControlId ?? screen.navigationControlId, native: true}}],
         };
     return {
         bodySha256,

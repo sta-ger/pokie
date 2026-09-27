@@ -21,7 +21,7 @@ const receiptFor = (tuple, pid) => {
         route:"/#/project/fixture/overview", stableControlId:"project-tab:overview", browserRequestId:`browser-${pid}`,
         expectedMethod:"GET", expectedBodyKind:null, expectedApi:"/api/project/context", expectedArtifact:null, expectedTerminal:"project-context",
         interaction:{keyboardFocused:true, keyboardActivated:true, activation:"keyboard", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}},
-        transaction:{stateClass:"navigation", control:{stableControlId:"project-tab:overview"}, keyboardActivations:[{kind:"keyboard", controlId:"project-tab:overview", count:1}], request:{browserRequestId:`browser-${pid}`, method:"GET", path:"/api/project/context"}},
+        transaction:{stateClass:"navigation", control:{stableControlId:"project-tab:overview"}, keyboardActivations:[{kind:"keyboard", controlId:"project-tab:overview", count:1, nativeFocus:true, preDispatchFocus:{controlId:"project-tab:overview", native:true}}], request:{browserRequestId:`browser-${pid}`, method:"GET", path:"/api/project/context"}},
         terminal:{status:"completed", resultSha256:sha(JSON.stringify(result))},
         visibleTerminal:{observedAfterRequestId:`browser-${pid}`, resultSha256:sha(JSON.stringify(result)), lifecycle:{controlId:"project-tab:overview", stateClass:"navigation"}},
     };
@@ -29,6 +29,17 @@ const receiptFor = (tuple, pid) => {
     const cleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:"initial", candidateId:candidate, candidatePackageSha256, tuple, worker:{pid}, cleanup:{exit:"success", processTreeDrained:true, resourcesDrained:true, contextRemoved:true}, cleanupEvidenceId:`cleanup-${pid}`};
     const receipt = {schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", phase:"initial", candidateId:candidate, candidatePackageSha256, tuple, worker:{pid}, auditId:`audit-${pid}`, checkpointReceipt:checkpoint, action, cleanupEvidenceId:cleanup.cleanupEvidenceId, cleanupSha256:sha(`cleanup-${pid}`)};
     return {action, checkpoint, cleanup, receipt};
+};
+const pointerReceiptFor = (tuple, pid) => {
+    const value = receiptFor(tuple, pid), {action} = value;
+    action.interaction = {keyboardFocused:false, pointerActivated:true, activation:"pointer", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}};
+    action.transaction.pointerActivations = [{kind:"pointer", controlId:"project-tab:overview", capturedControlId:"project-tab:overview", count:1, preDispatchFocus:{controlId:"project-tab:overview", native:true}, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true}}];
+    action.transaction.keyboardActivations = [];
+    action.transaction.postTransitionRenderedState = {capturedControlId:"project-tab:overview", controlState:"replaced", requestId:`browser-${pid}`, resultSha256:action.terminal.resultSha256, renderedTerminal:true};
+    value.checkpoint.actionSha256 = sha(JSON.stringify(action));
+    value.receipt.checkpointReceipt = value.checkpoint;
+    value.receipt.action = action;
+    return value;
 };
 const stateSubstitutedReceiptFor = (tuple, pid) => {
     const value = receiptFor(tuple, pid), {action} = value;
@@ -44,6 +55,10 @@ const runtime = () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp
 const auditFor = (tuple, pid) => {
     const value = receiptFor(tuple, pid);
     return {audit:{auditId:`audit-${pid}`, persona:tuple.persona, workflowPersonas:[tuple.persona], tuple, phase:"initial", candidateId:candidate, candidatePackageSha256, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`audit-${pid}`)};
+};
+const pointerAuditFor = (tuple, pid) => {
+    const value = pointerReceiptFor(tuple, pid);
+    return {audit:{auditId:`audit-${pid}`, persona:tuple.persona, workflowPersonas:[tuple.persona], tuple, phase:"initial", candidateId:candidate, candidatePackageSha256, worker:{pid, nonce:`worker-${pid}`}, packageIdentity:{installedCli:"/tmp/p8-05-read-only-runtime/node_modules/.bin/pokie", sharedRuntimeReceiptSha256:"d".repeat(64), sharedRuntimeRoot:"/tmp/p8-05-read-only-runtime"}, checkpointReceipts:[value.checkpoint], rendered:{actions:[value.action]}, cleanup:{evidenceId:value.cleanup.cleanupEvidenceId}}, auditPath:`audit-${pid}.json`, auditSha256:sha(`pointer-audit-${pid}`)};
 };
 async function retainedFailure(kind, message, mutateReceipt, mutateAudit) {
     const directory = await mkdtemp(path.join(tmpdir(), `p8-05-parent-ledger-${kind}-`));
@@ -128,6 +143,32 @@ try {
         await retainedFailure("failure", `injected ${name} tuple receipt`, mutateReceipt, mutateAudit);
         rejectedReceiptSubstitutions[name] = true;
     }
+    const pointerSemanticOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-pointer-semantic-negative-"));
+    try {
+        let pointerSemanticFailure, pointerLaunches = 0;
+        try {
+            await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(pointerSemanticOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(pointerSemanticOutput, "candidate.tgz"), output:pointerSemanticOutput}, {
+                tuples,
+                prepareRuntime:async () => runtime(),
+                validateSharedRuntime:async () => undefined,
+                exists:() => false,
+                spawn:() => Object.assign(new EventEmitter(), {pid:9_100 + pointerLaunches++, exitCode:null, signalCode:null}),
+                childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
+                    const value = pointerReceiptFor(expected.tuple, pid);
+                    if (pid === 9_101) delete value.receipt.action.transaction.pointerActivations[0].hitTest;
+                    return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`pointer-receipt-${pid}.json`, receiptSha256:sha(`pointer-receipt-${pid}`), cleanupPath:`pointer-cleanup-${pid}.json`, cleanupSha256:sha(`pointer-cleanup-${pid}`)};
+                },
+                readChildAudit:async (_output, _phase, _persona, _candidate, _package, pid, tuple) => {
+                    const value = pointerAuditFor(tuple, pid);
+                    if (pid === 9_101) delete value.audit.rendered.actions[0].transaction.pointerActivations[0].hitTest;
+                    return value;
+                },
+            });
+        } catch (error) { pointerSemanticFailure = error; }
+        if (!/substitutes a state-class or rendered transaction boundary/.test(String(pointerSemanticFailure)) || (await readdir(pointerSemanticOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a pointer transaction without hit-tested dispatch evidence: ${pointerSemanticFailure}`);
+    } finally { await rm(pointerSemanticOutput, {recursive:true, force:true}); }
     const stateClassOutput = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-state-class-negative-"));
     try {
         let stateClassFailure;
@@ -207,7 +248,7 @@ try {
         } catch (error) { runtimeOmissionFailure = error; }
         if (!/substituted the parent immutable runtime identity/.test(String(runtimeOmissionFailure)) || (await readdir(runtimeOmissionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a child that omitted its shared runtime proof: ${runtimeOmissionFailure}`);
     } finally { await rm(runtimeOmissionOutput, {recursive:true, force:true}); }
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
+    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, pointerSemanticSubstitutionRejected:true, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }
