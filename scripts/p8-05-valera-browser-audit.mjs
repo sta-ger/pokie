@@ -1397,10 +1397,17 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         })()`);
         const requireOutcomeLibraryCard = async (observation) => {
             let state = await outcomeLibraryCardState();
-            if (state?.state === 'loading') state = await waitFor(async () => {
+            // The route and its navigation receipt can render before the
+            // Build/Export card subtree has committed.  In particular the
+            // first artifact-target request is started by that subtree, so a
+            // one-shot query here used to call a real, just-entered route a
+            // missing Outcome Library card.  Wait for the public card and
+            // its preflight as one rendered transaction boundary; do not
+            // replace it with a route-level or API-only shortcut.
+            if (['missing-card', 'missing-control', 'missing-preflight', 'loading'].includes(state?.state)) state = await waitFor(async () => {
                 const next = await outcomeLibraryCardState();
-                return next?.state === 'loading' ? false : next;
-            }, `${observation} Outcome Library preflight`);
+                return ['missing-card', 'missing-control', 'missing-preflight', 'loading'].includes(next?.state) ? false : next;
+            }, `${observation} rendered Outcome Library card and preflight`);
             if (state?.state !== 'ready' || state.controlId !== 'outcome-library-generate' || state.cardLabel !== 'Outcome library generator') {
                 fail(`${observation} rendered Outcome Library card is ${state?.state ?? 'unreadable'}${state?.disabledExplanation ? `: ${state.disabledExplanation}` : ''}`);
             }

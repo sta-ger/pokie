@@ -455,7 +455,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     );
 
     useEffect(() => {
-        if (pendingNavigation !== undefined && failedRefreshGeneration >= pendingNavigation.refreshGeneration) {
+        if (pendingNavigation !== undefined && failedRefreshGeneration === pendingNavigation.refreshGeneration) {
             // Keep the current workflow selected and expose the freshly
             // rendered context diagnostic when its prerequisite cannot be
             // revalidated. A failed request must not turn into a stale route.
@@ -463,7 +463,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
             setPendingNavigation(undefined);
             return;
         }
-        if (pendingNavigation === undefined || completedRefreshGeneration < pendingNavigation.refreshGeneration) {
+        // A newer refresh is not evidence for this selection: it may belong
+        // to another terminal job and its header can be committed before the
+        // generation this tab requested.  The target workflow is therefore
+        // released only by its exact post-commit context receipt.
+        if (pendingNavigation === undefined || completedRefreshGeneration !== pendingNavigation.refreshGeneration) {
             return;
         }
         if (pendingNavigation.requestId !== navigationRequestIdRef.current) {
@@ -514,11 +518,16 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // receipts produces one coherent context revalidation, rather than a
         // cascade of unmounting refreshes between dependent controls.
         terminalJobs.forEach((job) => capabilityRefreshJobsRef.current.add(job.id));
-        setContextRefreshGeneration((generation) => {
-            const refreshedGeneration = generation + 1;
-            contextRefreshGenerationRef.current = refreshedGeneration;
-            return refreshedGeneration;
-        });
+        const refreshedGeneration = contextRefreshGenerationRef.current + 1;
+        contextRefreshGenerationRef.current = refreshedGeneration;
+        // Refresh generations supersede an in-flight request.  If a durable
+        // terminal record starts the newer refresh while a tab selection is
+        // still held, keep that selection attached to the replacement
+        // generation rather than allowing a stale earlier receipt to release
+        // it (or leaving it permanently held after React cancels that older
+        // request).
+        setPendingNavigation((pending) => pending === undefined ? undefined : {...pending, refreshGeneration: refreshedGeneration});
+        setContextRefreshGeneration(refreshedGeneration);
     }, [commonJobs.jobs]);
     // Build/Export can provide a richer, operation-specific presentation for
     // one Outcome Library job. Keep that ownership at durable-job granularity:
