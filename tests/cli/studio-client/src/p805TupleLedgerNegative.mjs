@@ -33,7 +33,7 @@ const receiptFor = (tuple, pid) => {
 const pointerReceiptFor = (tuple, pid) => {
     const value = receiptFor(tuple, pid), {action} = value;
     action.interaction = {keyboardFocused:false, pointerActivated:true, activation:"pointer", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}};
-    action.transaction.pointerActivations = [{kind:"pointer", controlId:"project-tab:overview", capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, count:1, preDispatchFocus:{controlId:"project-tab:overview", native:true}, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true}}];
+    action.transaction.pointerActivations = [{kind:"pointer", controlId:"project-tab:overview", capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, count:1, preDispatchFocus:{controlId:"project-tab:overview", native:true}, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true, focus:{eventType:"pointerdown", controlId:"project-tab:overview", native:true, targetMatchesCapturedControl:true}}}];
     action.transaction.keyboardActivations = [];
     action.transaction.postTransitionRenderedState = {capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, controlState:"replaced", currentControlId:"project-tab:overview", capturedControlConnected:false, requestId:`browser-${pid}`, resultSha256:action.terminal.resultSha256, renderedTerminal:true};
     value.checkpoint.actionSha256 = sha(JSON.stringify(action));

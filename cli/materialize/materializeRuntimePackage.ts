@@ -81,7 +81,8 @@ function appendRuntimePathIdentity(identity: crypto.Hash, targetPath: string, re
         // A consumer can start while a sibling build is replacing dist.  The
         // identity is only a cache discriminator, so retain a deterministic
         // missing marker instead of making an otherwise valid CLI command
-        // crash on a declaration file that disappeared between lstat/read.
+        // crash on a declaration file that genuinely disappeared between
+        // lstat/read.
         try {
             identity.update(fs.readFileSync(targetPath));
         } catch (error) {

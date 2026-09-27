@@ -403,11 +403,17 @@ describe("BlueprintProjectMaterializer", () => {
             const denied = Object.assign(new Error("permission denied"), {code: "EACCES"});
             const readSpy = jest.spyOn(fs, "readFileSync").mockImplementation(((target: fs.PathOrFileDescriptor, options?: unknown) => {
                 if (target === runtimeEntry) {
+                    // The cache discriminator may tolerate only the actual
+                    // lstat/read disappearance race.  Keep the fixture true
+                    // to that boundary instead of simulating ENOENT while
+                    // leaving the identity input present on disk.
+                    fs.unlinkSync(runtimeEntry);
                     throw missing;
                 }
                 return realRead(target, options as never);
             }) as typeof fs.readFileSync);
             expect(createLocalRuntimeIdentity(pokiePackageRoot)).toMatch(/^[a-f0-9]{64}$/);
+            fs.writeFileSync(runtimeEntry, "export {};\n");
             readSpy.mockImplementation(((target: fs.PathOrFileDescriptor, options?: unknown) => {
                 if (target === runtimeEntry) {
                     throw denied;
