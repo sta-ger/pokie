@@ -7,7 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
-import {runP805ProcessIsolatedPackedProof, validateP805RenderedPersonaAudit} from "./p8-05-valera-browser-audit.mjs";
+import {runP805ProcessIsolatedPackedProof, validateP805RenderedPersonaAudit, validateP805RetryTerminalReceipt} from "./p8-05-valera-browser-audit.mjs";
 
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const commit = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
@@ -45,6 +45,35 @@ const renderedTupleEvidenceFor = (ledger, audits) => ledger.children.map((child,
         provenance:{archiveGitHead:audit.packageIdentity.archiveGitHead, candidateTreeObjectId:audit.packageIdentity.candidateTreeObjectId, candidateExecutableReceiptSha256:audit.packageIdentity.candidateExecutableReceiptSha256},
         evidence:{actionEvidenceId:action.evidenceId, screenshotEvidenceId:action.screenshotEvidenceId, cleanupEvidenceId:audit.cleanup.evidenceId},
     };
+});
+// Retry is a recovery operation rather than one of a tuple's primary form
+// submissions.  Keep its receipt in the controller handoff explicitly: a
+// generic completed simulation result must never be able to stand in for the
+// captured Retry control after React has replaced that control.
+const retryTerminalEvidenceFor = (ledger, audits) => ledger.children.flatMap((child, index) => {
+    const audit = audits.find((value) => value.worker?.pid === child.worker?.pid);
+    const receipt = audit?.rendered?.jobs?.retryWithoutPartialArtifacts?.receipt;
+    if (receipt === undefined) return [];
+    validateP805RetryTerminalReceipt(receipt);
+    const transaction = receipt.transaction, pointer = transaction.pointerActivations[0], rendered = transaction.postTransitionRenderedState;
+    return [{
+        tuple:child.tuple,
+        auditSha256:child.auditSha256,
+        checkpointReceiptSha256:child.checkpointReceiptSha256s[0],
+        actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256,
+        operation:receipt.operation,
+        controlId:receipt.controlId,
+        stateClass:receipt.stateClass,
+        activation:{capturedControlId:pointer.capturedControlId, captureKey:pointer.captureKey, preDispatchFocus:pointer.preDispatchFocus, hitTest:pointer.hitTest, dispatch:pointer.dispatch},
+        request:transaction.request,
+        terminal:transaction.terminal,
+        rendered,
+        evidence:{retryEvidenceId:audit.rendered.jobs.retryWithoutPartialArtifacts.evidenceId, cleanupEvidenceId:audit.cleanup.evidenceId},
+    }];
+});
+const validRetryTerminalEvidence = (value, expectedCount) => Array.isArray(value) && value.length === expectedCount && value.length > 0 && value.every((entry) => {
+    const activation = entry.activation, request = entry.request, terminal = entry.terminal, rendered = entry.rendered;
+    return entry.operation === "simulation-retry" && entry.controlId === "simulation-retry" && entry.stateClass === "recovery-operation" && activation?.capturedControlId === entry.controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0 && activation.preDispatchFocus?.controlId === entry.controlId && activation.preDispatchFocus.native === true && activation.hitTest?.capturedControlId === entry.controlId && activation.hitTest?.matchesCapturedControl === true && activation.dispatch?.kind === "native-pointer" && activation.dispatch?.pressed === true && activation.dispatch?.released === true && activation.dispatch.focus?.controlId === entry.controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.targetMatchesCapturedControl === true && request?.method === "POST" && request?.path === "/api/project/simulations" && typeof request.browserRequestId === "string" && request.browserRequestId.length > 0 && terminal?.status === "completed" && typeof terminal.jobId === "string" && terminal.jobId.length > 0 && terminal.causedByRequestId === request.browserRequestId && sha(terminal.resultSha256) && rendered?.capturedControlId === entry.controlId && rendered.captureKey === activation.captureKey && rendered.requestId === request.browserRequestId && rendered.resultSha256 === terminal.resultSha256 && rendered.resultControlId === entry.controlId && rendered.resultOperation === entry.operation && rendered.resultStateClass === entry.stateClass && rendered.resultReceipt === "durable-terminal" && rendered.resultJobId === terminal.jobId && rendered.resultTerminal === terminal.status && rendered.renderedTerminal === true && typeof entry.evidence?.retryEvidenceId === "string" && entry.evidence.retryEvidenceId.length > 0 && typeof entry.evidence.cleanupEvidenceId === "string" && entry.evidence.cleanupEvidenceId.length > 0;
 });
 function validRenderedTupleEvidence(value, expected) {
     if (!Array.isArray(value) || value.length !== expected.length) return false;
@@ -91,8 +120,8 @@ export function validateP805ControllerMachineProof(value, phase, candidateValue,
     try { ledger = JSON.parse(ledgerContents); }
     catch { fail("controller machine proof cannot read its packed CLI/Studio tuple ledger"); }
     validateP805TupleProofLedger(ledger, candidateValue);
-    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger);
-    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== P805_PERSONAS.length || JSON.stringify(value.audits?.personas) !== JSON.stringify(P805_PERSONAS) || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== P805_PERSONAS.length || new Set(value.audits.ids).size !== P805_PERSONAS.length || JSON.stringify(value.audits?.tupleReceiptAuditIds) !== JSON.stringify(tupleAuditIds) || new Set(tupleAuditIds).size !== tupleAuditIds.length || JSON.stringify(value.audits?.tupleEvidence) !== JSON.stringify(tupleEvidence) || !validRenderedTupleEvidence(value.audits?.renderedTupleEvidence, tupleEvidence)) fail("controller machine proof does not bind five persona aggregates to the exact candidate's complete packed CLI/Studio tuple ledger");
+    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger), expectedRetryCount = ledger.children.filter(({tuple}) => ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation)).length;
+    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== P805_PERSONAS.length || JSON.stringify(value.audits?.personas) !== JSON.stringify(P805_PERSONAS) || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== P805_PERSONAS.length || new Set(value.audits.ids).size !== P805_PERSONAS.length || JSON.stringify(value.audits?.tupleReceiptAuditIds) !== JSON.stringify(tupleAuditIds) || new Set(tupleAuditIds).size !== tupleAuditIds.length || JSON.stringify(value.audits?.tupleEvidence) !== JSON.stringify(tupleEvidence) || !validRenderedTupleEvidence(value.audits?.renderedTupleEvidence, tupleEvidence) || !validRetryTerminalEvidence(value.audits?.retryTerminalEvidence, expectedRetryCount)) fail("controller machine proof does not bind five persona aggregates to the exact candidate's complete packed CLI/Studio tuple ledger");
     return value;
 }
 
@@ -122,11 +151,11 @@ async function reReadP805PackedTupleAudits(directory, ledger, phase, candidateVa
     return audits;
 }
 
-async function writeControllerMachineProof(config, phase, candidateValue, proof, audits) {
+async function writeControllerMachineProof(config, phase, candidateValue, proof, audits, tupleAudits) {
     const ledger = await record(config.directory, proofLedgerName(phase));
     validateP805TupleProofLedger(ledger.value, candidateValue);
     if (digest(`${JSON.stringify(proof.ledger, null, 2)}\n`) !== digest(ledger.contents)) fail("controller re-read ledger differs from the packed parent result");
-    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger.value), renderedTupleEvidence = renderedTupleEvidenceFor(ledger.value, audits), value = {
+    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger.value), renderedTupleEvidence = renderedTupleEvidenceFor(ledger.value, audits), retryTerminalEvidence = retryTerminalEvidenceFor(ledger.value, tupleAudits), value = {
         schemaVersion:P805_SCHEMA_VERSION,
         kind:"p8-05-controller-machine-proof",
         status:"passed",
@@ -140,7 +169,7 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof,
         // The handoff is derived solely from the re-read immutable ledger.
         // In-memory audit objects are useful to write the campaign record,
         // but may never define what the controller certifies to review.
-        audits:{count:audits.length, personas:audits.map((audit) => audit.persona), ids:audits.map((audit) => audit.auditId), tupleReceiptAuditIds:tupleAuditIds, tupleEvidence, renderedTupleEvidence},
+        audits:{count:audits.length, personas:audits.map((audit) => audit.persona), ids:audits.map((audit) => audit.auditId), tupleReceiptAuditIds:tupleAuditIds, tupleEvidence, renderedTupleEvidence, retryTerminalEvidence},
     };
     if (existsSync(recordPath(config.directory, machineProofName(phase)))) fail("controller machine proof is append-only");
     validateP805ControllerMachineProof(value, phase, candidateValue, ledger.contents);
@@ -198,8 +227,8 @@ async function runAudits(config, phase, candidateValue) {
         validateP805TupleProofLedger(proof.ledger, candidateValue);
         // Do not aggregate the runner's return value.  Only the controller's
         // fresh reads of the packed child receipts can cross this boundary.
-        const audits = aggregateP805PersonaAudits(await reReadP805PackedTupleAudits(config.directory, proof.ledger, phase, candidateValue), proof.ledger, phase, candidateValue);
-        await writeControllerMachineProof(config, phase, candidateValue, proof, audits);
+        const tupleAudits = await reReadP805PackedTupleAudits(config.directory, proof.ledger, phase, candidateValue), audits = aggregateP805PersonaAudits(tupleAudits, proof.ledger, phase, candidateValue);
+        await writeControllerMachineProof(config, phase, candidateValue, proof, audits, tupleAudits);
         return audits;
     } catch (error) {
         const failure = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-audit-failure", phase, candidateId:candidateValue.candidateId, candidatePackageSha256:candidateValue.candidatePackageSha256, failedAt:now(), message:error instanceof Error ? error.message : String(error), cleanupEvidenceId:error?.cleanupEvidenceId, cleanup:error?.cleanup};
