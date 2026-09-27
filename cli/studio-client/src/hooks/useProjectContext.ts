@@ -35,15 +35,47 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
     const [completedRefreshGeneration, setCompletedRefreshGeneration] = useState(0);
     const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
+    const [renderedTerminalGeneration, setRenderedTerminalGeneration] = useState<number | undefined>();
     const headerRef = useRef(header);
+    const contextRequestRef = useRef<{key: string; promise: ReturnType<typeof getProjectContext>} | undefined>();
 
     useEffect(() => {
         headerRef.current = header;
     }, [header]);
 
+    // Acknowledgement is deliberately post-commit.  A consumer can use this
+    // generation to change routes, so setting it from the fetch callback
+    // would let that consumer observe an earlier or loading header.
+    useEffect(() => {
+        if (renderedTerminalGeneration !== undefined && header.status !== "loading") {
+            setCompletedRefreshGeneration(renderedTerminalGeneration);
+        }
+    }, [header.status, renderedTerminalGeneration]);
+
     useEffect(() => {
         let cancelled = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+        // React's development effect replay must not create a second context
+        // request for the same refresh generation.  Apart from making the
+        // network receipt ambiguous, a second request can complete while the
+        // first is still loading and release a dependent tab too early.  The
+        // replay subscriber still consumes the shared promise, so cancelling
+        // the first effect never strands the current rendered dashboard.
+        const contextRequestKey = `${requestedProjectRoot ?? ""}\u0000${refreshGeneration}`;
+        const requestDashboard = (): ReturnType<typeof getProjectContext> => {
+            if (contextRequestRef.current?.key === contextRequestKey) {
+                return contextRequestRef.current.promise;
+            }
+            const promise = getProjectContext(fetchImpl);
+            contextRequestRef.current = {key: contextRequestKey, promise};
+            promise.finally(() => {
+                if (contextRequestRef.current?.promise === promise) {
+                    contextRequestRef.current = undefined;
+                }
+            }).catch(() => undefined);
+            return promise;
+        };
 
         const publishDashboard = (dashboard: Parameters<typeof describeProjectHeader>[0]): void => {
             setHeader(describeProjectHeader(dashboard));
@@ -54,12 +86,12 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
             // capability boundary.  Dashboard navigation must wait until the
             // refresh has reached a terminal context.
             if (dashboard.status !== "loading") {
-                setCompletedRefreshGeneration(refreshGeneration);
+                setRenderedTerminalGeneration(refreshGeneration);
             }
         };
 
         const poll = (attemptsLeft: number): void => {
-            getProjectContext(fetchImpl)
+            requestDashboard()
                 .then((dashboard) => {
                     if (cancelled) {
                         return;
@@ -92,7 +124,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
             if (!revalidatingCurrentProject) {
                 setHeader({status: "loading", projectRoot: requestedProjectRoot});
             }
-            getProjectContext(fetchImpl)
+            requestDashboard()
                 .then((dashboard) => {
                     if (cancelled) {
                         return;

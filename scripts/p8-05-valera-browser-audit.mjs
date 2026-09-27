@@ -1792,7 +1792,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // its retried workload representative but bounded: the retry must
         // complete in every isolated viewport child before that child can
         // publish its immutable receipt.
-        const retryProbeRounds = 10_000;
+        const retryProbeRounds = 1_000;
         const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", reloadProbeRounds), reloadCursor = cdp.events.length;
         await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await waitFor(async () => { const event = cdp.events.slice(reloadCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
         // A running job intentionally disables sibling tab navigation. The
@@ -1894,7 +1894,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // Keep this long enough for the rendered Cancel operation to attach,
         // but short enough that its rendered Retry can repeat the captured
         // request and reach a terminal report inside this tuple worker.
-        const cancellationRounds = 20_000;
+        const cancellationRounds = retryProbeRounds;
         const cancellationStart = Date.now(), cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", cancellationRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]);
         // The durable terminal response can arrive one React commit before
         // Simulation switches from its Run step to Review.  Observe the
