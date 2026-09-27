@@ -336,7 +336,7 @@ function TargetCard({
             )}
 
             {card.kind === "outcomeLibrary" && (
-                <>
+                <div data-pokie-lifecycle-card="outcome-library">
                     <TextInput
                         mt="sm"
                         label="Mode"
@@ -416,27 +416,33 @@ function TargetCard({
                         )}
                     </AdvancedDisclosure>
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
-                    {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
-                    {outcomeLibraryPreflight.status === "error" && (
-                        <>
-                            <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
-                            {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
-                        </>
-                    )}
-                    {outcomeLibraryPreflight.status === "ok" && (
-                        <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
-                            {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
-                            {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
-                        </Text>
-                    )}
-                    {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
-                        <Text size="xs" c="dimmed">
-                            Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
-                        </Text>
-                    )}
-                    {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
-                        <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
-                    )}
+                    <div
+                        data-pokie-lifecycle-preflight="outcome-library"
+                        data-pokie-lifecycle-preflight-control="outcome-library-generate"
+                        data-pokie-lifecycle-preflight-status={outcomeLibraryPreflight.status}
+                    >
+                        {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
+                        {outcomeLibraryPreflight.status === "error" && (
+                            <>
+                                <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
+                                {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
+                            </>
+                        )}
+                        {outcomeLibraryPreflight.status === "ok" && (
+                            <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
+                                {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
+                                {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
+                            </Text>
+                        )}
+                        {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
+                            <Text size="xs" c="dimmed">
+                                Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
+                            </Text>
+                        )}
+                        {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
+                            <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                        )}
+                    </div>
                     <Button
                         size="xs"
                         mt="sm"
@@ -473,7 +479,7 @@ function TargetCard({
                         </>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-result-control="outcome-library-generate" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-terminal="completed">
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-result-operation="outcome-library" data-pokie-lifecycle-result-control="outcome-library-generate" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-receipt="durable-terminal" data-pokie-lifecycle-result-durable-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-durable-status="completed" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -486,7 +492,7 @@ function TargetCard({
                             <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                 {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                             <QuickActions>
-                                <Button data-pokie-lifecycle-artifact="outcome-library" size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
+                                <Button data-pokie-lifecycle-artifact="outcome-library" data-pokie-lifecycle-artifact-output={outcomeLibraryRun.result.resolvedBundleDir} size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
                                 {outputActionsUnavailable ? (
                                     <>
                                         <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
@@ -517,7 +523,7 @@ function TargetCard({
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
                         </>
                     )}
-                </>
+                </div>
             )}
 
             {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (

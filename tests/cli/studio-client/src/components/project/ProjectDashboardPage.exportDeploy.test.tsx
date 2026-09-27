@@ -889,6 +889,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                     result: {
                         status: "ok",
                         bundleDir: "outcomelibrary",
+                        resolvedBundleDir: "/games/a/outcomelibrary",
                         files: ["manifest.json"],
                         warnings: [],
                         mode: {modeName: "base", libraryId: "a-base", hash: "sha256:library", outcomeCount: 500, totalWeight: 1000, rtp: 0.95},
@@ -918,10 +919,30 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
-        await user.click(await screen.findByRole("button", {name: "Generate exact outcome library (base)"}));
+        const generate = await screen.findByRole("button", {name: "Generate exact outcome library (base)"});
+        const outcomeLibraryCard = generate.closest("[data-pokie-lifecycle-card]");
+        const preflight = outcomeLibraryCard?.querySelector("[data-pokie-lifecycle-preflight]");
+        expect(outcomeLibraryCard).toBeInTheDocument();
+        expect(preflight).toHaveAttribute("data-pokie-lifecycle-preflight", "outcome-library");
+        expect(preflight).toHaveAttribute("data-pokie-lifecycle-preflight-control", "outcome-library-generate");
+        await waitFor(() => expect(preflight).toHaveAttribute("data-pokie-lifecycle-preflight-status", "ok"));
+        expect(generate).toHaveAttribute("id", "outcome-library-generate");
+        expect(generate).toHaveAttribute("data-pokie-lifecycle-operation", "outcome-library");
+        expect(generate).toBeEnabled();
+        await user.click(generate);
 
         expect(await screen.findByText(/Generated 500 outcomes for mode "base" using exact \(RTP 95\.00%\) into outcomelibrary\./)).toBeInTheDocument();
-        expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
+        const inspectLibrary = screen.getByRole("button", {name: "Inspect library"});
+        const terminal = inspectLibrary.closest("[data-pokie-lifecycle-result]");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result", "outcome-library");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-operation", "outcome-library");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-control", "outcome-library-generate");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-job", "generate-exact");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "generate-exact");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "completed");
+        expect(inspectLibrary).toHaveAttribute("data-pokie-lifecycle-artifact", "outcome-library");
+        expect(inspectLibrary).toHaveAttribute("data-pokie-lifecycle-artifact-output", "/games/a/outcomelibrary");
         expect(screen.getByRole("button", {name: "Copy path"})).toBeInTheDocument();
         expect(screen.getByText("Opening local output is unavailable from this headless or remote Studio session.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Open output folder"})).not.toBeInTheDocument();

@@ -1374,7 +1374,47 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             input.dispatchEvent(new Event('change', {bubbles:true}));
             return input.value === value;
         })()`);
+        // Outcome Library generation is the one Build/Export transaction
+        // whose availability is determined by a separate asynchronous
+        // preflight.  Read that product-owned card before the control is
+        // activated so a missing, stale, loading, unsupported, or disabled
+        // card fails at its own public boundary instead of later timing out
+        // while some unrelated route happens to settle.
+        const outcomeLibraryCardState = async () => evaluate(`(() => {
+            const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+            const card = document.querySelector('[data-pokie-lifecycle-card="outcome-library"]');
+            const control = document.getElementById('outcome-library-generate');
+            const preflight = document.querySelector('[data-pokie-lifecycle-preflight="outcome-library"]');
+            if (!(card instanceof HTMLElement) || !visible(card)) return {state:'missing-card'};
+            if (!(control instanceof HTMLButtonElement) || !visible(control)) return {state:'missing-control'};
+            if (control.getAttribute('data-pokie-lifecycle') !== 'operation' || control.getAttribute('data-pokie-lifecycle-operation') !== 'outcome-library' || control.getAttribute('data-pokie-transaction-state') !== 'editable-submission') return {state:'stale-control'};
+            if (!(preflight instanceof HTMLElement) || !visible(preflight) || preflight.getAttribute('data-pokie-lifecycle-preflight-control') !== control.id) return {state:'missing-preflight'};
+            const status = preflight.getAttribute('data-pokie-lifecycle-preflight-status');
+            if (status === 'loading') return {state:'loading', status};
+            if (status !== 'ok') return {state:status === 'error' ? 'unsupported-preflight' : 'stale-preflight', status};
+            if (control.disabled) return {state:'disabled-control', status, disabledExplanation:control.getAttribute('title') || null};
+            return {state:'ready', status, controlId:control.id, cardLabel:[...card.querySelectorAll('*')].find((item) => item.textContent?.trim() === 'Outcome library generator')?.textContent?.trim() ?? null, enabled:true, disabled:false};
+        })()`);
+        const requireOutcomeLibraryCard = async (observation) => {
+            let state = await outcomeLibraryCardState();
+            if (state?.state === 'loading') state = await waitFor(async () => {
+                const next = await outcomeLibraryCardState();
+                return next?.state === 'loading' ? false : next;
+            }, `${observation} Outcome Library preflight`);
+            if (state?.state !== 'ready' || state.controlId !== 'outcome-library-generate' || state.cardLabel !== 'Outcome library generator') {
+                fail(`${observation} rendered Outcome Library card is ${state?.state ?? 'unreadable'}${state?.disabledExplanation ? `: ${state.disabledExplanation}` : ''}`);
+            }
+            return state;
+        };
         const prepareScreenOperation = async (body, viewport, observation) => {
+            if (body === "outcome-library") {
+                const preflight = await requireOutcomeLibraryCard(observation);
+                const formState = await captureRenderedOperationFields("outcome-library", observation);
+                if (formState.fields.length === 0 || formState.fields.some((field) => !field.stableControlId || !field.accessibleName || !field.validation?.valid || field.disabled)) {
+                    fail(`${observation} rendered Outcome Library form is not an enabled, valid, named DOM submission state`);
+                }
+                return {formState, outcomeLibraryPreflight:preflight};
+            }
             if (body === "artifact-build") {
                 const configured = await waitFor(
                     () => setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`)),
@@ -1591,6 +1631,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     : undefined;
                 beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
                 transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState, stateClass, control});
+                if (contract.body === "outcome-library") transaction.preflight = preparedOperation.outcomeLibraryPreflight;
                 if (formState !== undefined && transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
                 interaction = transaction.control;
                 entry = await browserRequest(contract, observation, cursor, transaction);
@@ -1651,9 +1692,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // returning the early status would recreate the timing gap
                 // this transaction contract is meant to close.
                 if (${JSON.stringify(Boolean(contract.body && contract.artifact))} && (!artifact || !accessibleName(artifact))) return false;
-                return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), controlId:result.getAttribute('data-pokie-lifecycle-result-control'), operation:result.getAttribute('data-pokie-lifecycle-result-operation'), stateClass:result.getAttribute('data-pokie-lifecycle-result-state'), jobId:result.getAttribute('data-pokie-lifecycle-result-job'), target:result.getAttribute('data-pokie-lifecycle-result-target'), outputPath:result.getAttribute('data-pokie-lifecycle-result-output'), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact), target:artifact.getAttribute('data-pokie-lifecycle-artifact-target'), outputPath:artifact.getAttribute('data-pokie-lifecycle-artifact-output')} : null};
+                return {role:result.getAttribute('role') || result.tagName.toLowerCase(), terminal, text:accessibleName(result), controlId:result.getAttribute('data-pokie-lifecycle-result-control'), operation:result.getAttribute('data-pokie-lifecycle-result-operation'), stateClass:result.getAttribute('data-pokie-lifecycle-result-state'), jobId:result.getAttribute('data-pokie-lifecycle-result-job'), receipt:result.getAttribute('data-pokie-lifecycle-result-receipt'), durableJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'), durableStatus:result.getAttribute('data-pokie-lifecycle-result-durable-status'), target:result.getAttribute('data-pokie-lifecycle-result-target'), outputPath:result.getAttribute('data-pokie-lifecycle-result-output'), artifact:artifact ? {name:artifact.getAttribute('data-pokie-lifecycle-artifact'), accessibleName:accessibleName(artifact), target:artifact.getAttribute('data-pokie-lifecycle-artifact-target'), outputPath:artifact.getAttribute('data-pokie-lifecycle-artifact-output')} : null};
             })()`), `${observation} product-owned lifecycle result`, contract.poll ? 120_000 : 30_000);
             if (contract.body && contract.artifact && (!lifecycleResult.artifact?.name || !lifecycleResult.artifact.accessibleName)) fail(`${observation} did not render a visible product-owned ${contract.artifact} artifact affordance`);
+            if (contract.body === "outcome-library" && (transaction.preflight?.state !== "ready" || lifecycleResult.operation !== "outcome-library" || lifecycleResult.receipt !== "durable-terminal" || lifecycleResult.durableJobId !== entry.terminal?.jobId || lifecycleResult.durableStatus !== entry.terminal?.status || !lifecycleResult.artifact?.outputPath)) fail(`${observation} rendered Outcome Library terminal is stale, detached from its preflight, or lacks its durable artifact result`);
             if (lifecycleResult.controlId !== transaction.control.stableControlId || (transaction.operation === "simulation" && lifecycleResult.operation !== transaction.operation) || lifecycleResult.stateClass !== transaction.stateClass || (contract.poll && lifecycleResult.jobId !== entry.terminal?.jobId)) fail(`${observation} rendered ${transaction.stateClass} terminal does not bind its activated control, operation, transaction state${contract.poll ? ", and durable job" : ""}`);
             const pointerActivation = transaction.pointerActivations[0];
             if (pointerActivation) {

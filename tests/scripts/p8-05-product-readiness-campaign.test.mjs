@@ -132,6 +132,7 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
                 actionControl: {stableControlId: contract.actionControlId ?? screen.navigationControlId, identityAttribute: "id", visible: true, accessibleName: matchedLabel, validation: {valid: true, message: ""}},
                 fields: [{stableControlId: `field-${observation}`, identityAttribute: "id", visible: true, accessibleName: "Configured value", value: "configured", disabled: false, required: true, validation: {valid: true, message: ""}}],
             }} : {}),
+            ...(contract.body === "outcome-library" ? {preflight: {state: "ready", status: "ok", controlId: "outcome-library-generate", cardLabel: "Outcome library generator", enabled: true, disabled: false}} : {}),
             confirmation: {required: false, state: "not-required", control: null},
             keyboardActivations: [{phase: "operation", kind: "keyboard", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1, nativeFocus: true, preDispatchFocus: {controlId: contract.actionControlId ?? screen.navigationControlId, native: true}}],
         };
@@ -206,8 +207,10 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
                     controlId: contract.actionControlId ?? screen.navigationControlId,
                     stateClass: transactionState,
                     ...(contract.poll ? {jobId} : {}),
+                    ...(contract.body === "outcome-library" ? {operation: "outcome-library", receipt: "durable-terminal", durableJobId: jobId, durableStatus: "completed"} : {}),
                     artifact: contract.artifact === undefined ? null : {name: contract.artifact, accessibleName: `Open ${contract.artifact}`,
-                        ...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: artifactResult.target, outputPath: artifactResult.outputPath} : {})},
+                        ...(contract.actionControlId === "artifact-build-parWorkbook" ? {target: artifactResult.target, outputPath: artifactResult.outputPath} : {}),
+                        ...(contract.body === "outcome-library" ? {outputPath: `/outputs/${jobId}`} : {})},
                 },
             },
             workflow: {
@@ -967,6 +970,30 @@ test("rejects a non-PAR durable terminal whose rendered result belongs to a diff
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
     } finally { await fixture.cleanup(); }
+});
+
+test("rejects missing, loading, unsupported, disabled, or stale Outcome Library card receipts before generic route evidence", async () => {
+    const corruptions = [
+        (page) => { delete page.transaction.preflight; },
+        (page) => { page.transaction.preflight.state = "loading"; },
+        (page) => { page.transaction.preflight.status = "error"; },
+        (page) => { page.transaction.preflight.enabled = false; page.transaction.preflight.disabled = true; },
+        (page) => { page.transaction.preflight.controlId = "outcome-library-generate-stale"; },
+        (page) => { page.renderedTerminal.lifecycle.durableJobId = "job-from-a-stale-result"; },
+    ];
+    for (const corrupt of corruptions) {
+        const fixture = await campaignFixture();
+        try {
+            const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "outcome-library-report-diff-replay" && item.viewport === "wide"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), page = JSON.parse(await readFile(target, "utf8"));
+            corrupt(page);
+            const contents = JSON.stringify(page);
+            await writeFile(target, contents);
+            evidence.sha256 = hash(contents);
+            evidence.sizeBytes = Buffer.byteLength(contents);
+            await writeFile(record, `${JSON.stringify(audits)}\n`);
+            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result/i);
+        } finally { await fixture.cleanup(); }
+    }
 });
 
 test("rejects a rendered terminal captured without the browser request that produced it", async () => {
