@@ -35,7 +35,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
     const [completedRefreshGeneration, setCompletedRefreshGeneration] = useState(0);
     const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
-    const [renderedTerminalGeneration, setRenderedTerminalGeneration] = useState<number | undefined>();
+    const [renderedTerminalGeneration, setRenderedTerminalGeneration] = useState<number | undefined>(undefined);
     const headerRef = useRef(header);
     const contextRequestRef = useRef<{key: string; promise: ReturnType<typeof getProjectContext>} | undefined>();
 
