@@ -37,7 +37,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
     const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
     const [renderedTerminalGeneration, setRenderedTerminalGeneration] = useState<number | undefined>(undefined);
     const headerRef = useRef(header);
-    const contextRequestRef = useRef<{key: string; promise: ReturnType<typeof getProjectContext>} | undefined>();
+    const contextRequestRef = useRef<{key: string; promise: ReturnType<typeof getProjectContext>} | undefined>(undefined);
 
     useEffect(() => {
         headerRef.current = header;
