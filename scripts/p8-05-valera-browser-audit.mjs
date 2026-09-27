@@ -1894,7 +1894,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // Keep this long enough for the rendered Cancel operation to attach,
         // but short enough that its rendered Retry can repeat the captured
         // request and reach a terminal report inside this tuple worker.
-        const cancellationRounds = 100_000;
+        const cancellationRounds = 20_000;
         const cancellationStart = Date.now(), cancellable = await startRenderedSimulation(projectBaseRoute, "cooperative cancellation", cancellationRounds); if (cancellable.response.status !== 202 || typeof cancellable.payload?.id !== "string") fail("Studio did not start a cancellable rendered simulation"); const cancelled = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"cooperative cancellation", cursor:cdp.events.length, method:"DELETE", confirmation:true, stateClass:"recovery-operation"}); if (cancelled.response.status !== 200 || cancelled.entry.path !== `/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}` || !["cancelling", "cancelled"].includes(cancelled.payload?.status)) fail("Studio did not acknowledge cooperative simulation cancellation through its rendered control"); const cancelledTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(cancellable.payload.id)}`, "cooperative cancellation", cancellable.cursor, ["cancelled"], [cancellable.transaction, cancelled.transaction]);
         // The durable terminal response can arrive one React commit before
         // Simulation switches from its Run step to Review.  Observe the
