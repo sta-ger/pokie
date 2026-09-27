@@ -14,6 +14,8 @@ export type SimulationTerminalReceipt = Readonly<{
     operation: SimulationOperation;
     jobId: string;
     status: StudioSimulationJobView["status"];
+    /** The terminal was reconciled from Studio's durable job store after restart. */
+    recoveredAfterRestart?: true;
 }>;
 
 // Ports pollSimulation (500ms, uncapped -- a legitimate simulation is allowed to run as long as it
@@ -87,7 +89,7 @@ export function useSimulationPoll() {
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
-                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status});
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
                 if (isSimulationActive(polledJob)) {
                     timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
@@ -152,8 +154,9 @@ export function useSimulationPoll() {
     /**
      * Reattach a newly mounted dashboard to a server-owned simulation.  The
      * job id comes from the durable project-job discovery surface, not from
-     * route or session memory, so a reload retains the same public Cancel and
-     * Retry controls as the original run.
+     * route or session memory. This includes a restart-reconciled terminal:
+     * its original executor is gone, so the first poll must render the
+     * durable recovery-required result rather than inventing completion.
      */
     function restore(id: string): void {
         if (currentJobId.current !== undefined) {
@@ -217,7 +220,7 @@ export function useSimulationPoll() {
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
-                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status});
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
             })
             .catch((err: unknown) => {

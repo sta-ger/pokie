@@ -589,13 +589,18 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const simulation = useSimulationPoll();
 
     // A reload recreates the hook, but the server-owned project-job list
-    // remains authoritative. Reattach only to its active simulation record so
-    // the Run step restores the real Cancel/Retry state rather than leaving a
-    // durable job visible only in the generic history cards.
+    // remains authoritative. Reattach to an active simulation or its
+    // restart-reconciled terminal so the Simulation workflow, rather than
+    // only a generic history card, renders the durable result. A
+    // recovery-required record is deliberately polled once: its vanished
+    // executor must be represented as recovery-required, never as completed.
     useEffect(() => {
         if (projectKey === undefined || simulation.currentJobId !== undefined) return;
-        const activeSimulation = commonJobs.jobs.find((job) => job.operation === "simulation" && (job.status === "queued" || job.status === "running" || job.status === "cancelling"));
-        if (activeSimulation !== undefined) simulation.restore(activeSimulation.id);
+        const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation" && (job.status === "queued" || job.status === "running" || job.status === "cancelling" || job.status === "recovery-required"));
+        if (restorableSimulation !== undefined) {
+            if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);
+            simulation.restore(restorableSimulation.id);
+        }
     }, [commonJobs.jobs, projectKey, simulation]);
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});

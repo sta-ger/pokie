@@ -103,6 +103,10 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
                 conflictKey: "simulation:/games/a", status: "recovery-required", createdAt: 1,
                 recovery: {action: "retry", reason: "Run the retained simulation again."},
             }]}}),
+            "/api/project/simulations/retained-simulation": () => ({ok: true, status: 200, body: jobFor("retained-simulation", {
+                status: "recovery-required", roundsCompleted: 1234, ...recoveryRequest,
+                recovery: {action: "retry", reason: "Studio restarted before this job completed."},
+            })}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/simulations": (call: FakeCall) => {
                 runCalls.push(JSON.parse(call.init?.body ?? "{}"));
@@ -115,6 +119,14 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         await screen.findByText("simulation · Recovery required");
         await user.click(screen.getByRole("button", {name: "Retry"}));
+        const recoveredTerminal = await screen.findByText(/Simulation recovery-required/);
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-control", "simulation-run");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retained-simulation");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-request-id", "retained-simulation");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-terminal", "recovery-required");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-recovery", "restart-reconciled");
         // Mantine NumberInput is a text input so it can preserve intermediate numeric input;
         // the submitted request below proves the reconstructed form still emits a number.
         expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("4321");

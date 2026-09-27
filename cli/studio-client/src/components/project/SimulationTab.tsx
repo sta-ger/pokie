@@ -136,7 +136,7 @@ export function SimulationTab({
         if (reviewedDetail.status !== "empty") {
             return 2;
         }
-        if (progress !== undefined) {
+        if (progress !== undefined && progress.status !== "recovery-required") {
             return 1;
         }
         return 0;
@@ -230,6 +230,8 @@ export function SimulationTab({
                     data-pokie-lifecycle-result-receipt={terminalReceipt === undefined ? "progress" : "durable-terminal"}
                     data-pokie-lifecycle-result-durable-job={terminalReceipt?.jobId}
                     data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
+                    data-pokie-lifecycle-result-request-id={terminalReceipt?.jobId}
+                    data-pokie-lifecycle-result-recovery={terminalReceipt?.recoveredAfterRestart === true ? "restart-reconciled" : undefined}
                 >
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
                         {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
