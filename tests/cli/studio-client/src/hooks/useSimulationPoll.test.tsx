@@ -96,6 +96,7 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
         expect(result.current.cancellationRequested).toBe(false);
         act(() => result.current.retry());
+        expect(result.current.operation).toBe("simulation-retry");
         await waitFor(() => expect(starts).toBe(2));
     });
 

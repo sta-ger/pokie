@@ -252,6 +252,35 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(runCalls[1]).toMatchObject({rounds: 10000, seed: "demo-seed", workers: 1});
     }, 60000);
 
+    it("renders a Retry-owned terminal receipt for the fresh durable retry job", async () => {
+        const user = userEvent.setup();
+        let starts = 0;
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/simulations": () => {
+                starts += 1;
+                return {ok: true, status: 200, body: jobFor(`retry-job-${starts}`, {status: "queued", roundsCompleted: 0})};
+            },
+            "/api/project/simulations/retry-job-1": () => ({ok: true, status: 200, body: jobFor("retry-job-1", {status: "completed", roundsCompleted: 10000, report: reportFor()})}),
+            "/api/project/simulations/retry-job-2": () => ({ok: true, status: 200, body: jobFor("retry-job-2", {status: "completed", roundsCompleted: 10000, report: reportFor()})}),
+            "/api/project/reports/retry-job-1": () => ({ok: true, status: 200, body: reportDetailFor()}),
+            "/api/project/reports/retry-job-2": () => ({ok: true, status: 200, body: reportDetailFor()}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Repeat simulation"})).toBeInTheDocument(), {timeout: 15000});
+        await user.click(screen.getByRole("button", {name: "Repeat simulation"}));
+
+        const receipt = await screen.findByText(/Simulation retry completed/);
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-control", "simulation-retry");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation-retry");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-state", "recovery-operation");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retry-job-2");
+    }, 60000);
+
     it("cancels a running simulation via the confirm modal and shows a cancelled summary", async () => {
         const user = userEvent.setup();
         let pollCount = 0;

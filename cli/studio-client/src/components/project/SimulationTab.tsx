@@ -39,6 +39,7 @@ export function SimulationTab({
     progress,
     error,
     cancellationRequested,
+    operation,
     onRun,
     onCancel,
     onRetry,
@@ -61,6 +62,8 @@ export function SimulationTab({
     error: string | undefined;
     /** A cancel request accepted locally before the next durable poll catches up. */
     cancellationRequested: boolean;
+    /** The rendered public control that started the current durable job. */
+    operation: "simulation" | "simulation-retry";
     onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
     onCancel: () => void;
     onRetry: () => void;
@@ -139,6 +142,8 @@ export function SimulationTab({
     const cancellationPending = cancellationRequested || progress?.status === "cancelling";
     const isTerminal = progress !== undefined && !active;
     const canRetry = progress !== undefined && (progress.status === "failed" || progress.status === "cancelled");
+    const resultControlId = operation === "simulation-retry" ? "simulation-retry" : "simulation-run";
+    const resultState = operation === "simulation-retry" ? "recovery-operation" : "editable-submission";
 
     // Auto-advances to Run the moment a fresh run starts (Configure submit or a Recent Runs "Run
     // again", either way progress.status transitions to "queued"), and to Review the moment a run
@@ -210,13 +215,14 @@ export function SimulationTab({
                 <div
                     tabIndex={-1}
                     data-pokie-lifecycle-result="simulation"
-                    data-pokie-lifecycle-result-control="simulation-run"
-                    data-pokie-lifecycle-result-state="editable-submission"
+                    data-pokie-lifecycle-result-control={resultControlId}
+                    data-pokie-lifecycle-result-operation={operation}
+                    data-pokie-lifecycle-result-state={resultState}
                     data-pokie-lifecycle-result-job={progress.jobId}
                     data-pokie-lifecycle-terminal={progress.status}
                 >
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
-                        Simulation {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
+                        {operation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
                     </Text>
                     {progress.status === "completed" && (
                         <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>

@@ -7,6 +7,7 @@ import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 import type {StudioSimulationJobView} from "../api/types";
 
 const POLL_INTERVAL_MS = 500;
+type SimulationOperation = "simulation" | "simulation-retry";
 
 // Ports pollSimulation (500ms, uncapped -- a legitimate simulation is allowed to run as long as it
 // actually takes) -- stops once the job is terminal, or once the Simulation tab's owning page unmounts.
@@ -28,6 +29,9 @@ export function useSimulationPoll() {
     const [job, setJob] = useState<StudioSimulationJobView>();
     const [error, setError] = useState<string>();
     const [cancellationRequested, setCancellationRequested] = useState(false);
+    // The terminal receipt belongs to the public control that created this
+    // durable job. A Retry must not be rendered as a second, anonymous Run.
+    const [operation, setOperation] = useState<SimulationOperation>("simulation");
     const currentJobId = useRef<string | undefined>(undefined);
     // A terminal view can outlive the in-memory job snapshot while a reload
     // or recovery reconciliation settles. Keep the real request that created
@@ -83,7 +87,7 @@ export function useSimulationPoll() {
             });
     }
 
-    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string): void {
+    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string, startedBy: SimulationOperation = "simulation"): void {
         if (!runGuard.begin()) {
             return;
         }
@@ -91,6 +95,7 @@ export function useSimulationPoll() {
         generationRef.current = generation;
         runGuardGenerationRef.current = generation;
         lastRequestRef.current = {rounds, seed, workers, modeName};
+        setOperation(startedBy);
         setError(undefined);
         setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
@@ -141,6 +146,7 @@ export function useSimulationPoll() {
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         currentJobId.current = id;
+        setOperation("simulation");
         setError(undefined);
         setCancellationRequested(false);
         poll(id, generation);
@@ -168,6 +174,7 @@ export function useSimulationPoll() {
         setJob(undefined);
         setError(undefined);
         setCancellationRequested(false);
+        setOperation("simulation");
     }
 
     function cancel(): void {
@@ -209,9 +216,9 @@ export function useSimulationPoll() {
     function retry(): void {
         const request = lastRequestRef.current;
         if (request !== undefined) {
-            run(request.rounds, request.seed, request.workers, request.modeName);
+            run(request.rounds, request.seed, request.workers, request.modeName, "simulation-retry");
         }
     }
 
-    return {progress, job, error, cancellationRequested, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    return {progress, job, error, cancellationRequested, operation, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

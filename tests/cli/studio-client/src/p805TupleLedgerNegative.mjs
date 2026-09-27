@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {mkdtemp, readFile, readdir, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
-import {runP805ProcessIsolatedPackedProof} from "../../../../scripts/p8-05-valera-browser-audit.mjs";
+import {runP805ProcessIsolatedPackedProof, validateP805RetryTerminalReceipt} from "../../../../scripts/p8-05-valera-browser-audit.mjs";
 
 const output = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-negative-"));
 const candidate = "1".repeat(40), candidatePackageSha256 = "a".repeat(64), candidateExecutableSha256 = "b".repeat(64);
@@ -35,7 +35,7 @@ const pointerReceiptFor = (tuple, pid) => {
     action.interaction = {keyboardFocused:false, pointerActivated:true, activation:"pointer", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}};
     action.transaction.pointerActivations = [{kind:"pointer", controlId:"project-tab:overview", capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, count:1, preDispatchFocus:{controlId:"project-tab:overview", native:true}, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true, focus:{eventType:"pointerdown", controlId:"project-tab:overview", native:true, targetMatchesCapturedControl:true}}}];
     action.transaction.keyboardActivations = [];
-    action.transaction.postTransitionRenderedState = {capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, controlState:"replaced", currentControlId:"project-tab:overview", capturedControlConnected:false, requestId:`browser-${pid}`, resultSha256:action.terminal.resultSha256, renderedTerminal:true};
+    action.transaction.postTransitionRenderedState = {capturedControlId:"project-tab:overview", captureKey:`capture-${pid}`, controlState:"replaced", currentControlId:"project-tab:overview", capturedControlConnected:false, requestId:`browser-${pid}`, resultSha256:action.terminal.resultSha256, resultControlId:"project-tab:overview", renderedTerminal:true};
     value.checkpoint.actionSha256 = sha(JSON.stringify(action));
     value.receipt.checkpointReceipt = value.checkpoint;
     value.receipt.action = action;
@@ -248,7 +248,13 @@ try {
         } catch (error) { runtimeOmissionFailure = error; }
         if (!/substituted the parent immutable runtime identity/.test(String(runtimeOmissionFailure)) || (await readdir(runtimeOmissionOutput)).includes("initial-process-isolated-packed-proof.json")) throw new Error(`parent accepted a child that omitted its shared runtime proof: ${runtimeOmissionFailure}`);
     } finally { await rm(runtimeOmissionOutput, {recursive:true, force:true}); }
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, pointerSemanticSubstitutionRejected:true, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true})}\n`);
+    const retryResult = {id:"retry-job", status:"completed"}, retryReceipt = {operation:"simulation-retry", controlId:"simulation-retry", stateClass:"recovery-operation", transaction:{operation:"simulation-retry", stateClass:"recovery-operation", control:{stableControlId:"simulation-retry"}, pointerActivations:[{kind:"pointer", controlId:"simulation-retry", capturedControlId:"simulation-retry", captureKey:"retry-capture", count:1, preDispatchFocus:{controlId:"simulation-retry", native:true}, hitTest:{capturedControlId:"simulation-retry", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true, focus:{controlId:"simulation-retry", native:true, targetMatchesCapturedControl:true}}}], requestCount:1, request:{browserRequestId:"retry-request", method:"POST", path:"/api/project/simulations"}, terminal:{status:"completed", jobId:"retry-job", resultSha256:sha(JSON.stringify(retryResult)), causedByRequestId:"retry-request"}, postTransitionRenderedState:{capturedControlId:"simulation-retry", captureKey:"retry-capture", controlState:"replaced", currentControlId:"simulation-retry", capturedControlConnected:false, requestId:"retry-request", resultSha256:sha(JSON.stringify(retryResult)), resultControlId:"simulation-retry", resultOperation:"simulation-retry", resultStateClass:"recovery-operation", renderedTerminal:true}}};
+    validateP805RetryTerminalReceipt(retryReceipt);
+    let retryTerminalSubstitutionRejected = false;
+    try { validateP805RetryTerminalReceipt({...retryReceipt, transaction:{...retryReceipt.transaction, postTransitionRenderedState:{...retryReceipt.transaction.postTransitionRenderedState, resultControlId:"simulation-run"}}}); }
+    catch (error) { retryTerminalSubstitutionRejected = /status\/job-equivalent/.test(String(error)); }
+    if (!retryTerminalSubstitutionRejected) throw new Error("collector accepted a simulation-run terminal receipt for Retry");
+    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, pointerSemanticSubstitutionRejected:true, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true, retryTerminalSubstitutionRejected})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }
