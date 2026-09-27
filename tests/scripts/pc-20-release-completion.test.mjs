@@ -199,6 +199,24 @@ test("the production ownership preload registers and drains detached ESM childre
     } finally { await rm(ownedRegistryPath, {force:true}); }
 });
 
+test("keeps concurrent signed ownership appends readable through final drainage", async () => {
+    const ownedRegistryPath = registryPath("concurrent-owned-resources");
+    const moduleUrl = pathToFileURL(path.join(repositoryDirectory, "scripts", "pc-20-release-completion.mjs")).href;
+    try {
+        const result = await runBoundedProcess(process.execPath, ["-e", `
+            const {spawn} = require("node:child_process");
+            const worker = ${JSON.stringify(`import(${JSON.stringify(moduleUrl)}).then(({registerPc20OwnedResource}) => { const resource = {kind:"provider", resourceId:\`concurrent-\${process.argv[1]}\`, pid:process.pid}; registerPc20OwnedResource(resource); registerPc20OwnedResource(resource, "released"); });`)};
+            Promise.all(Array.from({length:24}, (_, index) => new Promise((resolve, reject) => {
+                const child = spawn(process.execPath, ["-e", worker, String(index)], {stdio:"ignore"});
+                child.once("error", reject).once("exit", (code) => code === 0 ? resolve() : reject(new Error(\`worker exited \${code}\`)));
+            }))).then(() => process.exit(0), (error) => { console.error(error); process.exit(1); });
+        `], {cwd:repositoryDirectory, timeoutMs:5_000, resourceRegistryPath:ownedRegistryPath});
+        assert.equal(result.processTreeDrained, true);
+        assert.equal(result.resourcesDrained, true);
+        assert.ok(result.ownedResources.filter((resource) => resource.kind === "provider").every((resource) => resource.released === true));
+    } finally { await rm(ownedRegistryPath, {force:true}); }
+});
+
 test("fails closed before an immediate detached child can run when registry acquisition fails", async () => {
     const invalidRegistry = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-registry-directory-"));
     const pidPath = path.join(os.tmpdir(), `pokie-pc20-unregistered-${process.pid}-${Date.now()}`);

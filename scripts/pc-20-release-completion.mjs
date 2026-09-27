@@ -8,7 +8,7 @@
  * tying those operations to the same immutable source and package identities.
  */
 import {createHash, randomBytes, timingSafeEqual} from "node:crypto";
-import {appendFileSync, existsSync, readFileSync} from "node:fs";
+import {closeSync, constants, existsSync, openSync, readFileSync, writeSync} from "node:fs";
 import {mkdir, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {spawn, spawnSync} from "node:child_process";
 import path from "node:path";
@@ -187,7 +187,16 @@ export function registerPc20OwnedResource({kind, resourceId, pid, processIdentit
     const identity = pid === undefined ? undefined : (declaredIdentity || locallyAcquiredResourceIdentities.get(identityKey) || processIdentity(pid));
     if (pid !== undefined && (typeof identity !== "string" || !identity)) throw new Error(`PC-20 could not record process identity for PID ${pid}`);
     const record = {schemaVersion:1, action, kind, resourceId, ...(pid === undefined ? {} : {pid, processIdentity:identity})};
-    appendFileSync(registry, `${JSON.stringify({...record, signature:resourceSignature(secret, record)})}\n`, {encoding:"utf8", mode:0o600});
+    // Registry readers run concurrently with process exits.  Append one
+    // complete signed record at a time so a final ownership capture cannot
+    // mistake an in-progress writer for an unsigned resource declaration.
+    const contents = Buffer.from(`${JSON.stringify({...record, signature:resourceSignature(secret, record)})}\n`, "utf8");
+    const descriptor = openSync(registry, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND, 0o600);
+    try {
+        if (writeSync(descriptor, contents) !== contents.length) throw new Error("PC-20 could not atomically append an ownership record");
+    } finally {
+        closeSync(descriptor);
+    }
     if (action === "acquired" && identity) locallyAcquiredResourceIdentities.set(identityKey, identity);
     return true;
 }

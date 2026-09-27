@@ -4,7 +4,7 @@
  * durably authenticated first.  That closes the detach/reparent window which
  * a later parent-PID poll cannot recover.
  */
-const {appendFileSync, readFileSync} = require("node:fs");
+const {closeSync, constants, openSync, readFileSync, writeSync} = require("node:fs");
 const {createHash} = require("node:crypto");
 const {syncBuiltinESMExports} = require("node:module");
 const childProcess = require("node:child_process");
@@ -29,7 +29,17 @@ const processIdentity = (pid) => {
 const write = (record) => {
     // Do not catch this.  An unauthenticated or unretained acquisition is a
     // release-gate failure, not an invitation for a later polling audit.
-    appendFileSync(registry, `${JSON.stringify({...record, signature:signature(record)})}\n`, {encoding:"utf8", mode:0o600});
+    // A tracker may read this append-only registry while a Studio child is
+    // still starting or stopping.  Write each signed NDJSON record in one
+    // O_APPEND syscall so that reader can see either the previous complete
+    // ledger or this complete record, never an unsigned partial line.
+    const contents = Buffer.from(`${JSON.stringify({...record, signature:signature(record)})}\n`, "utf8");
+    const descriptor = openSync(registry, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND, 0o600);
+    try {
+        if (writeSync(descriptor, contents) !== contents.length) throw new Error("PC-20 could not atomically append an ownership record");
+    } finally {
+        closeSync(descriptor);
+    }
 };
 const terminateUnrecorded = (child) => {
     try { child.kill("SIGKILL"); } catch { /* the caller still fails closed */ }
