@@ -290,6 +290,7 @@ function TargetCard({
 
     return (
         <div
+            data-pokie-lifecycle-card={card.kind === "outcomeLibrary" ? OUTCOME_LIBRARY_TRANSACTION.cardId : undefined}
             data-pokie-lifecycle-form={lifecycleForm}
             style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}
         >
@@ -337,7 +338,7 @@ function TargetCard({
             )}
 
             {card.kind === "outcomeLibrary" && (
-                <div data-pokie-lifecycle-card={OUTCOME_LIBRARY_TRANSACTION.cardId}>
+                <div>
                     <TextInput
                         mt="sm"
                         label="Mode"
@@ -351,7 +352,7 @@ function TargetCard({
                     <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
                     <Group gap="xs" mt={4}>
                         {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
-                            <Button key={generation} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
+                            <Button key={generation} id={`outcome-library-generation-${generation}`} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
                                 {generationStrategyLabel(generation)}
                             </Button>
                         ))}
