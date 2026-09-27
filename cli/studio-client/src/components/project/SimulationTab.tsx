@@ -232,6 +232,7 @@ export function SimulationTab({
                     data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
                     data-pokie-lifecycle-result-request-id={terminalReceipt?.jobId}
                     data-pokie-lifecycle-result-recovery={terminalReceipt?.recoveredAfterRestart === true ? "restart-reconciled" : undefined}
+                    data-pokie-lifecycle-result-executor={terminalReceipt?.recoveredAfterRestart === true ? "unavailable-after-restart" : undefined}
                 >
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
                         {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
