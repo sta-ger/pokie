@@ -35,6 +35,7 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import {
     describeArtifactBuildTargetCards,
     describeExportDeployTargetCards,
+    OUTCOME_LIBRARY_TRANSACTION,
     type ExportDeployTargetCard,
     type ExportDeployTargetKind,
 } from "../../domain/interpret/ExportDeployTargets";
@@ -336,7 +337,7 @@ function TargetCard({
             )}
 
             {card.kind === "outcomeLibrary" && (
-                <div data-pokie-lifecycle-card="outcome-library">
+                <div data-pokie-lifecycle-card={OUTCOME_LIBRARY_TRANSACTION.cardId}>
                     <TextInput
                         mt="sm"
                         label="Mode"
@@ -417,8 +418,8 @@ function TargetCard({
                     </AdvancedDisclosure>
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
                     <div
-                        data-pokie-lifecycle-preflight="outcome-library"
-                        data-pokie-lifecycle-preflight-control="outcome-library-generate"
+                        data-pokie-lifecycle-preflight={OUTCOME_LIBRARY_TRANSACTION.formId}
+                        data-pokie-lifecycle-preflight-control={OUTCOME_LIBRARY_TRANSACTION.controlId}
                         data-pokie-lifecycle-preflight-status={outcomeLibraryPreflight.status}
                     >
                         {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
@@ -447,10 +448,10 @@ function TargetCard({
                         size="xs"
                         mt="sm"
                         onClick={onGenerateOutcomeLibrary}
-                        id="outcome-library-generate"
+                        id={OUTCOME_LIBRARY_TRANSACTION.controlId}
                         data-pokie-lifecycle="operation"
                         data-pokie-transaction-state="editable-submission"
-                        data-pokie-lifecycle-operation="outcome-library"
+                        data-pokie-lifecycle-operation={OUTCOME_LIBRARY_TRANSACTION.operation}
                         loading={outcomeLibraryRun.status === "running"}
                         disabled={outcomeLibraryDisabled}
                         title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
@@ -479,7 +480,7 @@ function TargetCard({
                         </>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="outcome-library" data-pokie-lifecycle-result-operation="outcome-library" data-pokie-lifecycle-result-control="outcome-library-generate" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-receipt="durable-terminal" data-pokie-lifecycle-result-durable-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-durable-status="completed" data-pokie-lifecycle-terminal="completed">
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result={OUTCOME_LIBRARY_TRANSACTION.formId} data-pokie-lifecycle-result-operation={OUTCOME_LIBRARY_TRANSACTION.operation} data-pokie-lifecycle-result-control={OUTCOME_LIBRARY_TRANSACTION.controlId} data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-receipt={OUTCOME_LIBRARY_TRANSACTION.terminalReceipt} data-pokie-lifecycle-result-durable-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-durable-status="completed" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -492,7 +493,7 @@ function TargetCard({
                             <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                 {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                             <QuickActions>
-                                <Button data-pokie-lifecycle-artifact="outcome-library" data-pokie-lifecycle-artifact-output={outcomeLibraryRun.result.resolvedBundleDir} size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
+                                <Button data-pokie-lifecycle-artifact={OUTCOME_LIBRARY_TRANSACTION.artifact} data-pokie-lifecycle-artifact-output={outcomeLibraryRun.result.resolvedBundleDir} size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
                                 {outputActionsUnavailable ? (
                                     <>
                                         <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
