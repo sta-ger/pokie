@@ -237,6 +237,7 @@ export function SimulationTab({
                     <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
                         {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
                         {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
+                        {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
                     </Text>
                     {resultStatus === "completed" && (
                         <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>

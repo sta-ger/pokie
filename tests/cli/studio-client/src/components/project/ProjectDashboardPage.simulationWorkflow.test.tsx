@@ -120,6 +120,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         await screen.findByText("simulation · Recovery required");
         await user.click(screen.getByRole("button", {name: "Retry"}));
         const recoveredTerminal = await screen.findByText(/Simulation recovery-required/);
+        expect(recoveredTerminal).toHaveTextContent("the prior executor is unavailable after restart");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-control", "simulation-run");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retained-simulation");
