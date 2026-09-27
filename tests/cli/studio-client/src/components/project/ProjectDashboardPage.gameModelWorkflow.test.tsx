@@ -81,6 +81,11 @@ function jsonResponse(body: unknown) {
 async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Game Model"}));
+    // Tab selection deliberately waits for a fresh rendered context before
+    // it changes the route.  Wait for the mounted workflow rather than
+    // treating the pointer click as a completed navigation receipt.
+    const refresh = await screen.findByRole("button", {name: "Refresh"});
+    await waitFor(() => expect(refresh).toBeEnabled());
 }
 
 describe("ProjectDashboardPage - Game Model tab", () => {
@@ -623,6 +628,7 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
 
     it("blocks navigating away from the Game Model tab while a section edit is dirty, same as any other unsaved-changes guard", async () => {
         const user = userEvent.setup();
+        const consoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
@@ -651,6 +657,8 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await user.click(screen.getByRole("button", {name: "Leave"}));
 
         expect(await screen.findByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(/controlIds|operation/);
+        consoleError.mockRestore();
     });
 
     it("rechecks unsaved Game Model changes before retrying a failed project close", async () => {
@@ -674,6 +682,7 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await screen.findByRole("button", {name: "Try closing again"});
 
         await user.click(screen.getByRole("button", {name: "Game Model"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Refresh"})).toBeEnabled());
         const symbols = sectionFieldset("Symbols");
         await user.click(within(symbols).getByRole("button", {name: "Edit"}));
         await within(symbols).findByLabelText("New symbol id");

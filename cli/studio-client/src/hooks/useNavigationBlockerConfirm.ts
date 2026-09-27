@@ -34,19 +34,24 @@ export function useNavigationBlockerConfirm(
         if (blocker.state !== "blocked") {
             return;
         }
-        const operation = confirmModal.operation ?? "navigation-blocker";
+        // These are product-owned metadata for the two rendered controls,
+        // not Mantine modal options.  Passing them through the modal spread
+        // forwards unknown attributes into the portal DOM and makes an
+        // otherwise valid navigation confirmation emit a React diagnostic.
+        const {controlIds, operation: suppliedOperation, ...modalProps} = confirmModal;
+        const operation = suppliedOperation ?? "navigation-blocker";
         modals.openConfirmModal({
-            ...confirmModal,
+            ...modalProps,
             withCloseButton: false,
             closeOnEscape: false,
             closeOnClickOutside: false,
             confirmProps: {
-                id: confirmModal.controlIds?.confirm ?? `pokie-${operation}-confirm`,
+                id: controlIds?.confirm ?? `pokie-${operation}-confirm`,
                 "data-pokie-confirmation": "confirm",
                 "data-pokie-confirmation-operation": operation,
             },
             cancelProps: {
-                id: confirmModal.controlIds?.cancel ?? `pokie-${operation}-dismiss`,
+                id: controlIds?.cancel ?? `pokie-${operation}-dismiss`,
                 "data-pokie-confirmation": "cancel",
                 "data-pokie-confirmation-operation": operation,
             },
