@@ -2037,8 +2037,14 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         if (!switched?.stableControlId) fail("Studio did not expose a focusable Create game control for project switching");
         await activateFocusedControl("operation", switched);
         await waitFor(() => evaluate(`location.hash !== ${JSON.stringify(recoveryBefore)} && location.hash.includes('/project/')`), "keyboard project switch");
-        const recoveryAfter = await evaluate("location.hash"), staleResponses = cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived"), delayedResponse = staleResponses.at(-1);
+        const recoveryAfter = await evaluate("location.hash");
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "stale-response isolation navigation");
+        // The navigation promise can settle one event-loop turn before its
+        // final rendered response is delivered.  Capture the response only
+        // after the replacement project route is stable, otherwise a fast
+        // real browser run races this receipt and incorrectly reports no
+        // stale-response isolation evidence.
+        const delayedResponse = await waitFor(() => cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived").at(-1) ?? false, "stale response after project switch"), staleResponses = cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived");
         const restartProjectBaseRoute = recoveryAfter.replace(/\/[^/]+$/, ""), restartRoute = `${restartProjectBaseRoute}/simulation`; await navigateProjectTab(restartProjectBaseRoute, "simulation", "restart recovery"); await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), "rendered restart-recovery simulation form"); await ensureSimulationConfigure("restart recovery"); const restartCursor = cdp.events.length; if (!await waitFor(() => setLifecycleField("simulation-rounds", "1000000"), "rendered restart-recovery simulation rounds")) fail("Studio did not accept the rendered restart-recovery rounds"); const restartControl = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation:"restart recovery", expectedStateClass:"editable-submission"}); const restartFormState = await captureRenderedEditableFormState("simulation", "restart recovery", restartControl.stableControlId); const restartJob = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation:"restart recovery", cursor:restartCursor, method:"POST", formState:restartFormState, stateClass:"editable-submission", control:restartControl}); if (restartJob.response.status !== 202 || typeof restartJob.payload?.id !== "string") fail("Studio did not start a rendered active job before restart");
         // The restarted Studio server was created through `own`, so it must
         // be drained through that same authenticated owner.  A generic

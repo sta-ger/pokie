@@ -7,7 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
-import {runP805ProcessIsolatedPackedProof, validateP805RenderedPersonaAudit, validateP805RetryTerminalReceipt} from "./p8-05-valera-browser-audit.mjs";
+import {runP805ProcessIsolatedPackedProof, validateP805RenderedPersonaAudit, validateP805RestartRecoveryTerminalReceipt, validateP805RetryTerminalReceipt} from "./p8-05-valera-browser-audit.mjs";
 
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
 const commit = (value) => typeof value === "string" && /^[a-f0-9]{40}$/i.test(value);
@@ -26,6 +26,12 @@ function base(config) { if (!config || !path.isAbsolute(config.directory ?? ""))
 function packed(config, name) { if (!path.isAbsolute(config?.packedCli ?? "") || !path.isAbsolute(config?.packedPackage ?? "")) fail(`${name} requires a packed CLI and package archive`); }
 const machineProofName = (phase) => `${phase}-controller-machine-proof.json`;
 const proofLedgerName = (phase) => `${phase}-process-isolated-packed-proof.json`;
+const RECOVERY_WORKFLOW_OBSERVATIONS = new Set([
+    "simulation-success-failure-cancellation",
+    "outcome-library-report-diff-replay",
+    "replay-artifact-success-failure-recovery",
+    "reload-reconnect-recovery-cancellation-project-switch",
+]);
 const tupleEvidenceFor = (ledger) => ledger.children.map((child, index) => ({tuple:child.tuple, auditId:ledger.acceptedReceipts[index].receipt.auditId, auditPath:child.auditPath, auditSha256:child.auditSha256, tupleReceiptPath:child.tupleReceiptPath, tupleReceiptSha256:child.tupleReceiptSha256, cleanupPath:child.cleanupPath, cleanupSha256:child.cleanupSha256, checkpointReceiptSha256:child.checkpointReceiptSha256s[0], actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256, cleanupEvidenceId:child.cleanupEvidenceId}));
 const renderedTupleEvidenceFor = (ledger, audits) => ledger.children.map((child, index) => {
     const audit = audits.find((value) => value.worker?.pid === child.worker?.pid), action = audit?.rendered?.actions?.[0], pointer = action?.transaction?.pointerActivations?.[0], keyboard = action?.transaction?.keyboardActivations?.[0], isPointer = action?.interaction?.activation === "pointer", activation = isPointer ? pointer : keyboard;
@@ -75,6 +81,35 @@ const validRetryTerminalEvidence = (value, expectedCount) => Array.isArray(value
     const activation = entry.activation, request = entry.request, terminal = entry.terminal, rendered = entry.rendered;
     return entry.operation === "simulation-retry" && entry.controlId === "simulation-retry" && entry.stateClass === "recovery-operation" && activation?.capturedControlId === entry.controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0 && activation.preDispatchFocus?.controlId === entry.controlId && activation.preDispatchFocus.native === true && activation.hitTest?.capturedControlId === entry.controlId && activation.hitTest?.matchesCapturedControl === true && activation.dispatch?.kind === "native-pointer" && activation.dispatch?.pressed === true && activation.dispatch?.released === true && activation.dispatch.focus?.controlId === entry.controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.targetMatchesCapturedControl === true && request?.method === "POST" && request?.path === "/api/project/simulations" && typeof request.browserRequestId === "string" && request.browserRequestId.length > 0 && terminal?.status === "completed" && typeof terminal.jobId === "string" && terminal.jobId.length > 0 && terminal.causedByRequestId === request.browserRequestId && sha(terminal.resultSha256) && rendered?.capturedControlId === entry.controlId && rendered.captureKey === activation.captureKey && rendered.requestId === request.browserRequestId && rendered.resultSha256 === terminal.resultSha256 && rendered.resultControlId === entry.controlId && rendered.resultOperation === entry.operation && rendered.resultStateClass === entry.stateClass && rendered.resultReceipt === "durable-terminal" && rendered.resultJobId === terminal.jobId && rendered.resultTerminal === terminal.status && rendered.renderedTerminal === true && typeof entry.evidence?.retryEvidenceId === "string" && entry.evidence.retryEvidenceId.length > 0 && typeof entry.evidence.cleanupEvidenceId === "string" && entry.evidence.cleanupEvidenceId.length > 0;
 });
+// Restart recovery has a different truth condition than Retry: the captured
+// submission's executor is gone, so only the durable recovery-required job
+// and its newly rendered replacement terminal may cross the controller
+// boundary. Preserve the complete receipt here rather than projecting a
+// generic simulation result with a matching status.
+const restartRecoveryTerminalEvidenceFor = (ledger, audits) => ledger.children.flatMap((child, index) => {
+    const audit = audits.find((value) => value.worker?.pid === child.worker?.pid);
+    const restartRecovery = audit?.rendered?.jobs?.restartRecovery, receipt = restartRecovery?.receipt;
+    if (receipt === undefined) return [];
+    validateP805RestartRecoveryTerminalReceipt(receipt);
+    return [{
+        tuple:child.tuple,
+        auditSha256:child.auditSha256,
+        checkpointReceiptSha256:child.checkpointReceiptSha256s[0],
+        actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256,
+        ...receipt,
+        evidence:{restartRecoveryEvidenceId:restartRecovery.evidenceId, cleanupEvidenceId:audit.cleanup.evidenceId},
+    }];
+});
+const validRestartRecoveryTerminalEvidence = (value, expected) => Array.isArray(value) && value.length === expected.length && value.length > 0 && value.every((entry, index) => {
+    const bound = expected[index];
+    if (JSON.stringify(entry?.tuple) !== JSON.stringify(bound?.tuple) || entry?.auditSha256 !== bound?.auditSha256 || entry?.checkpointReceiptSha256 !== bound?.checkpointReceiptSha256 || entry?.actionSha256 !== bound?.actionSha256 || typeof entry?.evidence?.restartRecoveryEvidenceId !== "string" || !entry.evidence.restartRecoveryEvidenceId || entry.evidence?.cleanupEvidenceId !== bound?.cleanupEvidenceId) return false;
+    try {
+        validateP805RestartRecoveryTerminalReceipt(entry);
+        return true;
+    } catch {
+        return false;
+    }
+});
 function validRenderedTupleEvidence(value, expected) {
     if (!Array.isArray(value) || value.length !== expected.length) return false;
     return value.every((entry, index) => {
@@ -120,8 +155,8 @@ export function validateP805ControllerMachineProof(value, phase, candidateValue,
     try { ledger = JSON.parse(ledgerContents); }
     catch { fail("controller machine proof cannot read its packed CLI/Studio tuple ledger"); }
     validateP805TupleProofLedger(ledger, candidateValue);
-    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger), expectedRetryCount = ledger.children.filter(({tuple}) => ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation)).length;
-    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== P805_PERSONAS.length || JSON.stringify(value.audits?.personas) !== JSON.stringify(P805_PERSONAS) || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== P805_PERSONAS.length || new Set(value.audits.ids).size !== P805_PERSONAS.length || JSON.stringify(value.audits?.tupleReceiptAuditIds) !== JSON.stringify(tupleAuditIds) || new Set(tupleAuditIds).size !== tupleAuditIds.length || JSON.stringify(value.audits?.tupleEvidence) !== JSON.stringify(tupleEvidence) || !validRenderedTupleEvidence(value.audits?.renderedTupleEvidence, tupleEvidence) || !validRetryTerminalEvidence(value.audits?.retryTerminalEvidence, expectedRetryCount)) fail("controller machine proof does not bind five persona aggregates to the exact candidate's complete packed CLI/Studio tuple ledger");
+    const tuples = ledger.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger), restartRecoveryEvidence = tupleEvidence.filter(({tuple}) => RECOVERY_WORKFLOW_OBSERVATIONS.has(tuple.observation)), expectedRetryCount = restartRecoveryEvidence.length;
+    if (!value || value.schemaVersion !== P805_SCHEMA_VERSION || value.kind !== "p8-05-controller-machine-proof" || value.status !== "passed" || value.execution !== "controller-owned-exact-candidate-packed-cli-and-rendered-studio-matrix" || value.phase !== phase || ledger.phase !== phase || value.candidateId !== candidateValue.candidateId || value.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.candidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || value.proofLedger?.path !== proofLedgerName(phase) || value.proofLedger?.sha256 !== digest(ledgerContents) || value.proofLedger?.candidateId !== candidateValue.candidateId || value.proofLedger?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || value.proofLedger?.status !== "passed" || value.proofLedger?.aggregation !== "independently-verified-immutable-tuple-child-receipts-only" || JSON.stringify(value.tuples) !== JSON.stringify(tuples) || value.audits?.count !== P805_PERSONAS.length || JSON.stringify(value.audits?.personas) !== JSON.stringify(P805_PERSONAS) || !Array.isArray(value.audits?.ids) || value.audits.ids.length !== P805_PERSONAS.length || new Set(value.audits.ids).size !== P805_PERSONAS.length || JSON.stringify(value.audits?.tupleReceiptAuditIds) !== JSON.stringify(tupleAuditIds) || new Set(tupleAuditIds).size !== tupleAuditIds.length || JSON.stringify(value.audits?.tupleEvidence) !== JSON.stringify(tupleEvidence) || !validRenderedTupleEvidence(value.audits?.renderedTupleEvidence, tupleEvidence) || !validRetryTerminalEvidence(value.audits?.retryTerminalEvidence, expectedRetryCount) || !validRestartRecoveryTerminalEvidence(value.audits?.restartRecoveryTerminalEvidence, restartRecoveryEvidence)) fail("controller machine proof does not bind five persona aggregates to the exact candidate's complete packed CLI/Studio tuple ledger");
     return value;
 }
 
@@ -155,7 +190,7 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof,
     const ledger = await record(config.directory, proofLedgerName(phase));
     validateP805TupleProofLedger(ledger.value, candidateValue);
     if (digest(`${JSON.stringify(proof.ledger, null, 2)}\n`) !== digest(ledger.contents)) fail("controller re-read ledger differs from the packed parent result");
-    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger.value), renderedTupleEvidence = renderedTupleEvidenceFor(ledger.value, audits), retryTerminalEvidence = retryTerminalEvidenceFor(ledger.value, tupleAudits), value = {
+    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger.value), renderedTupleEvidence = renderedTupleEvidenceFor(ledger.value, audits), retryTerminalEvidence = retryTerminalEvidenceFor(ledger.value, tupleAudits), restartRecoveryTerminalEvidence = restartRecoveryTerminalEvidenceFor(ledger.value, tupleAudits), value = {
         schemaVersion:P805_SCHEMA_VERSION,
         kind:"p8-05-controller-machine-proof",
         status:"passed",
@@ -169,7 +204,7 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof,
         // The handoff is derived solely from the re-read immutable ledger.
         // In-memory audit objects are useful to write the campaign record,
         // but may never define what the controller certifies to review.
-        audits:{count:audits.length, personas:audits.map((audit) => audit.persona), ids:audits.map((audit) => audit.auditId), tupleReceiptAuditIds:tupleAuditIds, tupleEvidence, renderedTupleEvidence, retryTerminalEvidence},
+        audits:{count:audits.length, personas:audits.map((audit) => audit.persona), ids:audits.map((audit) => audit.auditId), tupleReceiptAuditIds:tupleAuditIds, tupleEvidence, renderedTupleEvidence, retryTerminalEvidence, restartRecoveryTerminalEvidence},
     };
     if (existsSync(recordPath(config.directory, machineProofName(phase)))) fail("controller machine proof is append-only");
     validateP805ControllerMachineProof(value, phase, candidateValue, ledger.contents);
