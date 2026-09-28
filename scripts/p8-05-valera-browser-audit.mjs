@@ -970,16 +970,25 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 transaction.terminal = {...receipt, causedByRequestId:transaction.request?.browserRequestId};
                 const pointer = transaction.pointerActivations?.[0];
                 if (capturePointerTransition && pointer) {
-                    transaction.postTransitionRenderedState = await evaluate(`(()=>{
+                    // The terminal network response can precede React's
+                    // replacement commit.  Keep the pre-dispatch native
+                    // pointer receipt intact, then wait for the correlated
+                    // terminal result before classifying its control as
+                    // retained, replaced, or removed.  Sampling immediately
+                    // here made a valid Retry look like it had lost focus
+                    // merely because React had not painted its replacement
+                    // yet.
+                    transaction.postTransitionRenderedState = await waitFor(() => evaluate(`(()=>{
                         const captured=window.__p805CapturedControls?.get(${JSON.stringify(pointer.captureKey)});
                         const current=document.getElementById(${JSON.stringify(transaction.control?.stableControlId)});
                         const result=[...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')===${JSON.stringify(transaction.control?.stableControlId)}&&item.getAttribute('data-pokie-lifecycle-result-operation')===${JSON.stringify(transaction.operation)}&&item.getAttribute('data-pokie-lifecycle-result-state')===${JSON.stringify(transaction.stateClass)}&&item.getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(receipt.status)}&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-status')===${JSON.stringify(receipt.status)}&&(${JSON.stringify(receipt.result?.id ?? null)}===null||(item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(receipt.result?.id ?? null)}&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(receipt.result?.id ?? null)})));
+                        if (!(result instanceof HTMLElement)) return false;
                         const capturedControlId=captured instanceof HTMLElement?captured.id:null;
                         const controlState=!(captured instanceof HTMLElement)?'missing':current===null?'removed':current===captured?'retained':'replaced';
                         const capturedControlConnected=captured instanceof HTMLElement&&captured.isConnected;
                         window.__p805CapturedControls?.delete(${JSON.stringify(pointer.captureKey)});
                         return {capturedControlId,captureKey:${JSON.stringify(pointer.captureKey)},controlState,currentControlId:current instanceof HTMLElement?current.id:null,capturedControlConnected,activeElementId:document.activeElement instanceof HTMLElement?document.activeElement.id||null:null,requestId:${JSON.stringify(transaction.request?.browserRequestId)},resultSha256:${JSON.stringify(receipt.resultSha256)},renderedTerminal:result instanceof HTMLElement,resultControlId:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-control'):null,resultOperation:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-operation'):null,resultStateClass:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-state'):null,resultReceipt:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-receipt'):null,resultJobId:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-durable-job'):null,resultTerminal:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-durable-status'):null};
-                    })()`);
+                    })()`), `${observation} post-transition rendered terminal`, timeout);
                     if (!hasRenderedActivation({interaction:{activation:"pointer", pointerActivated:true}, transaction}, transaction.control?.stableControlId)) fail(`${observation} pointer transaction lost its captured identity, native dispatch focus, hit-tested dispatch, request, terminal, or post-transition replacement state`);
                 }
             }

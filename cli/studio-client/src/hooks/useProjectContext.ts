@@ -35,7 +35,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
     const [completedRefreshGeneration, setCompletedRefreshGeneration] = useState(0);
     const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
-    const [renderedTerminalGeneration, setRenderedTerminalGeneration] = useState<number | undefined>(undefined);
+    const [renderedTerminal, setRenderedTerminal] = useState<{generation: number; header: ProjectHeaderView; outcome: "completed" | "failed"} | undefined>(undefined);
     const headerRef = useRef(header);
     const contextRequestRef = useRef<{key: string; promise: ReturnType<typeof getProjectContext>} | undefined>(undefined);
 
@@ -43,14 +43,20 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         headerRef.current = header;
     }, [header]);
 
-    // Acknowledgement is deliberately post-commit.  A consumer can use this
-    // generation to change routes, so setting it from the fetch callback
-    // would let that consumer observe an earlier or loading header.
+    // Acknowledgement is deliberately post-commit and identity-bound. A
+    // consumer can use this generation to change routes, so setting it from
+    // the fetch callback would let that consumer observe an earlier terminal
+    // header while the exact fresh generation is still loading.
     useEffect(() => {
-        if (renderedTerminalGeneration !== undefined && header.status !== "loading") {
-            setCompletedRefreshGeneration(renderedTerminalGeneration);
+        if (renderedTerminal === undefined || header !== renderedTerminal.header || header.status === "loading") {
+            return;
         }
-    }, [header.status, renderedTerminalGeneration]);
+        if (renderedTerminal.outcome === "completed") {
+            setCompletedRefreshGeneration(renderedTerminal.generation);
+        } else {
+            setFailedRefreshGeneration(renderedTerminal.generation);
+        }
+    }, [header, renderedTerminal]);
 
     useEffect(() => {
         let cancelled = false;
@@ -78,7 +84,8 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         };
 
         const publishDashboard = (dashboard: Parameters<typeof describeProjectHeader>[0]): void => {
-            setHeader(describeProjectHeader(dashboard));
+            const nextHeader = describeProjectHeader(dashboard);
+            setHeader(nextHeader);
             // Consumers that need a capability refresh before selecting a
             // dependent workflow wait for this acknowledgement, rather than
             // treating the request start or an older page header as proof.
@@ -86,8 +93,14 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
             // capability boundary.  Dashboard navigation must wait until the
             // refresh has reached a terminal context.
             if (dashboard.status !== "loading") {
-                setRenderedTerminalGeneration(refreshGeneration);
+                setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: nextHeader.status === "error" ? "failed" : "completed"});
             }
+        };
+
+        const publishFailure = (projectRoot: string, error: unknown): void => {
+            const nextHeader = describeProjectContextFailure(projectRoot, errorMessage(error));
+            setHeader(nextHeader);
+            setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: "failed"});
         };
 
         const poll = (attemptsLeft: number): void => {
@@ -103,8 +116,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
-                        setHeader(describeProjectContextFailure("", errorMessage(error)));
-                        setFailedRefreshGeneration(refreshGeneration);
+                        publishFailure("", error);
                     }
                 });
         };
@@ -147,15 +159,15 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
                         })
                         .catch((error: unknown) => {
                             if (!cancelled) {
-                                setHeader(describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error)));
-                                setFailedRefreshGeneration(refreshGeneration);
+                                const nextHeader = describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error));
+                                setHeader(nextHeader);
+                                setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: "failed"});
                             }
                         });
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
-                        setHeader(describeProjectContextFailure(requestedProjectRoot, errorMessage(error)));
-                        setFailedRefreshGeneration(refreshGeneration);
+                        publishFailure(requestedProjectRoot, error);
                     }
                 });
         }
