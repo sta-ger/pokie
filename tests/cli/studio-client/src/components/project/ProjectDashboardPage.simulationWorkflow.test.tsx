@@ -124,6 +124,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-control", "simulation-run");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retained-simulation");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-captured-job", "retained-simulation");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-request-id", "retained-simulation");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-terminal", "recovery-required");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");

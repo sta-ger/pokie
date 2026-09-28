@@ -112,7 +112,7 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         act(() => releaseCancel?.());
         await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
         expect(result.current.cancellationRequested).toBe(false);
-        expect(result.current.terminalReceipt).toEqual({operation: "simulation", jobId: "job-1", requestId: "job-1", status: "cancelled"});
+        expect(result.current.terminalReceipt).toEqual({operation: "simulation", jobId: "job-1", capturedJobId: "job-1", requestId: "job-1", status: "cancelled"});
         act(() => result.current.retry());
         expect(result.current.operation).toBe("simulation-retry");
         expect(result.current.terminalReceipt).toBeUndefined();

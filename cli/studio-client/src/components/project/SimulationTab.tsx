@@ -229,6 +229,7 @@ export function SimulationTab({
                     data-pokie-lifecycle-terminal={resultStatus}
                     data-pokie-lifecycle-result-receipt={terminalReceipt === undefined ? "progress" : "durable-terminal"}
                     data-pokie-lifecycle-result-durable-job={terminalReceipt?.jobId}
+                    data-pokie-lifecycle-result-captured-job={terminalReceipt?.capturedJobId}
                     data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
                     data-pokie-lifecycle-result-request-id={terminalReceipt?.requestId}
                     data-pokie-lifecycle-result-recovery={terminalReceipt?.recoveredAfterRestart === true ? "restart-reconciled" : undefined}

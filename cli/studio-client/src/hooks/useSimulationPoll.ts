@@ -13,6 +13,8 @@ type SimulationOperation = "simulation" | "simulation-retry";
 export type SimulationTerminalReceipt = Readonly<{
     operation: SimulationOperation;
     jobId: string;
+    /** The job id captured from the accepting public simulation request. */
+    capturedJobId: string;
     /** The durable request identity must remain the job this hook attached to. */
     requestId: string;
     status: StudioSimulationJobView["status"];
@@ -104,7 +106,7 @@ export function useSimulationPoll() {
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
-                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, capturedJobId: id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
                 if (isSimulationActive(polledJob)) {
                     timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
@@ -243,7 +245,7 @@ export function useSimulationPoll() {
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
-                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, capturedJobId: id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
             })
             .catch((err: unknown) => {
