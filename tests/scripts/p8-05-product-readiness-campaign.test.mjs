@@ -53,6 +53,7 @@ const timings = {
     simulationMs: 1,
     replayMs: 1,
     cancellationMs: 1,
+    restartRecoveryMs: 1,
 };
 const transaction = (operation, controlId, accessibleName, confirmed = false) => ({
     operation,
@@ -495,7 +496,7 @@ async function campaignFixture() {
         const artifactBytes = await readFile(path.join(directory, artifact.path));
         artifact.sha256 = hash(artifactBytes);
         artifact.sizeBytes = artifactBytes.length;
-        const measured = runtime.evidenceId, auditId = `${phase}-${persona}`;
+        const measured = runtime.evidenceId, restartScreenshot = artifacts.find((item) => item.kind === "screenshot"), auditId = `${phase}-${persona}`;
         await mkdir(path.join(directory, "checkpoints"), {recursive: true});
         const checkpointReceipts = await Promise.all(actions.map(async (action, index) => {
             const sequence = index + 1, receiptId = `${auditId}-checkpoint-${sequence}`,
@@ -576,6 +577,8 @@ async function campaignFixture() {
                             resultControlId: "simulation-run", resultOperation: "simulation", resultStateClass: "editable-submission", resultReceipt: "durable-terminal", resultJobId: "simulation-restart", resultRequestId: "simulation-restart", resultTerminal: "recovery-required", resultRecovery: "restart-reconciled", resultExecutor: "unavailable-after-restart", renderedTerminal: true,
                             postRestartReplacementState: {capturedControlId: "simulation-run", captureKey: restartTransaction.pointerActivations[0].captureKey, controlState: "replaced-after-restart", currentControlId: "simulation-run", capturedControlConnected: false},
                         },
+                        timing: {elapsedMs: 1},
+                        evidence: {screenshotEvidenceId: restartScreenshot.evidenceId, cleanupEvidenceId: cleanup.evidenceId},
                         ownedProcessDrain: {processTreeDrained: true, resourcesDrained: true},
                     }},
                 },

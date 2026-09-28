@@ -99,12 +99,12 @@ const restartRecoveryTerminalEvidenceFor = (ledger, audits) => ledger.children.f
         checkpointReceiptSha256:child.checkpointReceiptSha256s[0],
         actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256,
         ...receipt,
-        evidence:{restartRecoveryEvidenceId:restartRecovery.evidenceId, cleanupEvidenceId:audit.cleanup.evidenceId},
+        evidence:{...receipt.evidence, restartRecoveryEvidenceId:restartRecovery.evidenceId, cleanupEvidenceId:audit.cleanup.evidenceId},
     }];
 });
 const validRestartRecoveryTerminalEvidence = (value, expected) => Array.isArray(value) && value.length === expected.length && value.length > 0 && value.every((entry, index) => {
     const bound = expected[index];
-    if (JSON.stringify(entry?.tuple) !== JSON.stringify(bound?.tuple) || entry?.auditSha256 !== bound?.auditSha256 || entry?.checkpointReceiptSha256 !== bound?.checkpointReceiptSha256 || entry?.actionSha256 !== bound?.actionSha256 || entry?.capturedJobId !== entry?.terminal?.jobId || typeof entry?.evidence?.restartRecoveryEvidenceId !== "string" || !entry.evidence.restartRecoveryEvidenceId || entry.evidence?.cleanupEvidenceId !== bound?.cleanupEvidenceId) return false;
+    if (JSON.stringify(entry?.tuple) !== JSON.stringify(bound?.tuple) || entry?.auditSha256 !== bound?.auditSha256 || entry?.checkpointReceiptSha256 !== bound?.checkpointReceiptSha256 || entry?.actionSha256 !== bound?.actionSha256 || entry?.capturedJobId !== entry?.terminal?.jobId || typeof entry?.evidence?.restartRecoveryEvidenceId !== "string" || !entry.evidence.restartRecoveryEvidenceId || typeof entry.evidence?.screenshotEvidenceId !== "string" || !entry.evidence.screenshotEvidenceId || entry.evidence?.cleanupEvidenceId !== bound?.cleanupEvidenceId) return false;
     try {
         validateP805RestartRecoveryTerminalReceipt(entry);
         return true;
