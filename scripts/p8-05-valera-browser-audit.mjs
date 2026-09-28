@@ -819,7 +819,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // React click default; treating that focus as an activation produced
         // a route-only claim. Capture the focused visible control and click
         // its actual rendered hit target instead.
-        const activateFocusedControl = async (lifecycle = "operation", control, transport = "pointer") => {
+        const activateFocusedControl = async (lifecycle = "operation", control, transport = "pointer", retainCapturedControl = false) => {
             const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
             if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before pointer activation`);
             if (transport === "keyboard") {
@@ -869,10 +869,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // without `buttons` and `pointerType` its visual focus was
             // captured but React never received the click that starts the
             // validation/save/navigation lifecycle.
-            const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), lifecycle !== "navigation");
+            const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), lifecycle !== "navigation", retainCapturedControl);
             return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
         };
-        const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit) => {
+        const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit, retainCapturedControl = false) => {
             // A control can be rendered yet sit below the compact viewport.
             // CDP accepts that off-screen coordinate without giving React a
             // pointer event, which used to leave the Replay Load transition
@@ -915,7 +915,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // immediately before that press, so preserve those observed facts
             // rather than treating a post-dispatch focus transfer as a second
             // control identity.
-            const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
+            const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
             // React is free to replace the Retry button while its accepted
             // pointer activation starts a new simulation.  The transaction
             // identity is consequently the captured pre-dispatch node, not
@@ -1213,7 +1213,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (!p805TransactionStateClass(control)) fail(`${observation} rendered ${operation} did not publish a supported transaction state class`);
             return control;
         };
-        const beginRenderedTransaction = async ({lifecycle, operation, observation, confirmation = false, formState, stateClass, control:capturedControl, transport = "pointer"}) => {
+        const beginRenderedTransaction = async ({lifecycle, operation, observation, confirmation = false, formState, stateClass, control:capturedControl, transport = "pointer", capturePostTransition = false}) => {
             const control = capturedControl ?? await renderedTransactionControl({lifecycle, operation, observation, formState});
             if (p805TransactionStateClass(control) !== stateClass) fail(`${observation} transaction state was not derived from its rendered control`);
             if (formState !== undefined && control.transactionState !== "editable-submission") fail(`${observation} recorded editable fields for a ${control.transactionState} control`);
@@ -1235,7 +1235,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // keyboard activation that Replay uses for that one terminal
             // recovery control, retaining the exact DOM identity at the
             // public-action boundary.
-            const activation = await activateFocusedControl(lifecycle, control, transport === "keyboard" || operation === "replay" ? "keyboard" : "pointer");
+            const activation = await activateFocusedControl(lifecycle, control, transport === "keyboard" || operation === "replay" ? "keyboard" : "pointer", capturePostTransition);
             if (activation.kind === "pointer" && activation.preDispatchFocus?.native !== true) fail(observation + " rendered " + operation + " control did not retain native focus through its pointer activation");
             control.keyboardFocused = activation.preDispatchFocus?.native === true;
             transaction[activation.kind === "keyboard" ? "keyboardActivations" : "pointerActivations"].push({phase:"operation", ...activation});
@@ -1265,8 +1265,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             return transaction;
         };
-        const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, path:expectedPath, confirmation = false, formState, stateClass = "read-only-operation", control, transport}) => {
-            const transaction = await beginRenderedTransaction({lifecycle, operation, observation, confirmation, formState, stateClass, control, transport});
+        const activateRenderedTransaction = async ({lifecycle, operation, observation, cursor, method, path:expectedPath, confirmation = false, formState, stateClass = "read-only-operation", control, transport, capturePostTransition = false}) => {
+            const transaction = await beginRenderedTransaction({lifecycle, operation, observation, confirmation, formState, stateClass, control, transport, capturePostTransition});
             const activationCursor = transaction.browserEventCursor;
             if (!Number.isSafeInteger(activationCursor) || activationCursor < cursor) fail(`${observation} has no browser event boundary for its rendered ${operation} activation`);
             const event = await waitFor(() => cdp.events.slice(activationCursor).find((value) => value.method === "Network.requestWillBeSent" && value.params.request.method === method && (expectedPath === undefined || new URL(value.params.request.url).pathname === expectedPath)) || false, `${observation} rendered ${operation} request`);
@@ -2247,7 +2247,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // may replace it as the request begins, but the receipt keeps the
         // captured identity, native focus, hit-test, and press/release proof.
         await waitFor(() => evaluate("(()=>{const item=document.getElementById('simulation-retry'); return item instanceof HTMLButtonElement && item.getAttribute('data-pokie-lifecycle') === 'recovery' && item.getAttribute('data-pokie-lifecycle-operation') === 'simulation-retry' && item.textContent?.trim() === 'Repeat simulation' && !item.disabled;})()"), "cooperative cancellation stable rendered retry control");
-        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation"}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:retry.transaction.stateClass, transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"}); timings.cancellationMs = Date.now() - cancellationStart;
+        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"}); timings.cancellationMs = Date.now() - cancellationStart;
         // A package project is intentionally read-only in Game Model.  The
         // first-time-user Design Game is the product-owned editable surface,
         // so use its native text field and its public Projects/Open workflow
