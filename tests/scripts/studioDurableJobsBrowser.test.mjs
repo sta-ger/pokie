@@ -62,6 +62,13 @@ async function terminate(child) {
     await new Promise((resolveExit) => child.once("exit", resolveExit));
 }
 
+async function terminateAbruptly(child) {
+    if (child === undefined || child.exitCode !== null || child.killed) return;
+    child.kill("SIGKILL");
+    await new Promise((resolveExit) => child.once("exit", resolveExit));
+    assert.equal(child.signalCode, "SIGKILL", "restart recovery requires an abrupt Studio loss");
+}
+
 async function closeChromium() {
     // Chromium owns profile writers below its browser process.  Asking the
     // browser to close through CDP lets it drain those writers before the
@@ -308,7 +315,7 @@ async function run() {
         const job = await (await fetch(`${baseUrl}/api/project/jobs/${interrupted.body.id}`)).json();
         return job.status === "running";
     }, "non-resumable job before restart");
-    await terminate(studio);
+    await terminateAbruptly(studio);
     studio = spawn(process.execPath, ["dist/cli/pokie.js", "--no-open", "--host", "127.0.0.1", "--port", String(studioPort)], {cwd: root, env: environment, stdio: "ignore"});
     await waitFor(async () => {
         try { return (await fetch(`${baseUrl}/api/context`)).ok; } catch { return false; }
