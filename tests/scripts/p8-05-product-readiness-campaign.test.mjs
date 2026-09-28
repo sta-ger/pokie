@@ -572,14 +572,29 @@ async function campaignFixture() {
                     retryWithoutPartialArtifacts: {observed: true, evidenceId: measured, receipt: {operation: "simulation-retry", controlId: "simulation-retry", stateClass: "recovery-operation", transaction: retryTransaction}},
                     restartRecovery: {observed: true, evidenceId: measured, receipt: {
                         operation: "simulation", controlId: "simulation-run", stateClass: "editable-submission", capturedJobId: "simulation-restart", transaction: restartTransaction,
-                        terminal: {status: "recovery-required", jobId: "simulation-restart", resultSha256: restartTransaction.terminal.resultSha256, causedByRequestId: restartTransaction.request.browserRequestId},
+                        terminal: {status: "recovery-required", jobId: "simulation-restart", operation: "simulation", request: {rounds: 1, workers: 1}, resultSha256: restartTransaction.terminal.resultSha256, causedByRequestId: restartTransaction.request.browserRequestId},
                         rendered: {
                             resultControlId: "simulation-run", resultOperation: "simulation", resultStateClass: "editable-submission", resultReceipt: "durable-terminal", resultJobId: "simulation-restart", resultRequestId: "simulation-restart", resultTerminal: "recovery-required", resultRecovery: "restart-reconciled", resultExecutor: "unavailable-after-restart", renderedTerminal: true,
                             postRestartReplacementState: {capturedControlId: "simulation-run", captureKey: restartTransaction.pointerActivations[0].captureKey, controlState: "replaced-after-restart", currentControlId: "simulation-run", capturedControlConnected: false},
                         },
                         timing: {elapsedMs: 1},
                         evidence: {screenshotEvidenceId: restartScreenshot.evidenceId, cleanupEvidenceId: cleanup.evidenceId},
-                        ownedProcessDrain: {processTreeDrained: true, resourcesDrained: true},
+                        ownedProcessDrain: {
+                            processTreeDrained: true,
+                            resourcesDrained: true,
+                            priorStudioShutdown: {
+                                shutdown: {kind: "abrupt-service-loss", gracefulShutdownReceived: false, requestedSignal: "SIGKILL", observedSignal: "SIGKILL"},
+                                processStateBeforeLoss: {status: "running", updatedAt: 1},
+                                durableJob: {
+                                    id: "simulation-restart",
+                                    operation: "simulation",
+                                    status: "running",
+                                    terminal: false,
+                                    request: {rounds: 1, workers: 1},
+                                    causedByRequestId: restartTransaction.request.browserRequestId,
+                                },
+                            },
+                        },
                     }},
                 },
             },
