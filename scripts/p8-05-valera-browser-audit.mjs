@@ -39,6 +39,13 @@ const P805_COMPOUND_TUPLE_OBSERVATIONS = new Set([
     "reload-reconnect-recovery-cancellation-project-switch",
 ]);
 const tupleRequiresCompleteWorkflow = (tuple) => P805_COMPOUND_TUPLE_OBSERVATIONS.has(tuple?.observation);
+const P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS = [
+    {output:"outcome-library-export", command:"packed CLI Outcome Library export"},
+    {output:"simulation-report-source", command:"packed CLI simulation report source"},
+    {output:"report", command:"packed CLI report"},
+    {output:"diff", command:"packed CLI diff"},
+    {output:"replay", command:"packed CLI replay"},
+];
 const tupleBootstrapContract = (tuple) => [
     {kind:"packed-package-install", purpose:"mandatory-local-bootstrap", publicWorkflow:tuple.observation},
     {kind:"packed-cli-create", purpose:"mandatory-local-bootstrap", publicWorkflow:tuple.observation},
@@ -55,6 +62,7 @@ const tupleBootstrapContract = (tuple) => [
         {kind:"runtime-package", purpose:"fairness-source", publicWorkflow:tuple.observation, output:"runtime-package"},
         {kind:"studio-import-runtime-package", purpose:"fairness-source", publicWorkflow:tuple.observation, output:"runtime-package"},
     ] : []),
+    ...(tuple.persona === "mathematician" && tuple.observation === "outcome-library-report-diff-replay" ? P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS.map(({output, command}) => ({kind:"packed-cli-output", purpose:"compound-mathematician-output", publicWorkflow:tuple.observation, output, command})) : []),
 ];
 const hasRenderedActivation = (action, controlId) => {
     const {interaction, transaction} = action ?? {};
@@ -129,6 +137,14 @@ export function validateP805RenderedPersonaAudit(audit) {
     if (!Array.isArray(rendered.responsive) || !requiredViewports.every((viewport) => rendered.responsive.some((measurement) => measurement?.viewport === viewport && measurement?.overflow === false && measurement?.visibleFocus === true && measurement?.screenshotEvidenceId))) fail(`rendered ${audit.persona} audit lacks measured required responsive states`);
     if (audit.tuple && (rendered.actions.length !== 1 || auditTuples(audit).length !== 1)) fail(`rendered ${audit.persona} tuple audit contains more than its one assigned workflow`);
     if (audit.tuple && (audit.workflowScope?.kind !== "p8-05-single-tuple-workflow-scope" || JSON.stringify(audit.workflowScope.tuple) !== JSON.stringify(audit.tuple) || audit.workflowScope?.scopeEvidenceId === undefined || !Array.isArray(audit.workflowScope?.bootstrap) || JSON.stringify(audit.workflowScope.bootstrap.map(({evidenceId, ...entry}) => entry)) !== JSON.stringify(tupleBootstrapContract(audit.tuple)) || audit.workflowScope.bootstrap.some((entry) => typeof entry?.evidenceId !== "string" || !entry.evidenceId) || audit.workflowScope?.recoveryRequired !== tupleRequiresCompleteWorkflow(audit.tuple) || (audit.workflowScope?.recoveryRequired === false && (Object.keys(rendered.recovery ?? {}).length > 0 || Object.keys(rendered.jobs ?? {}).length > 0)))) fail(`rendered ${audit.persona} tuple audit has unscoped bootstrap, recovery, or cross-tuple workflow work`);
+    if (audit.tuple?.persona === "mathematician" && audit.tuple.observation === "outcome-library-report-diff-replay") {
+        const outputs = audit.workflowScope?.compoundCliOutputs;
+        const validOutputs = Array.isArray(outputs) && JSON.stringify(outputs.map(({output, command}) => ({output, command}))) === JSON.stringify(P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS) && outputs.every((entry) => {
+            const files = entry?.files;
+            return entry?.kind === "p8-05-packed-cli-output" && entry.candidateId === audit.candidateId && entry.candidatePackageSha256 === audit.candidatePackageSha256 && entry.candidateExecutableSha256 === audit.packageIdentity?.candidateExecutableSha256 && sha(entry.sha256) && typeof entry.evidenceId === "string" && entry.evidenceId && Array.isArray(files) && files.length > 0 && files.every((file) => typeof file?.path === "string" && file.path && sha(file.sha256) && Number.isSafeInteger(file.sizeBytes) && file.sizeBytes > 0 && typeof file.contentsBase64 === "string" && Buffer.from(file.contentsBase64, "base64").length === file.sizeBytes && digest(Buffer.from(file.contentsBase64, "base64")) === file.sha256) && entry.sha256 === digest(JSON.stringify(files.map(({path, sha256, sizeBytes, contentsBase64}) => ({path, sha256, sizeBytes, contentsBase64})).sort((left, right) => left.path.localeCompare(right.path))));
+        });
+        if (!validOutputs) fail("rendered mathematician Outcome Library tuple does not retain its exact packed CLI output artifacts");
+    }
     for (const {persona, observation, viewport} of tuples) { const contract = P805_WORKFLOW_CONTRACTS[persona][observation], action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === persona && value?.observation === observation && value?.viewport === viewport), state = contract && P805_SCREEN_CONTROL_STATES[contract.route], operation = contract?.operation ?? contract?.body, expectedLifecycle = operation ? {kind:"operation", value:operation} : {kind:"navigation", value:contract?.route}, stateClass = p805TransactionStateClass(action?.transaction), isNavigation = expectedLifecycle.kind === "navigation", stateClassMatchesRequest = isNavigation ? stateClass === "navigation" : stateClass === "editable-submission" ? contract?.method !== "GET" : stateClass === "read-only-operation" && contract?.method === "GET", terminalControlIsBound = action?.visibleTerminal?.lifecycle?.controlId === action?.stableControlId, terminalStateIsBound = action?.visibleTerminal?.lifecycle?.stateClass === stateClass, terminalJobIsBound = !contract?.poll || action?.visibleTerminal?.lifecycle?.jobId === action?.terminal?.jobId; if (!contract || !state || !action || !stateClass || !stateClassMatchesRequest || typeof action.route !== "string" || !action.route.endsWith(`/project/${contract.route}`) && !action.route.endsWith(`/${contract.route}`) || action.screenState !== contract.route || action.screenNavigationControl !== state.navigationControl || typeof action.stableControlId !== "string" || !action.stableControlId || action.domControlId !== action.stableControlId || action.identityAttribute !== "id" || action.interaction?.stableControlId !== action.stableControlId || action.interaction?.identityAttribute !== "id" || action.interaction?.transactionState !== stateClass || action.interaction?.lifecycle?.kind !== expectedLifecycle.kind || action.interaction?.lifecycle?.value !== expectedLifecycle.value || action.precondition?.enabled !== true || action.precondition?.disabled !== false || action.precondition?.disabledExplanation !== null || action.precondition?.accessibleName !== action.interaction?.matchedLabel || !action.transaction || action.transaction?.stateClass !== stateClass || action.transaction.control?.stableControlId !== action.stableControlId || action.transaction.control?.accessibleName !== action.interaction?.matchedLabel || action.transaction.control?.enabled !== true || action.transaction.control?.disabled !== false || action.transaction.control?.disabledExplanation !== null || action.transaction.confirmation?.required !== false || action.transaction.confirmation?.state !== "not-required" || !hasRenderedActivation(action, action.stableControlId) || typeof action.browserRequestId !== "string" || !action.browserRequestId || action.visibleTerminal?.state !== "rendered" || action.visibleTerminal?.changedAfterRequest !== true || action.visibleTerminal?.observedAfterRequestId !== action.browserRequestId || action.visibleTerminal?.resultSha256 !== action.terminal?.resultSha256 || (contract.artifact !== undefined && action.visibleTerminal?.lifecycle?.artifact?.name !== contract.artifact) || !terminalControlIsBound || !terminalStateIsBound || !terminalJobIsBound || action.expectedControl !== contract.control || (action.expectedMethod !== undefined && (action.expectedMethod !== contract.method || action.expectedBodyKind !== (contract.body ?? null))) || action.expectedApi !== contract.api || action.expectedArtifact !== (contract.artifact ?? null) || action.expectedTerminal !== contract.terminal || !action.terminal || !["completed", "success", "ok", "valid", "partial"].includes(action.terminal.status) || !/^[a-f0-9]{64}$/i.test(action.terminal.resultSha256 ?? "") || !action.evidenceId || !action.screenshotEvidenceId || !Number.isSafeInteger(action.elapsedMs) || action.elapsedMs <= 0 || action.overflow !== false || !action.interaction || !Array.isArray(action.accessibility?.namedRegions) || action.accessibility.namedRegions.length === 0 || action.accessibility.visibleFocus !== true || action.accessibility.unexplainedDisabledControls !== 0) fail(`rendered ${persona} audit lacks a DOM-bound tuple action for ${observation}/${viewport}`); }
     const expectedChunks = tuples.length, receipts = audit?.checkpointReceipts;
     if (!audit?.finalResult || audit.finalResult.status !== "passed" || audit.finalResult.aggregation !== "verified-checkpoint-receipts-only" || audit.finalResult.chunks !== expectedChunks || !Array.isArray(receipts) || receipts.length !== expectedChunks || !Array.isArray(audit.finalResult.checkpointReceiptSha256s) || audit.finalResult.checkpointReceiptSha256s.length !== expectedChunks || !audit.finalResult.cleanupEvidenceId) fail(`rendered ${audit?.persona ?? "persona"} audit lacks a checkpointed packed final result`);
@@ -448,6 +464,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         }
     };
     const ownership = [], childOwners = new WeakMap();
+    let compoundCliOutputs = [];
     let ownershipSequence = 0;
     const ownershipEnvironment = (label, browserResource = false) => {
         // A restarted Studio is a separate owned process with a newly minted
@@ -546,6 +563,35 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         candidateExecutable = await candidateExecutableManifest(path.join(installationRoot, "node_modules", "pokie"), options.candidateId, services); if (candidateExecutable.sha256 !== options.candidateExecutableSha256) fail("packed archive executable manifest differs from the verifier-supplied declared candidate manifest"); const packedEnvironment = {...process.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot, XDG_DOCUMENTS_DIR:context.documents, PATH:`${path.dirname(installedCli)}${path.delimiter}${process.env.PATH ?? ""}`}; const runPackedCli = async (label, args, expectedExitCode = 0) => { process.stderr.write(`P805_CLI command=${label} phase=start\n`); const commandOwnership = ownershipEnvironment(label), child = own(label, services.spawn(installedCli, args, {cwd:context.workspace, env:{...packedEnvironment, ...commandOwnership.env}, stdio:"pipe"}), commandOwnership); let result; try { result = await childResult(child, label, expectedExitCode); } finally { await settleChild(child); } transcript.push(`[${services.now()}] ${label} ${args.join(" ")}\n${result.stdout}${result.stderr}`); process.stderr.write(`P805_CLI command=${label} phase=complete\n`); return result; };
         const blueprint = path.join(context.workspace, "Valera audit blueprint.json"), workbook = path.join(context.workspace, "Valera audit.xlsx"), importedBlueprint = path.join(context.workspace, "Valera imported blueprint.json"), wasm = path.join(context.workspace, "Valera audit.wasm"), packageRoot = path.join(context.workspace, "Valera audit package"), simulationReport = path.join(context.workspace, "Valera simulation report.json"), renderedReport = path.join(context.workspace, "Valera simulation report.md"), diffReport = path.join(context.workspace, "Valera simulation diff.json"), replayArtifact = path.join(context.workspace, "Valera replay.json"), outcomeBundle = path.join(context.workspace, "Valera outcomes"), certificationConfig = path.join(context.workspace, "Valera certification config.json"), certificationBundle = path.join(context.workspace, "Valera certification"), serverSeed = path.join(context.workspace, "Valera server seed.txt"), seedCommitment = path.join(context.workspace, "Valera seed commitment.json"), roundCommitment = path.join(context.workspace, "Valera round commitment.json"), fairnessProof = path.join(context.workspace, "Valera fairness proof.json");
         const requireOutput = async (label, target) => { if (!services.exists(target)) fail(`${label} did not create its declared output ${target}`); };
+        // The compound mathematician tuple has five public CLI results in
+        // addition to its rendered Studio transaction.  Its workspace is
+        // deliberately cleaned after the tuple, so preserve a candidate-bound
+        // immutable manifest now; a transcript alone cannot later prove that
+        // those commands actually wrote their declared outputs.
+        const preservePackedCliOutput = async (output, command, target) => {
+            const entries = [];
+            const collect = async (directory, relative = "") => {
+                for (const entry of await services.readdir(directory, {withFileTypes:true})) {
+                    const next = path.join(relative, entry.name), candidate = path.join(directory, entry.name);
+                    if (entry.isDirectory()) await collect(candidate, next);
+                    else if (entry.isFile()) {
+                        const bytes = await services.readFile(candidate);
+                        entries.push({path:next.replaceAll(path.sep, "/"), sha256:digest(bytes), sizeBytes:bytes.length, contentsBase64:Buffer.from(bytes).toString("base64")});
+                    }
+                }
+            };
+            const metadata = await services.stat(target);
+            if (metadata.isDirectory()) await collect(target);
+            else if (metadata.isFile()) {
+                const bytes = await services.readFile(target);
+                entries.push({path:path.basename(target), sha256:digest(bytes), sizeBytes:bytes.length, contentsBase64:Buffer.from(bytes).toString("base64")});
+            }
+            if (entries.length === 0) fail(`${command} created no retainable ${output} output`);
+            entries.sort((left, right) => left.path.localeCompare(right.path));
+            const receipt = {kind:"p8-05-packed-cli-output", candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, candidateExecutableSha256:options.candidateExecutableSha256, publicWorkflow:"outcome-library-report-diff-replay", output, command, files:entries, sha256:digest(JSON.stringify(entries))};
+            const evidenceId = await save("artifact", `compound-${output}.json`, JSON.stringify(receipt), ["outcome-library-report-diff-replay"]);
+            return {...receipt, evidenceId};
+        };
         await runPackedCli("packed CLI create", ["create", "Valera audit", "--random", "--seed", "805", "--out", blueprint]); await requireOutput("packed CLI create", blueprint);
         const tupleContract = options.tuple ? P805_WORKFLOW_CONTRACTS[options.tuple.persona][options.tuple.observation] : undefined,
             requiresOutcomeBootstrap = tupleContract?.route === "certification" || tupleContract?.route === "provablyFair",
@@ -676,6 +722,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const publicHelp = ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"];
         for (const args of [["--help"], ...publicHelp.map((command) => [command, "--help"]), ["certification", "build", "--help"], ["certification", "verify", "--help"], ["fairness", "seed-commit", "--help"], ["fairness", "commit", "--help"], ["fairness", "reveal", "--help"], ["fairness", "verify", "--help"], ["par", "import", "--help"], ["par", "export", "--help"], ["reel", "generate", "--help"]]) await runPackedCli(`packed CLI help ${args.join("-")}`, args);
         const npxOwnership = ownershipEnvironment("packed-npx-help"), npxCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js"); if (!services.exists(npxCli)) fail("the installed Node npx launcher is unavailable"); const npxChild = own("packed npx help", services.spawn(process.execPath, [npxCli, "--no-install", "--prefix", installationRoot, "pokie", "--help"], {cwd:installationRoot, env:{...packedEnvironment, ...npxOwnership.env}, stdio:"pipe"}), npxOwnership), npx = await childResult(npxChild, "packed npx help"); await settleChild(npxChild); transcript.push(`[${services.now()}] PACKED_NPX_HELP\n${npx.stdout}${npx.stderr}`);
+        }
+        if (options.tuple?.persona === "mathematician" && options.tuple.observation === "outcome-library-report-diff-replay") {
+            compoundCliOutputs = await Promise.all(P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS.map(({output, command}) => preservePackedCliOutput(output, command, {
+                "outcome-library-export":outcomeBundle,
+                "simulation-report-source":simulationReport,
+                report:renderedReport,
+                diff:diffReport,
+                replay:replayArtifact,
+            }[output])));
         }
         const startStudio = () => { const studioOwnership = ownershipEnvironment("studio"), child = own("studio", services.spawn(installedCli, ["--no-open", "--host", "127.0.0.1", "--port", String(port)], {cwd:context.workspace, detached:process.platform !== "win32", env:{...packedEnvironment, ...studioOwnership.env}, stdio:"pipe"}), studioOwnership); child.stdout?.on("data", (chunk) => transcript.push(chunk.toString())); child.stderr?.on("data", (chunk) => { errors.push(chunk.toString()); transcript.push(chunk.toString()); }); return child; }; const started = Date.now(); transcript.push(`[${services.now()}] START installed packed public CLI ${installedCli}`); studio = startStudio(); await waitFor(async () => { try { const response = await fetch(`${origin}/api/health`); api.push({path:"/api/health", status:response.status}); return response.ok; } catch { return false; } }, "built Studio API", 90_000); timings.startupMs = Date.now() - started;
         // Loading the public Studio entry point is browser startup, not a
@@ -2153,7 +2208,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         let workflowScope;
         if (options.tuple) {
             const bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, completeWorkflow:true}), observations);
-            workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple:options.tuple, bootstrap:bootstrap.map((entry) => ({...entry, evidenceId:bootstrapEvidenceId})), recoveryRequired:tupleRequiresCompleteWorkflow(options.tuple)};
+            workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple:options.tuple, bootstrap:bootstrap.map((entry) => ({...entry, evidenceId:bootstrapEvidenceId})), recoveryRequired:tupleRequiresCompleteWorkflow(options.tuple), ...(compoundCliOutputs.length === 0 ? {} : {compoundCliOutputs})};
             workflowScope.scopeEvidenceId = await save("provenance", "workflow-scope.json", JSON.stringify(workflowScope), observations);
         }
         const performanceBudgetMs = {startupMs:60_000, projectCreationMs:60_000, validationMs:60_000, buildMs:300_000, simulationMs:300_000, replayMs:300_000, cancellationMs:120_000}, performance = Object.fromEntries(Object.entries(performanceBudgetMs).map(([name, budgetMs]) => [name, {elapsedMs:timings[name], budgetMs, classification:timings[name] <= budgetMs ? "within-budget" : "regression"}]));

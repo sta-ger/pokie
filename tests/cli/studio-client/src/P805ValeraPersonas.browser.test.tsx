@@ -202,6 +202,23 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(action.transaction.preflight).toEqual({state: "ready", status: "ok", controlId: "outcome-library-generate", cardLabel: "Outcome library generator", enabled: true, disabled: false});
                 expect(pointer).toEqual(expect.objectContaining({kind: "pointer", controlId: "outcome-library-generate", capturedControlId: "outcome-library-generate", preDispatchFocus: {controlId: "outcome-library-generate", native: true}, hitTest: {capturedControlId: "outcome-library-generate", matchesCapturedControl: true}, dispatch: expect.objectContaining({kind: "native-pointer", pressed: true, released: true, focus: {controlId: "outcome-library-generate", native: true, targetMatchesCapturedControl: true}})}));
                 expect(action.visibleTerminal.lifecycle).toEqual(expect.objectContaining({controlId: "outcome-library-generate", operation: "outcome-library", receipt: "durable-terminal", durableJobId: action.terminal.jobId, durableStatus: action.terminal.status, artifact: expect.objectContaining({name: "outcome-library", accessibleName: expect.any(String), outputPath: expect.any(String)})}));
+                const compoundOutputs = audit.workflowScope.compoundCliOutputs as Array<{output: string; command: string; candidateId: string; candidatePackageSha256: string; candidateExecutableSha256: string; sha256: string; files: Array<{path: string; sha256: string; sizeBytes: number; contentsBase64: string}>; evidenceId: string}>;
+                expect(compoundOutputs.map(({output, command}) => ({output, command}))).toEqual([
+                    {output: "outcome-library-export", command: "packed CLI Outcome Library export"},
+                    {output: "simulation-report-source", command: "packed CLI simulation report source"},
+                    {output: "report", command: "packed CLI report"},
+                    {output: "diff", command: "packed CLI diff"},
+                    {output: "replay", command: "packed CLI replay"},
+                ]);
+                for (const cliOutput of compoundOutputs) {
+                    expect(cliOutput).toEqual(expect.objectContaining({candidateId: candidate, candidatePackageSha256: packageSha256, candidateExecutableSha256: receipt.candidateExecutableSha256, sha256: expect.stringMatching(/^[a-f0-9]{64}$/), evidenceId: expect.any(String)}));
+                    expect(cliOutput.files.length).toBeGreaterThan(0);
+                    expect(cliOutput.files.every((file) => file.path.length > 0 && file.sizeBytes > 0 && createHash("sha256").update(Buffer.from(file.contentsBase64, "base64")).digest("hex") === file.sha256)).toBe(true);
+                    const evidence = audit.evidence.find((item: {evidenceId: string}) => item.evidenceId === cliOutput.evidenceId) as {path: string} | undefined;
+                    expect(evidence).toBeDefined();
+                    const persisted = JSON.parse(await readFile(path.join(output, evidence!.path), "utf8"));
+                    expect(persisted).toEqual(expect.objectContaining({kind: "p8-05-packed-cli-output", output: cliOutput.output, candidateId: candidate, candidatePackageSha256: packageSha256, candidateExecutableSha256: receipt.candidateExecutableSha256, files: cliOutput.files}));
+                }
             }
             const completeWorkflow = ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(audit.tuple.observation);
             expect(audit.workflowScope).toEqual(expect.objectContaining({kind: "p8-05-single-tuple-workflow-scope", tuple: audit.tuple, recoveryRequired: completeWorkflow, scopeEvidenceId: expect.any(String)}));
@@ -354,6 +371,13 @@ describe("P8-05 rendered Valera persona evidence", () => {
                         {kind: "outcome-library-source-bundle", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "outcome-bundle"},
                         {kind: "runtime-package", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "runtime-package"},
                         {kind: "studio-import-runtime-package", purpose: sourcePurpose, publicWorkflow: child.tuple.observation, output: "runtime-package"},
+                    ] : []),
+                    ...(child.tuple.persona === "mathematician" && child.tuple.observation === "outcome-library-report-diff-replay" ? [
+                        {kind: "packed-cli-output", purpose: "compound-mathematician-output", publicWorkflow: child.tuple.observation, output: "outcome-library-export", command: "packed CLI Outcome Library export"},
+                        {kind: "packed-cli-output", purpose: "compound-mathematician-output", publicWorkflow: child.tuple.observation, output: "simulation-report-source", command: "packed CLI simulation report source"},
+                        {kind: "packed-cli-output", purpose: "compound-mathematician-output", publicWorkflow: child.tuple.observation, output: "report", command: "packed CLI report"},
+                        {kind: "packed-cli-output", purpose: "compound-mathematician-output", publicWorkflow: child.tuple.observation, output: "diff", command: "packed CLI diff"},
+                        {kind: "packed-cli-output", purpose: "compound-mathematician-output", publicWorkflow: child.tuple.observation, output: "replay", command: "packed CLI replay"},
                     ] : []),
                 ];
                 expect(bootstrap).toEqual(expectedBootstrap);
