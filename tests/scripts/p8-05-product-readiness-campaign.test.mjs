@@ -88,9 +88,19 @@ const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jo
         requestCount: 1,
         request: {browserRequestId: requestId, method: "POST", path: "/api/project/simulations", status: 202, responseSha256: hash(`response-${operation}-${jobId}`)},
         terminal: {status: terminalStatus, jobId, resultSha256, source: "rendered-poll", pollPath: `/api/project/simulations/${jobId}`, browserRequestId: `terminal-${operation}-${jobId}`, causedByRequestId: requestId},
-        postTransitionRenderedState: {capturedControlId: controlId, captureKey, controlState: "replaced", currentControlId: controlId, capturedControlConnected: false, requestId, resultSha256, renderedTerminal: true, resultControlId: controlId, resultOperation: operation, resultStateClass: stateClass, resultReceipt: "durable-terminal", resultJobId: jobId, resultTerminal: terminalStatus},
+        postTransitionRenderedState: {capturedControlId: controlId, captureKey, preDispatchEvidence: {capturedControlId: controlId, focus: {controlId, native: true}, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, dispatch: {kind: "native-pointer", pressed: true, released: true, focus: {controlId, native: true, targetMatchesCapturedControl: true}}}, controlState: "replaced", currentControlId: controlId, capturedControlConnected: false, requestId, resultSha256, renderedTerminal: true, resultControlId: controlId, resultOperation: operation, resultStateClass: stateClass, resultReceipt: "durable-terminal", resultJobId: jobId, resultTerminal: terminalStatus},
     };
 };
+const nativePointerActivation = (controlId) => ({
+    kind: "pointer",
+    count: 1,
+    controlId,
+    capturedControlId: controlId,
+    captureKey: `capture-${controlId}`,
+    preDispatchFocus: {controlId, native: true},
+    hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
+    dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
+});
 const liveDomTransaction = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${persona}-${observation}-${viewport}`,
@@ -421,6 +431,28 @@ async function campaignFixture() {
                     delayedRequestId: "delayed-project-context",
                     completedAfterSwitch: true,
                     sourceRoute: "#/project/first/overview",
+                    destinationRoute: "#/project/second/overview",
+                },
+                projectSwitchReceipt: {
+                    cancelledProjectOpen: {
+                        routeBefore: "#/home/projects",
+                        routeAfter: "#/home/projects",
+                        projectOpenRequestCount: 0,
+                        stayControl: {stableControlId: "design-navigation-guard-stay", identityAttribute: "id", accessibleName: "Stay", keyboardFocused: true, enabled: true, disabled: false},
+                        stayActivation: nativePointerActivation("design-navigation-guard-stay"),
+                    },
+                    startGameNavigation: {
+                        routeBefore: "#/home/projects",
+                        routeAfter: "#/home/design",
+                        control: {stableControlId: "home-tab:design", identityAttribute: "id", accessibleName: "Start a game", keyboardFocused: true, enabled: true, disabled: false, lifecycle: {kind: "navigation", value: "design"}},
+                        activation: nativePointerActivation("home-tab:design"),
+                    },
+                    createdProject: {
+                        route: "#/project/second/overview",
+                        control: {stableControlId: "blueprint-create-game", identityAttribute: "id", accessibleName: "Create game", keyboardFocused: true, enabled: true, disabled: false},
+                        activation: nativePointerActivation("blueprint-create-game"),
+                    },
+                    staleResponse: {responseCount: 1, delayedRequestId: "delayed-project-context", completedAfterSwitch: true, sourceRoute: "#/home/projects", destinationRoute: "#/project/second/overview"},
                     destinationRoute: "#/project/second/overview",
                 },
                 unsavedWork: {
@@ -1178,6 +1210,23 @@ test("rejects a route-only reload claim without an active durable job and delaye
         runtimeEntry.sizeBytes = bytes.length;
         await writeFile(path.join(fixture.directory, "retests.json"), `${JSON.stringify(audits)}\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured recovery/i);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+test("rejects a Home project-switch receipt whose Start a game control was not its visible native pointer target", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const audits = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), audit = audits.audits[0];
+        const runtimeEntry = audit.evidence.find((item) => item.kind === "page-state" && !item.observationIds.length);
+        const value = JSON.parse(await readFile(path.join(fixture.directory, runtimeEntry.path), "utf8"));
+        value.projectSwitchReceipt.startGameNavigation.activation.hitTest.matchesCapturedControl = false;
+        await writeFile(path.join(fixture.directory, runtimeEntry.path), JSON.stringify(value));
+        const bytes = await readFile(path.join(fixture.directory, runtimeEntry.path));
+        runtimeEntry.sha256 = hash(bytes);
+        runtimeEntry.sizeBytes = bytes.length;
+        await writeFile(path.join(fixture.directory, "retests.json"), `${JSON.stringify(audits)}\n`);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Home project-switch recovery receipt/i);
     } finally {
         await fixture.cleanup();
     }

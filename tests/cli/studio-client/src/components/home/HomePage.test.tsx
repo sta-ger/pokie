@@ -378,13 +378,21 @@ describe("HomePage", () => {
         // (see openProjectGuard.test.tsx for a dedicated check that it never fired), so we're still on
         // Home, on the Projects tab (never navigated to /project), and the draft is exactly where it
         // was.
-        await user.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Stay"}));
+        const stay = within(screen.getByRole("dialog")).getByRole("button", {name: "Stay"});
+        expect(stay).toHaveAttribute("id", "design-navigation-guard-stay");
+        expect(stay).toHaveAttribute("data-pokie-confirmation", "cancel");
+        await user.click(stay);
         await waitFor(() =>
             expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument(),
         );
         expect(sectionsNav().getByRole("button", {name: "Projects"})).toHaveAttribute("aria-current", "page");
-        await user.click(sectionsNav().getByRole("button", {name: "Start a game"}));
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        const startGame = sectionsNav().getByRole("button", {name: "Start a game"});
+        expect(startGame).toHaveAttribute("id", "home-tab:design");
+        expect(startGame).toBeVisible();
+        await user.click(startGame);
         await expectActiveSection("Start a game");
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
         // Same as the first draft-restore assertion above: Design Game's tab body was never unmounted
         // (only CSS-hidden), so the committed "wild-draft" symbol input was preserved verbatim. This is
         // scoped to the now-visible guided section rather than left as a screen-wide findByDisplayValue:

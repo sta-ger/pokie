@@ -438,7 +438,7 @@ describe("ProjectsPanel: Import Project", () => {
         expect(await screen.findByRole("heading", {name: "PAR spreadsheet"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
         expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
@@ -1126,7 +1126,7 @@ describe("ProjectsPanel: Import Project", () => {
         expect(await screen.findByRole("heading", {name: "PAR spreadsheet"})).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
-        const buildArtifactSection = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
         expect(await within(buildArtifactSection).findByText("PAR sheet (.xlsx)")).toBeInTheDocument();
         expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
