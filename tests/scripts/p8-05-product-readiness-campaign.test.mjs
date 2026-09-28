@@ -585,6 +585,14 @@ async function campaignFixture() {
                             priorStudioShutdown: {
                                 shutdown: {kind: "abrupt-service-loss", gracefulShutdownReceived: false, requestedSignal: "SIGKILL", observedSignal: "SIGKILL"},
                                 processStateBeforeLoss: {status: "running", updatedAt: 1},
+                                durableJobBeforeLoss: {
+                                    id: "simulation-restart",
+                                    operation: "simulation",
+                                    status: "running",
+                                    terminal: false,
+                                    request: {rounds: 1, workers: 1},
+                                    causedByRequestId: restartTransaction.request.browserRequestId,
+                                },
                                 durableJob: {
                                     id: "simulation-restart",
                                     operation: "simulation",
