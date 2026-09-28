@@ -446,7 +446,7 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         const rebindCheckpointRequest = jest.fn();
         const binding = {requestKey: "exact-bound-request", gameId: "fixture", gameVersion: "1", destination: path.join(projectRoot, "outcomelibrary"), requiresBounded: false};
         const jobs = new StudioOutcomeLibraryGenerateJobService({generate, rebindCheckpointRequest, getPreflightBinding: jest.fn(() => binding)} as unknown as StudioOutcomeLibraryGenerateService);
-        const job = jobs.start(projectRoot, {generation: "exact", preflightToken: "original-token"});
+        const job = jobs.start(projectRoot, {generation: "exact", preflightToken: "original-token"}, undefined, "outcome-library-original-pointer");
         await new Promise<void>((resolve) => {
             setImmediate(resolve);
         });
@@ -511,12 +511,16 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         const checkpointPath = path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`);
         expect(fs.existsSync(checkpointPath)).toBe(true);
 
-        await jobs.resumeForProject(projectRoot, job.id);
+        await expect(jobs.resumeForProject(projectRoot, job.id, "outcome-library-retry-pointer")).resolves.toMatchObject({
+            id: job.id,
+            browserRequestId: "outcome-library-retry-pointer",
+            status: "queued",
+        });
         await new Promise<void>((resolve) => {
             setImmediate(resolve);
         });
         expect(service.rebindCheckpointRequest).toHaveBeenCalledWith(projectRoot, expect.objectContaining({generation: "exact", preflightToken: "original-token"}), expect.objectContaining({requestIdentity: expect.any(String)}));
-        expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({status: "completed"});
+        expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({status: "completed", browserRequestId: "outcome-library-retry-pointer"});
         expect(fs.existsSync(checkpointPath)).toBe(false);
     });
 

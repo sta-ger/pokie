@@ -267,7 +267,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         await Promise.all(active.map((record) => record.completion));
     }
 
-    public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
+    public async resumeForProject(projectRoot: string, id: string, browserRequestId?: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
@@ -295,7 +295,11 @@ export class StudioOutcomeLibraryGenerateJobService {
         }
         // Reuse the checkpoint identity. A successful resumed publication removes
         // this original file, avoiding an orphan which could be resumed later.
-        return this.start(projectRoot, {...rebound.request, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id);
+        const durableJob = this.jobService?.get(projectRoot, id);
+        const retainedBrowserRequestId = browserRequestId
+            ?? this.jobs.get(id)?.browserRequestId
+            ?? (durableJob === undefined ? undefined : outcomeLibraryBrowserRequestIdFromDurableJob(durableJob));
+        return this.start(projectRoot, {...rebound.request, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id, retainedBrowserRequestId);
     }
 
     private async run(record: JobRecord): Promise<void> {

@@ -129,6 +129,18 @@ describe("studio-client apiClient", () => {
             }]);
         });
 
+        it("binds a rendered retry pointer transaction to the resumed durable job", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {job: {...job, status: "queued"}}}));
+
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "job/1", "outcome-library-rendered-retry-805"))
+                .resolves.toMatchObject({id: "job/1", status: "queued"});
+
+            expect(calls).toEqual([{
+                url: "/api/project/outcome-libraries/generate/jobs/job%2F1/resume",
+                init: {method: "POST", headers: {"X-Pokie-Outcome-Library-Request-Id": "outcome-library-rendered-retry-805"}},
+            }]);
+        });
+
         it("preserves classified lifecycle failures from every route", async () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {status: "conflict", error: "The prepared source changed after preflight."}}));
 

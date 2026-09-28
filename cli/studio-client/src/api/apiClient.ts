@@ -1186,8 +1186,11 @@ export async function cancelOutcomeLibraryGeneration(fetchImpl: FetchLike, id: s
     return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
 }
 
-export async function resumeOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
-    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/resume`, {method: "POST"});
+export async function resumeOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string, browserRequestId?: string): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/resume`, {
+        method: "POST",
+        ...(browserRequestId === undefined ? {} : {headers: {"X-Pokie-Outcome-Library-Request-Id": browserRequestId}}),
+    });
     // Resume is a lifecycle start too.  In particular a persisted exact
     // checkpoint can race an active generation which owns its destination.
     // Keep the server's Outcome Library DTO rather than flattening that

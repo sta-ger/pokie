@@ -1219,7 +1219,7 @@ export class StudioServer implements StudioServerHandling {
 
         const outcomeLibraryJobRoute = (/^\/api\/project\/outcome-libraries\/generate\/jobs\/([^/]+)(?:\/(cancel|resume))?$/).exec(url.pathname);
         if (outcomeLibraryJobRoute !== null) {
-            await this.handleOutcomeLibraryGenerationJob(method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
+            await this.handleOutcomeLibraryGenerationJob(req, method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
             return;
         }
 
@@ -2770,7 +2770,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {jobs: this.outcomeLibraryGenerateJobService.listForProject(this.currentContext.projectRoot)});
     }
 
-    private async handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): Promise<void> {
+    private async handleOutcomeLibraryGenerationJob(req: IncomingMessage, method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -2785,7 +2785,7 @@ export class StudioServer implements StudioServerHandling {
             job = this.outcomeLibraryGenerateJobService.cancelForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
         } else if (action === "resume") {
             try {
-                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
+                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id, this.outcomeLibraryBrowserRequestId(req));
             } catch (error) {
                 // A resume rebind can race another job's destination ownership.
                 // Preserve the Outcome Library recovery DTO rather than letting

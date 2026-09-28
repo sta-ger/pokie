@@ -135,7 +135,7 @@ type OutcomeLibraryRunView =
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]}
     | {status: "ok"; jobId: string; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
-    | {status: "error"; jobId?: string; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; durableStatus?: StudioOutcomeLibraryGenerateJobView["status"]; pollHttpStatus?: number; recovery?: StudioJobView["recovery"]; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
+    | {status: "error"; jobId?: string; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; durableStatus?: StudioOutcomeLibraryGenerateJobView["status"]; pollHttpStatus?: number; recovery?: StudioJobView["recovery"]; result?: Exclude<StudioOutcomeLibraryGenerateJobResultView, {status: "ok"}>; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
@@ -154,6 +154,27 @@ function outcomeLibraryProgressSnapshot(source: OutcomeLibraryProgressSnapshot["
         durableStatus: job.status,
         ...(job.lifecycleStage === undefined ? {} : {lifecycleStage: job.lifecycleStage}),
         ...(job.durableProgress === undefined ? {} : {durableProgress: job.durableProgress}),
+    };
+}
+
+/** Preserve the exact first terminal durable record when projecting it into the rendered error state. */
+function outcomeLibraryTerminalErrorRun(job: StudioOutcomeLibraryGenerateJobView, progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]): Extract<OutcomeLibraryRunView, {status: "error"}> {
+    const result = job.result;
+    return {
+        status: "error",
+        jobId: job.id,
+        ...(job.browserRequestId === undefined ? {} : {browserRequestId: job.browserRequestId}),
+        progressSnapshots,
+        durableStatus: job.status,
+        ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+        ...(result === undefined || result.status === "ok" ? {
+            message: "Outcome library generation ended without a result.",
+        } : {
+            result,
+            message: describeGenerateResultError(result),
+            ...("error" in result ? {diagnostic: result.error} : {}),
+            plan: result.plan,
+        }),
     };
 }
 
@@ -504,6 +525,7 @@ function TargetCard({
                                 "data-pokie-lifecycle-result-durable-status": outcomeLibraryRun.durableStatus ?? "unobserved",
                                 "data-pokie-lifecycle-result-receipt": outcomeLibraryRun.durableStatus === "failed" || outcomeLibraryRun.durableStatus === "cancelled" || outcomeLibraryRun.durableStatus === "recovery-required" ? OUTCOME_LIBRARY_TRANSACTION.terminalReceipt : "poll-failure",
                                 "data-pokie-lifecycle-terminal": outcomeLibraryRun.durableStatus ?? "poll-failure",
+                                ...(outcomeLibraryRun.result === undefined ? {} : {"data-pokie-lifecycle-result-outcome": outcomeLibraryRun.result.status}),
                                 ...(outcomeLibraryRun.browserRequestId === undefined ? {} : {"data-pokie-lifecycle-result-request-id": outcomeLibraryRun.browserRequestId}),
                                 ...(outcomeLibraryRun.progressSnapshots === undefined ? {} : {"data-pokie-lifecycle-result-progress-snapshots": String(outcomeLibraryRun.progressSnapshots.length)}),
                                 ...(outcomeLibraryRun.pollHttpStatus === undefined ? {} : {"data-pokie-lifecycle-poll-http-status": String(outcomeLibraryRun.pollHttpStatus)}),
@@ -1052,11 +1074,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     setOutcomeLibraryRun({status: "cancelled", ...(newest.browserRequestId === undefined ? {} : {browserRequestId: newest.browserRequestId}), progressSnapshots: [outcomeLibraryProgressSnapshot("poll", newest)], result: newest.result});
                     return;
                 }
-                if (newest.result !== undefined && newest.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: describeGenerateResultError(newest.result), ...("error" in newest.result ? {diagnostic: newest.result.error} : {}), plan: newest.result.plan});
-                } else {
-                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: "Outcome library generation ended without a result."});
-                }
+                setOutcomeLibraryRun(outcomeLibraryTerminalErrorRun(newest, [outcomeLibraryProgressSnapshot("poll", newest)]));
             })
             .catch(() => {
                 // Older Studio servers do not expose checkpoint discovery; the
@@ -1361,10 +1379,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // flight. This preserves the source/destination drift
                     // check while making a clean cancellation recoverable.
                     setOutcomeLibraryPreflightRevision((revision) => revision + 1);
-                } else if (job.result !== undefined && job.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", jobId: job.id, browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: observedSnapshots, durableStatus: job.status, recovery: job.recovery, message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {
-                    setOutcomeLibraryRun({status: "error", jobId: job.id, browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: observedSnapshots, durableStatus: job.status, recovery: job.recovery, message: "Outcome library generation ended without a result."});
+                    setOutcomeLibraryRun({...outcomeLibraryTerminalErrorRun(job, observedSnapshots), browserRequestId: job.browserRequestId ?? browserRequestId});
                 }
             })
             .catch((error: unknown) => {
@@ -1393,9 +1409,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     function handleResumeOutcomeLibrary(): void {
         if (outcomeLibraryRun.status !== "cancelled" || outcomeLibraryRun.result.checkpoint === undefined) return;
         if (!outcomeLibraryGuard.begin()) return;
-        const browserRequestId = outcomeLibraryRun.browserRequestId ?? createOutcomeLibraryBrowserRequestId();
+        // Resume is its own rendered pointer transaction. Retaining the
+        // durable job id must not reuse the original browser request id.
+        const browserRequestId = createOutcomeLibraryBrowserRequestId();
         const progressSnapshots = outcomeLibraryRun.progressSnapshots ?? [];
-        resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id)
+        resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id, browserRequestId)
             .then((job) => {
                 lastObservedOutcomeLibraryJob.current = job;
                 setFeatureOwnedOutcomeLibraryJobId(job.id);

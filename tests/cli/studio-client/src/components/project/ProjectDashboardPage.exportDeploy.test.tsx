@@ -136,6 +136,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
     it("rehydrates a persisted exact checkpoint and renders classified terminal recovery instead of a raw transport error", async () => {
         const user = userEvent.setup();
+        let generationRequestId: string | undefined;
         const fetchImpl: FetchLike = (url, init) => {
             const [requestPath] = url.split("?");
             if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === undefined) {
@@ -145,6 +146,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 }]})});
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                generationRequestId = init.headers?.["X-Pokie-Outcome-Library-Request-Id"];
                 return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({job: {id: "terminal", status: "queued", cancellationRequested: false}})});
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs/terminal") {
@@ -169,6 +171,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-job", "terminal");
         expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "failed");
         expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
+        expect(generationRequestId).toMatch(/^outcome-library-/);
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-request-id", generationRequestId!);
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-progress-snapshots", "2");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-outcome", "conflict");
     });
 
     it("resumes a rehydrated exact checkpoint through the lifecycle endpoint and renders its completed bundle", async () => {
@@ -177,6 +183,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         let inspectedProjectRoot: string | undefined;
         let openedFolder: string | undefined;
         let revealedPath: string | undefined;
+        let resumedRequestId: string | undefined;
         const resolvedBundleDir = "/owning-project/outcomelibrary";
         const fetchImpl: FetchLike = (url, init) => {
             const [requestPath] = url.split("?");
@@ -206,6 +213,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
                 }]})});
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs/saved-checkpoint/resume") {
+                resumedRequestId = init?.headers?.["X-Pokie-Outcome-Library-Request-Id"];
                 return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({job: {id: "saved-checkpoint", status: "queued", cancellationRequested: false}})});
             }
             if (requestPath === "/api/project/outcome-libraries/generate/jobs/saved-checkpoint") {
@@ -228,6 +236,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(await screen.findByRole("button", {name: "Resume exact generation"}));
 
         expect(await screen.findByText(/Generated 6 outcomes for mode "base" using exact/)).toBeInTheDocument();
+        expect(resumedRequestId).toMatch(/^outcome-library-/);
+        expect(screen.getByRole("button", {name: "Inspect library"}).closest("[data-pokie-lifecycle-result]")).toHaveAttribute("data-pokie-lifecycle-result-request-id", resumedRequestId!);
         expect(screen.getByText(/Final size: 123 bytes.*Duration: 44ms/)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Inspect library"})).toBeInTheDocument();
         await user.click(await screen.findByRole("button", {name: "Open output folder"}));
