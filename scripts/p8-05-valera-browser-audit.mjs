@@ -1778,7 +1778,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const navigationControl = await revealRenderedNavigationControl(screen, observation);
                 const navigationCursor = cdp.events.length;
                 const beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
-                const navigationTransaction = await beginRenderedTransaction({lifecycle:"navigation", operation:screen, observation, stateClass:"navigation", control:navigationControl});
+                const navigationTransaction = await beginRenderedTransaction({lifecycle:"navigation", operation:screen, observation, stateClass:"navigation", control:navigationControl, capturePostTransition:true});
                 const navigation = navigationTransaction.control;
                 // The navigation control's request is a product transition,
                 // not a route-marker convenience. Wait for its own fresh
@@ -1833,7 +1833,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     ? await captureRenderedEditableFormState(operation, observation, control.stableControlId, preparedOperation?.formState)
                     : undefined;
                 beforeActionText = await evaluate("document.body.innerText.slice(0,1600)");
-                transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState, stateClass, control});
+                transaction = await beginRenderedTransaction({lifecycle:"operation", operation, observation, formState, stateClass, control, capturePostTransition:true});
                 if (contract.body === "outcome-library") transaction.preflight = preparedOperation.outcomeLibraryPreflight;
                 if (formState !== undefined && transaction.control.stableControlId !== formState.actionControl.stableControlId) fail(`${observation} submitted a different control than its captured rendered form state`);
                 interaction = transaction.control;
