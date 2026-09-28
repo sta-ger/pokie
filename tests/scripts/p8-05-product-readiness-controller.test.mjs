@@ -100,7 +100,7 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
     };
     for (const entry of proof.audits.restartRecoveryTerminalEvidence) {
         const request = {rounds:1_000_000, workers:1};
-        entry.ownedProcessDrain.priorStudioShutdown = {shutdown:{kind:"abrupt-service-loss", gracefulShutdownReceived:false, requestedSignal:"SIGKILL", observedSignal:"SIGKILL"}, durableJob:{id:entry.capturedJobId, operation:"simulation", status:"running", terminal:false, request, causedByRequestId:entry.transaction.request.browserRequestId}};
+        entry.ownedProcessDrain.priorStudioShutdown = {shutdown:{kind:"abrupt-service-loss", gracefulShutdownReceived:false, requestedSignal:"SIGKILL", observedSignal:"SIGKILL"}, processStateBeforeLoss:{status:"running", updatedAt:1}, durableJob:{id:entry.capturedJobId, operation:"simulation", status:"running", terminal:false, request, causedByRequestId:entry.transaction.request.browserRequestId}};
         entry.terminal.operation = "simulation";
         entry.terminal.request = request;
     }

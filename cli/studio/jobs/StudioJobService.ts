@@ -48,7 +48,15 @@ export class StudioJobService {
         private readonly now: () => number = Date.now,
         private readonly createId: () => string = () => crypto.randomUUID().replace(/-/g, ""),
     ) {
-        this.reconcileInterruptedJobs();
+        // A normal Studio stop has already asked every owned executor to
+        // cancel and persisted any remaining job as cancelled.  Do not turn a
+        // graceful user shutdown into a spurious restart-recovery result. A
+        // missing/running marker is deliberately fail-closed: it means the
+        // former process disappeared and its nonterminal jobs need recovery.
+        if (this.repository.getProcessState()?.status !== "gracefully-stopped") {
+            this.reconcileInterruptedJobs();
+        }
+        this.repository.saveProcessState({status: "running", updatedAt: this.now()});
     }
 
     /** Lists every retained job, or only one project when an identity is supplied. */
@@ -210,6 +218,23 @@ export class StudioJobService {
             if (cancelled !== undefined) requested.push(cancelled);
         }
         return requested;
+    }
+
+    /**
+     * Finishes Studio's cooperative shutdown. Any executor that did not get
+     * a final event-loop turn is still known to have received cancellation;
+     * retain that truthful cancelled terminal rather than misclassifying it
+     * as an abrupt-loss recovery on the next Studio process.
+     */
+    public completeGracefulShutdown(): void {
+        for (const job of this.repository.list()) {
+            if (isStudioJobTerminal(job.status)) continue;
+            this.terminal(job.id, "cancelled", {
+                result: {summary: "Studio stopped gracefully before this job's executor reported its terminal cleanup."},
+                recovery: {action: "retry", reason: "Studio was stopped by the user. Run the captured request again if it is still needed."},
+            });
+        }
+        this.repository.saveProcessState({status: "gracefully-stopped", updatedAt: this.now()});
     }
 
     public reconcileInterruptedJobs(): void {

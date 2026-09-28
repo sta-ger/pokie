@@ -126,10 +126,13 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retained-simulation");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-captured-job", "retained-simulation");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-request-id", "retained-simulation");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "retained-simulation");
+        expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "recovery-required");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-terminal", "recovery-required");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-recovery", "restart-reconciled");
         expect(recoveredTerminal.parentElement).toHaveAttribute("data-pokie-lifecycle-result-executor", "unavailable-after-restart");
+        expect(recoveredTerminal).not.toHaveTextContent(/completed/i);
         // Mantine NumberInput is a text input so it can preserve intermediate numeric input;
         // the submitted request below proves the reconstructed form still emits a number.
         expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("4321");

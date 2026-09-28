@@ -534,6 +534,10 @@ export class StudioServer implements StudioServerHandling {
                 resolve();
             });
         });
+        // Record the marker only after the listener and the process-owned
+        // resources above have been drained. A SIGKILL cannot reach this
+        // point, so a following process reconciles only a real abrupt loss.
+        this.jobService.completeGracefulShutdown();
     }
 
     // Called from both project-switch points (handleHomeOpenProject, /api/projects/close) *before*

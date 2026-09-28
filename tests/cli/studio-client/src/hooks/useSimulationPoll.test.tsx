@@ -83,6 +83,23 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         expect(result.current.terminalReceipt).toBeUndefined();
     });
 
+    it("keeps a graceful-stop cancellation distinct from an abrupt restart recovery", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/project/simulations/graceful-stop-job") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("cancelled", 2), id: "graceful-stop-job"})});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.restore("graceful-stop-job"));
+
+        await waitFor(() => expect(result.current.terminalReceipt).toEqual({
+            operation: "simulation", jobId: "graceful-stop-job", capturedJobId: "graceful-stop-job", requestId: "graceful-stop-job", status: "cancelled",
+        }));
+        expect(result.current.terminalReceipt?.recoveredAfterRestart).toBeUndefined();
+    });
+
     it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
         let releaseCancel: (() => void) | undefined;
         let starts = 0;

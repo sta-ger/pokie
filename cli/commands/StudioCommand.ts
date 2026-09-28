@@ -174,7 +174,14 @@ export class StudioCommand implements CliCommandHandling {
     }
 
     private registerShutdown(server: StudioServerHandling): void {
+        let stopping = false;
         const shutdown = (): void => {
+            // SIGINT and SIGTERM can arrive together during terminal/session
+            // teardown. Preserve one cooperative server drain so its durable
+            // shutdown marker cannot race a second stop call and make a
+            // graceful user exit look like an abrupt restart.
+            if (stopping) return;
+            stopping = true;
             server.stop().then(
                 () => this.process.exit(0),
                 () => this.process.exit(1),

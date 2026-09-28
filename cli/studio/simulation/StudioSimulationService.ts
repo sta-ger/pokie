@@ -665,6 +665,11 @@ export class StudioSimulationService {
         // release its runtime/worker resources. The terminal state is written
         // only by markTerminal() after that cleanup has completed.
         this.jobService?.cancel(record.projectRoot, record.id);
+        // This compatibility record has no durable executor after the
+        // process exits. The shared job service records the final graceful
+        // cancellation only after Studio has drained every owner; keeping the
+        // local record cancellable until then preserves the existing cleanup
+        // and Retry contracts.
         record.abortController.abort();
         if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
     }
