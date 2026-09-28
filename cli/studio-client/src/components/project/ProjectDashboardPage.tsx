@@ -428,7 +428,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
     const contextRefreshGenerationRef = useRef(0);
     const [pendingNavigation, setPendingNavigation] = useState<{requestId: number; tab: ProjectTab; refreshGeneration: number} | undefined>();
-    const {header, completedRefreshGeneration, failedRefreshGeneration} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
+    const {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
@@ -467,7 +467,18 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // to another terminal job and its header can be committed before the
         // generation this tab requested.  The target workflow is therefore
         // released only by its exact post-commit context receipt.
-        if (pendingNavigation === undefined || completedRefreshGeneration !== pendingNavigation.refreshGeneration) {
+        // The numerical acknowledgement is intentionally accompanied by the
+        // exact terminal header object committed for it.  A retained number
+        // from an earlier refresh must not release a dependent tab while a
+        // newer generation is loading or while React is rendering another
+        // terminal context.
+        if (
+            pendingNavigation === undefined ||
+            completedRefreshGeneration !== pendingNavigation.refreshGeneration ||
+            renderedTerminal?.generation !== pendingNavigation.refreshGeneration ||
+            renderedTerminal.outcome !== "completed" ||
+            renderedTerminal.header !== header
+        ) {
             return;
         }
         if (pendingNavigation.requestId !== navigationRequestIdRef.current) {
@@ -477,7 +488,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${pendingNavigation.tab}`);
         setNavigationLifecycle({tab: pendingNavigation.tab, status: "rendered"});
         setPendingNavigation(undefined);
-    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, requestedProjectRoot]);
+    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, renderedTerminal, requestedProjectRoot]);
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
     // default route; doing the same for a project means a stale bookmark/reload never leaves an

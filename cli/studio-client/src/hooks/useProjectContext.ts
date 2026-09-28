@@ -27,6 +27,12 @@ export type ProjectContextRefresh = {
     completedRefreshGeneration: number;
     /** The latest caller-owned refresh generation that rendered a diagnostic. */
     failedRefreshGeneration: number;
+    /**
+     * The exact terminal header committed for the latest refresh. Consumers
+     * which change routes use this identity in addition to the generation so
+     * a historical acknowledgement can never release a newly requested tab.
+     */
+    renderedTerminal?: {generation: number; header: ProjectHeaderView; outcome: "completed" | "failed"};
 };
 
 export function useProjectContext(requestedProjectRoot?: string, refreshGeneration = 0): ProjectContextRefresh {
@@ -178,5 +184,5 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         };
     }, [fetchImpl, openWithConfirmation, refreshGeneration, requestedProjectRoot]);
 
-    return {header, completedRefreshGeneration, failedRefreshGeneration};
+    return {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal};
 }

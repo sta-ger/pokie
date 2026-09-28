@@ -30,6 +30,10 @@ describe("useProjectContext refresh acknowledgement", () => {
         rerender({generation: 8});
         await waitFor(() => expect(result.current.completedRefreshGeneration).toBe(8));
         expect(result.current.header.status).toBe("loaded");
+        // A dependent route needs the terminal header that React committed
+        // for this exact generation, not merely a reusable numeric receipt.
+        expect(result.current.renderedTerminal).toEqual(expect.objectContaining({generation: 8, outcome: "completed", header: result.current.header}));
+        expect(result.current.renderedTerminal?.header).toBe(result.current.header);
     });
 
     it("reports a failed generation without releasing it as completed", async () => {
@@ -39,5 +43,6 @@ describe("useProjectContext refresh acknowledgement", () => {
         await waitFor(() => expect(result.current.failedRefreshGeneration).toBe(9));
         expect(result.current.completedRefreshGeneration).toBe(0);
         expect(result.current.header.status).toBe("error");
+        expect(result.current.renderedTerminal).toEqual(expect.objectContaining({generation: 9, outcome: "failed", header: result.current.header}));
     });
 });
