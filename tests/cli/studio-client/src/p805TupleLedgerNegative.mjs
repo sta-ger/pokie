@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {mkdtemp, readFile, readdir, rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
-import {runP805ProcessIsolatedPackedProof, validateP805RetryTerminalReceipt} from "../../../../scripts/p8-05-valera-browser-audit.mjs";
+import {runP805ProcessIsolatedPackedProof, validateP805RestartRecoveryTerminalReceipt, validateP805RetryTerminalReceipt} from "../../../../scripts/p8-05-valera-browser-audit.mjs";
 
 const output = await mkdtemp(path.join(tmpdir(), "p8-05-parent-ledger-negative-"));
 const candidate = "1".repeat(40), candidatePackageSha256 = "a".repeat(64), candidateExecutableSha256 = "b".repeat(64);
@@ -258,6 +258,15 @@ try {
     try { validateP805RetryTerminalReceipt({...retryReceipt, transaction:{...retryReceipt.transaction, postTransitionRenderedState:{...retryReceipt.transaction.postTransitionRenderedState, resultJobId:"simulation-run-job"}}}); }
     catch (error) { retryTerminalJobSubstitutionRejected = /status\/job-equivalent/.test(String(error)); }
     if (!retryTerminalJobSubstitutionRejected) throw new Error("collector accepted a Retry terminal receipt bound to another durable job");
+    const restartResult = {id:"restart-job", status:"recovery-required"}, restartReceipt = {operation:"simulation", controlId:"simulation-run", stateClass:"editable-submission", transaction:{operation:"simulation", stateClass:"editable-submission", control:{stableControlId:"simulation-run"}, requestCount:1, request:{browserRequestId:"restart-request", method:"POST", path:"/api/project/simulations"}, pointerActivations:[{controlId:"simulation-run", capturedControlId:"simulation-run", captureKey:"restart-capture", preDispatchFocus:{controlId:"simulation-run", native:true}, hitTest:{capturedControlId:"simulation-run", matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true, focus:{controlId:"simulation-run", native:true, targetMatchesCapturedControl:true}}}]}, terminal:{status:"recovery-required", jobId:"restart-job", resultSha256:sha(JSON.stringify(restartResult)), causedByRequestId:"restart-request"}, rendered:{resultControlId:"simulation-run", resultOperation:"simulation", resultStateClass:"editable-submission", resultReceipt:"durable-terminal", resultJobId:"restart-job", resultRequestId:"restart-job", resultTerminal:"recovery-required", resultRecovery:"restart-reconciled", resultExecutor:"unavailable-after-restart", renderedTerminal:true, postRestartReplacementState:{capturedControlId:"simulation-run", captureKey:"restart-capture", controlState:"replaced-after-restart", currentControlId:"simulation-run", capturedControlConnected:false}}, ownedProcessDrain:{processTreeDrained:true, resourcesDrained:true}};
+    validateP805RestartRecoveryTerminalReceipt(restartReceipt);
+    const rejectsRestartReceipt = (mutate) => {
+        try { validateP805RestartRecoveryTerminalReceipt(mutate(structuredClone(restartReceipt))); return false; }
+        catch (error) { return /generic result|request\/job correlation|vanished executor|owned-process drainage/.test(String(error)); }
+    };
+    if (!rejectsRestartReceipt((receipt) => { receipt.rendered.resultJobId = "uncorrelated-job"; }) || !rejectsRestartReceipt((receipt) => { receipt.rendered.resultTerminal = "completed"; }) || !rejectsRestartReceipt((receipt) => { delete receipt.rendered; }) || !rejectsRestartReceipt((receipt) => { delete receipt.ownedProcessDrain; })) {
+        throw new Error("collector accepted an uncorrelated, generic, unrendered, or uncleared restart recovery terminal");
+    }
     process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, pointerSemanticSubstitutionRejected:true, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true, retryTerminalSubstitutionRejected, retryTerminalJobSubstitutionRejected})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});

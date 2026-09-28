@@ -13,6 +13,8 @@ type SimulationOperation = "simulation" | "simulation-retry";
 export type SimulationTerminalReceipt = Readonly<{
     operation: SimulationOperation;
     jobId: string;
+    /** The durable request identity must remain the job this hook attached to. */
+    requestId: string;
     status: StudioSimulationJobView["status"];
     /** The terminal was reconciled from Studio's durable job store after restart. */
     recoveredAfterRestart?: true;
@@ -84,12 +86,25 @@ export function useSimulationPoll() {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
+                // A reload/restart can only reconcile the durable job that
+                // was discovered for this workflow.  Never render a generic
+                // simulation response merely because it has a terminal
+                // status: it could belong to a different job and would sever
+                // the captured submission from its recovery-required state.
+                if (polledJob.id !== id) {
+                    setJob(undefined);
+                    setProgress(undefined);
+                    setTerminalReceipt(undefined);
+                    setCancellationRequested(false);
+                    setError(`The simulation response did not match durable job "${id}".`);
+                    return;
+                }
                 setJob(polledJob);
                 lastRequestRef.current = {rounds: polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName};
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
-                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
                 if (isSimulationActive(polledJob)) {
                     timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
@@ -216,11 +231,19 @@ export function useSimulationPoll() {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
+                if (polledJob.id !== id) {
+                    setJob(undefined);
+                    setProgress(undefined);
+                    setTerminalReceipt(undefined);
+                    setCancellationRequested(false);
+                    setError(`The simulation response did not match durable job "${id}".`);
+                    return;
+                }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
-                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
             })
             .catch((err: unknown) => {

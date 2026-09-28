@@ -66,6 +66,23 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
     });
 
+    it("refuses an uncorrelated terminal while restoring an interrupted simulation", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/project/simulations/retained-job") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("recovery-required", 2), id: "different-job"})});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.restore("retained-job"));
+
+        await waitFor(() => expect(result.current.error).toContain('did not match durable job "retained-job"'));
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.terminalReceipt).toBeUndefined();
+    });
+
     it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
         let releaseCancel: (() => void) | undefined;
         let starts = 0;
@@ -95,7 +112,7 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         act(() => releaseCancel?.());
         await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
         expect(result.current.cancellationRequested).toBe(false);
-        expect(result.current.terminalReceipt).toEqual({operation: "simulation", jobId: "job-1", status: "cancelled"});
+        expect(result.current.terminalReceipt).toEqual({operation: "simulation", jobId: "job-1", requestId: "job-1", status: "cancelled"});
         act(() => result.current.retry());
         expect(result.current.operation).toBe("simulation-retry");
         expect(result.current.terminalReceipt).toBeUndefined();
