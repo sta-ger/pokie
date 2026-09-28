@@ -1358,7 +1358,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // tab from the visible drawer exactly as a phone user would.
             const visibleControl = await focusVisibleNavigationControl();
             if (visibleControl) return visibleControl;
-            const compactNavigation = await evaluate("window.innerWidth <= 600");
+            // Use the rendered disclosure rather than a runner-side viewport
+            // threshold. Chromium mobile emulation and Mantine's `sm`
+            // breakpoint need not expose the same `innerWidth`; the live
+            // Burger is the product's authoritative indication that the tabs
+            // are currently in the collapsed drawer.
+            const compactNavigation = await evaluate("(()=>{const item=document.getElementById('studio-navigation-toggle'); return item instanceof HTMLButtonElement && !!(item.offsetWidth||item.offsetHeight||item.getClientRects().length);})()");
             if (!compactNavigation) {
                 await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
                 return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
@@ -1384,7 +1389,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // control, so use one native Enter activation at phone width;
             // NavTabs owns that explicit keyboard lifecycle just as it owns
             // its pointer lifecycle.
-            const compactNavigation = await evaluate("window.innerWidth <= 600");
+            const compactNavigation = await evaluate("(()=>{const item=document.getElementById('studio-navigation-toggle'); return item instanceof HTMLButtonElement && !!(item.offsetWidth||item.offsetHeight||item.getClientRects().length);})()");
             await activateFocusedControl("navigation", control, compactNavigation ? "keyboard" : "pointer");
             try {
                 await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);

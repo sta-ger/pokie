@@ -570,7 +570,7 @@ async function campaignFixture() {
                     cooperativeCancellation: {observed: true, evidenceId: measured},
                     retryWithoutPartialArtifacts: {observed: true, evidenceId: measured, receipt: {operation: "simulation-retry", controlId: "simulation-retry", stateClass: "recovery-operation", transaction: retryTransaction}},
                     restartRecovery: {observed: true, evidenceId: measured, receipt: {
-                        operation: "simulation", controlId: "simulation-run", stateClass: "editable-submission", transaction: restartTransaction,
+                        operation: "simulation", controlId: "simulation-run", stateClass: "editable-submission", capturedJobId: "simulation-restart", transaction: restartTransaction,
                         terminal: {status: "recovery-required", jobId: "simulation-restart", resultSha256: restartTransaction.terminal.resultSha256, causedByRequestId: restartTransaction.request.browserRequestId},
                         rendered: {
                             resultControlId: "simulation-run", resultOperation: "simulation", resultStateClass: "editable-submission", resultReceipt: "durable-terminal", resultJobId: "simulation-restart", resultRequestId: "simulation-restart", resultTerminal: "recovery-required", resultRecovery: "restart-reconciled", resultExecutor: "unavailable-after-restart", renderedTerminal: true,
