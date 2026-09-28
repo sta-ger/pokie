@@ -165,6 +165,10 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText(/project, configuration, destination, or bound preflight changed before publication/i)).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Show Generation diagnostic"})).toBeInTheDocument();
         expect(screen.getByText("The prepared destination changed after preflight.")).toBeInTheDocument();
+        const terminal = screen.getByText(/project, configuration, destination, or bound preflight changed before publication/i).closest("[data-pokie-lifecycle-result]");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-job", "terminal");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "failed");
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
     });
 
     it("resumes a rehydrated exact checkpoint through the lifecycle endpoint and renders its completed bundle", async () => {

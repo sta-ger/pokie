@@ -48,6 +48,7 @@ import {
     startSimulation,
     startOutcomeLibraryGeneration,
     resumeOutcomeLibraryGeneration,
+    OutcomeLibraryGenerationPollError,
     OutcomeLibraryGenerationStartError,
     validateBlueprint,
     validateProject,
@@ -119,6 +120,17 @@ describe("studio-client apiClient", () => {
                 message: "The prepared source changed after preflight.",
             });
             await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toBeInstanceOf(OutcomeLibraryGenerationStartError);
+        });
+
+        it("preserves the durable job identity and HTTP boundary when polling fails", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {error: "Generation status is temporarily unavailable."}}));
+
+            await expect(getOutcomeLibraryGenerationJob(fetchImpl, "job/1")).rejects.toMatchObject({
+                jobId: "job/1",
+                httpStatus: 503,
+                message: "Generation status is temporarily unavailable.",
+            });
+            await expect(getOutcomeLibraryGenerationJob(fetchImpl, "job/1")).rejects.toBeInstanceOf(OutcomeLibraryGenerationPollError);
         });
 
         it("preserves typed invalid start validation for either retained route", async () => {

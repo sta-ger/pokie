@@ -1097,6 +1097,18 @@ export class OutcomeLibraryGenerationStartError extends Error {
     }
 }
 
+/** A failed durable-job poll keeps the affected job identity and HTTP boundary. */
+export class OutcomeLibraryGenerationPollError extends Error {
+    public constructor(
+        public readonly jobId: string,
+        public readonly httpStatus: number,
+        message: string,
+    ) {
+        super(message);
+        this.name = "OutcomeLibraryGenerationPollError";
+    }
+}
+
 async function throwOutcomeLibraryGenerationStartError(response: {status: number; json(): Promise<unknown>}, fallback: string): Promise<never> {
     let body: {status?: unknown; error?: unknown; preflight?: {status?: unknown; requiresBounded?: unknown}} | undefined;
     try {
@@ -1148,7 +1160,7 @@ export async function startOutcomeLibraryGeneration(fetchImpl: FetchLike, option
 
 export async function getOutcomeLibraryGenerationJob(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
     const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}`);
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the outcome library generation"));
+    if (!response.ok) throw new OutcomeLibraryGenerationPollError(id, response.status, await extractErrorMessage(response, "Failed to read the outcome library generation"));
     return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
 }
 
