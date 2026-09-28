@@ -870,6 +870,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("runs the outcome-library generation right here (no hand-off to the Outcome Libraries tab) when its own card is chosen", async () => {
         const user = userEvent.setup();
         let generated = false;
+        let generationRequestId: string | undefined;
         let stakeRequest: unknown;
         const routes = {
             ...BASE_ROUTES,
@@ -913,6 +914,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             const [path] = url.split("?");
             if (path === "/api/project/outcome-libraries/generate/jobs") {
                 generated = true;
+                generationRequestId = init?.headers?.["X-Pokie-Outcome-Library-Request-Id"];
             }
             if (path === "/api/project/stakeengine/export") {
                 stakeRequest = JSON.parse(String(init?.body));
@@ -945,6 +947,9 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-receipt", "durable-terminal");
         expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-job", "generate-exact");
         expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "completed");
+        expect(generationRequestId).toMatch(/^outcome-library-/);
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-request-id", generationRequestId!);
+        expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-progress-snapshots", "2");
         expect(inspectLibrary).toHaveAttribute("data-pokie-lifecycle-artifact", "outcome-library");
         expect(inspectLibrary).toHaveAttribute("data-pokie-lifecycle-artifact-output", "/games/a/outcomelibrary");
         expect(screen.getByRole("button", {name: "Copy path"})).toBeInTheDocument();

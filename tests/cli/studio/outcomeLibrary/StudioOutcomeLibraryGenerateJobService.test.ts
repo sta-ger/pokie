@@ -273,6 +273,41 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(jobs.getStatusForProject(projectRoot, started.id)).toMatchObject({status: "cancelled", lifecycleStage: "finalization"});
     });
 
+    it("retains the rendered request identity with the first durable terminal result after restart", async () => {
+        const durableDirectory = path.join(projectRoot, ".durable-jobs");
+        const requestId = "outcome-library-rendered-request-805";
+        const jobs = new StudioOutcomeLibraryGenerateJobService({
+            generate: jest.fn((root: string) => ({
+                status: "generation-error" as const,
+                code: "fixture-terminal-error",
+                error: "The writer rejected this generated bundle.",
+                plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+            })),
+        } as unknown as StudioOutcomeLibraryGenerateService);
+        jobs.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+
+        const started = jobs.start(projectRoot, {generation: "sampled"}, undefined, requestId);
+        expect(started).toMatchObject({status: "queued", browserRequestId: requestId});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(jobs.getStatusForProject(projectRoot, started.id)).toMatchObject({
+            id: started.id,
+            browserRequestId: requestId,
+            status: "failed",
+            result: {status: "generation-error", error: "The writer rejected this generated bundle."},
+        });
+
+        const rehydrated = new StudioOutcomeLibraryGenerateJobService({generate: jest.fn()} as unknown as StudioOutcomeLibraryGenerateService);
+        rehydrated.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+        expect(rehydrated.getStatusForProject(projectRoot, started.id)).toMatchObject({
+            id: started.id,
+            browserRequestId: requestId,
+            status: "failed",
+            result: {status: "generation-error", error: "The writer rejected this generated bundle."},
+        });
+    });
+
     it("projects the durable lifecycle identically before and after Studio rehydrates a completed job", async () => {
         const durableDirectory = path.join(projectRoot, ".durable-jobs");
         const repository = new FileStudioJobRepository(durableDirectory);

@@ -1176,6 +1176,8 @@ export type StudioOutcomeLibraryGenerateResultView =
 // accumulated grids never cross the HTTP boundary or become browser-owned state.
 export type StudioOutcomeLibraryGenerateJobView = {
     id: string;
+    /** Correlates this durable job with the rendered browser submission that created it. */
+    browserRequestId?: string;
     status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     cancellationRequested: boolean;
     createdAt?: number;

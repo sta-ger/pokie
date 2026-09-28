@@ -111,6 +111,24 @@ describe("studio-client apiClient", () => {
             ]);
         });
 
+        it("keeps a rendered Outcome Library request identity out of the generation body and on its native start request", async () => {
+            const jobWithRequest = {...job, browserRequestId: "outcome-library-rendered-request-805"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {job: jobWithRequest}}));
+
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {
+                generation: "exact", preflightToken: "bound-preflight", browserRequestId: "outcome-library-rendered-request-805",
+            })).resolves.toEqual(jobWithRequest);
+
+            expect(calls).toEqual([{
+                url: "/api/project/outcome-libraries/generate/jobs",
+                init: {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Pokie-Outcome-Library-Request-Id": "outcome-library-rendered-request-805"},
+                    body: JSON.stringify({generation: "exact", preflightToken: "bound-preflight"}),
+                },
+            }]);
+        });
+
         it("preserves classified lifecycle failures from every route", async () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {status: "conflict", error: "The prepared source changed after preflight."}}));
 

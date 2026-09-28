@@ -2748,7 +2748,15 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         try {
-            this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated)});
+            this.sendJson(res, 202, {
+                status: "created",
+                job: this.outcomeLibraryGenerateJobService.start(
+                    this.canonicalPathIdentity(this.currentContext.projectRoot),
+                    validated,
+                    undefined,
+                    this.outcomeLibraryBrowserRequestId(req),
+                ),
+            });
         } catch (error) {
             this.sendJson(res, 409, {status: "conflict", error: error instanceof Error ? error.message : String(error)});
         }
@@ -2807,6 +2815,13 @@ export class StudioServer implements StudioServerHandling {
 
         if (await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) return;
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.registry(this.currentContext.projectRoot));
+    }
+
+    /** Opaque rendered-transaction identity; durable job identity stays server-owned. */
+    private outcomeLibraryBrowserRequestId(req: IncomingMessage): string | undefined {
+        const header = req.headers["x-pokie-outcome-library-request-id"];
+        const value = Array.isArray(header) ? header[0] : header;
+        return typeof value === "string" && (/^[A-Za-z0-9._:-]{1,128}$/).test(value) ? value : undefined;
     }
 
     // Draws exactly one outcome from the currently open "outcomeLibrary" project through
