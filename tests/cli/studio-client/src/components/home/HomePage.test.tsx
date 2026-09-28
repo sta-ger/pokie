@@ -389,9 +389,11 @@ describe("HomePage", () => {
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
         const startGame = sectionsNav().getByRole("button", {name: "Start a game"});
         expect(startGame).toHaveAttribute("id", "home-tab:design");
+        expect(startGame).toHaveAttribute("aria-controls", "home-design-panel");
         expect(startGame).toBeVisible();
         await user.click(startGame);
         await expectActiveSection("Start a game");
+        expect(startGame).toHaveAttribute("aria-current", "page");
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
         // Same as the first draft-restore assertion above: Design Game's tab body was never unmounted
         // (only CSS-hidden), so the committed "wild-draft" symbol input was preserved verbatim. This is

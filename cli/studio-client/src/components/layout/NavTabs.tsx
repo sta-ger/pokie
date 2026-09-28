@@ -3,7 +3,7 @@ import {useCloseNavbar} from "./AppShellLayout";
 
 // `section` is purely a visual grouping label (e.g. "Advanced") -- omitting it (every call site did,
 // before the Project Dashboard's task-oriented nav redesign) renders exactly as before, a flat list.
-export type NavTabItem<T extends string> = {value: T; label: string; section?: string; auditControlId?: string};
+export type NavTabItem<T extends string> = {value: T; label: string; section?: string; auditControlId?: string; panelId?: string};
 
 // Vertical tab list rendered into AppShellLayout's navbar slot -- preserves aria-current="page" on the
 // active item, same affordance the old .tab[aria-current="page"] convention provided. Rendered as real
@@ -36,6 +36,7 @@ export function NavTabs<T extends string>({items, active, onSelect}: {items: Nav
                         data-pokie-lifecycle="navigation"
                         data-pokie-transaction-state="navigation"
                         data-pokie-lifecycle-route={item.value}
+                        aria-controls={item.panelId}
                         label={item.label}
                         active={item.value === active}
                         aria-current={item.value === active ? "page" : undefined}

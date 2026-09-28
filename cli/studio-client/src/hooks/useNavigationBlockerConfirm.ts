@@ -1,5 +1,5 @@
 import {modals} from "@mantine/modals";
-import {useEffect} from "react";
+import {useEffect, useRef} from "react";
 import {useBlocker} from "react-router-dom";
 
 export type NavigationBlockerConfirmModal = {
@@ -29,11 +29,19 @@ export function useNavigationBlockerConfirm(
     onLeave?: () => void,
 ) {
     const blocker = useBlocker(shouldBlock);
+    const openedBlockerRef = useRef<typeof blocker | undefined>(undefined);
 
     useEffect(() => {
         if (blocker.state !== "blocked") {
+            openedBlockerRef.current = undefined;
             return;
         }
+        // A blocked transition can re-render while its modal is open.  Keep
+        // its one visible Leave/Stay pair attached to that exact blocker;
+        // opening another portal would leave a hidden duplicate capable of
+        // consuming a later action.
+        if (openedBlockerRef.current === blocker) return;
+        openedBlockerRef.current = blocker;
         // These are product-owned metadata for the two rendered controls,
         // not Mantine modal options.  Passing them through the modal spread
         // forwards unknown attributes into the portal DOM and makes an
@@ -56,10 +64,14 @@ export function useNavigationBlockerConfirm(
                 "data-pokie-confirmation-operation": operation,
             },
             onConfirm: () => {
+                openedBlockerRef.current = undefined;
                 onLeave?.();
                 blocker.proceed();
             },
-            onCancel: () => blocker.reset(),
+            onCancel: () => {
+                openedBlockerRef.current = undefined;
+                blocker.reset();
+            },
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [blocker]);
