@@ -400,7 +400,7 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
     let cancelled = false;
     let timeout;
     let abort;
-    let output = "", errorOutput = "", exitCode = null, spawnError, tracker, drainage = {processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[], ownedProcessIdentities:[], ownedResources:[]};
+    let output = "", errorOutput = "", exitCode = null, exitSignal = null, spawnError, tracker, drainage = {processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[], ownedProcessIdentities:[], ownedResources:[]};
     let failure;
     try {
         if (signal?.aborted) { cancelled = true; throw new Error("release gate was cancelled before spawn"); }
@@ -418,7 +418,7 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         child.stderr?.on("data", (chunk) => { errorOutput += chunk; });
         const exited = new Promise((resolve) => {
             child.once("error", (error) => { spawnError = error; resolve(); });
-            child.once("exit", (code) => { exitCode = code; resolve(); });
+            child.once("exit", (code, receivedSignal) => { exitCode = code; exitSignal = receivedSignal; resolve(); });
         });
         timeout = setTimeout(() => { timedOut = true; void drainProcessTree(child, 1_000, tracker.ownedProcesses, tracker.ownedResources); }, timeoutMs);
         abort = () => { cancelled = true; void drainProcessTree(child, 1_000, tracker.ownedProcesses, tracker.ownedResources); };
@@ -436,10 +436,11 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         drainage = await drainProcessTree(child, 1_000, tracker?.ownedProcesses, tracker?.ownedResources);
         if (!drainage.processGroupDrained || !drainage.processTreeDrained || !drainage.resourcesDrained) failure ??= new Error("release gate owned resources could not be drained");
     }
-    const terminalCondition = timedOut ? "timeout" : cancelled ? "cancelled" : spawnError ? "spawn-failure" : exitCode === 0 ? "success" : "exit-failure";
-    const result = {command:`${command} ${args.join(" ")}`, operationId:requestedOperationId, startedAt, endedAt:now(), exitCode, timedOut, cancelled, terminalCondition, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, resourcesDrained:drainage.resourcesDrained, ownedProcessIds:drainage.ownedProcessIds, ownedProcessIdentities:drainage.ownedProcessIdentities, ownedResources:drainage.ownedResources, stdout:output, stderr:errorOutput};
+    const terminalCondition = timedOut ? "timeout" : cancelled ? "cancelled" : spawnError ? "spawn-failure" : exitSignal ? "signal-exit" : exitCode === 0 ? "success" : "exit-failure";
+    const result = {command:`${command} ${args.join(" ")}`, operationId:requestedOperationId, startedAt, endedAt:now(), exitCode, signal:exitSignal, timedOut, cancelled, terminalCondition, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, resourcesDrained:drainage.resourcesDrained, ownedProcessIds:drainage.ownedProcessIds, ownedProcessIdentities:drainage.ownedProcessIdentities, ownedResources:drainage.ownedResources, stdout:output, stderr:errorOutput};
     if (!failure && timedOut) failure = new Error("release gate timed out after its process tree was drained");
     if (!failure && cancelled) failure = new Error("release gate was cancelled after its process tree was drained");
+    if (!failure && exitSignal) failure = new Error(`release gate was terminated by ${exitSignal}`);
     if (!failure && exitCode !== 0) failure = new Error(`release gate failed with exit code ${exitCode}`);
     if (failure) {
         failure.pc20Result = result;

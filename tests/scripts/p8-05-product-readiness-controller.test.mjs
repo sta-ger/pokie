@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
-import {p805ControllerArtifactPath, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {p805ControllerArtifactPath, p805ControllerOperationRoot, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
@@ -17,6 +17,7 @@ const digestAt = (prefix, index) => `${prefix}${index.toString(16).padStart(63, 
 const machineProofLedger = () => ({
     schemaVersion:1,
     kind:"p8-05-process-isolated-packed-proof",
+    operationRoot:"/tmp/p8-05-controller-operation-root",
     phase:"initial",
     status:"passed",
     candidateId:initial.candidateId,
@@ -78,6 +79,9 @@ test("controller publishes distinct phase commands and refuses missing phase pay
 test("controller restricts every checkpoint receipt to its one canonical operation root", () => {
     const root = path.join(os.tmpdir(), "pokie-p8-05-canonical-operation-root");
     assert.equal(p805ControllerArtifactPath(root, "initial/mathematician/checkpoints/001.json", "checkpoint"), path.join(root, "initial/mathematician/checkpoints/001.json"));
+    assert.equal(p805ControllerOperationRoot(root, {operationRoot:root}), root);
+    assert.throws(() => p805ControllerOperationRoot(root, {operationRoot:`${root}-substituted`}), /operation root/i);
+    assert.throws(() => p805ControllerOperationRoot(root, {}), /operation root/i);
     for (const receipt of ["../checkpoint.json", "initial/../checkpoint.json", "/tmp/checkpoint.json", ""]) {
         assert.throws(() => p805ControllerArtifactPath(root, receipt, "checkpoint"), /canonical|escapes/i);
     }
@@ -121,7 +125,7 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
         candidateId:initial.candidateId,
         candidatePackageSha256:initial.candidatePackageSha256,
         candidateExecutableSha256:initial.candidateExecutableSha256,
-        proofLedger:{path:"initial-process-isolated-packed-proof.json", sha256:createHash("sha256").update(ledgerContents).digest("hex"), candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, status:"passed", aggregation:"independently-verified-immutable-tuple-child-receipts-only"},
+        proofLedger:{path:"initial-process-isolated-packed-proof.json", sha256:createHash("sha256").update(ledgerContents).digest("hex"), operationRoot:ledger.operationRoot, candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256, status:"passed", aggregation:"independently-verified-immutable-tuple-child-receipts-only"},
         tuples:tuples.map((tuple) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`),
         audits:{count:P805_PERSONAS.length, personas:P805_PERSONAS, ids:P805_PERSONAS.map((persona) => `aggregate-${persona}`), tupleReceiptAuditIds:tuples.map((_tuple, index) => `audit-${index}`), tupleEvidence:machineProofTupleEvidence(ledger), renderedTupleEvidence:machineProofRenderedTupleEvidence(ledger), outcomeLibraryTransactionEvidence:machineProofOutcomeLibraryTransactionEvidence(ledger), retryTerminalEvidence:machineProofRetryTerminalEvidence(ledger), restartRecoveryTerminalEvidence:machineProofRestartRecoveryTerminalEvidence(ledger)},
     };
@@ -136,6 +140,7 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
     assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, candidateId:retest.candidateId}}, "initial", initial, ledgerContents), /exact candidate/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, tuples:[...proof.tuples, proof.tuples[0]], audits:{count:2, personas:P805_PERSONAS, ids:["audit-1", "audit-2"], tupleReceiptAuditIds:proof.audits.tupleReceiptAuditIds}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, tupleReceiptAuditIds:["substituted-audit", ...proof.audits.tupleReceiptAuditIds.slice(1)]}}, "initial", initial, ledgerContents), /five persona aggregates/i);
+    assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, operationRoot:"/tmp/substituted-operation-root"}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, tupleEvidence:[{...proof.audits.tupleEvidence[0], auditSha256:"f".repeat(64)}, ...proof.audits.tupleEvidence.slice(1)]}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, renderedTupleEvidence:[{...proof.audits.renderedTupleEvidence[0], activation:{...proof.audits.renderedTupleEvidence[0].activation, hitTest:{capturedControlId:"project-tab:overview", matchesCapturedControl:false}}}, ...proof.audits.renderedTupleEvidence.slice(1)]}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, renderedTupleEvidence:[{...proof.audits.renderedTupleEvidence[0], rendered:{...proof.audits.renderedTupleEvidence[0].rendered, postTransitionRenderedState:{...proof.audits.renderedTupleEvidence[0].rendered.postTransitionRenderedState, captureKey:"substituted-capture-key"}}}, ...proof.audits.renderedTupleEvidence.slice(1)]}}, "initial", initial, ledgerContents), /five persona aggregates/i);

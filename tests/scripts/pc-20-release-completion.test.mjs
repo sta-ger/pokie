@@ -155,6 +155,10 @@ test("drains a real detached process tree on success, timeout, cancellation, and
         const spawnFailure = await rejected(() => runBoundedProcess("definitely-not-a-command-pc20", [], options()), /ownership registry|ENOENT|spawn/i);
         assert.equal(spawnFailure.pc20Result.terminalCondition, "spawn-failure");
         assert.equal(spawnFailure.pc20Result.resourcesDrained, true);
+        const signalled = await rejected(() => runBoundedProcess(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"], options()), /terminated by SIGTERM/i);
+        assert.equal(signalled.pc20Result.terminalCondition, "signal-exit");
+        assert.equal(signalled.pc20Result.signal, "SIGTERM");
+        assert.equal(signalled.pc20Result.resourcesDrained, true);
     } finally { await Promise.all(registries.map((target) => rm(target, {force:true}))); }
 });
 
