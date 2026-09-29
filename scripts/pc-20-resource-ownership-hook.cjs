@@ -12,7 +12,8 @@ const workerThreads = require("node:worker_threads");
 
 const registry = process.env.POKIE_PC20_RESOURCE_REGISTRY;
 const secret = process.env.POKIE_PC20_RESOURCE_REGISTRY_SECRET;
-if (!registry || !secret) throw new Error("PC-20 resource ownership registry and secret are required");
+const operationId = process.env.POKIE_PC20_OPERATION_ID;
+if (!registry || !secret || !/^[a-f0-9]{32}$/i.test(operationId || "")) throw new Error("PC-20 resource ownership registry, secret, and operation namespace are required");
 const signature = (record) => createHash("sha256").update(secret).update("\0").update(JSON.stringify(record)).digest("hex");
 const processIdentity = (pid) => {
     if (!Number.isInteger(pid) || pid <= 0) return undefined;
@@ -56,12 +57,12 @@ const processRecord = (child, command) => {
     }
     const resourceId = `process:${child.pid}:${command}`;
     try {
-        write({schemaVersion:1, action:"acquired", kind:"process", resourceId, pid:child.pid, processIdentity:identity});
+        write({schemaVersion:1, operationId, action:"acquired", kind:"process", resourceId, pid:child.pid, processIdentity:identity});
     } catch (error) {
         terminateUnrecorded(child);
         throw error;
     }
-    child.once?.("exit", () => write({schemaVersion:1, action:"released", kind:"process", resourceId, pid:child.pid, processIdentity:identity}));
+    child.once?.("exit", () => write({schemaVersion:1, operationId, action:"released", kind:"process", resourceId, pid:child.pid, processIdentity:identity}));
 };
 const wrapAsync = (method) => {
     const original = childProcess[method];
@@ -91,9 +92,9 @@ class Pc20OwnedWorker extends workerThreads.Worker {
     constructor(...args) {
         super(...args);
         const resourceId = `worker:${this.threadId}`;
-        try { write({schemaVersion:1, action:"acquired", kind:"worker", resourceId}); }
+        try { write({schemaVersion:1, operationId, action:"acquired", kind:"worker", resourceId}); }
         catch (error) { void this.terminate(); throw error; }
-        this.once("exit", () => write({schemaVersion:1, action:"released", kind:"worker", resourceId}));
+        this.once("exit", () => write({schemaVersion:1, operationId, action:"released", kind:"worker", resourceId}));
     }
 }
 workerThreads.Worker = Pc20OwnedWorker;
@@ -107,4 +108,4 @@ syncBuiltinESMExports();
 
 // A registry with no child resources still has an authenticated sentinel, so
 // a missing, unreadable, malformed, or unsigned registry cannot mean "empty".
-write({schemaVersion:1, action:"registry-ready", kind:"registry", resourceId:`registry:${process.pid}`});
+write({schemaVersion:1, operationId, action:"registry-ready", kind:"registry", resourceId:`registry:${process.pid}`});

@@ -17,6 +17,10 @@ const archive = Buffer.from("PC-20 test archive\n");
 const packageSha = createHash("sha256").update(archive).digest("hex");
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const registryPath = (label) => path.join("/tmp", `pokie-pc20-${label}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.ndjson`);
+const rejected = async (work, expected) => {
+    try { await work(); assert.fail("expected the bounded operation to fail"); }
+    catch (error) { assert.match(String(error), expected); return error; }
+};
 
 function paths() {
     const stem = `pc-20-${candidateId}`;
@@ -140,10 +144,17 @@ test("drains a real detached process tree on success, timeout, cancellation, and
     try {
         const success = await runBoundedProcess(process.execPath, ["-e", "process.stdout.write('ok')"], {...options(), timeoutMs:1_000});
         assert.equal(success.processGroupDrained, true);
-        await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {...options(), timeoutMs:50}), /timed out/i);
+        assert.equal(success.terminalCondition, "success");
+        const timeout = await rejected(() => runBoundedProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {...options(), timeoutMs:50}), /timed out/i);
+        assert.equal(timeout.pc20Result.terminalCondition, "timeout");
+        assert.equal(timeout.pc20Result.processTreeDrained, true);
         const controller = new AbortController(); controller.abort();
-        await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", "0"], {...options(), signal:controller.signal}), /cancelled/i);
-        await assert.rejects(() => runBoundedProcess("definitely-not-a-command-pc20", [], options()), /ownership registry|ENOENT|spawn/i);
+        const cancelled = await rejected(() => runBoundedProcess(process.execPath, ["-e", "0"], {...options(), signal:controller.signal}), /cancelled/i);
+        assert.equal(cancelled.pc20Result.terminalCondition, "cancelled");
+        assert.equal(cancelled.pc20Result.resourcesDrained, true);
+        const spawnFailure = await rejected(() => runBoundedProcess("definitely-not-a-command-pc20", [], options()), /ownership registry|ENOENT|spawn/i);
+        assert.equal(spawnFailure.pc20Result.terminalCondition, "spawn-failure");
+        assert.equal(spawnFailure.pc20Result.resourcesDrained, true);
     } finally { await Promise.all(registries.map((target) => rm(target, {force:true}))); }
 });
 
@@ -162,7 +173,7 @@ test("the production ownership preload drains a detached/reparented process and 
         assert.equal(result.resourcesDrained, true);
         assert.equal(result.ownedResources.length, 1);
         assert.match(result.ownedResources[0].processIdentity, /^linux-start-ticks:/);
-        assert.deepEqual({...result.ownedResources[0], processIdentity:undefined}, {schemaVersion:1, action:"acquired", kind:"process", resourceId:`process:${detachedPid}:${process.execPath}`, pid:detachedPid, released:false, processIdentity:undefined});
+        assert.deepEqual({...result.ownedResources[0], processIdentity:undefined}, {schemaVersion:1, operationId:result.operationId, action:"acquired", kind:"process", resourceId:`process:${detachedPid}:${process.execPath}`, pid:detachedPid, released:false, processIdentity:undefined});
         assert.throws(() => process.kill(detachedPid, 0), /ESRCH/);
     } finally { await Promise.all([rm(pidPath, {force:true}), rm(ownedRegistryPath, {force:true})]); }
     await assert.rejects(() => runBoundedProcess(process.execPath, ["-e", `
@@ -250,6 +261,21 @@ test("fails closed when the final ownership-registry signature audit is invalid"
             require("node:fs").appendFileSync(process.env.POKIE_PC20_RESOURCE_REGISTRY, "{\\\"schemaVersion\\\":1}\\n");
         `], {cwd:repositoryDirectory, resourceRegistryPath:invalidRegistry}), /invalid or unsigned record/i);
     } finally { await rm(invalidRegistry, {force:true}); }
+});
+
+test("rejects a signed receipt from another operation namespace", async () => {
+    const ownedRegistryPath = registryPath("foreign-operation");
+    try {
+        const error = await rejected(() => runBoundedProcess(process.execPath, ["-e", `
+            const {appendFileSync} = require("node:fs");
+            const {createHash} = require("node:crypto");
+            const record = {schemaVersion:1, operationId:"0".repeat(32), action:"acquired", kind:"provider", resourceId:"foreign-operation"};
+            record.signature = createHash("sha256").update(process.env.POKIE_PC20_RESOURCE_REGISTRY_SECRET).update("\\0").update(JSON.stringify(record)).digest("hex");
+            appendFileSync(process.env.POKIE_PC20_RESOURCE_REGISTRY, JSON.stringify(record) + "\\n");
+        `], {cwd:repositoryDirectory, resourceRegistryPath:ownedRegistryPath}), /different operation namespace/i);
+        assert.equal(error.pc20Result.terminalCondition, "success");
+        assert.equal(error.pc20Result.processTreeDrained, true);
+    } finally { await rm(ownedRegistryPath, {force:true}); }
 });
 
 test("never signals a PID whose acquisition identity has been reused", async () => {

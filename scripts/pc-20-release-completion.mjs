@@ -29,6 +29,7 @@ const now = () => new Date().toISOString();
 const resourceKinds = new Set(["provider", "browser", "worker", "container", "process"]);
 const resourceActions = new Set(["acquired", "released"]);
 const registryAction = "registry-ready";
+const operationId = (value) => typeof value === "string" && /^[a-f0-9]{32}$/i.test(value);
 
 function required(value, name) {
     if (typeof value !== "string" || !value) fail(`${name} is required`);
@@ -180,13 +181,15 @@ const locallyAcquiredResourceIdentities = new Map();
 export function registerPc20OwnedResource({kind, resourceId, pid, processIdentity:declaredIdentity}, action = "acquired", environment = process.env) {
     const registry = environment.POKIE_PC20_RESOURCE_REGISTRY;
     const secret = environment.POKIE_PC20_RESOURCE_REGISTRY_SECRET;
+    const operation = environment.POKIE_PC20_OPERATION_ID;
     if (!registry || !secret) return false;
+    if (!operationId(operation)) throw new Error("PC-20 owned resource requires an authenticated operation namespace");
     if (!resourceKinds.has(kind) || !resourceActions.has(action) || typeof resourceId !== "string" || !resourceId) throw new Error("PC-20 owned resource requires a supported kind, action, and resourceId");
     if (pid !== undefined && (!Number.isInteger(pid) || pid <= 0)) throw new Error("PC-20 owned resource PID must be a positive integer");
     const identityKey = `${kind}:${resourceId}`;
     const identity = pid === undefined ? undefined : (declaredIdentity || locallyAcquiredResourceIdentities.get(identityKey) || processIdentity(pid));
     if (pid !== undefined && (typeof identity !== "string" || !identity)) throw new Error(`PC-20 could not record process identity for PID ${pid}`);
-    const record = {schemaVersion:1, action, kind, resourceId, ...(pid === undefined ? {} : {pid, processIdentity:identity})};
+    const record = {schemaVersion:1, operationId:operation, action, kind, resourceId, ...(pid === undefined ? {} : {pid, processIdentity:identity})};
     // Registry readers run concurrently with process exits.  Append one
     // complete signed record at a time so a final ownership capture cannot
     // mistake an in-progress writer for an unsigned resource declaration.
@@ -202,7 +205,7 @@ export function registerPc20OwnedResource({kind, resourceId, pid, processIdentit
 }
 
 function signedResourceRecord(value, secret) {
-    if (!value || value.schemaVersion !== 1 || typeof value.resourceId !== "string" || !value.resourceId || typeof value.signature !== "string") return undefined;
+    if (!value || value.schemaVersion !== 1 || !operationId(value.operationId) || typeof value.resourceId !== "string" || !value.resourceId || typeof value.signature !== "string") return undefined;
     if (value.action === registryAction && value.kind !== "registry") return undefined;
     if (value.action !== registryAction && (!resourceActions.has(value.action) || !resourceKinds.has(value.kind))) return undefined;
     if (value.pid !== undefined && (!Number.isInteger(value.pid) || value.pid <= 0)) return undefined;
@@ -215,8 +218,8 @@ function signedResourceRecord(value, secret) {
     return record;
 }
 
-function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
-    if (!resourceRegistryPath || !resourceRegistrySecret) fail("release gate ownership registry credentials are required");
+function readOwnedResources(resourceRegistryPath, resourceRegistrySecret, operation) {
+    if (!resourceRegistryPath || !resourceRegistrySecret || !operationId(operation)) fail("release gate ownership registry credentials and operation namespace are required");
     if (!existsSync(resourceRegistryPath)) fail("release gate ownership registry is missing");
     let contents;
     try { contents = readFileSync(resourceRegistryPath, "utf8"); } catch { fail("release gate ownership registry is unreadable"); }
@@ -227,6 +230,7 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
         try {
             const record = signedResourceRecord(JSON.parse(line), resourceRegistrySecret);
             if (!record) fail("release gate ownership registry contains an invalid or unsigned record");
+            if (record.operationId !== operation) fail("release gate ownership registry record belongs to a different operation namespace");
             if (record.action === registryAction) registryReady = true;
             else records.push(record);
         } catch (error) {
@@ -248,9 +252,9 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
  * failure, never an "empty" registry, while final drainage can report the
  * real timeout rather than a bootstrap race.
  */
-function initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret) {
-    if (!resourceRegistryPath || !resourceRegistrySecret) fail("release gate ownership registry credentials are required");
-    const record = {schemaVersion:1, action:registryAction, kind:"registry", resourceId:`registry:controller:${process.pid}`};
+function initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret, operation) {
+    if (!resourceRegistryPath || !resourceRegistrySecret || !operationId(operation)) fail("release gate ownership registry credentials and operation namespace are required");
+    const record = {schemaVersion:1, operationId:operation, action:registryAction, kind:"registry", resourceId:`registry:controller:${process.pid}`};
     const contents = Buffer.from(`${JSON.stringify({...record, signature:resourceSignature(resourceRegistrySecret, record)})}\n`, "utf8");
     let descriptor;
     try {
@@ -268,7 +272,8 @@ function initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistryS
 // here means that a campaign audit uses the same spawn-time, signed ownership
 // protocol as the release gate instead of taking an unverifiable late `ps`
 // snapshot of a browser or Studio server.
-export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret, {captureIntervalMs = 10} = {}) {
+export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret, {operationId:operation, captureIntervalMs = 10} = {}) {
+    if (!operationId(operation)) fail("release gate ownership tracker requires an authenticated operation namespace");
     if (!Number.isSafeInteger(captureIntervalMs) || captureIntervalMs < 10 || captureIntervalMs > 5_000) fail("release gate ownership tracker capture interval is invalid");
     const ownedProcesses = new Map();
     const ownedResources = new Map();
@@ -300,7 +305,7 @@ export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRe
             }
         }
         let records;
-        try { records = readOwnedResources(resourceRegistryPath, resourceRegistrySecret); }
+        try { records = readOwnedResources(resourceRegistryPath, resourceRegistrySecret, operation); }
         catch (error) {
             if (final) throw error;
             return;
@@ -388,7 +393,7 @@ export async function drainProcessTree(child, graceMs = 1_000, ownedProcesses = 
  * ownership is a release invariant on every exit path, including spawn error,
  * AbortSignal cancellation and timer expiry.
  */
-export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = [], resourceRegistryPath, resourceRegistrySecret = randomBytes(32).toString("hex")} = {}) {
+export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = [], resourceRegistryPath, resourceRegistrySecret = randomBytes(32).toString("hex"), operationId:requestedOperationId = randomBytes(16).toString("hex")} = {}) {
     const startedAt = now();
     let child;
     let timedOut = false;
@@ -405,9 +410,9 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         // This must happen before spawn: a child that cannot be recorded is
         // not allowed to begin, including the timeout path where its preload
         // has not yet had a chance to write its own sentinel.
-        initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret);
-        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, NODE_OPTIONS:nodeOptions}});
-        tracker = createPc20OwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
+        initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret, requestedOperationId);
+        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, POKIE_PC20_OPERATION_ID:requestedOperationId, NODE_OPTIONS:nodeOptions}});
+        tracker = createPc20OwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret, {operationId:requestedOperationId});
         for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.rememberProcess(processId);
         child.stdout?.on("data", (chunk) => { output += chunk; });
         child.stderr?.on("data", (chunk) => { errorOutput += chunk; });
@@ -426,12 +431,13 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         clearTimeout(timeout);
         if (abort) signal?.removeEventListener("abort", abort);
         try { tracker?.capture({final:true}); }
-        catch (error) { failure = error; }
+        catch (error) { failure ??= error; }
         tracker?.stop();
         drainage = await drainProcessTree(child, 1_000, tracker?.ownedProcesses, tracker?.ownedResources);
-        if (!drainage.processGroupDrained || !drainage.processTreeDrained || !drainage.resourcesDrained) failure = new Error("release gate owned resources could not be drained");
+        if (!drainage.processGroupDrained || !drainage.processTreeDrained || !drainage.resourcesDrained) failure ??= new Error("release gate owned resources could not be drained");
     }
-    const result = {command:`${command} ${args.join(" ")}`, startedAt, endedAt:now(), exitCode, timedOut, cancelled, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, resourcesDrained:drainage.resourcesDrained, ownedProcessIds:drainage.ownedProcessIds, ownedProcessIdentities:drainage.ownedProcessIdentities, ownedResources:drainage.ownedResources, stdout:output, stderr:errorOutput};
+    const terminalCondition = timedOut ? "timeout" : cancelled ? "cancelled" : spawnError ? "spawn-failure" : exitCode === 0 ? "success" : "exit-failure";
+    const result = {command:`${command} ${args.join(" ")}`, operationId:requestedOperationId, startedAt, endedAt:now(), exitCode, timedOut, cancelled, terminalCondition, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, resourcesDrained:drainage.resourcesDrained, ownedProcessIds:drainage.ownedProcessIds, ownedProcessIdentities:drainage.ownedProcessIdentities, ownedResources:drainage.ownedResources, stdout:output, stderr:errorOutput};
     if (!failure && timedOut) failure = new Error("release gate timed out after its process tree was drained");
     if (!failure && cancelled) failure = new Error("release gate was cancelled after its process tree was drained");
     if (!failure && exitCode !== 0) failure = new Error(`release gate failed with exit code ${exitCode}`);

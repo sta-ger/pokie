@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
-import {prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {p805ControllerArtifactPath, prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
@@ -71,6 +71,14 @@ test("controller publishes distinct phase commands and refuses missing phase pay
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     for (const phase of ["initial-audit", "prepare-freeze", "freeze", "post-fix", "retest", "prepare-closeout", "closeout"]) {
         assert.throws(() => execFileSync(process.execPath, [controller, phase], {encoding:"utf8", stdio:"pipe"}), (error) => /usage/i.test(String(error.stderr)));
+    }
+});
+
+test("controller restricts every checkpoint receipt to its one canonical operation root", () => {
+    const root = path.join(os.tmpdir(), "pokie-p8-05-canonical-operation-root");
+    assert.equal(p805ControllerArtifactPath(root, "initial/mathematician/checkpoints/001.json", "checkpoint"), path.join(root, "initial/mathematician/checkpoints/001.json"));
+    for (const receipt of ["../checkpoint.json", "initial/../checkpoint.json", "/tmp/checkpoint.json", ""]) {
+        assert.throws(() => p805ControllerArtifactPath(root, receipt, "checkpoint"), /canonical|escapes/i);
     }
 });
 
