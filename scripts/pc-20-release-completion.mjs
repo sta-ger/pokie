@@ -238,6 +238,32 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
     return records;
 }
 
+/**
+ * Establish the authenticated registry before a child is allowed to start.
+ *
+ * The preload writes the same sentinel for descendants, but a short timeout
+ * can legitimately drain the root before Node has evaluated that preload.
+ * Creating the parent-owned sentinel synchronously keeps timeout and spawn
+ * failure on the same ownership boundary: a missing registry is still a
+ * failure, never an "empty" registry, while final drainage can report the
+ * real timeout rather than a bootstrap race.
+ */
+function initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret) {
+    if (!resourceRegistryPath || !resourceRegistrySecret) fail("release gate ownership registry credentials are required");
+    const record = {schemaVersion:1, action:registryAction, kind:"registry", resourceId:`registry:controller:${process.pid}`};
+    const contents = Buffer.from(`${JSON.stringify({...record, signature:resourceSignature(resourceRegistrySecret, record)})}\n`, "utf8");
+    let descriptor;
+    try {
+        descriptor = openSync(resourceRegistryPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+        if (writeSync(descriptor, contents) !== contents.length) fail("could not initialize the release gate ownership registry");
+    } catch (error) {
+        if (error instanceof Error && error.message.startsWith("PC-20 release completion is invalid:")) throw error;
+        fail(`could not initialize the release gate ownership registry: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+        if (descriptor !== undefined) closeSync(descriptor);
+    }
+}
+
 // This is also used by the P8-05 packed-browser runner.  Keeping the tracker
 // here means that a campaign audit uses the same spawn-time, signed ownership
 // protocol as the release gate instead of taking an unverifiable late `ps`
@@ -376,6 +402,10 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         const ownershipHook = path.join(repositoryRoot, "scripts", "pc-20-resource-ownership-hook.cjs");
         const nodeOptions = [env.NODE_OPTIONS, resourceRegistryPath ? `--require=${ownershipHook}` : ""].filter(Boolean).join(" ");
         if (!resourceRegistryPath) fail("release gate ownership registry path is required");
+        // This must happen before spawn: a child that cannot be recorded is
+        // not allowed to begin, including the timeout path where its preload
+        // has not yet had a chance to write its own sentinel.
+        initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret);
         child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, NODE_OPTIONS:nodeOptions}});
         tracker = createPc20OwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
         for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.rememberProcess(processId);
