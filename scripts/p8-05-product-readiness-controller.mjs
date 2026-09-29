@@ -145,12 +145,30 @@ export const p805ControllerArtifactPath = (directory, name, label) => {
     if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) fail(`${label} escapes the controller-owned immutable operation root`);
     return target;
 };
-async function immutableArtifact(directory, name, expectedSha256, label) {
+/**
+ * Read one controller-owned artifact without letting a child substitute an
+ * intermediate symlinked directory for the operation namespace.  The packed
+ * worker can name only a lexical child of `directory`; every component is
+ * then re-read from that one root before its bytes become aggregate input.
+ */
+export async function readP805ControllerImmutableArtifact(directory, name, expectedSha256, label) {
     if (!sha(expectedSha256)) fail(`${label} is missing its immutable digest`);
     let contents, value, metadata;
-    try { const target = p805ControllerArtifactPath(directory, name, label); [contents, metadata] = await Promise.all([readFile(target, "utf8"), lstat(target)]); value = JSON.parse(contents); }
+    try {
+        const root = path.resolve(directory), target = p805ControllerArtifactPath(root, name, label), components = path.relative(root, target).split(path.sep);
+        let current = root;
+        const rootMetadata = await lstat(root);
+        if (rootMetadata.isSymbolicLink() || !rootMetadata.isDirectory()) fail(`${label} controller-owned immutable operation root is not a regular directory`);
+        for (const component of components) {
+            current = path.join(current, component);
+            metadata = await lstat(current);
+            if (metadata.isSymbolicLink() || (current !== target && !metadata.isDirectory())) fail(`${label} is not a regular artifact in the controller-owned immutable operation root`);
+        }
+        if (!metadata?.isFile()) fail(`${label} is not a regular artifact in the controller-owned immutable operation root`);
+        contents = await readFile(target, "utf8");
+        value = JSON.parse(contents);
+    }
     catch { fail(`${label} does not exist as immutable JSON`); }
-    if (metadata.isSymbolicLink() || !metadata.isFile()) fail(`${label} is not a regular artifact in the controller-owned immutable operation root`);
     if (digest(contents) !== expectedSha256) fail(`${label} digest differs from its parent packed ledger`);
     return {contents, value};
 }
@@ -193,14 +211,14 @@ async function reReadP805PackedTupleAudits(directory, ledger, phase, candidateVa
     const audits = [];
     for (const [index, child] of ledger.children.entries()) {
         const accepted = ledger.acceptedReceipts[index], tuple = child.tuple;
-        const auditArtifact = await immutableArtifact(directory, child.auditPath, child.auditSha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} audit`);
-        const tupleArtifact = await immutableArtifact(directory, child.tupleReceiptPath, child.tupleReceiptSha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} tuple receipt`);
-        const cleanupArtifact = await immutableArtifact(directory, child.cleanupPath, child.cleanupSha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} cleanup receipt`);
+        const auditArtifact = await readP805ControllerImmutableArtifact(directory, child.auditPath, child.auditSha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} audit`);
+        const tupleArtifact = await readP805ControllerImmutableArtifact(directory, child.tupleReceiptPath, child.tupleReceiptSha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} tuple receipt`);
+        const cleanupArtifact = await readP805ControllerImmutableArtifact(directory, child.cleanupPath, child.cleanupSha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} cleanup receipt`);
         const audit = auditArtifact.value, tupleReceipt = tupleArtifact.value, cleanup = cleanupArtifact.value, action = audit?.rendered?.actions?.[0], checkpoint = audit?.checkpointReceipts?.[0];
         validateP805RenderedPersonaAudit(audit);
         const actionSha256 = digest(JSON.stringify(action));
         if (audit?.phase !== phase || audit?.candidateId !== candidateValue.candidateId || audit?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || audit?.packageIdentity?.declaredCandidateExecutableSha256 !== candidateValue.candidateExecutableSha256 || JSON.stringify(audit?.tuple) !== JSON.stringify(tuple) || audit?.auditId !== accepted?.receipt?.auditId || audit?.worker?.pid !== child.worker?.pid || audit?.checkpointReceipts?.length !== 1 || audit?.rendered?.actions?.length !== 1 || JSON.stringify(tupleReceipt) !== JSON.stringify(accepted?.receipt) || JSON.stringify(cleanup) !== JSON.stringify(accepted?.cleanup) || JSON.stringify(tupleReceipt?.action) !== JSON.stringify(action) || checkpoint?.actionSha256 !== actionSha256 || tupleReceipt?.checkpointReceipt?.actionSha256 !== actionSha256 || tupleReceipt?.checkpointReceipt?.sha256 !== checkpoint?.sha256 || child?.checkpointReceiptSha256s?.[0] !== checkpoint?.sha256 || tupleReceipt?.cleanupEvidenceId !== cleanup?.cleanupEvidenceId || audit?.cleanup?.evidenceId !== cleanup?.cleanupEvidenceId || tupleReceipt?.cleanupSha256 !== digest(cleanupArtifact.contents) || child?.cleanupSha256 !== digest(cleanupArtifact.contents)) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} controller re-read found substituted rendered action, terminal, or cleanup evidence`);
-        const checkpointArtifact = await immutableArtifact(directory, checkpoint?.path, checkpoint?.sha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} checkpoint receipt`);
+        const checkpointArtifact = await readP805ControllerImmutableArtifact(directory, checkpoint?.path, checkpoint?.sha256, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} checkpoint receipt`);
         if (checkpointArtifact.value?.kind !== "p8-05-packed-workflow-checkpoint" || checkpointArtifact.value?.status !== "passed" || checkpointArtifact.value?.phase !== phase || checkpointArtifact.value?.auditId !== audit.auditId || checkpointArtifact.value?.worker?.pid !== child.worker?.pid || checkpointArtifact.value?.candidateId !== candidateValue.candidateId || checkpointArtifact.value?.candidatePackageSha256 !== candidateValue.candidatePackageSha256 || checkpointArtifact.value?.persona !== tuple.persona || checkpointArtifact.value?.observation !== tuple.observation || checkpointArtifact.value?.viewport !== tuple.viewport || JSON.stringify(checkpointArtifact.value?.action) !== JSON.stringify(action)) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} controller checkpoint does not bind its rendered action`);
         audits.push(audit);
     }

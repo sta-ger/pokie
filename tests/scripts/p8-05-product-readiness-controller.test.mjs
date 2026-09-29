@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdtemp, readFile, rm, symlink, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
-import {p805ControllerArtifactPath, prepareP805Freeze, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {p805ControllerArtifactPath, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
@@ -80,6 +80,24 @@ test("controller restricts every checkpoint receipt to its one canonical operati
     for (const receipt of ["../checkpoint.json", "initial/../checkpoint.json", "/tmp/checkpoint.json", ""]) {
         assert.throws(() => p805ControllerArtifactPath(root, receipt, "checkpoint"), /canonical|escapes/i);
     }
+});
+
+test("controller re-reads only regular checkpoint bytes from its canonical operation root", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-immutable-operation-root-"));
+    const external = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-substituted-operation-root-"));
+    const substitutedRoot = `${root}-substituted`;
+    const contents = `${JSON.stringify({kind:"checkpoint", candidateId:initial.candidateId})}\n`, sha256 = createHash("sha256").update(contents).digest("hex");
+    try {
+        await writeFile(path.join(root, "checkpoint.json"), contents);
+        assert.deepEqual(await readP805ControllerImmutableArtifact(root, "checkpoint.json", sha256, "checkpoint"), {contents, value:{kind:"checkpoint", candidateId:initial.candidateId}});
+        await writeFile(path.join(external, "checkpoint.json"), contents);
+        await symlink(external, path.join(root, "substituted"));
+        await assert.rejects(() => readP805ControllerImmutableArtifact(root, "substituted/checkpoint.json", sha256, "checkpoint"), /does not exist as immutable JSON/i);
+        await symlink(root, substitutedRoot);
+        await assert.rejects(() => readP805ControllerImmutableArtifact(substitutedRoot, "checkpoint.json", sha256, "checkpoint"), /does not exist as immutable JSON/i);
+        await assert.rejects(() => readP805ControllerImmutableArtifact(root, "missing.json", sha256, "checkpoint"), /does not exist as immutable JSON/i);
+        await assert.rejects(() => readP805ControllerImmutableArtifact(root, "checkpoint.json", "f".repeat(64), "checkpoint"), /digest differs/i);
+    } finally { await Promise.all([rm(substitutedRoot, {force:true}), rm(root, {recursive:true, force:true}), rm(external, {recursive:true, force:true})]); }
 });
 
 test("controller does not expose an injected audit runner seam", async () => {

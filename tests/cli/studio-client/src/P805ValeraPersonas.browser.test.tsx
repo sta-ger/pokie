@@ -1,6 +1,6 @@
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {chmod, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
+import {chmod, lstat, mkdtemp, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 
@@ -48,6 +48,27 @@ describe("P8-05 rendered Valera persona evidence", () => {
         const candidateDirectory = await mkdtemp(path.join(tmpdir(), "p8-05-packed-candidate-"));
         const output = await mkdtemp(path.join(tmpdir(), "p8-05-real-runner-"));
         try {
+            // The controller reads tuple artifacts from this one operation
+            // root.  Keep the final public proof honest about that boundary:
+            // a lexical escape or a symlinked checkpoint cannot stand in for
+            // a byte-for-byte receipt produced by the packed worker.
+            const readOperationArtifact = async (relativePath: string): Promise<Buffer> => {
+                expect(path.isAbsolute(relativePath)).toBe(false);
+                expect(path.normalize(relativePath)).toBe(relativePath);
+                const target = path.resolve(output, relativePath);
+                expect(path.relative(output, target)).not.toMatch(/^(?:\.\.(?:[\\/]|$)|$)/);
+                const rootMetadata = await lstat(output);
+                expect(rootMetadata.isDirectory()).toBe(true);
+                expect(rootMetadata.isSymbolicLink()).toBe(false);
+                let current = output;
+                for (const component of relativePath.split(path.sep)) {
+                    current = path.join(current, component);
+                    const metadata = await lstat(current);
+                    expect(metadata.isSymbolicLink()).toBe(false);
+                    expect(current === target ? metadata.isFile() : metadata.isDirectory()).toBe(true);
+                }
+                return readFile(target);
+            };
             // The package test is the browser-bundle boundary: refresh the
             // candidate's Studio assets before packing so this cannot exercise
             // a stale checked-in dist directory while asserting source-only
@@ -104,7 +125,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(audit.cleanup).toEqual(expect.objectContaining({processTreeDrained: true, resourcesDrained: true, contextRemoved: true}));
             const checkpointSlots = new Set<string>();
             for (const checkpointReceipt of audit.checkpointReceipts as Array<{receiptId: string; path: string; sha256: string; candidateId: string; candidatePackageSha256: string; workerPid: number; workerNonce: string; persona: string; observation: string; viewport: string; actionSha256: string}>) {
-                const contents = await readFile(path.join(output, checkpointReceipt.path));
+                const contents = await readOperationArtifact(checkpointReceipt.path);
                 const checkpoint = JSON.parse(contents.toString("utf8"));
                 const action = audit.rendered.actions.find((candidate: {persona: string; observation: string; viewport: string}) => candidate.persona === checkpointReceipt.persona && candidate.observation === checkpointReceipt.observation && candidate.viewport === checkpointReceipt.viewport);
                 expect(checkpointSlots.has(`${checkpointReceipt.persona}/${checkpointReceipt.observation}/${checkpointReceipt.viewport}`)).toBe(false);
@@ -280,8 +301,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
             expect(audit.cleanup).toEqual(expect.objectContaining({processTreeDrained: true, resourcesDrained: true, contextRemoved: true}));
             expect(audit.evidence.some((item: {kind: string}) => item.kind === "screenshot")).toBe(true);
             const aggregatePath = path.join(output, "initial-process-isolated-packed-proof.json");
-            const aggregate = JSON.parse(await readFile(aggregatePath, "utf8"));
-            const controllerProof = JSON.parse(await readFile(path.join(output, "initial-controller-machine-proof.json"), "utf8"));
+            const aggregate = JSON.parse((await readOperationArtifact(path.basename(aggregatePath))).toString("utf8"));
+            const controllerProof = JSON.parse((await readOperationArtifact("initial-controller-machine-proof.json")).toString("utf8"));
             const requiredObservations: Record<string, string[]> = {
                 mathematician: ["blueprint", "par-xlsx-round-trip", "reels-paytable-modes-mechanics", "simulation-success-failure-cancellation", "simulation-rtp-volatility-features", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "certification-conditional", "fairness-conditional", "build-export-output-folder", "import-export-defaults"],
                 programmer: ["packed-install", "npx-pokie", "recursive-help", "create-build-inspect", "validate-sim-report-diff-replay-serve-wasm", "spaces-invalid-inputs-exit-codes-ci-recovery", "build-export-output-folder"],
@@ -311,6 +332,19 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 tuples: expectedTuples,
                 audits: {count: 5, personas, ids: expect.arrayContaining([expect.any(String)]), tupleReceiptAuditIds: expect.arrayContaining([expect.any(String)])},
             }));
+            expect(controllerProof.audits.tupleEvidence).toEqual(aggregate.children.map((child: {tuple: unknown; auditPath: string; auditSha256: string; tupleReceiptPath: string; tupleReceiptSha256: string; cleanupPath: string; cleanupSha256: string; checkpointReceiptSha256s: string[]; cleanupEvidenceId: string}, index: number) => ({
+                tuple: child.tuple,
+                auditId: aggregate.acceptedReceipts[index].receipt.auditId,
+                auditPath: child.auditPath,
+                auditSha256: child.auditSha256,
+                tupleReceiptPath: child.tupleReceiptPath,
+                tupleReceiptSha256: child.tupleReceiptSha256,
+                cleanupPath: child.cleanupPath,
+                cleanupSha256: child.cleanupSha256,
+                checkpointReceiptSha256: child.checkpointReceiptSha256s[0],
+                actionSha256: aggregate.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256,
+                cleanupEvidenceId: child.cleanupEvidenceId,
+            })));
             const retryReceipts = controllerProof.audits.retryTerminalEvidence as Array<{operation: string; controlId: string; stateClass: string; activation: {capturedControlId: string; preDispatchFocus: {controlId: string; native: boolean}; hitTest: {capturedControlId: string; matchesCapturedControl: boolean}; dispatch: {kind: string; pressed: boolean; released: boolean; focus: {controlId: string; native: boolean; targetMatchesCapturedControl: boolean}}}; request: {browserRequestId: string; method: string; path: string}; terminal: {jobId: string; status: string; causedByRequestId: string}; rendered: {resultControlId: string; resultOperation: string; resultStateClass: string; resultReceipt: string; resultJobId: string; resultTerminal: string; renderedTerminal: boolean}}>;
             expect(retryReceipts).toHaveLength(12);
             expect(retryReceipts.every((receipt) => receipt.operation === "simulation-retry" && receipt.controlId === "simulation-retry" && receipt.stateClass === "recovery-operation" && receipt.activation.capturedControlId === receipt.controlId && receipt.activation.preDispatchFocus.controlId === receipt.controlId && receipt.activation.preDispatchFocus.native && receipt.activation.hitTest.capturedControlId === receipt.controlId && receipt.activation.hitTest.matchesCapturedControl && receipt.activation.dispatch.kind === "native-pointer" && receipt.activation.dispatch.pressed && receipt.activation.dispatch.released && receipt.activation.dispatch.focus.controlId === receipt.controlId && receipt.activation.dispatch.focus.native && receipt.activation.dispatch.focus.targetMatchesCapturedControl && receipt.request.method === "POST" && receipt.request.path === "/api/project/simulations" && Boolean(receipt.request.browserRequestId) && receipt.terminal.status === "completed" && Boolean(receipt.terminal.jobId) && receipt.terminal.causedByRequestId === receipt.request.browserRequestId && receipt.rendered.resultControlId === receipt.controlId && receipt.rendered.resultOperation === receipt.operation && receipt.rendered.resultStateClass === receipt.stateClass && receipt.rendered.resultReceipt === "durable-terminal" && receipt.rendered.resultJobId === receipt.terminal.jobId && receipt.rendered.resultTerminal === receipt.terminal.status && receipt.rendered.renderedTerminal)).toBe(true);
@@ -346,7 +380,8 @@ describe("P8-05 rendered Valera persona evidence", () => {
             const immutableArtifacts = new Set<string>();
             for (const [index, child] of (aggregate.children as Array<{tuple: {persona: string; observation: string; viewport: string}; auditSha256: string; tupleReceiptPath: string; tupleReceiptSha256: string; cleanupPath: string; cleanupSha256: string; checkpointReceiptSha256s: string[]; cleanupEvidenceId: string}>).entries()) {
                 const accepted = aggregate.acceptedReceipts[index] as {receipt: {auditId: string; tuple: unknown; cleanupEvidenceId: string; cleanupSha256: string; checkpointReceipt: {actionSha256: string}}; cleanup: {cleanupEvidenceId: string; cleanup: {exit: string; processTreeDrained: boolean; resourcesDrained: boolean; contextRemoved: boolean}}};
-                const [tupleReceiptBytes, cleanupBytes, auditBytes] = await Promise.all([readFile(path.join(output, child.tupleReceiptPath)), readFile(path.join(output, child.cleanupPath)), readFile(path.join(output, `initial-${child.tuple.persona}--${child.tuple.observation.replaceAll(/[^a-z0-9]+/gi, "-")}--${child.tuple.viewport}-audit.json`))]);
+                const auditPath = `initial-${child.tuple.persona}--${child.tuple.observation.replaceAll(/[^a-z0-9]+/gi, "-")}--${child.tuple.viewport}-audit.json`;
+                const [tupleReceiptBytes, cleanupBytes, auditBytes] = await Promise.all([readOperationArtifact(child.tupleReceiptPath), readOperationArtifact(child.cleanupPath), readOperationArtifact(auditPath)]);
                 const tupleReceipt = JSON.parse(tupleReceiptBytes.toString("utf8"));
                 const cleanup = JSON.parse(cleanupBytes.toString("utf8"));
                 expect(createHash("sha256").update(tupleReceiptBytes).digest("hex")).toBe(child.tupleReceiptSha256);
@@ -358,8 +393,19 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(accepted.receipt.cleanupSha256).toBe(child.cleanupSha256);
                 expect(accepted.cleanup.cleanupEvidenceId).toBe(child.cleanupEvidenceId);
                 expect(accepted.receipt.checkpointReceipt.actionSha256).toEqual(expect.any(String));
-                const audit = JSON.parse(auditBytes.toString("utf8")) as {packageIdentity: {sharedRuntimeReceiptSha256: string; sharedRuntimeRoot: string}; workflowScope: {bootstrap: Array<{kind: string; purpose: string; publicWorkflow: string; output?: string; evidenceId: string}>}; evidence: Array<{kind: string; path: string}>};
+                const audit = JSON.parse(auditBytes.toString("utf8")) as {auditId: string; candidateId: string; candidatePackageSha256: string; worker: {pid: number}; rendered: {actions: unknown[]}; checkpointReceipts: Array<{path: string; sha256: string; actionSha256: string}>; cleanup: {evidenceId: string}; packageIdentity: {sharedRuntimeReceiptSha256: string; sharedRuntimeRoot: string}; workflowScope: {bootstrap: Array<{kind: string; purpose: string; publicWorkflow: string; output?: string; evidenceId: string}>}; evidence: Array<{kind: string; path: string}>};
                 expect(audit.packageIdentity).toEqual(expect.objectContaining({sharedRuntimeReceiptSha256: aggregate.runtime.receiptSha256, sharedRuntimeRoot: runtimeReceipt.runtimeRoot}));
+                expect(audit.candidateId).toBe(candidate);
+                expect(audit.candidatePackageSha256).toBe(packageSha256);
+                expect(audit.checkpointReceipts).toHaveLength(1);
+                const checkpointReceipt = audit.checkpointReceipts[0];
+                expect(checkpointReceipt.sha256).toBe(child.checkpointReceiptSha256s[0]);
+                const checkpointBytes = await readOperationArtifact(checkpointReceipt.path);
+                const checkpoint = JSON.parse(checkpointBytes.toString("utf8"));
+                expect(createHash("sha256").update(checkpointBytes).digest("hex")).toBe(checkpointReceipt.sha256);
+                expect(checkpoint).toEqual(expect.objectContaining({auditId: audit.auditId, candidateId: candidate, candidatePackageSha256: packageSha256, worker: audit.worker, action: audit.rendered.actions[0]}));
+                expect(createHash("sha256").update(JSON.stringify(audit.rendered.actions[0])).digest("hex")).toBe(checkpointReceipt.actionSha256);
+                expect(tupleReceipt).toEqual(expect.objectContaining({auditId: audit.auditId, candidateId: candidate, candidatePackageSha256: packageSha256, action: audit.rendered.actions[0], cleanupEvidenceId: audit.cleanup.evidenceId}));
                 const bootstrap = audit.workflowScope.bootstrap.map(({evidenceId: _evidenceId, ...entry}) => entry);
                 const sourcePurpose = child.tuple.observation === "fairness-conditional" ? "fairness-source" : "certification-source";
                 const expectedBootstrap = [
