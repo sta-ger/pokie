@@ -1,12 +1,14 @@
 import {Button, Group, Text} from "@mantine/core";
 
 export function BoundedListPager({
+    idPrefix,
     itemLabel,
     itemCount,
     page,
     pageSize,
     onPageChange,
 }: {
+    idPrefix?: string;
     itemLabel: string;
     itemCount: number;
     page: number;
@@ -24,6 +26,7 @@ export function BoundedListPager({
                 Showing {itemLabel} {start + 1}–{lastVisible} of {itemCount}.
             </Text>
             <Button
+                id={idPrefix === undefined ? undefined : `${idPrefix}-previous`}
                 size="xs"
                 variant="default"
                 disabled={!previousAvailable}
@@ -33,6 +36,7 @@ export function BoundedListPager({
                 Previous {pageSize} {itemLabel}
             </Button>
             <Button
+                id={idPrefix === undefined ? undefined : `${idPrefix}-next`}
                 size="xs"
                 variant="default"
                 disabled={!nextAvailable}

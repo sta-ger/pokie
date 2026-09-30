@@ -8,6 +8,7 @@ import {tmpdir} from "node:os";
 import {createServer} from "node:net";
 import path from "node:path";
 import process from "node:process";
+import {isDeepStrictEqual} from "node:util";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS, P805_SCREEN_CONTROL_STATES, P805_WORKFLOW_CONTRACTS, p805TransactionStateClass} from "./p8-05-product-readiness-campaign.mjs";
@@ -1749,6 +1750,120 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (typeof route !== "string" || !/^#\/project(?:\/[^/]+){1,2}$/.test(route)) fail(`${observation} did not open a project-scoped imported route`);
             return route.replace(/\/[^/]+$/, "");
         };
+        const runBoundedReelEditorWorkflow = async (viewport, observation) => {
+            // A file fixture is input to the public import flow, never a substitute for a rendered
+            // edit/save request. Its owning tuple workspace and processes use the existing cleanup.
+            const fixture = JSON.parse(await services.readFile(blueprint, "utf8"));
+            const symbols = fixture.symbols;
+            if (!Array.isArray(symbols) || symbols.length < 2) fail("bounded modeler fixture needs two canonical symbols");
+            fixture.manifest = {...fixture.manifest, id:"bounded-reel-editor", name:"Bounded Reel Editor"};
+            fixture.reels = 6;
+            fixture.paylines = [Array(6).fill(0)];
+            fixture.winModel = {type:"lines"};
+            delete fixture.symbolWeights;
+            delete fixture.reelStrips;
+            fixture.reelStripGeneration = Array.from({length:6}, (_, reel) => ({type:"literal", strip:Array.from({length:reel === 0 ? 1 : reel === 1 ? 101 : 300}, (_, stop) => symbols[(reel + stop) % symbols.length])}));
+            const fixturePath = path.join(context.workspace, "Bounded reel editor.json");
+            await services.writeFile(fixturePath, JSON.stringify(fixture));
+            await runPackedCli("packed CLI bounded modeler validate", ["validate", fixturePath]);
+            await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[viewport], deviceScaleFactor:1});
+            const projectBaseRoute = await openImportedProject(fixturePath, observation);
+            await navigateProjectTab(projectBaseRoute, "gameModel", observation);
+            const startedAt = Date.now(), interactions = [];
+            const activate = async (id) => {
+                const control = await waitFor(() => focusRenderedControl("button", `(item) => item.id === ${JSON.stringify(id)}`), `${observation} ${id}`);
+                const cursor = cdp.events.length;
+                const activation = await activateFocusedControl("operation", control);
+                interactions.push({control, activation, browserEventCursor:cursor});
+                return cursor;
+            };
+            const inspect = async (reel, first, last, count, pager) => waitFor(() => evaluate(`(() => {
+                const inputs = [...document.querySelectorAll('input[aria-label]')].filter((item) => /^Reel [0-9]+ symbol [0-9]+$/.test(item.getAttribute('aria-label') || ''));
+                const first = document.getElementById('reel-modeler-${reel}-symbol-${first}');
+                const last = document.getElementById('reel-modeler-${reel}-symbol-${last}');
+                const next = document.getElementById('reel-modeler-${reel}-symbols-next');
+                if (inputs.length !== ${count} || !(first instanceof HTMLInputElement) || !(last instanceof HTMLInputElement) || ${pager ? "!(next instanceof HTMLButtonElement)" : "next !== null"}) return false;
+                return {reel:${reel}, first:${first}, last:${last}, mountedSymbolCount:inputs.length, firstValue:first.value, lastValue:last.value, pager:${pager}, nextDisabled:next instanceof HTMLButtonElement ? next.disabled : null};
+            })()`), `${observation} bounded reel ${reel} symbols ${first}–${last}`);
+            const screenshot = async (name) => {
+                const image = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false});
+                return save("screenshot", `bounded-reel-${viewport}-${name}.png`, Buffer.from(image.data, "base64"), [observation]);
+            };
+            await activate("game-model-reels-edit");
+            await activate("reel-modeler-select-6");
+            const initial = await inspect(6, 1, 100, 100, true);
+            await activate("reel-modeler-6-symbols-next");
+            await inspect(6, 101, 200, 100, true);
+            await activate("reel-modeler-6-symbols-next");
+            const finalPage = await inspect(6, 201, 300, 100, true);
+            if (!finalPage.nextDisabled) fail("Reel 6 last page did not disable forward paging");
+            const finalPageScreenshotEvidenceId = await screenshot("last-page");
+            await activate("reel-modeler-select");
+            await activate("reel-modeler-select-1");
+            const shortReel = await inspect(1, 1, 1, 1, false);
+            await activate("reel-modeler-select");
+            await activate("reel-modeler-select-2");
+            await activate("reel-modeler-2-symbols-next");
+            await inspect(2, 101, 101, 1, true);
+            await activate("reel-modeler-2-symbol-101-remove");
+            const clamped = await inspect(2, 1, 100, 100, false);
+            const clampedScreenshotEvidenceId = await screenshot("clamped-page");
+            await activate("reel-modeler-done");
+            await activate("reel-modeler-apply");
+            await activate("reel-modeler-select");
+            await activate("reel-modeler-select-6");
+            await activate("reel-modeler-6-symbols-next");
+            await activate("reel-modeler-6-symbols-next");
+            const replacement = symbols.find((symbol) => symbol !== finalPage.lastValue);
+            const edited = await evaluate(`(() => {
+                const item = document.getElementById('reel-modeler-6-symbol-300');
+                if (!(item instanceof HTMLInputElement) || item.disabled) return false;
+                item.focus();
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(item, ${JSON.stringify(replacement)});
+                item.dispatchEvent(new Event('input', {bubbles:true}));
+                item.dispatchEvent(new Event('change', {bubbles:true}));
+                return {controlId:item.id, accessibleName:item.getAttribute('aria-label'), value:item.value, nativeFocus:document.activeElement === item};
+            })()`);
+            if (!edited?.nativeFocus || edited.value !== replacement) fail("bounded modeler did not edit its rendered final symbol");
+            // The next native pointer blurs the field, committing through the actual buffered input.
+            await activate("reel-modeler-done");
+            await activate("reel-modeler-apply");
+            const saveCursor = await activate("game-model-reels-save");
+            const response = async (pathname) => {
+                const request = await waitFor(() => cdp.events.slice(saveCursor).find((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === pathname && event.params.request.method === "POST"), `${observation} ${pathname} request`);
+                const responses = cdp.events.slice(saveCursor).filter((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === pathname && event.params.request.method === "POST");
+                if (responses.length !== 1) fail(`${observation} must submit ${pathname} exactly once`);
+                const received = await waitFor(() => cdp.events.slice(saveCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === request.params.requestId), `${observation} ${pathname} response`);
+                const payload = JSON.parse((await readBrowserResponseBody(request.params.requestId, observation)).body);
+                if (received.params.response.status !== 200 || payload.status !== "ok") fail(`${observation} ${pathname} did not reach a successful terminal`);
+                const submitted = request.params.request.postData ?? (await cdp.send("Network.getRequestPostData", {requestId:request.params.requestId})).postData;
+                const receipt = {browserRequestId:request.params.requestId, causedByControlId:"game-model-reels-save", requestCount:1, path:pathname, method:"POST", status:received.params.response.status, terminal:payload.status, payload, submitted:JSON.parse(submitted), resultSha256:digest(JSON.stringify(payload))};
+                api.push({observation, ...receipt, initiator:"rendered-control"});
+                return receipt;
+            };
+            const validation = await response("/api/home/blueprints/validate");
+            const saved = await response("/api/home/blueprints/save");
+            const expected = JSON.parse(JSON.stringify(fixture));
+            expected.reelStripGeneration[1].strip.pop();
+            expected.reelStripGeneration[5].strip[299] = replacement;
+            if (!isDeepStrictEqual(validation.submitted.blueprint, expected) || !isDeepStrictEqual(saved.submitted.blueprint, expected)) fail("bounded modeler validation/save lost its absolute-position edit or clamped removal");
+            if (saved.submitted.path !== fixturePath || saved.submitted.overwrite !== true) fail("bounded modeler saved a different source or did not retain its atomic overwrite contract");
+            const artifact = JSON.parse(await services.readFile(fixturePath, "utf8"));
+            if (!isDeepStrictEqual(artifact, expected)) fail("bounded modeler saved artifact differs from its DOM-driven request");
+            // Reopening the saved source exercises the boundary consuming the persisted edit.
+            await activate("game-model-reels-edit");
+            await activate("reel-modeler-select-6");
+            await activate("reel-modeler-6-symbols-next");
+            await activate("reel-modeler-6-symbols-next");
+            const reopened = await inspect(6, 201, 300, 100, true);
+            if (reopened.lastValue !== replacement) fail("bounded modeler reopened a stale final symbol");
+            await activate("game-model-reels-cancel");
+            const elapsedMs = Math.max(1, Date.now() - startedAt);
+            if (elapsedMs > 60_000) fail(`bounded modeler exceeded its transaction budget: ${elapsedMs}ms`);
+            const receipt = {kind:"p8-05-bounded-reel-editor", source:"rendered-control", viewport, projectBaseRoute, initial, finalPage, shortReel, clamped, edited, interactions, validation, saved, reopened, artifact:{sha256:digest(JSON.stringify(artifact)), blueprint:artifact}, timing:{elapsedMs, budgetMs:60_000}, finalPageScreenshotEvidenceId, clampedScreenshotEvidenceId};
+            receipt.evidenceId = await save("page-state", `bounded-reel-editor-${viewport}.json`, JSON.stringify(receipt), [observation]);
+            return {projectBaseRoute, receipt};
+        };
         const screenControlStates = Object.fromEntries(Object.entries(P805_SCREEN_CONTROL_STATES).map(([screen, state]) => [screen, {
             ...state,
             async enter(projectBaseRoute, viewport, observation, contract) {
@@ -2054,6 +2169,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 renderedBootstrap = {kind:"studio-simulation-report-source", source:"rendered-control", controlId:reportSource.transaction.control.stableControlId, request:reportSource.transaction.request, terminal:{status:terminal.status, resultSha256:reportSource.transaction.terminal?.resultSha256, browserRequestId:reportSource.transaction.terminal?.browserRequestId}};
                 if (terminal.status !== "completed" || !renderedBootstrap.request?.browserRequestId || !renderedBootstrap.terminal.resultSha256) fail(`${observation} did not create its report source through a rendered Studio simulation`);
             }
+            const boundedReelEditor = observation === "reels-paytable-modes-mechanics" ? await runBoundedReelEditorWorkflow(viewport, observation) : undefined;
+            if (boundedReelEditor) projectBaseRoute = boundedReelEditor.projectBaseRoute;
             const page = await runScreenControlState(projectBaseRoute, viewport, observation, contract), focus = await evaluate(`(()=>{
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const control = document.getElementById(${JSON.stringify(page.interaction.stableControlId)});
@@ -2084,6 +2201,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`);
             if (!focus.visibleFocus || focus.namedRegions.length === 0) fail(`${observation} tuple did not retain a visible focused rendered control`);
             const action = {persona, observation, route:`${projectBaseRoute}/${contract.route}`, viewport, elapsedMs:Math.max(1, Date.now() - creation, page.elapsedMs ?? 0), pageTextLength:page.state.text.length, controlCount:page.state.controls.length, overflow:page.state.overflow, screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:{...page.state.accessibility, namedRegions:focus.namedRegions, visibleFocus:focus.visibleFocus}, expectedControl:contract.control, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedApi:contract.api, expectedArtifact:contract.artifact ?? null, expectedTerminal:contract.terminal, terminal:page.terminal, interaction:page.interaction, transaction:page.transaction, evidenceId:page.evidenceId, screenshotEvidenceId:page.screenshotEvidenceId};
+            if (boundedReelEditor) action.boundedReelEditor = boundedReelEditor.receipt;
             action.interaction.pointerActivated = page.transaction.pointerActivations.length === 1;
             action.interaction.keyboardActivated = page.transaction.keyboardActivations.length === 1;
             action.interaction.activation = page.transaction.keyboardActivations.length === 1 ? "keyboard" : "pointer";

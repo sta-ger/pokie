@@ -193,6 +193,59 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/validate")!.init!.body!).blueprint).toEqual(expected);
     });
 
+    it.each([false, true])("retains the bounded Reel 6 draft when an earlier projection refresh settles (failure=%s)", async (failedRefresh) => {
+        const user = userEvent.setup();
+        const blueprint = createLargeReelStripModelerBlueprint();
+        let projectionCalls = 0;
+        let resolveRefresh: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        let rejectRefresh: ((error: Error) => void) | undefined;
+        const routes = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url.split("?")[0] === "/api/project/gameModel" && ++projectionCalls === 2) {
+                return new Promise((resolve, reject) => {
+                    resolveRefresh = resolve;
+                    rejectRefresh = reject;
+                });
+            }
+            return routes.fetchImpl(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        await user.click(screen.getByRole("button", {name: "Refresh"}));
+        const reels = sectionFieldset("Reels");
+        await user.click(within(reels).getByRole("button", {name: "Edit"}));
+        await user.click(await within(reels).findByRole("button", {name: "Select reel 6"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        const lastSymbol = within(reels).getByLabelText("Reel 6 symbol 300");
+        await user.clear(lastSymbol);
+        await user.type(lastSymbol, "S00");
+        fireEvent.blur(lastSymbol);
+        if (failedRefresh) {
+            rejectRefresh!(new Error("projection refresh failed"));
+            await screen.findByText(/We couldn't load this game's model/);
+        } else {
+            resolveRefresh!(jsonResponse(fullProjection()));
+            await waitFor(() => expect(screen.getByRole("button", {name: "Refresh"})).not.toHaveAttribute("data-loading"));
+        }
+        expect(within(sectionFieldset("Reels")).getByLabelText("Reel 6 symbol 300")).toBe(lastSymbol);
+        expect(lastSymbol).toHaveValue("S00");
+        expect(within(reels).getAllByRole("textbox", {name: /Reel 6 symbol/})).toHaveLength(100);
+        await user.click(within(reels).getByRole("button", {name: "Apply Commit or discard"}));
+        await user.click(within(reels).getByRole("button", {name: "Apply"}));
+        await user.click(within(reels).getByRole("button", {name: "Save"}));
+        await within(sectionFieldset("Reels")).findByRole("button", {name: "Edit"});
+        const saved = JSON.parse(routes.calls.find((call) => call.url === "/api/home/blueprints/save")!.init!.body!);
+        expect(saved.blueprint.reelStripGeneration[5].strip).toHaveLength(300);
+        expect(saved.blueprint.reelStripGeneration[5].strip[299]).toBe("S00");
+    });
+
     it("preserves a pending literal preview when a pointer page change blurs an unchanged symbol", async () => {
         const user = userEvent.setup();
         const blueprint = createLargeReelStripModelerBlueprint();

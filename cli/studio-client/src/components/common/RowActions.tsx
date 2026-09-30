@@ -4,6 +4,7 @@ import {IconArrowDown, IconArrowUp, IconCopy, IconTrash} from "@tabler/icons-rea
 export type RowActionsProps = {
     // Identifies the row for its aria-labels, e.g. "symbol 2" -> "Move symbol 2 up" -- matches the
     // existing app's exact aria-label convention (see dom.ts's appendRowActions).
+    idPrefix?: string;
     itemLabel: string;
     onDuplicate?: () => void;
     onRemove: () => void;
@@ -11,7 +12,7 @@ export type RowActionsProps = {
     onMoveDown?: () => void;
 };
 
-export function RowActions({itemLabel, onDuplicate, onRemove, onMoveUp, onMoveDown}: RowActionsProps) {
+export function RowActions({idPrefix, itemLabel, onDuplicate, onRemove, onMoveUp, onMoveDown}: RowActionsProps) {
     return (
         <Group gap={4} wrap="nowrap">
             {onMoveUp && (
@@ -29,7 +30,7 @@ export function RowActions({itemLabel, onDuplicate, onRemove, onMoveUp, onMoveDo
                     <IconCopy size={16} />
                 </ActionIcon>
             )}
-            <ActionIcon variant="subtle" color="red" aria-label={`Remove ${itemLabel}`} onClick={onRemove}>
+            <ActionIcon id={idPrefix === undefined ? undefined : `${idPrefix}-remove`} variant="subtle" color="red" aria-label={`Remove ${itemLabel}`} onClick={onRemove}>
                 <IconTrash size={16} />
             </ActionIcon>
         </Group>
