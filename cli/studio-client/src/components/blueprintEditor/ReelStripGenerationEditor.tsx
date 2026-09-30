@@ -125,13 +125,13 @@ function LiteralStripEditor({reelIndex, entry, symbols, mutate, issues}: {reelIn
     const [page, setPage] = useState(0);
     const pageSize = 100;
     const lastPage = Math.max(0, Math.ceil(strip.length / pageSize) - 1);
-    // The selected reel and its local draft can both change without unmounting this editor.  Render
-    // from a valid page immediately, then keep the stored pager state in sync, so a shorter reel or
-    // a removal from the final page can never leave the symbols inaccessible behind an empty page.
+    // Clamp both the rendered window and its stored page before committing children. An effect would
+    // commit all 100 row controls again after a final-page removal, and leave the old page in state
+    // until then. A subsequent addition must start from this clamped page, not revive that old page.
     const visiblePage = Math.min(page, lastPage);
-    useEffect(() => {
-        setPage((currentPage) => Math.min(currentPage, lastPage));
-    }, [reelIndex, lastPage]);
+    if (page !== visiblePage) {
+        setPage(visiblePage);
+    }
     const firstVisiblePosition = visiblePage * pageSize;
     const visibleStrip = strip.slice(firstVisiblePosition, firstVisiblePosition + pageSize);
 
@@ -147,7 +147,13 @@ function LiteralStripEditor({reelIndex, entry, symbols, mutate, issues}: {reelIn
                                 <BufferedTextInput
                                     aria-label={`Reel ${reelIndex + 1} symbol ${position + 1}`}
                                     value={symbolId}
-                                    onCommit={(value) => mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value))}
+                                    onCommit={(value) => {
+                                        // Paging blurs the focused row. Merely inspecting it must not
+                                        // clone the draft or invalidate an in-flight Check & Preview.
+                                        if (value !== symbolId) {
+                                            mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value));
+                                        }
+                                    }}
                                 />
                                 {issueFor(issues, `strip.${position}`) && <Text c="red" size="xs">{issueFor(issues, `strip.${position}`)}</Text>}
                                 <RowActions

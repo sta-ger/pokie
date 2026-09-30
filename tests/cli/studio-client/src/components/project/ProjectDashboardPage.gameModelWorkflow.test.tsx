@@ -160,6 +160,78 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         expect(within(reels).getByRole("textbox", {name: "Reel 2 symbol 100"})).toBeInTheDocument();
     });
 
+    it("validates and saves a Reel 6 last-page edit at its absolute strip position", async () => {
+        const user = userEvent.setup();
+        const blueprint = createLargeReelStripModelerBlueprint();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const reels = sectionFieldset("Reels");
+        await user.click(within(reels).getByRole("button", {name: "Edit"}));
+        await user.click(await within(reels).findByRole("button", {name: "Select reel 6"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        const lastSymbol = within(reels).getByLabelText("Reel 6 symbol 300");
+        await user.clear(lastSymbol);
+        await user.type(lastSymbol, "S00");
+        await user.click(within(reels).getByRole("button", {name: "Apply Commit or discard"}));
+        await user.click(within(reels).getByRole("button", {name: "Apply"}));
+        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+        await user.click(within(reels).getByRole("button", {name: "Save"}));
+        await waitFor(() => expect(within(sectionFieldset("Reels")).getByRole("button", {name: "Edit"})).toBeInTheDocument());
+        const expected = JSON.parse(JSON.stringify(blueprint));
+        expected.reelStripGeneration[5].strip[299] = "S00";
+        const saveCalls = calls.filter((call) => call.url === "/api/home/blueprints/save");
+        expect(saveCalls).toHaveLength(1);
+        expect(JSON.parse(saveCalls[0].init!.body!)).toMatchObject({path: "/games/a", overwrite: true, blueprint: expected});
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/validate")!.init!.body!).blueprint).toEqual(expected);
+    });
+
+    it("preserves a pending literal preview when a pointer page change blurs an unchanged symbol", async () => {
+        const user = userEvent.setup();
+        const blueprint = createLargeReelStripModelerBlueprint();
+        const strip = Array.from({length: 101}, () => "S00");
+        blueprint.reelStripGeneration = [{type: "literal", strip}];
+        let resolvePreview: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        const routes = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: fullProjection()}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint, blueprintHash: "h1"}}),
+        });
+        const fetchImpl: FetchLike = (url, init) => url === "/api/home/blueprints/reel-strip-generation-preview"
+            ? new Promise((resolve) => {
+                resolvePreview = resolve;
+            })
+            : routes.fetchImpl(url, init);
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const reels = sectionFieldset("Reels");
+        await user.click(within(reels).getByRole("button", {name: "Edit"}));
+        await user.click(await within(reels).findByRole("button", {name: "Select reel 1"}));
+        await user.click(within(reels).getByRole("button", {name: "Check & preview"}));
+        expect(resolvePreview).toBeDefined();
+        await user.click(within(reels).getByLabelText("Reel 1 symbol 1"));
+        await user.click(within(reels).getByRole("button", {name: "Next 100 symbols"}));
+        expect(within(reels).getByText("Showing symbols 101–101 of 101.")).toBeInTheDocument();
+        expect(within(reels).getByRole("button", {name: "Check & preview"})).toBeDisabled();
+        resolvePreview!(jsonResponse({status: "ok", errors: [], warnings: [], reels: [{reelIndex: 0, type: "literal", strip}]}));
+        expect(await within(reels).findByText("Literal strip")).toBeInTheDocument();
+        await user.click(within(reels).getByRole("button", {name: "Back to Configure"}));
+        // An actual edit still invalidates that same preview.
+        const symbol = within(reels).getByLabelText("Reel 1 symbol 1");
+        await user.clear(symbol);
+        await user.type(symbol, "S01");
+        await user.click(within(reels).getByRole("button", {name: "Apply Commit or discard"}));
+        expect(within(reels).getByRole("button", {name: "Inspect diagnostics Validation"})).toBeDisabled();
+        expect(within(reels).getByRole("button", {name: "Apply"})).toBeEnabled();
+    });
+
     it("renders every section of a full projection, straight off GET /api/project/gameModel", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
