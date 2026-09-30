@@ -347,7 +347,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
     const captureKey = randomBytes(16).toString("hex");
     const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
     const removeCapture = () => evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});})()`);
-    const point = await waitFor(async () => {
+    let point = await waitFor(async () => {
         const captured = await capturePoint();
         if (captured) return captured;
         await removeCapture();
@@ -357,48 +357,77 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         await removeCapture();
         fail("rendered control lost its visible browser click target");
     }
-    // Replay Load can unmount itself while accepting the target, and
-    // a narrow NavLink can reconcile its active screen on the same
-    // press. Both need the complete native pointer state through the
-    // release so React receives the public click that owns the
-    // lifecycle transition.
-    // Scrolling a focused recovery control can move its layout
-    // without changing its native focus. Reassert that focus at the
-    // exact pointer boundary, before a successful retry is allowed
-    // to reconcile and unmount its terminal-state button.
-    // Move through the exact point before the press.  This keeps the
-    // browser's native hit-test on the captured Retry node even when
-    // React replaces that node immediately after its activation.
-    // It is part of the one pointer gesture, not a keyboard fallback
-    // or a second click.
-    await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:point.x, y:point.y, ...(completePointerState ? {pointerType:"mouse"} : {})});
-    // Hover can trigger a React render between capture and press.
-    // Recheck the original node at the same point and restore its
-    // native focus before dispatch; never silently capture a new
-    // button with an equivalent id in its place.
-    const readyToPress = await evaluate(`(()=>{const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)}); const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled||document.getElementById(${JSON.stringify(stableControlId)})!==item||!record)return false; item.focus({preventScroll:true}); const hit=document.elementFromPoint(${JSON.stringify(point.x)},${JSON.stringify(point.y)}); return document.activeElement===item&&(hit===item||item.contains(hit));})()`);
-    if (!readyToPress) {
+    try {
+        // Portal and terminal transitions can move the original control after
+        // capture. Keep that node's identity, settle only animations affecting
+        // it, and measure its live point again. Never resolve a replacement by id
+        // or dispatch through a wrapper/overlay that fails the native hit-test.
+        let settled = false;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+            await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:point.x, y:point.y, ...(completePointerState ? {pointerType:"mouse"} : {})});
+            const readyToPress = await evaluate(`(async()=>{
+                const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)});
+                const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)});
+                const sameControl=()=>item instanceof HTMLElement&&item.isConnected&&!item.disabled&&document.getElementById(${JSON.stringify(stableControlId)})===item&&!!record;
+                if(!sameControl())return null;
+                const animations=document.getAnimations().filter((animation)=>{
+                    const target=animation.effect?.target;
+                    return target instanceof Element&&(target===item||target.contains(item))&&animation.playState!=='finished';
+                });
+                if(animations.length){
+                    let timeout;
+                    const finished=await Promise.race([
+                        Promise.all(animations.map((animation)=>animation.finished.catch(()=>undefined))).then(()=>true),
+                        new Promise((resolve)=>{timeout=setTimeout(()=>resolve(false),1000);}),
+                    ]);
+                    clearTimeout(timeout);
+                    if(!finished||!sameControl())return null;
+                }
+                item.focus({preventScroll:true});
+                const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2;
+                const hit=document.elementFromPoint(x,y);
+                const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
+                const hitTest={capturedControlId:item.id,targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl:hit===item||item.contains(hit)};
+                if(!sameControl()||box.width<=0||box.height<=0||!preDispatchFocus.native||!hitTest.matchesCapturedControl||(${JSON.stringify(requireViewportHit)}&&(box.left<0||box.right>window.innerWidth||box.top<0||box.bottom>window.innerHeight)))return null;
+                // The capture-phase dispatch listener retains this same receipt
+                // object; update its measured boundary without replacing its node.
+                record.capturedControl.preDispatchFocus=preDispatchFocus;
+                record.capturedControl.hitTest=hitTest;
+                return {x,y,preDispatchFocus,hitTest};
+            })()`);
+            if (!readyToPress) fail("rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
+            const samePoint = readyToPress.x === point.x && readyToPress.y === point.y;
+            point = {...point, ...readyToPress};
+            if (samePoint) {
+                settled = true;
+                break;
+            }
+            // Move the same gesture to the measured point, then verify it again.
+            // Only the single press/release below can activate the public control.
+        }
+        if (!settled) fail("rendered control did not settle its captured hit target before pointer dispatch");
+        const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
+        await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
+        await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
+        // Chromium may change activeElement as the native press starts.
+        // The public-action boundary is the focus and hit-test captured
+        // immediately before that press, so preserve those observed facts
+        // rather than treating a post-dispatch focus transfer as a second
+        // control identity.
+        const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
+        // React is free to replace the Retry button while its accepted
+        // pointer activation starts a new simulation.  The transaction
+        // identity is consequently the captured pre-dispatch node, not
+        // whichever similarly named node exists after the release.  Do
+        // require both the pre-dispatch native hit-test and a document
+        // capture-phase native pointer dispatch to target that exact
+        // node; this is evidence, not a keyboard fallback.
+        if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
+        return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, focus:dispatchFocus}};
+    } catch (error) {
         await removeCapture();
-        fail("rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
+        throw error;
     }
-    const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
-    await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
-    await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
-    // Chromium may change activeElement as the native press starts.
-    // The public-action boundary is the focus and hit-test captured
-    // immediately before that press, so preserve those observed facts
-    // rather than treating a post-dispatch focus transfer as a second
-    // control identity.
-    const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
-    // React is free to replace the Retry button while its accepted
-    // pointer activation starts a new simulation.  The transaction
-    // identity is consequently the captured pre-dispatch node, not
-    // whichever similarly named node exists after the release.  Do
-    // require both the pre-dispatch native hit-test and a document
-    // capture-phase native pointer dispatch to target that exact
-    // node; this is evidence, not a keyboard fallback.
-    if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
-    return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, focus:dispatchFocus}};
 }
 export async function observeP805PointerTerminal(evaluate, transaction, receipt) {
     const pointer = transaction.pointerActivations?.[0];
