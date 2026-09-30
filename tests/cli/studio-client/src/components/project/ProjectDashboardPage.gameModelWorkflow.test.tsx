@@ -772,6 +772,11 @@ describe("ProjectDashboardPage - Game Model tab editing", () => {
         await user.click(screen.getByRole("button", {name: "Overview"}));
 
         expect(await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Stay"})).toHaveAttribute("id", "game-model-unsaved-stay");
+        expect(screen.getByRole("button", {name: "Stay"})).toHaveAttribute("data-pokie-confirmation-operation", "navigation-blocker");
+        expect(screen.getByRole("button", {name: "Leave"})).toHaveAttribute("id", "game-model-unsaved-leave");
+        expect(screen.getByRole("dialog")).not.toHaveAttribute("controlIds");
+        expect(screen.getByRole("dialog")).not.toHaveAttribute("operation");
         await user.click(screen.getByRole("button", {name: "Stay"}));
 
         await waitFor(() => expect(screen.queryByText("You have unsaved changes to this game model section. Leave and lose them?")).not.toBeInTheDocument());

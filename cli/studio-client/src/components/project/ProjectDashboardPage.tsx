@@ -455,7 +455,14 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     );
 
     useEffect(() => {
-        if (pendingNavigation !== undefined && failedRefreshGeneration === pendingNavigation.refreshGeneration) {
+        if (
+            pendingNavigation !== undefined &&
+            pendingNavigation.requestId === navigationRequestIdRef.current &&
+            failedRefreshGeneration === pendingNavigation.refreshGeneration &&
+            renderedTerminal?.generation === pendingNavigation.refreshGeneration &&
+            renderedTerminal.outcome === "failed" &&
+            renderedTerminal.header === header
+        ) {
             // Keep the current workflow selected and expose the freshly
             // rendered context diagnostic when its prerequisite cannot be
             // revalidated. A failed request must not turn into a stale route.

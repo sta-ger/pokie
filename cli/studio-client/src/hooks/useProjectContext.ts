@@ -54,7 +54,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
     // the fetch callback would let that consumer observe an earlier terminal
     // header while the exact fresh generation is still loading.
     useEffect(() => {
-        if (renderedTerminal === undefined || header !== renderedTerminal.header || header.status === "loading") {
+        if (renderedTerminal === undefined || renderedTerminal.generation !== refreshGeneration || header !== renderedTerminal.header || header.status === "loading") {
             return;
         }
         if (renderedTerminal.outcome === "completed") {
@@ -62,7 +62,7 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
         } else {
             setFailedRefreshGeneration(renderedTerminal.generation);
         }
-    }, [header, renderedTerminal]);
+    }, [header, refreshGeneration, renderedTerminal]);
 
     useEffect(() => {
         let cancelled = false;

@@ -1,4 +1,4 @@
-import {renderHook, waitFor} from "@testing-library/react";
+import {act, renderHook, waitFor} from "@testing-library/react";
 import type {ReactNode} from "react";
 import type {FetchLike} from "../../../../../cli/studio-client/src/api/apiClient";
 import {StudioApiProvider} from "../../../../../cli/studio-client/src/context/StudioApiProvider";
@@ -44,5 +44,34 @@ describe("useProjectContext refresh acknowledgement", () => {
         expect(result.current.completedRefreshGeneration).toBe(0);
         expect(result.current.header.status).toBe("error");
         expect(result.current.renderedTerminal).toEqual(expect.objectContaining({generation: 9, outcome: "failed", header: result.current.header}));
+    });
+
+    it("ignores a superseded terminal response while retaining the current project's last rendered context", async () => {
+        const context = {status: "loaded", projectRoot: "/games/valera", game: {id: "valera", name: "Valera", version: "1.0.0"}};
+        const pending: (() => void)[] = [];
+        let requests = 0;
+        const fetchImpl: FetchLike = () => {
+            requests += 1;
+            const response = {ok: true, status: 200, json: () => Promise.resolve(context)};
+            return requests === 1 ? Promise.resolve(response) : new Promise((resolve) => {
+                pending.push(() => resolve(response));
+            });
+        };
+        const {result, rerender} = renderHook(({generation}) => useProjectContext(context.projectRoot, generation), {initialProps: {generation: 1}, wrapper: wrapper(fetchImpl)});
+        await waitFor(() => expect(result.current.completedRefreshGeneration).toBe(1));
+        const retainedHeader = result.current.header;
+        rerender({generation: 2});
+        await waitFor(() => expect(pending).toHaveLength(1));
+        rerender({generation: 3});
+        await waitFor(() => expect(pending).toHaveLength(2));
+
+        await act(() => Promise.resolve(pending[0]()));
+        expect(result.current.header).toBe(retainedHeader);
+        expect(result.current.completedRefreshGeneration).toBe(1);
+        expect(result.current.renderedTerminal?.generation).toBe(1);
+
+        await act(() => Promise.resolve(pending[1]()));
+        await waitFor(() => expect(result.current.completedRefreshGeneration).toBe(3));
+        expect(result.current.renderedTerminal).toEqual(expect.objectContaining({generation: 3, outcome: "completed", header: result.current.header}));
     });
 });

@@ -4,6 +4,7 @@ import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
+import {validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {
     P805_PERSONAS,
     P805_REQUIRED_EVIDENCE_KINDS,
@@ -91,6 +92,33 @@ const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jo
         postTransitionRenderedState: {capturedControlId: controlId, captureKey, preDispatchEvidence: {capturedControlId: controlId, focus: {controlId, native: true}, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, dispatch: {kind: "native-pointer", pressed: true, released: true, focus: {controlId, native: true, targetMatchesCapturedControl: true}}}, controlState: "replaced", currentControlId: controlId, capturedControlConnected: false, requestId, resultSha256, renderedTerminal: true, resultControlId: controlId, resultOperation: operation, resultStateClass: stateClass, resultReceipt: "durable-terminal", resultJobId: jobId, resultTerminal: terminalStatus},
     };
 };
+test.each(["retained", "replaced", "removed"])("accepts Retry's captured native pointer evidence with a %s post-transition control", (controlState) => {
+    const transaction = pointerTransaction("simulation-retry", "simulation-retry", "recovery-operation", "completed", "retry-job");
+    transaction.keyboardActivations = [];
+    Object.assign(transaction.postTransitionRenderedState, {
+        controlState,
+        currentControlId: controlState === "removed" ? null : "simulation-retry",
+        capturedControlConnected: controlState === "retained",
+        activeElementId: "simulation-results",
+    });
+    const receipt = {operation: "simulation-retry", controlId: "simulation-retry", stateClass: "recovery-operation", transaction};
+    assert.equal(validateP805RetryTerminalReceipt(receipt), receipt);
+});
+test.each([
+    ["native pre-dispatch focus", (transaction) => { transaction.pointerActivations[0].preDispatchFocus.native = false; }],
+    ["native dispatch focus", (transaction) => { transaction.pointerActivations[0].dispatch.focus.native = false; }],
+    ["captured hit test", (transaction) => { transaction.pointerActivations[0].hitTest.matchesCapturedControl = false; }],
+    ["captured dispatch target", (transaction) => { transaction.pointerActivations[0].dispatch.focus.targetMatchesCapturedControl = false; }],
+    ["preserved dispatch evidence", (transaction) => { transaction.postTransitionRenderedState.preDispatchEvidence.dispatch.focus.native = false; }],
+    ["correlated request", (transaction) => { transaction.terminal.causedByRequestId = "unrelated-request"; }],
+    ["correlated job", (transaction) => { transaction.postTransitionRenderedState.resultJobId = "unrelated-job"; }],
+    ["valid replacement", (transaction) => { transaction.postTransitionRenderedState.capturedControlConnected = true; }],
+    ["pointer transport", (transaction) => { transaction.pointerActivations = []; transaction.keyboardActivations = [{kind: "keyboard", count: 1, controlId: "simulation-retry", nativeFocus: true}]; }],
+])("rejects Retry without its %s", (_label, mutate) => {
+    const transaction = pointerTransaction("simulation-retry", "simulation-retry", "recovery-operation", "completed", "retry-job");
+    mutate(transaction);
+    assert.throws(() => validateP805RetryTerminalReceipt({operation: "simulation-retry", controlId: "simulation-retry", stateClass: "recovery-operation", transaction}), /captured Retry control/);
+});
 const nativePointerActivation = (controlId) => ({
     kind: "pointer",
     count: 1,

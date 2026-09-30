@@ -1,4 +1,4 @@
-import {screen} from "@testing-library/react";
+import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
@@ -10,19 +10,26 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
-    it("holds a dependent workflow selection until its fresh rendered project context has completed", async () => {
+    it.each(["held", "loading", "failed"])("holds a dependent workflow selection through its exact %s context refresh in StrictMode", async (refreshState) => {
         const user = userEvent.setup();
         const projectContext = {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]};
         let holdNextContext = false;
+        let loadingPublished = false;
         let resolveHeldContext: (() => void) | undefined;
         const fetchImpl: FetchLike = (url) => {
             const [pathname] = url.split("?");
             const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
             if (pathname === "/api/project/context") {
                 if (holdNextContext) {
+                    if (refreshState === "loading" && !loadingPublished) {
+                        loadingPublished = true;
+                        return Promise.resolve(response({status: "loading", projectRoot: projectContext.projectRoot}));
+                    }
                     holdNextContext = false;
                     return new Promise((resolve) => {
-                        resolveHeldContext = () => resolve(response(projectContext));
+                        resolveHeldContext = () => resolve(refreshState === "failed"
+                            ? {ok: false, status: 503, json: () => Promise.resolve({error: "Fresh context unavailable"})}
+                            : response(projectContext));
                     });
                 }
                 return Promise.resolve(response(projectContext));
@@ -34,7 +41,7 @@ describe("ProjectDashboardPage durable jobs", () => {
             throw new Error(`Unexpected request: ${pathname}`);
         };
 
-        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"], strictMode: true});
         await screen.findByRole("heading", {name: "Sample Slot"});
         expect(screen.getByRole("button", {name: "Your projects"})).toHaveAttribute("id", "project-breadcrumb-projects");
         expect(screen.getByText("Overview ready")).toHaveAttribute("tabindex", "-1");
@@ -43,13 +50,20 @@ describe("ProjectDashboardPage durable jobs", () => {
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
 
-        expect(resolveHeldContext).toBeDefined();
+        await waitFor(() => expect(resolveHeldContext).toBeDefined());
         expect(router.state.location.pathname).toBe(overviewPath);
         expect(screen.queryByRole("button", {name: "Run Simulation"})).not.toBeInTheDocument();
 
-        resolveHeldContext?.();
+        await act(() => Promise.resolve(resolveHeldContext?.()));
 
-        expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+        if (refreshState === "failed") {
+            expect(await screen.findByText(/Fresh context unavailable/)).toBeInTheDocument();
+            expect(router.state.location.pathname).toBe(overviewPath);
+            expect(screen.queryByRole("button", {name: "Run Simulation"})).not.toBeInTheDocument();
+        } else {
+            expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+            expect(router.state.location.pathname).toMatch(/\/simulation$/);
+        }
     });
 
     it("revalidates context for every rendered terminal durable receipt", async () => {

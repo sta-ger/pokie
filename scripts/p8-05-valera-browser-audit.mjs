@@ -923,6 +923,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // It is part of the one pointer gesture, not a keyboard fallback
             // or a second click.
             await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:point.x, y:point.y, ...(completePointerState ? {pointerType:"mouse"} : {})});
+            // Hover can trigger a React render between capture and press.
+            // Recheck the original node at the same point and restore its
+            // native focus before dispatch; never silently capture a new
+            // button with an equivalent id in its place.
+            const readyToPress = await evaluate(`(()=>{const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)}); const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled||document.getElementById(${JSON.stringify(stableControlId)})!==item||!record)return false; item.focus({preventScroll:true}); const hit=document.elementFromPoint(${JSON.stringify(point.x)},${JSON.stringify(point.y)}); return document.activeElement===item&&(hit===item||item.contains(hit));})()`);
+            if (!readyToPress) {
+                await removeCapture();
+                fail("rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
+            }
             const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
             await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
             await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
@@ -1246,11 +1255,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 keyboardActivations:[],
             };
             transaction.browserEventCursor = cdp.events.length;
-            // A recovery result may replace its pointer target during the
-            // pressed/released sequence.  Use the same focused native
-            // keyboard activation that Replay uses for that one terminal
-            // recovery control, retaining the exact DOM identity at the
-            // public-action boundary.
+            // Recovery retains its native pointer receipt even when React
+            // replaces the activated control. Replay has its own keyboard
+            // transport; it does not substitute evidence for Retry.
             const activation = await activateFocusedControl(lifecycle, control, transport === "keyboard" || operation === "replay" ? "keyboard" : "pointer", capturePostTransition);
             if (activation.kind === "pointer" && activation.preDispatchFocus?.native !== true) fail(observation + " rendered " + operation + " control did not retain native focus through its pointer activation");
             control.keyboardFocused = activation.preDispatchFocus?.native === true;
