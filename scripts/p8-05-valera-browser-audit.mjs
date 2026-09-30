@@ -334,6 +334,24 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
     if (!control || latestRequest()?.params.requestId !== browserRequestId) return false;
     return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};
 }
+// A routed dashboard can expose its shell before its context and dependent
+// tabs render. Do not capture that transitional shell's disclosure control.
+export async function observeP805NavigationReadiness(evaluate, route) {
+    return evaluate(`(()=>{
+        const item=[...document.querySelectorAll('[data-pokie-lifecycle="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===${JSON.stringify(route)});
+        if(!(item instanceof HTMLElement)||!item.id||('disabled' in item&&item.disabled)||item.getClientRects().length===0)return false;
+        const currentRoute=location.hash;
+        let terminal=null;
+        if(currentRoute.startsWith('#/project/')){
+            const selectedRoute=currentRoute.split('?')[0].split('/').at(-1);
+            const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===selectedRoute&&candidate.getAttribute('data-pokie-lifecycle-result-control')==='project-tab:'+selectedRoute);
+            if(!(result instanceof HTMLElement)||result.getClientRects().length===0)return false;
+            terminal=result.getAttribute('data-pokie-lifecycle-terminal');
+            if(!['rendered','error'].includes(terminal))return false;
+        }
+        return {controlId:item.id,currentRoute,terminal};
+    })()`);
+}
 // Both the packed runner and its bounded Chromium regression use this one
 // native pointer boundary. Post-activation control replacement is permitted;
 // pre-dispatch identity, focus, and hit testing remain mandatory.
@@ -369,6 +387,12 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                 const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)});
                 const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)});
                 const sameControl=()=>item instanceof HTMLElement&&item.isConnected&&!item.disabled&&document.getElementById(${JSON.stringify(stableControlId)})===item&&!!record;
+                if(!sameControl())return null;
+                // Hover and responsive layout can commit on the following
+                // frame without an animation being registered yet. Flush
+                // those frames on the captured node before inspecting its
+                // animations and live hit target; never resolve another node.
+                await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
                 if(!sameControl())return null;
                 const animations=document.getAnimations().filter((animation)=>{
                     const target=animation.effect?.target;
@@ -1014,18 +1038,16 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // the tab it exposes; omitting `buttons`/`pointerType` lets CDP
             // focus the Burger while Mantine never receives the click, which
             // leaves the requested tab off-canvas at the narrow breakpoint.
-            // Recovery controls can legitimately sit behind the transient
-            // review-step layout while React promotes the terminal result.
-            // Scroll them into view, but do not reject the native activation
-            // merely because that layout has a non-button hit-test wrapper.
-            const requiresViewportHit = ["precondition", "navigation", "navigation-drawer", "operation"].includes(lifecycle);
+            // Recovery has the same visible hit-target requirement as every
+            // other operation. Settle its review layout on the captured node.
+            const requiresViewportHit = ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle);
             // Preserve the complete native pointer state for every rendered
             // public operation as well as navigation/preconditions. Mantine's
             // initial Create game action has no tab transaction attribute;
             // without `buttons` and `pointerType` its visual focus was
             // captured but React never received the click that starts the
             // validation/save/navigation lifecycle.
-            const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), lifecycle !== "navigation", retainCapturedControl);
+            const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), !["navigation", "navigation-drawer"].includes(lifecycle), retainCapturedControl);
             return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
         };
         const clickCapturedControl = (...args) => clickP805CapturedControl(cdp, evaluate, ...args);
@@ -1524,6 +1546,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // route becomes eligible only after the product's visible navigation
         // control received its keyboard activation.
         const revealRenderedNavigationControl = async (route, observation) => {
+            await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
             // Find and focus one live target in the same browser turn. A
             // narrow drawer is allowed to finish closing once a tab receives
             // focus, so a successful visibility probe must itself return the

@@ -7,7 +7,7 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
-import {clickP805CapturedControl, connectP805Devtools, observeP805CreatorValidation, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {clickP805CapturedControl, connectP805Devtools, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const poll = async (predicate) => {
@@ -219,11 +219,38 @@ test("Blueprint mutation receipts follow each public endpoint's HTTP and domain 
     assert.throws(() => validateP805BlueprintMutationResponse("/unrelated", 201, {status:"ok"}), /did not reach a successful terminal/);
 });
 
-test("native Retry follows its captured node through animation and terminal replacement, rejecting invalid dispatch and result evidence", async () => {
+test("native navigation waits for rendered context and Retry retains captured identity through deferred layout and terminal replacement", async () => {
     const requests = [];
+    let pendingContext;
     const server = createServer((request, response) => {
         requests.push({method:request.method, path:request.url});
-        if (request.url === "/api/project/simulations") {
+        if (request.url === "/api/project/context") {
+            pendingContext = response;
+            response.writeHead(200, {"Content-Type":"application/json"});
+            response.write('{"status":');
+        } else if (request.url === "/navigation-readiness") {
+            response.setHeader("Content-Type", "text/html");
+            response.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><button id="studio-navigation-toggle" style="position:fixed;top:8px;left:8px">Toggle navigation</button><div id="drawer" style="position:fixed;top:60px;transform:translateX(-260px)"></div><script>
+                location.hash = '#/project/source/overview';
+                window.initialBurger = document.getElementById('studio-navigation-toggle');
+                window.mountTarget = () => {
+                    document.getElementById('drawer').innerHTML = '<button id="project-tab:gameModel" data-pokie-lifecycle="navigation" data-pokie-lifecycle-route="gameModel">Game Model</button>';
+                    document.body.insertAdjacentHTML('beforeend', '<p id="navigation-result" data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading">Opening game</p>');
+                };
+                window.beginContext = async () => { window.context = await (await fetch('/api/project/context')).json(); };
+                window.renderContext = () => {
+                    const burger = window.initialBurger.cloneNode(true);
+                    window.initialBurger.replaceWith(burger);
+                    burger.addEventListener('click', (event) => {
+                        window.drawerActivation = {trusted:event.isTrusted, controlId:event.currentTarget.id};
+                        document.getElementById('drawer').style.transform = 'none';
+                    });
+                    const result = document.getElementById('navigation-result');
+                    result.textContent = 'Overview ready';
+                    result.setAttribute('data-pokie-lifecycle-terminal', 'rendered');
+                };
+            </script>`);
+        } else if (request.url === "/api/project/simulations") {
             response.writeHead(202, {"Content-Type":"application/json"});
             response.end(JSON.stringify({id:"retry-job", status:"queued"}));
         } else if (request.url === "/api/project/simulations/retry-job") {
@@ -247,7 +274,13 @@ test("native Retry follows its captured node through animation and terminal repl
                     else if (mode.startsWith('moving')) {
                         // A portal/terminal transition can move the same live
                         // control between its initial capture and native press.
-                        const animated = mode === 'moving-parent' ? button.parentElement : button;
+                        const animated = ['moving-parent', 'moving-deferred-parent'].includes(mode) ? button.parentElement : button;
+                        if (mode === 'moving-deferred-parent') {
+                            // Layout can commit on the next frame after hover;
+                            // capture must settle that frame before native press.
+                            requestAnimationFrame(() => requestAnimationFrame(() => { animated.style.transform = 'translateX(260px)'; }));
+                            return;
+                        }
                         animated.style.transform = 'translateX(260px)';
                         const animation = animated.animate([{transform:'translateX(180px)'}, {transform:'translateX(260px)'}], {duration:180});
                         if (mode === 'moving-obstructed') animation.finished.then(() => {
@@ -296,7 +329,34 @@ test("native Retry follows its captured node through animation and terminal repl
             assert.equal(result.exceptionDetails, undefined);
             return result.result.value;
         };
-        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-replaced", "confirmation-pointer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", {width:390, height:844, mobile:true, deviceScaleFactor:1});
+        await cdp.send("Page.navigate", {url:`http://127.0.0.1:${server.address().port}/navigation-readiness`});
+        await poll(() => evaluate("typeof window.renderContext === 'function' && document.readyState === 'complete'"));
+        const navigationReady = () => observeP805NavigationReadiness(evaluate, "gameModel");
+        assert.equal(await navigationReady(), false, "the imported route and shell cannot authorize drawer capture");
+        await evaluate("window.mountTarget(); void window.beginContext()");
+        await poll(() => pendingContext);
+        assert.equal(await navigationReady(), false, "an off-canvas target cannot replace terminal context");
+        pendingContext.end('"loaded","projectRoot":"source"}');
+        await poll(() => evaluate("window.context?.status === 'loaded'"));
+        assert.equal(await navigationReady(), false, "completed context bytes cannot replace their rendered terminal state");
+        await evaluate("window.renderContext()");
+        assert.deepEqual(await navigationReady(), {controlId:"project-tab:gameModel", currentRoute:"#/project/source/overview", terminal:"rendered"});
+        await evaluate("document.getElementById('project-tab:gameModel').disabled = true");
+        assert.equal(await navigationReady(), false, "a disabled dependent tab cannot authorize capture");
+        await evaluate("document.getElementById('project-tab:gameModel').disabled = false; document.getElementById('navigation-result').hidden = true");
+        assert.equal(await navigationReady(), false, "a hidden terminal cannot authorize capture");
+        await evaluate("document.getElementById('navigation-result').hidden = false");
+        assert.equal(await evaluate("window.initialBurger.isConnected"), false);
+        const disclosure = await clickP805CapturedControl(cdp, evaluate, "studio-navigation-toggle", true, true, false);
+        assert.equal(disclosure.preDispatchFocus.native, true);
+        assert.equal(disclosure.hitTest.matchesCapturedControl, true);
+        assert.equal(disclosure.dispatch.focus.targetMatchesCapturedControl, true);
+        assert.deepEqual(await evaluate("window.drawerActivation"), {trusted:true, controlId:"studio-navigation-toggle"});
+        await evaluate("document.getElementById('navigation-result').setAttribute('data-pokie-lifecycle-route', 'simulation')");
+        assert.equal(await navigationReady(), false, "another route's terminal cannot release capture");
+        await cdp.send("Emulation.clearDeviceMetricsOverride");
+        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "confirmation-pointer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
             await cdp.send("Page.navigate", {url});
             await poll(() => evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && typeof window.renderTerminal === 'function'`));
@@ -348,7 +408,7 @@ test("native Retry follows its captured node through animation and terminal repl
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "a hidden terminal cannot replace the visible result");
             await evaluate("document.getElementById('simulation-results').hidden = false; document.getElementById('simulation-results').focus()");
             transaction.postTransitionRenderedState = await observeP805PointerTerminal(evaluate, transaction, receipt);
-            const expectedControlState = ["moving", "moving-parent", "confirmation-pointer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
+            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "confirmation-pointer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
             assert.equal(transaction.postTransitionRenderedState.controlState, expectedControlState);
             assert.equal(transaction.postTransitionRenderedState.capturedControlConnected, expectedControlState === "retained");
             assert.equal(transaction.postTransitionRenderedState.activeElementId, "simulation-results");
@@ -372,8 +432,9 @@ test("native Retry follows its captured node through animation and terminal repl
             assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
             assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations/retry-job") && event.params.request.method === "GET").length, 1);
         }
-        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 7);
+        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 8);
     } finally {
+        pendingContext?.end();
         await cdp?.close();
         browser.kill("SIGTERM");
         await exited;
