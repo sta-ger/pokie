@@ -224,6 +224,21 @@ async function waitFor(predicate, label, timeout = 30000) {
     }
 }
 function descendants(pid) { const listing = process.platform === "win32" ? "" : (spawnSync("ps", ["-eo", "pid=,ppid=,pgid="], {encoding:"utf8"}).stdout || ""), processes = new Map(); let rootGroup; for (const line of listing.split("\n")) { const match = /^\s*(\d+)\s+(\d+)\s+(\d+)/.exec(line); if (match) { const details = {parent:Number(match[2]), group:Number(match[3])}; processes.set(Number(match[1]), details); if (Number(match[1]) === pid) rootGroup = details.group; } } const owned = new Map(); if (Number.isInteger(pid) && pid > 0) owned.set(pid, processIdentity(pid)); let changed = true; while (changed) { changed = false; for (const [child, details] of processes) if ((owned.has(details.parent) || (rootGroup !== undefined && details.group === rootGroup)) && !owned.has(child)) { owned.set(child, processIdentity(child)); changed = true; } } return owned; }
+export function createP805OwnedProcessRecord(label, child, ownerOptions, spawnedAt = now()) {
+    const spawned = descendants(child?.pid);
+    return {
+        label, pid:child?.pid, processGroupId:child?.pid, spawnedAt,
+        identity:processIdentity(child?.pid),
+        spawnTimeProcessIdentities:[...spawned].map(([pid, identity]) => ({pid, identity})),
+        ownedProcesses:spawned, child,
+        resourceRegistryPath:ownerOptions.resourceRegistryPath,
+        resourceRegistrySecret:ownerOptions.resourceRegistrySecret,
+        // Release and final cleanup must use the same authenticated namespace
+        // as acquisition. Omitting this field left Chromium alive after the
+        // first failed tuple and stranded the parent until its 75-minute cap.
+        operationId:ownerOptions.operationId,
+    };
+}
 async function terminate(child) { if (!child?.pid) return {processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[]}; const result = await drainProcessTree(child, 5_000, descendants(child.pid)); if (!result.processTreeDrained || !result.resourcesDrained) fail("owned Studio/browser process tree could not be drained"); return result; }
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
 async function connect(devtools, initialUrl = "about:blank") {
@@ -511,7 +526,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     // their direct browser PID is recorded synchronously and its process tree
     // is continuously retained for the whole browser lifetime.
     const own = (label, child, ownerOptions = {}) => {
-        const spawned = descendants(child?.pid), record = {label, pid:child?.pid, processGroupId:child?.pid, spawnedAt:services.now(), identity:processIdentity(child?.pid), spawnTimeProcessIdentities:[...spawned].map(([pid, identity]) => ({pid, identity})), ownedProcesses:spawned, child, resourceRegistryPath:ownerOptions.resourceRegistryPath, resourceRegistrySecret:ownerOptions.resourceRegistrySecret};
+        const record = createP805OwnedProcessRecord(label, child, ownerOptions, services.now());
         if (ownerOptions.browserResource) {
             record.resourceId = `browser:${child?.pid}:${label}`;
             if (!registerPc20OwnedResource({kind:"browser", resourceId:record.resourceId, pid:child?.pid, processIdentity:record.identity}, "acquired", ownerOptions.env)) fail(`could not synchronously register browser ownership for ${label}`);
