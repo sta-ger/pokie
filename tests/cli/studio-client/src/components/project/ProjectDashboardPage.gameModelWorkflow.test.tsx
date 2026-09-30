@@ -89,7 +89,7 @@ async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promi
 }
 
 describe("ProjectDashboardPage - Game Model tab", () => {
-    it("waits through the creator's automatic validation before opening the bounded Game Model workflow", async () => {
+    it.each([true, false])("uses the creator's rendered automatic validation before opening the bounded Game Model workflow (valid=%s)", async (valid) => {
         const user = userEvent.setup();
         let resolveValidation: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
         const routes = createRoutedFakeFetch({
@@ -107,18 +107,30 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         const createGame = await screen.findByRole("button", {name: "Create game"});
         await waitFor(() => expect(resolveValidation).toBeDefined());
+        expect(createGame).toHaveAttribute("data-pokie-validation-state", "loading");
         expect(createGame).toBeDisabled();
         expect(createGame).toHaveAttribute("aria-busy", "true");
         await user.click(createGame);
         expect(router.state.location.pathname).toBe("/home/design");
         expect(routes.calls.some((call) => call.url === "/api/home/blueprints/save-managed")).toBe(false);
 
-        await act(() => Promise.resolve(resolveValidation!(jsonResponse({status: "ok", warnings: []}))));
+        const validation = valid
+            ? {status: "ok", warnings: []}
+            : {status: "invalid", errors: [{code: "invalid-starter", severity: "error", message: "The starter design needs a correction."}], warnings: []};
+        await act(() => Promise.resolve(resolveValidation!(jsonResponse(validation))));
         await waitFor(() => expect(createGame).toBeEnabled());
+        expect(createGame).toHaveAttribute("data-pokie-validation-state", valid ? "ok" : "invalid");
         createGame.focus();
         expect(createGame).toHaveAttribute("id", "blueprint-create-game");
         expect(createGame).toHaveFocus();
         await user.keyboard("{Enter}");
+        if (!valid) {
+            expect(within(screen.getByRole("group", {name: "Validation"})).getByText("invalid-starter: The starter design needs a correction.")).toBeInTheDocument();
+            expect(router.state.location.pathname).toBe("/home/design");
+            expect(routes.calls.some((call) => call.url === "/api/home/blueprints/save-managed" || call.url === "/api/home/projects/open")).toBe(false);
+            expect(createGame).toHaveAttribute("data-pokie-validation-state", "invalid");
+            return;
+        }
         await screen.findByRole("heading", {name: "A"});
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
         expect(routes.calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);

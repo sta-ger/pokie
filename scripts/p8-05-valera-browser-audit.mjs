@@ -2132,20 +2132,32 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // persistent Home navigation; otherwise the visible mobile drawer is
         // closed and its hidden Projects control cannot receive a real key.
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions.wide, deviceScaleFactor:1});
-        // Automatic validation can begin after the page text is visible and
-        // temporarily disable Create game. Wait for the actual enabled native
-        // control, rather than letting that expected loading state abort a
-        // later tuple after the parent has accepted earlier receipts.
-        const created = await waitFor(() => evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()"), "enabled focusable Studio Create game control");
+        // Create game is enabled during the initial validation debounce too.
+        // That idle window is not readiness: automatic validation can disable
+        // the focused button before Enter reaches it. Wait for the browser's
+        // actual validation response and its rendered terminal state before
+        // capturing the control, rather than retrying a lost activation.
+        const creatorValidation = await waitFor(async () => {
+            const response = cdp.events.findLast((event) => event.method === "Network.responseReceived" && new URL(event.params.response.url).pathname === "/api/home/blueprints/validate");
+            if (!response || !cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === response.params.requestId)) return false;
+            const body = await readBrowserResponseBody(response.params.requestId, "initial rendered Design validation");
+            const payload = JSON.parse(body.body);
+            if (response.params.response.status !== 200 || payload.status !== "ok") fail("initial rendered Design validation did not accept the starter game");
+            return {browserRequestId:response.params.requestId, payload};
+        }, "initial Design validation response");
+        const created = await waitFor(() => evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()"), "validated enabled focusable Studio Create game control");
         if (!created?.stableControlId) fail("rendered Studio did not expose an enabled focusable Create game control");
         // Create game is the first public action in a new Studio session. It
         // has no project-tab transaction marker yet, but it is a native
         // focusable button; activate that rendered control with one real
         // keyboard gesture rather than attempting a route transition or a
         // Node-side creation request.
-        await pressEnter();
+        const creationCursor = cdp.events.length;
+        await activateFocusedControl("precondition", created, "keyboard");
         try {
             await waitFor(() => evaluate("location.hash.includes('/project/')"), "rendered keyboard project creation", 60_000);
+            await waitFor(() => cdp.events.slice(creationCursor).find((event) => event.method === "Network.responseReceived" && new URL(event.params.response.url).pathname === "/api/home/blueprints/save-managed" && event.params.response.status === 201), "rendered Create game managed-save response");
+            api.push({observation:"project creation validation", method:"POST", path:"/api/home/blueprints/validate", status:200, payload:creatorValidation.payload, browserRequestId:creatorValidation.browserRequestId, initiator:"rendered-auto-validation"});
         } catch (error) {
             const rendered = await evaluate("(()=>({route:location.hash, active:document.activeElement instanceof HTMLElement ? {id:document.activeElement.id, text:(document.activeElement.innerText||document.activeElement.textContent||'').trim()} : null, create:document.getElementById('blueprint-create-game')?.outerHTML?.slice(0,800), status:[...document.querySelectorAll('[role=status],[role=alert]')].map((item)=>({text:(item.textContent||'').trim(),role:item.getAttribute('role')})), text:document.body.innerText.slice(0,2400)}))()");
             const managedSave = cdp.events.findLast((event) => event.method === "Network.responseReceived" && (() => { try { return new URL(event.params.response.url).pathname === "/api/home/blueprints/save-managed"; } catch { return false; } })());

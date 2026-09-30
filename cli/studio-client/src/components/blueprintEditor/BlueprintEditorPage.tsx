@@ -1113,6 +1113,7 @@ export function BlueprintEditorPage({
                     <QuickActions>
                         <Button
                             id="blueprint-create-game"
+                            data-pokie-validation-state={validationView.status}
                             onClick={handleGuidedSave}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
