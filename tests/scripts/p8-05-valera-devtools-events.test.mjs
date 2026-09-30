@@ -7,7 +7,7 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
-import {connectP805Devtools, observeP805CreatorValidation, pressP805Enter} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {clickP805CapturedControl, connectP805Devtools, observeP805CreatorValidation, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const poll = async (predicate) => {
@@ -196,6 +196,147 @@ test("completed browser validation binds rendered readiness before one native Cr
         assert.equal(cdp.events.slice(activationCursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/home/blueprints/save-managed")).length, 1);
     } finally {
         pendingBody?.end();
+        await cdp?.close();
+        browser.kill("SIGTERM");
+        await exited;
+        await new Promise((resolve) => server.close(resolve));
+        await rm(profile, {recursive:true, force:true});
+    }
+});
+
+
+test("Blueprint mutation receipts follow each public endpoint's HTTP and domain terminal contract", () => {
+    for (const [pathname, status] of [["/api/home/blueprints/validate", 200], ["/api/home/blueprints/save", 201]]) {
+        const payload = {status:"ok"};
+        assert.equal(validateP805BlueprintMutationResponse(pathname, status, payload), payload);
+        for (const rejectedStatus of [200, 201, 409, 500].filter((value) => value !== status)) {
+            assert.throws(() => validateP805BlueprintMutationResponse(pathname, rejectedStatus, payload), /did not reach a successful terminal/);
+        }
+        for (const rejected of ["conflict", "error", "invalid"]) {
+            assert.throws(() => validateP805BlueprintMutationResponse(pathname, status, {status:rejected}), /did not reach a successful terminal/);
+        }
+    }
+    assert.throws(() => validateP805BlueprintMutationResponse("/unrelated", 201, {status:"ok"}), /did not reach a successful terminal/);
+});
+
+test("native Retry preserves its captured node through terminal replacement and rejects a changed pre-dispatch target", async () => {
+    const requests = [];
+    const server = createServer((request, response) => {
+        requests.push({method:request.method, path:request.url});
+        if (request.url === "/api/project/simulations") {
+            response.writeHead(202, {"Content-Type":"application/json"});
+            response.end(JSON.stringify({id:"retry-job", status:"queued"}));
+        } else if (request.url === "/api/project/simulations/retry-job") {
+            response.setHeader("Content-Type", "application/json");
+            response.end(JSON.stringify({id:"retry-job", status:"completed", reportPath:"report.json"}));
+        } else {
+            response.setHeader("Content-Type", "text/html");
+            response.end(`<!doctype html><button id="simulation-retry">Repeat simulation</button><div id="simulation-results" tabindex="-1"></div><script>
+                const button = document.getElementById('simulation-retry');
+                const result = document.getElementById('simulation-results');
+                const mode = new URL(location.href).searchParams.get('mode');
+                window.activations = [];
+                button.addEventListener('mouseover', () => {
+                    if (mode === 'changed-hit') {
+                        const overlay = document.createElement('div');
+                        overlay.style.cssText = 'position:fixed;inset:0;z-index:1000';
+                        document.body.append(overlay);
+                    } else if (mode === 'changed-node') {
+                        button.replaceWith(button.cloneNode(true));
+                    } else if (mode === 'disabled') button.disabled = true;
+                });
+                button.addEventListener('click', async (event) => {
+                    window.activations.push({trusted:event.isTrusted, controlId:event.currentTarget.id});
+                    if (mode === 'replaced') button.replaceWith(button.cloneNode(true));
+                    if (mode === 'removed') button.remove();
+                    result.focus();
+                    const response = await fetch('/api/project/simulations', {method:'POST', body:'{}'});
+                    const started = await response.json();
+                    window.terminal = await (await fetch('/api/project/simulations/' + started.id)).json();
+                });
+                window.renderTerminal = (jobId = window.terminal.id) => {
+                    result.textContent = 'Simulation completed. Open report.json';
+                    for (const [name, value] of Object.entries({
+                        'data-pokie-lifecycle-result':'simulation',
+                        'data-pokie-lifecycle-result-control':'simulation-retry',
+                        'data-pokie-lifecycle-result-operation':'simulation-retry',
+                        'data-pokie-lifecycle-result-state':'recovery-operation',
+                        'data-pokie-lifecycle-terminal':window.terminal.status,
+                        'data-pokie-lifecycle-result-receipt':'durable-terminal',
+                        'data-pokie-lifecycle-result-durable-status':window.terminal.status,
+                        'data-pokie-lifecycle-result-job':jobId,
+                        'data-pokie-lifecycle-result-durable-job':jobId,
+                    })) result.setAttribute(name, value);
+                };
+            </script>`);
+        }
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const profile = await mkdtemp(path.join(tmpdir(), "p805-devtools-retry-"));
+    const browser = spawn(process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ["--headless=new", "--no-sandbox", "--no-first-run", "--disable-background-networking", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], {stdio:"ignore"});
+    const exited = new Promise((resolve, reject) => { browser.once("exit", resolve); browser.once("error", reject); });
+    let cdp;
+    try {
+        const port = await poll(async () => { try { return (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]; } catch { return false; } });
+        cdp = await connectP805Devtools(`http://127.0.0.1:${port}`);
+        const evaluate = async (expression) => {
+            const result = await cdp.send("Runtime.evaluate", {expression, returnByValue:true, awaitPromise:true});
+            assert.equal(result.exceptionDetails, undefined);
+            return result.result.value;
+        };
+        for (const mode of ["retained", "replaced", "removed", "changed-hit", "changed-node", "disabled"]) {
+            const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
+            await cdp.send("Page.navigate", {url});
+            await poll(() => evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && typeof window.renderTerminal === 'function'`));
+            // Move off the control before capture, so its hover handler executes
+            // only at the production helper's capture-to-dispatch boundary.
+            await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:400, y:300, pointerType:"mouse"});
+            const cursor = cdp.events.length;
+            const click = () => clickP805CapturedControl(cdp, evaluate, "simulation-retry", true, true, true, true);
+            if (["changed-hit", "changed-node", "disabled"].includes(mode)) {
+                await assert.rejects(click(), /changed its captured identity, native focus, or hit target/);
+                assert.deepEqual(await evaluate("window.activations"), []);
+                assert.equal(cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST").length, 0);
+                assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
+                continue;
+            }
+            const pointer = {kind:"pointer", count:1, controlId:"simulation-retry", ...await click()};
+            assert.equal(pointer.preDispatchFocus.native, true);
+            assert.equal(pointer.hitTest.matchesCapturedControl, true);
+            assert.equal(pointer.dispatch.focus.native, true);
+            assert.equal(pointer.dispatch.focus.targetMatchesCapturedControl, true);
+            assert.equal(pointer.dispatch.pressed, true);
+            assert.equal(pointer.dispatch.released, true);
+            await poll(() => evaluate("window.terminal?.status === 'completed'"));
+            const events = cdp.events.slice(cursor);
+            const submitted = events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations") && event.params.request.method === "POST");
+            assert.equal(submitted.length, 1);
+            const browserRequestId = submitted[0].params.requestId;
+            assert.equal(submitted[0].params.request.postData, "{}");
+            const terminalEvent = await poll(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived" && event.params.response.url.endsWith("/api/project/simulations/retry-job")));
+            await poll(() => cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === terminalEvent.params.requestId));
+            const terminal = JSON.parse((await cdp.send("Network.getResponseBody", {requestId:terminalEvent.params.requestId})).body);
+            const receipt = {status:terminal.status, jobId:terminal.id, result:terminal, resultSha256:hash(JSON.stringify(terminal)), browserRequestId:terminalEvent.params.requestId};
+            const transaction = {operation:"simulation-retry", stateClass:"recovery-operation", control:{stableControlId:"simulation-retry"}, pointerActivations:[pointer], keyboardActivations:[], requestCount:1, request:{browserRequestId, method:"POST", path:"/api/project/simulations"}, terminal:{...receipt, causedByRequestId:browserRequestId}};
+            assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "the network terminal cannot replace a rendered result");
+            await evaluate("window.renderTerminal('unrelated-job')");
+            assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "an unrelated rendered job cannot release this receipt");
+            await evaluate("window.renderTerminal(); document.getElementById('simulation-results').hidden = true");
+            assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "a hidden terminal cannot replace the visible result");
+            await evaluate("document.getElementById('simulation-results').hidden = false; document.getElementById('simulation-results').focus()");
+            transaction.postTransitionRenderedState = await observeP805PointerTerminal(evaluate, transaction, receipt);
+            assert.equal(transaction.postTransitionRenderedState.controlState, mode);
+            assert.equal(transaction.postTransitionRenderedState.capturedControlConnected, mode === "retained");
+            assert.equal(transaction.postTransitionRenderedState.activeElementId, "simulation-results");
+            assert.deepEqual(transaction.postTransitionRenderedState.preDispatchEvidence, {capturedControlId:pointer.capturedControlId, focus:pointer.preDispatchFocus, hitTest:pointer.hitTest, dispatch:pointer.dispatch});
+            const retry = {operation:"simulation-retry", controlId:"simulation-retry", stateClass:"recovery-operation", transaction};
+            assert.equal(validateP805RetryTerminalReceipt(retry), retry);
+            assert.deepEqual(await evaluate("window.activations"), [{trusted:true, controlId:"simulation-retry"}]);
+            assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
+            assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations/retry-job") && event.params.request.method === "GET").length, 1);
+        }
+        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 3);
+    } finally {
         await cdp?.close();
         browser.kill("SIGTERM");
         await exited;

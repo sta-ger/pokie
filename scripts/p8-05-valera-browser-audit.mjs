@@ -334,6 +334,96 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
     if (!control || latestRequest()?.params.requestId !== browserRequestId) return false;
     return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};
 }
+// Both the packed runner and its bounded Chromium regression use this one
+// native pointer boundary. Post-activation control replacement is permitted;
+// pre-dispatch identity, focus, and hit testing remain mandatory.
+export async function clickP805CapturedControl(cdp, evaluate, stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit, retainCapturedControl = false) {
+    // A control can be rendered yet sit below the compact viewport.
+    // CDP accepts that off-screen coordinate without giving React a
+    // pointer event, which used to leave the Replay Load transition
+    // in its precondition state and let the tuple time out. Bring the
+    // exact captured control into the rendered viewport and prove its
+    // hit target before issuing its single browser pointer activation.
+    const captureKey = randomBytes(16).toString("hex");
+    const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
+    const removeCapture = () => evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});})()`);
+    const point = await waitFor(async () => {
+        const captured = await capturePoint();
+        if (captured) return captured;
+        await removeCapture();
+        return false;
+    }, `rendered ${stableControlId} browser click target`);
+    if (!point) {
+        await removeCapture();
+        fail("rendered control lost its visible browser click target");
+    }
+    // Replay Load can unmount itself while accepting the target, and
+    // a narrow NavLink can reconcile its active screen on the same
+    // press. Both need the complete native pointer state through the
+    // release so React receives the public click that owns the
+    // lifecycle transition.
+    // Scrolling a focused recovery control can move its layout
+    // without changing its native focus. Reassert that focus at the
+    // exact pointer boundary, before a successful retry is allowed
+    // to reconcile and unmount its terminal-state button.
+    // Move through the exact point before the press.  This keeps the
+    // browser's native hit-test on the captured Retry node even when
+    // React replaces that node immediately after its activation.
+    // It is part of the one pointer gesture, not a keyboard fallback
+    // or a second click.
+    await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:point.x, y:point.y, ...(completePointerState ? {pointerType:"mouse"} : {})});
+    // Hover can trigger a React render between capture and press.
+    // Recheck the original node at the same point and restore its
+    // native focus before dispatch; never silently capture a new
+    // button with an equivalent id in its place.
+    const readyToPress = await evaluate(`(()=>{const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)}); const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled||document.getElementById(${JSON.stringify(stableControlId)})!==item||!record)return false; item.focus({preventScroll:true}); const hit=document.elementFromPoint(${JSON.stringify(point.x)},${JSON.stringify(point.y)}); return document.activeElement===item&&(hit===item||item.contains(hit));})()`);
+    if (!readyToPress) {
+        await removeCapture();
+        fail("rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
+    }
+    const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
+    await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
+    await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
+    // Chromium may change activeElement as the native press starts.
+    // The public-action boundary is the focus and hit-test captured
+    // immediately before that press, so preserve those observed facts
+    // rather than treating a post-dispatch focus transfer as a second
+    // control identity.
+    const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
+    // React is free to replace the Retry button while its accepted
+    // pointer activation starts a new simulation.  The transaction
+    // identity is consequently the captured pre-dispatch node, not
+    // whichever similarly named node exists after the release.  Do
+    // require both the pre-dispatch native hit-test and a document
+    // capture-phase native pointer dispatch to target that exact
+    // node; this is evidence, not a keyboard fallback.
+    if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
+    return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, focus:dispatchFocus}};
+}
+export async function observeP805PointerTerminal(evaluate, transaction, receipt) {
+    const pointer = transaction.pointerActivations?.[0];
+    if (!pointer) return false;
+    return await evaluate(`(()=>{
+        const captured=window.__p805CapturedControls?.get(${JSON.stringify(pointer.captureKey)});
+        const current=document.getElementById(${JSON.stringify(transaction.control?.stableControlId)});
+        const result=[...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item)=>item instanceof HTMLElement&&!!(item.offsetWidth||item.offsetHeight||item.getClientRects().length)&&item.getAttribute('data-pokie-lifecycle-result-control')===${JSON.stringify(transaction.control?.stableControlId)}&&item.getAttribute('data-pokie-lifecycle-result-operation')===${JSON.stringify(transaction.operation)}&&item.getAttribute('data-pokie-lifecycle-result-state')===${JSON.stringify(transaction.stateClass)}&&item.getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(receipt.status)}&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-status')===${JSON.stringify(receipt.status)}&&(${JSON.stringify(receipt.result?.id ?? null)}===null||(item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(receipt.result?.id ?? null)}&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(receipt.result?.id ?? null)})));
+        if (!(result instanceof HTMLElement)) return false;
+        const capturedControlId=captured instanceof HTMLElement?captured.id:null;
+        const controlState=!(captured instanceof HTMLElement)?'missing':current===null?'removed':current===captured?'retained':'replaced';
+        const capturedControlConnected=captured instanceof HTMLElement&&captured.isConnected;
+        window.__p805CapturedControls?.delete(${JSON.stringify(pointer.captureKey)});
+        return {capturedControlId,captureKey:${JSON.stringify(pointer.captureKey)},preDispatchEvidence:{capturedControlId:${JSON.stringify(pointer.capturedControlId)},focus:${JSON.stringify(pointer.preDispatchFocus)},hitTest:${JSON.stringify(pointer.hitTest)},dispatch:${JSON.stringify(pointer.dispatch)}},controlState,currentControlId:current instanceof HTMLElement?current.id:null,capturedControlConnected,activeElementId:document.activeElement instanceof HTMLElement?document.activeElement.id||null:null,requestId:${JSON.stringify(transaction.request?.browserRequestId)},resultSha256:${JSON.stringify(receipt.resultSha256)},renderedTerminal:result instanceof HTMLElement,resultControlId:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-control'):null,resultOperation:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-operation'):null,resultStateClass:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-state'):null,resultReceipt:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-receipt'):null,resultJobId:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-durable-job'):null,resultTerminal:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-durable-status'):null};
+    })()`);
+}
+
+export function validateP805BlueprintMutationResponse(pathname, status, payload) {
+    // Validation is a 200 response; a successful save is a 201 even when
+    // overwriting an existing Blueprint. Domain errors may themselves be 200.
+    const expectedStatus = pathname === "/api/home/blueprints/validate" ? 200
+        : pathname === "/api/home/blueprints/save" ? 201 : undefined;
+    if (expectedStatus === undefined || status !== expectedStatus || payload?.status !== "ok") fail(`${pathname} did not reach a successful terminal (HTTP ${status}: ${JSON.stringify(payload)})`);
+    return payload;
+}
 export async function pressP805Enter(cdp) {
     await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", text:"\r", unmodifiedText:"\r", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
     // One held physical activation lets portal-backed controls receive their
@@ -909,69 +999,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), lifecycle !== "navigation", retainCapturedControl);
             return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
         };
-        const clickCapturedControl = async (stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit, retainCapturedControl = false) => {
-            // A control can be rendered yet sit below the compact viewport.
-            // CDP accepts that off-screen coordinate without giving React a
-            // pointer event, which used to leave the Replay Load transition
-            // in its precondition state and let the tuple time out. Bring the
-            // exact captured control into the rendered viewport and prove its
-            // hit target before issuing its single browser pointer activation.
-            const captureKey = randomBytes(16).toString("hex");
-            const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
-            const removeCapture = () => evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});})()`);
-            const point = await waitFor(async () => {
-                const captured = await capturePoint();
-                if (captured) return captured;
-                await removeCapture();
-                return false;
-            }, `rendered ${stableControlId} browser click target`);
-            if (!point) {
-                await removeCapture();
-                fail("rendered control lost its visible browser click target");
-            }
-            // Replay Load can unmount itself while accepting the target, and
-            // a narrow NavLink can reconcile its active screen on the same
-            // press. Both need the complete native pointer state through the
-            // release so React receives the public click that owns the
-            // lifecycle transition.
-            // Scrolling a focused recovery control can move its layout
-            // without changing its native focus. Reassert that focus at the
-            // exact pointer boundary, before a successful retry is allowed
-            // to reconcile and unmount its terminal-state button.
-            // Move through the exact point before the press.  This keeps the
-            // browser's native hit-test on the captured Retry node even when
-            // React replaces that node immediately after its activation.
-            // It is part of the one pointer gesture, not a keyboard fallback
-            // or a second click.
-            await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:point.x, y:point.y, ...(completePointerState ? {pointerType:"mouse"} : {})});
-            // Hover can trigger a React render between capture and press.
-            // Recheck the original node at the same point and restore its
-            // native focus before dispatch; never silently capture a new
-            // button with an equivalent id in its place.
-            const readyToPress = await evaluate(`(()=>{const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)}); const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled||document.getElementById(${JSON.stringify(stableControlId)})!==item||!record)return false; item.focus({preventScroll:true}); const hit=document.elementFromPoint(${JSON.stringify(point.x)},${JSON.stringify(point.y)}); return document.activeElement===item&&(hit===item||item.contains(hit));})()`);
-            if (!readyToPress) {
-                await removeCapture();
-                fail("rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
-            }
-            const pointer = completePointerState ? {buttons:1, pointerType:"mouse"} : {};
-            await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x:point.x, y:point.y, button:"left", ...pointer, clickCount:1});
-            await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x:point.x, y:point.y, button:"left", ...(completePointerState ? {buttons:0, pointerType:"mouse"} : {}), clickCount:1});
-            // Chromium may change activeElement as the native press starts.
-            // The public-action boundary is the focus and hit-test captured
-            // immediately before that press, so preserve those observed facts
-            // rather than treating a post-dispatch focus transfer as a second
-            // control identity.
-            const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
-            // React is free to replace the Retry button while its accepted
-            // pointer activation starts a new simulation.  The transaction
-            // identity is consequently the captured pre-dispatch node, not
-            // whichever similarly named node exists after the release.  Do
-            // require both the pre-dispatch native hit-test and a document
-            // capture-phase native pointer dispatch to target that exact
-            // node; this is evidence, not a keyboard fallback.
-            if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
-            return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, focus:dispatchFocus}};
-        };
+        const clickCapturedControl = (...args) => clickP805CapturedControl(cdp, evaluate, ...args);
         // A semantic observation is only valid when the browser itself issued
         // the declared request after the rendered control was activated.  Do
         // not "complete" a page click by making an unrelated Node-side fetch:
@@ -1129,17 +1157,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     // here made a valid Retry look like it had lost focus
                     // merely because React had not painted its replacement
                     // yet.
-                    transaction.postTransitionRenderedState = await waitFor(() => evaluate(`(()=>{
-                        const captured=window.__p805CapturedControls?.get(${JSON.stringify(pointer.captureKey)});
-                        const current=document.getElementById(${JSON.stringify(transaction.control?.stableControlId)});
-                        const result=[...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')===${JSON.stringify(transaction.control?.stableControlId)}&&item.getAttribute('data-pokie-lifecycle-result-operation')===${JSON.stringify(transaction.operation)}&&item.getAttribute('data-pokie-lifecycle-result-state')===${JSON.stringify(transaction.stateClass)}&&item.getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(receipt.status)}&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-status')===${JSON.stringify(receipt.status)}&&(${JSON.stringify(receipt.result?.id ?? null)}===null||(item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(receipt.result?.id ?? null)}&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(receipt.result?.id ?? null)})));
-                        if (!(result instanceof HTMLElement)) return false;
-                        const capturedControlId=captured instanceof HTMLElement?captured.id:null;
-                        const controlState=!(captured instanceof HTMLElement)?'missing':current===null?'removed':current===captured?'retained':'replaced';
-                        const capturedControlConnected=captured instanceof HTMLElement&&captured.isConnected;
-                        window.__p805CapturedControls?.delete(${JSON.stringify(pointer.captureKey)});
-                        return {capturedControlId,captureKey:${JSON.stringify(pointer.captureKey)},preDispatchEvidence:{capturedControlId:${JSON.stringify(pointer.capturedControlId)},focus:${JSON.stringify(pointer.preDispatchFocus)},hitTest:${JSON.stringify(pointer.hitTest)},dispatch:${JSON.stringify(pointer.dispatch)}},controlState,currentControlId:current instanceof HTMLElement?current.id:null,capturedControlConnected,activeElementId:document.activeElement instanceof HTMLElement?document.activeElement.id||null:null,requestId:${JSON.stringify(transaction.request?.browserRequestId)},resultSha256:${JSON.stringify(receipt.resultSha256)},renderedTerminal:result instanceof HTMLElement,resultControlId:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-control'):null,resultOperation:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-operation'):null,resultStateClass:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-state'):null,resultReceipt:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-receipt'):null,resultJobId:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-durable-job'):null,resultTerminal:result instanceof HTMLElement?result.getAttribute('data-pokie-lifecycle-result-durable-status'):null};
-                    })()`), `${observation} post-transition rendered terminal`, timeout);
+                    transaction.postTransitionRenderedState = await waitFor(() => observeP805PointerTerminal(evaluate, transaction, receipt), `${observation} post-transition rendered terminal`, timeout);
                     if (!hasRenderedActivation({interaction:{activation:"pointer", pointerActivated:true}, transaction}, transaction.control?.stableControlId)) fail(`${observation} pointer transaction lost its captured identity, native dispatch focus, hit-tested dispatch, request, terminal, or post-transition replacement state`);
                 }
             }
@@ -1863,7 +1881,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 if (responses.length !== 1) fail(`${observation} must submit ${pathname} exactly once`);
                 const received = await waitFor(() => cdp.events.slice(saveCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === request.params.requestId), `${observation} ${pathname} response`);
                 const payload = JSON.parse((await readBrowserResponseBody(request.params.requestId, observation)).body);
-                if (received.params.response.status !== 200 || payload.status !== "ok") fail(`${observation} ${pathname} did not reach a successful terminal`);
+                validateP805BlueprintMutationResponse(pathname, received.params.response.status, payload);
                 const submitted = request.params.request.postData ?? (await cdp.send("Network.getRequestPostData", {requestId:request.params.requestId})).postData;
                 const receipt = {browserRequestId:request.params.requestId, causedByControlId:"game-model-reels-save", requestCount:1, path:pathname, method:"POST", status:received.params.response.status, terminal:payload.status, payload, submitted:JSON.parse(submitted), resultSha256:digest(JSON.stringify(payload))};
                 api.push({observation, ...receipt, initiator:"rendered-control"});
