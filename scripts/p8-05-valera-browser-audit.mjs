@@ -2132,8 +2132,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // persistent Home navigation; otherwise the visible mobile drawer is
         // closed and its hidden Projects control cannot receive a real key.
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions.wide, deviceScaleFactor:1});
-        await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === '#/home/design' && document.body.innerText.includes('Create game')"), "Studio create-game control");
-        const created = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()");
+        // Automatic validation can begin after the page text is visible and
+        // temporarily disable Create game. Wait for the actual enabled native
+        // control, rather than letting that expected loading state abort a
+        // later tuple after the parent has accepted earlier receipts.
+        const created = await waitFor(() => evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()"), "enabled focusable Studio Create game control");
         if (!created?.stableControlId) fail("rendered Studio did not expose an enabled focusable Create game control");
         // Create game is the first public action in a new Studio session. It
         // has no project-tab transaction marker yet, but it is a native

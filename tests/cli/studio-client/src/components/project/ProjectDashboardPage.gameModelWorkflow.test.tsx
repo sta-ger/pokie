@@ -1,4 +1,4 @@
-import {fireEvent, screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
@@ -89,6 +89,93 @@ async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promi
 }
 
 describe("ProjectDashboardPage - Game Model tab", () => {
+    it("waits through the creator's automatic validation before opening the bounded Game Model workflow", async () => {
+        const user = userEvent.setup();
+        let resolveValidation: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        const routes = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/blueprints/save-managed": () => ({ok: true, status: 201, body: {status: "ok", path: "/games/a", blueprintHash: "h1"}}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/a"}}}),
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+        });
+        const fetchImpl: FetchLike = (url, init) => url === "/api/home/blueprints/validate"
+            ? new Promise((resolve) => {
+                resolveValidation = resolve;
+            })
+            : routes.fetchImpl(url, init);
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        const createGame = await screen.findByRole("button", {name: "Create game"});
+        await waitFor(() => expect(resolveValidation).toBeDefined());
+        expect(createGame).toBeDisabled();
+        expect(createGame).toHaveAttribute("aria-busy", "true");
+        await user.click(createGame);
+        expect(router.state.location.pathname).toBe("/home/design");
+        expect(routes.calls.some((call) => call.url === "/api/home/blueprints/save-managed")).toBe(false);
+
+        await act(() => Promise.resolve(resolveValidation!(jsonResponse({status: "ok", warnings: []}))));
+        await waitFor(() => expect(createGame).toBeEnabled());
+        createGame.focus();
+        expect(createGame).toHaveAttribute("id", "blueprint-create-game");
+        expect(createGame).toHaveFocus();
+        await user.keyboard("{Enter}");
+        await screen.findByRole("heading", {name: "A"});
+        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
+        expect(routes.calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
+        expect(JSON.parse(routes.calls.find((call) => call.url === "/api/home/projects/open")!.init!.body!)).toMatchObject({projectRoot: "/games/a"});
+        await goToGameModelTab(user);
+        await user.click(screen.getByRole("tab", {name: "Full strips"}));
+        expect(await screen.findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
+    });
+
+    it.each([false, true])("holds the Game Model route and projection until fresh loading context renders terminally (failure=%s)", async (failedRefresh) => {
+        const user = userEvent.setup();
+        let refreshRequested = false;
+        let loadingPublished = false;
+        let resolveContext: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        const routes = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+        });
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/context" && refreshRequested) {
+                if (!loadingPublished) {
+                    loadingPublished = true;
+                    return Promise.resolve(jsonResponse({status: "loading", projectRoot: "/games/a"}));
+                }
+                return new Promise((resolve) => {
+                    resolveContext = resolve;
+                });
+            }
+            return routes.fetchImpl(url, init);
+        };
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/overview"], strictMode: true});
+        await screen.findByRole("heading", {name: "A"});
+        refreshRequested = true;
+        await user.click(screen.getByRole("button", {name: "Game Model"}));
+        await waitFor(() => expect(resolveContext).toBeDefined());
+        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
+        expect(routes.calls.filter((call) => call.url.startsWith("/api/project/gameModel"))).toHaveLength(0);
+        expect(screen.queryByRole("tab", {name: "Full strips"})).not.toBeInTheDocument();
+
+        refreshRequested = false;
+        const terminalContext = failedRefresh
+            ? {status: "error", projectRoot: "/games/a", error: "Fresh context unavailable"}
+            : BASE_ROUTES["/api/project/context"]({url: "/api/project/context"}).body;
+        await act(() => Promise.resolve(resolveContext!(jsonResponse(terminalContext))));
+        if (failedRefresh) {
+            expect(await screen.findByText(/Fresh context unavailable/)).toBeInTheDocument();
+            expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
+            expect(routes.calls.filter((call) => call.url.startsWith("/api/project/gameModel"))).toHaveLength(0);
+        } else {
+            await screen.findByRole("button", {name: "Refresh"});
+            expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/gameModel");
+            await user.click(screen.getByRole("tab", {name: "Full strips"}));
+            expect(await screen.findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
+        }
+    });
+
     it("keeps a 1,800-stop production model bounded while every reel position remains inspectable", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({
