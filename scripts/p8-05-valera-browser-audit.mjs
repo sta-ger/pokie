@@ -242,7 +242,7 @@ export function createP805OwnedProcessRecord(label, child, ownerOptions, spawned
 }
 async function terminate(child) { if (!child?.pid) return {processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[]}; const result = await drainProcessTree(child, 5_000, descendants(child.pid)); if (!result.processTreeDrained || !result.resourcesDrained) fail("owned Studio/browser process tree could not be drained"); return result; }
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
-async function connect(devtools, initialUrl = "about:blank") {
+export async function connectP805Devtools(devtools, initialUrl = "about:blank") {
     const target = await responseJson(`${devtools}/json/new?${encodeURIComponent(initialUrl)}`, {method:"PUT"}), socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => { socket.once("open", resolve); socket.once("error", reject); });
     let id = 0;
@@ -256,6 +256,9 @@ async function connect(devtools, initialUrl = "about:blank") {
     const retainedEvents = new Set([
         "Network.requestWillBeSent",
         "Network.responseReceived",
+        // One completion per response binds getResponseBody to the fully
+        // received bytes. Keep this boundary while dropping dataReceived.
+        "Network.loadingFinished",
         "Network.loadingFailed",
         "Runtime.exceptionThrown",
         "Log.entryAdded",
@@ -311,6 +314,32 @@ async function connect(devtools, initialUrl = "about:blank") {
         });
     };
     return {send, events, close};
+}
+/** Observe the latest browser validation and its rendered Create game state.
+ * An older completed response must not authorize a newer, still-pending check. */
+export async function observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody) {
+    const validationPath = "/api/home/blueprints/validate";
+    const latestRequest = () => cdp.events.findLast((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === validationPath);
+    const request = latestRequest();
+    if (!request) return false;
+    const browserRequestId = request.params.requestId;
+    if (cdp.events.some((event) => event.method === "Network.loadingFailed" && event.params.requestId === browserRequestId)) fail("initial rendered Design validation failed to complete");
+    const response = cdp.events.findLast((event) => event.method === "Network.responseReceived" && event.params.requestId === browserRequestId && new URL(event.params.response.url).pathname === validationPath);
+    if (!response || !cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === browserRequestId)) return false;
+    const body = await readBrowserResponseBody(browserRequestId, "initial rendered Design validation");
+    const bytes = body.base64Encoded ? Buffer.from(body.body, "base64") : Buffer.from(body.body);
+    const payload = JSON.parse(bytes.toString("utf8"));
+    if (response.params.response.status !== 200 || payload.status !== "ok") fail("initial rendered Design validation did not accept the starter game");
+    const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
+    if (!control || latestRequest()?.params.requestId !== browserRequestId) return false;
+    return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};
+}
+export async function pressP805Enter(cdp) {
+    await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", text:"\r", unmodifiedText:"\r", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
+    // One held physical activation lets portal-backed controls receive their
+    // native default action before the matching release. This is not a retry.
+    await wait(50);
+    await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
 }
 function optionsFrom(argv) { const args = argv.slice(2), values = {}; for (let index = 0; index < args.length; index += 2) { if (!args[index]?.startsWith("--") || values[args[index]] || args[index + 1] === undefined) fail("usage: --persona <persona> --phase <initial|retest> --candidate <sha> --package-sha256 <sha> --candidate-executable-sha256 <sha> --candidate-executable-receipt <absolute-json> --candidate-executable-receipt-sha256 <sha256> --packed-package <absolute-tgz> --output <absolute-path> [--packed-cli <absolute-path>] [--runtime-root <absolute-path> --runtime-identity-receipt <absolute-json> --runtime-identity-receipt-sha256 <sha256>] [--workflow-personas <comma-separated-personas>] [--observation <observation> --viewport <wide|compact|narrow>]"); values[args[index]] = args[index + 1]; } const persona = values["--persona"], observation = values["--observation"], viewport = values["--viewport"], runtimeRoot = values["--runtime-root"]; return {persona, workflowPersonas:(values["--workflow-personas"] ?? persona ?? "").split(",").filter(Boolean), phase:values["--phase"], candidateId:values["--candidate"], candidatePackageSha256:values["--package-sha256"], candidateExecutableSha256:values["--candidate-executable-sha256"], candidateExecutableReceipt:{path:values["--candidate-executable-receipt"], sha256:values["--candidate-executable-receipt-sha256"]}, packedPackage:values["--packed-package"], output:values["--output"], packedCli:values["--packed-cli"] ?? path.join(root, "dist/cli/pokie.js"), runtime:runtimeRoot === undefined ? undefined : {root:runtimeRoot, receipt:{path:values["--runtime-identity-receipt"], sha256:values["--runtime-identity-receipt-sha256"]}}, tuple:observation === undefined && viewport === undefined ? undefined : {persona, observation, viewport}, tupleReceiptPath:values["--tuple-receipt"], tupleCleanupPath:values["--tuple-cleanup"]}; }
 function validOptions(value) { const tuple = value?.tuple, runtime = value?.runtime, validRuntime = runtime === undefined || path.isAbsolute(runtime.root ?? "") && path.isAbsolute(runtime.receipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(runtime.receipt?.sha256 ?? ""); return P805_PERSONAS.includes(value?.persona) && Array.isArray(value?.workflowPersonas) && value.workflowPersonas.length > 0 && value.workflowPersonas.every((persona) => P805_PERSONAS.includes(persona)) && new Set(value.workflowPersonas).size === value.workflowPersonas.length && validRuntime && (!tuple || tuple.persona === value.persona && value.workflowPersonas.length === 1 && value.workflowPersonas[0] === value.persona && P805_REQUIRED_OBSERVATIONS[value.persona]?.includes(tuple.observation) && ["wide", "compact", "narrow"].includes(tuple.viewport) && path.isAbsolute(value.tupleReceiptPath ?? "") && path.isAbsolute(value.tupleCleanupPath ?? "")) && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
@@ -810,20 +839,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // Loading the public Studio entry point is browser startup, not a
         // workflow transition. Every subsequent route change is activated
         // through the live rendered navigation control below.
-        const browserOwnership = ownershipEnvironment("browser", true); browser = own("browser", services.spawn(services.chromium, ["--headless=new", "--no-sandbox", "--no-first-run", `--user-data-dir=${context.browserProfile}`, `--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${devtoolsPort}`, "about:blank"], {detached:process.platform !== "win32", env:browserOwnership.env, stdio:"pipe"}), browserOwnership); await waitFor(async () => { try { return Array.isArray(await responseJson(`${devtools}/json/list`)); } catch { return false; } }, "fresh browser profile"); cdp = await connect(devtools, `${origin}/#/home/design`); const evaluate = async (source) => { const result = await cdp.send("Runtime.evaluate", {expression:source, returnByValue:true, awaitPromise:true}); if (result.exceptionDetails) fail(`rendered browser evaluation failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "unknown exception"}`); return result.result.value; };
+        const browserOwnership = ownershipEnvironment("browser", true); browser = own("browser", services.spawn(services.chromium, ["--headless=new", "--no-sandbox", "--no-first-run", `--user-data-dir=${context.browserProfile}`, `--remote-debugging-address=127.0.0.1`, `--remote-debugging-port=${devtoolsPort}`, "about:blank"], {detached:process.platform !== "win32", env:browserOwnership.env, stdio:"pipe"}), browserOwnership); await waitFor(async () => { try { return Array.isArray(await responseJson(`${devtools}/json/list`)); } catch { return false; } }, "fresh browser profile"); cdp = await connectP805Devtools(devtools, `${origin}/#/home/design`); const evaluate = async (source) => { const result = await cdp.send("Runtime.evaluate", {expression:source, returnByValue:true, awaitPromise:true}); if (result.exceptionDetails) fail(`rendered browser evaluation failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "unknown exception"}`); return result.result.value; };
         // Chromium's headless DevTools target needs the native virtual-key
         // code as well as the DOM key name to perform a button's default
         // keyboard activation.  Without it, focus evidence was recorded but
         // React's actual public action owner was never invoked.
-        const pressEnter = async () => {
-            await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Enter", code:"Enter", text:"\r", unmodifiedText:"\r", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
-            // Keep one physical key activation long enough for a portal-backed
-            // confirmation button to receive its native default action before
-            // the matching key-up. This is not a retry: every transaction
-            // still emits exactly one key-down/key-up pair for its control.
-            await wait(50);
-            await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13, nativeVirtualKeyCode:13});
-        };
+        const pressEnter = () => pressP805Enter(cdp);
         const pressSpace = async () => {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:" ", code:"Space", text:" ", unmodifiedText:" ", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
             await wait(50);
@@ -2137,15 +2158,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // the focused button before Enter reaches it. Wait for the browser's
         // actual validation response and its rendered terminal state before
         // capturing the control, rather than retrying a lost activation.
-        const creatorValidation = await waitFor(async () => {
-            const response = cdp.events.findLast((event) => event.method === "Network.responseReceived" && new URL(event.params.response.url).pathname === "/api/home/blueprints/validate");
-            if (!response || !cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === response.params.requestId)) return false;
-            const body = await readBrowserResponseBody(response.params.requestId, "initial rendered Design validation");
-            const payload = JSON.parse(body.body);
-            if (response.params.response.status !== 200 || payload.status !== "ok") fail("initial rendered Design validation did not accept the starter game");
-            return {browserRequestId:response.params.requestId, payload};
-        }, "initial Design validation response");
-        const created = await waitFor(() => evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()"), "validated enabled focusable Studio Create game control");
+        const {validation:creatorValidation, control:created} = await waitFor(() => observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody), "completed Design validation and rendered Create game readiness");
         if (!created?.stableControlId) fail("rendered Studio did not expose an enabled focusable Create game control");
         // Create game is the first public action in a new Studio session. It
         // has no project-tab transaction marker yet, but it is a native
@@ -2153,11 +2166,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // keyboard gesture rather than attempting a route transition or a
         // Node-side creation request.
         const creationCursor = cdp.events.length;
-        await activateFocusedControl("precondition", created, "keyboard");
+        const creationActivation = await activateFocusedControl("precondition", created, "keyboard");
         try {
             await waitFor(() => evaluate("location.hash.includes('/project/')"), "rendered keyboard project creation", 60_000);
             await waitFor(() => cdp.events.slice(creationCursor).find((event) => event.method === "Network.responseReceived" && new URL(event.params.response.url).pathname === "/api/home/blueprints/save-managed" && event.params.response.status === 201), "rendered Create game managed-save response");
-            api.push({observation:"project creation validation", method:"POST", path:"/api/home/blueprints/validate", status:200, payload:creatorValidation.payload, browserRequestId:creatorValidation.browserRequestId, initiator:"rendered-auto-validation"});
+            api.push({observation:"project creation validation", method:"POST", path:"/api/home/blueprints/validate", ...creatorValidation, activation:creationActivation, initiator:"rendered-auto-validation"});
         } catch (error) {
             const rendered = await evaluate("(()=>({route:location.hash, active:document.activeElement instanceof HTMLElement ? {id:document.activeElement.id, text:(document.activeElement.innerText||document.activeElement.textContent||'').trim()} : null, create:document.getElementById('blueprint-create-game')?.outerHTML?.slice(0,800), status:[...document.querySelectorAll('[role=status],[role=alert]')].map((item)=>({text:(item.textContent||'').trim(),role:item.getAttribute('role')})), text:document.body.innerText.slice(0,2400)}))()");
             const managedSave = cdp.events.findLast((event) => event.method === "Network.responseReceived" && (() => { try { return new URL(event.params.response.url).pathname === "/api/home/blueprints/save-managed"; } catch { return false; } })());
