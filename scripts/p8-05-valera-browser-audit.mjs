@@ -284,6 +284,10 @@ export async function createP805TupleSupervisor(options, tuple, nonce, services 
                 tracker.capture({final:true});
                 result = await drainProcessTree(child, 0, tracker.ownedProcesses, tracker.ownedResources);
             }
+            // A process-table snapshot may already see a killed root as a
+            // zombie while Node has not delivered its exit event. Do not
+            // publish an authenticated terminal with an unobserved status.
+            if (result.processTreeDrained && child?.pid) await waitFor(() => child.exitCode !== null || child.signalCode !== null, "tuple worker exit after ownership drainage", 1_000);
             return {...result, authenticated:true, operationId, registryPath:path.basename(registry), forcedReleases};
         },
     };
@@ -535,7 +539,7 @@ function optionsFrom(argv) { const args = argv.slice(2), values = {}; for (let i
 function validOptions(value) { const tuple = value?.tuple, runtime = value?.runtime, validRuntime = runtime === undefined || path.isAbsolute(runtime.root ?? "") && path.isAbsolute(runtime.receipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(runtime.receipt?.sha256 ?? ""); return P805_PERSONAS.includes(value?.persona) && Array.isArray(value?.workflowPersonas) && value.workflowPersonas.length > 0 && value.workflowPersonas.every((persona) => P805_PERSONAS.includes(persona)) && new Set(value.workflowPersonas).size === value.workflowPersonas.length && validRuntime && (!tuple || tuple.persona === value.persona && value.workflowPersonas.length === 1 && value.workflowPersonas[0] === value.persona && P805_REQUIRED_OBSERVATIONS[value.persona]?.includes(tuple.observation) && ["wide", "compact", "narrow"].includes(tuple.viewport) && path.isAbsolute(value.tupleReceiptPath ?? "") && path.isAbsolute(value.tupleCleanupPath ?? "")) && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
 function validProcessProofOptions(value) { return value?.persona === "all" && value.workflowPersonas.length === 1 && value.workflowPersonas[0] === "all" && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
 
-function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000, abortSignal) {
+function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000, abortSignal, terminateOnTimeout = true) {
     return new Promise((resolve, reject) => {
         let stdout = "", stderr = "";
         let settled = false;
@@ -550,7 +554,10 @@ function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000, ab
             if (settled) return;
             settled = true;
             abortSignal?.removeEventListener("abort", cancel);
-            child.kill("SIGTERM");
+            // Tuple parents authenticate retained receipts and capture the
+            // ownership registry before the supervisor terminates the worker.
+            // Standalone CLI callers retain their existing timeout signal.
+            if (terminateOnTimeout) child.kill("SIGTERM");
             reject(new Error(`${label} exceeded its ${timeoutMs}ms public-command budget`));
         }, timeoutMs);
         const complete = (code, signal) => {
@@ -2818,7 +2825,7 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
             child = services.spawn(process.execPath, args, {cwd:root, env:supervisor.env, detached:process.platform !== "win32", stdio:"pipe"});
             worker = child?.pid ? {pid:child.pid, processIdentity:processIdentity(child.pid)} : undefined;
             supervisor.attach(child);
-            result = await services.childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, dependencies.tupleTimeoutMs ?? 4_500_000, dependencies.signal);
+            result = await services.childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, dependencies.tupleTimeoutMs ?? 4_500_000, dependencies.signal, false);
             // A worker's own cleanup receipt is necessary but not sufficient:
             // the parent also drains the process identity it spawned before
             // accepting that tuple or advancing the ledger.  This covers a

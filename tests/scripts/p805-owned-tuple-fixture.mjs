@@ -2,6 +2,7 @@
 import {spawn} from "node:child_process";
 import {Worker} from "node:worker_threads";
 import {createHash, randomBytes} from "node:crypto";
+import {writeFileSync} from "node:fs";
 import {readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {processIdentity, registerPc20OwnedResource} from "../../scripts/pc-20-release-completion.mjs";
@@ -14,7 +15,9 @@ const output = args["--output"], stem = `${phase}-${tuple.persona}--${tuple.obse
 const second = tuple.viewport === "compact", mode = process.env.P805_OWNERSHIP_FIXTURE_MODE;
 
 if (second && ["timeout", "tamper", "cancellation", "failure", "success-descendants"].includes(mode)) {
-    process.on("SIGTERM", () => {});
+    process.on("SIGTERM", () => {
+        if (mode === "timeout") writeFileSync(path.join(output, "timeout-worker-signalled.txt"), "SIGTERM");
+    });
     const grandchildCode = 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);';
     // Studio rotates its local ownership namespace just like a restarted
     // installed CLI. The tuple supervisor must still see its grandchildren.

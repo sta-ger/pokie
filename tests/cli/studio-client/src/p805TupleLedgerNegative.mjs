@@ -1,3 +1,4 @@
+import {exerciseP805TupleSupervisor} from "../../../scripts/p805-tuple-supervisor-contract.mjs";
 import {EventEmitter} from "node:events";
 import {createHash} from "node:crypto";
 import {mkdtemp, readFile, readdir, rm} from "node:fs/promises";
@@ -278,7 +279,8 @@ try {
     if (!rejectsRestartReceipt((receipt) => { receipt.capturedJobId = "uncorrelated-job"; }) || !rejectsRestartReceipt((receipt) => { delete receipt.ownedProcessDrain.priorStudioShutdown.durableJobBeforeLoss; }) || !rejectsRestartReceipt((receipt) => { receipt.ownedProcessDrain.priorStudioShutdown.durableJob.status = "cancelled"; }) || !rejectsRestartReceipt((receipt) => { receipt.rendered.resultJobId = "uncorrelated-job"; }) || !rejectsRestartReceipt((receipt) => { receipt.rendered.resultTerminal = "completed"; }) || !rejectsRestartReceipt((receipt) => { delete receipt.rendered; }) || !rejectsRestartReceipt((receipt) => { delete receipt.timing; }) || !rejectsRestartReceipt((receipt) => { delete receipt.evidence.screenshotEvidenceId; }) || !rejectsRestartReceipt((receipt) => { delete receipt.evidence.cleanupEvidenceId; }) || !rejectsRestartReceipt((receipt) => { delete receipt.ownedProcessDrain; })) {
         throw new Error("collector accepted an uncorrelated, generic, unrendered, unmeasured, or uncleared restart recovery terminal");
     }
-    process.stdout.write(`${JSON.stringify({acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, pointerSemanticSubstitutionRejected:true, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true, retryTerminalSubstitutionRejected, retryTerminalJobSubstitutionRejected, retryPreDispatchSubstitutionRejected})}\n`);
+    const controlledTimeout = await exerciseP805TupleSupervisor("timeout");
+    process.stdout.write(`${JSON.stringify({controlledTimeout, acceptedReceipts:ledger.acceptedReceipts.length, aggregatePublished:false, failureKind:ledger.attemptedChild.failureKind, cleanupKinds, retainedFailureKinds, rejectedReceiptSubstitutions, pointerSemanticSubstitutionRejected:true, stateClassSubstitutionRejected:true, runtimeSubstitutionRejected:true, retryTerminalSubstitutionRejected, retryTerminalJobSubstitutionRejected, retryPreDispatchSubstitutionRejected})}\n`);
 } finally {
     await rm(output, {recursive:true, force:true});
 }
