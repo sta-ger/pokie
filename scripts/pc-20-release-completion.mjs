@@ -278,9 +278,16 @@ export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRe
     const ownedProcesses = new Map();
     const ownedResources = new Map();
     let captureFailure;
-    const rememberProcess = (processId, identity = processIdentity(processId)) => {
+    const rememberProcess = (processId, identity = processIdentity(processId), snapshotOnly = false) => {
         if (!Number.isInteger(processId) || processId <= 0) return;
         if (typeof identity !== "string" || !identity) {
+            // ps and /proc are not one atomic snapshot. A process reaped in
+            // between is no longer an owned resource; a still-live process
+            // without a verifiable identity must continue to fail closed.
+            if (snapshotOnly) {
+                try { process.kill(processId, 0); }
+                catch (error) { if (error?.code === "ESRCH") return; }
+            }
             captureFailure = new Error(`release gate could not retain an identity for PID ${processId}`);
             return;
         }
@@ -294,12 +301,16 @@ export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRe
     rememberProcess(pid);
     const capture = ({final = false} = {}) => {
         const snapshot = processSnapshot();
+        const discovered = new Set(ownedProcesses.keys());
         let changed = true;
         while (changed) {
             changed = false;
             for (const [childPid, details] of snapshot) {
-                if (ownedProcesses.has(details.parentPid) && !ownedProcesses.has(childPid)) {
-                    rememberProcess(childPid, details.identity);
+                if (discovered.has(details.parentPid) && !discovered.has(childPid)) {
+                    // Topology traversal must advance even when an exiting
+                    // row cannot grant identity-verified signal authority.
+                    discovered.add(childPid);
+                    rememberProcess(childPid, details.identity, true);
                     changed = true;
                 }
             }
