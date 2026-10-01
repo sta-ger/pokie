@@ -384,14 +384,18 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 proofLedger: {
                     path: "initial-process-isolated-packed-proof.json",
                     sha256: createHash("sha256").update(await readFile(aggregatePath)).digest("hex"),
+                    operationRoot: aggregate.operationRoot,
                     candidateId: candidate,
                     candidatePackageSha256: packageSha256,
                     status: "passed",
                     aggregation: "independently-verified-immutable-tuple-child-receipts-only",
                 },
                 tuples: expectedTuples,
-                audits: {count: 5, personas, ids: expect.arrayContaining([expect.any(String)]), tupleReceiptAuditIds: expect.arrayContaining([expect.any(String)])},
+                audits: expect.objectContaining({count: 5, personas, ids: expect.arrayContaining([expect.any(String)]), tupleReceiptAuditIds: expect.arrayContaining([expect.any(String)])}),
             }));
+            expect(controllerProof.audits.ids).toHaveLength(personas.length);
+            expect(new Set(controllerProof.audits.ids).size).toBe(personas.length);
+            expect(controllerProof.audits.tupleReceiptAuditIds).toEqual(aggregate.acceptedReceipts.map((accepted: {receipt: {auditId: string}}) => accepted.receipt.auditId));
             expect(controllerProof.audits.tupleEvidence).toEqual(tupleChildren.map((child: {tuple: unknown; auditPath: string; auditSha256: string; tupleReceiptPath: string; tupleReceiptSha256: string; cleanupPath: string; cleanupSha256: string; checkpointReceiptSha256s: string[]; cleanupEvidenceId: string}, index: number) => ({
                 tuple: child.tuple,
                 auditId: aggregate.acceptedReceipts[index].receipt.auditId,

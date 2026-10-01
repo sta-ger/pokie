@@ -368,6 +368,13 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
         // request/response/completion sequence on the live Studio page.
         for (const method of ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]) await send(method);
         if (initialUrl !== "about:blank") {
+            // Target creation can reply before the initial blank document has
+            // committed. Let it settle so that commit cannot cancel the live
+            // navigation (and its automatically started validation).
+            await waitFor(async () => {
+                const result = await send("Runtime.evaluate", {expression:"location.href === 'about:blank' && document.readyState === 'complete'", returnByValue:true});
+                return result.result?.value === true;
+            }, "instrumented about:blank document", 10_000);
             const navigation = await send("Page.navigate", {url:initialUrl});
             if (navigation.errorText) fail(`initial Studio navigation failed: ${navigation.errorText}`);
         }
@@ -453,6 +460,9 @@ export async function createP805RenderedGame(cdp, evaluate, observations, valida
     const activation = await clickP805CapturedControl({send:async (method, params) => {
         if (method === "Input.dispatchMouseEvent" && params.type === "mousePressed") {
             if (dispatch) fail("Create game must receive exactly one pointer activation");
+            if (proof && latestP805CreatorValidationRequest(cdp)?.params.requestId !== proof.validation.browserRequestId) {
+                fail(`Missing Create game validation network evidence before pointer dispatch: superseded-validation; validated request: ${proof.validation.browserRequestId}; latest request: ${latestP805CreatorValidationRequest(cdp)?.params.requestId}`);
+            }
             dispatch = {kind:"pointer-dispatch", controlId:control.controlId, dispatchedAt:Date.now(), count:1, pressed:false, released:false};
             observations.push(dispatch);
         }
@@ -477,9 +487,11 @@ export async function createP805RenderedGame(cdp, evaluate, observations, valida
 
 /** Observe the latest browser validation and its rendered Create game state.
  * An older completed response must not authorize a newer, still-pending check. */
+const latestP805CreatorValidationRequest = (cdp) => cdp.events.findLast((event) => event.method === "Network.requestWillBeSent"
+    && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/blueprints/validate");
 export async function observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody, diagnostics = {}) {
     const validationPath = "/api/home/blueprints/validate";
-    const latestRequest = () => cdp.events.findLast((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === validationPath);
+    const latestRequest = () => latestP805CreatorValidationRequest(cdp);
     const request = latestRequest();
     if (!request) {
         diagnostics.phase = "missing-request";

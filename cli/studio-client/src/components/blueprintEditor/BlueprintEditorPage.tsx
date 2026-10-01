@@ -332,6 +332,10 @@ export function BlueprintEditorPage({
         const requestedRevision = currentState.revision;
         const requestId = ++validateRequestIdRef.current;
         activeValidationRevisionRef.current = requestedRevision;
+        // A new check of even the same revision supersedes the cached result.
+        // A Create event arriving before React renders loading must join this
+        // check rather than save using its predecessor's completed result.
+        completedValidationRef.current = undefined;
         const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== editor.getCurrentState().revision;
         setValidationView({status: "loading"});
         validateBlueprint(fetchImpl, currentState.blueprint)

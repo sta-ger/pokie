@@ -70,11 +70,11 @@ test("the live DevTools collector retains exact request completion without retai
         commands.push(command.method);
         if (command.method === "Page.navigate") {
             assert.equal(command.params.url, initialUrl);
-            assert.deepEqual(commands, ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable", "Page.navigate"]);
+            assert.deepEqual(commands, ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable", "Runtime.evaluate", "Page.navigate"]);
             for (let index = 0; index < 100; index += 1) socket.send(JSON.stringify({method:"Network.dataReceived", params:{requestId:"validation-1", dataLength:1}}));
             for (const event of lifecycle) socket.send(JSON.stringify(event));
         }
-        socket.send(JSON.stringify({id:command.id, result:{}}));
+        socket.send(JSON.stringify({id:command.id, result:command.method === "Runtime.evaluate" ? {result:{value:true}} : {}}));
     }));
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     let cdp;

@@ -13,10 +13,11 @@ import {spawn} from "node:child_process";
 import {existsSync} from "node:fs";
 import {mkdtemp, rm} from "node:fs/promises";
 import {createServer} from "node:net";
+import {createServer as createHttpServer} from "node:http";
 import {dirname, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
-import {createP805RenderedGame, p805CreateControlExpression as createControlExpression,
+import {connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, p805CreateControlExpression as createControlExpression,
     waitForP805CreateValidation, waitForP805CreatedDashboard as waitForCreatedDashboard} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const waitForCreateValidation = (evaluate, timeout) => waitForP805CreateValidation(evaluate, timeout);
@@ -130,6 +131,89 @@ async function connect(devtoolsPort) {
     return {send, events, waitForEvent, close: () => socket.close()};
 }
 
+// The packed runner passes a live initialUrl to the production collector.
+// Issue validation directly from the first document script, with no debounce
+// or response delay: attaching Network after navigation must fail this proof.
+async function assertImmediateStartupValidation(devtoolsPort) {
+    const requests = [];
+    const server = createHttpServer((request, response) => {
+        requests.push(request.url);
+        if (request.url === "/api/home/blueprints/validate") {
+            response.writeHead(200, {"Content-Type": "application/json"});
+            response.end('{"status":"ok","warnings":[]}');
+        } else if (request.url === "/api/home/blueprints/save-managed") {
+            response.writeHead(201, {"Content-Type": "application/json"});
+            response.end('{"status":"ok"}');
+        } else {
+            response.setHeader("Content-Type", "text/html");
+            response.end(`<!doctype html><button id="blueprint-create-game" data-pokie-validation-state="loading" disabled aria-busy="true">Create game</button><div data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading"></div><script>
+                const button = document.querySelector('button');
+                window.clicks = [];
+                button.onclick = async (event) => {
+                    window.clicks.push(event.isTrusted);
+                    button.disabled = true;
+                    button.setAttribute('aria-busy', 'true');
+                    await fetch('/api/home/blueprints/save-managed', {method: 'POST', body: '{}'});
+                    location.hash = '/project/' + (location.pathname === '/switch' ? 'second' : 'first') + '/overview';
+                    button.remove();
+                    const result = document.querySelector('div');
+                    result.textContent = 'Overview';
+                    result.dataset.pokieLifecycleTerminal = 'rendered';
+                };
+                fetch('/api/home/blueprints/validate', {method: 'POST', body: '{}'}).then(response => response.json()).then(result => {
+                    button.dataset.pokieValidationState = result.status;
+                    button.disabled = false;
+                    button.removeAttribute('aria-busy');
+                });
+            </script>`);
+        }
+    });
+    await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+    let connection;
+    try {
+        const origin = `http://127.0.0.1:${server.address().port}`;
+        connection = await connectP805Devtools(`http://127.0.0.1:${devtoolsPort}`, `${origin}/#/home/design`);
+        const evaluate = async (expression) => {
+            const result = await connection.send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true});
+            assert.equal(result.exceptionDetails, undefined);
+            return result.result.value;
+        };
+        const validationIds = [];
+        for (const phase of ["first", "second"]) {
+            const cursor = phase === "first" ? 0 : connection.events.length;
+            if (phase === "second") await connection.send("Page.navigate", {url: `${origin}/switch#/home/design`});
+            const observations = [];
+            const created = await createP805RenderedGame(connection, evaluate, observations, 10_000,
+                (requestId) => connection.send("Network.getResponseBody", {requestId}), 10_000);
+            validationIds.push(created.validation.browserRequestId);
+            const events = connection.events.slice(cursor);
+            assert.deepEqual(events.filter((event) => event.params.requestId === created.validation.browserRequestId).map((event) => event.method),
+                ["Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFinished"]);
+            assert.deepEqual(observations.map((observation) => observation.kind), ["validation-ready", "pointer-dispatch", "dashboard-transition"]);
+            assert.equal(created.activation.count, 1);
+            assert.equal(created.activation.dispatch.pressed && created.activation.dispatch.released, true);
+            assert.equal(created.activation.dispatch.focus.trusted, true);
+            assert.equal(created.activation.dispatch.focus.validationState, "ok");
+            assert.equal(created.dashboard.route, `#/project/${phase}/overview`);
+            assert.equal(created.dashboard.terminal, "rendered");
+            assert.deepEqual(await evaluate("window.clicks"), [true]);
+            assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent"
+                && new URL(event.params.request.url).pathname === "/api/home/blueprints/save-managed").length, 1);
+        }
+        assert.notEqual(validationIds[0], validationIds[1]);
+        assert.equal(requests.filter((url) => url === "/api/home/blueprints/validate").length, 2);
+        console.log("PASS production initialUrl immediate validation and project switching each authorize one native Create and Overview");
+    } finally {
+        // Closing the target prevents its fixture page from participating in
+        // the subsequent durable Studio workflow; Chromium remains owned by
+        // execute() and is drained by its existing finally block.
+        if (connection) {
+            try { await connection.send("Page.close"); } finally { await connection.close(); }
+        }
+        await new Promise((resolveClose) => server.close(resolveClose));
+    }
+}
+
 async function post(baseUrl, pathname, body) {
     const response = await fetch(`${baseUrl}${pathname}`, {
         method: "POST",
@@ -174,6 +258,18 @@ async function run() {
     await waitFor(async () => {
         try { return (await fetch(`http://127.0.0.1:${devtoolsPort}/json/list`)).ok; } catch { return false; }
     }, "Chromium CDP");
+    await assertImmediateStartupValidation(devtoolsPort);
+    // Cover the same production initialUrl path against the real Studio
+    // bundle too, before the intercepted loading/invalid workflow below.
+    cdp = await connectP805Devtools(`http://127.0.0.1:${devtoolsPort}`, `${baseUrl}/#/home/design`);
+    const startupEvaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true})).result.value;
+    const startup = await waitForP805CreateValidation(startupEvaluate, 90_000,
+        (diagnostics) => observeP805CreatorValidation(cdp, startupEvaluate, (requestId) => cdp.send("Network.getResponseBody", {requestId}), diagnostics));
+    assert.equal(startup.proof.validation.completed, true);
+    assert.deepEqual(cdp.events.filter((event) => event.params.requestId === startup.proof.validation.browserRequestId).map((event) => event.method),
+        ["Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFinished"]);
+    await cdp.send("Page.close");
+    await cdp.close();
     cdp = await connect(devtoolsPort);
     const evaluate = async (expression) => (await cdp.send("Runtime.evaluate", {expression, awaitPromise: true, returnByValue: true})).result.value;
     // CDP can observe the just-created target before its initial about:blank
@@ -499,6 +595,30 @@ if (typeof test === "function") {
         const result = await waitForP805CreateValidation(async () => ++reads === 1 ? {...ready, ariaBusy: "false"} : ready, 0);
         assert.equal(reads, 2);
         assert.equal(result.control.ariaBusy, null, "the receipt must contain the final DOM observation");
+    });
+    test("a validation superseded during pointer preparation cannot authorize Create", async () => {
+        const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
+        const request = (requestId) => ({method: "Network.requestWillBeSent", params: {requestId, request: {method: "POST", url: "http://localhost/api/home/blueprints/validate"}}});
+        const connection = {events: [request("first"),
+            {method: "Network.responseReceived", params: {requestId: "first", response: {status: 200, url: "http://localhost/api/home/blueprints/validate"}}},
+            {method: "Network.loadingFinished", params: {requestId: "first"}}],
+        send: async (method, params) => {
+            if (method === "Input.dispatchMouseEvent") {
+                assert.equal(params.type, "mouseMoved", "a superseded proof must not dispatch a pointer press or release");
+                connection.events.push(request("superseding"));
+            }
+        }};
+        const evaluate = async (expression) => {
+            if (expression === createControlExpression) return ready;
+            if (expression.includes("document.readyState")) return {stableControlId: ready.controlId, validationState: "ok"};
+            if (expression.includes("getBoundingClientRect")) return {x: 10, y: 10, capturedControlId: ready.controlId,
+                captureKey: "captured", preDispatchFocus: {controlId: ready.controlId, native: true},
+                hitTest: {capturedControlId: ready.controlId, matchesCapturedControl: true}};
+        };
+        const observations = [];
+        await assert.rejects(createP805RenderedGame(connection, evaluate, observations, 0,
+            async () => ({body: '{"status":"ok"}'})), /superseded-validation; validated request: first; latest request: superseding/);
+        assert.deepEqual(observations.map((observation) => observation.kind), ["validation-ready"]);
     });
     test("ready validation cannot authorize a disabled or aria-busy Create control", async () => {
         const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
