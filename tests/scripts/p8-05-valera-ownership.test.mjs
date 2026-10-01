@@ -1,13 +1,62 @@
 import assert from "node:assert/strict";
 import {createHash, randomBytes} from "node:crypto";
-import {mkdtemp, readFile, rm} from "node:fs/promises";
-import {execFileSync} from "node:child_process";
+import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {execFileSync, spawn} from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {exerciseP805TupleSupervisor} from "./p805-tuple-supervisor-contract.mjs";
-import {createP805OwnedProcessRecord} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {createP805OwnedProcessRecord, installP805PackedRuntime} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {registerPc20OwnedResource} from "../../scripts/pc-20-release-completion.mjs";
+
+test.each(["success", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "persistent-network", "integrity", "diagnostic-only", "signal", "spawn-failure", "timeout"])("packed installer closes %s without changing candidate or exceeding its retry boundary", async (mode) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p805-install-boundary-"));
+    const installationRoot = path.join(directory, "runtime"), archive = path.join(directory, "candidate.tgz"), children = [], invocations = [];
+    const recoverable = ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN"].includes(mode);
+    const archiveBytes = Buffer.from("immutable candidate archive");
+    try {
+        await mkdir(installationRoot);
+        await writeFile(archive, archiveBytes);
+        const services = {npm:process.execPath, npmArgs:[], mkdir, rm, spawn:(_command, args, options) => {
+            invocations.push([...args]);
+            const attempt = invocations.length;
+            if (attempt === 2) assert.equal(children[0].exitCode, 1, "retry follows the failed installer's terminal exit");
+            const failed = mode === "persistent-network" || mode === "integrity" || mode === "diagnostic-only" || recoverable && attempt === 1;
+            const errorCode = mode === "integrity" ? "EINTEGRITY" : mode === "persistent-network" ? "ECONNRESET" : mode;
+            const source = `
+                const fs = require('node:fs');
+                const root = ${JSON.stringify(installationRoot)};
+                if (${attempt} === 2 && fs.existsSync(root + '/partial')) throw new Error('partial installation survived retry');
+                fs.writeFileSync(root + '/partial', 'attempt');
+                if (${JSON.stringify(mode)} === 'timeout') setInterval(() => {}, 1000);
+                else if (${JSON.stringify(mode)} === 'signal') process.kill(process.pid, 'SIGTERM');
+                else if (${failed}) { console.error(${JSON.stringify(mode === "diagnostic-only" ? "package diagnostic mentioned ECONNRESET" : `npm error code ${errorCode}`)}); process.exitCode = 1; }
+                else { fs.renameSync(root + '/partial', root + '/installed'); console.log('installed exact candidate'); }
+            `;
+            const child = mode === "spawn-failure" ? spawn(path.join(directory, "missing-npm"), [], options) : spawn(process.execPath, ["-e", source, "--", ...args], options);
+            children.push(child);
+            return child;
+        }};
+        const run = () => installP805PackedRuntime(services, installationRoot, archive, {cwd:directory, stdio:"pipe"}, "packed install regression", mode === "timeout" ? 100 : 5_000);
+        if (mode === "success" || recoverable) {
+            const result = await run();
+            assert.equal(result.exitCode, 0);
+            assert.equal(result.attempts.length, recoverable ? 2 : 1);
+            assert.deepEqual(result.attempts.map(({exitCode}) => exitCode), recoverable ? [1, 0] : [0]);
+            assert.match(result.stdout, /installed exact candidate/);
+            if (recoverable) assert.match(result.stderr, new RegExp(`npm error code ${mode}`));
+            assert.equal(await readFile(path.join(installationRoot, "installed"), "utf8"), "attempt");
+        } else {
+            await assert.rejects(run(), mode === "spawn-failure" ? /ENOENT/ : mode === "timeout" ? /public-command budget/ : /packed install regression exited/);
+        }
+        assert.equal(invocations.length, recoverable || mode === "persistent-network" ? 2 : 1);
+        for (const args of invocations) assert.deepEqual(args, ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, archive]);
+        assert.deepEqual(await readFile(archive), archiveBytes, "transport recovery preserves the candidate archive");
+        for (const child of children) assert.ok(child.exitCode !== null || child.signalCode !== null || child.pid === undefined, "every installer is terminal before the helper returns");
+    } finally {
+        await rm(directory, {recursive:true, force:true});
+    }
+});
 
 test("a packed browser owner retains its namespace through release", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p805-owned-browser-"));

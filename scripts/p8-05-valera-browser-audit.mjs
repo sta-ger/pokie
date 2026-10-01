@@ -566,7 +566,7 @@ function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000, ab
             clearTimeout(timer);
             abortSignal?.removeEventListener("abort", cancel);
             const result = {label, exitCode:code, signal, stdout, stderr};
-            if (expectedExitCode !== undefined && code !== expectedExitCode) reject(new Error(`${label} exited ${code ?? "null"}: ${stderr || stdout}`));
+            if (expectedExitCode != null && code !== expectedExitCode) reject(new Error(`${label} exited ${code ?? "null"}: ${stderr || stdout}`));
             else resolve(result);
         };
         child.stdout?.on("data", (chunk) => { stdout += chunk.toString(); });
@@ -680,13 +680,46 @@ async function releaseP805SharedRuntime(runtime, services, retainEvidence = fals
     return {root:runtime.root, removed:true, alreadyAbsent:false};
 }
 
+// A local candidate archive still has registry dependencies. Retry only a
+// completed npm attempt that reports a transient transport error, with the
+// same archive and one shared deadline. No tuple can start before the normal
+// package/executable authentication and read-only sealing below succeeds.
+export async function installP805PackedRuntime(services, installationRoot, packedPackage, spawnOptions, label, timeoutMs = 900_000) {
+    const args = [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, packedPackage];
+    const deadline = Date.now() + timeoutMs, attempts = [];
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) fail(`${label} exceeded its ${timeoutMs}ms public-command budget`);
+        const child = services.spawn(services.npm, args, spawnOptions);
+        let result;
+        try {
+            result = await (services.childResult ?? childResult)(child, label, null, remainingMs);
+        } finally {
+            // Spawn failure and timeout are not transport retries. Await
+            // drainage on every attempt before retrying or propagating an
+            // error to the parent's failure ledger.
+            const drain = await (services.settleInstaller ?? ((installer) => drainProcessTree(installer, 5_000)))(child);
+            if (!drain.processTreeDrained || !drain.resourcesDrained) fail(`${label} failed to drain its installer`);
+        }
+        attempts.push(result);
+        if (result.exitCode === 0 && result.signal === null) {
+            return {...result, stdout:attempts.map((value) => value.stdout).join("\n"), stderr:attempts.map((value) => value.stderr).join("\n"), attempts};
+        }
+        const transient = result.exitCode !== null && result.signal === null && /^npm (?:ERR!|error) code (?:ECONNRESET|ETIMEDOUT|EAI_AGAIN)\s*$/m.test(result.stderr);
+        if (!transient || attempt === 1) fail(`${label} exited ${result.exitCode ?? "null"}: ${result.stderr || result.stdout}`);
+        // The failed process has exited. Discard only its incomplete local
+        // installation; retain the isolated npm cache for the second attempt.
+        await services.rm(installationRoot, {recursive:true, force:true});
+        await services.mkdir(installationRoot, {recursive:true});
+    }
+}
+
 async function prepareP805SharedRuntime(options, parent, services) {
     const runtimeRoot = path.join(options.output, `${options.phase}-packed-runtime-${parent.nonce}`), runtimeWorkspace = path.join(options.output, `${options.phase}-packed-runtime-workspace-${parent.nonce}`), runtimeConfiguration = path.join(options.output, `${options.phase}-packed-runtime-configuration-${parent.nonce}`), receiptPath = path.join(options.output, `${options.phase}-packed-runtime-${parent.nonce}.json`);
     await Promise.all([runtimeRoot, runtimeWorkspace, runtimeConfiguration].map((directory) => services.mkdir(directory, {recursive:true})));
     const archive = await services.readFile(options.packedPackage);
     if (digest(archive) !== options.candidatePackageSha256) fail("parent packed runtime archive digest differs from declared candidate package identity");
-    const install = services.spawn(services.npm, [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", runtimeRoot, options.packedPackage], {cwd:runtimeWorkspace, env:{...process.env, HOME:runtimeConfiguration, XDG_CONFIG_HOME:runtimeConfiguration}, stdio:"pipe"});
-    const result = await services.childResult(install, "parent immutable packed runtime installation", 0, 900_000);
+    const result = await installP805PackedRuntime(services, runtimeRoot, options.packedPackage, {cwd:runtimeWorkspace, env:{...process.env, HOME:runtimeConfiguration, XDG_CONFIG_HOME:runtimeConfiguration}, stdio:"pipe"}, "parent immutable packed runtime installation");
     const packageRoot = path.join(runtimeRoot, "node_modules", "pokie"), installedCli = path.join(runtimeRoot, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie"), packageJson = path.join(packageRoot, "package.json");
     if (!services.exists(installedCli) || !services.exists(packageJson)) fail("parent immutable packed runtime did not expose its public CLI");
     const candidateManifest = JSON.parse(Buffer.from(spawnSync("git", ["show", `${options.candidateId}:package.json`], {cwd:root, encoding:"buffer"}).stdout).toString("utf8")), installedManifest = JSON.parse((await services.readFile(packageJson)).toString("utf8"));
@@ -695,7 +728,7 @@ async function prepareP805SharedRuntime(options, parent, services) {
     if (candidateReceipt.candidateTreeManifestSha256 !== candidateTreeManifest.sha256 || candidateReceipt.candidateTreeObjectId !== candidateTreeManifest.tree || executable.sha256 !== options.candidateExecutableSha256) fail("parent immutable packed runtime executable manifest differs from the verifier-supplied candidate");
     await Promise.all([services.rm(runtimeWorkspace, {recursive:true, force:true}), services.rm(runtimeConfiguration, {recursive:true, force:true})]);
     await makeReadOnly(runtimeRoot, services);
-    const receipt = {schemaVersion:1, kind:"p8-05-immutable-packed-runtime", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, candidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateTreeManifestSha256:candidateTreeManifest.sha256, runtimeRoot, packageRoot, installedCli, archiveSha256:digest(archive), installation:{count:1, command:"npm install --ignore-scripts --no-audit --no-fund", stdoutSha256:digest(`${result.stdout}${result.stderr}`)}, permissions:"read-only-before-any-tuple-child", parent};
+    const receipt = {schemaVersion:1, kind:"p8-05-immutable-packed-runtime", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, candidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateTreeManifestSha256:candidateTreeManifest.sha256, runtimeRoot, packageRoot, installedCli, archiveSha256:digest(archive), installation:{count:1, attempts:result.attempts.map(({exitCode, signal, stdout, stderr}) => ({exitCode, signal, outputSha256:digest(`${stdout}${stderr}`)})), command:"npm install --ignore-scripts --no-audit --no-fund", stdoutSha256:digest(`${result.stdout}${result.stderr}`)}, permissions:"read-only-before-any-tuple-child", parent};
     const contents = `${JSON.stringify(receipt, null, 2)}\n`;
     await writeImmutableReceipt(receiptPath, contents, services);
     return {root:runtimeRoot, receipt:{path:receiptPath, sha256:digest(contents)}, value:receipt};
@@ -847,15 +880,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     let studio, browser, cdp, audit, thrown, installedPackageBytes, candidatePackageJsonBytes, candidateExecutable;
     try {
         await services.mkdir(options.output, {recursive:true}); await Promise.all([context.workspace, context.configurationRoot, context.documents, context.browserProfile, ...(options.runtime ? [] : [installationRoot])].map((directory) => services.mkdir(directory, {recursive:true}))); const packageBytes = await services.readFile(options.packedPackage); if (digest(packageBytes) !== options.candidatePackageSha256) fail("packed package archive digest differs from declared candidate package identity");
-        // Every tuple owns a fresh local installation of the exact archive.
-        // On a loaded verifier host npm can spend longer than the normal
-        // command budget compacting its local cache even though it has no
-        // network dependency; keep that bounded, but give the required
-        // packed-candidate boundary enough time to complete rather than
-        // discarding already accepted immutable tuple receipts as a flake.
-        // The per-tuple installation stays fail-closed and bounded: this is
-        // a local archive with an isolated cache, not permission to retry or
-        // substitute package contents after an installation stalls.
+        // Tuple workers use the parent's authenticated read-only runtime.
+        // A standalone audit installs the same archive with an isolated npm
+        // cache and the same bounded transport recovery as the parent.
         // This branch owns the compound recovery workflow. A tuple worker
         // enters it for the simulation cancellation/retry observation, where
         // `viewport` is otherwise only scoped to the earlier action loop.
@@ -867,7 +894,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             runtimeIdentity = await trustedSharedRuntime(options.runtime, options, services);
             transcript.push(`[${services.now()}] PACKED_INSTALL parent-authenticated shared runtime ${runtimeIdentity.installedCli}\n`);
         } else {
-            const installOwnership = ownershipEnvironment("packed-package-install"), installChild = own("packed-package-install", services.spawn(services.npm, [...services.npmArgs, "install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installationRoot, options.packedPackage], {cwd:context.workspace, env:{...installOwnership.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot}, stdio:"pipe"}), installOwnership), install = await childResult(installChild, "packed package installation", 0, 900_000); await settleChild(installChild); transcript.push(`[${services.now()}] PACKED_INSTALL\n${install.stdout}${install.stderr}`);
+            const installOwnership = ownershipEnvironment("packed-package-install"), install = await installP805PackedRuntime({...services, childResult, spawn:(...args) => own("packed-package-install", services.spawn(...args), installOwnership), settleInstaller:settleChild}, installationRoot, options.packedPackage, {cwd:context.workspace, env:{...installOwnership.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot}, stdio:"pipe"}, "packed package installation"); transcript.push(`[${services.now()}] PACKED_INSTALL\n${install.stdout}${install.stderr}`);
         }
         const installedCli = path.join(installationRoot, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie"), installedPackageJson = path.join(installationRoot, "node_modules", "pokie", "package.json"); if (!services.exists(installedCli) || !services.exists(installedPackageJson)) fail("packed package installation did not expose its pokie launcher and package metadata"); installedPackageBytes = await services.readFile(installedPackageJson); const candidatePackage = spawnSync("git", ["show", `${options.candidateId}:package.json`], {cwd:root, encoding:"buffer"}); if (candidatePackage.status !== 0 || !candidatePackage.stdout?.length) fail("declared candidate does not expose package.json for archive binding"); candidatePackageJsonBytes = Buffer.from(candidatePackage.stdout); let installedPackage, candidateManifest; try { installedPackage = JSON.parse(installedPackageBytes.toString("utf8")); candidateManifest = JSON.parse(candidatePackageJsonBytes.toString("utf8")); } catch { fail("installed packed package metadata is not JSON"); } if (installedPackage?.name !== candidateManifest?.name || installedPackage?.version !== candidateManifest?.version || installedPackage?.gitHead !== options.candidateId) fail("installed archive package metadata is not bound to the declared candidate");
         const candidateTreeManifest = candidateTreeExecutableManifest(options.candidateId), candidateReceipt = await trustedCandidateExecutableReceipt(options.candidateExecutableReceipt, options.candidateId, options.candidatePackageSha256, options.candidateExecutableSha256, services, options.output);
