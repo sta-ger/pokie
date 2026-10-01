@@ -10,15 +10,42 @@ import {WebSocketServer} from "ws";
 import {clickP805CapturedControl, connectP805Devtools, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
-const poll = async (predicate) => {
-    const deadline = Date.now() + 10_000;
+const poll = async (predicate, timeoutMs = 10_000, diagnostic = () => "focused DevTools boundary timed out") => {
+    const deadline = Date.now() + timeoutMs;
     for (;;) {
         const result = await predicate();
         if (result) return result;
-        assert.ok(Date.now() < deadline, "focused DevTools boundary timed out");
+        assert.ok(Date.now() < deadline, diagnostic());
         await new Promise((resolve) => setTimeout(resolve, 25));
     }
 };
+
+function launchFocusedBrowser(profile) {
+    const browser = spawn(process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ["--headless=new", "--no-sandbox", "--no-first-run", "--disable-background-networking", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], {stdio:["ignore", "ignore", "pipe"]});
+    let terminal;
+    let stderr = "";
+    browser.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4096); });
+    // Observe early exit/spawn failure immediately and leave one settled
+    // promise for the fixture's finally block to await on every path.
+    const exited = new Promise((resolve) => {
+        browser.once("error", (error) => { terminal = {error:error.message}; resolve(terminal); });
+        browser.once("exit", (code, signal) => { terminal = {code, signal}; resolve(terminal); });
+    });
+    // A fresh Chromium profile starts under the controller's concurrent
+    // changed-test load. Give only process startup its own bounded budget;
+    // request completion, rendered readiness and native actions retain 10s.
+    const waitForPort = () => poll(async () => {
+        assert.equal(terminal, undefined, `focused Chromium stopped before DevTools startup: ${JSON.stringify(terminal)}\n${stderr}`);
+        try {
+            const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
+            return /^\d+$/.test(port) && Number(port) > 0 && Number(port) <= 65535 ? port : false;
+        } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+            return false;
+        }
+    }, 30_000, () => `focused Chromium DevTools startup timed out\n${stderr}`);
+    return {browser, exited, waitForPort};
+}
 
 test("the live DevTools collector retains exact request completion without retaining data notifications", async () => {
     const server = createServer((_request, response) => {
@@ -141,11 +168,10 @@ test("completed browser validation binds rendered readiness before one native Cr
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const profile = await mkdtemp(path.join(tmpdir(), "p805-devtools-validation-"));
-    const browser = spawn(process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ["--headless=new", "--no-sandbox", "--no-first-run", "--disable-background-networking", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], {stdio:"ignore"});
-    const exited = new Promise((resolve, reject) => { browser.once("exit", resolve); browser.once("error", reject); });
+    const {browser, exited, waitForPort} = launchFocusedBrowser(profile);
     let cdp;
     try {
-        const port = await poll(async () => { try { return (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]; } catch { return false; } });
+        const port = await waitForPort();
         cdp = await connectP805Devtools(`http://127.0.0.1:${port}`);
         const evaluate = async (expression) => {
             const result = await cdp.send("Runtime.evaluate", {expression, returnByValue:true, awaitPromise:true});
@@ -318,11 +344,10 @@ test("native navigation waits for rendered context and Retry retains captured id
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const profile = await mkdtemp(path.join(tmpdir(), "p805-devtools-retry-"));
-    const browser = spawn(process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ["--headless=new", "--no-sandbox", "--no-first-run", "--disable-background-networking", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], {stdio:"ignore"});
-    const exited = new Promise((resolve, reject) => { browser.once("exit", resolve); browser.once("error", reject); });
+    const {browser, exited, waitForPort} = launchFocusedBrowser(profile);
     let cdp;
     try {
-        const port = await poll(async () => { try { return (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]; } catch { return false; } });
+        const port = await waitForPort();
         cdp = await connectP805Devtools(`http://127.0.0.1:${port}`);
         const evaluate = async (expression) => {
             const result = await cdp.send("Runtime.evaluate", {expression, returnByValue:true, awaitPromise:true});
