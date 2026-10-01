@@ -16,6 +16,11 @@ import {createServer} from "node:net";
 import {dirname, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
+import {createP805RenderedGame, p805CreateControlExpression as createControlExpression,
+    waitForP805CreateValidation, waitForP805CreatedDashboard as waitForCreatedDashboard} from "../../scripts/p8-05-valera-browser-audit.mjs";
+
+const waitForCreateValidation = (evaluate, timeout) => waitForP805CreateValidation(evaluate, timeout);
+const createRenderedGame = (evaluate, send, observations, timeout) => createP805RenderedGame({send}, evaluate, observations, timeout);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const browserBinary = process.env.CHROMIUM_PATH ?? "/snap/bin/chromium";
@@ -57,68 +62,6 @@ async function waitFor(predicate, message, timeout = 90_000) {
     }
 }
 
-// The label is already rendered during the initial debounce. Only the real
-// primary control's terminal validation state can authorize its activation.
-const createControlExpression = `(() => {
-    const control = document.getElementById('blueprint-create-game');
-    if (!(control instanceof HTMLButtonElement)) return null;
-    const rect = control.getBoundingClientRect();
-    return {controlId: control.id, accessibleName: control.textContent?.trim(),
-        validationState: control.getAttribute('data-pokie-validation-state'),
-        enabled: !control.disabled, ariaBusy: control.getAttribute('aria-busy'),
-        visible: control.getClientRects().length > 0 && rect.width > 0 && rect.height > 0,
-        point: {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2}};
-})()`;
-
-const isCreateValidationReady = (control) => control?.controlId === "blueprint-create-game"
-    && control.accessibleName === "Create game" && control.validationState === "ok"
-    && control.enabled && control.visible && (control.ariaBusy === null || control.ariaBusy === "false");
-
-async function waitForCreateValidation(evaluate, timeout = 90_000) {
-    let control;
-    try {
-        return await waitFor(async () => {
-            control = await evaluate(createControlExpression);
-            return isCreateValidationReady(control) ? control : false;
-        }, "rendered Create game validation-ready boundary", timeout);
-    } catch (error) {
-        throw new Error(`Missing rendered Create game validation-ready boundary; control: ${JSON.stringify(control)}`, {cause: error});
-    }
-}
-
-async function waitForCreatedDashboard(evaluate, timeout = 180_000) {
-    let dashboard;
-    try {
-        return await waitFor(async () => {
-            dashboard = await evaluate("({route: location.hash, overview: document.body?.innerText.includes('Overview') ?? false})");
-            return /^#\/project\/[^/]+\/overview$/.test(dashboard?.route ?? "") && dashboard.overview ? dashboard : false;
-        }, "created project Overview/dashboard transition", timeout);
-    } catch (error) {
-        throw new Error(`Failed post-click Create game Overview/dashboard transition; rendered: ${JSON.stringify(dashboard)}`, {cause: error});
-    }
-}
-
-async function createRenderedGame(evaluate, send, observations, validationTimeout = 90_000) {
-    const control = await waitForCreateValidation(evaluate, validationTimeout);
-    observations.push({kind: "validation-ready", observedAt: Date.now(), ...control});
-    // Recheck after scrolling, immediately before dispatch. A newer render
-    // must not borrow an earlier ok observation to authorize a busy control.
-    await evaluate("document.getElementById('blueprint-create-game').scrollIntoView({block: 'center'})");
-    const dispatchControl = await evaluate(createControlExpression);
-    assert.ok(isCreateValidationReady(dispatchControl), `Missing rendered Create game validation-ready boundary before pointer dispatch; control: ${JSON.stringify(dispatchControl)}`);
-    const {x, y} = dispatchControl.point;
-    const hitControlId = await evaluate(`(() => { const hit = document.elementFromPoint(${x}, ${y}); return hit?.closest('button')?.id; })()`);
-    assert.equal(hitControlId, control.controlId, "rendered Create game pointer must hit its native DOM identity");
-    const dispatch = {kind: "pointer-dispatch", controlId: control.controlId, dispatchedAt: Date.now(), count: 1, x, y, pressed: false, released: false};
-    observations.push(dispatch);
-    await send("Input.dispatchMouseEvent", {type: "mousePressed", x, y, button: "left", clickCount: 1});
-    dispatch.pressed = true;
-    await send("Input.dispatchMouseEvent", {type: "mouseReleased", x, y, button: "left", clickCount: 1});
-    dispatch.released = true;
-    const dashboard = await waitForCreatedDashboard(evaluate);
-    observations.push({kind: "dashboard-transition", observedAt: Date.now(), ...dashboard});
-}
-
 async function terminate(child) {
     if (child === undefined || child.exitCode !== null || child.killed) return;
     child.kill("SIGTERM");
@@ -157,9 +100,11 @@ async function connect(devtoolsPort) {
     let nextId = 0;
     const pending = new Map();
     const eventWaiters = new Map();
+    const events = [];
     socket.on("message", (raw) => {
         const response = JSON.parse(raw.toString());
         if (response.id === undefined) {
+            events.push(response);
             const waiter = eventWaiters.get(response.method)?.shift();
             waiter?.(response);
             return;
@@ -176,12 +121,13 @@ async function connect(devtoolsPort) {
     });
     await send("Page.enable");
     await send("Runtime.enable");
+    await send("Network.enable");
     const waitForEvent = (method) => new Promise((resolveEvent) => {
         const waiters = eventWaiters.get(method) ?? [];
         waiters.push(resolveEvent);
         eventWaiters.set(method, waiters);
     });
-    return {send, waitForEvent, close: () => socket.close()};
+    return {send, events, waitForEvent, close: () => socket.close()};
 }
 
 async function post(baseUrl, pathname, body) {
@@ -288,13 +234,22 @@ async function run() {
     // surface only for deliberately long and conflict-prone durable work.
     const creationObservations = [];
     try {
-        await createRenderedGame(evaluate, cdp.send, creationObservations);
+        await createP805RenderedGame(cdp, evaluate, creationObservations, 90_000,
+            (requestId) => cdp.send("Network.getResponseBody", {requestId}));
     } finally {
         for (const observation of creationObservations) console.log(`Create game ${observation.kind}: ${JSON.stringify(observation)}`);
     }
     assert.deepEqual(creationObservations.map((observation) => observation.kind), ["validation-ready", "pointer-dispatch", "dashboard-transition"]);
+    assert.equal(creationObservations[0].validation.completed, true);
+    const managedSaves = cdp.events.filter((event) => event.method === "Network.requestWillBeSent"
+        && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/blueprints/save-managed");
+    assert.equal(managedSaves.length, 1, "one rendered Create pointer must cause exactly one browser managed-save request");
     assert.equal(creationObservations[1].count, 1);
     assert.equal(creationObservations[1].pressed && creationObservations[1].released, true);
+    assert.equal(creationObservations[1].capturedControlId, "blueprint-create-game");
+    assert.equal(creationObservations[1].preDispatchFocus.native, true);
+    assert.equal(creationObservations[1].hitTest.matchesCapturedControl, true);
+    assert.equal(creationObservations[1].nativeDispatch.focus.targetMatchesCapturedControl, true);
     assert(creationObservations[0].observedAt <= creationObservations[1].dispatchedAt && creationObservations[1].dispatchedAt <= creationObservations[2].observedAt,
         "validation readiness, native pointer dispatch, and rendered dashboard must be observed in order");
     const context = await (await fetch(`${baseUrl}/api/project/context`)).json();

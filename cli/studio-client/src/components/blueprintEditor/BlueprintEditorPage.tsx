@@ -1115,6 +1115,8 @@ export function BlueprintEditorPage({
                             id="blueprint-create-game"
                             data-pokie-validation-state={validationView.status}
                             onClick={handleGuidedSave}
+                            disabled={validationView.status === "invalid"}
+                            aria-describedby={validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
                         >
@@ -1122,8 +1124,10 @@ export function BlueprintEditorPage({
                         </Button>
                     </QuickActions>
                     {validationView.status !== "ok" && (
-                        <Text c="dimmed" size="sm" mb="sm">
-                            Studio is checking this game design automatically. Create game will show any fixes that are needed.
+                        <Text id="blueprint-create-game-validation" c="dimmed" size="sm" mb="sm">
+                            {validationView.status === "invalid"
+                                ? "Fix the highlighted design errors before creating your game. Studio checks your changes automatically."
+                                : "Studio is checking this game design automatically. Create game will show any fixes that are needed."}
                         </Text>
                     )}
                     {managedSaveView.status === "ok" && <SuccessResult message="Your game was saved. Opening its workspace…" />}

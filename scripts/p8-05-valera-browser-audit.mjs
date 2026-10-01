@@ -366,6 +366,77 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
     };
     return {send, events, close};
 }
+// The startup and project-switch paths share the durable-browser contract's
+// rendered boundary. A label or an older validation response is insufficient.
+export const p805CreateControlExpression = `(() => {
+    const control = document.getElementById('blueprint-create-game');
+    if (!(control instanceof HTMLButtonElement)) return null;
+    const rect = control.getBoundingClientRect();
+    return {controlId: control.id, accessibleName: control.textContent?.trim(),
+        validationState: control.getAttribute('data-pokie-validation-state'),
+        enabled: !control.disabled, ariaBusy: control.getAttribute('aria-busy'),
+        visible: control.getClientRects().length > 0 && rect.width > 0 && rect.height > 0};
+})()`;
+
+export const isP805CreateValidationReady = (control) => control?.controlId === "blueprint-create-game"
+    && control.accessibleName === "Create game" && control.validationState === "ok"
+    && control.enabled && control.visible && (control.ariaBusy === null || control.ariaBusy === "false");
+
+export async function waitForP805CreateValidation(evaluate, timeout = 90_000, observeValidation) {
+    let control;
+    try {
+        return await waitFor(async () => {
+            control = await evaluate(p805CreateControlExpression);
+            if (!isP805CreateValidationReady(control)) return false;
+            const proof = observeValidation ? await observeValidation() : undefined;
+            if (observeValidation && !proof) return false;
+            return {control, proof};
+        }, "rendered Create game validation-ready boundary", timeout);
+    } catch (error) {
+        throw new Error(`Missing rendered Create game validation-ready boundary; control: ${JSON.stringify(control)}`, {cause:error});
+    }
+}
+
+export async function waitForP805CreatedDashboard(evaluate, timeout = 180_000) {
+    let dashboard;
+    try {
+        return await waitFor(async () => {
+            dashboard = await evaluate("({route: location.hash, overview: document.body?.innerText.includes('Overview') ?? false})");
+            return /^#\/project\/[^/]+\/overview$/.test(dashboard?.route ?? "") && dashboard.overview ? dashboard : false;
+        }, "created project Overview/dashboard transition", timeout);
+    } catch (error) {
+        throw new Error(`Failed post-click Create game Overview/dashboard transition; rendered: ${JSON.stringify(dashboard)}`, {cause:error});
+    }
+}
+
+export async function createP805RenderedGame(cdp, evaluate, observations, validationTimeout = 90_000, readBrowserResponseBody, dashboardTimeout = 180_000) {
+    const {control, proof} = await waitForP805CreateValidation(evaluate, validationTimeout,
+        readBrowserResponseBody ? () => observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody) : undefined);
+    observations.push({kind:"validation-ready", observedAt:Date.now(), ...control, ...(proof ? {validation:proof.validation} : {})});
+    // Record actual dispatch independently from readiness, even if the
+    // dashboard never appears. The pointer helper rechecks the captured node
+    // after scroll/hover and will not borrow an earlier ok render.
+    let dispatch;
+    const activation = await clickP805CapturedControl({send:async (method, params) => {
+        if (method === "Input.dispatchMouseEvent" && params.type === "mousePressed") {
+            if (dispatch) fail("Create game must receive exactly one pointer activation");
+            dispatch = {kind:"pointer-dispatch", controlId:control.controlId, dispatchedAt:Date.now(), count:1, pressed:false, released:false};
+            observations.push(dispatch);
+        }
+        const result = await cdp.send(method, params);
+        if (method === "Input.dispatchMouseEvent" && params.type === "mousePressed") dispatch.pressed = true;
+        if (method === "Input.dispatchMouseEvent" && params.type === "mouseReleased") dispatch.released = true;
+        return result;
+    }}, evaluate, control.controlId, false, true, true);
+    Object.assign(dispatch, {capturedControlId:activation.capturedControlId, captureKey:activation.captureKey,
+        preDispatchFocus:activation.preDispatchFocus, hitTest:activation.hitTest, nativeDispatch:activation.dispatch});
+    const dashboard = await waitForP805CreatedDashboard(evaluate, dashboardTimeout);
+    observations.push({kind:"dashboard-transition", observedAt:Date.now(), ...dashboard});
+    return {control:{stableControlId:control.controlId, identityAttribute:"id", accessibleName:control.accessibleName,
+        validationState:control.validationState, keyboardFocused:activation.preDispatchFocus.native, enabled:control.enabled, disabled:!control.enabled},
+        validation:proof?.validation, activation:{kind:"pointer", controlId:control.controlId, count:1, ...activation}, dashboard};
+}
+
 /** Observe the latest browser validation and its rendered Create game state.
  * An older completed response must not authorize a newer, still-pending check. */
 export async function observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody) {
@@ -381,7 +452,7 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
     const bytes = body.base64Encoded ? Buffer.from(body.body, "base64") : Buffer.from(body.body);
     const payload = JSON.parse(bytes.toString("utf8"));
     if (response.params.response.status !== 200 || payload.status !== "ok") fail("initial rendered Design validation did not accept the starter game");
-    const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
+    const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || ![null, 'false'].includes(item.getAttribute('aria-busy')) || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
     if (!control || latestRequest()?.params.requestId !== browserRequestId) return false;
     return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};
 }
@@ -413,8 +484,12 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
     // in its precondition state and let the tuple time out. Bring the
     // exact captured control into the rendered viewport and prove its
     // hit target before issuing its single browser pointer activation.
+    if (stableControlId === "blueprint-create-game") {
+        const control = await evaluate(p805CreateControlExpression);
+        if (!isP805CreateValidationReady(control)) fail(`Missing rendered Create game validation-ready boundary before pointer dispatch; control: ${JSON.stringify(control)}`);
+    }
     const captureKey = randomBytes(16).toString("hex");
-    const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
+    const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (item.id==='blueprint-create-game' && (item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy')))) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
     const removeCapture = () => evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});})()`);
     let point = await waitFor(async () => {
         const captured = await capturePoint();
@@ -437,7 +512,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
             const readyToPress = await evaluate(`(async()=>{
                 const item=window.__p805CapturedControls?.get(${JSON.stringify(captureKey)});
                 const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)});
-                const sameControl=()=>item instanceof HTMLElement&&item.isConnected&&!item.disabled&&document.getElementById(${JSON.stringify(stableControlId)})===item&&!!record;
+                const sameControl=()=>item instanceof HTMLElement&&item.isConnected&&!item.disabled&&document.getElementById(${JSON.stringify(stableControlId)})===item&&!!record&&(item.id!=='blueprint-create-game'||(item.getAttribute('data-pokie-validation-state')==='ok'&&[null,'false'].includes(item.getAttribute('aria-busy'))));
                 if(!sameControl())return null;
                 // Hover and responsive layout can commit on the following
                 // frame without an animation being registered yet. Flush
@@ -470,7 +545,9 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                 record.capturedControl.hitTest=hitTest;
                 return {x,y,preDispatchFocus,hitTest};
             })()`);
-            if (!readyToPress) fail("rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
+            if (!readyToPress) fail(stableControlId === "blueprint-create-game"
+                ? "Missing rendered Create game validation-ready boundary before pointer dispatch: captured control lost validation, identity, focus, or hit target"
+                : "rendered control changed its captured identity, native focus, or hit target before pointer dispatch");
             const samePoint = readyToPress.x === point.x && readyToPress.y === point.y;
             point = {...point, ...readyToPress};
             if (samePoint) {
@@ -2317,29 +2394,22 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // closed and its hidden Projects control cannot receive a real key.
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions.wide, deviceScaleFactor:1});
         // Create game is enabled during the initial validation debounce too.
-        // That idle window is not readiness: automatic validation can disable
-        // the focused button before Enter reaches it. Wait for the browser's
-        // actual validation response and its rendered terminal state before
-        // capturing the control, rather than retrying a lost activation.
-        const {validation:creatorValidation, control:created} = await waitFor(() => observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody), "completed Design validation and rendered Create game readiness");
-        if (!created?.stableControlId) fail("rendered Studio did not expose an enabled focusable Create game control");
-        // Create game is the first public action in a new Studio session. It
-        // has no project-tab transaction marker yet, but it is a native
-        // focusable button; activate that rendered control with one real
-        // keyboard gesture rather than attempting a route transition or a
-        // Node-side creation request.
+        // Wait for the actual browser validation response and the rendered
+        // terminal state, then dispatch one native pointer to that same
+        // control and wait for its full Overview transition.
         const creationCursor = cdp.events.length;
-        const creationActivation = await activateFocusedControl("precondition", created, "keyboard");
+        const creationObservations = [];
+        let creatorValidation, creationActivation;
         try {
-            await waitFor(() => evaluate("location.hash.includes('/project/')"), "rendered keyboard project creation", 60_000);
+            ({validation:creatorValidation, activation:creationActivation} = await createP805RenderedGame(cdp, evaluate, creationObservations, 90_000, readBrowserResponseBody));
             await waitFor(() => cdp.events.slice(creationCursor).find((event) => event.method === "Network.responseReceived" && new URL(event.params.response.url).pathname === "/api/home/blueprints/save-managed" && event.params.response.status === 201), "rendered Create game managed-save response");
-            api.push({observation:"project creation validation", method:"POST", path:"/api/home/blueprints/validate", ...creatorValidation, activation:creationActivation, initiator:"rendered-auto-validation"});
+            api.push({observation:"project creation validation", method:"POST", path:"/api/home/blueprints/validate", ...creatorValidation, activation:creationActivation, observations:creationObservations, initiator:"rendered-auto-validation"});
         } catch (error) {
             const rendered = await evaluate("(()=>({route:location.hash, active:document.activeElement instanceof HTMLElement ? {id:document.activeElement.id, text:(document.activeElement.innerText||document.activeElement.textContent||'').trim()} : null, create:document.getElementById('blueprint-create-game')?.outerHTML?.slice(0,800), status:[...document.querySelectorAll('[role=status],[role=alert]')].map((item)=>({text:(item.textContent||'').trim(),role:item.getAttribute('role')})), text:document.body.innerText.slice(0,2400)}))()");
             const managedSave = cdp.events.findLast((event) => event.method === "Network.responseReceived" && (() => { try { return new URL(event.params.response.url).pathname === "/api/home/blueprints/save-managed"; } catch { return false; } })());
             let managedSaveBody;
             try { managedSaveBody = managedSave ? (await readBrowserResponseBody(managedSave.params.requestId, "rendered Create game diagnostics")).body : undefined; } catch (readError) { managedSaveBody = `unreadable: ${String(readError)}`; }
-            throw new Error(`${error instanceof Error ? error.message : String(error)}; rendered Create game state: ${JSON.stringify(rendered)}; managed-save response: ${managedSaveBody ?? "missing"}; Studio diagnostics: ${JSON.stringify(errors.slice(-10))}`);
+            throw new Error(`${error instanceof Error ? error.message : String(error)}; Create observations: ${JSON.stringify(creationObservations)}; rendered Create game state: ${JSON.stringify(rendered)}; managed-save response: ${managedSaveBody ?? "missing"}; Studio diagnostics: ${JSON.stringify(errors.slice(-10))}`);
         }
         timings.projectCreationMs = Date.now() - creation;
         const createdProjectRoute = await evaluate("location.hash");
@@ -2639,11 +2709,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const staleCursor = cdp.events.length;
         const startGameNavigation = await navigateHome("design", "project-switch source");
         if (!startGameNavigation || startGameNavigation.control?.stableControlId !== "home-tab:design" || startGameNavigation.control?.accessibleName !== "Start a game" || startGameNavigation.activation?.kind !== "pointer") fail("Studio did not activate the live visible Start a game control through one native pointer interaction");
-        await waitFor(() => evaluate("document.body.innerText.includes('Create game')"), "project-switch source");
-        const switched = await evaluate("(() => { const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.textContent?.trim() !== 'Create game') return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id,identityAttribute:'id',accessibleName:item.textContent.trim(),keyboardFocused:true,enabled:true,disabled:false} : false; })()");
-        if (!switched?.stableControlId) fail("Studio did not expose a focusable Create game control for project switching");
-        const createdProjectActivation = await activateFocusedControl("operation", switched);
-        await waitFor(() => evaluate(`location.hash !== ${JSON.stringify(recoveryBefore)} && location.hash.includes('/project/')`), "keyboard project switch");
+        const projectSwitchCreationObservations = [];
+        const {control:switched, activation:createdProjectActivation} = await createP805RenderedGame(cdp, evaluate, projectSwitchCreationObservations, 90_000, readBrowserResponseBody);
         const recoveryAfter = await evaluate("location.hash");
         await waitFor(() => evaluate("document.readyState === 'complete' && location.hash === " + JSON.stringify(recoveryAfter)), "stale-response isolation navigation");
         // The navigation promise can settle one event-loop turn before its
@@ -2652,7 +2719,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // real browser run races this receipt and incorrectly reports no
         // stale-response isolation evidence.
         const delayedResponse = await waitFor(() => cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived").at(-1) ?? false, "stale response after project switch"), staleResponses = cdp.events.slice(staleCursor).filter((event) => event.method === "Network.responseReceived"), staleResponseIsolation = typeof delayedResponse?.params?.requestId === "string" && await evaluate("location.hash === " + JSON.stringify(recoveryAfter));
-        const projectSwitchReceipt = {cancelledProjectOpen:{routeBefore:recoveryBefore, routeAfter:routeAfterStay, projectOpenRequestCount:cancelledProjectOpenRequestCount, stayControl:cancelUnsaved, stayActivation}, startGameNavigation:{routeBefore:routeAfterStay, routeAfter:"#/home/design", control:startGameNavigation.control, activation:startGameNavigation.activation}, createdProject:{route:recoveryAfter, control:switched, activation:createdProjectActivation}, staleResponse:{responseCount:staleResponses.length, delayedRequestId:delayedResponse?.params?.requestId, completedAfterSwitch:typeof delayedResponse?.params?.requestId === "string", sourceRoute:recoveryBefore, destinationRoute:recoveryAfter}, destinationRoute:recoveryAfter};
+        const projectSwitchReceipt = {cancelledProjectOpen:{routeBefore:recoveryBefore, routeAfter:routeAfterStay, projectOpenRequestCount:cancelledProjectOpenRequestCount, stayControl:cancelUnsaved, stayActivation}, startGameNavigation:{routeBefore:routeAfterStay, routeAfter:"#/home/design", control:startGameNavigation.control, activation:startGameNavigation.activation}, createdProject:{route:recoveryAfter, control:switched, activation:createdProjectActivation, observations:projectSwitchCreationObservations}, staleResponse:{responseCount:staleResponses.length, delayedRequestId:delayedResponse?.params?.requestId, completedAfterSwitch:typeof delayedResponse?.params?.requestId === "string", sourceRoute:recoveryBefore, destinationRoute:recoveryAfter}, destinationRoute:recoveryAfter};
         validateP805HomeProjectSwitchReceipt(projectSwitchReceipt);
         const restartProjectBaseRoute = recoveryAfter.replace(/\/[^/]+$/, ""); await navigateProjectTab(restartProjectBaseRoute, "simulation", "restart recovery"); await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), "rendered restart-recovery simulation form"); await ensureSimulationConfigure("restart recovery"); const restartCursor = cdp.events.length, restartRecoveryStartedAt = Date.now(); if (!await waitFor(() => setLifecycleField("simulation-rounds", "1000000"), "rendered restart-recovery simulation rounds")) fail("Studio did not accept the rendered restart-recovery rounds"); const restartControl = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation:"restart recovery", expectedStateClass:"editable-submission"}); const restartFormState = await captureRenderedEditableFormState("simulation", "restart recovery", restartControl.stableControlId); const restartJob = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation:"restart recovery", cursor:restartCursor, method:"POST", formState:restartFormState, stateClass:"editable-submission", control:restartControl}); if (restartJob.response.status !== 202 || typeof restartJob.payload?.id !== "string") fail("Studio did not start a rendered active job before restart");
         // The restarted Studio server was created through `own`, so it must
