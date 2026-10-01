@@ -224,7 +224,7 @@ async function waitFor(predicate, label, timeout = 30000) {
         await wait(125);
     }
 }
-function descendants(pid) { const listing = process.platform === "win32" ? "" : (spawnSync("ps", ["-eo", "pid=,ppid=,pgid="], {encoding:"utf8"}).stdout || ""), processes = new Map(); let rootGroup; for (const line of listing.split("\n")) { const match = /^\s*(\d+)\s+(\d+)\s+(\d+)/.exec(line); if (match) { const details = {parent:Number(match[2]), group:Number(match[3])}; processes.set(Number(match[1]), details); if (Number(match[1]) === pid) rootGroup = details.group; } } const owned = new Map(); if (Number.isInteger(pid) && pid > 0) owned.set(pid, processIdentity(pid)); let changed = true; while (changed) { changed = false; for (const [child, details] of processes) if ((owned.has(details.parent) || (rootGroup !== undefined && details.group === rootGroup)) && !owned.has(child)) { owned.set(child, processIdentity(child)); changed = true; } } return owned; }
+function descendants(pid) { const listing = process.platform === "win32" ? "" : (spawnSync("ps", ["-eo", "pid=,ppid=,pgid="], {encoding:"utf8"}).stdout || ""), processes = new Map(); let rootGroup; for (const line of listing.split("\n")) { const match = /^\s*(\d+)\s+(\d+)\s+(\d+)/.exec(line); if (match) { const details = {parent:Number(match[2]), group:Number(match[3])}; processes.set(Number(match[1]), details); if (Number(match[1]) === pid && details.group === pid) rootGroup = details.group; } } const owned = new Map(); if (Number.isInteger(pid) && pid > 0) owned.set(pid, processIdentity(pid)); let changed = true; while (changed) { changed = false; for (const [child, details] of processes) if ((owned.has(details.parent) || (rootGroup !== undefined && details.group === rootGroup)) && !owned.has(child)) { owned.set(child, processIdentity(child)); changed = true; } } return owned; }
 export function createP805OwnedProcessRecord(label, child, ownerOptions, spawnedAt = now()) {
     const spawned = descendants(child?.pid);
     return {
@@ -240,7 +240,54 @@ export function createP805OwnedProcessRecord(label, child, ownerOptions, spawned
         operationId:ownerOptions.operationId,
     };
 }
-async function terminate(child) { if (!child?.pid) return {processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[]}; const result = await drainProcessTree(child, 5_000, descendants(child.pid)); if (!result.processTreeDrained || !result.resourcesDrained) fail("owned Studio/browser process tree could not be drained"); return result; }
+const supervisorEnvironment = (environment) => ({POKIE_PC20_RESOURCE_REGISTRY:environment.POKIE_P805_SUPERVISOR_REGISTRY, POKIE_PC20_RESOURCE_REGISTRY_SECRET:environment.POKIE_P805_SUPERVISOR_SECRET, POKIE_PC20_OPERATION_ID:environment.POKIE_P805_SUPERVISOR_OPERATION});
+function releaseP805BrowserOwner(owner) {
+    const resource = {kind:"browser", resourceId:owner.resourceId, pid:owner.pid, processIdentity:owner.identity};
+    registerPc20OwnedResource(resource, "released", {POKIE_PC20_RESOURCE_REGISTRY:owner.resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:owner.resourceRegistrySecret, POKIE_PC20_OPERATION_ID:owner.operationId});
+    if (process.env.POKIE_P805_SUPERVISOR_REGISTRY) registerPc20OwnedResource(resource, "released", supervisorEnvironment(process.env));
+}
+export async function createP805TupleSupervisor(options, tuple, nonce, services = {writeFile}) {
+    const stem = `${options.phase}-${tupleFileStem(tuple)}-${nonce}`, registry = path.join(options.output, `${stem}-owned-resources.ndjson`), secret = randomBytes(32).toString("hex"), operationId = randomBytes(16).toString("hex"), record = {schemaVersion:1, operationId, action:"registry-ready", kind:"registry", resourceId:`registry:supervisor:${process.pid}`};
+    const signature = createHash("sha256").update(secret).update("\0").update(JSON.stringify(record)).digest("hex");
+    await services.writeFile(registry, `${JSON.stringify({...record, signature})}\n`, {flag:"wx", mode:0o600});
+    const hook = path.join(root, "scripts", "pc-20-resource-ownership-hook.cjs"), env = {...process.env, POKIE_P805_SUPERVISOR_REGISTRY:registry, POKIE_P805_SUPERVISOR_SECRET:secret, POKIE_P805_SUPERVISOR_OPERATION:operationId, POKIE_PC20_RESOURCE_REGISTRY:path.join(options.output, `${stem}-worker-resources.ndjson`), POKIE_PC20_RESOURCE_REGISTRY_SECRET:randomBytes(32).toString("hex"), POKIE_PC20_OPERATION_ID:randomBytes(16).toString("hex"), NODE_OPTIONS:[process.env.NODE_OPTIONS, `--require=${hook}`].filter(Boolean).join(" ")};
+    let tracker;
+    return {
+        env,
+        attach(child) { tracker = createPc20OwnershipTracker(child?.pid, registry, secret, {operationId, captureIntervalMs:5_000}); },
+        stop() { tracker?.stop(); },
+        async cleanup(child, kind) {
+            // Read all signed acquisitions before signalling the root. A late
+            // process-table snapshot cannot recover reparented descendants.
+            tracker ??= createPc20OwnershipTracker(child?.pid, registry, secret, {operationId, captureIntervalMs:5_000});
+            let authenticationError;
+            try { tracker.capture({final:true}); } catch (error) { authenticationError = error; }
+            let result;
+            // Reconcile acquisitions made during shutdown as well. No
+            // resource release is certified until every retained PID is gone.
+            for (let pass = 0; pass < 3; pass++) {
+                result = await drainProcessTree(child, kind === "success" ? 250 : 1_000, tracker.ownedProcesses, tracker.ownedResources);
+                const size = tracker.ownedProcesses.size;
+                try { tracker.capture({final:true}); } catch (error) { authenticationError ??= error; }
+                if (size === tracker.ownedProcesses.size && result.processTreeDrained) break;
+            }
+            if (authenticationError) return {...result, resourcesDrained:false, authenticated:false, error:String(authenticationError)};
+            const forcedReleases = [];
+            if (result.processTreeDrained) {
+                for (const resource of tracker.ownedResources.values()) {
+                    if (resource.released || resource.pid === undefined) continue;
+                    // Identity-verified absence was proved by drainProcessTree,
+                    // including for the process that owned a worker thread.
+                    registerPc20OwnedResource(resource, "released", supervisorEnvironment(env));
+                    forcedReleases.push({kind:resource.kind, resourceId:resource.resourceId, pid:resource.pid, processIdentity:resource.processIdentity});
+                }
+                tracker.capture({final:true});
+                result = await drainProcessTree(child, 0, tracker.ownedProcesses, tracker.ownedResources);
+            }
+            return {...result, authenticated:true, operationId, registryPath:path.basename(registry), forcedReleases};
+        },
+    };
+}
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
 export async function connectP805Devtools(devtools, initialUrl = "about:blank") {
     const target = await responseJson(`${devtools}/json/new?${encodeURIComponent(initialUrl)}`, {method:"PUT"}), socket = new WebSocket(target.webSocketDebuggerUrl);
@@ -488,13 +535,21 @@ function optionsFrom(argv) { const args = argv.slice(2), values = {}; for (let i
 function validOptions(value) { const tuple = value?.tuple, runtime = value?.runtime, validRuntime = runtime === undefined || path.isAbsolute(runtime.root ?? "") && path.isAbsolute(runtime.receipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(runtime.receipt?.sha256 ?? ""); return P805_PERSONAS.includes(value?.persona) && Array.isArray(value?.workflowPersonas) && value.workflowPersonas.length > 0 && value.workflowPersonas.every((persona) => P805_PERSONAS.includes(persona)) && new Set(value.workflowPersonas).size === value.workflowPersonas.length && validRuntime && (!tuple || tuple.persona === value.persona && value.workflowPersonas.length === 1 && value.workflowPersonas[0] === value.persona && P805_REQUIRED_OBSERVATIONS[value.persona]?.includes(tuple.observation) && ["wide", "compact", "narrow"].includes(tuple.viewport) && path.isAbsolute(value.tupleReceiptPath ?? "") && path.isAbsolute(value.tupleCleanupPath ?? "")) && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
 function validProcessProofOptions(value) { return value?.persona === "all" && value.workflowPersonas.length === 1 && value.workflowPersonas[0] === "all" && ["initial", "retest"].includes(value.phase) && /^[a-f0-9]{40}$/i.test(value.candidateId ?? "") && /^[a-f0-9]{64}$/i.test(value.candidatePackageSha256 ?? "") && /^[a-f0-9]{64}$/i.test(value.candidateExecutableSha256 ?? "") && path.isAbsolute(value?.candidateExecutableReceipt?.path ?? "") && /^[a-f0-9]{64}$/i.test(value?.candidateExecutableReceipt?.sha256 ?? "") && ["output", "packedPackage"].every((key) => path.isAbsolute(value[key] ?? "")); }
 
-function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000) {
+function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000, abortSignal) {
     return new Promise((resolve, reject) => {
         let stdout = "", stderr = "";
         let settled = false;
+        const cancel = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            abortSignal.removeEventListener("abort", cancel);
+            reject(new Error(`${label} cancelled`));
+        };
         const timer = setTimeout(() => {
             if (settled) return;
             settled = true;
+            abortSignal?.removeEventListener("abort", cancel);
             child.kill("SIGTERM");
             reject(new Error(`${label} exceeded its ${timeoutMs}ms public-command budget`));
         }, timeoutMs);
@@ -502,18 +557,21 @@ function childResult(child, label, expectedExitCode = 0, timeoutMs = 120_000) {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
+            abortSignal?.removeEventListener("abort", cancel);
             const result = {label, exitCode:code, signal, stdout, stderr};
             if (expectedExitCode !== undefined && code !== expectedExitCode) reject(new Error(`${label} exited ${code ?? "null"}: ${stderr || stdout}`));
             else resolve(result);
         };
         child.stdout?.on("data", (chunk) => { stdout += chunk.toString(); });
         child.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
-        child.once("error", (error) => { if (!settled) { settled = true; clearTimeout(timer); reject(error); } });
+        child.once("error", (error) => { if (!settled) { settled = true; clearTimeout(timer); abortSignal?.removeEventListener("abort", cancel); reject(error); } });
         child.once("exit", complete);
         // A few wrapped launchers close their handles before Node delivers an
         // exit notification.  The close status is still the public command's
         // terminal status, so retain it as an equivalent bounded completion.
         child.once("close", complete);
+        abortSignal?.addEventListener("abort", cancel, {once:true});
+        if (abortSignal?.aborted) cancel();
     });
 }
 
@@ -703,6 +761,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         if (ownerOptions.browserResource) {
             record.resourceId = `browser:${child?.pid}:${label}`;
             if (!registerPc20OwnedResource({kind:"browser", resourceId:record.resourceId, pid:child?.pid, processIdentity:record.identity}, "acquired", ownerOptions.env)) fail(`could not synchronously register browser ownership for ${label}`);
+            if (process.env.POKIE_P805_SUPERVISOR_REGISTRY) registerPc20OwnedResource({kind:"browser", resourceId:record.resourceId, pid:child?.pid, processIdentity:record.identity}, "acquired", supervisorEnvironment(process.env));
         }
         // The authenticated preload writes every Node child at acquisition;
         // this sampler is the complementary fallback for a native detached
@@ -730,7 +789,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     const settleOwner = async (owner) => {
         if (!owner || owner.settled) return owner?.drain;
         clearInterval(owner.descendantSampler);
-        if (owner.resourceId) registerPc20OwnedResource({kind:"browser", resourceId:owner.resourceId, pid:owner.pid, processIdentity:owner.identity}, "released", {POKIE_PC20_RESOURCE_REGISTRY:owner.resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:owner.resourceRegistrySecret, POKIE_PC20_OPERATION_ID:owner.operationId});
+        if (owner.resourceId) releaseP805BrowserOwner(owner);
         let ownershipError;
         try {
             owner.tracker?.capture({final:true});
@@ -2628,7 +2687,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const controls = await evaluate("(()=>{const visible=(item)=>!!(item.offsetWidth||item.offsetHeight||item.getClientRects().length), controls=[...document.querySelectorAll('button,a,input,select,textarea')].filter(visible); const focusable=controls.find((item)=>!item.disabled); focusable?.focus(); const style=focusable?getComputedStyle(focusable):undefined, visibleFocus=!!focusable && document.activeElement===focusable && style && (style.outlineStyle!==\"none\"||style.boxShadow!==\"none\"); return {controls:controls.map((item)=>({disabled:!!item.disabled,accessible:!!(item.innerText||item.getAttribute('aria-label')||item.getAttribute('aria-labelledby')||item.name),explained:!!item.getAttribute('title')||!!item.getAttribute('aria-describedby')})),namedRegions:[...document.querySelectorAll('[role=region],[role=main],main,nav')].filter(visible).length,visibleFocus};})()"), measurements = {consoleExceptions:cdp.events.filter((event) => event.method === "Runtime.exceptionThrown").length, unhandledRequestFailures:cdp.events.filter((event) => event.method === "Network.loadingFailed").length, documentOverflow:actions.some((action) => action.overflow) || responsive.some((entry) => entry.overflow), inaccessiblePrimaryActions:controls.controls.filter((control) => !control.disabled && !control.accessible).length, unexplainedDisabledControls:controls.controls.filter((control) => control.disabled && !control.explained).length, namedRegions:controls.namedRegions, visibleFocus:controls.visibleFocus}, defects = [["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures], ["accessibility", measurements.inaccessiblePrimaryActions], ["disabled-control", measurements.unexplainedDisabledControls], ["overflow", measurements.documentOverflow ? 1 : 0], ["named-region", measurements.namedRegions < 1 ? 1 : 0], ["focus", measurements.visibleFocus ? 0 : 1], ["performance", Object.values(performance).some((item) => item.classification === "regression") ? 1 : 0]].filter(([, count]) => count > 0).map(([kind]) => ({kind, evidenceId:recoveryEvidenceId})); audit = {auditId, worker, persona:options.persona, workflowPersonas:options.workflowPersonas, tuple:options.tuple, phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packageIdentity:{archiveSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, declaredPackedCli:options.packedCli, installedCli, sharedRuntimeReceiptSha256:options.runtime?.receipt.sha256, sharedRuntimeRoot:options.runtime?.root, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}, startedAt, endedAt:undefined, cleanContext:context, observations, observationEvidence, evidence, checkpointReceipts, finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:checkpointReceipts.length, checkpointReceiptSha256s:checkpointReceipts.map((receipt) => receipt.sha256)}, timings, performance, rendered:{execution:"packed-public-cli-built-studio-rendered-controls", viewports:["wide", "compact", "narrow"], responsive, measurements, defects, actions, recovery:Object.fromEntries(Object.entries(recovery).map(([name, observed]) => [name, {observed, evidenceId:recoveryEvidenceId}])), jobs:{success:{observed:simulationTerminal.status === "completed", evidenceId:recoveryEvidenceId}, actionableFailure:{observed:failure.response.status === 400, evidenceId:recoveryEvidenceId}, cooperativeCancellation:{observed:cancelledTerminal.status === "cancelled", evidenceId:recoveryEvidenceId}, retryWithoutPartialArtifacts:{observed:retryTerminal.status === "completed" && cancelledTerminal.status === "cancelled" && !reports.payload.some((report) => report?.id === cancellable.payload.id), evidenceId:recoveryEvidenceId, receipt:retryReceipt}, restartRecovery:{observed:restartReceipt.terminal.status === "recovery-required", evidenceId:recoveryEvidenceId, receipt:restartReceipt}}}};
         if (options.tuple) audit.workflowScope = workflowScope;
         }
-    } catch (error) { thrown = error; } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) registerPc20OwnedResource({kind:"browser", resourceId:owner.resourceId, pid:owner.pid, processIdentity:owner.identity}, "released", {POKIE_PC20_RESOURCE_REGISTRY:owner.resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:owner.resourceRegistrySecret, POKIE_PC20_OPERATION_ID:owner.operationId}); let ownershipError; try { owner.tracker?.capture({final:true}); } catch (error) { ownershipError = error; } for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainProcessTree(owner.child, 5_000, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); if (ownershipError) throw ownershipError; } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; delete owner.operationId; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; const restartReceipt = audit.rendered?.jobs?.restartRecovery?.receipt; if (restartReceipt) restartReceipt.evidence = {...restartReceipt.evidence, cleanupEvidenceId}; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } if (options.tupleCleanupPath) { const tupleCleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, tuple:options.tuple, worker, cleanup, cleanupEvidenceId}; const contents = `${JSON.stringify(tupleCleanup)}\n`; await services.mkdir(path.dirname(options.tupleCleanupPath), {recursive:true}); await writeImmutableReceipt(options.tupleCleanupPath, contents, services); publishedTupleCleanup = {cleanupEvidenceId, sha256:digest(contents)}; } }
+    } catch (error) { thrown = error; } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) releaseP805BrowserOwner(owner); let ownershipError; try { owner.tracker?.capture({final:true}); } catch (error) { ownershipError = error; } for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainProcessTree(owner.child, 5_000, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); if (ownershipError) throw ownershipError; } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; delete owner.operationId; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; const restartReceipt = audit.rendered?.jobs?.restartRecovery?.receipt; if (restartReceipt) restartReceipt.evidence = {...restartReceipt.evidence, cleanupEvidenceId}; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } if (options.tupleCleanupPath) { const tupleCleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, tuple:options.tuple, worker, cleanup, cleanupEvidenceId}; const contents = `${JSON.stringify(tupleCleanup)}\n`; await services.mkdir(path.dirname(options.tupleCleanupPath), {recursive:true}); await writeImmutableReceipt(options.tupleCleanupPath, contents, services); publishedTupleCleanup = {cleanupEvidenceId, sha256:digest(contents)}; } }
     if (thrown) throw thrown;
     try { validateP805RenderedPersonaAudit(audit); }
     catch (error) { process.stderr.write(`P805_INVALID_TUPLE_ACTION ${JSON.stringify(audit?.rendered?.actions?.[0])}\n`); throw error; }
@@ -2643,9 +2702,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
 const tupleFileStem = ({persona, observation, viewport}) => `${persona}--${observation.replaceAll(/[^a-z0-9]+/gi, "-")}--${viewport}`;
 function tupleFailureKind(error, child) {
     const message = String(error);
-    if (!child) return /restart would reuse an immutable tuple artifact/.test(message) ? "restart" : "spawn-failure";
-    if (/parent cleanup failed after worker success|detached descendant/i.test(message)) return "detached-descendant";
     if (/cancel/i.test(message)) return "cancellation";
+    if (!child?.pid) return /restart would reuse an immutable tuple artifact/.test(message) ? "restart" : "spawn-failure";
+    if (/parent cleanup failed after worker success|detached descendant/i.test(message)) return "detached-descendant";
     return /timeout|exceeded/i.test(message) ? "timeout" : "failure";
 }
 async function readChildTupleReceipt(receiptPath, cleanupPath, expected, childPid) {
@@ -2704,12 +2763,40 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
     // These boundaries are injectable only for deterministic parent-ledger
     // tests.  The public command always uses the real packed worker, receipt
     // reader, and process-tree drainer below.
-    const services = {spawn, chmod, link, mkdir, readFile, readdir, rm, stat, writeFile, now, childResult, readChildTupleReceipt, readChildAudit, cleanupChild:terminate, validateSharedRuntime:trustedSharedRuntime, exists:existsSync, ...nativeNpmCommand(), prepareRuntime:prepareP805SharedRuntime, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), immutableReceiptHashes = new Set(), workerPids = new Set(), tuples = dependencies.tuples ?? P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+    const services = {spawn, chmod, link, mkdir, readFile, readdir, rm, stat, writeFile, now, childResult, readChildTupleReceipt, readChildAudit, createTupleSupervisor:createP805TupleSupervisor, cleanupChild:(child, kind, supervisor) => supervisor.cleanup(child, kind), validateSharedRuntime:trustedSharedRuntime, exists:existsSync, ...nativeNpmCommand(), prepareRuntime:prepareP805SharedRuntime, ...dependencies}, parent = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce:digest(`${services.now()}:${options.phase}:${Math.random()}`).slice(0, 16), startedAt:services.now()}, audits = [], children = [], acceptedReceipts = [], receiptHashes = new Set(), immutableReceiptHashes = new Set(), workerPids = new Set(), tuples = dependencies.tuples ?? P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
     await services.mkdir(options.output, {recursive:true});
     let runtime;
-    const publishFailure = async (failedTuple, error, attemptedChild) => {
-        const runtimeCleanup = await releaseP805SharedRuntime(runtime, services);
-        const failure = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"failed", failedTuple, acceptedReceipts, children, attemptedChild, finalResult:{status:"failed", children:children.length, acceptedReceipts:acceptedReceipts.length, aggregation:"no-complete-tuple-aggregate-on-failure", runtimeCleanup}, failure:{message:error instanceof Error ? error.message : String(error), cleanup:attemptedChild?.cleanup ?? "not-spawned"}};
+    const revalidateAcceptedReceipts = async () => {
+        const validations = [];
+        for (const [index, accepted] of acceptedReceipts.entries()) {
+            const child = children[index], tuple = child.tuple, expected = {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, ...tuple, tuple};
+            try {
+                const current = await services.readChildTupleReceipt(path.join(options.output, child.tupleReceiptPath), path.join(options.output, child.cleanupPath), expected, child.worker.pid);
+                const published = await services.readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.worker.pid, tuple);
+                validateParentTupleHandoff(current, published, expected, child.worker.pid);
+                if (current.receiptSha256 !== child.tupleReceiptSha256 || current.cleanupSha256 !== child.cleanupSha256 || published.auditSha256 !== child.auditSha256 || !isDeepStrictEqual(current.receipt, accepted.receipt) || !isDeepStrictEqual(current.cleanup, accepted.cleanup) || !isDeepStrictEqual(published.audit, audits[index])) fail("accepted immutable tuple receipts changed after acceptance");
+                validations.push({tuple, status:"verified", tupleReceiptSha256:current.receiptSha256, cleanupSha256:current.cleanupSha256, auditSha256:published.auditSha256});
+            } catch (error) { validations.push({tuple, status:"rejected", error:String(error)}); }
+        }
+        return {checkedAt:services.now(), status:validations.every(({status}) => status === "verified") ? "verified" : "rejected", receipts:validations};
+    };
+    const publishFailure = async (failedTuple, error, attemptedChild, initialAcceptedReceiptValidation) => {
+        // Keep the exact accepted objects even if a later worker damaged their
+        // files. Re-read and authenticate them before releasing the runtime.
+        const acceptedReceiptValidation = await revalidateAcceptedReceipts();
+        let terminal;
+        if (failedTuple) {
+            const prefix = `${options.phase}-${tupleFileStem(failedTuple)}-supervisor-${parent.nonce}`, cleanupPath = `${prefix}-cleanup.json`, terminalPath = `${prefix}-terminal.json`, cleanup = {schemaVersion:1, kind:"p8-05-supervisor-tuple-cleanup", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, tuple:failedTuple, worker:attemptedChild.worker, failureKind:attemptedChild.failureKind, cleanup:attemptedChild.cleanup}, contents = `${JSON.stringify(cleanup, null, 2)}\n`;
+            await writeImmutableReceipt(path.join(options.output, cleanupPath), contents);
+            const drained = attemptedChild.cleanup.authenticated === true && attemptedChild.cleanup.processTreeDrained === true && attemptedChild.cleanup.resourcesDrained === true;
+            terminal = {schemaVersion:1, kind:"p8-05-supervisor-tuple-terminal", status:drained ? "failed-and-drained" : "cleanup-incomplete", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, tuple:failedTuple, worker:attemptedChild.worker, failureKind:attemptedChild.failureKind, cleanupPath, cleanupSha256:digest(contents), initialAcceptedReceiptValidation, acceptedReceiptValidation};
+            const terminalContents = `${JSON.stringify(terminal, null, 2)}\n`;
+            await writeImmutableReceipt(path.join(options.output, terminalPath), terminalContents);
+            terminal = {path:terminalPath, sha256:digest(terminalContents), status:terminal.status};
+        }
+        let runtimeCleanup;
+        try { runtimeCleanup = await releaseP805SharedRuntime(runtime, services); } catch (cleanupError) { runtimeCleanup = {root:runtime?.root, removed:false, error:String(cleanupError)}; }
+        const failure = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, status:"failed", failedTuple, acceptedReceipts, initialAcceptedReceiptValidation, acceptedReceiptValidation, children, attemptedChild, terminal, finalResult:{status:"failed", children:children.length, acceptedReceipts:acceptedReceipts.length, aggregation:"no-complete-tuple-aggregate-on-failure", runtimeCleanup}, failure:{message:error instanceof Error ? error.message : String(error), cleanup:attemptedChild?.cleanup ?? "not-spawned"}};
         await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.failed-${parent.nonce}.json`), `${JSON.stringify(failure, null, 2)}\n`);
     };
     const completedLedgerPath = path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`);
@@ -2722,18 +2809,22 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
     catch (error) { await publishFailure(undefined, error); throw error; }
     for (const tuple of tuples) {
         const childStartedAt = services.now(), stem = tupleFileStem(tuple), receiptPath = path.join(options.output, `${options.phase}-${stem}-tuple-receipt.json`), cleanupPath = path.join(options.output, `${options.phase}-${stem}-tuple-cleanup.json`), args = [fileURLToPath(import.meta.url), "--persona", tuple.persona, "--workflow-personas", tuple.persona, "--observation", tuple.observation, "--viewport", tuple.viewport, "--tuple-receipt", receiptPath, "--tuple-cleanup", cleanupPath, "--phase", options.phase, "--candidate", options.candidateId, "--package-sha256", options.candidatePackageSha256, "--candidate-executable-sha256", options.candidateExecutableSha256, "--candidate-executable-receipt", options.candidateExecutableReceipt.path, "--candidate-executable-receipt-sha256", options.candidateExecutableReceipt.sha256, "--packed-package", options.packedPackage, "--packed-cli", options.packedCli, "--runtime-root", runtime.root, "--runtime-identity-receipt", runtime.receipt.path, "--runtime-identity-receipt-sha256", runtime.receipt.sha256, "--output", options.output];
-        let child, result, attemptedChild;
+        let child, result, attemptedChild, supervisor, worker;
         try {
+            supervisor = await services.createTupleSupervisor(options, tuple, parent.nonce, services);
             const auditPath = path.join(options.output, `${options.phase}-${stem}-audit.json`);
             if ([receiptPath, cleanupPath, auditPath].some((target) => services.exists(target))) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} restart would reuse an immutable tuple artifact`);
-            child = services.spawn(process.execPath, args, {cwd:root, env:process.env, stdio:"pipe"});
-            result = await services.childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, 4_500_000);
+            if (dependencies.signal?.aborted) throw new Error("tuple workflow cancelled before spawn");
+            child = services.spawn(process.execPath, args, {cwd:root, env:supervisor.env, detached:process.platform !== "win32", stdio:"pipe"});
+            worker = child?.pid ? {pid:child.pid, processIdentity:processIdentity(child.pid)} : undefined;
+            supervisor.attach(child);
+            result = await services.childResult(child, `packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker`, 0, dependencies.tupleTimeoutMs ?? 4_500_000, dependencies.signal);
             // A worker's own cleanup receipt is necessary but not sufficient:
             // the parent also drains the process identity it spawned before
             // accepting that tuple or advancing the ledger.  This covers a
             // detached descendant surviving a seemingly normal child exit.
-            const parentCleanup = await services.cleanupChild(child, "success");
-            if (!parentCleanup.processTreeDrained || !parentCleanup.resourcesDrained) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} parent cleanup failed after worker success`);
+            const parentCleanup = await services.cleanupChild(child, "success", supervisor);
+            if (parentCleanup.authenticated !== true || !parentCleanup.processTreeDrained || !parentCleanup.resourcesDrained) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} parent cleanup failed after worker success`);
             const tupleReceipt = await services.readChildTupleReceipt(receiptPath, cleanupPath, {phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, persona:tuple.persona, observation:tuple.observation, viewport:tuple.viewport, tuple}, child.pid);
             const published = await services.readChildAudit(options.output, options.phase, tuple.persona, options.candidateId, options.candidatePackageSha256, child.pid, tuple);
             // Re-authenticate the immutable parent runtime after the child has
@@ -2765,18 +2856,28 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
                 if (immutableReceiptHashes.has(sha256)) fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} child substituted content-equivalent ${kind} evidence`);
                 immutableReceiptHashes.add(sha256);
             }
-            audits.push(published.audit);
-            acceptedReceipts.push({tuple, ...tupleReceipt});
+            // Snapshot the same JSON representation that crosses the public
+            // receipt boundary; later readers cannot mutate accepted objects.
+            audits.push(JSON.parse(JSON.stringify(published.audit)));
+            acceptedReceipts.push(JSON.parse(JSON.stringify({tuple, ...tupleReceipt})));
             children.push({tuple, worker:published.audit.worker, auditPath:published.auditPath, auditSha256:published.auditSha256, tupleReceiptPath:tupleReceipt.receiptPath, tupleReceiptSha256:tupleReceipt.receiptSha256, cleanupPath:tupleReceipt.cleanupPath, cleanupSha256:tupleReceipt.cleanupSha256, checkpointReceiptSha256s:published.audit.checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId:published.audit.cleanup.evidenceId, parentCleanup, startedAt:childStartedAt, endedAt:services.now(), exitCode:result.exitCode, signal:result.signal});
         }
         catch (error) {
             let cleanup;
             const failureKind = tupleFailureKind(error, child);
-            try { cleanup = await services.cleanupChild(child, failureKind); } catch (drainError) { cleanup = {processTreeDrained:false, resourcesDrained:false, error:String(drainError)}; }
-            attemptedChild = {tuple, worker:child?.pid ? {pid:child.pid, processIdentity:processIdentity(child.pid)} : undefined, startedAt:childStartedAt, endedAt:services.now(), exitCode:result?.exitCode ?? child?.exitCode ?? null, signal:result?.signal ?? child?.signalCode ?? null, cleanup:cleanup ?? {processTreeDrained:false, resourcesDrained:false, status:"cleanup-not-run"}, failureKind};
-            await publishFailure(tuple, error, attemptedChild);
+            const initialAcceptedReceiptValidation = await revalidateAcceptedReceipts();
+            try { cleanup = supervisor ? await services.cleanupChild(child, failureKind, supervisor) : {processTreeDrained:true, resourcesDrained:true, termination:"not-started"}; } catch (drainError) { cleanup = {processTreeDrained:false, resourcesDrained:false, error:String(drainError)}; }
+            attemptedChild = {tuple, worker, startedAt:childStartedAt, endedAt:services.now(), exitCode:result?.exitCode ?? child?.exitCode ?? null, signal:result?.signal ?? child?.signalCode ?? null, cleanup:cleanup ?? {processTreeDrained:false, resourcesDrained:false, status:"cleanup-not-run"}, failureKind};
+            await publishFailure(tuple, error, attemptedChild, initialAcceptedReceiptValidation);
             fail(`packed ${tuple.persona}/${tuple.observation}/${tuple.viewport} workflow worker failed after preserving ${acceptedReceipts.length} accepted tuple receipts: ${error instanceof Error ? error.message : String(error)}`);
         }
+        finally { supervisor?.stop(); }
+    }
+    const acceptedReceiptValidation = await revalidateAcceptedReceipts();
+    if (acceptedReceiptValidation.status !== "verified") {
+        const error = new Error("accepted immutable tuple receipts failed final revalidation");
+        await publishFailure(undefined, error);
+        throw error;
     }
     // A successful aggregate retains its sealed installation as inspectable
     // evidence for the runtime receipt.  The caller owns its output directory
@@ -2785,7 +2886,7 @@ export async function runP805ProcessIsolatedPackedProof(options, dependencies = 
     // The parent may only certify receipts which it wrote below this one
     // controller-owned namespace. Persist the root so a later controller
     // cannot replay an otherwise-valid ledger from a sibling output root.
-    const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", operationRoot:path.resolve(options.output), phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, runtime:{kind:runtime.value?.kind, root:runtime.root, receiptPath:path.basename(runtime.receipt.path), receiptSha256:runtime.receipt.sha256, candidateId:runtime.value?.candidateId, candidatePackageSha256:runtime.value?.candidatePackageSha256, candidateExecutableSha256:runtime.value?.candidateExecutableSha256, archiveSha256:runtime.value?.archiveSha256, installationCount:runtime.value?.installation?.count ?? 1, permissions:"read-only-before-any-tuple-child"}, status:"passed", children, acceptedReceipts, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only", runtimeCleanup}};
+    const ledger = {schemaVersion:1, kind:"p8-05-process-isolated-packed-proof", operationRoot:path.resolve(options.output), phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, parent, runtime:{kind:runtime.value?.kind, root:runtime.root, receiptPath:path.basename(runtime.receipt.path), receiptSha256:runtime.receipt.sha256, candidateId:runtime.value?.candidateId, candidatePackageSha256:runtime.value?.candidatePackageSha256, candidateExecutableSha256:runtime.value?.candidateExecutableSha256, archiveSha256:runtime.value?.archiveSha256, installationCount:runtime.value?.installation?.count ?? 1, permissions:"read-only-before-any-tuple-child"}, status:"passed", children, acceptedReceipts, acceptedReceiptValidation, finalResult:{status:"passed", children:children.length, checkpointReceipts:receiptHashes.size, aggregation:"independently-verified-immutable-tuple-child-receipts-only", runtimeCleanup}};
     await writeImmutableReceipt(path.join(options.output, `${options.phase}-process-isolated-packed-proof.json`), `${JSON.stringify(ledger, null, 2)}\n`);
     return {ledger, audits};
 }

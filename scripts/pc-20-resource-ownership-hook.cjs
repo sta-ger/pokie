@@ -14,7 +14,7 @@ const registry = process.env.POKIE_PC20_RESOURCE_REGISTRY;
 const secret = process.env.POKIE_PC20_RESOURCE_REGISTRY_SECRET;
 const operationId = process.env.POKIE_PC20_OPERATION_ID;
 if (!registry || !secret || !/^[a-f0-9]{32}$/i.test(operationId || "")) throw new Error("PC-20 resource ownership registry, secret, and operation namespace are required");
-const signature = (record) => createHash("sha256").update(secret).update("\0").update(JSON.stringify(record)).digest("hex");
+const signature = (record, signingSecret) => createHash("sha256").update(signingSecret).update("\0").update(JSON.stringify(record)).digest("hex");
 const processIdentity = (pid) => {
     if (!Number.isInteger(pid) || pid <= 0) return undefined;
     try {
@@ -27,19 +27,35 @@ const processIdentity = (pid) => {
         return /^\d+$/.test(startTicks) ? `linux-start-ticks:${startTicks}` : undefined;
     } catch { return undefined; }
 };
-const write = (record) => {
+const append = (record, target, signingSecret) => {
     // Do not catch this.  An unauthenticated or unretained acquisition is a
     // release-gate failure, not an invitation for a later polling audit.
     // A tracker may read this append-only registry while a Studio child is
     // still starting or stopping.  Write each signed NDJSON record in one
     // O_APPEND syscall so that reader can see either the previous complete
     // ledger or this complete record, never an unsigned partial line.
-    const contents = Buffer.from(`${JSON.stringify({...record, signature:signature(record)})}\n`, "utf8");
-    const descriptor = openSync(registry, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND, 0o600);
+    const contents = Buffer.from(`${JSON.stringify({...record, signature:signature(record, signingSecret)})}\n`, "utf8");
+    const descriptor = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND, 0o600);
     try {
         if (writeSync(descriptor, contents) !== contents.length) throw new Error("PC-20 could not atomically append an ownership record");
     } finally {
         closeSync(descriptor);
+    }
+};
+// Tuple-local owners may rotate their registries on Studio restart. Keep a
+// second acquisition ledger outside the worker's disposable context so its
+// parent can still drain detached grandchildren after an uncatchable exit.
+const supervisorRegistry = process.env.POKIE_P805_SUPERVISOR_REGISTRY;
+const supervisorSecret = process.env.POKIE_P805_SUPERVISOR_SECRET;
+const supervisorOperation = process.env.POKIE_P805_SUPERVISOR_OPERATION;
+if (supervisorRegistry && (!supervisorSecret || !/^[a-f0-9]{32}$/i.test(supervisorOperation || ""))) throw new Error("P8-05 supervisor namespace is incomplete");
+const write = (record) => {
+    append(record, registry, secret);
+    if (supervisorRegistry && supervisorRegistry !== registry) {
+        // A worker thread disappears with its owning process. Preserve that
+        // process identity so the supervisor can prove forced thread release.
+        const workerOwner = record.kind === "worker" ? {pid:process.pid, processIdentity:processIdentity(process.pid), resourceId:`${record.resourceId}:process:${process.pid}`} : {};
+        append({...record, ...workerOwner, operationId:supervisorOperation}, supervisorRegistry, supervisorSecret);
     }
 };
 const terminateUnrecorded = (child) => {

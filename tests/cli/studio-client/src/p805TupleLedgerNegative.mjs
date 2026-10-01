@@ -69,6 +69,7 @@ async function retainedFailure(kind, message, mutateReceipt, mutateAudit) {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(directory, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(directory, "candidate.tgz"), output:directory}, {
                 tuples,
+                createTupleSupervisor:async () => ({env:process.env, attach() {}, stop() {}}),
                 prepareRuntime:async () => runtime(),
                 validateSharedRuntime:async () => undefined,
                 exists:(target) => kind === "restart" && launches === 1 && target.includes("tuple-"),
@@ -80,7 +81,7 @@ async function retainedFailure(kind, message, mutateReceipt, mutateAudit) {
                 cleanupChild:async (child, cleanupKind) => {
                     cleanups.push(cleanupKind);
                     if (kind === "detached-descendant" && child?.pid === 10_001 && cleanupKind === "success") return {processTreeDrained:false, resourcesDrained:false};
-                    return {processTreeDrained:true, resourcesDrained:true};
+                    return {processTreeDrained:true, resourcesDrained:true, authenticated:true};
                 },
                 readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                     const value = receiptFor(expected.tuple, pid);
@@ -107,12 +108,13 @@ try {
     try {
         await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(output, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(output, "candidate.tgz"), output}, {
             tuples,
+            createTupleSupervisor:async () => ({env:process.env, attach() {}, stop() {}}),
             prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
             validateSharedRuntime:async () => undefined,
             exists:() => false,
             spawn:() => Object.assign(new EventEmitter(), {pid:8100 + spawned++, exitCode:null, signalCode:null}),
             childResult:async () => spawned === 1 ? {exitCode:0, signal:null, stdout:"", stderr:""} : Promise.reject(new Error("worker timeout")),
-            cleanupChild:async (_child, kind) => { cleanupKinds.push(kind); return {processTreeDrained:true, resourcesDrained:true}; },
+            cleanupChild:async (_child, kind) => { cleanupKinds.push(kind); return {processTreeDrained:true, resourcesDrained:true, authenticated:true}; },
             readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                 const value = receiptFor(expected.tuple, pid);
                 return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
@@ -149,12 +151,13 @@ try {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(pointerSemanticOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(pointerSemanticOutput, "candidate.tgz"), output:pointerSemanticOutput}, {
                 tuples,
+                createTupleSupervisor:async () => ({env:process.env, attach() {}, stop() {}}),
                 prepareRuntime:async () => runtime(),
                 validateSharedRuntime:async () => undefined,
                 exists:() => false,
                 spawn:() => Object.assign(new EventEmitter(), {pid:9_100 + pointerLaunches++, exitCode:null, signalCode:null}),
                 childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
-                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true, authenticated:true}),
                 readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                     const value = pointerReceiptFor(expected.tuple, pid);
                     if (pid === 9_101) value.receipt.action.transaction.postTransitionRenderedState.captureKey = "substituted-capture-key";
@@ -175,12 +178,13 @@ try {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(stateClassOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(stateClassOutput, "candidate.tgz"), output:stateClassOutput}, {
                 tuples:[tuples[0]],
+                createTupleSupervisor:async () => ({env:process.env, attach() {}, stop() {}}),
                 prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
                 validateSharedRuntime:async () => undefined,
                 exists:() => false,
                 spawn:() => Object.assign(new EventEmitter(), {pid:9200, exitCode:null, signalCode:null}),
                 childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
-                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true, authenticated:true}),
                 readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                     const value = stateSubstitutedReceiptFor(expected.tuple, pid);
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
@@ -202,12 +206,13 @@ try {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(runtimeSubstitutionOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(runtimeSubstitutionOutput, "candidate.tgz"), output:runtimeSubstitutionOutput}, {
                 tuples:[tuples[0]],
+                createTupleSupervisor:async () => ({env:process.env, attach() {}, stop() {}}),
                 prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
                 validateSharedRuntime:async () => undefined,
                 exists:() => false,
                 spawn:() => Object.assign(new EventEmitter(), {pid:9300, exitCode:null, signalCode:null}),
                 childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
-                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true, authenticated:true}),
                 readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                     const value = receiptFor(expected.tuple, pid);
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
@@ -228,12 +233,13 @@ try {
         try {
             await runP805ProcessIsolatedPackedProof({persona:"all", workflowPersonas:["all"], phase:"initial", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, candidateExecutableReceipt:{path:path.join(runtimeOmissionOutput, "external-receipt.json"), sha256:"c".repeat(64)}, packedPackage:path.join(runtimeOmissionOutput, "candidate.tgz"), output:runtimeOmissionOutput}, {
                 tuples:[tuples[0]],
+                createTupleSupervisor:async () => ({env:process.env, attach() {}, stop() {}}),
                 prepareRuntime:async () => ({root:"/tmp/p8-05-read-only-runtime", receipt:{path:"/tmp/p8-05-runtime-receipt.json", sha256:"d".repeat(64)}, value:{kind:"p8-05-immutable-packed-runtime", candidateId:candidate, candidatePackageSha256, candidateExecutableSha256, archiveSha256:candidatePackageSha256, installation:{count:1}, permissions:"read-only-before-any-tuple-child"}}),
                 validateSharedRuntime:async () => undefined,
                 exists:() => false,
                 spawn:() => Object.assign(new EventEmitter(), {pid:9400, exitCode:null, signalCode:null}),
                 childResult:async () => ({exitCode:0, signal:null, stdout:"", stderr:""}),
-                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true}),
+                cleanupChild:async () => ({processTreeDrained:true, resourcesDrained:true, authenticated:true}),
                 readChildTupleReceipt:async (_receiptPath, _cleanupPath, expected, pid) => {
                     const value = receiptFor(expected.tuple, pid);
                     return {receipt:value.receipt, cleanup:value.cleanup, receiptPath:`receipt-${pid}.json`, receiptSha256:sha(`receipt-${pid}`), cleanupPath:`cleanup-${pid}.json`, cleanupSha256:sha(`cleanup-${pid}`)};
