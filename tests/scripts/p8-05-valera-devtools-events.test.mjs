@@ -144,7 +144,7 @@ test("production initialUrl captures immediate automatic validation before one n
             response.end(JSON.stringify({status:"ok", path:"starter.json"}));
         } else {
             response.setHeader("Content-Type", "text/html");
-            response.end(`<!doctype html><button id="blueprint-create-game" data-pokie-validation-state="loading" aria-busy="true" disabled>Create game</button><div role="status"></div><script>
+            response.end(`<!doctype html><button id="blueprint-create-game" data-pokie-validation-state="loading" aria-busy="true" disabled>Create game</button><div role="status" data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading"></div><script>
                 const button = document.getElementById('blueprint-create-game');
                 window.activations = [];
                 button.addEventListener('click', async (event) => {
@@ -156,6 +156,7 @@ test("production initialUrl captures immediate automatic validation before one n
                         location.hash = '/project/starter/overview';
                         button.remove();
                         document.querySelector('[role=status]').textContent = 'Overview';
+                        if (location.pathname !== '/withheld/') document.querySelector('[role=status]').dataset.pokieLifecycleTerminal = 'rendered';
                     }
                 });
                 fetch('/api/home/blueprints/validate', {method:'POST', body:'{"game":"starter"}'})
@@ -197,14 +198,33 @@ test("production initialUrl captures immediate automatic validation before one n
             assert.equal(observations[1].count, 1);
             assert.equal(observations[1].pressed && observations[1].released, true);
             assert.equal(observations[1].hitTest.matchesCapturedControl, true);
+            assert.equal(observations[1].nativeDispatch.focus.trusted, true);
+            assert.equal(observations[1].nativeDispatch.focus.validationState, "ok");
+            assert.equal(observations[1].nativeDispatch.focus.enabled, true);
+            assert.equal(observations[1].nativeDispatch.focus.ariaBusy, null);
             assert.deepEqual(await evaluate("window.activations"), [{trusted:true, controlId:"blueprint-create-game"}]);
             assert.equal(created.dashboard.route, "#/project/starter/overview");
             assert.equal(created.dashboard.overview, true);
+            assert.equal(created.dashboard.terminal, "rendered");
+            assert.equal(created.dashboard.visible, true);
             assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/home/blueprints/save-managed").length, 1);
         }
         assert.notEqual(validationIds[0], validationIds[1], "a project switch must obtain its own validation proof");
         assert.equal(requests.filter(({path}) => path === "/api/home/blueprints/validate").length, 2);
         assert.equal(requests.filter(({path}) => path === "/api/home/blueprints/save-managed").length, 2);
+        // A route and tab label can appear before the dashboard is ready.
+        // Withhold that rendered terminal after a real native Create click:
+        // failure must retain its dispatch receipt and never click again.
+        await cdp.send("Page.navigate", {url:initialUrl.replace("/#/", "/withheld/#/")});
+        const observations = [];
+        await assert.rejects(createP805RenderedGame(cdp, evaluate, observations, 10_000,
+            (requestId) => cdp.send("Network.getResponseBody", {requestId}), 100),
+        /Failed post-click Create game Overview\/dashboard transition/);
+        assert.deepEqual(observations.map((observation) => observation.kind), ["validation-ready", "pointer-dispatch"]);
+        assert.equal(observations[1].nativeDispatch.focus.trusted, true);
+        assert.equal(observations[1].count, 1);
+        assert.deepEqual(await evaluate("window.activations"), [{trusted:true, controlId:"blueprint-create-game"}]);
+        assert.equal(requests.filter(({path}) => path === "/api/home/blueprints/save-managed").length, 3);
     } finally {
         await cdp?.close();
         browser.kill("SIGTERM");

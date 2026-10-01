@@ -1,4 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -83,6 +83,47 @@ describe("Guided Design Game: automatic validation", () => {
         expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /Build Package|Build/})).not.toBeInTheDocument();
         expect(screen.queryByRole("list", {name: "Progress"})).not.toBeInTheDocument();
+    });
+
+    it("withdraws rendered ok readiness when focusing Create commits a changed field", async () => {
+        const user = userEvent.setup();
+        const requests: string[] = [];
+        let finishValidation: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/projects/registry") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([])});
+            }
+            if (url === "/api/home/blueprints/validate" && init?.method === "POST") {
+                requests.push(init.body ?? "{}");
+                return new Promise((resolve) => {
+                    finishValidation = () => resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
+                });
+            }
+            return Promise.reject(new Error(`unexpected request: ${url}`));
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        const create = screen.getByRole("button", {name: "Create game"});
+        await waitFor(() => expect(finishValidation).toBeDefined());
+        await act(() => finishValidation?.());
+        expect(create).toHaveAttribute("data-pokie-validation-state", "ok");
+
+        const id = screen.getByLabelText("Game id");
+        await user.click(id);
+        fireEvent.change(id, {target: {value: "edited-slot"}});
+        act(() => create.focus());
+        expect(create).toHaveFocus();
+        expect(create).toHaveAttribute("data-pokie-validation-state", "stale");
+        expect(requests).toHaveLength(1);
+
+        finishValidation = undefined;
+        await waitFor(() => expect(requests).toHaveLength(2));
+        expect(JSON.parse(requests[1]).blueprint.manifest.id).toBe("edited-slot");
+        expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
+        expect(create).toBeDisabled();
+        await act(() => finishValidation?.());
+        expect(create).toHaveAttribute("data-pokie-validation-state", "ok");
+        expect(create).toBeEnabled();
+        expect(create).not.toHaveAttribute("aria-busy");
     });
 
     it("makes Create game surface automatic validation errors without trying to save", async () => {

@@ -406,6 +406,15 @@ export async function waitForP805CreateValidation(evaluate, timeout = 90_000, ob
             diagnostics.phase = "missing-validation-network-evidence";
             const proof = observeValidation ? await observeValidation(diagnostics) : undefined;
             if (observeValidation && !proof) return false;
+            // Reading a response and focusing the real control can yield to a
+            // render (including a blur-committed edit). Publish the current DOM
+            // boundary, never the ok snapshot from before that observation.
+            control = await evaluate(p805CreateControlExpression);
+            if (!isP805CreateValidationReady(control)) {
+                diagnostics.phase = "dom-changed-during-validation-observation";
+                diagnostics.invalidatedControl = control;
+                return false;
+            }
             return {control, proof};
         }, "rendered Create game validation-ready boundary", timeout);
     } catch (error) {
@@ -419,8 +428,14 @@ export async function waitForP805CreatedDashboard(evaluate, timeout = 180_000) {
     let dashboard;
     try {
         return await waitFor(async () => {
-            dashboard = await evaluate("({route: location.hash, overview: document.body?.innerText.includes('Overview') ?? false})");
-            return /^#\/project\/[^/]+\/overview$/.test(dashboard?.route ?? "") && dashboard.overview ? dashboard : false;
+            dashboard = await evaluate(`(() => {
+                const result = document.querySelector('[data-pokie-lifecycle-result="navigation"][data-pokie-lifecycle-route="overview"][data-pokie-lifecycle-result-control="project-tab:overview"]');
+                return {route: location.hash, overview: document.body?.innerText.includes('Overview') ?? false,
+                    terminal: result?.getAttribute('data-pokie-lifecycle-terminal') ?? null,
+                    visible: result instanceof HTMLElement && result.getClientRects().length > 0};
+            })()`);
+            return /^#\/project\/[^/]+\/overview$/.test(dashboard?.route ?? "") && dashboard.overview
+                && dashboard.terminal === "rendered" && dashboard.visible ? dashboard : false;
         }, "created project Overview/dashboard transition", timeout);
     } catch (error) {
         throw new Error(`Failed post-click Create game Overview/dashboard transition; rendered: ${JSON.stringify(dashboard)}`, {cause:error});
@@ -448,6 +463,11 @@ export async function createP805RenderedGame(cdp, evaluate, observations, valida
     }}, evaluate, control.controlId, false, true, true);
     Object.assign(dispatch, {capturedControlId:activation.capturedControlId, captureKey:activation.captureKey,
         preDispatchFocus:activation.preDispatchFocus, hitTest:activation.hitTest, nativeDispatch:activation.dispatch});
+    const nativeValidation = activation.dispatch.focus;
+    if (nativeValidation.trusted !== true || nativeValidation.validationState !== "ok" || nativeValidation.enabled !== true
+        || ![null, "false"].includes(nativeValidation.ariaBusy)) {
+        fail(`Create game native pointer did not retain its rendered validation-ready boundary: ${JSON.stringify(nativeValidation)}`);
+    }
     const dashboard = await waitForP805CreatedDashboard(evaluate, dashboardTimeout);
     observations.push({kind:"dashboard-transition", observedAt:Date.now(), ...dashboard});
     return {control:{stableControlId:control.controlId, identityAttribute:"id", accessibleName:control.accessibleName,
@@ -530,7 +550,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         if (!isP805CreateValidationReady(control)) fail(`Missing rendered Create game validation-ready boundary before pointer dispatch; control: ${JSON.stringify(control)}`);
     }
     const captureKey = randomBytes(16).toString("hex");
-    const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (item.id==='blueprint-create-game' && (item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy')))) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
+    const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (item.id==='blueprint-create-game' && (item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy')))) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,trusted:event.isTrusted,validationState:item.getAttribute('data-pokie-validation-state'),enabled:!item.disabled,ariaBusy:item.getAttribute('aria-busy'),controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
     const removeCapture = () => evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});})()`);
     let point = await waitFor(async () => {
         const captured = await capturePoint();
@@ -607,7 +627,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         // immediately before that press, so preserve those observed facts
         // rather than treating a post-dispatch focus transfer as a second
         // control identity.
-        const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
+        const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,trusted:dispatch?.trusted === true,validationState:dispatch?.validationState ?? null,enabled:dispatch?.enabled === true,ariaBusy:dispatch?.ariaBusy ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
         // React is free to replace the Retry button while its accepted
         // pointer activation starts a new simulation.  The transaction
         // identity is consequently the captured pre-dispatch node, not

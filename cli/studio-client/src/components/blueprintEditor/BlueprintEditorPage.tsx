@@ -292,6 +292,11 @@ export function BlueprintEditorPage({
     // valid result observable by that click.
     const mutateBlueprint: BlueprintMutate = (mutate) => {
         completedValidationRef.current = undefined;
+        // A focus transfer to Create can commit a field's blur edit. Invalidate the rendered
+        // result in that same batch, before the revision effect schedules the next check.
+        setValidationView((previous) =>
+            previous.status === "ok" || previous.status === "invalid" ? {status: "stale"} : previous,
+        );
         editor.mutate(mutate);
     };
     // The scheduled automatic validation may already have begun when Create Project is clicked. Keep

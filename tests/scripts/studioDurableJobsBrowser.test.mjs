@@ -199,6 +199,16 @@ async function run() {
     const validationPaused = cdp.waitForEvent("Fetch.requestPaused");
     await cdp.send("Page.navigate", {url: `${baseUrl}/#/`});
     await waitFor(async () => (await text()).includes("Design Your Game"), "Studio Home");
+    await evaluate(`(() => {
+        window.__durableCreateClicks = [];
+        document.addEventListener('click', (event) => {
+            const control = document.getElementById('blueprint-create-game');
+            if (control && (event.target === control || control.contains(event.target))) {
+                window.__durableCreateClicks.push({controlId: control.id, trusted: event.isTrusted,
+                    validationState: control.getAttribute('data-pokie-validation-state')});
+            }
+        }, true);
+    })()`);
     const heldValidation = await validationPaused;
     await waitFor(async () => (await evaluate(createControlExpression))?.validationState === "loading", "rendered loading Create validation");
     const assertNoCreateActivation = async (state) => {
@@ -206,6 +216,26 @@ async function run() {
         await assert.rejects(createRenderedGame(evaluate, () => assert.fail(`${state} validation dispatched a pointer`), observations, 200),
             (error) => error.message.includes("Missing rendered Create game validation-ready boundary") && error.message.includes(`"validationState":"${state}"`));
         assert.deepEqual(observations, [], `${state} validation must not record readiness or pointer dispatch`);
+        // Exercise the disabled product control as well as the runner's
+        // refusal. A trusted browser gesture must not reach its click handler
+        // or emit a managed-save request while validation is loading/invalid.
+        const point = await evaluate(`(() => {
+            const control = document.getElementById('blueprint-create-game');
+            if (!(control instanceof HTMLButtonElement) || !control.disabled) return null;
+            control.scrollIntoView({block: 'center'});
+            const rect = control.getBoundingClientRect();
+            const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+            const hit = document.elementFromPoint(x, y);
+            return {x, y, hit: hit === control || control.contains(hit)};
+        })()`);
+        assert.equal(point?.hit, true, `${state} native attempt must hit the real disabled Create control`);
+        await cdp.send("Input.dispatchMouseEvent", {type: "mouseMoved", x: point.x, y: point.y, pointerType: "mouse"});
+        await cdp.send("Input.dispatchMouseEvent", {type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, pointerType: "mouse", clickCount: 1});
+        await cdp.send("Input.dispatchMouseEvent", {type: "mouseReleased", x: point.x, y: point.y, button: "left", buttons: 0, pointerType: "mouse", clickCount: 1});
+        assert.deepEqual(await evaluate("window.__durableCreateClicks"), [], `${state} must suppress the native click handler`);
+        assert.equal(cdp.events.filter((event) => event.method === "Network.requestWillBeSent"
+            && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/blueprints/save-managed").length, 0,
+        `${state} native attempt must not save a managed game`);
         assert.equal(await evaluate("location.hash"), "#/home/design", `${state} validation must retain the editor`);
         assert.equal((await (await fetch(`${baseUrl}/api/project/context`)).json()).status, "empty", `${state} validation must not open a project`);
         console.log(`PASS rendered ${state} validation prevents Create game pointer activation`);
@@ -250,11 +280,21 @@ async function run() {
     assert.equal(creationObservations[1].preDispatchFocus.native, true);
     assert.equal(creationObservations[1].hitTest.matchesCapturedControl, true);
     assert.equal(creationObservations[1].nativeDispatch.focus.targetMatchesCapturedControl, true);
+    assert.equal(creationObservations[1].nativeDispatch.focus.trusted, true);
+    assert.equal(creationObservations[1].nativeDispatch.focus.validationState, "ok");
+    assert.equal(creationObservations[1].nativeDispatch.focus.enabled, true);
+    assert([null, "false"].includes(creationObservations[1].nativeDispatch.focus.ariaBusy));
+    assert.deepEqual(await evaluate("window.__durableCreateClicks"), [{controlId: "blueprint-create-game", trusted: true, validationState: "ok"}],
+        "only the terminal validated control may receive the single native Create click");
     assert(creationObservations[0].observedAt <= creationObservations[1].dispatchedAt && creationObservations[1].dispatchedAt <= creationObservations[2].observedAt,
         "validation readiness, native pointer dispatch, and rendered dashboard must be observed in order");
     const context = await (await fetch(`${baseUrl}/api/project/context`)).json();
     assert.equal(context.status, "loaded");
     const projectRoot = context.projectRoot;
+    assert.equal(decodeURIComponent(creationObservations[2].route.split("/")[2]), projectRoot,
+        "the rendered Overview must belong to the created durable workspace");
+    assert.equal(creationObservations[2].terminal, "rendered");
+    assert.equal(creationObservations[2].visible, true);
 
     const completed = await post(baseUrl, "/api/project/simulations", {rounds: 20, seed: "durable-browser-terminal"});
     assert.equal(completed.status, 202);
@@ -411,6 +451,12 @@ if (typeof test === "function") {
     test("distinguishes missing validation readiness from a failed post-click dashboard transition", async () => {
         await assert.rejects(waitForCreateValidation(async () => null, 0), /validation proof: .*dom-unready/);
         await assert.rejects(waitForCreatedDashboard(async () => ({route: "#/home/design", overview: false}), 0), /Failed post-click Create game Overview\/dashboard transition/);
+        for (const terminal of [null, "loading", "error"]) {
+            await assert.rejects(waitForCreatedDashboard(async () => ({route: "#/project/starter/overview", overview: true, visible: true, terminal}), 0),
+                /Failed post-click Create game Overview\/dashboard transition/);
+        }
+        const rendered = {route: "#/project/starter/overview", overview: true, visible: true, terminal: "rendered"};
+        assert.deepEqual(await waitForCreatedDashboard(async () => rendered, 0), rendered);
     });
     test("Create diagnostics retain the missing network boundary and underlying validation-proof failure without pointer dispatch", async () => {
         const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
@@ -439,6 +485,21 @@ if (typeof test === "function") {
             assert.deepEqual(observations, [], "missing network proof must not create an accepted readiness receipt");
         }
     });
+    test("validation readiness is re-read after the network observation yields to a newer render", async () => {
+        const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
+        for (const validationState of ["loading", "invalid", "stale"]) {
+            let current = ready;
+            await assert.rejects(waitForP805CreateValidation(async () => current, 0, () => {
+                current = {...ready, validationState, enabled: false};
+                return {validation: {completed: true}};
+            }), (error) => error.message.includes("invalidatedControl")
+                && error.message.includes(`"validationState":"${validationState}"`));
+        }
+        let reads = 0;
+        const result = await waitForP805CreateValidation(async () => ++reads === 1 ? {...ready, ariaBusy: "false"} : ready, 0);
+        assert.equal(reads, 2);
+        assert.equal(result.control.ariaBusy, null, "the receipt must contain the final DOM observation");
+    });
     test("ready validation cannot authorize a disabled or aria-busy Create control", async () => {
         const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
         for (const blocked of [{...ready, enabled: false}, {...ready, ariaBusy: "true"}, {...ready, visible: false},
@@ -449,7 +510,7 @@ if (typeof test === "function") {
         }
         const observations = [];
         let reads = 0;
-        await assert.rejects(createRenderedGame(async () => ++reads === 1 ? ready : {...ready, validationState: "loading"},
+        await assert.rejects(createRenderedGame(async () => ++reads <= 2 ? ready : {...ready, validationState: "loading"},
             () => assert.fail("a stale readiness observation dispatched a pointer"), observations, 0), /validation-ready boundary before pointer dispatch/);
         assert.deepEqual(observations.map((observation) => observation.kind), ["validation-ready"]);
     });
