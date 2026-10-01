@@ -409,12 +409,40 @@ async function execute() {
 
 if (typeof test === "function") {
     test("distinguishes missing validation readiness from a failed post-click dashboard transition", async () => {
-        await assert.rejects(waitForCreateValidation(async () => null, 0), /Missing rendered Create game validation-ready boundary/);
+        await assert.rejects(waitForCreateValidation(async () => null, 0), /validation proof: .*dom-unready/);
         await assert.rejects(waitForCreatedDashboard(async () => ({route: "#/home/design", overview: false}), 0), /Failed post-click Create game Overview\/dashboard transition/);
+    });
+    test("Create diagnostics retain the missing network boundary and underlying validation-proof failure without pointer dispatch", async () => {
+        const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
+        const request = {method: "Network.requestWillBeSent", params: {requestId: "validation", request: {method: "POST", url: "http://localhost/api/home/blueprints/validate"}}};
+        const response = {method: "Network.responseReceived", params: {requestId: "validation", response: {status: 200, url: request.params.request.url}}};
+        const completion = {method: "Network.loadingFinished", params: {requestId: "validation"}};
+        const failed = {method: "Network.loadingFailed", params: {requestId: "validation", errorText: "net::ERR_ABORTED"}};
+        for (const [events, phase, reason, readBody] of [
+            [[], "missing-request", "Timed out", () => assert.fail("no request body")],
+            [[request], "missing-response", "Timed out", () => assert.fail("no response body")],
+            [[request, response], "missing-completion", "Timed out", () => assert.fail("incomplete response body")],
+            [[request, failed], "loading-failed", "net::ERR_ABORTED", () => assert.fail("failed response body")],
+            [[request, response, completion], "unreadable-response-body", "DevTools body unavailable", () => { throw new Error("DevTools body unavailable"); }],
+            [[request, response, completion], "unreadable-response-body", "Unexpected token", () => ({body: "invalid json"})],
+            [[request, response, completion], "rejected-response", "status invalid", () => ({body: '{"status":"invalid"}'})],
+        ]) {
+            const observations = [];
+            await assert.rejects(createP805RenderedGame({events, send: () => assert.fail("missing validation proof dispatched a pointer")},
+                async () => ready, observations, 0, readBody), (error) => {
+                assert.match(error.message, /Missing rendered Create game validation-ready boundary/);
+                assert(error.message.includes(phase), `serialized diagnostic must identify ${phase}`);
+                assert(error.message.includes(reason), `serialized diagnostic must retain ${reason}`);
+                assert(error.cause instanceof Error);
+                return true;
+            });
+            assert.deepEqual(observations, [], "missing network proof must not create an accepted readiness receipt");
+        }
     });
     test("ready validation cannot authorize a disabled or aria-busy Create control", async () => {
         const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};
-        for (const blocked of [{...ready, enabled: false}, {...ready, ariaBusy: "true"}]) {
+        for (const blocked of [{...ready, enabled: false}, {...ready, ariaBusy: "true"}, {...ready, visible: false},
+            ...["idle", "loading", "invalid", "stale", "error"].map((validationState) => ({...ready, validationState}))]) {
             const observations = [];
             await assert.rejects(createRenderedGame(async () => blocked, () => assert.fail("blocked control dispatched a pointer"), observations, 0), /Missing rendered Create game validation-ready boundary/);
             assert.deepEqual(observations, []);

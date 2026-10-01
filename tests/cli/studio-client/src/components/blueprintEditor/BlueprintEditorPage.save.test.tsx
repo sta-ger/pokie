@@ -63,7 +63,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
 
     it("validates the initial Recommended revision and creates, registers, then opens its Workspace with one action", async () => {
         const user = userEvent.setup();
-        const {fetchImpl, calls} = createFakeFetch((call) => {
+        const fake = createFakeFetch((call) => {
             if (call.url === "/api/home/blueprints/validate") {
                 return {ok: true, status: 200, body: {status: "ok", warnings: []}};
             }
@@ -99,6 +99,17 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             }
             throw new Error(`unexpected fetch to ${call.url}`);
         });
+        const {calls} = fake;
+        let completeOpen: (() => void) | undefined;
+        const fetchImpl: FetchLike = async (url, init) => {
+            const response = await fake.fetchImpl(url, init);
+            if (url === "/api/home/projects/open") {
+                await new Promise<void>((resolve) => {
+                    completeOpen = resolve;
+                });
+            }
+            return response;
+        };
 
         renderWithProviders(
             <>
@@ -110,16 +121,25 @@ describe("BlueprintEditorPage - guided Create Project", () => {
 
         await user.click(screen.getByRole("button", {name: "Create game"}));
 
-        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1));
+        await waitFor(() => expect(completeOpen).toBeDefined());
+        const saving = screen.getByRole("button", {name: "Save game"});
+        expect(saving).toHaveAttribute("data-pokie-validation-state", "ok");
+        expect(saving).toHaveAttribute("aria-busy", "true");
+        expect(saving).toBeDisabled();
+        expect(saving).toHaveAccessibleDescription("Your game was saved. Studio is opening its workspace.");
+        await user.click(saving);
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1);
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         const savedBlueprint = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/save-managed")?.init?.body ?? "{}")
             .blueprint as {reelStrips: string[][]};
         expect(savedBlueprint.reelStrips.map((strip) => strip.length)).toEqual([4, 4, 4, 4, 4]);
         expect(savedBlueprint.reelStrips.reduce((outcomeSpaceSize, strip) => outcomeSpaceSize * strip.length, 1)).toBe(1024);
+        await act(() => completeOpen?.());
         await waitFor(() =>
             expect(screen.getByTestId("location")).toHaveTextContent("/project/%2Fprojects%2Fstarter-slot%2Fblueprint.json/overview"),
         );
+        expect(saving).not.toHaveAttribute("aria-busy");
     });
 
     it("opens the saved Workspace even when the managed-save response has no registry projection", async () => {
@@ -193,6 +213,9 @@ describe("BlueprintEditorPage - guided Create Project", () => {
         expect(await screen.findByRole("alert")).toHaveTextContent("Your game was saved, but Studio couldn't open its workspace");
         expect(screen.getByRole("alert")).toHaveTextContent("Return to Your projects and open the game again. Your saved work is safe.");
         expect(screen.getByRole("alert")).not.toHaveTextContent("internal materialization diagnostic");
+        expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Save game"})).not.toHaveAttribute("aria-busy");
+        expect(screen.queryByText("Your game was saved. Studio is opening its workspace.")).not.toBeInTheDocument();
 
         await user.click(screen.getByRole("button", {name: "Go to Your projects"}));
         await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/home/projects"));

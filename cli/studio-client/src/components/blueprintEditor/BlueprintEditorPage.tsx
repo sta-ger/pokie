@@ -143,6 +143,7 @@ export function BlueprintEditorPage({
     // whenever this action's own result needs to be seen.
     const [managedSaveView, setManagedSaveView] = useState<BlueprintSaveView>({status: "idle"});
     const [workspaceOpenError, setWorkspaceOpenError] = useState<string>();
+    const [workspaceOpenPending, setWorkspaceOpenPending] = useState(false);
     // A successful managed save immediately continues into its Workspace. Keep that terminal
     // navigation separate from the creator's save-result UI: once the Workspace has accepted the
     // project, an older creator result must not remain (or reappear) beside the Workspace outcome.
@@ -934,6 +935,7 @@ export function BlueprintEditorPage({
                     // concrete Blueprint file the save confirmed and, for a loaded CLI Blueprint, the
                     // source Home must register while opening.
                     const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
+                    setWorkspaceOpenPending(true);
                     openWithConfirmation(view.path)
                         .then(({context}) => {
                             if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
@@ -944,12 +946,14 @@ export function BlueprintEditorPage({
                             // late render cannot pair a successful Workspace with stale save error
                             // remediation from the previous editor state.
                             setManagedSaveView({status: "idle"});
+                            setWorkspaceOpenPending(false);
                             setWorkspaceOpenError(undefined);
                             allowNextDesignNavigation();
                             navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
                         })
                         .catch((error: unknown) => {
                             if (workspaceOpenRequestId === workspaceOpenRequestIdRef.current) {
+                                setWorkspaceOpenPending(false);
                                 setWorkspaceOpenError(errorMessage(error));
                             }
                         });
@@ -1074,7 +1078,11 @@ export function BlueprintEditorPage({
     // A pending automatic validation is a prerequisite of the guided save, so the one conflicting
     // primary action must look and behave busy for that whole validation/save sequence. Editing stays
     // available: it is how an author corrects the model while the older validation becomes stale.
-    const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading";
+    // The saved design is not yet an opened workspace. Retain the same busy
+    // primary action through Open so a valid model cannot authorize another
+    // Create/Save while the first pointer's Overview transition is pending.
+    const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading" || workspaceOpenPending;
+    const validationDescriptionId = validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined;
 
     return (
         <div>
@@ -1115,14 +1123,19 @@ export function BlueprintEditorPage({
                             id="blueprint-create-game"
                             data-pokie-validation-state={validationView.status}
                             onClick={handleGuidedSave}
-                            disabled={validationView.status === "invalid"}
-                            aria-describedby={validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined}
+                            disabled={guidedActionPending || validationView.status === "invalid"}
+                            aria-describedby={workspaceOpenPending ? "blueprint-create-game-opening" : validationDescriptionId}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
                         >
                             {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game"}
                         </Button>
                     </QuickActions>
+                    {workspaceOpenPending && (
+                        <Text id="blueprint-create-game-opening" c="dimmed" size="sm" mb="sm">
+                            Your game was saved. Studio is opening its workspace.
+                        </Text>
+                    )}
                     {validationView.status !== "ok" && (
                         <Text id="blueprint-create-game-validation" c="dimmed" size="sm" mb="sm">
                             {validationView.status === "invalid"

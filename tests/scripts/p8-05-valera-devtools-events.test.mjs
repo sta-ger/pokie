@@ -7,7 +7,7 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
-import {clickP805CapturedControl, connectP805Devtools, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {clickP805CapturedControl, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const poll = async (predicate, timeoutMs = 10_000, diagnostic = () => "focused DevTools boundary timed out") => {
@@ -48,7 +48,10 @@ function launchFocusedBrowser(profile) {
 }
 
 test("the live DevTools collector retains exact request completion without retaining data notifications", async () => {
-    const server = createServer((_request, response) => {
+    const targetUrls = [], commands = [];
+    const initialUrl = "http://localhost/#/home/design";
+    const server = createServer((request, response) => {
+        targetUrls.push(decodeURIComponent(request.url.split("?")[1]));
         response.setHeader("Content-Type", "application/json");
         response.end(JSON.stringify({webSocketDebuggerUrl:`ws://127.0.0.1:${server.address().port}`}));
     });
@@ -64,7 +67,10 @@ test("the live DevTools collector retains exact request completion without retai
     ];
     sockets.on("connection", (socket) => socket.on("message", (raw) => {
         const command = JSON.parse(raw.toString());
+        commands.push(command.method);
         if (command.method === "Page.navigate") {
+            assert.equal(command.params.url, initialUrl);
+            assert.deepEqual(commands, ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable", "Page.navigate"]);
             for (let index = 0; index < 100; index += 1) socket.send(JSON.stringify({method:"Network.dataReceived", params:{requestId:"validation-1", dataLength:1}}));
             for (const event of lifecycle) socket.send(JSON.stringify(event));
         }
@@ -73,8 +79,9 @@ test("the live DevTools collector retains exact request completion without retai
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     let cdp;
     try {
-        cdp = await connectP805Devtools(`http://127.0.0.1:${server.address().port}`);
-        await cdp.send("Page.navigate", {url:"http://localhost/#/home/design"});
+        cdp = await connectP805Devtools(`http://127.0.0.1:${server.address().port}`, initialUrl);
+        assert.deepEqual(targetUrls, ["about:blank"], "the production initialUrl path must instrument a blank target first");
+        assert.equal(commands.at(-1), "Page.navigate");
         assert.deepEqual(cdp.events, lifecycle);
     } finally {
         await cdp?.close();
@@ -123,6 +130,89 @@ test("body decoding preserves exact bytes and rejects a validation superseded du
         return control;
     }, readBody), false);
 });
+
+test("production initialUrl captures immediate automatic validation before one native pointer and Overview, including project switching", async () => {
+    const requests = [];
+    const body = JSON.stringify({status:"ok", warnings:[]});
+    const server = createServer((request, response) => {
+        requests.push({method:request.method, path:request.url});
+        if (request.url === "/api/home/blueprints/validate") {
+            response.writeHead(200, {"Content-Type":"application/json"});
+            response.end(body);
+        } else if (request.url === "/api/home/blueprints/save-managed") {
+            response.writeHead(201, {"Content-Type":"application/json"});
+            response.end(JSON.stringify({status:"ok", path:"starter.json"}));
+        } else {
+            response.setHeader("Content-Type", "text/html");
+            response.end(`<!doctype html><button id="blueprint-create-game" data-pokie-validation-state="loading" aria-busy="true" disabled>Create game</button><div role="status"></div><script>
+                const button = document.getElementById('blueprint-create-game');
+                window.activations = [];
+                button.addEventListener('click', async (event) => {
+                    window.activations.push({trusted:event.isTrusted, controlId:event.currentTarget.id});
+                    button.disabled = true;
+                    button.setAttribute('aria-busy', 'true');
+                    const response = await fetch('/api/home/blueprints/save-managed', {method:'POST', body:'{}'});
+                    if (response.status === 201) {
+                        location.hash = '/project/starter/overview';
+                        button.remove();
+                        document.querySelector('[role=status]').textContent = 'Overview';
+                    }
+                });
+                fetch('/api/home/blueprints/validate', {method:'POST', body:'{"game":"starter"}'})
+                    .then((response) => response.json()).then((payload) => {
+                        button.dataset.pokieValidationState = payload.status;
+                        button.removeAttribute('aria-busy');
+                        button.disabled = false;
+                    });
+            </script>`);
+        }
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const profile = await mkdtemp(path.join(tmpdir(), "p805-devtools-initial-url-"));
+    const {browser, exited, waitForPort} = launchFocusedBrowser(profile);
+    let cdp;
+    try {
+        const initialUrl = `http://127.0.0.1:${server.address().port}/#/home/design`;
+        cdp = await connectP805Devtools(`http://127.0.0.1:${await waitForPort()}`, initialUrl);
+        const evaluate = async (expression) => {
+            const result = await cdp.send("Runtime.evaluate", {expression, returnByValue:true, awaitPromise:true});
+            assert.equal(result.exceptionDetails, undefined);
+            return result.result.value;
+        };
+        const validationIds = [];
+        for (const phase of ["startup", "project-switch"]) {
+            const cursor = phase === "startup" ? 0 : cdp.events.length;
+            if (phase === "project-switch") await cdp.send("Page.navigate", {url:initialUrl.replace("/#/", "/switch/#/")});
+            const observations = [];
+            const created = await createP805RenderedGame(cdp, evaluate, observations, 10_000,
+                (requestId) => cdp.send("Network.getResponseBody", {requestId}), 10_000);
+            const requestId = created.validation.browserRequestId;
+            validationIds.push(requestId);
+            const events = cdp.events.slice(cursor);
+            const validationEvents = events.filter((event) => event.params.requestId === requestId);
+            assert.deepEqual(validationEvents.map((event) => event.method), ["Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFinished"]);
+            assert.equal(created.validation.completed, true);
+            assert.equal(created.validation.bodySha256, hash(body));
+            assert.deepEqual(observations.map((observation) => observation.kind), ["validation-ready", "pointer-dispatch", "dashboard-transition"]);
+            assert.equal(observations[1].count, 1);
+            assert.equal(observations[1].pressed && observations[1].released, true);
+            assert.equal(observations[1].hitTest.matchesCapturedControl, true);
+            assert.deepEqual(await evaluate("window.activations"), [{trusted:true, controlId:"blueprint-create-game"}]);
+            assert.equal(created.dashboard.route, "#/project/starter/overview");
+            assert.equal(created.dashboard.overview, true);
+            assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/home/blueprints/save-managed").length, 1);
+        }
+        assert.notEqual(validationIds[0], validationIds[1], "a project switch must obtain its own validation proof");
+        assert.equal(requests.filter(({path}) => path === "/api/home/blueprints/validate").length, 2);
+        assert.equal(requests.filter(({path}) => path === "/api/home/blueprints/save-managed").length, 2);
+    } finally {
+        await cdp?.close();
+        browser.kill("SIGTERM");
+        await exited;
+        await new Promise((resolve) => server.close(resolve));
+        await rm(profile, {recursive:true, force:true, maxRetries:10, retryDelay:100});
+    }
+}, 60_000);
 
 test("completed browser validation binds rendered readiness before one native Create game activation", async () => {
     // This small protocol fixture exercises Chromium's real body completion,

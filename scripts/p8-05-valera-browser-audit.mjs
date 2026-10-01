@@ -294,7 +294,10 @@ export async function createP805TupleSupervisor(options, tuple, nonce, services 
 }
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
 export async function connectP805Devtools(devtools, initialUrl = "about:blank") {
-    const target = await responseJson(`${devtools}/json/new?${encodeURIComponent(initialUrl)}`, {method:"PUT"}), socket = new WebSocket(target.webSocketDebuggerUrl);
+    // Creating a target at the live URL starts automatic validation before
+    // this socket can collect it. Instrument the blank target first, including
+    // when the packed startup caller supplies its production initialUrl.
+    const target = await responseJson(`${devtools}/json/new?${encodeURIComponent("about:blank")}`, {method:"PUT"}), socket = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => { socket.once("open", resolve); socket.once("error", reject); });
     let id = 0;
     const pending = new Map(), events = [];
@@ -339,10 +342,6 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
         pending.set(messageId, {resolve, reject});
         socket.send(JSON.stringify({id:messageId, method, params}));
     });
-    // Enable domains in order.  Chromium can emit domain events while a
-    // simultaneous enable burst is still being negotiated; serial enabling
-    // keeps every response associated with this freshly opened rendered page.
-    for (const method of ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]) await send(method);
     const close = async () => {
         if (socket.readyState === WebSocket.CLOSED) return;
         // A failed rendered operation can leave Chromium's DevTools target in
@@ -364,6 +363,18 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
             socket.close();
         });
     };
+    try {
+        // Await each domain before navigation can emit even an immediate
+        // request/response/completion sequence on the live Studio page.
+        for (const method of ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]) await send(method);
+        if (initialUrl !== "about:blank") {
+            const navigation = await send("Page.navigate", {url:initialUrl});
+            if (navigation.errorText) fail(`initial Studio navigation failed: ${navigation.errorText}`);
+        }
+    } catch (error) {
+        await close();
+        throw error;
+    }
     return {send, events, close};
 }
 // The startup and project-switch paths share the durable-browser contract's
@@ -384,16 +395,23 @@ export const isP805CreateValidationReady = (control) => control?.controlId === "
 
 export async function waitForP805CreateValidation(evaluate, timeout = 90_000, observeValidation) {
     let control;
+    const diagnostics = {};
     try {
         return await waitFor(async () => {
             control = await evaluate(p805CreateControlExpression);
-            if (!isP805CreateValidationReady(control)) return false;
-            const proof = observeValidation ? await observeValidation() : undefined;
+            if (!isP805CreateValidationReady(control)) {
+                diagnostics.phase = "dom-unready";
+                return false;
+            }
+            diagnostics.phase = "missing-validation-network-evidence";
+            const proof = observeValidation ? await observeValidation(diagnostics) : undefined;
             if (observeValidation && !proof) return false;
             return {control, proof};
         }, "rendered Create game validation-ready boundary", timeout);
     } catch (error) {
-        throw new Error(`Missing rendered Create game validation-ready boundary; control: ${JSON.stringify(control)}`, {cause:error});
+        // Worker/parent failure receipts retain error.message, not its cause
+        // chain. Keep the actual proof failure in that serialized diagnostic.
+        throw new Error(`Missing rendered Create game validation-ready boundary; control: ${JSON.stringify(control)}; validation proof: ${JSON.stringify(diagnostics)}; reason: ${error.message}`, {cause:error});
     }
 }
 
@@ -411,7 +429,7 @@ export async function waitForP805CreatedDashboard(evaluate, timeout = 180_000) {
 
 export async function createP805RenderedGame(cdp, evaluate, observations, validationTimeout = 90_000, readBrowserResponseBody, dashboardTimeout = 180_000) {
     const {control, proof} = await waitForP805CreateValidation(evaluate, validationTimeout,
-        readBrowserResponseBody ? () => observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody) : undefined);
+        readBrowserResponseBody ? (diagnostics) => observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody, diagnostics) : undefined);
     observations.push({kind:"validation-ready", observedAt:Date.now(), ...control, ...(proof ? {validation:proof.validation} : {})});
     // Record actual dispatch independently from readiness, even if the
     // dashboard never appears. The pointer helper rechecks the captured node
@@ -439,21 +457,44 @@ export async function createP805RenderedGame(cdp, evaluate, observations, valida
 
 /** Observe the latest browser validation and its rendered Create game state.
  * An older completed response must not authorize a newer, still-pending check. */
-export async function observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody) {
+export async function observeP805CreatorValidation(cdp, evaluate, readBrowserResponseBody, diagnostics = {}) {
     const validationPath = "/api/home/blueprints/validate";
     const latestRequest = () => cdp.events.findLast((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === validationPath);
     const request = latestRequest();
-    if (!request) return false;
+    if (!request) {
+        diagnostics.phase = "missing-request";
+        return false;
+    }
     const browserRequestId = request.params.requestId;
-    if (cdp.events.some((event) => event.method === "Network.loadingFailed" && event.params.requestId === browserRequestId)) fail("initial rendered Design validation failed to complete");
+    diagnostics.browserRequestId = browserRequestId;
+    const failed = cdp.events.findLast((event) => event.method === "Network.loadingFailed" && event.params.requestId === browserRequestId);
+    if (failed) {
+        diagnostics.phase = "loading-failed";
+        fail(`initial rendered Design validation failed to complete: ${failed.params.errorText}`);
+    }
     const response = cdp.events.findLast((event) => event.method === "Network.responseReceived" && event.params.requestId === browserRequestId && new URL(event.params.response.url).pathname === validationPath);
-    if (!response || !cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === browserRequestId)) return false;
+    if (!response) {
+        diagnostics.phase = "missing-response";
+        return false;
+    }
+    if (!cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === browserRequestId)) {
+        diagnostics.phase = "missing-completion";
+        return false;
+    }
+    diagnostics.phase = "unreadable-response-body";
     const body = await readBrowserResponseBody(browserRequestId, "initial rendered Design validation");
     const bytes = body.base64Encoded ? Buffer.from(body.body, "base64") : Buffer.from(body.body);
     const payload = JSON.parse(bytes.toString("utf8"));
-    if (response.params.response.status !== 200 || payload.status !== "ok") fail("initial rendered Design validation did not accept the starter game");
+    diagnostics.phase = "rejected-response";
+    if (response.params.response.status !== 200 || payload.status !== "ok") fail(`initial rendered Design validation did not accept the starter game: HTTP ${response.params.response.status}, status ${payload.status}`);
+    diagnostics.phase = "dom-unready";
     const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || ![null, 'false'].includes(item.getAttribute('aria-busy')) || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
-    if (!control || latestRequest()?.params.requestId !== browserRequestId) return false;
+    if (latestRequest()?.params.requestId !== browserRequestId) {
+        diagnostics.phase = "superseded-validation";
+        return false;
+    }
+    if (!control) return false;
+    diagnostics.phase = "ready";
     return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};
 }
 // A routed dashboard can expose its shell before its context and dependent
