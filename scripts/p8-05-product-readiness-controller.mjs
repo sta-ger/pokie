@@ -35,8 +35,19 @@ const RECOVERY_WORKFLOW_OBSERVATIONS = new Set([
 const OUTCOME_LIBRARY_TUPLE = {persona:"mathematician", observation:"outcome-library-report-diff-replay"};
 const OUTCOME_LIBRARY_TRANSACTION = {cardId:"outcome-library", controlId:"outcome-library-generate", operation:"outcome-library", requestPath:"/api/project/outcome-libraries/generate/jobs", terminalReceipt:"durable-terminal", artifact:"outcome-library"};
 const tupleEvidenceFor = (ledger) => ledger.children.map((child, index) => ({tuple:child.tuple, auditId:ledger.acceptedReceipts[index].receipt.auditId, auditPath:child.auditPath, auditSha256:child.auditSha256, tupleReceiptPath:child.tupleReceiptPath, tupleReceiptSha256:child.tupleReceiptSha256, cleanupPath:child.cleanupPath, cleanupSha256:child.cleanupSha256, checkpointReceiptSha256:child.checkpointReceiptSha256s[0], actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256, cleanupEvidenceId:child.cleanupEvidenceId}));
-const renderedTupleEvidenceFor = (ledger, audits) => ledger.children.map((child, index) => {
-    const audit = audits.find((value) => value.worker?.pid === child.worker?.pid), action = audit?.rendered?.actions?.[0], pointer = action?.transaction?.pointerActivations?.[0], keyboard = action?.transaction?.keyboardActivations?.[0], isPointer = action?.interaction?.activation === "pointer", activation = isPointer ? pointer : keyboard;
+// A persona aggregate inherits its first worker identity and contains many
+// actions. Only the separately authenticated tuple audit can supply this
+// projection; a PID alone is also insufficient after a long sequential run.
+function acceptedTupleAudit(ledger, audits, index) {
+    const child = ledger.children[index], accepted = ledger.acceptedReceipts[index];
+    const matches = audits.filter((audit) => audit.auditId === accepted.receipt.auditId && audit.worker?.pid === child.worker?.pid && JSON.stringify(audit.tuple) === JSON.stringify(child.tuple));
+    if (matches.length !== 1) fail(`controller requires one accepted immutable audit for ${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`);
+    const audit = matches[0], action = audit.rendered?.actions?.[0];
+    if (audit.rendered?.actions?.length !== 1 || action?.persona !== child.tuple.persona || action?.observation !== child.tuple.observation || action?.viewport !== child.tuple.viewport || digest(JSON.stringify(action)) !== accepted.receipt.checkpointReceipt.actionSha256) fail("controller tuple projection cannot substitute another rendered action");
+    return audit;
+}
+export const projectP805RenderedTupleEvidence = (ledger, tupleAudits) => ledger.children.map((child, index) => {
+    const audit = acceptedTupleAudit(ledger, tupleAudits, index), action = audit.rendered?.actions?.[0], pointer = action?.transaction?.pointerActivations?.[0], keyboard = action?.transaction?.keyboardActivations?.[0], isPointer = action?.interaction?.activation === "pointer", activation = isPointer ? pointer : keyboard;
     if (!audit || !action || !activation) fail(`controller cannot project rendered evidence for ${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`);
     return {
         tuple:child.tuple,
@@ -59,7 +70,7 @@ const renderedTupleEvidenceFor = (ledger, audits) => ledger.children.map((child,
 // generic completed simulation result must never be able to stand in for the
 // captured Retry control after React has replaced that control.
 const retryTerminalEvidenceFor = (ledger, audits) => ledger.children.flatMap((child, index) => {
-    const audit = audits.find((value) => value.worker?.pid === child.worker?.pid);
+    const audit = acceptedTupleAudit(ledger, audits, index);
     const receipt = audit?.rendered?.jobs?.retryWithoutPartialArtifacts?.receipt;
     if (receipt === undefined) return [];
     validateP805RetryTerminalReceipt(receipt);
@@ -99,7 +110,7 @@ const validRetryTerminalEvidence = (value, expectedCount) => Array.isArray(value
 // boundary. Preserve the complete receipt here rather than projecting a
 // generic simulation result with a matching status.
 const restartRecoveryTerminalEvidenceFor = (ledger, audits) => ledger.children.flatMap((child, index) => {
-    const audit = audits.find((value) => value.worker?.pid === child.worker?.pid);
+    const audit = acceptedTupleAudit(ledger, audits, index);
     const restartRecovery = audit?.rendered?.jobs?.restartRecovery, receipt = restartRecovery?.receipt;
     if (receipt === undefined) return [];
     validateP805RestartRecoveryTerminalReceipt(receipt);
@@ -139,7 +150,7 @@ function validRenderedTupleEvidence(value, expected) {
 // generic Build/Export action cannot substitute for this mathematician tuple.
 const outcomeLibraryTransactionEvidenceFor = (ledger, audits) => ledger.children.flatMap((child, index) => {
     if (child.tuple.persona !== OUTCOME_LIBRARY_TUPLE.persona || child.tuple.observation !== OUTCOME_LIBRARY_TUPLE.observation) return [];
-    const audit = audits.find((value) => value.worker?.pid === child.worker?.pid), action = audit?.rendered?.actions?.find((value) => value.persona === child.tuple.persona && value.observation === child.tuple.observation && value.viewport === child.tuple.viewport), preflight = action?.transaction?.preflight, pointer = action?.transaction?.pointerActivations?.[0], lifecycle = action?.visibleTerminal?.lifecycle;
+    const audit = acceptedTupleAudit(ledger, audits, index), action = audit?.rendered?.actions?.find((value) => value.persona === child.tuple.persona && value.observation === child.tuple.observation && value.viewport === child.tuple.viewport), preflight = action?.transaction?.preflight, pointer = action?.transaction?.pointerActivations?.[0], lifecycle = action?.visibleTerminal?.lifecycle;
     if (!audit || !action || !preflight || !pointer || !lifecycle) fail(`controller cannot project the Outcome Library transaction for ${child.tuple.viewport}`);
     return [{tuple:child.tuple, auditSha256:child.auditSha256, checkpointReceiptSha256:child.checkpointReceiptSha256s[0], actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256, card:{id:OUTCOME_LIBRARY_TRANSACTION.cardId, label:preflight.cardLabel}, preflight, form:action.transaction.formState, activation:pointer, request:action.transaction.request, progressSnapshots:action.transaction.progressSnapshots, terminal:{status:action.terminal?.status, jobId:action.terminal?.jobId, receipt:lifecycle.receipt, durableJobId:lifecycle.durableJobId, durableStatus:lifecycle.durableStatus, resultSha256:action.terminal?.resultSha256}, rendered:{state:action.visibleTerminal?.state, observedAfterRequestId:action.visibleTerminal?.observedAfterRequestId, resultSha256:action.visibleTerminal?.resultSha256, controlId:lifecycle.controlId, operation:lifecycle.operation, stateClass:lifecycle.stateClass}, artifact:lifecycle.artifact, timing:{elapsedMs:action.elapsedMs}, accessibility:action.accessibility, provenance:{archiveGitHead:audit.packageIdentity.archiveGitHead, candidateTreeObjectId:audit.packageIdentity.candidateTreeObjectId, candidateExecutableReceiptSha256:audit.packageIdentity.candidateExecutableReceiptSha256}, evidence:{actionEvidenceId:action.evidenceId, screenshotEvidenceId:action.screenshotEvidenceId, cleanupEvidenceId:audit.cleanup.evidenceId}}];
 });
@@ -251,7 +262,7 @@ async function writeControllerMachineProof(config, phase, candidateValue, proof,
     validateP805TupleProofLedger(ledger.value, candidateValue);
     const operationRoot = p805ControllerOperationRoot(config.directory, ledger.value);
     if (digest(`${JSON.stringify(proof.ledger, null, 2)}\n`) !== digest(ledger.contents)) fail("controller re-read ledger differs from the packed parent result");
-    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger.value), renderedTupleEvidence = renderedTupleEvidenceFor(ledger.value, audits), outcomeLibraryTransactionEvidence = outcomeLibraryTransactionEvidenceFor(ledger.value, tupleAudits), retryTerminalEvidence = retryTerminalEvidenceFor(ledger.value, tupleAudits), restartRecoveryTerminalEvidence = restartRecoveryTerminalEvidenceFor(ledger.value, tupleAudits), value = {
+    const tuples = ledger.value.children.map(({tuple}) => `${tuple.persona}/${tuple.observation}/${tuple.viewport}`), tupleAuditIds = ledger.value.acceptedReceipts.map(({receipt}) => receipt.auditId), tupleEvidence = tupleEvidenceFor(ledger.value), renderedTupleEvidence = projectP805RenderedTupleEvidence(ledger.value, tupleAudits), outcomeLibraryTransactionEvidence = outcomeLibraryTransactionEvidenceFor(ledger.value, tupleAudits), retryTerminalEvidence = retryTerminalEvidenceFor(ledger.value, tupleAudits), restartRecoveryTerminalEvidence = restartRecoveryTerminalEvidenceFor(ledger.value, tupleAudits), value = {
         schemaVersion:P805_SCHEMA_VERSION,
         kind:"p8-05-controller-machine-proof",
         status:"passed",
@@ -285,8 +296,8 @@ export function aggregateP805PersonaAudits(tupleAudits, ledger, phase, candidate
         const children = ledger.children.filter((child) => child.tuple.persona === persona), audits = tupleAudits.filter((audit) => audit.persona === persona);
         if (children.length === 0 || audits.length !== children.length || audits.some((audit) => !audit.tuple || audit.phase !== phase)) fail(`persona aggregation is missing immutable ${persona} tuple audits`);
         const first = audits[0], timings = Object.fromEntries(Object.keys(first.timings).map((name) => [name, Math.max(...audits.map((audit) => audit.timings[name]))])), tupleReceipts = children.map((child) => {
-            const audit = audits.find((value) => value.worker?.pid === child.worker?.pid);
-            return {tuple:child.tuple, auditId:audit?.auditId, auditPath:child.auditPath, auditSha256:child.auditSha256, tupleReceiptPath:child.tupleReceiptPath, tupleReceiptSha256:child.tupleReceiptSha256, cleanupPath:child.cleanupPath, cleanupSha256:child.cleanupSha256, checkpointReceiptSha256s:child.checkpointReceiptSha256s, cleanupEvidenceId:child.cleanupEvidenceId};
+            const audit = acceptedTupleAudit(ledger, audits, ledger.children.indexOf(child));
+            return {tuple:child.tuple, auditId:audit.auditId, auditPath:child.auditPath, auditSha256:child.auditSha256, tupleReceiptPath:child.tupleReceiptPath, tupleReceiptSha256:child.tupleReceiptSha256, cleanupPath:child.cleanupPath, cleanupSha256:child.cleanupSha256, checkpointReceiptSha256s:child.checkpointReceiptSha256s, cleanupEvidenceId:child.cleanupEvidenceId};
         });
         return {
             ...first,

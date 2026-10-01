@@ -7,6 +7,8 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {exerciseP805TupleSupervisor} from "./p805-tuple-supervisor-contract.mjs";
 import {createP805OwnedProcessRecord, installP805PackedRuntime} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {projectP805RenderedTupleEvidence} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {registerPc20OwnedResource} from "../../scripts/pc-20-release-completion.mjs";
 
 test.each(["success", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "persistent-network", "integrity", "diagnostic-only", "signal", "spawn-failure", "timeout"])("packed installer closes %s without changing candidate or exceeding its retry boundary", async (mode) => {
@@ -157,4 +159,64 @@ test("the shared ownership preload preserves its local protocol without a tuple 
         }
         for (const acquired of acquisitions) assert.ok(records.some((record) => record.action === "released" && record.resourceId === acquired.resourceId));
     } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+
+test("controller projects every accepted tuple action instead of a persona aggregate or reused PID", () => {
+    // This is the controller's projection contract, not packed browser proof.
+    // Distinct requests/actions at all viewports must survive the five-persona
+    // aggregation, including when sequential workers reuse a PID.
+    const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+    const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    const tupleAudits = tuples.map((tuple, index) => {
+        const controlId = `control-${index}`, browserRequestId = `request-${index}`, resultSha256 = digest({terminal:index});
+        const keyboard = tuple.viewport === "compact", kind = keyboard ? "keyboard" : "pointer";
+        const activation = {kind, controlId, capturedControlId:controlId, captureKey:`capture-${index}`, preDispatchFocus:{controlId, native:true}, nativeFocus:true, hitTest:{capturedControlId:controlId, matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true, focus:{controlId, native:true, targetMatchesCapturedControl:true}}};
+        const action = {...tuple, stableControlId:controlId, interaction:{activation:kind}, transaction:{pointerActivations:keyboard ? [] : [activation], keyboardActivations:keyboard ? [activation] : [], request:{browserRequestId, method:"GET", path:"/api/project/context", responseSha256:digest({response:index})}, postTransitionRenderedState:keyboard ? undefined : {capturedControlId:controlId, captureKey:activation.captureKey, controlState:"replaced", currentControlId:controlId, capturedControlConnected:false, requestId:browserRequestId, resultSha256, renderedTerminal:true}}, terminal:{status:"completed", resultSha256}, visibleTerminal:{state:"rendered", observedAfterRequestId:browserRequestId, resultSha256, lifecycle:{artifact:null}}, elapsedMs:index + 1, accessibility:{visibleFocus:true, namedRegions:["main"], unexplainedDisabledControls:0}, evidenceId:`action-${index}`, screenshotEvidenceId:`screenshot-${index}`};
+        return {auditId:`audit-${index}`, persona:tuple.persona, tuple, worker:{pid:100}, rendered:{actions:[action]}, packageIdentity:{archiveGitHead:"1".repeat(40), candidateTreeObjectId:"2".repeat(40), candidateExecutableReceiptSha256:"3".repeat(64)}, cleanup:{evidenceId:`cleanup-${index}`}};
+    });
+    const ledger = {
+        children:tupleAudits.map((audit, index) => ({tuple:audit.tuple, worker:audit.worker, auditSha256:digest({audit:index}), checkpointReceiptSha256s:[digest({checkpoint:index})], cleanupEvidenceId:audit.cleanup.evidenceId})),
+        acceptedReceipts:tupleAudits.map((audit) => ({receipt:{auditId:audit.auditId, checkpointReceipt:{actionSha256:digest(audit.rendered.actions[0])}}})),
+    };
+    const original = JSON.stringify({ledger, tupleAudits});
+    const projected = projectP805RenderedTupleEvidence(ledger, [...tupleAudits].reverse());
+    assert.equal(projected.length, 75);
+    assert.deepEqual(projected.map(({tuple}) => tuple), tuples);
+    assert.deepEqual(projected.map(({activation}) => activation.kind), tuples.map(({viewport}) => viewport === "compact" ? "keyboard" : "pointer"));
+    for (const [index, entry] of projected.entries()) {
+        const audit = tupleAudits[index], action = audit.rendered.actions[0];
+        assert.equal(entry.activation.controlId, action.stableControlId);
+        assert.equal(entry.actionSha256, ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256);
+        assert.deepEqual(entry.request, action.transaction.request);
+        assert.deepEqual(entry.terminal, action.terminal);
+        assert.equal(entry.rendered.observedAfterRequestId, entry.request.browserRequestId);
+        assert.equal(entry.rendered.resultSha256, entry.terminal.resultSha256);
+        assert.equal(entry.evidence.actionEvidenceId, action.evidenceId);
+        assert.equal(entry.evidence.screenshotEvidenceId, action.screenshotEvidenceId);
+        assert.equal(entry.evidence.cleanupEvidenceId, audit.cleanup.evidenceId);
+        if (entry.activation.kind === "pointer") {
+            assert.deepEqual(entry.activation.dispatch, action.transaction.pointerActivations[0].dispatch);
+            assert.deepEqual(entry.rendered.postTransitionRenderedState, action.transaction.postTransitionRenderedState);
+        } else assert.deepEqual(entry.activation.dispatch, {kind:"native-keyboard", nativeFocus:true});
+    }
+    const aggregates = P805_PERSONAS.map((persona) => {
+        const audits = tupleAudits.filter((audit) => audit.persona === persona);
+        return {...audits[0], auditId:`aggregate-${persona}`, tuple:undefined, rendered:{actions:audits.flatMap((audit) => audit.rendered.actions)}};
+    });
+    assert.equal(aggregates.length, 5);
+    assert.throws(() => projectP805RenderedTupleEvidence(ledger, aggregates), /one accepted immutable audit/);
+    for (const mutate of [
+        (audits) => { audits.splice(1, 1); },
+        (audits) => { audits.push(structuredClone(audits[1])); },
+        (audits) => { audits[1].auditId = audits[0].auditId; },
+        (audits) => { audits[1].tuple.viewport = "wide"; },
+        (audits) => { audits[1].rendered.actions[0] = audits[0].rendered.actions[0]; },
+        (audits) => { audits[1].rendered.actions[0].transaction.request.browserRequestId = "unbound-request"; },
+    ]) {
+        const invalid = structuredClone(tupleAudits);
+        mutate(invalid);
+        assert.throws(() => projectP805RenderedTupleEvidence(ledger, invalid), /accepted immutable audit|substitute another rendered action/);
+    }
+    assert.equal(JSON.stringify({ledger, tupleAudits}), original, "projection preserves accepted receipts and cleanup evidence");
 });
