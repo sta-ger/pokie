@@ -32,10 +32,14 @@ function optionsFrom(argv) {
 export async function archiveExecutableManifest(archive) {
     const extraction = await mkdtemp(path.join(tmpdir(), "p8-05-candidate-verifier-"));
     try {
-        const names = execFileSync("tar", ["-tzf", archive], {encoding:"utf8", maxBuffer:8 * 1024 * 1024}).trim().split("\n");
-        const types = execFileSync("tar", ["-tvzf", archive], {encoding:"utf8", maxBuffer:8 * 1024 * 1024}).trim().split("\n");
+        // Validate and extract one immutable snapshot so the manifest cannot
+        // describe different bytes from those authenticated and handed off.
+        const snapshot = path.join(extraction, "archive.tgz");
+        await writeFile(snapshot, Buffer.isBuffer(archive) ? archive : await readFile(archive), {flag:"wx"});
+        const names = execFileSync("tar", ["-tzf", snapshot], {encoding:"utf8", maxBuffer:8 * 1024 * 1024}).trim().split("\n");
+        const types = execFileSync("tar", ["-tvzf", snapshot], {encoding:"utf8", maxBuffer:8 * 1024 * 1024}).trim().split("\n");
         if (names.some((name) => !name.startsWith("package/") || name.split("/").includes("..") || path.isAbsolute(name)) || types.some((entry) => !["-", "d"].includes(entry[0])) || new Set(names).size !== names.length) fail("archive contains escaping, duplicate, or nonregular package entries");
-        execFileSync("tar", ["-xzf", archive, "-C", extraction, "--no-same-owner"], {stdio:"pipe"});
+        execFileSync("tar", ["-xzf", snapshot, "-C", extraction, "--no-same-owner"], {stdio:"pipe"});
         const packageRoot = path.join(extraction, "package"), packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")), files = [];
         const collect = async (directory, relative = "") => {
             for (const entry of await readdir(directory, {withFileTypes:true})) {
@@ -116,7 +120,7 @@ function candidateTreeExecutableManifest(candidateId, root) {
 export async function verifyP805CandidatePackage(options) {
     const repository = options.repositoryRoot ?? root;
     if (!commit(options.candidateId)) fail("invalid candidate commit");
-    const archive = await readFile(options.sourceArchive), projection = await archiveExecutableManifest(options.sourceArchive), tree = candidateTreeExecutableManifest(options.candidateId, repository);
+    const archive = await readFile(options.sourceArchive), projection = await archiveExecutableManifest(archive), tree = candidateTreeExecutableManifest(options.candidateId, repository);
     const verifiedBuild = await verifyCandidateBuild(options, projection, repository);
     if (digest(await readFile(options.sourceArchive)) !== digest(archive)) fail("canonical archive changed during candidate build verification");
     // Hand off the exact authenticated buffer. Reopening the source after its

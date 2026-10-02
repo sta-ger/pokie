@@ -1,5 +1,6 @@
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync} from "fs";
 import {execFileSync} from "child_process";
+import {createHash} from "crypto";
 import {tmpdir} from "os";
 import path from "path";
 
@@ -7,10 +8,10 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
 const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
 const packedTestPath = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => !entry.includes("pokie-command-policy")).join(path.delimiter);
-const runNpm = (args: string[], options: {cwd?: string} = {}) => execFileSync(process.execPath, [npmCli, ...args], {
-    ...options,
+const runNpm = (args: string[], {cwd, nodeEnv = "production"}: {cwd?: string; nodeEnv?: string} = {}) => execFileSync(process.execPath, [npmCli, ...args], {
+    cwd,
     encoding: "utf8",
-    env: {...process.env, NODE_ENV: "production", PATH: packedTestPath},
+    env: {...process.env, NODE_ENV: nodeEnv, PATH: packedTestPath},
     stdio: "pipe",
     maxBuffer: 64 * 1024 * 1024,
 });
@@ -65,7 +66,10 @@ describe("P8-05 Valera Programmer public path", () => {
             // build-cli is incremental and may retain obsolete dist/src or
             // CJS files. Canonical prepack uses build, which clears dist;
             // reproduce that boundary before packing without lifecycle scripts.
-            runNpm(["run", "build"], {cwd: process.cwd()});
+            // The release smoke launches its compilers from Jest's test
+            // environment. It must still produce the production archive that
+            // the independently rebuilt candidate verifier authenticates.
+            runNpm(["run", "build"], {cwd: process.cwd(), nodeEnv: "test"});
             mkdirSync(sourceArchiveDirectory, {recursive: true});
             return JSON.parse(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd()})) as Array<{filename: string}>;
         };
@@ -77,8 +81,18 @@ describe("P8-05 Valera Programmer public path", () => {
             const receipt = path.join(candidateDirectory, "candidate-executable-receipt.json");
             const canonicalBytes = readFileSync(source);
             execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "p8-05-candidate-package-verifier.mjs"), "--source-archive", source, "--candidate-archive", archive, "--candidate", candidate, "--receipt", receipt], {encoding: "utf8", stdio: "pipe"});
-            expect(readFileSync(source)).toEqual(canonicalBytes);
-            expect(readFileSync(archive)).toEqual(canonicalBytes);
+            expect(readFileSync(source).equals(canonicalBytes)).toBe(true);
+            expect(readFileSync(archive).equals(canonicalBytes)).toBe(true);
+            const provenance = JSON.parse(readFileSync(receipt, "utf8")) as {
+                candidateId: string;
+                candidatePackageSha256: string;
+                verifiedBuild: {candidateId: string; environment: {NODE_ENV: string}; executableFiles: number; executableSha256: string};
+            };
+            expect(provenance.candidateId).toBe(candidate);
+            expect(provenance.candidatePackageSha256).toBe(createHash("sha256").update(canonicalBytes).digest("hex"));
+            expect(provenance.verifiedBuild).toMatchObject({candidateId: candidate, environment: {NODE_ENV: "production"}});
+            expect(provenance.verifiedBuild.executableFiles).toBeGreaterThan(0);
+            expect(provenance.verifiedBuild.executableSha256).toMatch(/^[a-f0-9]{64}$/);
             runNpm(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installation, archive]);
             const launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
             const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "pokie", "package.json"), "utf8")) as {gitHead?: string};

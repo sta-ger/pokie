@@ -9,23 +9,31 @@ import {defineConfig} from "vite";
 // and assets/ bundle instead.
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig({
-    root: projectRoot,
-    plugins: [react()],
-    build: {
-        outDir: path.resolve(projectRoot, "../../dist/cli/studio-client"),
-        emptyOutDir: true,
-        sourcemap: false,
-    },
-    server: {
-        // Dev-only: StudioServer serves the frontend + JSON API same-origin in production, but the Vite
-        // dev server needs to proxy /api to a separately-running `pokie studio` instance for local HMR
-        // development (see docs/studio-frontend.md).
-        proxy: {
-            "/api": {
-                target: "http://127.0.0.1:3200",
-                changeOrigin: true,
+export default defineConfig(({command}) => {
+    // Packaging smoke invokes Vite from Jest, which sets NODE_ENV=test.
+    // Every production archive must contain the same production bundle as
+    // prepack and candidate verification, independent of the calling process.
+    if (command === "build") {
+        process.env.NODE_ENV = "production";
+    }
+    return {
+        root: projectRoot,
+        plugins: [react()],
+        build: {
+            outDir: path.resolve(projectRoot, "../../dist/cli/studio-client"),
+            emptyOutDir: true,
+            sourcemap: false,
+        },
+        server: {
+            // Dev-only: StudioServer serves the frontend + JSON API same-origin in production, but the Vite
+            // dev server needs to proxy /api to a separately-running `pokie studio` instance for local HMR
+            // development (see docs/studio-frontend.md).
+            proxy: {
+                "/api": {
+                    target: "http://127.0.0.1:3200",
+                    changeOrigin: true,
+                },
             },
         },
-    },
+    };
 });
