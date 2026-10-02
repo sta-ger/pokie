@@ -12,11 +12,14 @@ import {clickP805CapturedControl, connectP805Devtools, createP805RenderedGame, o
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
-test("candidate verification uses the production npm build context and retains canonical archive bytes", async () => {
+test.each(["npm wrapper", "direct Jest"])("candidate verification isolates %s context and retains canonical archive bytes", async (launcher) => {
     // This bounded fixture exercises the verifier's real build/receipt path;
     // it does not launch the controller-owned full package or release gates.
     const repository = await mkdtemp(path.join(process.cwd(), ".p8-05-canonical-context-test-"));
     const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8"});
+    const callerContext = {NODE_ENV:"test", INIT_CWD:repository, PWD:repository, npm_lifecycle_event:"test:targeted", npm_lifecycle_script:"caller test script", npm_lifecycle_caller:"caller-only lifecycle field", npm_package_json:path.join(repository, "caller-package.json"), npm_package_name:"caller-package", npm_package_version:"0.0.0", npm_package_scripts_build:"caller build script", npm_package_config_output:"caller output"};
+    const environmentKeys = new Set([...Object.keys(process.env).filter((name) => name.startsWith("npm_package_") || name.startsWith("npm_lifecycle_")), ...Object.keys(callerContext)]);
+    const savedEnvironment = new Map([...environmentKeys].map((name) => [name, process.env[name]]));
     try {
         const declaration = {name:"pokie", version:"1.3.0", type:"module", scripts:{prebuild:"node -e \"throw new Error('unrelated prebuild gate must not run')\"", build:"node build.cjs"}};
         const executable = "export const candidate = 805;\n";
@@ -31,6 +34,7 @@ test("candidate verification uses the production npm build context and retains c
             assert.equal(process.env.npm_package_json, path.join(process.cwd(), 'package.json'));
             assert.equal(process.env.npm_package_name, 'pokie');
             assert.equal(process.env.npm_package_version, '1.3.0');
+            assert.deepEqual(Object.keys(process.env).filter((name) => name.startsWith('npm_package_') || name.startsWith('npm_lifecycle_')).sort(), ['npm_lifecycle_event', 'npm_lifecycle_script', 'npm_package_json', 'npm_package_name', 'npm_package_version']);
             assert.equal(process.env.INIT_CWD, process.cwd());
             assert.equal(process.env.PWD, process.cwd());
             fs.mkdirSync('dist');
@@ -48,9 +52,14 @@ test("candidate verification uses the production npm build context and retains c
         const pack = () => execFileSync("tar", ["-czf", sourceArchive, "-C", repository, "package"]);
         pack();
         const canonicalBytes = await readFile(sourceArchive);
-        assert.equal(process.env.NODE_ENV, "test", "the verifier must override the real Jest caller context");
-        assert.equal(process.env.npm_lifecycle_event, "test:targeted");
+        // Exercise both supported launchers regardless of how this test itself
+        // was launched. Caller context is fixture data, not npm-only authority.
+        for (const name of environmentKeys) delete process.env[name];
+        if (launcher === "npm wrapper") Object.assign(process.env, callerContext);
+        else process.env.NODE_ENV = "test";
+        const inheritedContext = [...environmentKeys].map((name) => [name, process.env[name]]);
         const verified = await verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository});
+        assert.deepEqual([...environmentKeys].map((name) => [name, process.env[name]]), inheritedContext, "verification must not mutate its caller's environment");
         assert.deepEqual(await readFile(sourceArchive), canonicalBytes);
         assert.deepEqual(await readFile(candidateArchive), canonicalBytes);
         assert.equal(verified.candidateId, candidateId);
@@ -71,7 +80,12 @@ test("candidate verification uses the production npm build context and retains c
         await assert.rejects(readFile(rejectedArchive), {code:"ENOENT"});
         assert.deepEqual(await readFile(candidateArchive), canonicalBytes, "a rejected archive must preserve the prior handoff");
         assert.equal((await readdir(repository)).some((entry) => entry.startsWith(".p8-05-candidate-build-")), false);
+        assert.deepEqual([...environmentKeys].map((name) => [name, process.env[name]]), inheritedContext);
     } finally {
+        for (const [name, value] of savedEnvironment) {
+            if (value === undefined) delete process.env[name];
+            else process.env[name] = value;
+        }
         await rm(repository, {recursive:true, force:true});
     }
 });

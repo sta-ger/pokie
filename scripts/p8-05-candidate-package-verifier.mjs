@@ -81,7 +81,11 @@ async function verifyCandidateBuild(options, projection, repository) {
         // of the immutable candidate. Invoke only scripts.build as before;
         // prebuild's lint gate remains outside this executable verification.
         const lifecycle = {npm_lifecycle_event:"build", npm_lifecycle_script:declaration.scripts.build, npm_package_json:path.join(workspace, "package.json"), npm_package_name:declaration.name, npm_package_version:declaration.version};
-        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...process.env, ...lifecycle, NODE_ENV:"production", INIT_CWD:workspace, PWD:workspace, PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
+        // Older npm callers can expose additional package/script/config fields.
+        // None of those belong to this candidate; replacing only the known
+        // fields would still let the caller influence the executable build.
+        const inheritedEnvironment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("npm_package_") && !name.startsWith("npm_lifecycle_")));
+        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...inheritedEnvironment, ...lifecycle, NODE_ENV:"production", INIT_CWD:workspace, PWD:workspace, PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
         const entries = [];
         const collect = async (directory, prefix) => {
             for (const entry of await readdir(directory, {withFileTypes:true})) {
