@@ -278,10 +278,8 @@ export function BlueprintEditorPage({
     // is recognized as stale even in the (currently impossible, since validateGuard already serializes
     // validate calls) case that guarantee ever changes.
     const validateRequestIdRef = useRef(0);
-    // React batches the automatic validation response's state update. If Create Project is clicked in
-    // the small gap after that response settles but before the next render observes `validationView`,
-    // consult this completed result as well. This keeps one model revision to one validation request
-    // while preserving the same success/error outcome the rendered panel will show.
+    // Bind a completed check to the exact model snapshot. A rendered ok control may lose
+    // readiness when focus commits a field blur, before its activation finishes.
     const completedValidationRef = useRef<{
         revision: number;
         blueprint: Record<string, unknown>;
@@ -299,22 +297,7 @@ export function BlueprintEditorPage({
         );
         editor.mutate(mutate);
     };
-    // The scheduled automatic validation may already have begun when Create Project is clicked. Keep
-    // its revision separately from the rendered view so the primary action can join that exact check
-    // instead of issuing a second request for the same model while React is committing "loading".
-    const activeValidationRevisionRef = useRef<number | undefined>(undefined);
     const autoValidateTimer = useDebouncedCallbackTimer();
-    // A Create Project action which joined the automatic check above owns saveGuard until that check
-    // settles. Its completion is handled by finishPendingGuidedSave below, after the shared result has
-    // passed the same revision staleness check as every automatic validation.
-    const pendingGuidedSaveRevisionRef = useRef<number | undefined>(undefined);
-    const releaseStalePendingGuidedSave = (validatedRevision: number): void => {
-        if (pendingGuidedSaveRevisionRef.current !== validatedRevision) {
-            return;
-        }
-        pendingGuidedSaveRevisionRef.current = undefined;
-        saveGuard.end();
-    };
 
     // Declared here (rather than down among the other handlers) so the auto-validate debounce inside the
     // revision-bump effect just below can call it directly -- an equivalent ref-indirection would only
@@ -331,43 +314,29 @@ export function BlueprintEditorPage({
         const currentState = editor.getCurrentState();
         const requestedRevision = currentState.revision;
         const requestId = ++validateRequestIdRef.current;
-        activeValidationRevisionRef.current = requestedRevision;
         // A new check of even the same revision supersedes the cached result.
-        // A Create event arriving before React renders loading must join this
-        // check rather than save using its predecessor's completed result.
+        // An activation must never save using a superseded completed result.
         completedValidationRef.current = undefined;
         const isStale = (): boolean => requestId !== validateRequestIdRef.current || requestedRevision !== editor.getCurrentState().revision;
         setValidationView({status: "loading"});
         validateBlueprint(fetchImpl, currentState.blueprint)
             .then((result) => {
                 if (isStale()) {
-                    // A Create Project click may be waiting on this automatic check. Once an edit or
-                    // newer validation has made the result stale, it must no longer own saveGuard:
-                    // retaining it would make the next primary action appear to do nothing forever.
-                    releaseStalePendingGuidedSave(requestedRevision);
                     return;
                 }
                 const validation = describeValidation(result);
                 completedValidationRef.current = {revision: requestedRevision, blueprint: currentState.blueprint, validation};
                 setValidationView(validation);
-                // eslint-disable-next-line react-hooks/immutability -- the request resolves after this render initializes the shared completion handler.
-                finishPendingGuidedSave(validation, requestedRevision);
             })
             .catch((error: unknown) => {
                 if (isStale()) {
-                    releaseStalePendingGuidedSave(requestedRevision);
                     return;
                 }
                 const validation: BlueprintValidationView = {status: "error", message: errorMessage(error)};
                 completedValidationRef.current = {revision: requestedRevision, blueprint: currentState.blueprint, validation};
                 setValidationView(validation);
-                // eslint-disable-next-line react-hooks/immutability -- the request resolves after this render initializes the shared completion handler.
-                finishPendingGuidedSave(validation, requestedRevision);
             })
             .finally(() => {
-                if (activeValidationRevisionRef.current === requestedRevision) {
-                    activeValidationRevisionRef.current = undefined;
-                }
                 validateGuard.end();
                 // An edit can outlive the 600ms debounce while this request still owns validateGuard.
                 // In that case the scheduled check already fired, observed the guard, and returned;
@@ -880,15 +849,9 @@ export function BlueprintEditorPage({
         confirm(`Overwrite the blueprint at "${path}"?`, () => runSave(path, true));
     };
 
-    // The guided Design Game editor's own prominent "Save" action validates the current revision as part
-    // of the same action when automatic validation has not reached it yet.  This matters for a freshly
-    // chosen Recommended/Random model: Create Project is an action, not a hidden two-click prerequisite.
-    // The *first* Save (no `blueprintPath`
-    // owned yet) creates/chooses a managed Blueprint Project via saveManagedBlueprint -- the editor never
-    // asks where; every Save after that (blueprintPath already owned, whether from a prior guided Save or
-    // an explicit advanced Load/Save) reuses the ordinary saveBlueprint endpoint against that exact path
-    // with overwrite:true, so it never re-asks either. A successful save also clears the draft-recovery
-    // slot -- the content is now safely persisted, so there's nothing left to "recover".
+    // Only activation of the terminal ok control saves this exact validated model. The first
+    // save chooses a managed project; subsequent saves overwrite its confirmed source path.
+    // Success clears the recoverable draft and opens the saved project's workspace.
     const saveGuidedProject = (savedRevision: number, savedBlueprint: Record<string, unknown>): void => {
         // A retry begins a new Workspace-open lifecycle too, so an older open request cannot reconcile
         // this attempt's UI after it settles.
@@ -972,93 +935,27 @@ export function BlueprintEditorPage({
             .finally(() => saveGuard.end());
     };
 
-    // Function declaration intentionally precedes neither of its callers: handleValidate is created
-    // before saveGuidedProject for the auto-validation effect, but it only executes after this render
-    // has initialized both handlers. Keeping this completion path shared avoids a second validation
-    // request when Create Project races the automatic check on initial open.
-    function finishPendingGuidedSave(validation: BlueprintValidationView, validatedRevision: number): void {
-        if (pendingGuidedSaveRevisionRef.current !== validatedRevision) {
-            return;
-        }
-        pendingGuidedSaveRevisionRef.current = undefined;
-        if (validatedRevision === editor.getCurrentState().revision && validation.status === "ok") {
-            saveGuidedProject(validatedRevision, editor.getCurrentState().blueprint);
-            return;
-        }
-        saveGuard.end();
-    }
-
     const handleGuidedSave = (): void => {
-        if (!saveGuard.begin()) {
+        if (validationView.status !== "ok" || workspaceOpenPending || !saveGuard.begin()) {
             return;
         }
-        // Let React drain the current discrete event before taking the snapshot. A form field commits
-        // on blur, and clicking Create Project can be part of that same batch. A microtask can run
-        // before React commits that batch, so yield one task to ensure this action validates the
-        // just-committed revision rather than saving a previous valid one.
+        // Let React commit the preceding field blur, then recheck the exact validated snapshot.
+        // An edit cancels this activation; its automatic validation must not queue a later save.
         guidedSaveTimerRef.current = setTimeout(() => {
             guidedSaveTimerRef.current = undefined;
-            runGuidedSave();
-        }, 0);
-    };
-
-    const runGuidedSave = (): void => {
-        // A confirmed disk conflict still requires an explicit reload/save decision. Revalidating the
-        // in-memory draft cannot make that source baseline current again.
-        if (sourceDrift !== undefined) {
-            handleValidate();
-            saveGuard.end();
-            return;
-        }
-
-        const savedState = editor.getCurrentState();
-        const savedRevision = savedState.revision;
-        const completedValidation = completedValidationRef.current;
-        // A revision match normally identifies the exact model we checked. Keep the Blueprint object
-        // identity alongside it as a second boundary: a completed result must never authorize a newer
-        // form snapshot merely because React is still draining the preceding input event batch.
-        if (completedValidation?.revision === savedRevision && completedValidation.blueprint === savedState.blueprint) {
-            if (completedValidation.validation.status === "ok") {
-                saveGuidedProject(savedRevision, savedState.blueprint);
-            } else {
+            const savedState = editor.getCurrentState();
+            const completedValidation = completedValidationRef.current;
+            if (
+                sourceDrift !== undefined ||
+                completedValidation?.validation.status !== "ok" ||
+                completedValidation.revision !== savedState.revision ||
+                completedValidation.blueprint !== savedState.blueprint
+            ) {
                 saveGuard.end();
+                return;
             }
-            return;
-        }
-        // If the scheduled automatic validation has already started for this same revision, use its
-        // result. This preserves the one-action Create flow and, crucially, gives one model revision
-        // one validation request even under a slow render or a click arriving at the debounce boundary.
-        if (activeValidationRevisionRef.current === savedRevision) {
-            pendingGuidedSaveRevisionRef.current = savedRevision;
-            return;
-        }
-
-        // Create Project is allowed before the scheduled automatic check gets its turn, but it must
-        // still produce exactly one validation of this revision. Cancel that pending debounce before
-        // running the action's check, rather than letting it issue a second, redundant request after
-        // this save has already completed.
-        autoValidateTimer.cancel();
-
-        const requestId = ++validateRequestIdRef.current;
-        setValidationView({status: "loading"});
-        validateBlueprint(fetchImpl, savedState.blueprint)
-            .then(describeValidation)
-            .catch((error: unknown): BlueprintValidationView => ({status: "error", message: errorMessage(error)}))
-            .then((validation) => {
-                // A model edit (or a newer automatic check) while this action was in flight makes this
-                // answer describe an older revision, so leave the current revision to its own automatic
-                // validation instead of saving stale content.
-                if (requestId !== validateRequestIdRef.current || savedRevision !== editor.getCurrentState().revision) {
-                    saveGuard.end();
-                    return;
-                }
-                setValidationView(validation);
-                if (validation.status === "ok") {
-                    saveGuidedProject(savedRevision, savedState.blueprint);
-                } else {
-                    saveGuard.end();
-                }
-            });
+            saveGuidedProject(savedState.revision, savedState.blueprint);
+        }, 0);
     };
 
     const {blueprint, revision} = editor.state;
@@ -1092,6 +989,12 @@ export function BlueprintEditorPage({
     // Create/Save while the first pointer's Overview transition is pending.
     const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading" || workspaceOpenPending;
     const validationDescriptionId = validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined;
+    let validationGuidance = "Studio is checking this game design automatically. Create game becomes available when the check succeeds.";
+    if (validationView.status === "invalid") {
+        validationGuidance = "Fix the highlighted design errors before creating your game. Studio checks your changes automatically.";
+    } else if (validationView.status === "error") {
+        validationGuidance = "Studio couldn't check this design. Review the validation error below and edit the design to check it again.";
+    }
 
     return (
         <div>
@@ -1132,7 +1035,7 @@ export function BlueprintEditorPage({
                             id="blueprint-create-game"
                             data-pokie-validation-state={validationView.status}
                             onClick={handleGuidedSave}
-                            disabled={guidedActionPending || validationView.status === "invalid"}
+                            disabled={guidedActionPending || validationView.status !== "ok"}
                             aria-describedby={workspaceOpenPending ? "blueprint-create-game-opening" : validationDescriptionId}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
@@ -1147,9 +1050,7 @@ export function BlueprintEditorPage({
                     )}
                     {validationView.status !== "ok" && (
                         <Text id="blueprint-create-game-validation" c="dimmed" size="sm" mb="sm">
-                            {validationView.status === "invalid"
-                                ? "Fix the highlighted design errors before creating your game. Studio checks your changes automatically."
-                                : "Studio is checking this game design automatically. Create game will show any fixes that are needed."}
+                            {validationGuidance}
                         </Text>
                     )}
                     {managedSaveView.status === "ok" && <SuccessResult message="Your game was saved. Opening its workspace…" />}

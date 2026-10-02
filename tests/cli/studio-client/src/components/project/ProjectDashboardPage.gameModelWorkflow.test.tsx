@@ -89,7 +89,7 @@ async function goToGameModelTab(user: ReturnType<typeof userEvent.setup>): Promi
 }
 
 describe("ProjectDashboardPage - Game Model tab", () => {
-    it.each([true, false])("uses the creator's rendered automatic validation before opening the bounded Game Model workflow (valid=%s)", async (valid) => {
+    it.each([true, false])("requires terminal ok for native keyboard Create and keeps terminal invalid disabled (valid=%s)", async (valid) => {
         const user = userEvent.setup();
         let resolveValidation: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
         const routes = createRoutedFakeFetch({
@@ -116,24 +116,36 @@ describe("ProjectDashboardPage - Game Model tab", () => {
 
         const validation = valid
             ? {status: "ok", warnings: []}
-            : {status: "invalid", errors: [{code: "invalid-starter", severity: "error", message: "The starter design needs a correction."}], warnings: []};
+            : {status: "invalid", errors: [{code: "blueprint-manifest-invalid-name", severity: "error", message: "Choose a game name.", path: "manifest.name"}], warnings: []};
         await act(() => Promise.resolve(resolveValidation!(jsonResponse(validation))));
-        await waitFor(() => expect(createGame).toBeEnabled());
-        expect(createGame).toHaveAttribute("data-pokie-validation-state", valid ? "ok" : "invalid");
-        createGame.focus();
+        await waitFor(() => expect(createGame).toHaveAttribute("data-pokie-validation-state", valid ? "ok" : "invalid"));
         expect(createGame).toHaveAttribute("id", "blueprint-create-game");
-        expect(createGame).toHaveFocus();
-        await user.keyboard("{Enter}");
+        expect(createGame.tagName).toBe("BUTTON");
+        expect(createGame).not.toHaveAttribute("aria-busy");
         if (!valid) {
-            expect(within(screen.getByRole("group", {name: "Validation"})).getByText("invalid-starter: The starter design needs a correction.")).toBeInTheDocument();
+            expect(createGame).toBeDisabled();
+            expect(createGame).toHaveAttribute("aria-describedby", "blueprint-create-game-validation");
+            expect(screen.getByText(/Fix the highlighted design errors/)).toBeVisible();
+            expect(createGame).toHaveAccessibleDescription("Fix the highlighted design errors before creating your game. Studio checks your changes automatically.");
+            expect(within(screen.getByRole("group", {name: "Validation"})).getByText("blueprint-manifest-invalid-name: Choose a game name.")).toBeVisible();
+            expect(screen.getByLabelText("Game name")).toHaveAttribute("aria-invalid", "true");
+            act(() => createGame.focus());
+            expect(createGame).not.toHaveFocus();
+            await user.keyboard("{Enter} ");
+            await user.click(createGame);
             expect(router.state.location.pathname).toBe("/home/design");
             expect(routes.calls.some((call) => call.url === "/api/home/blueprints/save-managed" || call.url === "/api/home/projects/open")).toBe(false);
-            expect(createGame).toHaveAttribute("data-pokie-validation-state", "invalid");
+            expect(screen.queryByRole("heading", {name: "A"})).not.toBeInTheDocument();
             return;
         }
+        expect(createGame).toBeEnabled();
+        act(() => createGame.focus());
+        expect(createGame).toHaveFocus();
+        await user.keyboard("{Enter}");
         await screen.findByRole("heading", {name: "A"});
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
         expect(routes.calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
+        expect(routes.calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(JSON.parse(routes.calls.find((call) => call.url === "/api/home/projects/open")!.init!.body!)).toMatchObject({projectRoot: "/games/a"});
         await goToGameModelTab(user);
         await user.click(screen.getByRole("tab", {name: "Full strips"}));

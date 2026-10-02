@@ -390,7 +390,11 @@ export const p805CreateControlExpression = `(() => {
     const control = document.getElementById('blueprint-create-game');
     if (!(control instanceof HTMLButtonElement)) return null;
     const rect = control.getBoundingClientRect();
+    const descriptionIds = (control.getAttribute('aria-describedby') ?? '').split(/\\s+/).filter(Boolean);
+    const descriptions = descriptionIds.map((id) => document.getElementById(id));
     return {controlId: control.id, accessibleName: control.textContent?.trim(),
+        validationGuidance: {ids: descriptionIds, text: descriptions.map((item) => item?.textContent?.trim() ?? '').join(' '),
+            visible: descriptions.length > 0 && descriptions.every((item) => item instanceof HTMLElement && item.getClientRects().length > 0)},
         validationState: control.getAttribute('data-pokie-validation-state'),
         enabled: !control.disabled, ariaBusy: control.getAttribute('aria-busy'),
         visible: control.getClientRects().length > 0 && rect.width > 0 && rect.height > 0};
@@ -400,6 +404,11 @@ export const isP805CreateValidationReady = (control) => control?.controlId === "
     && control.accessibleName === "Create game" && control.validationState === "ok"
     && control.enabled && control.visible && (control.ariaBusy === null || control.ariaBusy === "false");
 
+// Preserve the reason the real control rejected activation. A pending check and a terminal
+// invalid design require different recovery actions, even though both suppress the pointer.
+const p805CreateReadinessPhase = (control) => ["idle", "loading", "invalid", "stale", "error"].includes(control?.validationState)
+    ? `validation-${control.validationState}` : "dom-unready";
+
 export async function waitForP805CreateValidation(evaluate, timeout = 90_000, observeValidation) {
     let control;
     const diagnostics = {};
@@ -407,7 +416,7 @@ export async function waitForP805CreateValidation(evaluate, timeout = 90_000, ob
         return await waitFor(async () => {
             control = await evaluate(p805CreateControlExpression);
             if (!isP805CreateValidationReady(control)) {
-                diagnostics.phase = "dom-unready";
+                diagnostics.phase = p805CreateReadinessPhase(control);
                 return false;
             }
             diagnostics.phase = "missing-validation-network-evidence";
@@ -420,6 +429,7 @@ export async function waitForP805CreateValidation(evaluate, timeout = 90_000, ob
             if (!isP805CreateValidationReady(control)) {
                 diagnostics.phase = "dom-changed-during-validation-observation";
                 diagnostics.invalidatedControl = control;
+                diagnostics.readinessPhase = p805CreateReadinessPhase(control);
                 return false;
             }
             return {control, proof};
@@ -559,7 +569,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
     // hit target before issuing its single browser pointer activation.
     if (stableControlId === "blueprint-create-game") {
         const control = await evaluate(p805CreateControlExpression);
-        if (!isP805CreateValidationReady(control)) fail(`Missing rendered Create game validation-ready boundary before pointer dispatch; control: ${JSON.stringify(control)}`);
+        if (!isP805CreateValidationReady(control)) fail(`Missing rendered Create game validation-ready boundary before pointer dispatch; readiness: ${p805CreateReadinessPhase(control)}; control: ${JSON.stringify(control)}`);
     }
     const captureKey = randomBytes(16).toString("hex");
     const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (item.id==='blueprint-create-game' && (item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy')))) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus(); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,trusted:event.isTrusted,validationState:item.getAttribute('data-pokie-validation-state'),enabled:!item.disabled,ariaBusy:item.getAttribute('aria-busy'),controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);

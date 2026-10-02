@@ -310,8 +310,18 @@ async function run() {
     const assertNoCreateActivation = async (state) => {
         const observations = [];
         await assert.rejects(createRenderedGame(evaluate, () => assert.fail(`${state} validation dispatched a pointer`), observations, 200),
-            (error) => error.message.includes("Missing rendered Create game validation-ready boundary") && error.message.includes(`"validationState":"${state}"`));
+            (error) => error.message.includes("Missing rendered Create game validation-ready boundary")
+                && error.message.includes(`"validationState":"${state}"`) && error.message.includes(`"phase":"validation-${state}"`));
         assert.deepEqual(observations, [], `${state} validation must not record readiness or pointer dispatch`);
+        const blockedControl = await evaluate(createControlExpression);
+        assert.equal(blockedControl.enabled, false);
+        assert.equal(blockedControl.validationGuidance.visible, true, `${state} must reference visible validation guidance`);
+        assert.deepEqual(blockedControl.validationGuidance.ids, ["blueprint-create-game-validation"]);
+        if (state === "invalid") {
+            assert.match(blockedControl.validationGuidance.text, /Fix the highlighted design errors before creating your game/);
+        } else {
+            assert.match(blockedControl.validationGuidance.text, /checking this game design automatically/);
+        }
         // Exercise the disabled product control as well as the runner's
         // refusal. A trusted browser gesture must not reach its click handler
         // or emit a managed-save request while validation is loading/invalid.
@@ -625,7 +635,13 @@ if (typeof test === "function") {
         for (const blocked of [{...ready, enabled: false}, {...ready, ariaBusy: "true"}, {...ready, visible: false},
             ...["idle", "loading", "invalid", "stale", "error"].map((validationState) => ({...ready, validationState}))]) {
             const observations = [];
-            await assert.rejects(createRenderedGame(async () => blocked, () => assert.fail("blocked control dispatched a pointer"), observations, 0), /Missing rendered Create game validation-ready boundary/);
+            await assert.rejects(createRenderedGame(async () => blocked, () => assert.fail("blocked control dispatched a pointer"), observations, 0), (error) => {
+                assert.match(error.message, /Missing rendered Create game validation-ready boundary/);
+                const phase = ["idle", "loading", "invalid", "stale", "error"].includes(blocked.validationState)
+                    ? `validation-${blocked.validationState}` : "dom-unready";
+                assert(error.message.includes(`"phase":"${phase}"`), `diagnostic must distinguish ${phase}`);
+                return true;
+            });
             assert.deepEqual(observations, []);
         }
         const observations = [];

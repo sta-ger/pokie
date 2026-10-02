@@ -1,6 +1,7 @@
 import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 function fetchWithValidateResult(validateJson: unknown, onRequest?: (path: string) => void): FetchLike {
@@ -24,7 +25,9 @@ describe("Guided Design Game: automatic validation", () => {
 
         expect(screen.getByLabelText("Game id")).toHaveValue("starter-slot");
         expect(screen.getByLabelText("Game name")).toHaveValue("Starter Slot");
-        expect(screen.getByRole("button", {name: "Create game"})).toBeInTheDocument();
+        const create = screen.getByRole("button", {name: "Create game"});
+        expect(create).toHaveAttribute("data-pokie-validation-state", "idle");
+        expect(create).toBeDisabled();
 
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
     });
@@ -75,19 +78,65 @@ describe("Guided Design Game: automatic validation", () => {
         await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "ok"));
         expect(create).toBeEnabled();
         expect(create).not.toHaveAttribute("aria-busy");
+        expect(requests).not.toContain("/api/home/blueprints/save-managed");
+        expect(requests).not.toContain("/api/home/projects/open");
     });
 
-    it("does not expose the removed Configure-to-Validate-to-Build workflow", () => {
+    it("uses exactly one pointer activation of the native control after terminal ok to save and open Overview", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/save-managed": () => ({ok: true, status: 201, body: {status: "ok", path: "/games/starter", blueprintHash: "h1"}}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/starter"}}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/starter", game: {id: "starter-slot", name: "Starter Slot", version: "1.0.0"}, type: "blueprint", capabilities: []}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {valid: true, packageRoot: "/games/starter"}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+        let finishValidation: (() => void) | undefined;
+        const deferredFetch: FetchLike = (url, init) => fetchImpl(url, init).then((response) => url === "/api/home/blueprints/validate"
+            ? {...response, json: () => new Promise((resolve) => {
+                finishValidation = () => resolve({status: "ok", warnings: []});
+            })}
+            : response);
+        const {router} = renderRoutedApp({fetchImpl: deferredFetch, initialEntries: ["/home/design"]});
+        const create = screen.getByRole("button", {name: "Create game"});
+        const activations: string[] = [];
+        create.addEventListener("click", () => activations.push(create.getAttribute("data-pokie-validation-state")!));
+        await waitFor(() => expect(finishValidation).toBeDefined());
+        expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
+        await user.click(create);
+        expect(activations).toEqual([]);
+        await act(() => finishValidation?.());
+        await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "ok"));
+        expect(create).toBeEnabled();
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(0);
+        await user.click(create);
+        await screen.findByRole("heading", {name: "Starter Slot"});
+        expect(activations).toEqual(["ok"]);
+        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fstarter/overview");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1);
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+        const saved = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/save-managed")!.init!.body!);
+        expect(saved.blueprint.manifest.id).toBe("starter-slot");
+    });
+
+    it("does not expose the removed Configure-to-Validate-to-Build workflow", async () => {
         renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
 
         expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /Build Package|Build/})).not.toBeInTheDocument();
         expect(screen.queryByRole("list", {name: "Progress"})).not.toBeInTheDocument();
+        await screen.findByText("Valid — no issues found.");
     });
 
     it("withdraws rendered ok readiness when focusing Create commits a changed field", async () => {
         const user = userEvent.setup();
         const requests: string[] = [];
+        const writes: string[] = [];
         let finishValidation: (() => void) | undefined;
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/home/projects/registry") {
@@ -99,6 +148,7 @@ describe("Guided Design Game: automatic validation", () => {
                     finishValidation = () => resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", warnings: []})});
                 });
             }
+            if (init?.method === "POST") writes.push(url);
             return Promise.reject(new Error(`unexpected request: ${url}`));
         };
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
@@ -113,6 +163,8 @@ describe("Guided Design Game: automatic validation", () => {
         act(() => create.focus());
         expect(create).toHaveFocus();
         expect(create).toHaveAttribute("data-pokie-validation-state", "stale");
+        expect(create).toBeDisabled();
+        await user.click(create);
         expect(requests).toHaveLength(1);
 
         finishValidation = undefined;
@@ -124,6 +176,22 @@ describe("Guided Design Game: automatic validation", () => {
         expect(create).toHaveAttribute("data-pokie-validation-state", "ok");
         expect(create).toBeEnabled();
         expect(create).not.toHaveAttribute("aria-busy");
+        expect(writes).toEqual([]);
+    });
+
+    it("keeps a failed validation disabled and explains how to check the design again", async () => {
+        const user = userEvent.setup();
+        const requests: string[] = [];
+        renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "error", message: "Validation service unavailable"},
+            (path) => requests.push(path)), initialEntries: ["/home/design"]});
+        const create = screen.getByRole("button", {name: "Create game"});
+        await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "error"));
+        expect(create).toBeDisabled();
+        expect(create).not.toHaveAttribute("aria-busy");
+        expect(create).toHaveAccessibleDescription("Studio couldn't check this design. Review the validation error below and edit the design to check it again.");
+        await user.click(create);
+        expect(requests).not.toContain("/api/home/blueprints/save-managed");
+        expect(requests).not.toContain("/api/home/projects/open");
     });
 
     it("makes Create game surface automatic validation errors without trying to save", async () => {
