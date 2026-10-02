@@ -10,7 +10,7 @@ const packedTestPath = (process.env.PATH ?? "").split(path.delimiter).filter((en
 const runNpm = (args: string[], options: {cwd?: string} = {}) => execFileSync(process.execPath, [npmCli, ...args], {
     ...options,
     encoding: "utf8",
-    env: {...process.env, PATH: packedTestPath},
+    env: {...process.env, NODE_ENV: "production", PATH: packedTestPath},
     stdio: "pipe",
     maxBuffer: 64 * 1024 * 1024,
 });
@@ -62,6 +62,10 @@ describe("P8-05 Valera Programmer public path", () => {
         const installation = path.join(candidateDirectory, "installation");
         const sourceArchiveDirectory = path.join(candidateDirectory, "source");
         const sourceArchive = () => {
+            // build-cli is incremental and may retain obsolete dist/src or
+            // CJS files. Canonical prepack uses build, which clears dist;
+            // reproduce that boundary before packing without lifecycle scripts.
+            runNpm(["run", "build"], {cwd: process.cwd()});
             mkdirSync(sourceArchiveDirectory, {recursive: true});
             return JSON.parse(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd()})) as Array<{filename: string}>;
         };
@@ -71,7 +75,10 @@ describe("P8-05 Valera Programmer public path", () => {
             const source = path.join(sourceArchiveDirectory, packed[0].filename);
             const archive = path.join(candidateDirectory, "candidate-package.tgz");
             const receipt = path.join(candidateDirectory, "candidate-executable-receipt.json");
+            const canonicalBytes = readFileSync(source);
             execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "p8-05-candidate-package-verifier.mjs"), "--source-archive", source, "--candidate-archive", archive, "--candidate", candidate, "--receipt", receipt], {encoding: "utf8", stdio: "pipe"});
+            expect(readFileSync(source)).toEqual(canonicalBytes);
+            expect(readFileSync(archive)).toEqual(canonicalBytes);
             runNpm(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installation, archive]);
             const launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
             const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "pokie", "package.json"), "utf8")) as {gitHead?: string};
@@ -92,5 +99,5 @@ describe("P8-05 Valera Programmer public path", () => {
         } finally {
             rmSync(candidateDirectory, {recursive: true, force: true});
         }
-    }, 300_000);
+    }, 900_000);
 });

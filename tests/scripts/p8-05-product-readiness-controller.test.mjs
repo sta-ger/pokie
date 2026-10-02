@@ -176,28 +176,47 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
 
 
 test("candidate verifier rejects substituted executables and preserves the canonical archive handoff", async () => {
-    const repository = await mkdtemp(path.join(os.tmpdir(), "pokie-p805-candidate-build-"));
+    const repository = await mkdtemp(path.join(process.cwd(), ".p8-05-verifier-test-"));
     const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8"});
     try {
-        const declaration = {name:"pokie", version:"1.3.0", scripts:{build:"node build.cjs"}};
+        const declaration = {name:"pokie", version:"1.3.0", type:"module", scripts:{build:"node build.cjs"}};
         await writeFile(path.join(repository, "package.json"), JSON.stringify(declaration));
         await writeFile(path.join(repository, "package-lock.json"), "{}\n");
         await writeFile(path.join(repository, "source.js"), "module.exports = 805;\n");
-        await writeFile(path.join(repository, "build.cjs"), "const fs = require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/index.js', fs.readFileSync('source.js'));\n");
-        git("init", "--quiet"); git("add", "package.json", "package-lock.json", "source.js", "build.cjs");
+        await writeFile(path.join(repository, "compiler-input.ts"), "export const compilerBoundary = 805;\n");
+        await writeFile(path.join(repository, "build.cjs"), "if (process.env.NODE_ENV !== 'production') throw new Error('candidate build must use production'); const fs = require('fs'), ts = require('typescript'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/index.js', fs.readFileSync('source.js')); const result = ts.createProgram(['compiler-input.ts'], {module:ts.ModuleKind.CommonJS, target:ts.ScriptTarget.ES2015, outDir:'dist/compiler', types:[], skipLibCheck:true}).emit(); if (result.emitSkipped) throw new Error('compiler emission failed');\n");
+        git("init", "--quiet"); git("add", "package.json", "package-lock.json", "source.js", "compiler-input.ts", "build.cjs");
         git("-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "[P8-05] candidate verifier fixture");
         const candidateId = git("rev-parse", "HEAD").trim();
         await mkdir(path.join(repository, "node_modules"));
+        await symlink(path.join(process.cwd(), "node_modules", "typescript"), path.join(repository, "node_modules", "typescript"), "dir");
+        execFileSync(process.execPath, ["build.cjs"], {cwd:repository, env:{...process.env, NODE_ENV:"production"}});
         const packageRoot = path.join(repository, "package");
         await mkdir(path.join(packageRoot, "dist"), {recursive:true});
+        await mkdir(path.join(packageRoot, "dist", "compiler"));
+        const compiled = await readFile(path.join(repository, "dist", "compiler", "compiler-input.js"));
+        assert.match(compiled.toString(), /exports.compilerBoundary/);
+        await writeFile(path.join(packageRoot, "dist", "compiler", "compiler-input.js"), compiled);
         await writeFile(path.join(packageRoot, "package.json"), JSON.stringify(declaration));
         await writeFile(path.join(packageRoot, "dist", "index.js"), "module.exports = 804;\n");
         const sourceArchive = path.join(repository, "canonical.tgz"), candidateArchive = path.join(repository, "handoff.tgz"), receipt = path.join(repository, "receipt.json");
         const packFixture = () => execFileSync("tar", ["-czf", sourceArchive, "-C", repository, "package"]);
         packFixture();
-        await assert.rejects(() => verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository}), /executables differ from the verified candidate build/);
+        await assert.rejects(() => verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository}), /changed.*dist\/index.js/);
         await assert.rejects(() => readFile(receipt), /ENOENT/);
         await assert.rejects(() => readFile(candidateArchive), /ENOENT/);
+        await writeFile(path.join(packageRoot, "dist", "index.js"), await readFile(path.join(repository, "source.js")));
+        await writeFile(path.join(packageRoot, "dist", "obsolete.js"), "module.exports = 804;\n");
+        packFixture();
+        await assert.rejects(() => verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository}), /unexpected.*dist\/obsolete.js/);
+        await rm(path.join(packageRoot, "dist", "obsolete.js"));
+        await rm(path.join(packageRoot, "dist", "index.js"));
+        await writeFile(path.join(packageRoot, "dist", "placeholder.js"), "module.exports = 805;\n");
+        packFixture();
+        await assert.rejects(() => verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository}), /missing.*dist\/index.js/);
+        await assert.rejects(() => readFile(receipt), /ENOENT/);
+        await assert.rejects(() => readFile(candidateArchive), /ENOENT/);
+        await rm(path.join(packageRoot, "dist", "placeholder.js"));
         await writeFile(path.join(packageRoot, "dist", "index.js"), await readFile(path.join(repository, "source.js")));
         packFixture();
         const original = await readFile(sourceArchive);
@@ -206,6 +225,7 @@ test("candidate verifier rejects substituted executables and preserves the canon
         assert.deepEqual(await readFile(candidateArchive), original);
         assert.equal(verified.candidatePackageSha256, createHash("sha256").update(original).digest("hex"));
         assert.equal(verified.verifiedBuild.candidateId, candidateId);
+        assert.deepEqual(verified.verifiedBuild.environment, {NODE_ENV:"production"});
         assert.equal(verified.authentication.attestedBuildSha256, createHash("sha256").update(JSON.stringify(verified.verifiedBuild)).digest("hex"));
     } finally { await rm(repository, {recursive:true, force:true}); }
 });

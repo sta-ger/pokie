@@ -6,7 +6,7 @@
  */
 import {createHash} from "node:crypto";
 import {execFileSync, spawnSync} from "node:child_process";
-import {copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile} from "node:fs/promises";
+import {mkdtemp, readFile, readdir, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -55,9 +55,10 @@ export async function archiveExecutableManifest(archive) {
 /** Build the immutable candidate tree in an empty directory. The checkout's
  * dist is never an input, and the archive remains the canonical npm output. */
 async function verifyCandidateBuild(options, projection, repository) {
-    const parent = path.join(repository, "node_modules", ".cache", "p8-05-verifier");
-    await mkdir(parent, {recursive:true});
-    const workspace = await mkdtemp(path.join(parent, "candidate-"));
+    // TypeScript applies dependency-package module/emit rules to paths under
+    // node_modules, even for an explicit project. Build beside the source
+    // checkout instead, and remove this temporary directory on every exit.
+    const workspace = await mkdtemp(path.join(repository, ".p8-05-candidate-build-"));
     try {
         const source = execFileSync("git", ["archive", options.candidateId], {cwd:repository, maxBuffer:128 * 1024 * 1024});
         execFileSync("tar", ["-x", "-C", workspace], {input:source, stdio:["pipe", "pipe", "pipe"]});
@@ -68,7 +69,10 @@ async function verifyCandidateBuild(options, projection, repository) {
         if (digest(await readFile(path.join(repository, "package-lock.json"))) !== digest(await readFile(path.join(workspace, "package-lock.json")))) fail("candidate build dependency lock differs from installed checkout");
         await symlink(path.join(repository, "node_modules"), path.join(workspace, "node_modules"), "dir");
         if (typeof declaration.scripts?.build !== "string" || !declaration.scripts.build) fail("candidate has no canonical build script");
-        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...process.env, PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
+        // A verifier launched by Jest must still build the production package.
+        // NODE_ENV=test enables development JSX with absolute checkout paths,
+        // making otherwise identical candidates differ between workspaces.
+        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...process.env, NODE_ENV:"production", PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
         const entries = [];
         const collect = async (directory, prefix) => {
             for (const entry of await readdir(directory, {withFileTypes:true})) {
@@ -81,8 +85,16 @@ async function verifyCandidateBuild(options, projection, repository) {
         await collect(path.join(workspace, "dist"), "dist");
         entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
         const archived = projection.entries.filter((entry) => entry.path.startsWith("dist/"));
-        if (JSON.stringify(entries) !== JSON.stringify(archived)) fail("archive executables differ from the verified candidate build");
-        return {kind:"p8-05-verified-candidate-build", candidateId:options.candidateId, command:declaration.scripts.build, commandSource:"candidate package.json#scripts.build", executableFiles:entries.length, executableSha256:digest(JSON.stringify(entries)), outputSha256:digest(buildOutput)};
+        if (JSON.stringify(entries) !== JSON.stringify(archived)) {
+            const expected = new Map(entries.map((entry) => [entry.path, entry.sha256]));
+            const actual = new Map(archived.map((entry) => [entry.path, entry.sha256]));
+            const missing = entries.filter((entry) => !actual.has(entry.path)).map((entry) => entry.path);
+            const unexpected = archived.filter((entry) => !expected.has(entry.path)).map((entry) => entry.path);
+            const changed = entries.filter((entry) => actual.has(entry.path) && actual.get(entry.path) !== entry.sha256).map((entry) => entry.path);
+            const summarize = (files) => ({count:files.length, paths:files.slice(0, 10)});
+            fail(`archive executables differ from the verified candidate build; run the candidate's clean build before npm pack: ${JSON.stringify({missing:summarize(missing), unexpected:summarize(unexpected), changed:summarize(changed)})}`);
+        }
+        return {kind:"p8-05-verified-candidate-build", candidateId:options.candidateId, command:declaration.scripts.build, commandSource:"candidate package.json#scripts.build", environment:{NODE_ENV:"production"}, executableFiles:entries.length, executableSha256:digest(JSON.stringify(entries)), outputSha256:digest(buildOutput)};
     } finally { await rm(workspace, {recursive:true, force:true}); }
 }
 
@@ -107,7 +119,10 @@ export async function verifyP805CandidatePackage(options) {
     const archive = await readFile(options.sourceArchive), projection = await archiveExecutableManifest(options.sourceArchive), tree = candidateTreeExecutableManifest(options.candidateId, repository);
     const verifiedBuild = await verifyCandidateBuild(options, projection, repository);
     if (digest(await readFile(options.sourceArchive)) !== digest(archive)) fail("canonical archive changed during candidate build verification");
-    if (options.candidateArchive && path.resolve(options.sourceArchive) !== path.resolve(options.candidateArchive)) await copyFile(options.sourceArchive, options.candidateArchive, 1);
+    // Hand off the exact authenticated buffer. Reopening the source after its
+    // last digest check would let a replacement race acquire this receipt's
+    // candidate identity while copying different archive bytes.
+    if (options.candidateArchive && path.resolve(options.sourceArchive) !== path.resolve(options.candidateArchive)) await writeFile(options.candidateArchive, archive, {flag:"wx"});
     const verifierExecutable = await readFile(fileURLToPath(import.meta.url));
     const receipt = {kind:"p8-05-candidate-executable-receipt", receiptId:`local-candidate-${digest(archive).slice(0, 16)}`, issuer:"p8-05-candidate-package-verifier", candidateId:options.candidateId, candidatePackageSha256:digest(archive), candidateExecutableSha256:projection.sha256, candidateExecutableFiles:projection.files, candidateTreeManifestCandidateId:options.candidateId, candidateTreeManifestSha256:tree.sha256, candidateTreeObjectId:tree.tree, verifiedBuild, authentication:{scheme:"verifier-owned-candidate-tree", verifierId:"p8-05-candidate-package-verifier", verifierExecutableSha256:digest(verifierExecutable), attestedCandidateId:options.candidateId, attestedCandidateTreeManifestSha256:tree.sha256, attestedExecutableSha256:projection.sha256, attestedBuildSha256:digest(JSON.stringify(verifiedBuild))}};
     await writeFile(options.receipt, `${JSON.stringify(receipt, null, 2)}\n`, {flag:"wx"});
