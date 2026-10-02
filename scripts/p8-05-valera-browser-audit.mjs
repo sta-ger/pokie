@@ -363,10 +363,12 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
             socket.close();
         });
     };
+    let startupPhase = "enabling-event-domains";
     try {
         // Await each domain before navigation can emit even an immediate
         // request/response/completion sequence on the live Studio page.
         for (const method of ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]) await send(method);
+        startupPhase = "settling-instrumented-blank-document";
         // Every caller receives a settled instrumented target, including callers that navigate
         // themselves. Otherwise the initial blank commit can cancel their live navigation too.
         await waitFor(async () => {
@@ -374,12 +376,13 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
             return result.result?.value === true;
         }, "instrumented about:blank document", 10_000);
         if (initialUrl !== "about:blank") {
+            startupPhase = "navigating-instrumented-Studio-target";
             const navigation = await send("Page.navigate", {url:initialUrl});
             if (navigation.errorText) fail(`initial Studio navigation failed: ${navigation.errorText}`);
         }
     } catch (error) {
         await close();
-        throw error;
+        throw new Error(`DevTools startup failed during ${startupPhase}: ${error.message}`, {cause:error});
     }
     return {send, events, close};
 }

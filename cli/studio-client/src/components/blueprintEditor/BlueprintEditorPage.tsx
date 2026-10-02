@@ -949,12 +949,16 @@ export function BlueprintEditorPage({
         if (validationView.status !== "ok" || workspaceOpenPending || !getValidatedGuidedSaveState() || !saveGuard.begin()) {
             return;
         }
+        // Publish the accepted activation before yielding to the blur/React
+        // barrier. The native control stays busy until saving and opening end.
+        setManagedSaveView({status: "loading"});
         // Let React commit the preceding field blur, then recheck the same validated boundary.
         // An edit cancels this activation; its automatic validation must not queue a later save.
         guidedSaveTimerRef.current = setTimeout(() => {
             guidedSaveTimerRef.current = undefined;
             const savedState = getValidatedGuidedSaveState();
             if (!savedState) {
+                setManagedSaveView({status: "idle"});
                 saveGuard.end();
                 return;
             }
@@ -993,6 +997,12 @@ export function BlueprintEditorPage({
     // Create/Save while the first pointer's Overview transition is pending.
     const guidedActionPending = managedSaveView.status === "loading" || validationView.status === "loading" || workspaceOpenPending;
     const validationDescriptionId = validationView.status !== "ok" ? "blueprint-create-game-validation" : undefined;
+    let guidedActionDescriptionId = validationDescriptionId;
+    if (workspaceOpenPending) {
+        guidedActionDescriptionId = "blueprint-create-game-opening";
+    } else if (managedSaveView.status === "loading") {
+        guidedActionDescriptionId = "blueprint-create-game-saving";
+    }
     let validationGuidance = "Studio is checking this game design automatically. Create game becomes available when the check succeeds.";
     if (validationView.status === "invalid") {
         validationGuidance = "Fix the highlighted design errors before creating your game. Studio checks your changes automatically.";
@@ -1040,13 +1050,18 @@ export function BlueprintEditorPage({
                             data-pokie-validation-state={validationView.status}
                             onClick={handleGuidedSave}
                             disabled={guidedActionPending || validationView.status !== "ok"}
-                            aria-describedby={workspaceOpenPending ? "blueprint-create-game-opening" : validationDescriptionId}
+                            aria-describedby={guidedActionDescriptionId}
                             loading={guidedActionPending}
                             aria-busy={guidedActionPending || undefined}
                         >
                             {blueprintPath === undefined || overwriteConfirmedForPath !== blueprintPath ? "Create game" : "Save game"}
                         </Button>
                     </QuickActions>
+                    {managedSaveView.status === "loading" && !workspaceOpenPending && (
+                        <Text id="blueprint-create-game-saving" c="dimmed" size="sm" mb="sm">
+                            Studio is saving your game before opening its workspace.
+                        </Text>
+                    )}
                     {workspaceOpenPending && (
                         <Text id="blueprint-create-game-opening" c="dimmed" size="sm" mb="sm">
                             Your game was saved. Studio is opening its workspace.

@@ -92,6 +92,8 @@ describe("ProjectDashboardPage - Game Model tab", () => {
     it.each([true, false])("requires terminal ok for native keyboard Create and keeps terminal invalid disabled (valid=%s)", async (valid) => {
         const user = userEvent.setup();
         let resolveValidation: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        let finishSave: (() => Promise<void>) | undefined;
+        let finishOpen: (() => Promise<void>) | undefined;
         const validatedBlueprints: unknown[] = [];
         const routes = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -105,7 +107,16 @@ describe("ProjectDashboardPage - Game Model tab", () => {
                 validatedBlueprints.push(JSON.parse(init?.body ?? "{}").blueprint);
                 resolveValidation = resolve;
             })
-            : routes.fetchImpl(url, init);
+            : routes.fetchImpl(url, init).then((response) => {
+                if (url === "/api/home/blueprints/save-managed" || url === "/api/home/projects/open") {
+                    return {...response, json: () => new Promise((resolve) => {
+                        const finish = () => response.json().then(resolve);
+                        if (url === "/api/home/blueprints/save-managed") finishSave = finish;
+                        else finishOpen = finish;
+                    })};
+                }
+                return response;
+            });
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         const createGame = await screen.findByRole("button", {name: "Create game"});
         await waitFor(() => expect(resolveValidation).toBeDefined());
@@ -144,6 +155,25 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         act(() => createGame.focus());
         expect(createGame).toHaveFocus();
         await user.keyboard("{Enter}");
+        await waitFor(() => expect(finishSave).toBeDefined());
+        expect(createGame).toBeDisabled();
+        expect(createGame).toHaveAttribute("aria-busy", "true");
+        expect(createGame).toHaveAccessibleDescription("Studio is saving your game before opening its workspace.");
+        await user.click(createGame);
+        expect(routes.calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
+        await act(async () => {
+            await finishSave?.();
+        });
+        await waitFor(() => expect(finishOpen).toBeDefined());
+        const savingGame = screen.getByRole("button", {name: "Save game"});
+        expect(savingGame).toBeDisabled();
+        expect(savingGame).toHaveAttribute("aria-busy", "true");
+        expect(savingGame).toHaveAccessibleDescription("Your game was saved. Studio is opening its workspace.");
+        await user.click(savingGame);
+        expect(routes.calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+        await act(async () => {
+            await finishOpen?.();
+        });
         await screen.findByRole("heading", {name: "A"});
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
         expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]')).toBeVisible();

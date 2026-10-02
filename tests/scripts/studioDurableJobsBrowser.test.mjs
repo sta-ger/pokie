@@ -16,7 +16,7 @@ import {createServer} from "node:net";
 import {createServer as createHttpServer} from "node:http";
 import {dirname, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
-import WebSocket from "ws";
+import WebSocket, {WebSocketServer} from "ws";
 import {connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, p805CreateControlExpression as createControlExpression,
     waitForP805CreateValidation, waitForP805CreatedDashboard as waitForCreatedDashboard} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
@@ -136,14 +136,17 @@ async function connect(devtoolsPort) {
 // or response delay: attaching Network after navigation must fail this proof.
 async function assertImmediateStartupValidation(devtoolsPort) {
     const requests = [];
+    let finishSave;
     const server = createHttpServer((request, response) => {
         requests.push(request.url);
         if (request.url === "/api/home/blueprints/validate") {
             response.writeHead(200, {"Content-Type": "application/json"});
             response.end('{"status":"ok","warnings":[]}');
         } else if (request.url === "/api/home/blueprints/save-managed") {
-            response.writeHead(201, {"Content-Type": "application/json"});
-            response.end('{"status":"ok"}');
+            finishSave = () => {
+                response.writeHead(201, {"Content-Type": "application/json"});
+                response.end('{"status":"ok"}');
+            };
         } else {
             response.setHeader("Content-Type", "text/html");
             response.end(`<!doctype html><button id="blueprint-create-game" data-pokie-validation-state="loading" disabled aria-busy="true">Create game</button><div data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading"></div><script>
@@ -191,8 +194,24 @@ async function assertImmediateStartupValidation(devtoolsPort) {
             const cursor = phase === "first" ? 0 : connection.events.length;
             if (phase === "second") await connection.send("Page.navigate", {url: `${origin}/switch#/home/design`});
             const observations = [];
-            const created = await createP805RenderedGame(connection, evaluate, observations, 10_000,
+            finishSave = undefined;
+            const creating = createP805RenderedGame(connection, evaluate, observations, 10_000,
                 (requestId) => connection.send("Network.getResponseBody", {requestId}), 10_000);
+            let created;
+            try {
+                await waitFor(() => finishSave !== undefined, "one immediate-validation authorized save", 10_000);
+                const busy = await evaluate(createControlExpression);
+                assert.equal(busy.validationState, "ok");
+                assert.equal(busy.enabled, false);
+                assert.equal(busy.ariaBusy, "true");
+                const rejectedObservations = [];
+                await assert.rejects(createP805RenderedGame(connection, evaluate, rejectedObservations, 0,
+                    (requestId) => connection.send("Network.getResponseBody", {requestId})), /validation proof: .*dom-unready/);
+                assert.deepEqual(rejectedObservations, [], "busy Create must not accept another readiness or pointer receipt");
+            } finally {
+                finishSave?.();
+                created = await creating;
+            }
             validationIds.push(created.validation.browserRequestId);
             const events = connection.events.slice(cursor);
             assert.deepEqual(events.filter((event) => event.params.requestId === created.validation.browserRequestId).map((event) => event.method),
@@ -569,6 +588,52 @@ async function execute() {
 }
 
 if (typeof test === "function") {
+    test("failed domain instrumentation cannot navigate Studio, and startup diagnostics retain navigation failure", async () => {
+        for (const failedPhase of ["Network.enable", "Page.navigate"]) {
+            const commands = [], targets = [];
+            const server = createHttpServer((request, response) => {
+                targets.push(decodeURIComponent(request.url.split("?")[1]));
+                response.setHeader("Content-Type", "application/json");
+                response.end(JSON.stringify({webSocketDebuggerUrl: `ws://127.0.0.1:${server.address().port}`}));
+            });
+            const sockets = new WebSocketServer({server});
+            let disconnected;
+            const closed = new Promise((resolveClose) => { disconnected = resolveClose; });
+            sockets.on("connection", (socket) => {
+                socket.once("close", disconnected);
+                socket.on("message", (raw) => {
+                    const command = JSON.parse(raw.toString());
+                    commands.push(command.method);
+                    if (command.method === failedPhase && failedPhase === "Network.enable") {
+                        socket.send(JSON.stringify({id: command.id, error: {message: "Network instrumentation unavailable"}}));
+                    } else {
+                        const result = command.method === "Runtime.evaluate" ? {result: {value: true}}
+                            : command.method === "Page.navigate" ? {errorText: "net::ERR_CONNECTION_REFUSED"} : {};
+                        socket.send(JSON.stringify({id: command.id, result}));
+                    }
+                });
+            });
+            await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+            try {
+                await assert.rejects(connectP805Devtools(`http://127.0.0.1:${server.address().port}`, "http://localhost/#/home/design"), (error) => {
+                    assert.match(error.message, failedPhase === "Network.enable"
+                        ? /enabling-event-domains.*Network instrumentation unavailable/
+                        : /navigating-instrumented-Studio-target.*net::ERR_CONNECTION_REFUSED/);
+                    assert(error.cause instanceof Error);
+                    return true;
+                });
+                await closed;
+                assert.deepEqual(targets, ["about:blank"]);
+                assert.deepEqual(commands, failedPhase === "Network.enable"
+                    ? ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]
+                    : ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable", "Runtime.evaluate", "Page.navigate"]);
+            } finally {
+                for (const client of sockets.clients) client.terminate();
+                await new Promise((resolveClose) => sockets.close(resolveClose));
+                await new Promise((resolveClose) => server.close(resolveClose));
+            }
+        }
+    });
     test("distinguishes missing validation readiness from a failed post-click dashboard transition", async () => {
         await assert.rejects(waitForCreateValidation(async () => null, 0), /validation proof: .*dom-unready/);
         await assert.rejects(waitForCreatedDashboard(async () => ({route: "#/home/design", overview: false}), 0), /Failed post-click Create game Overview\/dashboard transition/);

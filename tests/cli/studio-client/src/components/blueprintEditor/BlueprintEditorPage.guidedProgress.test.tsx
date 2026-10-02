@@ -96,11 +96,20 @@ describe("Guided Design Game: automatic validation", () => {
             "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
         });
         let finishValidation: (() => void) | undefined;
-        const deferredFetch: FetchLike = (url, init) => fetchImpl(url, init).then((response) => url === "/api/home/blueprints/validate"
-            ? {...response, json: () => new Promise((resolve) => {
-                finishValidation = () => resolve({status: "ok", warnings: []});
-            })}
-            : response);
+        let finishSave: (() => Promise<void>) | undefined;
+        const deferredFetch: FetchLike = (url, init) => fetchImpl(url, init).then((response) => {
+            if (url === "/api/home/blueprints/validate") {
+                return {...response, json: () => new Promise((resolve) => {
+                    finishValidation = () => resolve({status: "ok", warnings: []});
+                })};
+            }
+            if (url === "/api/home/blueprints/save-managed") {
+                return {...response, json: () => new Promise((resolve) => {
+                    finishSave = () => response.json().then(resolve);
+                })};
+            }
+            return response;
+        });
         const {router} = renderRoutedApp({fetchImpl: deferredFetch, initialEntries: ["/home/design"]});
         const create = screen.getByRole("button", {name: "Create game"});
         const activations: string[] = [];
@@ -114,6 +123,16 @@ describe("Guided Design Game: automatic validation", () => {
         expect(create).toBeEnabled();
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(0);
         await user.click(create);
+        await waitFor(() => expect(finishSave).toBeDefined());
+        expect(create).toBeDisabled();
+        expect(create).toHaveAttribute("aria-busy", "true");
+        expect(create).toHaveAccessibleDescription("Studio is saving your game before opening its workspace.");
+        await user.click(create);
+        expect(activations).toEqual(["ok"]);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        await act(async () => {
+            await finishSave?.();
+        });
         await screen.findByRole("heading", {name: "Starter Slot"});
         expect(activations).toEqual(["ok"]);
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fstarter/overview");

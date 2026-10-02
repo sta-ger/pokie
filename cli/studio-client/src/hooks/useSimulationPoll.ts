@@ -222,7 +222,13 @@ export function useSimulationPoll() {
         if (id === undefined || !cancelGuard.begin()) {
             return;
         }
-        const generation = generationRef.current;
+        // Cancellation supersedes both the scheduled poll and any GET already
+        // in flight. An older running snapshot must never replace its terminal.
+        const generation = ++generationRef.current;
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
         cancelGuardGenerationRef.current = generation;
         // The server can need a short safe-cleanup interval before its next
         // poll reports `cancelling`. Reflect the accepted user intent now so
@@ -246,12 +252,16 @@ export function useSimulationPoll() {
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
                     setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, capturedJobId: id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
+                } else {
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
                     setCancellationRequested(false);
+                    // A rejected cancellation leaves the durable job active.
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
             })
             .finally(() => {
