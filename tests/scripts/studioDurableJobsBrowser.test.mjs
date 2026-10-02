@@ -588,6 +588,51 @@ async function execute() {
 }
 
 if (typeof test === "function") {
+    test("production initialUrl captures validation completed before the navigation acknowledgement", async () => {
+        const commands = [], targets = [];
+        const url = "http://localhost/#/home/design";
+        const requestId = "immediate-startup-validation";
+        const server = createHttpServer((request, response) => {
+            targets.push(decodeURIComponent(request.url.split("?")[1]));
+            response.setHeader("Content-Type", "application/json");
+            response.end(JSON.stringify({webSocketDebuggerUrl: `ws://127.0.0.1:${server.address().port}`}));
+        });
+        const sockets = new WebSocketServer({server});
+        sockets.on("connection", (socket) => socket.on("message", (raw) => {
+            const command = JSON.parse(raw.toString());
+            commands.push(command.method);
+            if (command.method === "Page.navigate") {
+                assert.equal(command.params.url, url);
+                assert.deepEqual(commands.slice(0, -1), ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable", "Runtime.evaluate"]);
+                for (const event of [
+                    {method: "Network.requestWillBeSent", params: {requestId, request: {method: "POST", url: "http://localhost/api/home/blueprints/validate"}}},
+                    {method: "Network.responseReceived", params: {requestId, response: {status: 200, url: "http://localhost/api/home/blueprints/validate"}}},
+                    {method: "Network.loadingFinished", params: {requestId}},
+                ]) socket.send(JSON.stringify(event));
+            }
+            const result = command.method === "Runtime.evaluate" ? {result: {value: true}}
+                : command.method === "Network.getResponseBody" ? {body: '{"status":"ok","warnings":[]}'} : {};
+            socket.send(JSON.stringify({id: command.id, result}));
+        }));
+        await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+        let connection;
+        try {
+            connection = await connectP805Devtools(`http://127.0.0.1:${server.address().port}`, url);
+            assert.deepEqual(targets, ["about:blank"]);
+            assert.deepEqual(connection.events.map((event) => event.method),
+                ["Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFinished"]);
+            const proof = await observeP805CreatorValidation(connection, async () => ({stableControlId: "blueprint-create-game", validationState: "ok"}),
+                (id) => connection.send("Network.getResponseBody", {requestId: id}));
+            assert.equal(proof.validation.browserRequestId, requestId);
+            assert.equal(proof.validation.completed, true);
+            assert.deepEqual(proof.validation.payload, {status: "ok", warnings: []});
+        } finally {
+            await connection?.close();
+            for (const client of sockets.clients) client.terminate();
+            await new Promise((resolveClose) => sockets.close(resolveClose));
+            await new Promise((resolveClose) => server.close(resolveClose));
+        }
+    });
     test("failed domain instrumentation cannot navigate Studio, and startup diagnostics retain navigation failure", async () => {
         for (const failedPhase of ["Network.enable", "Page.navigate"]) {
             const commands = [], targets = [];
@@ -687,6 +732,29 @@ if (typeof test === "function") {
         const result = await waitForP805CreateValidation(async () => ++reads === 1 ? {...ready, ariaBusy: "false"} : ready, 0);
         assert.equal(reads, 2);
         assert.equal(result.control.ariaBusy, null, "the receipt must contain the final DOM observation");
+    });
+    test("an obsolete body cannot fail or authorize the newer validation proof", async () => {
+        const request = (requestId) => ({method: "Network.requestWillBeSent", params: {requestId, request: {method: "POST", url: "http://localhost/api/home/blueprints/validate"}}});
+        const completed = (requestId) => [request(requestId),
+            {method: "Network.responseReceived", params: {requestId, response: {status: 200, url: "http://localhost/api/home/blueprints/validate"}}},
+            {method: "Network.loadingFinished", params: {requestId}}];
+        for (const oldBody of [() => ({body: '{"status":"invalid"}'}), () => ({body: "invalid json"}), () => { throw new Error("obsolete body evicted"); }]) {
+            const connection = {events: completed("old")};
+            const diagnostics = {};
+            assert.equal(await observeP805CreatorValidation(connection, () => assert.fail("superseded body must not focus Create"), () => {
+                connection.events.push(request("current"));
+                return oldBody();
+            }, diagnostics), false);
+            assert.equal(diagnostics.phase, "superseded-validation");
+            assert.equal(await observeP805CreatorValidation(connection, () => assert.fail("incomplete validation must not focus Create"),
+                () => assert.fail("incomplete body must not be read"), diagnostics), false);
+            assert.equal(diagnostics.phase, "missing-response");
+            connection.events.push(...completed("current").slice(1));
+            const proof = await observeP805CreatorValidation(connection, async () => ({stableControlId: "blueprint-create-game", validationState: "ok"}),
+                async () => ({body: '{"status":"ok"}'}), diagnostics);
+            assert.equal(proof.validation.browserRequestId, "current");
+            assert.equal(diagnostics.phase, "ready");
+        }
     });
     test("a validation superseded during pointer preparation cannot authorize Create", async () => {
         const ready = {controlId: "blueprint-create-game", accessibleName: "Create game", validationState: "ok", enabled: true, visible: true, ariaBusy: null};

@@ -292,9 +292,12 @@ export function BlueprintEditorPage({
         completedValidationRef.current = undefined;
         // A focus transfer to Create can commit a field's blur edit. Invalidate the rendered
         // result in that same batch, before the revision effect schedules the next check.
-        setValidationView((previous) =>
-            previous.status === "ok" || previous.status === "invalid" ? {status: "stale"} : previous,
-        );
+        setValidationView((previous) => {
+            if (guided && validateGuard.isBlocked()) {
+                return {status: "loading"};
+            }
+            return previous.status === "ok" || previous.status === "invalid" ? {status: "stale"} : previous;
+        });
         editor.mutate(mutate);
     };
     const autoValidateTimer = useDebouncedCallbackTimer();
@@ -433,9 +436,14 @@ export function BlueprintEditorPage({
     useEffect(() => {
         const isInitialMount = !hasRunRevisionEffectRef.current;
         hasRunRevisionEffectRef.current = true;
-        setValidationView((prev) =>
-            guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"},
-        );
+        // Typing can outlast the debounce while an older check is still in flight. Keep its busy
+        // boundary visible until the current revision's follow-up settles; the old result is discarded.
+        setValidationView((prev) => {
+            if (guided && isVisible && validateGuard.isBlocked()) {
+                return {status: "loading"};
+            }
+            return guided && (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale") ? {status: "stale"} : {status: "idle"};
+        });
         if (!guided || !isVisible) {
             autoValidateTimer.cancel();
             return undefined;

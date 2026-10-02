@@ -511,6 +511,11 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
     }
     const browserRequestId = request.params.requestId;
     diagnostics.browserRequestId = browserRequestId;
+    const superseded = () => {
+        if (latestRequest()?.params.requestId === browserRequestId) return false;
+        diagnostics.phase = "superseded-validation";
+        return true;
+    };
     const failed = cdp.events.findLast((event) => event.method === "Network.loadingFailed" && event.params.requestId === browserRequestId);
     if (failed) {
         diagnostics.phase = "loading-failed";
@@ -526,17 +531,23 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
         return false;
     }
     diagnostics.phase = "unreadable-response-body";
-    const body = await readBrowserResponseBody(browserRequestId, "initial rendered Design validation");
+    let body;
+    try {
+        body = await readBrowserResponseBody(browserRequestId, "initial rendered Design validation");
+    } catch (error) {
+        // A focus/field edit can replace this request while DevTools reads its body. An obsolete
+        // body (including one evicted by navigation) must not fail the current draft's proof.
+        if (superseded()) return false;
+        throw error;
+    }
+    if (superseded()) return false;
     const bytes = body.base64Encoded ? Buffer.from(body.body, "base64") : Buffer.from(body.body);
     const payload = JSON.parse(bytes.toString("utf8"));
     diagnostics.phase = "rejected-response";
     if (response.params.response.status !== 200 || payload.status !== "ok") fail(`initial rendered Design validation did not accept the starter game: HTTP ${response.params.response.status}, status ${payload.status}`);
     diagnostics.phase = "dom-unready";
     const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || ![null, 'false'].includes(item.getAttribute('aria-busy')) || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
-    if (latestRequest()?.params.requestId !== browserRequestId) {
-        diagnostics.phase = "superseded-validation";
-        return false;
-    }
+    if (superseded()) return false;
     if (!control) return false;
     diagnostics.phase = "ready";
     return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};

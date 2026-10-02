@@ -130,7 +130,22 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         const validation = valid
             ? {status: "ok", warnings: []}
             : {status: "invalid", errors: [{code: "blueprint-manifest-invalid-name", severity: "error", message: "Choose a game name.", path: "manifest.name"}], warnings: []};
+        if (valid) {
+            // The workspace must consume the latest validated draft, even when an initial check
+            // finishes after a field edit. Its stale ok must not unlock the native keyboard action.
+            fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "A"}});
+            expect(createGame).toHaveAttribute("data-pokie-validation-state", "loading");
+            expect(createGame).toHaveAttribute("aria-busy", "true");
+        }
         await act(() => Promise.resolve(resolveValidation!(jsonResponse(validation))));
+        if (valid) {
+            await waitFor(() => expect(validatedBlueprints).toHaveLength(2));
+            expect(createGame).toHaveAttribute("data-pokie-validation-state", "loading");
+            expect(createGame).toBeDisabled();
+            await user.click(createGame);
+            expect(routes.calls.some((call) => call.url === "/api/home/blueprints/save-managed")).toBe(false);
+            await act(() => Promise.resolve(resolveValidation!(jsonResponse(validation))));
+        }
         await waitFor(() => expect(createGame).toHaveAttribute("data-pokie-validation-state", valid ? "ok" : "invalid"));
         expect(createGame).toHaveAttribute("id", "blueprint-create-game");
         expect(createGame.tagName).toBe("BUTTON");
@@ -178,8 +193,11 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
         expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]')).toBeVisible();
         expect(routes.calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
-        expect(validatedBlueprints).toHaveLength(1);
-        expect(JSON.parse(routes.calls.find((call) => call.url === "/api/home/blueprints/save-managed")!.init!.body!).blueprint).toEqual(validatedBlueprints[0]);
+        expect(validatedBlueprints).toHaveLength(2);
+        const savedBlueprint = JSON.parse(routes.calls.find((call) => call.url === "/api/home/blueprints/save-managed")!.init!.body!).blueprint;
+        expect(savedBlueprint).toEqual(validatedBlueprints[1]);
+        expect(savedBlueprint.manifest.name).toBe("A");
+        expect(savedBlueprint).not.toEqual(validatedBlueprints[0]);
         expect(routes.calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(JSON.parse(routes.calls.find((call) => call.url === "/api/home/projects/open")!.init!.body!)).toMatchObject({projectRoot: "/games/a"});
         await goToGameModelTab(user);

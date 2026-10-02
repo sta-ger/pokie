@@ -35,7 +35,7 @@ describe("Guided Design Game: automatic validation", () => {
     it("disables the real Create control during validation and on invalid designs, then recovers after an edit", async () => {
         const user = userEvent.setup();
         const requests: string[] = [];
-        let completeValidation: ((body: unknown) => void) | undefined;
+        const validations: {body: string; complete: (body: unknown) => void}[] = [];
         const fetchImpl: FetchLike = (url, init) => {
             const [path] = url.split("?");
             requests.push(path);
@@ -44,7 +44,7 @@ describe("Guided Design Game: automatic validation", () => {
             }
             if (path === "/api/home/blueprints/validate" && init?.method === "POST") {
                 return new Promise((resolve) => {
-                    completeValidation = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                    validations.push({body: init.body ?? "{}", complete: (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)})});
                 });
             }
             return Promise.reject(new Error(`unexpected request: ${url}`));
@@ -56,7 +56,7 @@ describe("Guided Design Game: automatic validation", () => {
         expect(create).toBeDisabled();
         expect(create).toHaveAttribute("aria-busy", "true");
         await user.click(create);
-        await act(() => completeValidation?.({status: "invalid", errors: [
+        await act(() => validations[0].complete({status: "invalid", errors: [
             {code: "blueprint-manifest-invalid-name", severity: "error", message: "Choose a game name.", path: "manifest.name"},
         ], warnings: []}));
         await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "invalid"));
@@ -69,12 +69,23 @@ describe("Guided Design Game: automatic validation", () => {
         expect(requests).not.toContain("/api/home/blueprints/save-managed");
         expect(requests).not.toContain("/api/home/projects/open");
 
-        completeValidation = undefined;
         await user.clear(screen.getByLabelText("Game name"));
+        // Deliberately start a check before the typing burst finishes. Under gate contention the
+        // debounce can fire mid-edit too; its obsolete response must never authorize Create.
+        await waitFor(() => expect(validations).toHaveLength(2));
         await user.type(screen.getByLabelText("Game name"), "Corrected Game");
-        await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "loading"));
+        expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
+        expect(create).toHaveAttribute("aria-busy", "true");
         expect(create).toBeDisabled();
-        await act(() => completeValidation?.({status: "ok", warnings: []}));
+        await user.click(create);
+        await act(() => validations[1].complete({status: "ok", warnings: []}));
+        await waitFor(() => expect(validations).toHaveLength(3));
+        expect(JSON.parse(validations[1].body).blueprint.manifest.name).toBe("");
+        expect(JSON.parse(validations[2].body).blueprint.manifest.name).toBe("Corrected Game");
+        expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
+        expect(create).toBeDisabled();
+        expect(create).toHaveAttribute("aria-busy", "true");
+        await act(() => validations[2].complete({status: "ok", warnings: []}));
         await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "ok"));
         expect(create).toBeEnabled();
         expect(create).not.toHaveAttribute("aria-busy");
