@@ -935,22 +935,26 @@ export function BlueprintEditorPage({
             .finally(() => saveGuard.end());
     };
 
+    const getValidatedGuidedSaveState = (): ReturnType<typeof editor.getCurrentState> | undefined => {
+        const currentState = editor.getCurrentState();
+        const completedValidation = completedValidationRef.current;
+        return sourceDrift === undefined && completedValidation?.validation.status === "ok"
+            && completedValidation.revision === currentState.revision
+            && completedValidation.blueprint === currentState.blueprint ? currentState : undefined;
+    };
+
     const handleGuidedSave = (): void => {
-        if (validationView.status !== "ok" || workspaceOpenPending || !saveGuard.begin()) {
+        // Reject a blur-committed edit synchronously, even when this event still sees the preceding
+        // rendered ok state. Such an activation must neither acquire the save guard nor queue work.
+        if (validationView.status !== "ok" || workspaceOpenPending || !getValidatedGuidedSaveState() || !saveGuard.begin()) {
             return;
         }
-        // Let React commit the preceding field blur, then recheck the exact validated snapshot.
+        // Let React commit the preceding field blur, then recheck the same validated boundary.
         // An edit cancels this activation; its automatic validation must not queue a later save.
         guidedSaveTimerRef.current = setTimeout(() => {
             guidedSaveTimerRef.current = undefined;
-            const savedState = editor.getCurrentState();
-            const completedValidation = completedValidationRef.current;
-            if (
-                sourceDrift !== undefined ||
-                completedValidation?.validation.status !== "ok" ||
-                completedValidation.revision !== savedState.revision ||
-                completedValidation.blueprint !== savedState.blueprint
-            ) {
+            const savedState = getValidatedGuidedSaveState();
+            if (!savedState) {
                 saveGuard.end();
                 return;
             }

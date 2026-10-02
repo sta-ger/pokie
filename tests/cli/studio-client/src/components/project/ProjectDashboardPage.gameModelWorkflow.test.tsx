@@ -92,6 +92,7 @@ describe("ProjectDashboardPage - Game Model tab", () => {
     it.each([true, false])("requires terminal ok for native keyboard Create and keeps terminal invalid disabled (valid=%s)", async (valid) => {
         const user = userEvent.setup();
         let resolveValidation: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        const validatedBlueprints: unknown[] = [];
         const routes = createRoutedFakeFetch({
             ...BASE_ROUTES,
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
@@ -101,6 +102,7 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         });
         const fetchImpl: FetchLike = (url, init) => url === "/api/home/blueprints/validate"
             ? new Promise((resolve) => {
+                validatedBlueprints.push(JSON.parse(init?.body ?? "{}").blueprint);
                 resolveValidation = resolve;
             })
             : routes.fetchImpl(url, init);
@@ -144,7 +146,10 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         await user.keyboard("{Enter}");
         await screen.findByRole("heading", {name: "A"});
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
+        expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]')).toBeVisible();
         expect(routes.calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
+        expect(validatedBlueprints).toHaveLength(1);
+        expect(JSON.parse(routes.calls.find((call) => call.url === "/api/home/blueprints/save-managed")!.init!.body!).blueprint).toEqual(validatedBlueprints[0]);
         expect(routes.calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(JSON.parse(routes.calls.find((call) => call.url === "/api/home/projects/open")!.init!.body!)).toMatchObject({projectRoot: "/games/a"});
         await goToGameModelTab(user);

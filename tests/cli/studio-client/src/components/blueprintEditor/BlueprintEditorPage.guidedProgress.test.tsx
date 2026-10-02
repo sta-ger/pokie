@@ -117,11 +117,14 @@ describe("Guided Design Game: automatic validation", () => {
         await screen.findByRole("heading", {name: "Starter Slot"});
         expect(activations).toEqual(["ok"]);
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fstarter/overview");
+        expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]')).toBeVisible();
         expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(1);
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(1);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         const saved = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/save-managed")!.init!.body!);
         expect(saved.blueprint.manifest.id).toBe("starter-slot");
+        const validated = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/validate")!.init!.body!);
+        expect(saved.blueprint).toEqual(validated.blueprint);
     });
 
     it("does not expose the removed Configure-to-Validate-to-Build workflow", async () => {

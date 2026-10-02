@@ -172,6 +172,14 @@ async function assertImmediateStartupValidation(devtoolsPort) {
     let connection;
     try {
         const origin = `http://127.0.0.1:${server.address().port}`;
+        // The sibling default-url caller must receive the same settled, instrumented blank
+        // target before it owns navigation. No automatic validation may precede that handoff.
+        connection = await connectP805Devtools(`http://127.0.0.1:${devtoolsPort}`);
+        const blank = await connection.send("Runtime.evaluate", {expression: "({url: location.href, state: document.readyState})", returnByValue: true});
+        assert.deepEqual(blank.result.value, {url: "about:blank", state: "complete"});
+        assert.equal(requests.length, 0);
+        await connection.send("Page.close");
+        await connection.close();
         connection = await connectP805Devtools(`http://127.0.0.1:${devtoolsPort}`, `${origin}/#/home/design`);
         const evaluate = async (expression) => {
             const result = await connection.send("Runtime.evaluate", {expression, returnByValue: true, awaitPromise: true});
@@ -190,6 +198,13 @@ async function assertImmediateStartupValidation(devtoolsPort) {
             assert.deepEqual(events.filter((event) => event.params.requestId === created.validation.browserRequestId).map((event) => event.method),
                 ["Network.requestWillBeSent", "Network.responseReceived", "Network.loadingFinished"]);
             assert.deepEqual(observations.map((observation) => observation.kind), ["validation-ready", "pointer-dispatch", "dashboard-transition"]);
+            assert.equal(created.validation.completed, true);
+            assert.deepEqual(created.validation.payload, {status: "ok", warnings: []});
+            assert.match(created.validation.bodySha256, /^[a-f0-9]{64}$/);
+            assert.equal(observations[0].validation.browserRequestId, created.validation.browserRequestId);
+            assert.equal(observations[0].validationState, "ok");
+            assert.equal(observations[0].enabled, true);
+            assert.equal(observations[0].ariaBusy, null);
             assert.equal(created.activation.count, 1);
             assert.equal(created.activation.dispatch.pressed && created.activation.dispatch.released, true);
             assert.equal(created.activation.dispatch.focus.trusted, true);
@@ -557,6 +572,8 @@ if (typeof test === "function") {
     test("distinguishes missing validation readiness from a failed post-click dashboard transition", async () => {
         await assert.rejects(waitForCreateValidation(async () => null, 0), /validation proof: .*dom-unready/);
         await assert.rejects(waitForCreatedDashboard(async () => ({route: "#/home/design", overview: false}), 0), /Failed post-click Create game Overview\/dashboard transition/);
+        await assert.rejects(waitForCreatedDashboard(async () => { throw new Error("DevTools evaluation disconnected"); }, 0),
+            /Failed post-click Create game Overview\/dashboard transition.*reason: DevTools evaluation disconnected/);
         for (const terminal of [null, "loading", "error"]) {
             await assert.rejects(waitForCreatedDashboard(async () => ({route: "#/project/starter/overview", overview: true, visible: true, terminal}), 0),
                 /Failed post-click Create game Overview\/dashboard transition/);

@@ -367,14 +367,13 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
         // Await each domain before navigation can emit even an immediate
         // request/response/completion sequence on the live Studio page.
         for (const method of ["Page.enable", "Runtime.enable", "Log.enable", "Network.enable"]) await send(method);
+        // Every caller receives a settled instrumented target, including callers that navigate
+        // themselves. Otherwise the initial blank commit can cancel their live navigation too.
+        await waitFor(async () => {
+            const result = await send("Runtime.evaluate", {expression:"location.href === 'about:blank' && document.readyState === 'complete'", returnByValue:true});
+            return result.result?.value === true;
+        }, "instrumented about:blank document", 10_000);
         if (initialUrl !== "about:blank") {
-            // Target creation can reply before the initial blank document has
-            // committed. Let it settle so that commit cannot cancel the live
-            // navigation (and its automatically started validation).
-            await waitFor(async () => {
-                const result = await send("Runtime.evaluate", {expression:"location.href === 'about:blank' && document.readyState === 'complete'", returnByValue:true});
-                return result.result?.value === true;
-            }, "instrumented about:blank document", 10_000);
             const navigation = await send("Page.navigate", {url:initialUrl});
             if (navigation.errorText) fail(`initial Studio navigation failed: ${navigation.errorText}`);
         }
@@ -455,7 +454,7 @@ export async function waitForP805CreatedDashboard(evaluate, timeout = 180_000) {
                 && dashboard.terminal === "rendered" && dashboard.visible ? dashboard : false;
         }, "created project Overview/dashboard transition", timeout);
     } catch (error) {
-        throw new Error(`Failed post-click Create game Overview/dashboard transition; rendered: ${JSON.stringify(dashboard)}`, {cause:error});
+        throw new Error(`Failed post-click Create game Overview/dashboard transition; rendered: ${JSON.stringify(dashboard)}; reason: ${error.message}`, {cause:error});
     }
 }
 

@@ -45,6 +45,16 @@ function LocationProbe() {
     return <output data-testid="location">{useLocation().pathname}</output>;
 }
 
+async function waitForCreateReady() {
+    const create = screen.getByRole("button", {name: "Create game"});
+    await waitFor(() => {
+        expect(create).toHaveAttribute("data-pokie-validation-state", "ok");
+        expect(create).toBeEnabled();
+        expect(create).not.toHaveAttribute("aria-busy");
+    });
+    return create;
+}
+
 describe("BlueprintEditorPage - guided Create Project", () => {
     it("automatically validates the initial Recommended revision", async () => {
         const {fetchImpl, calls} = createFakeFetch((call) => {
@@ -119,7 +129,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create game"}));
+        await user.click(await waitForCreateReady());
 
         await waitFor(() => expect(completeOpen).toBeDefined());
         const saving = screen.getByRole("button", {name: "Save game"});
@@ -173,7 +183,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create game"}));
+        await user.click(await waitForCreateReady());
 
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1));
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/projects/open")?.init?.body ?? "{}")).toEqual({projectRoot: savedPath});
@@ -208,7 +218,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create game"}));
+        await user.click(await waitForCreateReady());
 
         expect(await screen.findByRole("alert")).toHaveTextContent("Your game was saved, but Studio couldn't open its workspace");
         expect(screen.getByRole("alert")).toHaveTextContent("Return to Your projects and open the game again. Your saved work is safe.");
@@ -274,7 +284,7 @@ describe("BlueprintEditorPage - guided Create Project", () => {
             {fetchImpl},
         );
 
-        await user.click(screen.getByRole("button", {name: "Create game"}));
+        await user.click(await waitForCreateReady());
 
         await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1));
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/projects/open")?.init?.body ?? "{}")).toEqual({projectRoot: savedPath});
