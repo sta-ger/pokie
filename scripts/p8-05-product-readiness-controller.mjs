@@ -7,7 +7,7 @@ import {lstat, mkdir, readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805ProspectiveCloseout, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
+import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805CollectedAudits, validateP805ProspectiveCloseout, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
 import {runP805ProcessIsolatedPackedProof, validateP805RenderedPersonaAudit, validateP805RestartRecoveryTerminalReceipt, validateP805RetryTerminalReceipt} from "./p8-05-valera-browser-audit.mjs";
 
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
@@ -321,6 +321,7 @@ async function runAudits(config, phase, candidateValue) {
         // Do not aggregate the runner's return value.  Only the controller's
         // fresh reads of the packed child receipts can cross this boundary.
         const tupleAudits = await reReadP805PackedTupleAudits(config.directory, persistedLedger.value, phase, candidateValue), audits = aggregateP805PersonaAudits(tupleAudits, persistedLedger.value, phase, candidateValue);
+        await validateP805CollectedAudits(config.directory, audits, phase, candidateValue);
         await writeControllerMachineProof(config, phase, candidateValue, proof, audits, tupleAudits);
         return audits;
     } catch (error) {

@@ -72,7 +72,7 @@ export function AppShellLayout({
 
     const closeAndFocusBurger = (): void => {
         close();
-        burgerRef.current?.focus();
+        burgerRef.current?.focus({preventScroll: true});
     };
 
     useEffect(() => {
@@ -131,7 +131,7 @@ export function AppShellLayout({
                     {headerRight !== undefined && <div className="studio-app-header-actions">{headerRight}</div>}
                 </Group>
             </AppShell.Header>
-            <AppShell.Navbar id="studio-navigation-panel" p="md">
+            <AppShell.Navbar id="studio-navigation-panel" p="md" style={{overflowY: "auto", overscrollBehavior: "contain"}}>
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
             <AppShell.Main className="studio-app-main" style={isPhoneWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>

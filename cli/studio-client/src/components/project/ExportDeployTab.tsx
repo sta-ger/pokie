@@ -130,6 +130,16 @@ type OutcomeLibraryProgressSnapshot = {
     readonly durableProgress?: StudioOutcomeLibraryGenerateJobView["durableProgress"];
 };
 
+// Keep the initial identity and the latest observations, including terminals.
+// Polling, cancellation and resume share this bound; durable jobs remain the
+// authority for discovery after reload.
+export const OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT = 64;
+export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLibraryProgressSnapshot[], snapshot: OutcomeLibraryProgressSnapshot): readonly OutcomeLibraryProgressSnapshot[] {
+    return history.length < OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT
+        ? [...history, snapshot]
+        : [history[0]!, ...history.slice(-(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT - 2)), snapshot];
+}
+
 type OutcomeLibraryRunView =
     | {status: "idle"}
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]}
@@ -1357,7 +1367,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             .then((job) => {
                 lastObservedOutcomeLibraryJob.current = job;
                 setFeatureOwnedOutcomeLibraryJobId(job.id);
-                const observedSnapshots = [...progressSnapshots, outcomeLibraryProgressSnapshot("poll", job)];
+                const observedSnapshots = retainOutcomeLibraryProgressSnapshot(progressSnapshots, outcomeLibraryProgressSnapshot("poll", job));
                 if (job.status === "queued" || job.status === "running" || job.status === "cancelling") {
                     setOutcomeLibraryRun({status: "running", job, browserRequestId, progressSnapshots: observedSnapshots});
                     outcomeLibraryPollTimer.current = setTimeout(() => pollOutcomeLibraryGeneration(id, browserRequestId, observedSnapshots), 250);
@@ -1400,7 +1410,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     status: "running",
                     job,
                     browserRequestId: job.browserRequestId ?? outcomeLibraryRun.browserRequestId,
-                    progressSnapshots: [...outcomeLibraryRun.progressSnapshots, outcomeLibraryProgressSnapshot("poll", job)],
+                    progressSnapshots: retainOutcomeLibraryProgressSnapshot(outcomeLibraryRun.progressSnapshots, outcomeLibraryProgressSnapshot("poll", job)),
                 });
             })
             .catch((error: unknown) => setOutcomeLibraryRun({status: "error", message: describeProjectActionError("Cancelling the outcome library generation", errorMessage(error))}));
@@ -1417,7 +1427,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             .then((job) => {
                 lastObservedOutcomeLibraryJob.current = job;
                 setFeatureOwnedOutcomeLibraryJobId(job.id);
-                const resumedSnapshots = [...progressSnapshots, outcomeLibraryProgressSnapshot("start", job)];
+                const resumedSnapshots = retainOutcomeLibraryProgressSnapshot(progressSnapshots, outcomeLibraryProgressSnapshot("start", job));
                 setOutcomeLibraryRun({status: "running", job, browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: resumedSnapshots});
                 pollOutcomeLibraryGeneration(job.id, job.browserRequestId ?? browserRequestId, resumedSnapshots);
             })

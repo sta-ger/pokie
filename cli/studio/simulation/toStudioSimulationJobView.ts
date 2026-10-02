@@ -14,10 +14,10 @@ export function toStudioSimulationJobView(record: StudioSimulationJobRecord): St
         startedAt: new Date(record.startedAt).toISOString(),
         roundsCompleted: record.roundsCompleted,
         durationMs: record.durationMs,
-        report: record.report,
-        statistics: record.statistics,
+        report: record.status === "completed" ? record.report : undefined,
+        statistics: record.status === "completed" ? record.statistics : undefined,
         error: record.error,
         modeName: record.modeName,
-        lastReplay: record.lastReplay,
+        lastReplay: record.status === "completed" ? record.lastReplay : undefined,
     };
 }

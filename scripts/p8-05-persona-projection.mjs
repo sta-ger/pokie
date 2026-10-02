@@ -1,9 +1,13 @@
 import {createHash} from "node:crypto";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
+export function p805OperationPerformance(timings, budgets = {startupMs:60_000, projectCreationMs:60_000, validationMs:60_000, buildMs:300_000, simulationMs:300_000, replayMs:300_000, cancellationMs:120_000}) {
+    return Object.fromEntries(Object.entries(budgets).map(([name, budgetMs]) => [name, {elapsedMs:timings[name], budgetMs, classification:timings[name] === null ? "not-executed" : timings[name] <= budgetMs ? "within-budget" : "regression"}]));
+}
+
 /** A persona summary is only a deterministic view of unchanged child receipts. */
 export function projectP805PersonaAudit(audits, tupleReceipts, phase, persona) {
-    const first = audits[0], timings = Object.fromEntries(Object.keys(first.timings).map((name) => [name, Math.max(...audits.map((audit) => audit.timings[name]))]));
+    const first = audits[0], timings = Object.fromEntries(Object.keys(first.timings).map((name) => [name, audits.every((audit) => audit.timings[name] === null) ? null : Math.max(...audits.map((audit) => audit.timings[name]).filter((value) => value !== null))]));
     return {
         ...first,
         auditId:`${phase}-${persona}-persona-aggregate-${digest(tupleReceipts.map((receipt) => receipt.auditSha256).join("\0")).slice(0, 16)}`,
@@ -18,7 +22,7 @@ export function projectP805PersonaAudit(audits, tupleReceipts, phase, persona) {
         startedAt:audits.map((audit) => audit.startedAt).sort()[0],
         endedAt:audits.map((audit) => audit.endedAt).sort().at(-1),
         timings,
-        performance:Object.fromEntries(Object.entries(first.performance).map(([name, value]) => [name, {...value, elapsedMs:timings[name], classification:timings[name] <= value.budgetMs ? "within-budget" : "regression"}])),
+        performance:Object.fromEntries(Object.entries(first.performance).map(([name, value]) => [name, {...value, elapsedMs:timings[name], classification:timings[name] === null ? "not-executed" : timings[name] <= value.budgetMs ? "within-budget" : "regression"}])),
         finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:audits.reduce((count, audit) => count + audit.checkpointReceipts.length, 0), checkpointReceiptSha256s:audits.flatMap((audit) => audit.checkpointReceipts.map((receipt) => receipt.sha256)), cleanupEvidenceId:first.cleanup.evidenceId},
         rendered:{...first.rendered, viewports:["wide", "compact", "narrow"], responsive:["wide", "compact", "narrow"].map((viewport) => audits.find((audit) => audit.tuple.viewport === viewport)?.rendered.responsive[0]).filter(Boolean), measurements:{consoleExceptions:Math.max(...audits.map((audit) => audit.rendered.measurements.consoleExceptions)), unhandledRequestFailures:Math.max(...audits.map((audit) => audit.rendered.measurements.unhandledRequestFailures)), documentOverflow:audits.some((audit) => audit.rendered.measurements.documentOverflow), inaccessiblePrimaryActions:Math.max(...audits.map((audit) => audit.rendered.measurements.inaccessiblePrimaryActions)), unexplainedDisabledControls:Math.max(...audits.map((audit) => audit.rendered.measurements.unexplainedDisabledControls)), namedRegions:Math.min(...audits.map((audit) => audit.rendered.measurements.namedRegions)), visibleFocus:audits.every((audit) => audit.rendered.measurements.visibleFocus)}, defects:audits.flatMap((audit) => audit.rendered.defects), actions:audits.flatMap((audit) => audit.rendered.actions), recovery:Object.assign({}, ...audits.map((audit) => audit.rendered.recovery)), jobs:Object.assign({}, ...audits.map((audit) => audit.rendered.jobs))},
     };

@@ -488,8 +488,10 @@ export function ReplayTab({
             )}
 
             {findMethod === "artifact" && (
-                <div>
+                <div data-pokie-lifecycle-form="replay-artifact">
                     <Textarea
+                        id="replay-artifact-json"
+                        data-pokie-lifecycle-field="replay-artifact-json"
                         label="Paste a replay artifact JSON (downloaded from Export)"
                         minRows={6}
                         autosize
@@ -500,6 +502,10 @@ export function ReplayTab({
                     />
                     <QuickActions>
                         <Button
+                            id="replay-artifact-load"
+                            data-pokie-lifecycle="operation"
+                            data-pokie-lifecycle-operation="replay-artifact"
+                            data-pokie-transaction-state="editable-submission"
                             disabled={artifactText.trim() === ""}
                             onClick={() => {
                                 onLoadExpectedFromPaste(artifactText);
@@ -929,7 +935,9 @@ export function ReplayTab({
                     )}
 
                     {findMethod === "artifact" && (
-                        <div>
+                        <div data-pokie-lifecycle-result="replay-artifact" data-pokie-lifecycle-result-control="replay-artifact-load" data-pokie-lifecycle-terminal={expected.status}
+                            data-pokie-lifecycle-artifact-round={expected.status === "loaded" ? expected.round : undefined}
+                            data-pokie-lifecycle-artifact-seed={expected.status === "loaded" ? expected.seed ?? "" : undefined}>
                             {expected.status === "loading" && <LoadingState label="Validating artifact…" />}
                             {expected.status === "error" && <ErrorState message={expected.message} />}
                             {expected.status === "loaded" && (

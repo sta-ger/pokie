@@ -44,7 +44,7 @@ const action = {
     ...tuple, route:"/#/project/fixture/overview", stableControlId:"project-tab:overview", browserRequestId:`browser-${process.pid}`,
     expectedMethod:"GET", expectedBodyKind:null, expectedApi:"/api/project/context", expectedArtifact:null, expectedTerminal:"project-context",
     interaction:{keyboardFocused:true, keyboardActivated:true, activation:"keyboard", transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}},
-    transaction:{stateClass:"navigation", control:{stableControlId:"project-tab:overview"}, keyboardActivations:[{kind:"keyboard", controlId:"project-tab:overview", count:1, nativeFocus:true, preDispatchFocus:{controlId:"project-tab:overview", native:true}}], request:{browserRequestId:`browser-${process.pid}`, method:"GET", path:"/api/project/context"}},
+    transaction:{stateClass:"navigation", control:{stableControlId:"project-tab:overview"}, pointerActivations:[], keyboardActivations:[{kind:"keyboard", controlId:"project-tab:overview", count:1, nativeFocus:true, preDispatchFocus:{controlId:"project-tab:overview", native:true}}], request:{browserRequestId:`browser-${process.pid}`, method:"GET", path:"/api/project/context"}},
     terminal:{status:"completed", resultSha256:sha(JSON.stringify(result))},
     visibleTerminal:{observedAfterRequestId:`browser-${process.pid}`, resultSha256:sha(JSON.stringify(result)), lifecycle:{controlId:"project-tab:overview", stateClass:"navigation"}},
 };

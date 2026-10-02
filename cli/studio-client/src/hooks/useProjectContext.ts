@@ -91,6 +91,14 @@ export function useProjectContext(requestedProjectRoot?: string, refreshGenerati
 
         const publishDashboard = (dashboard: Parameters<typeof describeProjectHeader>[0]): void => {
             const nextHeader = describeProjectHeader(dashboard);
+            const retainedHeader = headerRef.current;
+            // Same-project loading is a revalidation placeholder. Keep the
+            // live navigation/form nodes mounted until the fresh capability
+            // receipt is terminal; replacing them here can detach a focused
+            // narrow drawer control before its native activation.
+            if (dashboard.status === "loading" &&
+                (retainedHeader.status === "loaded" || retainedHeader.status === "outcome-source" || retainedHeader.status === "artifact") &&
+                retainedHeader.projectRoot === dashboard.projectRoot) return;
             setHeader(nextHeader);
             // Consumers that need a capability refresh before selecting a
             // dependent workflow wait for this acknowledgement, rather than

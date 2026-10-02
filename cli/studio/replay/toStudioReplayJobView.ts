@@ -15,7 +15,7 @@ export function toStudioReplayJobView(record: StudioReplayJobRecord): StudioRepl
         durationMs: record.durationMs,
         game: record.game,
         configHash: record.configHash,
-        descriptor: record.descriptor,
+        descriptor: record.status === "completed" ? record.descriptor : undefined,
         error: record.error,
         modeName: record.modeName,
     };

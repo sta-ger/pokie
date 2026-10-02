@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {act, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -71,6 +71,78 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
 }
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
+    it("retains the captured Build/Export navigation node while its same-project context refresh is loading", async () => {
+        let contexts = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/context") {
+                contexts++;
+                const body = contexts === 2 ? {status: "loading", projectRoot: "/games/a"} : BASE_ROUTES[url]().body;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        const captured = screen.getByRole("button", {name: "Build/Export"});
+        await userEvent.setup().click(captured);
+        await waitFor(() => expect(contexts).toBeGreaterThanOrEqual(2));
+        expect(captured.isConnected).toBe(true);
+        expect(screen.getByRole("button", {name: "Build/Export"})).toBe(captured);
+        await screen.findByText(/Exact enumeration: 27 raw combinations/);
+        expect(screen.getByRole("button", {name: "Build/Export"})).toBe(captured);
+        expect(captured).toHaveAttribute("aria-current", "page");
+    });
+
+    it("bounds long polling history through cancellation and resume while retaining the terminal identity", async () => {
+        let polls = 0;
+        let resumed = false;
+        const completed = {status: "ok", bundleDir: "/games/a/bounded-library", files: ["manifest.json"], warnings: [], mode: {modeName: "base", libraryId: "bounded", hash: "sha256:bounded", outcomeCount: 27, totalWeight: 27, rtp: 0.95}, generator: {strategy: "exact", pokieVersion: "1.3.0"}, coverage: 1, selector: {kind: "bundle", bundleDir: "/games/a/bounded-library", modeName: "base"}};
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/outcome-libraries/generate/jobs" && init?.method === "POST") {
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({job: {id: "bounded-job", status: "running", cancellationRequested: false}})});
+            }
+            if (url === "/api/project/outcome-libraries/generate/jobs/bounded-job/resume") {
+                resumed = true;
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({job: {id: "bounded-job", status: "running", cancellationRequested: false}})});
+            }
+            if (url === "/api/project/outcome-libraries/generate/jobs/bounded-job") {
+                polls++;
+                if (resumed) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "bounded-job", status: "completed", cancellationRequested: false, result: completed})});
+                if (polls < 70) return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "bounded-job", status: "running", cancellationRequested: false, durableProgress: {stage: "Enumerating", unit: "combinations", current: String(polls), total: "100"}})});
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "bounded-job", status: "cancelled", cancellationRequested: true, result: {status: "cancelled", processedRawIndex: "70", progressTotal: "100", checkpoint: {id: "bounded-job"}, recovery: "Resume this checkpoint."}})});
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await userEvent.setup().click(screen.getByRole("button", {name: "Build/Export"}));
+        await screen.findByText(/Exact enumeration: 27 raw combinations/);
+        jest.useFakeTimers();
+        try {
+            const user = userEvent.setup({advanceTimers: jest.advanceTimersByTime});
+            await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
+            for (let index = 0; index < 70; index++) {
+                await act(async () => {
+                    await jest.advanceTimersByTimeAsync(250);
+                });
+            }
+            expect(polls).toBe(70);
+            const resume = screen.getByRole("button", {name: "Resume exact generation"});
+            expect(screen.getByText(/Generation was cancelled at 70/)).toBeInTheDocument();
+            await user.click(resume);
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(250);
+            });
+            const terminal = screen.getByRole("button", {name: "Inspect library"}).closest("[data-pokie-lifecycle-result]");
+            expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-progress-snapshots", "64");
+            expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-job", "bounded-job");
+            expect(terminal).toHaveAttribute("data-pokie-lifecycle-result-durable-status", "completed");
+            expect(screen.getAllByText(/bounded-library/).length).toBeGreaterThan(0);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it("reconstructs a retained Outcome Library retry request before a fresh explicit submission", async () => {
         const user = userEvent.setup();
         const routes = {

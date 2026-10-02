@@ -136,6 +136,60 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 describe("StudioSimulationService", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
+    it.each([false, true])("withholds successful output during release and handles release rejection=%s", async (rejectRelease) => {
+        let finishRelease!: () => void;
+        let rejectCleanup!: (error: Error) => void;
+        const release = jest.fn(() => new Promise<void>((resolve, reject) => {
+            finishRelease = resolve;
+            rejectCleanup = reject;
+        }));
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-simulation-release-boundary-"));
+        const durableRepository = new FileStudioJobRepository(directory);
+        const durableJobs = new StudioJobService(durableRepository);
+        const repository = new InMemoryStudioSimulationRepository();
+        const onCompleted = jest.fn();
+        const service = new StudioSimulationService(repository, () => Promise.resolve(createFakeGame(manifest)), undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve({runtimePath: "/a", release}), onCompleted);
+        service.attachJobService(durableJobs);
+        const result = service.start("/a", {rounds: 1, seed: "cleanup"});
+        if (result.status !== "created") throw new Error("expected created job");
+        try {
+            for (let attempt = 0; !release.mock.calls.length && attempt < 100; attempt++) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(release).toHaveBeenCalledTimes(1);
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            expect(service.getStatusForProject("/a", result.job.id)?.report).toBeUndefined();
+            expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
+            expect(onCompleted).not.toHaveBeenCalled();
+            if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
+            else finishRelease();
+            for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectRelease) {
+                expect(service.getStatusForProject("/a", result.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("restart Studio before retrying"), recovery: {action: "retry"}});
+                expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+                expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
+                expect(onCompleted).not.toHaveBeenCalled();
+                await expect(service.cancelAll()).rejects.toThrow("release destination is busy");
+                // A failed drainage must not authorize a graceful shutdown marker.
+                await expect(durableJobs.completeGracefulShutdown(false)).rejects.toThrow("could not confirm executor cleanup");
+                expect(durableRepository.getProcessState()?.status).toBe("running");
+            } else {
+                expect(service.getReport("/a", result.job.id).status).toBe("ok");
+                await service.cancelAll();
+            }
+        } finally {
+            finishRelease();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("cancels a canonical WASM job after session acquisition and disposes its portable resources", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-simulation-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");

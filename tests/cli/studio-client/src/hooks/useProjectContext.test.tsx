@@ -36,6 +36,26 @@ describe("useProjectContext refresh acknowledgement", () => {
         expect(result.current.renderedTerminal?.header).toBe(result.current.header);
     });
 
+    it.each([undefined, "/games/valera"])("retains live same-project controls during a loading refresh on route %s without acknowledging it", async (route) => {
+        let requests = 0;
+        const loaded = {status: "loaded", projectRoot: "/games/valera", game: {id: "valera", name: "Valera", version: "1.0.0"}};
+        const fetchImpl: FetchLike = () => {
+            requests++;
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(requests === 2 ? {status: "loading", projectRoot: loaded.projectRoot} : loaded)});
+        };
+        const {result, rerender} = renderHook(({generation}) => useProjectContext(route, generation), {initialProps: {generation: 1}, wrapper: wrapper(fetchImpl)});
+        await waitFor(() => expect(result.current.completedRefreshGeneration).toBe(1));
+        const retained = result.current.header;
+        rerender({generation: 2});
+        await waitFor(() => expect(requests).toBe(2));
+        expect(result.current.header).toBe(retained);
+        expect(result.current.completedRefreshGeneration).toBe(1);
+        expect(result.current.renderedTerminal?.generation).toBe(1);
+        rerender({generation: 3});
+        await waitFor(() => expect(result.current.completedRefreshGeneration).toBe(3));
+        expect(result.current.renderedTerminal?.header).toBe(result.current.header);
+    });
+
     it("reports a failed generation without releasing it as completed", async () => {
         const fetchImpl: FetchLike = () => Promise.reject(new Error("context unavailable"));
         const {result} = renderHook(() => useProjectContext(undefined, 9), {wrapper: wrapper(fetchImpl)});

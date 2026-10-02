@@ -543,9 +543,12 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
     it("blocks reproducing a pasted artifact with an invalid outer round/seed, showing a subject-specific message instead of the raw server text", async () => {
         const user = userEvent.setup();
+        let inspections = 0;
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/replays/inspect-artifact": () => ({ok: false, status: 400, body: {error: '"round" must be a positive integer.'}}),
+            "/api/project/replays/inspect-artifact": () => ++inspections === 1
+                ? {ok: false, status: 400, body: {error: '"round" must be a positive integer.'}}
+                : {ok: true, status: 200, body: {round: 1, seed: "demo-seed", artifactWarnings: []}},
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -559,6 +562,17 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("The pasted artifact was rejected as invalid."));
         expect(screen.getByRole("alert")).not.toHaveTextContent('"round" must be a positive integer.');
         expect(screen.queryByRole("button", {name: "Reproduce"})).not.toBeInTheDocument();
+        const load = screen.getByRole("button", {name: "Validate & load"});
+        expect(load).toHaveAttribute("id", "replay-artifact-load");
+        expect(textarea).toHaveAttribute("data-pokie-lifecycle-field", "replay-artifact-json");
+        expect(screen.getByRole("alert").closest("[data-pokie-lifecycle-result]")).toHaveAttribute("data-pokie-lifecycle-terminal", "error");
+        fireEvent.change(textarea, {target: {value: JSON.stringify(descriptorFor({round: 1}))}});
+        await user.click(load);
+        await waitFor(() => expect(document.querySelector('[data-pokie-lifecycle-result="replay-artifact"]')).toHaveAttribute("data-pokie-lifecycle-terminal", "loaded"));
+        expect(document.querySelector('[data-pokie-lifecycle-result="replay-artifact"]')).toHaveAttribute("data-pokie-lifecycle-artifact-round", "1");
+        expect(document.querySelector('[data-pokie-lifecycle-result="replay-artifact"]')).toHaveAttribute("data-pokie-lifecycle-artifact-seed", "demo-seed");
+        expect(inspections).toBe(2);
+        expect(screen.queryByText(/The pasted artifact was rejected as invalid\./)).not.toBeInTheDocument();
     }, 60000);
 
     it("surfaces non-fatal warnings for a structurally invalid nested artifact but still allows reproducing", async () => {

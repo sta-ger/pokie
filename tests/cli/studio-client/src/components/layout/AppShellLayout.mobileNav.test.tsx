@@ -42,6 +42,8 @@ describe("AppShellLayout - mobile navigation", () => {
         renderLayout();
 
         expect(document.querySelector(".studio-app-main")).toHaveTextContent("content");
+        expect(document.getElementById("studio-navigation-panel")).toHaveStyle({"overflow-y": "auto"});
+        expect(document.getElementById("studio-navigation-panel")?.style.overscrollBehavior).toBe("contain");
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
         expect(stylesheet).toMatch(
             /@media \(max-width: 48em\)[\s\S]*?#root \.studio-app-main \{[\s\S]*?--app-shell-navbar-offset: 0px !important;[\s\S]*?padding-inline: var\(--mantine-spacing-md\) !important;/,
@@ -55,7 +57,9 @@ describe("AppShellLayout - mobile navigation", () => {
         await user.click(burger);
         expect(isBurgerOpened(burger)).toBe(true);
 
+        const focus = jest.spyOn(burger, "focus");
         await user.click(screen.getByRole("button", {name: "Section B"}));
+        expect(focus).toHaveBeenCalledWith({preventScroll: true});
 
         expect(onSelect).toHaveBeenCalledWith("b");
         expect(isBurgerOpened(burger)).toBe(false);

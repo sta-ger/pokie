@@ -201,7 +201,9 @@ export class StudioSimulationService {
         // status right after POST would then never observe "queued" at all. Queuing it instead
         // guarantees run() doesn't execute until after start() has already returned.
         this.activeExecutions.add(record.id);
-        const execution = Promise.resolve().then(() => this.run(record)).then(() => this.publishPendingTerminal(record));
+        const execution = Promise.resolve().then(() => this.run(record))
+            .catch((error: unknown) => this.failExecution(record, error))
+            .then(() => this.publishPendingTerminal(record));
         this.trackExecution(execution);
 
         return {status: "created", job: this.toJobView(record)};
@@ -311,13 +313,13 @@ export class StudioSimulationService {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) {
-            if (!record.report) return {status: "not-ready", jobStatus: record.status};
+            if (record.status !== "completed" || this.activeExecutions.has(id) || !record.report) return {status: "not-ready", jobStatus: record.status};
             return {status: "ok", report: record.report, statistics: record.statistics};
         }
         const job = this.jobService?.get(projectRoot, id);
         if (job?.operation !== "simulation") return {status: "not-found"};
         const report = reportFromDurableDetail(job);
-        if (report === undefined) return {status: "not-ready", jobStatus: job.status};
+        if (job.status !== "completed" || report === undefined) return {status: "not-ready", jobStatus: job.status};
         return {status: "ok", report, statistics: statisticsFromDurableDetail(job)};
     }
 
@@ -637,6 +639,18 @@ export class StudioSimulationService {
         this.notifyCompleted(record);
     }
 
+    // A rejected runtime release is not a successful job, even after the
+    // computation finished. Retain the error for shutdown so no graceful
+    // marker can claim that these resources were drained.
+    private failExecution(record: StudioSimulationJobRecord, error: unknown): void {
+        this.executionFailures.push(error);
+        this.pendingNotifications.delete(record.id);
+        Reflect.deleteProperty(record, "report");
+        Reflect.deleteProperty(record, "statistics");
+        Reflect.deleteProperty(record, "lastReplay");
+        this.fail(record, new Error(`Simulation cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
+    }
+
     private trackExecution(execution: Promise<void>): void {
         this.pendingExecutions.add(execution);
         execution.then(
@@ -801,11 +815,13 @@ function durableDetail(job: StudioJobView): Readonly<Record<string, unknown>> | 
 }
 
 function reportFromDurableDetail(job: StudioJobView): SimulationReport | undefined {
+    if (job.status !== "completed") return undefined;
     const report = durableDetail(job)?.report;
     return typeof report === "object" && report !== null && "game" in report && "rounds" in report ? report as SimulationReport : undefined;
 }
 
 function statisticsFromDurableDetail(job: StudioJobView): StudioSimulationStatisticsView | undefined {
+    if (job.status !== "completed") return undefined;
     const statistics = durableDetail(job)?.statistics;
     return typeof statistics === "object" && statistics !== null ? statistics as StudioSimulationStatisticsView : undefined;
 }

@@ -95,6 +95,7 @@ export class StudioReplayExecutionService {
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
+    private readonly releaseRuntimeGame: typeof releasePokieGame;
     private jobService: StudioJobService | undefined;
 
     constructor(
@@ -112,6 +113,7 @@ export class StudioReplayExecutionService {
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         loadRuntimeGame: StudioGameLoading = (projectRoot) => loadGame(projectRoot),
         loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
+        releaseRuntimeGame: typeof releasePokieGame = releasePokieGame,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -124,6 +126,7 @@ export class StudioReplayExecutionService {
         this.onCompleted = onCompleted;
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.loadWasmRuntime = loadWasmRuntime;
+        this.releaseRuntimeGame = releaseRuntimeGame;
     }
 
     public attachJobService(jobService: StudioJobService): void {
@@ -185,7 +188,9 @@ export class StudioReplayExecutionService {
         };
         this.repository.save(record);
         this.activeExecutions.add(record.id);
-        this.trackExecution(this.run(record).then(() => this.publishPendingTerminal(record)));
+        this.trackExecution(this.run(record)
+            .catch((error: unknown) => this.failExecution(record, error))
+            .then(() => this.publishPendingTerminal(record)));
 
         return {status: "created", job: this.toJobView(record)};
     }
@@ -275,13 +280,13 @@ export class StudioReplayExecutionService {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) {
-            if (!record.descriptor) return {status: "not-ready", jobStatus: record.status};
+            if (record.status !== "completed" || this.activeExecutions.has(id) || !record.descriptor) return {status: "not-ready", jobStatus: record.status};
             return {status: "ok", descriptor: record.descriptor};
         }
         const job = this.jobService?.get(projectRoot, id);
         if (job?.operation !== "replay") return {status: "not-found"};
         const descriptor = descriptorFromDurableDetail(job);
-        return descriptor === undefined ? {status: "not-ready", jobStatus: job.status} : {status: "ok", descriptor};
+        return job.status !== "completed" || descriptor === undefined ? {status: "not-ready", jobStatus: job.status} : {status: "ok", descriptor};
     }
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
@@ -294,8 +299,8 @@ export class StudioReplayExecutionService {
             round: record.round,
             seed: record.seed,
             completedRounds: record.completedRounds,
-            totalBet: record.descriptor?.totalBet,
-            totalWin: record.descriptor?.totalWin,
+            totalBet: record.status === "completed" ? record.descriptor?.totalBet : undefined,
+            totalWin: record.status === "completed" ? record.descriptor?.totalWin : undefined,
             startedAt: new Date(record.startedAt).toISOString(),
             completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
             durationMs: record.durationMs,
@@ -445,8 +450,10 @@ export class StudioReplayExecutionService {
             record.descriptor = descriptor;
             this.markTerminal(record);
             this.notifyCompleted(record);
+        } catch (error) {
+            this.fail(record, error);
         } finally {
-            await releasePokieGame(game);
+            await this.releaseRuntimeGame(game);
         }
     }
 
@@ -746,6 +753,16 @@ export class StudioReplayExecutionService {
         return typeof candidate.getSymbolsCombination === "function" && typeof candidate.getWinEvaluationResult === "function";
     }
 
+    // A rejected runtime release is not a successful job, even after the
+    // computation finished. Retain the error for shutdown so no graceful
+    // marker can claim that these resources were drained.
+    private failExecution(record: StudioReplayJobRecord, error: unknown): void {
+        this.executionFailures.push(error);
+        this.pendingNotifications.delete(record.id);
+        Reflect.deleteProperty(record, "descriptor");
+        this.fail(record, new Error(`Replay cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
+    }
+
     private trackExecution(execution: Promise<void>): void {
         this.pendingExecutions.add(execution);
         execution.then(
@@ -866,6 +883,7 @@ export class StudioReplayExecutionService {
 }
 
 function descriptorFromDurableDetail(job: StudioJobView): ReplayDescriptor | undefined {
+    if (job.status !== "completed") return undefined;
     const descriptor = job.result?.detail?.descriptor;
     return typeof descriptor === "object" && descriptor !== null && "sessionId" in descriptor && "round" in descriptor
         ? descriptor as ReplayDescriptor

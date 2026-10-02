@@ -4,7 +4,7 @@ import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {P805_PUBLIC_HELP_ARGUMENTS, hasP805TransactionActivations, tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {
     P805_PERSONAS,
     P805_REQUIRED_EVIDENCE_KINDS,
@@ -14,10 +14,12 @@ import {
     P805_WORKFLOW_CONTRACTS,
     p805TransactionStateClass,
     validateP805AuditMatrix,
+    validateP805CollectedAudits,
     validateP805TupleProofLedger,
     validateP805ProductReadinessCampaign,
 } from "../../scripts/p8-05-product-readiness-campaign.mjs";
 
+import {p805OperationPerformance} from "../../scripts/p8-05-persona-projection.mjs";
 import {aggregateP805PersonaAudits, prepareP805Closeout, runP805Closeout} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {
@@ -58,17 +60,18 @@ const timings = {
     cancellationMs: 1,
     restartRecoveryMs: 1,
 };
+let recoveryTransactionSequence = 0;
 const transaction = (operation, controlId, accessibleName, confirmed = false) => ({
     operation,
+    sequence: ++recoveryTransactionSequence,
     control: {stableControlId: controlId, identityAttribute: "id", accessibleName, enabled: true, disabled: false, disabledExplanation: null},
     confirmation: confirmed
-        ? {required: true, state: "confirmed", control: {stableControlId: "simulation-cancel-confirm", identityAttribute: "id", accessibleName: "Confirm", enabled: true, disabled: false, disabledExplanation: null}}
+        ? {required: true, state: "confirmed", control: {stableControlId: "simulation-cancel-confirm", identityAttribute: "id", accessibleName: "Confirm", enabled: true, disabled: false, disabledExplanation: null}, activation: nativePointerActivation("simulation-cancel-confirm")}
         : {required: false, state: "not-required", control: null},
-    keyboardActivations: confirmed
-        ? [{phase: "operation", controlId, count: 1}, {phase: "confirmation", controlId: "simulation-cancel-confirm", count: 1}]
-        : [{phase: "operation", controlId, count: 1}],
-    request: {browserRequestId: `runtime-${operation}`, method: "POST", path: `/api/project/${operation}`, status: 200, responseSha256: hash(`response-${operation}`)},
-    terminal: {status: "completed", resultSha256: hash(`terminal-${operation}`), source: "rendered-poll", pollPath: `/api/project/${operation}/job`, browserRequestId: `terminal-${operation}`, causedByRequestId: `runtime-${operation}`},
+    pointerActivations: operation === "replay" ? [] : [{phase: "operation", ...nativePointerActivation(controlId)}],
+    keyboardActivations: operation === "replay" ? [{phase: "operation", kind: "keyboard", controlId, count: 1, nativeFocus: true, preDispatchFocus: {controlId, native: true}}] : [],
+    request: {browserRequestId: `runtime-${operation}-${recoveryTransactionSequence}`, method: "POST", path: `/api/project/${operation}`, status: 200, responseSha256: hash(`response-${operation}`)},
+    terminal: {status: "completed", resultSha256: hash(`terminal-${operation}`), source: "rendered-poll", pollPath: `/api/project/${operation}/job`, browserRequestId: `terminal-${operation}`, causedByRequestId: `runtime-${operation}-${recoveryTransactionSequence}`},
 });
 const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jobId) => {
     const requestId = `runtime-${operation}-${jobId}`,
@@ -79,9 +82,7 @@ const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jo
         stateClass,
         control: {stableControlId: controlId, identityAttribute: "id", accessibleName: operation === "simulation-retry" ? "Repeat simulation" : "Run Simulation", enabled: true, disabled: false, disabledExplanation: null},
         confirmation: {required: false, state: "not-required", control: null},
-        // The fixture keeps the existing runtime keyboard inventory while
-        // the Retry receipt itself remains a native pointer transaction.
-        keyboardActivations: [{phase: "operation", controlId, count: 1}],
+        keyboardActivations: [],
         pointerActivations: [{
             kind: "pointer", count: 1, controlId, capturedControlId: controlId, captureKey,
             preDispatchFocus: {controlId, native: true},
@@ -131,6 +132,29 @@ const nativePointerActivation = (controlId) => ({
     hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
     dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
 });
+test("unexecuted operations retain null timing and cannot borrow tuple duration", () => {
+    const measured = {...timings, validationMs:null, simulationMs:null, replayMs:null, cancellationMs:null};
+    const performance = p805OperationPerformance(measured);
+    for (const name of ["validationMs", "simulationMs", "replayMs", "cancellationMs"]) assert.deepEqual(performance[name], {elapsedMs:null, budgetMs:name === "validationMs" ? 60_000 : name === "cancellationMs" ? 120_000 : 300_000, classification:"not-executed"});
+});
+test("recovery consumes pointer and keyboard receipts without extra activations", () => {
+    const pointer = transaction("simulation", "simulation-run", "Run Simulation", true);
+    assert.equal(pointer.keyboardActivations.length, 0);
+    assert.equal(hasP805TransactionActivations(pointer), true);
+    const keyboard = transaction("replay", "replay-run", "Run again");
+    assert.equal(keyboard.pointerActivations.length, 0);
+    assert.equal(hasP805TransactionActivations(keyboard), true);
+    for (const mutate of [
+        (value) => { value.keyboardActivations.push(keyboard.keyboardActivations[0]); },
+        (value) => { value.pointerActivations.push(value.pointerActivations[0]); },
+        (value) => { value.pointerActivations[0].controlId = "substituted"; },
+        (value) => { value.confirmation.activation.controlId = "substituted"; },
+        (value) => { value.confirmation.activation.dispatch.focus.targetMatchesCapturedControl = false; },
+    ]) {
+        const invalid = structuredClone(pointer); mutate(invalid);
+        assert.equal(hasP805TransactionActivations(invalid), false);
+    }
+});
 const liveDomTransaction = (persona, observation, contract, viewport) => {
     const bodySha256 = hash(contract.body ?? ""),
         jobId = `job-${persona}-${observation}-${viewport}`,
@@ -175,6 +199,7 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
             }} : {}),
             ...(contract.body === "outcome-library" ? {preflight: {state: "ready", status: "ok", controlId: "outcome-library-generate", cardLabel: "Outcome library generator", enabled: true, disabled: false}} : {}),
             confirmation: {required: false, state: "not-required", control: null},
+            pointerActivations: [],
             keyboardActivations: [{phase: "operation", kind: "keyboard", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1, nativeFocus: true, preDispatchFocus: {controlId: contract.actionControlId ?? screen.navigationControlId, native: true}}],
         };
     return {
@@ -288,7 +313,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
     const evidence = async (candidate, kind, at, observationIds = [], contents) => {
         const evidenceSequence = ++sequence;
         const defaults = {
-            "cli-transcript": `PACKED_INSTALL\npacked CLI create\npacked CLI WASM run\npacked CLI serve\n${Object.values(P805_WORKFLOW_CONTRACTS).flatMap((contracts) => Object.values(contracts).map((contract) => contract.cli ?? "")).join("\n")}\n`,
+            "cli-transcript": `PACKED_INSTALL\npacked CLI create\npacked CLI WASM run\npacked CLI serve\n${P805_PUBLIC_HELP_ARGUMENTS.map((args) => `packed CLI help ${args.join("-")} ${args.join(" ")}`).join("\n")}\n${Object.values(P805_WORKFLOW_CONTRACTS).flatMap((contracts) => Object.values(contracts).map((contract) => contract.cli ?? "")).join("\n")}\n`,
             "browser-log": "[]",
             "api-log": JSON.stringify([{path: "/api/health"}, {path: "/api/project/simulations"}]),
             error: "no errors\n",
@@ -423,6 +448,19 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                 });
             }
         }
+        const replayArtifacts = Object.fromEntries(["valid", "invalid", "recovered"].map((name) => {
+            const status = name === "invalid" ? 400 : 200, payload = status === 400 ? {error:"round must be positive"} : {round:1, seed:"p8-05", artifactWarnings:[]};
+            const captured = transaction("replay-artifact", "replay-artifact-load", "Validate & load");
+            captured.request = {browserRequestId:`artifact-${phase}-${persona}-${tuple.observation}-${tuple.viewport}-${name}`, method:"POST", path:"/api/project/replays/inspect-artifact", status, responseSha256:hash(JSON.stringify(payload))};
+            captured.terminal = {status:status === 200 ? "loaded" : "error", source:"response", browserRequestId:captured.request.browserRequestId, causedByRequestId:captured.request.browserRequestId, resultSha256:hash(JSON.stringify(payload))};
+            const submitted = JSON.stringify(status === 400 ? {round:0, seed:"invalid-artifact"} : {round:1, seed:"p8-05"});
+            captured.viewport = {width:{wide:1440, compact:960, narrow:390}[tuple.viewport], height:{wide:900, compact:800, narrow:844}[tuple.viewport]};
+            captured.request.bodySha256 = hash(submitted);
+            captured.formState = {operation:"replay-artifact", fields:[{stableControlId:"replay-artifact-json", value:submitted}]};
+            browserEvents.push({method:"Network.requestWillBeSent", params:{requestId:captured.request.browserRequestId, request:{method:"POST", url:"http://localhost/api/project/replays/inspect-artifact", postData:submitted}}}, {method:"Network.responseReceived", params:{requestId:captured.request.browserRequestId, response:{url:"http://localhost/api/project/replays/inspect-artifact", status}}});
+            apiEntries.push({...captured.request, payload, initiator:"rendered-control"});
+            return [name, {payload, transaction:captured, screenshotEvidenceId:artifacts.find((item) => item.kind === "screenshot").evidenceId, rendered:{controlId:"replay-artifact-load", status:status === 200 ? "loaded" : "error", text:status === 200 ? "Round 1, seed p8-05." : "round must be positive", ...(status === 200 ? {round:"1", seed:"p8-05"} : {})}}];
+        }));
         const retryTransaction = pointerTransaction("simulation-retry", "simulation-retry", "recovery-operation", "completed", "simulation-retry"),
             restartTransaction = pointerTransaction("simulation", "simulation-run", "editable-submission", "recovery-required", "simulation-restart"),
             runtime = await evidence(
@@ -432,14 +470,16 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             [],
             JSON.stringify({
                 kind: "p8-05-runtime-observation",
+                viewport: tuple.viewport,
+                replayArtifacts,
                 transactions: {
                     activeReloadStart: transaction("simulation", "simulation-run", "Run Simulation"),
                     activeReloadCancellation: transaction("simulation-cancel", "simulation-cancel", "Cancel", true),
                     simulationFailure: transaction("simulation", "simulation-run", "Run Simulation"),
                     simulationSuccess: transaction("simulation", "simulation-run", "Run Simulation"),
-                    replayFailure: transaction("replay", "replay-run", "Run again"),
+                    replayFailure: replayArtifacts.invalid.transaction,
                     replaySuccess: transaction("replay", "replay-run", "Run again"),
-                    replayRecovery: transaction("replay", "replay-run", "Run again"),
+                    replayRecovery: replayArtifacts.recovered.transaction,
                     cancellableSimulation: transaction("simulation", "simulation-run", "Run Simulation"),
                     cooperativeCancellation: transaction("simulation-cancel", "simulation-cancel", "Cancel", true),
                     simulationRetry: retryTransaction,
@@ -509,6 +549,11 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                 },
             }),
         );
+        const runtimeValue = JSON.parse(await readFile(path.join(directory, runtime.path), "utf8"));
+        for (const captured of Object.values(runtimeValue.transactions)) captured.viewport = {width:{wide:1440, compact:960, narrow:390}[tuple.viewport], height:{wide:900, compact:800, narrow:844}[tuple.viewport]};
+        const runtimeContents = JSON.stringify(runtimeValue);
+        await writeFile(path.join(directory, runtime.path), runtimeContents);
+        runtime.sha256 = hash(runtimeContents); runtime.sizeBytes = Buffer.byteLength(runtimeContents);
         artifacts.push(runtime);
         const apiEvidence = artifacts.find((item) => item.kind === "api-log");
         await writeFile(path.join(directory, apiEvidence.path), JSON.stringify(apiEntries));
@@ -693,6 +738,10 @@ async function campaignFixture({initialOverflow = false, throughController = fal
         const children = [], acceptedReceipts = [], audits = [];
         await Promise.all(tuples.map(async (tuple, index) => {
             const value = await audit(tuple.persona, phase, candidate, baseOffset + index, tuple);
+            if (!["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation)) {
+                value.timings = {...value.timings, validationMs:null, simulationMs:null, replayMs:null, cancellationMs:null};
+                value.performance = p805OperationPerformance(value.timings);
+            }
             value.timings = {...value.timings, startupMs:index + 1};
             value.performance.startupMs.elapsedMs = index + 1;
             const timingEvidence = value.evidence.find((item) => item.kind === "timing"), timingContents = JSON.stringify(value.timings);
@@ -726,7 +775,11 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             audits[index] = value;
         }));
         const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", ...candidate, parent:{pid:1}, runtime:{kind:"p8-05-immutable-packed-runtime", root:directory, receiptPath:"runtime.json", receiptSha256:"a".repeat(64), ...candidate, archiveSha256:candidate.candidatePackageSha256, installationCount:1, permissions:"read-only-before-any-tuple-child"}, children, acceptedReceipts, finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
-        return aggregateP805PersonaAudits(audits, ledger, phase, candidate);
+        const aggregated = aggregateP805PersonaAudits(audits, ledger, phase, candidate);
+        // Exercise the collector boundary in the controller-to-closeout cases.
+        // Other cases already authenticate these children in final validation.
+        if (throughController) await validateP805CollectedAudits(directory, aggregated, phase, candidate);
+        return aggregated;
     };
     const initialAudits = await collect("initial", initial, 100);
     const retests = await collect("retest", retest, 1000);
