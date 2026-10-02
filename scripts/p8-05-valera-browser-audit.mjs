@@ -654,7 +654,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         const item=document.getElementById(${JSON.stringify(stableControlId)});
         if(!(item instanceof HTMLElement)||item.disabled)return null;
         if(item.id==='blueprint-create-game'&&(item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy'))))return null;
-        if(${JSON.stringify(scrollIntoViewIfNeeded)})item.scrollIntoView({block:'center',inline:'nearest'});
+        if(${JSON.stringify(scrollIntoViewIfNeeded)})item.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});
         item.focus({preventScroll:true});
         const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
         const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2,hit=document.elementFromPoint(x,y);
@@ -726,6 +726,25 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                     if(!finished||!sameControl())return null;
                 }
                 item.focus({preventScroll:true});
+                // Import panels and mobile scrolling can reflow the table
+                // without registering an animation on this control's ancestors.
+                // Require its geometry and viewport to settle on the same node
+                // before handing its coordinates to the native press.
+                const layoutSettled=await new Promise((resolve)=>{
+                    let frame,previous=null,stableSince=null;
+                    const finish=(value)=>{clearTimeout(timer);cancelAnimationFrame(frame);resolve(value);};
+                    const timer=setTimeout(()=>finish(false),2000);
+                    const sample=(time)=>{
+                        if(!sameControl()){finish(false);return;}
+                        const box=item.getBoundingClientRect(),viewport=window.visualViewport;
+                        const signature=JSON.stringify([box.left,box.top,box.width,box.height,scrollX,scrollY,viewport?.offsetLeft,viewport?.offsetTop,viewport?.scale]);
+                        if(signature!==previous){previous=signature;stableSince=time;}
+                        else if(time-stableSince>=100){finish(true);return;}
+                        frame=requestAnimationFrame(sample);
+                    };
+                    frame=requestAnimationFrame(sample);
+                });
+                if(!layoutSettled||!sameControl())return null;
                 const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2;
                 const hit=document.elementFromPoint(x,y);
                 const preDispatchFocus={controlId:item.id,native:document.activeElement===item};

@@ -87,6 +87,13 @@ it("retains a cancellation terminal through a long resumed run within the progre
     expect(history.length).toBe(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT);
     expect(history).toContain(cancelled);
     expect(history[history.length - 1]).toBe(completed);
+    for (let poll = 0; poll < 1000; poll++) {
+        history = retainOutcomeLibraryProgressSnapshot(history, {...completed});
+    }
+    expect(history.length).toBe(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT);
+    expect(history[0]).toBe(initial);
+    expect(history).toContain(cancelled);
+    expect(history[history.length - 1]).toEqual(completed);
 });
 
 it("binds a replaced durable job's progress history without retaining a prior job terminal", () => {

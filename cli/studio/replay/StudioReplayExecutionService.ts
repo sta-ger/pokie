@@ -777,6 +777,7 @@ export class StudioReplayExecutionService {
     }
 
     private cancelRecord(record: StudioReplayJobRecord): void {
+        Reflect.deleteProperty(record, "descriptor");
         record.status = "cancelled";
         this.markTerminal(record);
     }
@@ -829,8 +830,13 @@ export class StudioReplayExecutionService {
         const terminal = this.pendingTerminals.get(record.id);
         this.pendingTerminals.delete(record.id);
         if (terminal !== undefined) {
-            record.status = terminal;
-            this.markTerminal(record);
+            // A cancellation accepted during release must withhold the staged
+            // descriptor. A cleanup failure still owns the terminal diagnostic.
+            if (terminal !== "failed" && record.abortController.signal.aborted) this.cancelRecord(record);
+            else {
+                record.status = terminal;
+                this.markTerminal(record);
+            }
         }
         // Only a successfully drained terminal can notify output consumers.
         if (record.status === "completed") this.onCompleted(record);

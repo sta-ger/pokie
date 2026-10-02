@@ -595,15 +595,26 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.deepEqual(await evaluate("({width:innerWidth,height:innerHeight})"),{width,height});
         }
         // Trace the retained finding's actual Open control shape at the
-        // assigned narrow viewport, with a native focus transfer at press.
+        // assigned narrow viewport, with smooth page scrolling, a table reflow
+        // outside the button's ancestors and native focus transfer at press.
         const importedLocation = '/games/Bounded reel editor.json';
         const importedControlId = 'project-open:' + importedLocation;
         await evaluate(`(()=>{
             const panel=document.createElement('section');panel.tabIndex=-1;
             const button=document.createElement('button');button.id=${JSON.stringify(importedControlId)};
             button.dataset.pokieProjectLocation=${JSON.stringify(importedLocation)};
-            button.innerHTML='<span>Open</span>';button.style.marginTop='1800px';
-            panel.append(button);document.body.append(panel);
+            button.innerHTML='<span>Open</span>';
+            const spacer=document.createElement('div');spacer.style.height='1800px';
+            const table=document.createElement('table'),cell=table.insertRow().insertCell();cell.append(button);
+            panel.append(spacer,table);document.body.append(panel);
+            document.documentElement.style.scrollBehavior='smooth';
+            button.addEventListener('mouseover',()=>{
+                // This layout change has no Web Animation on the button or
+                // its ancestors. It must settle before the captured press.
+                let frames=3;
+                const reflow=()=>{if(--frames===0)spacer.style.height='1720px';else requestAnimationFrame(reflow);};
+                requestAnimationFrame(reflow);
+            },{once:true});
             window.importedOpenActivations=[];
             document.addEventListener('pointerdown',(event)=>{if(button.contains(event.target))panel.focus({preventScroll:true});},true);
             button.addEventListener('click',(event)=>{
@@ -617,9 +628,11 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(importedOpen.preDispatchFocus.native, true);
         assert.equal(importedOpen.hitTest.matchesCapturedControl, true);
         assert.equal(importedOpen.dispatch.focus.atDispatchNative, false);
+        assert.equal(importedOpen.dispatch.targetsMatchCapturedControl, true);
         assert.deepEqual([importedOpen.dispatch.pointerDownCount, importedOpen.dispatch.pointerUpCount, importedOpen.dispatch.clickCount], [1,1,1]);
         assert.deepEqual(await evaluate("window.importedOpenActivations"), [{trusted:true, controlId:importedControlId}]);
         assert.equal(await evaluate("location.hash"), '#/project/imported/overview');
+        await evaluate("document.documentElement.style.scrollBehavior='auto'");
         await cdp.send("Emulation.clearDeviceMetricsOverride");
         for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "confirmation-pointer", "dispatch-focus-transfer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;

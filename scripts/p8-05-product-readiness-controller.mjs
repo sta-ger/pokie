@@ -41,7 +41,7 @@ const tupleEvidenceFor = (ledger) => ledger.children.map((child, index) => ({tup
 // projection; a PID alone is also insufficient after a long sequential run.
 function acceptedTupleAudit(ledger, audits, index) {
     const child = ledger.children[index], accepted = ledger.acceptedReceipts[index];
-    const matches = audits.filter((audit) => audit.auditId === accepted.receipt.auditId && audit.worker?.pid === child.worker?.pid && JSON.stringify(audit.tuple) === JSON.stringify(child.tuple));
+    const matches = audits.filter((audit) => audit.auditId === accepted.receipt.auditId && JSON.stringify(audit.worker) === JSON.stringify(child.worker) && JSON.stringify(audit.tuple) === JSON.stringify(child.tuple) && audit.cleanup?.evidenceId === child.cleanupEvidenceId);
     if (matches.length !== 1) fail(`controller requires one accepted immutable audit for ${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`);
     const audit = matches[0], action = audit.rendered?.actions?.[0];
     if (audit.rendered?.actions?.length !== 1 || action?.persona !== child.tuple.persona || action?.observation !== child.tuple.observation || action?.viewport !== child.tuple.viewport || digest(JSON.stringify(action)) !== accepted.receipt.checkpointReceipt.actionSha256) fail("controller tuple projection cannot substitute another rendered action");
@@ -50,12 +50,14 @@ function acceptedTupleAudit(ledger, audits, index) {
 export const projectP805RenderedTupleEvidence = (ledger, tupleAudits) => ledger.children.map((child, index) => {
     const audit = acceptedTupleAudit(ledger, tupleAudits, index), action = audit.rendered?.actions?.[0], pointer = action?.transaction?.pointerActivations?.[0], keyboard = action?.transaction?.keyboardActivations?.[0], isPointer = action?.interaction?.activation === "pointer", activation = isPointer ? pointer : keyboard;
     if (!audit || !action || !activation || activation.controlId !== action.stableControlId || !hasP805TransactionActivations(action.transaction)) fail(`controller cannot project rendered evidence for ${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`);
-    return {
+    // A handoff must not expose aliases that let a consumer mutate accepted
+    // tuple receipts, including request, viewport, artifact and terminal data.
+    return JSON.parse(JSON.stringify({
         tuple:child.tuple,
         auditSha256:child.auditSha256,
         checkpointReceiptSha256:child.checkpointReceiptSha256s[0],
         actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256,
-        activation:JSON.parse(JSON.stringify(activation)),
+        activation,
         request:action.transaction.request,
         terminal:{status:action.terminal.status, resultSha256:action.terminal.resultSha256},
         rendered:{state:action.visibleTerminal.state, observedAfterRequestId:action.visibleTerminal.observedAfterRequestId, resultSha256:action.visibleTerminal.resultSha256, postTransitionRenderedState:isPointer ? action.transaction.postTransitionRenderedState : undefined},
@@ -64,7 +66,7 @@ export const projectP805RenderedTupleEvidence = (ledger, tupleAudits) => ledger.
         accessibility:{visibleFocus:action.accessibility.visibleFocus, namedRegions:action.accessibility.namedRegions, unexplainedDisabledControls:action.accessibility.unexplainedDisabledControls},
         provenance:{candidateId:audit.candidateId, archiveGitHead:audit.packageIdentity.archiveGitHead, candidateTreeObjectId:audit.packageIdentity.candidateTreeObjectId, candidateExecutableReceiptSha256:audit.packageIdentity.candidateExecutableReceiptSha256},
         evidence:{actionEvidenceId:action.evidenceId, screenshotEvidenceId:action.screenshotEvidenceId, cleanupEvidenceId:audit.cleanup.evidenceId},
-    };
+    }));
 });
 // Retry is a recovery operation rather than one of a tuple's primary form
 // submissions.  Keep its receipt in the controller handoff explicitly: a

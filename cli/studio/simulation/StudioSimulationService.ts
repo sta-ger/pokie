@@ -680,6 +680,9 @@ export class StudioSimulationService {
     }
 
     private cancelRecord(record: StudioSimulationJobRecord): void {
+        Reflect.deleteProperty(record, "report");
+        Reflect.deleteProperty(record, "statistics");
+        Reflect.deleteProperty(record, "lastReplay");
         record.status = "cancelled";
         this.markTerminal(record);
     }
@@ -736,8 +739,14 @@ export class StudioSimulationService {
         const terminal = this.pendingTerminals.get(record.id);
         this.pendingTerminals.delete(record.id);
         if (terminal !== undefined) {
-            record.status = terminal;
-            this.markTerminal(record);
+            // Cancel remains actionable while release is pending, even if
+            // computation already staged a successful report. Cleanup failure
+            // takes precedence over cancellation because drainage is unproven.
+            if (terminal !== "failed" && record.abortController.signal.aborted) this.cancelRecord(record);
+            else {
+                record.status = terminal;
+                this.markTerminal(record);
+            }
         }
         // Only a successfully drained terminal can notify output consumers.
         if (record.status === "completed") this.onCompleted(record);

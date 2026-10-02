@@ -220,6 +220,8 @@ test("controller projects every accepted tuple action instead of a persona aggre
         (audits) => { audits.splice(1, 1); },
         (audits) => { audits.push(structuredClone(audits[1])); },
         (audits) => { audits[1].auditId = audits[0].auditId; },
+        (audits) => { audits[1].worker.nonce = "another-process-incarnation"; },
+        (audits) => { audits[1].cleanup.evidenceId = "another-tuple-cleanup"; },
         (audits) => { audits[1].tuple.viewport = "wide"; },
         (audits) => { audits[1].rendered.actions[0] = audits[0].rendered.actions[0]; },
         (audits) => { audits[1].rendered.actions[0].transaction.request.browserRequestId = "unbound-request"; },
@@ -229,4 +231,9 @@ test("controller projects every accepted tuple action instead of a persona aggre
         assert.throws(() => projectP805RenderedTupleEvidence(ledger, invalid), /accepted immutable audit|substitute another rendered action/);
     }
     assert.equal(JSON.stringify({ledger, tupleAudits}), original, "projection preserves accepted receipts and cleanup evidence");
+    projected[0].tuple.viewport = "compact";
+    projected[0].request.browserRequestId = "mutated-by-consumer";
+    projected[0].rendered.postTransitionRenderedState.captureKey = "mutated-by-consumer";
+    projected[0].accessibility.namedRegions.push("mutated-by-consumer");
+    assert.equal(JSON.stringify({ledger, tupleAudits}), original, "handoff consumers cannot mutate accepted tuple data through aliases");
 });

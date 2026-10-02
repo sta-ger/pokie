@@ -136,7 +136,7 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 describe("StudioSimulationService", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
-    it.each([false, true])("withholds successful output during release and handles release rejection=%s", async (rejectRelease) => {
+    it.each([[false, false], [true, false], [false, true], [true, true]])("withholds output through release rejection=%s and cancellation=%s", async (rejectRelease, cancelDuringRelease) => {
         let finishRelease!: () => void;
         let rejectCleanup!: (error: Error) => void;
         const release = jest.fn(() => new Promise<void>((resolve, reject) => {
@@ -164,6 +164,11 @@ describe("StudioSimulationService", () => {
             expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
             expect(onCompleted).not.toHaveBeenCalled();
             expect(service.listReports("/a")).toEqual([]);
+            if (cancelDuringRelease) {
+                expect(service.cancelForProject("/a", result.job.id)?.status).toBe("cancelling");
+                expect(durableJobs.get("/a", result.job.id)?.status).toBe("cancelling");
+                expect(onCompleted).not.toHaveBeenCalled();
+            }
             if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
             else finishRelease();
             for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
@@ -181,6 +186,14 @@ describe("StudioSimulationService", () => {
                 // A failed drainage must not authorize a graceful shutdown marker.
                 await expect(durableJobs.completeGracefulShutdown(false)).rejects.toThrow("could not confirm executor cleanup");
                 expect(durableRepository.getProcessState()?.status).toBe("running");
+            } else if (cancelDuringRelease) {
+                expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
+                expect(durableJobs.get("/a", result.job.id)).toMatchObject({status: "cancelled", recovery: {action: "retry"}});
+                expect(durableJobs.get("/a", result.job.id)?.result?.outputs).toBeUndefined();
+                expect(repository.get(result.job.id)?.report).toBeUndefined();
+                expect(onCompleted).not.toHaveBeenCalled();
+                expect(service.listReports("/a")).toEqual([]);
+                await service.cancelAll();
             } else {
                 expect(service.getReport("/a", result.job.id).status).toBe("ok");
                 expect(onCompleted).toHaveBeenCalledTimes(1);

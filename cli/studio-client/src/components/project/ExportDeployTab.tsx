@@ -143,7 +143,10 @@ export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLi
     // A resumed run can poll for hours. Keep its cancellation/recovery
     // identity as well as the first submission and the current observation.
     const initial = observations[0]!;
-    const terminal = [...boundHistory].reverse().find((item) => !["queued", "running", "cancelling"].includes(item.durableStatus));
+    // Repeated completed polls must not evict the cancellation/checkpoint
+    // that authorized Resume. Prefer that recovery terminal over success.
+    const terminals = [...boundHistory].reverse().filter((item) => !["queued", "running", "cancelling"].includes(item.durableStatus));
+    const terminal = terminals.find((item) => item.durableStatus !== "completed") ?? terminals[0];
     const pinned = terminal === undefined || terminal === initial ? [initial] : [initial, terminal];
     const recent = observations.filter((item) => !pinned.includes(item));
     return [...pinned, ...recent.slice(-(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT - pinned.length))];

@@ -693,12 +693,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             observations,
             observationEvidence: Object.fromEntries(actions.map((action) => [action.observation, action.evidenceId])),
             timings,
-            performance: Object.fromEntries(
-                Object.entries(timings).map(([name, elapsedMs]) => [
-                    name,
-                    {elapsedMs, budgetMs: 1_000, classification: "within-budget"},
-                ]),
-            ),
+            performance: p805OperationPerformance(timings),
             cleanup: {
                 processTreeDrained: true,
                 resourcesDrained: true,
@@ -1101,6 +1096,18 @@ test("fails closed on mutable chronology and context claims", async () => {
         await fixture.cleanup();
     }
 });
+test("rejects inflated operation budgets before accepting a persona aggregate", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const recordPath = path.join(fixture.directory, "retests.json");
+        const {audits} = JSON.parse(await readFile(recordPath, "utf8"));
+        audits[0].performance.simulationMs.budgetMs += 1;
+        await assert.rejects(validateP805CollectedAudits(fixture.directory, audits, "retest", retest), /audit is incomplete/);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
 test("rejects relabelled rendered workflow evidence and unmeasured timings", async () => {
     const fixture = await campaignFixture();
     try {
