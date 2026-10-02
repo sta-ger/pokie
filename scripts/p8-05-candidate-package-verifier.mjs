@@ -76,7 +76,12 @@ async function verifyCandidateBuild(options, projection, repository) {
         // A verifier launched by Jest must still build the production package.
         // NODE_ENV=test enables development JSX with absolute checkout paths,
         // making otherwise identical candidates differ between workspaces.
-        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...process.env, NODE_ENV:"production", PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
+        // Bind npm's package/lifecycle context as well as NODE_ENV. A shell
+        // inheriting test:targeted's package paths can read the checkout instead
+        // of the immutable candidate. Invoke only scripts.build as before;
+        // prebuild's lint gate remains outside this executable verification.
+        const lifecycle = {npm_lifecycle_event:"build", npm_lifecycle_script:declaration.scripts.build, npm_package_json:path.join(workspace, "package.json"), npm_package_name:declaration.name, npm_package_version:declaration.version};
+        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...process.env, ...lifecycle, NODE_ENV:"production", INIT_CWD:workspace, PWD:workspace, PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
         const entries = [];
         const collect = async (directory, prefix) => {
             for (const entry of await readdir(directory, {withFileTypes:true})) {
@@ -98,7 +103,7 @@ async function verifyCandidateBuild(options, projection, repository) {
             const summarize = (files) => ({count:files.length, paths:files.slice(0, 10)});
             fail(`archive executables differ from the verified candidate build; run the candidate's clean build before npm pack: ${JSON.stringify({missing:summarize(missing), unexpected:summarize(unexpected), changed:summarize(changed)})}`);
         }
-        return {kind:"p8-05-verified-candidate-build", candidateId:options.candidateId, command:declaration.scripts.build, commandSource:"candidate package.json#scripts.build", environment:{NODE_ENV:"production"}, executableFiles:entries.length, executableSha256:digest(JSON.stringify(entries)), outputSha256:digest(buildOutput)};
+        return {kind:"p8-05-verified-candidate-build", candidateId:options.candidateId, command:declaration.scripts.build, commandSource:"candidate package.json#scripts.build", environment:{NODE_ENV:"production"}, lifecycle:{event:lifecycle.npm_lifecycle_event, packageName:lifecycle.npm_package_name, packageVersion:lifecycle.npm_package_version}, executableFiles:entries.length, executableSha256:digest(JSON.stringify(entries)), outputSha256:digest(buildOutput)};
     } finally { await rm(workspace, {recursive:true, force:true}); }
 }
 

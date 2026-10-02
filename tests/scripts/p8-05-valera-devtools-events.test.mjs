@@ -1,15 +1,81 @@
 import assert from "node:assert/strict";
-import {spawn} from "node:child_process";
+import {execFileSync, spawn} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
 import {createServer} from "node:http";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
+import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 import {clickP805CapturedControl, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
+
+test("candidate verification uses the production npm build context and retains canonical archive bytes", async () => {
+    // This bounded fixture exercises the verifier's real build/receipt path;
+    // it does not launch the controller-owned full package or release gates.
+    const repository = await mkdtemp(path.join(process.cwd(), ".p8-05-canonical-context-test-"));
+    const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8"});
+    try {
+        const declaration = {name:"pokie", version:"1.3.0", type:"module", scripts:{prebuild:"node -e \"throw new Error('unrelated prebuild gate must not run')\"", build:"node build.cjs"}};
+        const executable = "export const candidate = 805;\n";
+        await writeFile(path.join(repository, "package.json"), JSON.stringify(declaration));
+        await writeFile(path.join(repository, "package-lock.json"), "{}\n");
+        await writeFile(path.join(repository, "source.js"), executable);
+        await writeFile(path.join(repository, "build.cjs"), `
+            const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
+            assert.equal(process.env.NODE_ENV, 'production');
+            assert.equal(process.env.npm_lifecycle_event, 'build');
+            assert.equal(process.env.npm_lifecycle_script, 'node build.cjs');
+            assert.equal(process.env.npm_package_json, path.join(process.cwd(), 'package.json'));
+            assert.equal(process.env.npm_package_name, 'pokie');
+            assert.equal(process.env.npm_package_version, '1.3.0');
+            assert.equal(process.env.INIT_CWD, process.cwd());
+            assert.equal(process.env.PWD, process.cwd());
+            fs.mkdirSync('dist');
+            fs.copyFileSync(path.join(path.dirname(process.env.npm_package_json), 'source.js'), 'dist/index.js');
+        `);
+        git("init", "--quiet");
+        git("add", "package.json", "package-lock.json", "source.js", "build.cjs");
+        git("-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "[P8-05] canonical build context fixture");
+        const candidateId = git("rev-parse", "HEAD").trim();
+        await mkdir(path.join(repository, "node_modules"));
+        await mkdir(path.join(repository, "package", "dist"), {recursive:true});
+        await writeFile(path.join(repository, "package", "package.json"), JSON.stringify(declaration));
+        await writeFile(path.join(repository, "package", "dist", "index.js"), executable);
+        const sourceArchive = path.join(repository, "canonical.tgz"), candidateArchive = path.join(repository, "handoff.tgz"), receipt = path.join(repository, "receipt.json");
+        const pack = () => execFileSync("tar", ["-czf", sourceArchive, "-C", repository, "package"]);
+        pack();
+        const canonicalBytes = await readFile(sourceArchive);
+        assert.equal(process.env.NODE_ENV, "test", "the verifier must override the real Jest caller context");
+        assert.equal(process.env.npm_lifecycle_event, "test:targeted");
+        const verified = await verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository});
+        assert.deepEqual(await readFile(sourceArchive), canonicalBytes);
+        assert.deepEqual(await readFile(candidateArchive), canonicalBytes);
+        assert.equal(verified.candidateId, candidateId);
+        assert.equal(verified.candidatePackageSha256, hash(canonicalBytes));
+        assert.deepEqual(verified.verifiedBuild.environment, {NODE_ENV:"production"});
+        assert.deepEqual(verified.verifiedBuild.lifecycle, {event:"build", packageName:"pokie", packageVersion:"1.3.0"});
+        assert.equal(verified.authentication.attestedBuildSha256, hash(JSON.stringify(verified.verifiedBuild)));
+        assert.deepEqual(JSON.parse(await readFile(receipt, "utf8")), verified);
+        assert.equal((await readdir(repository)).some((entry) => entry.startsWith(".p8-05-candidate-build-")), false);
+
+        await writeFile(path.join(repository, "package", "dist", "index.js"), "export const candidate = 804;\n");
+        pack();
+        const staleArchive = await readFile(sourceArchive);
+        const rejectedReceipt = path.join(repository, "rejected-receipt.json"), rejectedArchive = path.join(repository, "rejected-handoff.tgz");
+        await assert.rejects(verifyP805CandidatePackage({sourceArchive, candidateArchive:rejectedArchive, receipt:rejectedReceipt, candidateId, repositoryRoot:repository}), /changed.*dist\/index.js/);
+        assert.deepEqual(await readFile(sourceArchive), staleArchive);
+        await assert.rejects(readFile(rejectedReceipt), {code:"ENOENT"});
+        await assert.rejects(readFile(rejectedArchive), {code:"ENOENT"});
+        assert.deepEqual(await readFile(candidateArchive), canonicalBytes, "a rejected archive must preserve the prior handoff");
+        assert.equal((await readdir(repository)).some((entry) => entry.startsWith(".p8-05-candidate-build-")), false);
+    } finally {
+        await rm(repository, {recursive:true, force:true});
+    }
+});
+
 const poll = async (predicate, timeoutMs = 10_000, diagnostic = () => "focused DevTools boundary timed out") => {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
