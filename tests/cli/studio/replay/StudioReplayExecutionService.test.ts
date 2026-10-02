@@ -301,7 +301,10 @@ describe("StudioReplayExecutionService", () => {
         fs.writeFileSync(wasmPath, "");
         fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}, capabilities: ["runtime.replay"]}));
         const gate = createControlledYield();
-        const disposeRuntime = jest.fn();
+        let jobId = "";
+        const disposeRuntime = jest.fn(() => {
+            expect(service.getStatus(wasmPath, jobId)?.status).toBe("running");
+        });
         const runtime = {
             manifest: {component: {id: "wasm", version: "1.0.0"}, capabilities: ["runtime.replay"], artifact: {configurationHash: "config"}},
             replay: (state: {sequence: number; credits: number}, commands: readonly Record<string, unknown>[]) => ({
@@ -326,6 +329,7 @@ describe("StudioReplayExecutionService", () => {
         try {
             const started = service.start(wasmPath, {round: 2, seed: "cleanup"});
             if (started.status !== "created") throw new Error("expected WASM replay job");
+            jobId = started.job.id;
             await waitFor(() => gate.pendingCount() === 1, "WASM replay did not acquire its session before yielding.");
             service.cancel(wasmPath, started.job.id);
             gate.release();

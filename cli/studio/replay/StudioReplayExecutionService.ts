@@ -71,6 +71,11 @@ export type GetReplayDownloadResult =
 // reimplemented — only the chunk-scheduling glue is new, mirroring StudioSimulationService's own
 // chunked-runner approach for the exact same reason.
 export class StudioReplayExecutionService {
+    private readonly activeExecutions = new Set<string>();
+    private readonly pendingTerminals = new Map<string, StudioReplayJobRecord["status"]>();
+    private readonly pendingNotifications = new Set<string>();
+    private readonly executionFailures: unknown[] = [];
+    private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly repository: StudioReplayRepository;
     private readonly loadGame: typeof loadPokieGame;
     private readonly loadRuntimeGame: StudioGameLoading;
@@ -179,11 +184,8 @@ export class StudioReplayExecutionService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-        this.run(record).catch(() => {
-            // run() already catches every failure into the record's own "failed" status (see below)
-            // — this is an extra safety net only, so a bug there can never surface as an unhandled
-            // promise rejection and crash the process.
-        });
+        this.activeExecutions.add(record.id);
+        this.trackExecution(this.run(record).then(() => this.publishPendingTerminal(record)));
 
         return {status: "created", job: this.toJobView(record)};
     }
@@ -218,10 +220,12 @@ export class StudioReplayExecutionService {
     // Best-effort: aborts every currently active replay — called from StudioServer.stop() so a
     // stopped Studio process never leaves a replay's chunk loop scheduled against an event loop nobody
     // is serving HTTP requests on anymore.
-    public cancelAll(): void {
+    public async cancelAll(): Promise<void> {
         for (const record of this.repository.listActive()) {
             this.cancelActiveRecord(record);
         }
+        await Promise.allSettled([...this.pendingExecutions]);
+        if (this.executionFailures.length > 0) throw this.executionFailures[0];
     }
 
     // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
@@ -440,9 +444,9 @@ export class StudioReplayExecutionService {
             record.status = "completed";
             record.descriptor = descriptor;
             this.markTerminal(record);
-            this.onCompleted(record);
+            this.notifyCompleted(record);
         } finally {
-            await releasePokieGame(game).catch(() => undefined);
+            await releasePokieGame(game);
         }
     }
 
@@ -504,7 +508,7 @@ export class StudioReplayExecutionService {
                 ...(canSerialize ? {stateAfter: state as unknown as Record<string, unknown>} : {}),
             };
             this.markTerminal(record);
-            this.onCompleted(record);
+            this.notifyCompleted(record);
         } catch (error) {
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
@@ -656,7 +660,7 @@ export class StudioReplayExecutionService {
         record.status = "completed";
         record.descriptor = descriptor;
         this.markTerminal(record);
-        this.onCompleted(record);
+        this.notifyCompleted(record);
     }
 
     // "useInitialStateDirectly" covers round 1's own "before" snapshot: at that point no play() has
@@ -742,6 +746,17 @@ export class StudioReplayExecutionService {
         return typeof candidate.getSymbolsCombination === "function" && typeof candidate.getWinEvaluationResult === "function";
     }
 
+    private trackExecution(execution: Promise<void>): void {
+        this.pendingExecutions.add(execution);
+        execution.then(
+            () => this.pendingExecutions.delete(execution),
+            (error: unknown) => {
+                this.executionFailures.push(error);
+                this.pendingExecutions.delete(execution);
+            },
+        );
+    }
+
     private fail(record: StudioReplayJobRecord, error: unknown): void {
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
@@ -772,6 +787,13 @@ export class StudioReplayExecutionService {
     // class updates `record` in place without a second save() call, since the repository stores it by
     // reference; this one call is the deliberate exception.
     private markTerminal(record: StudioReplayJobRecord): void {
+        if (this.activeExecutions.has(record.id)) {
+            // The repository retains this object by reference. Keep both its
+            // public status and durable terminal pending through runtime release.
+            this.pendingTerminals.set(record.id, record.status);
+            record.status = "running";
+            return;
+        }
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
@@ -787,6 +809,22 @@ export class StudioReplayExecutionService {
         } else if (record.status === "failed") {
             this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: "Correct the reported problem and run the replay again."});
         }
+    }
+
+    private publishPendingTerminal(record: StudioReplayJobRecord): void {
+        this.activeExecutions.delete(record.id);
+        const terminal = this.pendingTerminals.get(record.id);
+        this.pendingTerminals.delete(record.id);
+        if (terminal !== undefined) {
+            record.status = terminal;
+            this.markTerminal(record);
+        }
+        if (this.pendingNotifications.delete(record.id)) this.onCompleted(record);
+    }
+
+    private notifyCompleted(record: StudioReplayJobRecord): void {
+        if (this.activeExecutions.has(record.id)) this.pendingNotifications.add(record.id);
+        else this.onCompleted(record);
     }
 
     private markRunning(record: StudioReplayJobRecord): void {

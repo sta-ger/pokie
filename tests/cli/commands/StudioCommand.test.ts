@@ -191,6 +191,31 @@ describe("StudioCommand", () => {
         logSpy.mockRestore();
     });
 
+    it("does not exit while the server is still awaiting executor cleanup", async () => {
+        let release!: () => void;
+        const drained = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const server = createStubServer({host: "127.0.0.1", port: 3200}, () => drained);
+        const fakeProcess = new FakeProcess();
+        const command = new StudioCommand("1.0.0", "/fake/pokie/root", {createServer: () => server, openBrowser: () => undefined, studioRoot: "/fake/studio/root", process: fakeProcess as unknown as NodeJS.Process});
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await command.run(["--no-open"]);
+            fakeProcess.trigger("SIGINT");
+            fakeProcess.trigger("SIGTERM");
+            await Promise.resolve();
+            expect(server.stopCalls).toBe(1);
+            expect(fakeProcess.exitCalls).toEqual([]);
+            release();
+            await drained;
+            await Promise.resolve();
+            expect(fakeProcess.exitCalls).toEqual([0]);
+        } finally {
+            logSpy.mockRestore();
+        }
+    });
+
     it("exits 1 if stopping the server fails during shutdown", async () => {
         const server = createStubServer({host: "127.0.0.1", port: 3200}, () => Promise.reject(new Error("stop failed")));
         const fakeProcess = new FakeProcess();

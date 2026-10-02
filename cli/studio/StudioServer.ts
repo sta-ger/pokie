@@ -307,6 +307,7 @@ export class StudioServer implements StudioServerHandling {
     // Every dashboard/Home/Play preparation belongs to one generation.  A new project intent aborts
     // the previous resolver work; the generation check is still required because a loader can finish
     // just as its signal is observed.
+    private readonly dashboardLoads = new Set<Promise<void>>();
     private runtimePreparation: {generation: number; controller: AbortController} | undefined;
     private nextRuntimePreparationGeneration = 0;
     private server: http.Server | undefined;
@@ -493,35 +494,9 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public async stop(): Promise<void> {
-        this.cancelRuntimePreparation();
-        // Certification, deployment, Play, Home materialization, and Design
-        // operations execute directly through StudioJobService rather than a
-        // compatibility service with its own cancelAll(). Request their
-        // aborts before closing HTTP so their executor-specific cleanup can
-        // publish an honest terminal state (or restart reconciliation can
-        // safely mark an interrupted record recovery-required).
-        this.jobService.cancelAll();
-        // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
-        // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
-        // independently of any HTTP connection, so closing the server alone would leave either running
-        // against an event loop nobody is serving requests on anymore.
-        this.simulationService.cancelAll();
-        this.replayService.cancelAll();
-        this.artifactBuildService.cancelAll();
-        // Unlike the older fire-and-forget lifecycle services, an Outcome
-        // Library job owns an atomic publication destination and a persisted
-        // checkpoint.  Do not release Studio's server context until its
-        // cancellation has reached that cleanup-safe terminal state.
-        await this.outcomeLibraryGenerateJobService.cancelAll();
-        // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
-        // session was active.
-        this.playService.reset();
-        // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
-        // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
-        this.roundRecorder.clearAll();
         const server = this.server;
         this.server = undefined;
-        await new Promise<void>((resolve, reject) => {
+        const listenerClosed = new Promise<void>((resolve, reject) => {
             if (!server) {
                 resolve();
                 return;
@@ -534,10 +509,41 @@ export class StudioServer implements StudioServerHandling {
                 resolve();
             });
         });
+
+        this.cancelRuntimePreparation();
+        // Certification, deployment, Play, Home materialization, and Design
+        // operations execute directly through StudioJobService rather than a
+        // compatibility service with its own cancelAll(). Request their
+        // aborts before closing HTTP so their executor-specific cleanup can
+        // publish an honest terminal state (or restart reconciliation can
+        // safely mark an interrupted record recovery-required).
+        this.jobService.beginShutdown();
+        // Request every domain cancellation before waiting for any executor.
+        // Listener closure alone cannot attest to worker or staging cleanup.
+        const drains = await Promise.allSettled([
+            listenerClosed,
+            this.simulationService.cancelAll(),
+            this.replayService.cancelAll(),
+            this.artifactBuildService.cancelAll(),
+            this.outcomeLibraryGenerateJobService.cancelAll(),
+            Promise.all([...this.dashboardLoads]),
+        ]);
+        const failedDrain = drains.find((result) => result.status === "rejected");
+        if (failedDrain?.status === "rejected") {
+            await this.jobService.completeGracefulShutdown(false).catch(() => undefined);
+            this.jobService.reconcileInterruptedJobs();
+            throw failedDrain.reason;
+        }
+        // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
+        // session was active.
+        this.playService.reset();
+        // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
+        // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
+        this.roundRecorder.clearAll();
         // Record the marker only after the listener and the process-owned
         // resources above have been drained. A SIGKILL cannot reach this
         // point, so a following process reconciles only a real abrupt loss.
-        this.jobService.completeGracefulShutdown();
+        await this.jobService.completeGracefulShutdown();
     }
 
     // Called from both project-switch points (handleHomeOpenProject, /api/projects/close) *before*
@@ -825,7 +831,7 @@ export class StudioServer implements StudioServerHandling {
     private startProjectDashboardLoad(projectRoot: string): void {
         const preparation = this.beginRuntimePreparation();
         this.projectDashboard = {status: "loading", projectRoot};
-        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
+        const loading = loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
             signal: preparation.controller.signal,
             isCurrent: () => this.isCurrentRuntimePreparation(preparation),
         })
@@ -838,6 +844,8 @@ export class StudioServer implements StudioServerHandling {
                 // loadProjectDashboardContext itself never rejects (it catches internally) — this is
                 // an extra safety net only, so a StudioServer never crashes on a background load.
             });
+        this.dashboardLoads.add(loading);
+        loading.then(() => this.dashboardLoads.delete(loading));
     }
 
     private beginRuntimePreparation(): {generation: number; controller: AbortController} {

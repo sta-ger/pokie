@@ -31,6 +31,7 @@ export type StudioJobExecutorContext = {
 export type StudioJobExecutorTerminal =
     | {readonly status: "completed"; readonly result: StudioJobResultView}
     | {readonly status: "failed"; readonly error: string; readonly recovery?: StudioJobRecoveryView}
+    | {readonly status: "recovery-required"; readonly recovery: StudioJobRecoveryView}
     | {readonly status: "cancelled"; readonly result?: StudioJobResultView; readonly recovery?: StudioJobRecoveryView};
 
 export type StudioJobExecutionResult<T> =
@@ -41,6 +42,9 @@ type ActiveExecution = {readonly controller: AbortController; readonly recoveryO
 
 /** The sole durable lifecycle owner.  Domain services remain executors. */
 export class StudioJobService {
+    private acceptingJobs = true;
+    private executorCleanupFailed = false;
+    private readonly pendingExecutors = new Set<Promise<void>>();
     private readonly executions = new Map<string, ActiveExecution>();
 
     public constructor(
@@ -48,9 +52,8 @@ export class StudioJobService {
         private readonly now: () => number = Date.now,
         private readonly createId: () => string = () => crypto.randomUUID().replace(/-/g, ""),
     ) {
-        // A normal Studio stop has already asked every owned executor to
-        // cancel and persisted any remaining job as cancelled.  Do not turn a
-        // graceful user shutdown into a spurious restart-recovery result. A
+        // A normal Studio stop awaits executor cleanup and persists its
+        // terminals before saving the graceful marker. A
         // missing/running marker is deliberately fail-closed: it means the
         // former process disappeared and its nonterminal jobs need recovery.
         if (this.repository.getProcessState()?.status !== "gracefully-stopped") {
@@ -69,6 +72,7 @@ export class StudioJobService {
     }
 
     public start(input: StudioJobStartInput): StudioJobStartResult {
+        if (!this.acceptingJobs) throw new Error("Studio is shutting down. Restart Studio before starting another job.");
         // `projectId` identifies the owner used for discovery and access
         // control.  It is deliberately not the locking scope: Design sources
         // and two projects can both address the same publication/delivery
@@ -162,7 +166,7 @@ export class StudioJobService {
         executor: (context: StudioJobExecutorContext) => Promise<T>,
         terminalForResult: (value: T, cancelled: boolean) => StudioJobExecutorTerminal,
         terminalForException: (error: unknown, cancelled: boolean) => StudioJobExecutorTerminal = (error, cancelled) => cancelled
-            ? {status: "cancelled", result: {summary: "Studio job cancelled after executor cleanup."}}
+            ? {status: "recovery-required", recovery: {action: "retry", reason: `Executor cleanup could not be confirmed after cancellation: ${error instanceof Error ? error.message : String(error)}`}}
             : {status: "failed", error: error instanceof Error ? error.message : String(error)},
     ): Promise<StudioJobExecutionResult<T>> {
         const started = this.start(input);
@@ -172,6 +176,11 @@ export class StudioJobService {
         const signal = this.signal(job.id);
         if (signal === undefined) throw new Error(`Studio job "${job.id}" has no cancellation handle.`);
         const context: StudioJobExecutorContext = {job, signal, progress: (progress) => this.progress(job.id, progress)};
+        let settle!: () => void;
+        const completion = new Promise<void>((resolve) => {
+            settle = resolve;
+        });
+        this.pendingExecutors.add(completion);
         try {
             const value = await executor(context);
             // A domain executor may have supplied finer-grained snapshots while it
@@ -182,8 +191,16 @@ export class StudioJobService {
             this.persistExecutorTerminal(job.id, terminalForResult(value, signal.aborted));
             return {status: "executed", job: this.repository.get(job.id) ?? job, value};
         } catch (error) {
-            this.persistExecutorTerminal(job.id, terminalForException(error, signal.aborted));
+            const terminal = terminalForException(error, signal.aborted);
+            // An exception cannot attest that cancellation cleanup succeeded,
+            // even when a compatibility mapper supplies a cancelled label.
+            this.persistExecutorTerminal(job.id, signal.aborted && terminal.status === "cancelled"
+                ? {status: "recovery-required", recovery: {action: terminal.recovery?.action ?? "retry", reason: `Executor cleanup could not be confirmed after cancellation: ${error instanceof Error ? error.message : String(error)}`}}
+                : terminal);
             throw error;
+        } finally {
+            settle();
+            this.pendingExecutors.delete(completion);
         }
     }
 
@@ -220,28 +237,29 @@ export class StudioJobService {
         return requested;
     }
 
-    /**
-     * Finishes Studio's cooperative shutdown. Any executor that did not get
-     * a final event-loop turn is still known to have received cancellation;
-     * retain that truthful cancelled terminal rather than misclassifying it
-     * as an abrupt-loss recovery on the next Studio process.
-     */
-    public completeGracefulShutdown(): void {
-        for (const job of this.repository.list()) {
-            if (isStudioJobTerminal(job.status)) continue;
-            this.terminal(job.id, "cancelled", {
-                result: {summary: "Studio stopped gracefully before this job's executor reported its terminal cleanup."},
-                recovery: {action: "retry", reason: "Studio was stopped by the user. Run the captured request again if it is still needed."},
-            });
+    /** Stop admitting new executors before draining the captured owners. */
+    public beginShutdown(): void {
+        this.acceptingJobs = false;
+        this.cancelAll();
+    }
+
+    /** Persist graceful stop only after every executor has reported its cleanup. */
+    public async completeGracefulShutdown(cleanupConfirmed = true): Promise<void> {
+        await Promise.all([...this.pendingExecutors]);
+        if (!cleanupConfirmed || this.executorCleanupFailed || this.repository.list().some((job) => !isStudioJobTerminal(job.status))) {
+            this.reconcileInterruptedJobs(true);
+            throw new Error("Studio shutdown could not confirm executor cleanup. Retained jobs require recovery.");
         }
         this.repository.saveProcessState({status: "gracefully-stopped", updatedAt: this.now()});
     }
 
-    public reconcileInterruptedJobs(): void {
+    public reconcileInterruptedJobs(cleanupUnconfirmed = false): void {
         for (const job of this.repository.list()) {
             if (isStudioJobTerminal(job.status)) continue;
             const recovery: StudioJobRecoveryView = job.recoveryOnRestart ?? {action: "retry", reason: "Studio restarted before this job completed. No partial output was published; retry from scratch."};
-            this.terminal(job.id, "recovery-required", {recovery});
+            this.terminal(job.id, "recovery-required", {recovery: cleanupUnconfirmed
+                ? {...recovery, reason: "Studio shutdown could not confirm executor cleanup. Inspect the captured destination and retained artifacts, then restart Studio before retrying."}
+                : recovery});
         }
     }
 
@@ -254,6 +272,10 @@ export class StudioJobService {
         return result;
     }
     private persistExecutorTerminal(id: string, terminal: StudioJobExecutorTerminal): StudioJobView | undefined {
+        if (terminal.status === "recovery-required") {
+            this.executorCleanupFailed = true;
+            return this.terminal(id, "recovery-required", {recovery: terminal.recovery});
+        }
         if (terminal.status === "completed") return this.complete(id, terminal.result);
         if (terminal.status === "failed") return this.fail(id, terminal.error, terminal.recovery);
         return this.cancelled(id, terminal.result, terminal.recovery);

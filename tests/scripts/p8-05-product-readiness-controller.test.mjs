@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {mkdtemp, readFile, rm, symlink, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {p805ControllerArtifactPath, p805ControllerOperationRoot, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
+
+import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
@@ -170,4 +172,40 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
     incompleteLedger.children.pop(); incompleteLedger.acceptedReceipts.pop(); incompleteLedger.finalResult.children -= 1; incompleteLedger.finalResult.checkpointReceipts -= 1;
     const incompleteContents = `${JSON.stringify(incompleteLedger)}\n`, incompleteProof = {...proof, proofLedger:{...proof.proofLedger, sha256:createHash("sha256").update(incompleteContents).digest("hex")}, tuples:proof.tuples.slice(0, -1), audits:{...proof.audits, tupleReceiptAuditIds:proof.audits.tupleReceiptAuditIds.slice(0, -1)}};
     assert.throws(() => validateP805ControllerMachineProof(incompleteProof, "initial", initial, incompleteContents), /tuple proof ledger/i);
+});
+
+
+test("candidate verifier rejects substituted executables and preserves the canonical archive handoff", async () => {
+    const repository = await mkdtemp(path.join(os.tmpdir(), "pokie-p805-candidate-build-"));
+    const git = (...args) => execFileSync("git", args, {cwd:repository, encoding:"utf8"});
+    try {
+        const declaration = {name:"pokie", version:"1.3.0", scripts:{build:"node build.cjs"}};
+        await writeFile(path.join(repository, "package.json"), JSON.stringify(declaration));
+        await writeFile(path.join(repository, "package-lock.json"), "{}\n");
+        await writeFile(path.join(repository, "source.js"), "module.exports = 805;\n");
+        await writeFile(path.join(repository, "build.cjs"), "const fs = require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/index.js', fs.readFileSync('source.js'));\n");
+        git("init", "--quiet"); git("add", "package.json", "package-lock.json", "source.js", "build.cjs");
+        git("-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "[P8-05] candidate verifier fixture");
+        const candidateId = git("rev-parse", "HEAD").trim();
+        await mkdir(path.join(repository, "node_modules"));
+        const packageRoot = path.join(repository, "package");
+        await mkdir(path.join(packageRoot, "dist"), {recursive:true});
+        await writeFile(path.join(packageRoot, "package.json"), JSON.stringify(declaration));
+        await writeFile(path.join(packageRoot, "dist", "index.js"), "module.exports = 804;\n");
+        const sourceArchive = path.join(repository, "canonical.tgz"), candidateArchive = path.join(repository, "handoff.tgz"), receipt = path.join(repository, "receipt.json");
+        const packFixture = () => execFileSync("tar", ["-czf", sourceArchive, "-C", repository, "package"]);
+        packFixture();
+        await assert.rejects(() => verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository}), /executables differ from the verified candidate build/);
+        await assert.rejects(() => readFile(receipt), /ENOENT/);
+        await assert.rejects(() => readFile(candidateArchive), /ENOENT/);
+        await writeFile(path.join(packageRoot, "dist", "index.js"), await readFile(path.join(repository, "source.js")));
+        packFixture();
+        const original = await readFile(sourceArchive);
+        const verified = await verifyP805CandidatePackage({sourceArchive, candidateArchive, receipt, candidateId, repositoryRoot:repository});
+        assert.deepEqual(await readFile(sourceArchive), original);
+        assert.deepEqual(await readFile(candidateArchive), original);
+        assert.equal(verified.candidatePackageSha256, createHash("sha256").update(original).digest("hex"));
+        assert.equal(verified.verifiedBuild.candidateId, candidateId);
+        assert.equal(verified.authentication.attestedBuildSha256, createHash("sha256").update(JSON.stringify(verified.verifiedBuild)).digest("hex"));
+    } finally { await rm(repository, {recursive:true, force:true}); }
 });

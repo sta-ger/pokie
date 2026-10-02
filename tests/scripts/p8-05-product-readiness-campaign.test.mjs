@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {
     P805_PERSONAS,
     P805_REQUIRED_EVIDENCE_KINDS,
@@ -17,6 +17,8 @@ import {
     validateP805TupleProofLedger,
     validateP805ProductReadinessCampaign,
 } from "../../scripts/p8-05-product-readiness-campaign.mjs";
+
+import {aggregateP805PersonaAudits, prepareP805Closeout, runP805Closeout} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {
         candidateId: "1".repeat(40),
@@ -280,13 +282,13 @@ test("transaction state classes are accepted only from rendered control or resul
     assert.equal(p805TransactionStateClass("unsupported"), undefined);
 });
 
-async function campaignFixture() {
+async function campaignFixture({initialOverflow = false, throughController = false} = {}) {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
     let sequence = 0;
     const evidence = async (candidate, kind, at, observationIds = [], contents) => {
-        sequence += 1;
+        const evidenceSequence = ++sequence;
         const defaults = {
-            "cli-transcript": "PACKED_INSTALL\npacked CLI create\npacked CLI WASM run\npacked CLI serve\n",
+            "cli-transcript": `PACKED_INSTALL\npacked CLI create\npacked CLI WASM run\npacked CLI serve\n${Object.values(P805_WORKFLOW_CONTRACTS).flatMap((contracts) => Object.values(contracts).map((contract) => contract.cli ?? "")).join("\n")}\n`,
             "browser-log": "[]",
             "api-log": JSON.stringify([{path: "/api/health"}, {path: "/api/project/simulations"}]),
             error: "no errors\n",
@@ -298,12 +300,12 @@ async function campaignFixture() {
                 packedPackageSha256: candidate.candidatePackageSha256,
             }),
         };
-        const body = contents ?? defaults[kind] ?? `P8-05 bounded ${kind} ${sequence}\n`,
-            relativePath = `records/${sequence}.txt`;
+        const body = contents ?? defaults[kind] ?? `P8-05 bounded ${kind} ${evidenceSequence}\n`,
+            relativePath = `records/${evidenceSequence}.txt`;
         await mkdir(path.join(directory, "records"), {recursive: true});
         await writeFile(path.join(directory, relativePath), body);
         return {
-            evidenceId: `e-${sequence}`,
+            evidenceId: `e-${evidenceSequence}`,
             path: relativePath,
             sha256: hash(body),
             sizeBytes: Buffer.byteLength(body),
@@ -313,8 +315,8 @@ async function campaignFixture() {
             ...candidate,
         };
     };
-    const audit = async (persona, phase, candidate, offset) => {
-        const observations = P805_REQUIRED_OBSERVATIONS[persona],
+    const audit = async (persona, phase, candidate, offset, tuple) => {
+        const observations = tuple ? [tuple.observation] : P805_REQUIRED_OBSERVATIONS[persona],
             artifacts = [];
         for (const [index, kind] of P805_REQUIRED_EVIDENCE_KINDS.filter(
             (kind) => !["live-dom-transaction", "page-state", "screenshot"].includes(kind),
@@ -365,7 +367,7 @@ async function campaignFixture() {
                 initiator: "rendered-poll",
             });
             if (contract.poll) browserEvents.push({method: "Network.requestWillBeSent", params: {requestId: source.pollRequestId ?? `poll-${persona}-${observation}-wide`, request: {url: `http://127.0.0.1${contract.poll.replace("{id}", encodeURIComponent(source.result.id))}`, method: "GET"}}});
-            for (const actionViewport of ["wide", "compact", "narrow"]) {
+            for (const actionViewport of (tuple ? [tuple.viewport] : ["wide", "compact", "narrow"])) {
                 // A responsive record must contain the actual state captured
                 // at that viewport.  Reusing a wide JSON/screenshot under a
                 // compact action is precisely the drift the campaign rejects.
@@ -390,6 +392,7 @@ async function campaignFixture() {
                 }
                 artifacts.push(screenshot, page);
                 actions.push({
+                persona,
                 observation,
                 route: viewportSource.route,
                 expectedControl: contract.control,
@@ -522,6 +525,7 @@ async function campaignFixture() {
             path.join(directory, cleanup.path),
             JSON.stringify({
                 kind: "p8-05-cleanup",
+                exit:"success",
                 processTreeDrained: true,
                 resourcesDrained: true,
                 contextRemoved: true,
@@ -556,17 +560,29 @@ async function campaignFixture() {
         const artifactBytes = await readFile(path.join(directory, artifact.path));
         artifact.sha256 = hash(artifactBytes);
         artifact.sizeBytes = artifactBytes.length;
-        const measured = runtime.evidenceId, restartScreenshot = artifacts.find((item) => item.kind === "screenshot"), auditId = `${phase}-${persona}`;
+        const overflow = initialOverflow && phase === "initial" && tuple.persona === "ui-ux" && tuple.observation === "onboarding-terminology-forms-progress" && tuple.viewport === "wide";
+        if (overflow) {
+            actions[0].overflow = true;
+            const page = artifacts.find((item) => item.evidenceId === actions[0].evidenceId), value = JSON.parse(await readFile(path.join(directory, page.path), "utf8"));
+            value.state.overflow = true;
+            const bytes = JSON.stringify(value);
+            await writeFile(path.join(directory, page.path), bytes);
+            page.sha256 = hash(bytes); page.sizeBytes = Buffer.byteLength(bytes);
+        }
+        const measured = runtime.evidenceId, restartScreenshot = artifacts.find((item) => item.kind === "screenshot"), auditId = `${phase}-${persona}-${tuple.observation}-${tuple.viewport}`;
         await mkdir(path.join(directory, "checkpoints"), {recursive: true});
         const checkpointReceipts = await Promise.all(actions.map(async (action, index) => {
             const sequence = index + 1, receiptId = `${auditId}-checkpoint-${sequence}`,
-                capturedAt = stamp(offset + 50 + sequence), relativePath = `checkpoints/${phase}-${persona}-${sequence}.json`,
-                contents = `${JSON.stringify({schemaVersion: 1, kind: "p8-05-packed-workflow-checkpoint", receiptId, auditId, runNonce: `${phase}-${persona}-fixture`, sequence, status: "passed", capturedAt, candidateId: candidate.candidateId, candidatePackageSha256: candidate.candidatePackageSha256, phase, persona: action.persona ?? persona, observation: action.observation, viewport: action.viewport, action})}\n`;
+                capturedAt = stamp(offset + 50 + sequence), relativePath = `checkpoints/${auditId}-${sequence}.json`,
+                contents = `${JSON.stringify({schemaVersion: 1, kind: "p8-05-packed-workflow-checkpoint", receiptId, auditId, worker:{pid:offset + 2, nonce:`${phase}-${persona}-${offset}`}, runNonce: `${phase}-${persona}-${offset}`, sequence, status: "passed", capturedAt, candidateId: candidate.candidateId, candidatePackageSha256: candidate.candidatePackageSha256, phase, persona: action.persona ?? persona, observation: action.observation, viewport: action.viewport, action})}\n`;
             await writeFile(path.join(directory, relativePath), contents);
             return {receiptId, path: relativePath, sha256: hash(contents), sizeBytes: Buffer.byteLength(contents), capturedAt, candidateId: candidate.candidateId, candidatePackageSha256: candidate.candidatePackageSha256, persona: action.persona ?? persona, observation: action.observation, viewport: action.viewport, actionSha256: hash(JSON.stringify(action))};
         }));
         return {
             auditId,
+            tuple,
+            worker:{pid:offset + 2, nonce:`${phase}-${persona}-${offset}`},
+            workflowPersonas:[persona],
             persona,
             phase,
             ...candidate,
@@ -589,9 +605,9 @@ async function campaignFixture() {
             startedAt: stamp(offset),
             endedAt: stamp(offset + 100),
             cleanContext: {
-                workspace: `/tmp/p8-05-${phase}-${persona}-work`,
-                configurationRoot: `/tmp/p8-05-${phase}-${persona}-config`,
-                browserProfile: `/tmp/p8-05-${phase}-${persona}-profile`,
+                workspace: `/tmp/p8-05-${auditId}-work`,
+                configurationRoot: `/tmp/p8-05-${auditId}-config`,
+                browserProfile: `/tmp/p8-05-${auditId}-profile`,
                 reused: false,
             },
             observations,
@@ -610,11 +626,14 @@ async function campaignFixture() {
                 evidenceId: cleanup.evidenceId,
             },
             checkpointReceipts,
-            tupleReceipts: P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport, index) => ({tuple:{persona, observation, viewport}, auditId:`${auditId}-${observation}-${viewport}`, auditPath:`tuple-audits/${phase}-${persona}-${observation}-${viewport}.json`, auditSha256:hash(`${auditId}-${observation}-${viewport}-audit`), tupleReceiptPath:`tuple-receipts/${phase}-${persona}-${observation}-${viewport}.json`, tupleReceiptSha256:hash(`${auditId}-${observation}-${viewport}-receipt`), cleanupPath:`tuple-cleanup/${phase}-${persona}-${observation}-${viewport}.json`, cleanupSha256:hash(`${auditId}-${observation}-${viewport}-cleanup`), checkpointReceiptSha256s:[hash(`${auditId}-${observation}-${viewport}-checkpoint-${index}`)]}))),
+
             finalResult: {status: "passed", aggregation: "verified-checkpoint-receipts-only", chunks: checkpointReceipts.length, checkpointReceiptSha256s: checkpointReceipts.map((receipt) => receipt.sha256), cleanupEvidenceId: cleanup.evidenceId},
             rendered: {
                 ...rendered,
-                defects: [],
+                viewports:[tuple.viewport],
+                responsive:rendered.responsive.filter((item) => item.viewport === tuple.viewport).map((item) => ({...item, overflow})),
+                measurements:{...rendered.measurements, documentOverflow:overflow},
+                defects: overflow ? [{kind:"overflow", evidenceId:actions[0].evidenceId}] : [],
                 actions,
                 recovery: Object.fromEntries(
                     [
@@ -669,12 +688,48 @@ async function campaignFixture() {
             evidence: artifacts,
         };
     };
-    const initialAudits = [];
-    for (const [index, persona] of P805_PERSONAS.entries())
-        initialAudits.push(await audit(persona, "initial", initial, 100 + index * 100));
-    const retests = [];
-    for (const [index, persona] of P805_PERSONAS.entries())
-        retests.push(await audit(persona, "retest", retest, 1000 + index * 100));
+    const collect = async (phase, candidate, baseOffset) => {
+        const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+        const children = [], acceptedReceipts = [], audits = [];
+        await Promise.all(tuples.map(async (tuple, index) => {
+            const value = await audit(tuple.persona, phase, candidate, baseOffset + index, tuple);
+            value.timings = {...value.timings, startupMs:index + 1};
+            value.performance.startupMs.elapsedMs = index + 1;
+            const timingEvidence = value.evidence.find((item) => item.kind === "timing"), timingContents = JSON.stringify(value.timings);
+            await writeFile(path.join(directory, timingEvidence.path), timingContents);
+            timingEvidence.sha256 = hash(timingContents); timingEvidence.sizeBytes = Buffer.byteLength(timingContents);
+            const namespace = `${phase}/${tuple.persona}/${value.worker.nonce}`;
+            await mkdir(path.join(directory, namespace), {recursive:true});
+            for (const item of [...value.evidence, ...value.checkpointReceipts]) {
+                const nextPath = `${namespace}/${path.basename(item.path)}`;
+                await rename(path.join(directory, item.path), path.join(directory, nextPath));
+                item.path = nextPath;
+            }
+            const recoveryRequired = ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation);
+            value.workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple, bootstrap:tupleBootstrapContract(tuple).map((item) => ({...item, evidenceId:value.evidence[0].evidenceId})), scopeEvidenceId:value.evidence[0].evidenceId, recoveryRequired};
+            if (!recoveryRequired) { value.rendered.recovery = {}; value.rendered.jobs = {}; }
+            if (tuple.observation === "outcome-library-report-diff-replay") {
+                value.workflowScope.compoundCliOutputs = tupleBootstrapContract(tuple).filter((item) => item.kind === "packed-cli-output").map(({output, command}) => {
+                    const contents = Buffer.from(`fixture-${phase}-${output}`), files = [{path:output, sha256:hash(contents), sizeBytes:contents.length, contentsBase64:contents.toString("base64")}];
+                    return {kind:"p8-05-packed-cli-output", output, command, ...candidate, evidenceId:value.evidence[0].evidenceId, files, sha256:hash(JSON.stringify(files))};
+                });
+            }
+            const save = async (name, record) => { const contents = `${JSON.stringify(record)}\n`; await writeFile(path.join(directory, name), contents); return hash(contents); };
+            const cleanupEvidence = value.evidence.find((item) => item.evidenceId === value.cleanup.evidenceId), cleanupRecord = JSON.parse(await readFile(path.join(directory, cleanupEvidence.path), "utf8"));
+            value.cleanup = {...cleanupRecord, evidenceId:cleanupEvidence.evidenceId};
+            const cleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase, ...candidate, tuple, worker:value.worker, cleanup:cleanupRecord, cleanupEvidenceId:value.cleanup.evidenceId};
+            const cleanupPath = `${value.auditId}-cleanup.json`, cleanupSha256 = await save(cleanupPath, cleanup);
+            const receipt = {schemaVersion:1, kind:"p8-05-packed-tuple-receipt", status:"passed", phase, ...candidate, tuple, worker:value.worker, auditId:value.auditId, action:value.rendered.actions[0], checkpointReceipt:value.checkpointReceipts[0], cleanupEvidenceId:value.cleanup.evidenceId, cleanupSha256};
+            const auditPath = `${value.auditId}-audit.json`, auditSha256 = await save(auditPath, value), tupleReceiptPath = `${value.auditId}-receipt.json`, tupleReceiptSha256 = await save(tupleReceiptPath, receipt);
+            children[index] = {tuple, worker:value.worker, auditPath, auditSha256, tupleReceiptPath, tupleReceiptSha256, cleanupPath, cleanupSha256, checkpointReceiptSha256s:[value.checkpointReceipts[0].sha256], cleanupEvidenceId:value.cleanup.evidenceId, exitCode:0, signal:null, parentCleanup:{processTreeDrained:true, resourcesDrained:true}};
+            acceptedReceipts[index] = {tuple, receiptPath:tupleReceiptPath, receiptSha256:tupleReceiptSha256, cleanupPath, cleanupSha256, receipt, cleanup};
+            audits[index] = value;
+        }));
+        const ledger = {kind:"p8-05-process-isolated-packed-proof", status:"passed", ...candidate, parent:{pid:1}, runtime:{kind:"p8-05-immutable-packed-runtime", root:directory, receiptPath:"runtime.json", receiptSha256:"a".repeat(64), ...candidate, archiveSha256:candidate.candidatePackageSha256, installationCount:1, permissions:"read-only-before-any-tuple-child"}, children, acceptedReceipts, finalResult:{status:"passed", children:tuples.length, checkpointReceipts:tuples.length, aggregation:"independently-verified-immutable-tuple-child-receipts-only"}};
+        return aggregateP805PersonaAudits(audits, ledger, phase, candidate);
+    };
+    const initialAudits = await collect("initial", initial, 100);
+    const retests = await collect("retest", retest, 1000);
     const finding = {
         id: "F-1",
         severity: "P2",
@@ -686,6 +741,11 @@ async function campaignFixture() {
         status: "resolved",
         evidence: await evidence(initial, "finding", stamp(700)),
     };
+    if (initialOverflow) {
+        const source = initialAudits.find((audit) => audit.persona === "ui-ux"), measured = source.rendered.defects[0];
+        finding.evidence = source.evidence.find((item) => item.evidenceId === measured.evidenceId);
+        finding.measurement = {kind:"overflow", evidenceId:finding.evidence.evidenceId, sha256:finding.evidence.sha256};
+    }
     const write = async (name, value) => writeFile(path.join(directory, name), `${JSON.stringify(value, null, 2)}\n`);
     const initialRecord = {schemaVersion: P805_SCHEMA_VERSION, campaignId: "p8-05-fixture", audits: initialAudits};
     await write("PROVENANCE.json", {
@@ -702,7 +762,7 @@ async function campaignFixture() {
         campaignId: "p8-05-fixture",
         ...initial,
         frozenAt: stamp(800),
-        findings: [finding],
+        findings: [{...finding, status:"open"}],
     };
     const anchor = path.join(path.dirname(directory), `${path.basename(directory)}-freeze.json`);
     frozen.externalAnchor = {path: anchor, sha256: "0".repeat(64), anchoredAt: stamp(850)};
@@ -798,11 +858,11 @@ async function campaignFixture() {
             ),
         ),
         evidence: [...manifestEvidence].map(([evidenceId, sha256]) => ({evidenceId, sha256})),
-        cleanupEvidence: [...initialAudits, ...retests].map((audit) => audit.cleanup.evidenceId),
+        cleanupEvidence: [...initialAudits, ...retests].flatMap((audit) => audit.tupleReceipts.map((receipt) => receipt.cleanupEvidenceId)),
     };
-    await write("manifest.json", manifest);
+    if (!throughController) await write("manifest.json", manifest);
     const uiux = retests.find((entry) => entry.persona === "ui-ux"),
-        manifestSha256 = hash(await readFile(path.join(directory, "manifest.json"))),
+        manifestSha256 = hash(`${JSON.stringify(manifest, null, 2)}\n`),
         closeout = {
             schemaVersion: P805_SCHEMA_VERSION,
             campaignId: "p8-05-fixture",
@@ -820,6 +880,10 @@ async function campaignFixture() {
                 },
             ],
         };
+    if (throughController) {
+        const prepared = await prepareP805Closeout({directory, retestCandidate:retest, closeout});
+        closeout.manifestSha256 = prepared.manifestSha256;
+    }
     const closeoutAnchor = path.join(path.dirname(directory), `${path.basename(directory)}-closeout.json`);
     closeout.externalAnchor = {path: closeoutAnchor, sha256: "0".repeat(64)};
     const {externalAnchor: ignored, ...closeoutPayload} = closeout;
@@ -832,7 +896,8 @@ async function campaignFixture() {
     })}\n`;
     await writeFile(closeoutAnchor, closeoutAnchorContents);
     closeout.externalAnchor.sha256 = hash(closeoutAnchorContents);
-    await write("closeout.json", closeout);
+    if (throughController) await runP805Closeout({directory, retestCandidate:retest, closeoutAnchor:closeout.externalAnchor});
+    else await write("closeout.json", closeout);
     return {
         directory,
         anchors: {
@@ -847,8 +912,28 @@ async function campaignFixture() {
         },
     };
 }
+// Semantic-negative fixtures deliberately rebind their altered evidence to
+// the child audit, so rejection reaches the semantic consumer rather than
+// stopping solely at the immutable digest check.
+async function rebindFixtureChildEvidence(directory, recordPath) {
+    const records = JSON.parse(await readFile(recordPath, "utf8"));
+    for (const aggregate of records.audits) {
+        const evidence = new Map(aggregate.evidence.map((item) => [item.evidenceId, item]));
+        for (const reference of aggregate.tupleReceipts) {
+            const target = path.join(directory, reference.auditPath), contents = await readFile(target, "utf8"), child = JSON.parse(contents);
+            child.evidence = child.evidence.map((item) => evidence.get(item.evidenceId) ?? item);
+            const rebound = `${JSON.stringify(child)}\n`;
+            if (rebound !== contents) {
+                await writeFile(target, rebound);
+                reference.auditSha256 = hash(rebound);
+            }
+        }
+    }
+    await writeFile(recordPath, `${JSON.stringify(records)}\n`);
+}
+
 test("requires every evidence kind, verifier anchors, live-DOM bindings, final-candidate regression and persona retest", async () => {
-    const fixture = await campaignFixture();
+    const fixture = await campaignFixture({throughController:true});
     try {
         assert.equal(
             (await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}))
@@ -871,7 +956,7 @@ test("rejects missing, duplicate, stale, and cross-candidate packed checkpoint r
             const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
             mutate(audits.audits[0]);
             await writeFile(record, `${JSON.stringify(audits)}\n`);
-            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint|aggregate differs|immutable child/i);
         } finally { await fixture.cleanup(); }
     }
 });
@@ -883,7 +968,7 @@ test("rejects a content-equivalent packed checkpoint substituted into another vi
         compact.sha256 = hash(copied);
         compact.sizeBytes = copied.length;
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("rejects a checkpoint receipt substituted across persona slots", async () => {
@@ -892,7 +977,7 @@ test("rejects a checkpoint receipt substituted across persona slots", async () =
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), [mathematician, programmer] = audits.audits, source = mathematician.checkpointReceipts[0], target = programmer.checkpointReceipts[0];
         target.persona = source.persona;
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("rejects a checkpoint receipt relabelled to an undeclared workflow slot", async () => {
@@ -901,7 +986,7 @@ test("rejects a checkpoint receipt relabelled to an undeclared workflow slot", a
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
         audits.audits[0].checkpointReceipts[0].observation = "substituted-workflow";
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("rejects a final result whose receipt aggregate drifts from verified chunks", async () => {
@@ -910,7 +995,7 @@ test("rejects a final result whose receipt aggregate drifts from verified chunks
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
         audits.audits[0].finalResult.checkpointReceiptSha256s.reverse();
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint receipt|final result/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint receipt|final result|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("fails closed on mutable chronology and context claims", async () => {
@@ -922,7 +1007,7 @@ test("fails closed on mutable chronology and context claims", async () => {
         await writeFile(file, `${JSON.stringify(value)}\n`);
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
-            /reuses a clean context/i,
+            /reuses a clean context|aggregate differs|immutable child/i,
         );
     } finally {
         await fixture.cleanup();
@@ -941,7 +1026,7 @@ test("rejects relabelled rendered workflow evidence and unmeasured timings", asy
         await writeFile(evidencePath, JSON.stringify(semantic));
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
-            /evidence digest or size differs/i,
+            /evidence digest or size differs|aggregate differs|immutable child/i,
         );
     } finally {
         await fixture.cleanup();
@@ -958,7 +1043,8 @@ test("rejects a compact workflow action that reuses a wide live-DOM transaction"
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses wide live-DOM transaction for compact/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses wide live-DOM transaction for compact|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -972,7 +1058,8 @@ test("rejects the legacy semantic page-state format as a tuple interaction subst
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -987,7 +1074,8 @@ test("rejects cross-viewport substitution of an otherwise content-equivalent bro
         compactEvidence.sha256 = hash(contents);
         compactEvidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses browser request/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured transaction disagree|live-DOM terminal result is not correlated|does not resolve exactly one|reuses browser request|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1001,7 +1089,8 @@ test("rejects cross-viewport substitution of a context request identity", async 
         compactEvidence.sha256 = hash(contents);
         compactEvidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses browser request/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured transaction disagree|live-DOM terminal result is not correlated|does not resolve exactly one|reuses browser request|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1016,7 +1105,8 @@ test("rejects cross-viewport substitution of a terminal poll identity", async ()
         compactEvidence.sha256 = hash(contents);
         compactEvidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /reuses browser request/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured transaction disagree|live-DOM terminal result is not correlated|does not resolve exactly one|reuses browser request|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1026,7 +1116,8 @@ test("rejects a combined audit whose non-primary persona lacks its own workflow 
         const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8"));
         audits.audits[0].workflowPersonas = ["mathematician", "producer"];
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /producer audit lacks a DOM-bound (three-viewport |tuple )action/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /producer audit lacks a DOM-bound (three-viewport |tuple )action|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1040,7 +1131,8 @@ test("rejects semantic drift when a rewritten record no longer binds its rendere
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1054,7 +1146,8 @@ test("rejects a non-PAR durable terminal whose rendered result belongs to a diff
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1077,7 +1170,8 @@ test("rejects missing, loading, unsupported, disabled, or stale Outcome Library 
             evidence.sha256 = hash(contents);
             evidence.sizeBytes = Buffer.byteLength(contents);
             await writeFile(record, `${JSON.stringify(audits)}\n`);
-            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result|aggregate differs|immutable child/i);
         } finally { await fixture.cleanup(); }
     }
 });
@@ -1092,7 +1186,8 @@ test("rejects a rendered terminal captured without the browser request that prod
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1106,7 +1201,8 @@ test("rejects a rendered terminal without its product-owned lifecycle receipt", 
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /rendered terminal result|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1120,7 +1216,8 @@ test("rejects an HTTP-success semantic record whose completed terminal result ac
         evidence.sha256 = hash(bytes);
         evidence.sizeBytes = bytes.length;
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome|aggregate differs|immutable child/i);
     } finally {
         await fixture.cleanup();
     }
@@ -1136,7 +1233,8 @@ test("rejects a durable result whose browser poll is from a different public job
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1151,7 +1249,8 @@ test("rejects an HTTP-success report observation with no completed report or bro
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1163,7 +1262,8 @@ test("rejects a semantic record that is not present in the captured browser netw
         browserEvidence.sha256 = hash("[]");
         browserEvidence.sizeBytes = 2;
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /browser request and response/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /browser request and response|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1177,7 +1277,8 @@ test("rejects a semantic record without its one-activation rendered transaction 
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /screen-specific public control/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /screen-specific public control|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("rejects an empty Configure form receipt for a read-only rendered report refresh", async () => {
@@ -1190,7 +1291,8 @@ test("rejects an empty Configure form receipt for a read-only rendered report re
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("rejects editable submission fields without their rendered operation form scope", async () => {
@@ -1203,7 +1305,8 @@ test("rejects editable submission fields without their rendered operation form s
         evidence.sha256 = hash(contents);
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction/i);
+        await rebindFixtureChildEvidence(fixture.directory, record);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /state-class transaction|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 test("requires browser defects to be frozen initially and absent after retest", async () => {
@@ -1218,7 +1321,7 @@ test("requires browser defects to be frozen initially and absent after retest", 
         await writeFile(file, `${JSON.stringify(value)}\n`);
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
-            /clean retest .* browser quality defect/i,
+            /clean retest .* browser quality defect|aggregate differs|immutable child/i,
         );
     } finally {
         await fixture.cleanup();
@@ -1228,7 +1331,7 @@ test("requires browser defects to be frozen initially and absent after retest", 
 test("rejects a route-only reload claim without an active durable job and delayed stale response", async () => {
     const fixture = await campaignFixture();
     try {
-        const audits = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), audit = audits.audits[0];
+        const audits = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), audit = audits.audits[3];
         const runtimeEntry = audit.evidence.find((item) => item.kind === "page-state" && !item.observationIds.length);
         const value = JSON.parse(await readFile(path.join(fixture.directory, runtimeEntry.path), "utf8"));
         value.reload.discoveredAfterReload = false;
@@ -1237,7 +1340,8 @@ test("rejects a route-only reload claim without an active durable job and delaye
         runtimeEntry.sha256 = hash(bytes);
         runtimeEntry.sizeBytes = bytes.length;
         await writeFile(path.join(fixture.directory, "retests.json"), `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured recovery/i);
+        await rebindFixtureChildEvidence(fixture.directory, path.join(fixture.directory, "retests.json"));
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /captured recovery|aggregate differs|immutable child/i);
     } finally {
         await fixture.cleanup();
     }
@@ -1245,7 +1349,7 @@ test("rejects a route-only reload claim without an active durable job and delaye
 test("rejects a Home project-switch receipt whose Start a game control was not its visible native pointer target", async () => {
     const fixture = await campaignFixture();
     try {
-        const audits = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), audit = audits.audits[0];
+        const audits = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), audit = audits.audits[3];
         const runtimeEntry = audit.evidence.find((item) => item.kind === "page-state" && !item.observationIds.length);
         const value = JSON.parse(await readFile(path.join(fixture.directory, runtimeEntry.path), "utf8"));
         value.projectSwitchReceipt.startGameNavigation.activation.hitTest.matchesCapturedControl = false;
@@ -1254,7 +1358,8 @@ test("rejects a Home project-switch receipt whose Start a game control was not i
         runtimeEntry.sha256 = hash(bytes);
         runtimeEntry.sizeBytes = bytes.length;
         await writeFile(path.join(fixture.directory, "retests.json"), `${JSON.stringify(audits)}\n`);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Home project-switch recovery receipt/i);
+        await rebindFixtureChildEvidence(fixture.directory, path.join(fixture.directory, "retests.json"));
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Home project-switch recovery receipt|aggregate differs|immutable child/i);
     } finally {
         await fixture.cleanup();
     }
@@ -1268,7 +1373,7 @@ test("rejects an archive whose executable manifest no longer matches the verifie
         await writeFile(file, `${JSON.stringify(value)}\n`);
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
-            /does not prove its installed archive executable contents/i,
+            /does not prove its installed archive executable contents|aggregate differs|immutable child/i,
         );
     } finally {
         await fixture.cleanup();
@@ -1283,7 +1388,7 @@ test("rejects campaign-authored executable provenance without its external verif
         await writeFile(file, `${JSON.stringify(value)}\n`);
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
-            /does not prove its installed archive executable contents/i,
+            /does not prove its installed archive executable contents|aggregate differs|immutable child/i,
         );
     } finally {
         await fixture.cleanup();
@@ -1298,7 +1403,7 @@ test("rejects provenance drift when the verifier receipt is paired with a differ
         await writeFile(file, `${JSON.stringify(value)}\n`);
         await assert.rejects(
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
-            /workflow evidence does not prove|installed archive executable contents/i,
+            /workflow evidence does not prove|installed archive executable contents|aggregate differs|immutable child/i,
         );
     } finally {
         await fixture.cleanup();
@@ -1329,7 +1434,7 @@ test("campaign records expose exactly five persona aggregates while retaining ev
     const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
     const audits = P805_PERSONAS.map((persona) => ({auditId:`aggregate-${persona}`, persona, tupleReceipts:tuples.filter((tuple) => tuple.persona === persona).map((tuple, index) => ({tuple, auditId:`tuple-${persona}-${index}`, auditPath:`audit-${persona}-${index}.json`, auditSha256:"a".repeat(64), tupleReceiptPath:`receipt-${persona}-${index}.json`, tupleReceiptSha256:"b".repeat(64), cleanupPath:`cleanup-${persona}-${index}.json`, cleanupSha256:"c".repeat(64), checkpointReceiptSha256s:["d".repeat(64)]}))}));
     assert.equal(validateP805AuditMatrix(audits, "initial"), false);
-    assert.throws(() => validateP805AuditMatrix(audits.slice(1), "initial"), /exactly five persona aggregates/);
+    assert.throws(() => validateP805AuditMatrix(audits.slice(1), "initial"), /exactly five persona aggregates|aggregate differs|immutable child/ );
     assert.throws(() => validateP805AuditMatrix([...audits.slice(0, -1), {...audits.at(-1), persona:audits[0].persona}], "initial"), /duplicate or missing persona/);
     assert.throws(() => validateP805AuditMatrix([{auditId:"tuple", tuple:tuples[0]}, ...audits.slice(1)], "initial"), /exactly five persona aggregates/);
 });
@@ -1356,4 +1461,49 @@ test("tuple proof ledger rejects missing, duplicate, cross-candidate, cross-pers
         mutate(candidate);
         assert.throws(() => validateP805TupleProofLedger(candidate, initial), /tuple proof ledger/i);
     }
+});
+
+
+test("freezes an initial measured overflow by reference and accepts its clean persona retest", async () => {
+    const fixture = await campaignFixture({initialOverflow:true, throughController:true});
+    try {
+        const result = await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
+        assert.equal(result.manifestSha256, hash(await readFile(path.join(fixture.directory, "manifest.json"))));
+        assert.deepEqual(result.personas, P805_PERSONAS);
+        const initial = JSON.parse(await readFile(path.join(fixture.directory, "initial-audits.json"), "utf8"));
+        const frozen = JSON.parse(await readFile(path.join(fixture.directory, "frozen-findings.json"), "utf8"));
+        assert.deepEqual(frozen.findings[0].evidence, initial.audits[3].evidence.find((item) => item.evidenceId === frozen.findings[0].evidence.evidenceId));
+    } finally { await fixture.cleanup(); }
+});
+
+test("authenticates every child log and cleanup before accepting its persona closeout", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const records = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8"));
+        const reference = records.audits[0].tupleReceipts.at(-1);
+        const child = JSON.parse(await readFile(path.join(fixture.directory, reference.auditPath), "utf8"));
+        const api = child.evidence.find((item) => item.kind === "api-log");
+        const original = await readFile(path.join(fixture.directory, api.path));
+        await writeFile(path.join(fixture.directory, api.path), "[]");
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /evidence digest or size differs/);
+        await writeFile(path.join(fixture.directory, api.path), original);
+        const cleanup = path.join(fixture.directory, reference.cleanupPath);
+        await writeFile(cleanup, "{}");
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /immutable child cleanup digest differs/);
+    } finally { await fixture.cleanup(); }
+});
+
+test("controller leaves no canonical closeout when a material finding is still open", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const closeoutFile = path.join(fixture.directory, "closeout.json"), closeout = JSON.parse(await readFile(closeoutFile, "utf8"));
+        const {externalAnchor, ...payload} = closeout;
+        await rm(closeoutFile);
+        await writeFile(path.join(fixture.directory, "closeout-payload.json"), `${JSON.stringify(payload, null, 2)}\n`);
+        const findingFile = path.join(fixture.directory, "finding-register.json"), findings = JSON.parse(await readFile(findingFile, "utf8"));
+        findings.findings[0].status = "open";
+        await writeFile(findingFile, `${JSON.stringify(findings)}\n`);
+        await assert.rejects(() => runP805Closeout({directory:fixture.directory, retestCandidate:retest, closeoutAnchor:externalAnchor}), /release-blocking finding remains open/);
+        await assert.rejects(() => readFile(closeoutFile), /ENOENT/);
+    } finally { await fixture.cleanup(); }
 });

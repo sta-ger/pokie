@@ -7,9 +7,10 @@
  * closeout.  Reviewers write bounded records and this module rejects records
  * that are not tied to the candidate which they actually exercised.
  */
+import {projectP805PersonaAudit} from "./p8-05-persona-projection.mjs";
 import {createHash} from "node:crypto";
 import {existsSync} from "node:fs";
-import {readFile, stat} from "node:fs/promises";
+import {lstat, readFile, stat} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
@@ -152,13 +153,26 @@ async function externalJson(target, label) {
     try { return {contents, value:JSON.parse(contents)}; } catch { fail(`${label} is not JSON`); }
 }
 
+async function evidencePath(directory, name, label) {
+    const root = path.resolve(directory), target = path.resolve(root, name);
+    if (!relative(name) || !target.startsWith(`${root}${path.sep}`)) fail(`${label} evidence escapes the campaign directory`);
+    let current = root;
+    for (const part of ["", ...path.relative(root, target).split(path.sep)]) {
+        current = path.join(current, part);
+        const metadata = await lstat(current);
+        if (metadata.isSymbolicLink() || (current === target ? !metadata.isFile() : !metadata.isDirectory())) fail(`${label} evidence is not a regular artifact in its child namespace`);
+    }
+    return target;
+}
+
 async function boundedEvidence(directory, record, expected, label, {after, before, used} = {}) {
     if (!record || typeof record.evidenceId !== "string" || !record.evidenceId || !relative(record.path) || !sha(record.sha256) || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 1 || record.sizeBytes > 5 * 1024 * 1024 || !iso(record.capturedAt) || typeof record.kind !== "string" || !record.kind || !Array.isArray(record.observationIds) || !record.observationIds.every((value) => typeof value === "string" && value)) fail(`${label} lacks bounded evidence metadata`);
     candidate(record, expected, `${label} evidence`);
     if ((after && Date.parse(record.capturedAt) < Date.parse(after)) || (before && Date.parse(record.capturedAt) > Date.parse(before))) fail(`${label} evidence timestamp is outside its audit`);
     if (used?.has(record.evidenceId)) fail(`${label} reuses evidence ${record.evidenceId}`);
-    used?.add(record.evidenceId);
-    const target = path.resolve(directory, record.path);
+    if (used && [...used.values()].some((definition) => definition.path === record.path)) fail(`${label} repeats an evidence definition path ${record.path}`);
+    used?.set(record.evidenceId, record);
+    const target = await evidencePath(directory, record.path, label);
     if (!target.startsWith(`${path.resolve(directory)}${path.sep}`)) fail(`${label} evidence escapes the campaign directory`);
     let contents, file;
     try { [contents, file] = await Promise.all([readFile(target), stat(target)]); } catch { fail(`${label} evidence is missing: ${record.path}`); }
@@ -174,7 +188,7 @@ async function boundedEvidence(directory, record, expected, label, {after, befor
  * route, a similarly-shaped API response, or a Node-side request cannot
  * stand in for a person activating a live DOM lifecycle control.
  */
-function liveDomTransaction(contents, observation, persona, label) {
+function liveDomTransaction(contents, observation, persona, label, initial = false) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed live-DOM transaction evidence`); }
     const pointer = page.transaction?.pointerActivations?.[0], keyboard = page.transaction?.keyboardActivations?.[0];
@@ -266,17 +280,39 @@ function liveDomTransaction(contents, observation, persona, label) {
         page.renderedTerminal.lifecycle.artifact.outputPath.length > 0
     );
     if (!outcomeLibraryTransaction) fail(`${label} Outcome Library control, preflight, or durable result is missing, loading, unsupported, disabled, or stale`);
-    if (!contract || !screenState || !transactionState || !stateClassMatchesRequest || !validRenderedForm || page.kind !== "p8-05-live-dom-transaction" || page.operation !== observation || page.expectedOutcome !== contract.terminal || typeof page.route !== "string" || !page.route.endsWith(`/${contract.route}`) || !["wide", "compact", "narrow"].includes(page.viewport) || page.screen?.name !== contract.route || page.screen?.region !== screenState.region || page.screen?.navigationControl !== screenState.navigationControl || page.screen?.terminalText !== screenState.result || typeof page.control?.id !== "string" || !page.control.id || page.interaction?.stableControlId !== page.control.id || page.interaction?.identityAttribute !== "id" || page.interaction?.transactionState !== transactionState || page.interaction?.lifecycle?.kind !== expectedLifecycle.kind || page.interaction?.lifecycle?.value !== expectedLifecycle.value || typeof page.control?.role !== "string" || !page.control.role || page.control?.accessibleName !== matchedControl || page.control?.enabled !== true || page.precondition?.enabled !== true || page.precondition?.disabled !== false || page.precondition?.accessibleName !== matchedControl || page.precondition?.region !== screenState.region || !page.interaction || page.interaction.control !== activatedControl || !correctRenderedControl || !renderedActivation || page.transaction?.stateClass !== transactionState || page.transaction?.control?.stableControlId !== page.control?.id || page.transaction.control?.identityAttribute !== "id" || page.transaction.control?.accessibleName !== matchedControl || page.transaction.control?.enabled !== true || page.transaction.control?.disabled !== false || page.transaction.control?.disabledExplanation !== null || page.transaction.confirmation?.required !== false || page.transaction.confirmation?.state !== "not-required" || page.contextRevalidation?.method !== "GET" || page.contextRevalidation?.path !== "/api/project/context" || !sha(page.contextRevalidation?.responseSha256) || !["loaded", "outcome-source", "artifact"].includes(page.contextRevalidation?.projectStatus) || page.contextRevalidation?.completedBeforeSelection !== true || typeof page.contextRevalidation?.browserRequestId !== "string" || !page.contextRevalidation.browserRequestId || !Number.isInteger(page.contextRevalidation.status) || page.contextRevalidation.status < 200 || page.contextRevalidation.status >= 400 || !page.workflow || page.workflow.persona !== persona || page.workflow.source !== "rendered-control" || page.workflow.transactionState !== transactionState || page.workflow.expectedApi !== contract.api || (modern && (page.workflow.expectedMethod !== contract.method || page.workflow.expectedBodyKind !== (contract.body ?? null))) || page.workflow.expectedArtifact !== (contract.artifact ?? null) || page.workflow.terminal !== contract.terminal || !page.request || page.request.path !== contract.api || (modern && (page.request.method !== contract.method || page.request.bodyKind !== (contract.body ?? null) || !sha(page.request.bodySha256) || !sha(page.request.responseSha256) || typeof page.request.browserRequestId !== "string" || page.request.initiator !== "rendered-control" || !page.terminal || !["response", "rendered-poll"].includes(page.terminal.source) || (requiresTerminalPoll && (page.terminal.source !== "rendered-poll" || typeof page.terminal.jobId !== "string" || !page.terminal.jobId || page.terminal.pollPath !== contract.poll.replace("{id}", encodeURIComponent(page.terminal.jobId)) || typeof page.terminal.browserRequestId !== "string" || !page.terminal.browserRequestId)) || (!requiresTerminalPoll && page.terminal.source !== "response") || !["completed", "success", "ok", "valid", "partial"].includes(page.terminal.status) || page.terminal.complete !== true || !sha(page.terminal.resultSha256) || page.terminal.resultSha256 !== terminalDigest || !Object.hasOwn(page.terminal, "result") || !terminalSucceeded || !nonEmptyReport || !publishedArtifact || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(resultStatus))) || !page.renderedTerminal || page.renderedTerminal.state !== "rendered" || page.renderedTerminal.changedAfterRequest !== true || page.renderedTerminal.observedAfterRequestId !== page.request.browserRequestId || page.renderedTerminal.resultSha256 !== terminalDigest || !terminalControlIsBound || !terminalStateIsBound || !terminalJobIsBound || !sha(page.renderedTerminal.beforeTextSha256) || !sha(page.renderedTerminal.textSha256) || page.renderedTerminal.beforeTextSha256 === page.renderedTerminal.textSha256 || typeof page.renderedTerminal.text !== "string" || page.renderedTerminal.text.trim().length < 3 || page.renderedTerminal.lifecycle?.role === undefined || typeof page.renderedTerminal.lifecycle.terminal !== "string" || !page.renderedTerminal.lifecycle.terminal || typeof page.renderedTerminal.lifecycle.text !== "string" || page.renderedTerminal.lifecycle.text.trim().length < 3 || (contract.body !== undefined && contract.artifact !== undefined && (page.renderedTerminal.lifecycle.artifact?.name !== contract.artifact || typeof page.renderedTerminal.lifecycle.artifact?.accessibleName !== "string" || !page.renderedTerminal.lifecycle.artifact.accessibleName)) || !iso(page.renderedTerminal.observedAt) || !Number.isInteger(page.request.status) || page.request.status < 200 || page.request.status >= 400 || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || page.state.overflow !== false || !Array.isArray(page.state.accessibility?.namedRegions) || page.state.accessibility.namedRegions.length === 0 || page.state.accessibility.visibleFocus !== true || page.state.accessibility.unexplainedDisabledControls !== 0) fail(`${label} does not prove a DOM-derived state-class transaction, screen-specific public control, request body, API, rendered terminal result, artifact, and terminal outcome for ${observation}`);
+    if (!contract || !screenState || !transactionState || !stateClassMatchesRequest || !validRenderedForm || page.kind !== "p8-05-live-dom-transaction" || page.operation !== observation || page.expectedOutcome !== contract.terminal || typeof page.route !== "string" || !page.route.endsWith(`/${contract.route}`) || !["wide", "compact", "narrow"].includes(page.viewport) || page.screen?.name !== contract.route || page.screen?.region !== screenState.region || page.screen?.navigationControl !== screenState.navigationControl || page.screen?.terminalText !== screenState.result || typeof page.control?.id !== "string" || !page.control.id || page.interaction?.stableControlId !== page.control.id || page.interaction?.identityAttribute !== "id" || page.interaction?.transactionState !== transactionState || page.interaction?.lifecycle?.kind !== expectedLifecycle.kind || page.interaction?.lifecycle?.value !== expectedLifecycle.value || typeof page.control?.role !== "string" || !page.control.role || page.control?.accessibleName !== matchedControl || page.control?.enabled !== true || page.precondition?.enabled !== true || page.precondition?.disabled !== false || page.precondition?.accessibleName !== matchedControl || page.precondition?.region !== screenState.region || !page.interaction || page.interaction.control !== activatedControl || !correctRenderedControl || !renderedActivation || page.transaction?.stateClass !== transactionState || page.transaction?.control?.stableControlId !== page.control?.id || page.transaction.control?.identityAttribute !== "id" || page.transaction.control?.accessibleName !== matchedControl || page.transaction.control?.enabled !== true || page.transaction.control?.disabled !== false || page.transaction.control?.disabledExplanation !== null || page.transaction.confirmation?.required !== false || page.transaction.confirmation?.state !== "not-required" || page.contextRevalidation?.method !== "GET" || page.contextRevalidation?.path !== "/api/project/context" || !sha(page.contextRevalidation?.responseSha256) || !["loaded", "outcome-source", "artifact"].includes(page.contextRevalidation?.projectStatus) || page.contextRevalidation?.completedBeforeSelection !== true || typeof page.contextRevalidation?.browserRequestId !== "string" || !page.contextRevalidation.browserRequestId || !Number.isInteger(page.contextRevalidation.status) || page.contextRevalidation.status < 200 || page.contextRevalidation.status >= 400 || !page.workflow || page.workflow.persona !== persona || page.workflow.source !== "rendered-control" || page.workflow.transactionState !== transactionState || page.workflow.expectedApi !== contract.api || (modern && (page.workflow.expectedMethod !== contract.method || page.workflow.expectedBodyKind !== (contract.body ?? null))) || page.workflow.expectedArtifact !== (contract.artifact ?? null) || page.workflow.terminal !== contract.terminal || !page.request || page.request.path !== contract.api || (modern && (page.request.method !== contract.method || page.request.bodyKind !== (contract.body ?? null) || !sha(page.request.bodySha256) || !sha(page.request.responseSha256) || typeof page.request.browserRequestId !== "string" || page.request.initiator !== "rendered-control" || !page.terminal || !["response", "rendered-poll"].includes(page.terminal.source) || (requiresTerminalPoll && (page.terminal.source !== "rendered-poll" || typeof page.terminal.jobId !== "string" || !page.terminal.jobId || page.terminal.pollPath !== contract.poll.replace("{id}", encodeURIComponent(page.terminal.jobId)) || typeof page.terminal.browserRequestId !== "string" || !page.terminal.browserRequestId)) || (!requiresTerminalPoll && page.terminal.source !== "response") || !["completed", "success", "ok", "valid", "partial"].includes(page.terminal.status) || page.terminal.complete !== true || !sha(page.terminal.resultSha256) || page.terminal.resultSha256 !== terminalDigest || !Object.hasOwn(page.terminal, "result") || !terminalSucceeded || !nonEmptyReport || !publishedArtifact || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(resultStatus))) || !page.renderedTerminal || page.renderedTerminal.state !== "rendered" || page.renderedTerminal.changedAfterRequest !== true || page.renderedTerminal.observedAfterRequestId !== page.request.browserRequestId || page.renderedTerminal.resultSha256 !== terminalDigest || !terminalControlIsBound || !terminalStateIsBound || !terminalJobIsBound || !sha(page.renderedTerminal.beforeTextSha256) || !sha(page.renderedTerminal.textSha256) || page.renderedTerminal.beforeTextSha256 === page.renderedTerminal.textSha256 || typeof page.renderedTerminal.text !== "string" || page.renderedTerminal.text.trim().length < 3 || page.renderedTerminal.lifecycle?.role === undefined || typeof page.renderedTerminal.lifecycle.terminal !== "string" || !page.renderedTerminal.lifecycle.terminal || typeof page.renderedTerminal.lifecycle.text !== "string" || page.renderedTerminal.lifecycle.text.trim().length < 3 || (contract.body !== undefined && contract.artifact !== undefined && (page.renderedTerminal.lifecycle.artifact?.name !== contract.artifact || typeof page.renderedTerminal.lifecycle.artifact?.accessibleName !== "string" || !page.renderedTerminal.lifecycle.artifact.accessibleName)) || !iso(page.renderedTerminal.observedAt) || !Number.isInteger(page.request.status) || page.request.status < 200 || page.request.status >= 400 || !page.state || typeof page.state.text !== "string" || !Array.isArray(page.state.controls) || typeof page.state.overflow !== "boolean" || typeof page.state.accessibility?.visibleFocus !== "boolean" || !Number.isSafeInteger(page.state.accessibility?.unexplainedDisabledControls) || page.state.accessibility.unexplainedDisabledControls < 0 || (!initial && page.state.overflow !== false) || !Array.isArray(page.state.accessibility?.namedRegions) || (!initial && (page.state.accessibility.namedRegions.length === 0 || page.state.accessibility.visibleFocus !== true || page.state.accessibility.unexplainedDisabledControls !== 0))) fail(`${label} does not prove a DOM-derived state-class transaction, screen-specific public control, request body, API, rendered terminal result, artifact, and terminal outcome for ${observation}`);
     return page;
 }
 
 async function validateAuditEvidence(directory, audit, expected, label, used) {
+    if (audit.tupleReceipts) {
+        const {readP805ControllerImmutableArtifact} = await import("./p8-05-product-readiness-controller.mjs");
+        const children = [];
+        for (const reference of audit.tupleReceipts) {
+            const read = (file, sha256, kind) => readP805ControllerImmutableArtifact(directory, file, sha256, `${label} immutable child ${kind}`);
+            const child = (await read(reference.auditPath, reference.auditSha256, "audit")).value;
+            const tuple = (await read(reference.tupleReceiptPath, reference.tupleReceiptSha256, "tuple receipt")).value;
+            const cleanup = (await read(reference.cleanupPath, reference.cleanupSha256, "cleanup")).value;
+            const nonce = child.worker?.nonce;
+            if (typeof nonce !== "string" || !/^[a-zA-Z0-9-]+$/.test(nonce)) fail(`${label} child lacks its immutable worker namespace`);
+            const namespace = `${child.phase}/${child.persona}/${nonce}/`;
+            if ([...(child.evidence ?? []), ...(child.checkpointReceipts ?? [])].some((item) => !item.path?.startsWith(namespace) || item.path.split("/").includes(".."))) fail(`${label} evidence escapes its immutable child namespace`);
+            if (child.tupleReceipts !== undefined || child.auditId !== reference.auditId || JSON.stringify(child.tuple) !== JSON.stringify(reference.tuple) || child.persona !== audit.persona || child.phase !== audit.phase || tuple.kind !== "p8-05-packed-tuple-receipt" || tuple.status !== "passed" || tuple.phase !== child.phase || cleanup.phase !== child.phase || tuple.auditId !== child.auditId || JSON.stringify(tuple.tuple) !== JSON.stringify(child.tuple) || tuple.candidateId !== expected.candidateId || tuple.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(tuple.worker) !== JSON.stringify(child.worker) || JSON.stringify(tuple.action) !== JSON.stringify(child.rendered?.actions?.[0]) || JSON.stringify(tuple.checkpointReceipt) !== JSON.stringify(child.checkpointReceipts?.[0]) || JSON.stringify(reference.checkpointReceiptSha256s) !== JSON.stringify(child.checkpointReceipts?.map((item) => item.sha256)) || cleanup.kind !== "p8-05-packed-tuple-cleanup" || cleanup.candidateId !== expected.candidateId || cleanup.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(cleanup.tuple) !== JSON.stringify(child.tuple) || JSON.stringify(cleanup.worker) !== JSON.stringify(child.worker) || tuple.cleanupSha256 !== reference.cleanupSha256 || tuple.cleanupEvidenceId !== child.cleanup?.evidenceId || cleanup.cleanupEvidenceId !== child.cleanup?.evidenceId || cleanup.cleanup?.exit !== "success" || cleanup.cleanup?.processTreeDrained !== true || cleanup.cleanup?.resourcesDrained !== true || cleanup.cleanup?.contextRemoved !== true || JSON.stringify(cleanup.cleanup) !== JSON.stringify(Object.fromEntries(Object.entries(child.cleanup ?? {}).filter(([key]) => key !== "evidenceId")))) fail(`${label} immutable child identity, checkpoint, or cleanup differs from its receipt`);
+            auditRecord(child, child.phase, expected, expected);
+            await validateAuditEvidence(directory, child, expected, `${label} child ${child.auditId}`, used);
+            children.push(child);
+        }
+        if (JSON.stringify(audit) !== JSON.stringify(projectP805PersonaAudit(children, audit.tupleReceipts, audit.phase, audit.persona))) fail(`${label} aggregate differs from its authenticated immutable children`);
+        return;
+    }
+
     const evidenceById = new Map();
     for (const item of audit.evidence) evidenceById.set(item.evidenceId, {item, contents:await boundedEvidence(directory, item, expected, label, {after:audit.startedAt, before:audit.endedAt, used})});
     const one = (kind) => [...evidenceById.values()].find((entry) => entry.item.kind === kind)?.contents;
     const text = (kind) => one(kind)?.toString("utf8") ?? "";
     let api, browser, timing, artifact;
     try { api = JSON.parse(text("api-log")); browser = JSON.parse(text("browser-log")); timing = JSON.parse(text("timing")); artifact = JSON.parse(text("artifact")); } catch { fail(`${label} has unparsed machine workflow evidence`); }
+    if (audit.rendered.measurements.consoleExceptions !== browser.filter((event) => event.method === "Runtime.exceptionThrown").length || audit.rendered.measurements.unhandledRequestFailures !== browser.filter((event) => event.method === "Network.loadingFailed").length) fail(`${label} browser measurements differ from its captured child log`);
     const claimedBrowserRequestIds = new Map();
     const claimBrowserRequestId = (browserRequestId, owner) => {
         if (typeof browserRequestId !== "string" || !browserRequestId) fail(`${label} ${owner} lacks a browser request identity`);
@@ -301,7 +337,10 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         const action = audit.rendered.actions.find((value) => (value.persona ?? audit.persona) === persona && value.observation === observation && value.viewport === viewport);
         const evidenceId = action?.evidenceId, transactionEvidence = evidenceById.get(evidenceId);
         if (!transactionEvidence || transactionEvidence.item.kind !== "live-dom-transaction" || !transactionEvidence.item.observationIds.includes(observation) || !action) fail(`${label} lacks ${persona} ${viewport} live-DOM transaction evidence for ${observation}`);
-        const page = liveDomTransaction(transactionEvidence.contents, observation, persona, `${label} ${persona} ${viewport} ${observation}`);
+        const page = liveDomTransaction(transactionEvidence.contents, observation, persona, `${label} ${persona} ${viewport} ${observation}`, audit.phase === "initial");
+        if (action.browserRequestId !== page.request.browserRequestId || action.stableControlId !== page.interaction.stableControlId || action.terminal?.resultSha256 !== page.terminal.resultSha256 || JSON.stringify(action.contextRevalidation) !== JSON.stringify(page.contextRevalidation) || JSON.stringify(action.transaction) !== JSON.stringify(page.transaction)) fail(`${label} checkpoint action and captured transaction disagree`);
+        const observedDefects = [["accessibility", page.state.controls.some((control) => !control.disabled && control.accessible === false)], ["overflow", page.state.overflow], ["named-region", page.state.accessibility.namedRegions.length === 0], ["focus", !page.state.accessibility.visibleFocus], ["disabled-control", page.state.accessibility.unexplainedDisabledControls > 0]];
+        if (observedDefects.some(([kind, observed]) => observed && !audit.rendered.defects.some((defect) => defect.kind === kind && defect.evidenceId === evidenceId))) fail(`${label} lacks the measured initial defect's transaction evidence`);
         if (page.viewport !== viewport) fail(`${label} ${persona} ${observation} reuses ${page.viewport} live-DOM transaction for ${viewport}`);
         const requestOwner = `${persona} ${viewport} ${observation} action`, contextOwner = `${persona} ${viewport} ${observation} context`, sharedNavigationContext = page.contextRevalidation.browserRequestId === page.request.browserRequestId;
         claimBrowserRequestId(page.request.browserRequestId, requestOwner);
@@ -345,12 +384,12 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     for (const receipt of audit.checkpointReceipts ?? []) {
         const actionKey = `${receipt?.persona}/${receipt?.observation}/${receipt?.viewport}`;
         if (!receipt || typeof receipt.receiptId !== "string" || !receipt.receiptId || checkpointIds.has(receipt.receiptId) || checkpointPaths.has(receipt.path) || checkpointActions.has(actionKey) || !relative(receipt.path) || !sha(receipt.sha256) || !Number.isSafeInteger(receipt.sizeBytes) || receipt.sizeBytes < 1 || receipt.sizeBytes > 5 * 1024 * 1024 || !iso(receipt.capturedAt) || Date.parse(receipt.capturedAt) < Date.parse(audit.startedAt) || Date.parse(receipt.capturedAt) > Date.parse(audit.endedAt) || receipt.candidateId !== expected.candidateId || receipt.candidatePackageSha256 !== expected.candidatePackageSha256 || !sha(receipt.actionSha256)) fail(`${label} has a missing, duplicate, stale, cross-candidate, or substituted checkpoint receipt`);
-        const target = path.resolve(directory, receipt.path);
+        const target = await evidencePath(directory, receipt.path, label);
         if (!target.startsWith(`${path.resolve(directory)}${path.sep}`)) fail(`${label} checkpoint receipt escapes the campaign directory`);
         let contents, checkpoint;
         try { contents = await readFile(target); checkpoint = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} checkpoint receipt is unreadable`); }
         const action = audit.rendered.actions.find((value) => (value?.persona ?? audit.persona) === receipt.persona && value?.observation === receipt.observation && value?.viewport === receipt.viewport);
-        if (contents.length !== receipt.sizeBytes || digest(contents) !== receipt.sha256 || checkpoint?.schemaVersion !== 1 || checkpoint.kind !== "p8-05-packed-workflow-checkpoint" || checkpoint.receiptId !== receipt.receiptId || checkpoint.auditId !== audit.auditId || typeof checkpoint.runNonce !== "string" || !checkpoint.runNonce || checkpoint.sequence !== checkpointPaths.size + 1 || checkpoint.status !== "passed" || checkpoint.capturedAt !== receipt.capturedAt || checkpoint.candidateId !== expected.candidateId || checkpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || checkpoint.phase !== audit.phase || checkpoint.persona !== receipt.persona || checkpoint.observation !== receipt.observation || checkpoint.viewport !== receipt.viewport || !action || receipt.actionSha256 !== digest(JSON.stringify(action)) || JSON.stringify(checkpoint.action) !== JSON.stringify(action)) fail(`${label} checkpoint receipt does not bind its exact DOM action, request, terminal, artifact, timing, accessibility, provenance, and viewport`);
+        if (contents.length !== receipt.sizeBytes || digest(contents) !== receipt.sha256 || checkpoint?.schemaVersion !== 1 || checkpoint.kind !== "p8-05-packed-workflow-checkpoint" || checkpoint.receiptId !== receipt.receiptId || checkpoint.auditId !== audit.auditId || JSON.stringify(checkpoint.worker) !== JSON.stringify(audit.worker) || checkpoint.runNonce !== audit.worker?.nonce || checkpoint.sequence !== checkpointPaths.size + 1 || checkpoint.status !== "passed" || checkpoint.capturedAt !== receipt.capturedAt || checkpoint.candidateId !== expected.candidateId || checkpoint.candidatePackageSha256 !== expected.candidatePackageSha256 || checkpoint.phase !== audit.phase || checkpoint.persona !== receipt.persona || checkpoint.observation !== receipt.observation || checkpoint.viewport !== receipt.viewport || !action || receipt.actionSha256 !== digest(JSON.stringify(action)) || JSON.stringify(checkpoint.action) !== JSON.stringify(action)) fail(`${label} checkpoint receipt does not bind its exact DOM action, request, terminal, artifact, timing, accessibility, provenance, and viewport`);
         checkpointIds.add(receipt.receiptId); checkpointPaths.add(receipt.path); checkpointActions.add(actionKey);
     }
     for (const {persona, observation, viewport} of auditTuples) {
@@ -358,12 +397,16 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     }
     if (JSON.stringify(audit.finalResult?.checkpointReceiptSha256s) !== JSON.stringify((audit.checkpointReceipts ?? []).map((receipt) => receipt.sha256))) fail(`${label} final result does not aggregate only its verified checkpoint receipts`);
     const tupleCli = audit.tuple && P805_WORKFLOW_CONTRACTS[audit.tuple.persona][audit.tuple.observation].cli;
-    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || (tupleCli && !text("cli-transcript").includes(tupleCli)) || (!audit.tuple && (!text("cli-transcript").includes("packed CLI WASM run") || !text("cli-transcript").includes("packed CLI serve"))) || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || artifact?.candidatePackageJsonSha256 !== audit.packageIdentity.candidatePackageJsonSha256 || artifact?.installedPackageJsonSha256 !== audit.packageIdentity.installedPackageJsonSha256 || artifact?.declaredCandidateExecutableSha256 !== audit.packageIdentity.declaredCandidateExecutableSha256 || artifact?.candidateExecutableSha256 !== audit.packageIdentity.candidateExecutableSha256 || artifact?.candidateExecutableSha256 !== artifact?.declaredCandidateExecutableSha256 || artifact?.candidateExecutableReceiptSha256 !== audit.packageIdentity.candidateExecutableReceiptSha256 || artifact?.candidateExecutableReceiptId !== audit.packageIdentity.candidateExecutableReceiptId || artifact?.candidateExecutableReceiptIssuer !== audit.packageIdentity.candidateExecutableReceiptIssuer || artifact?.candidateTreeManifestCandidateId !== expected.candidateId || artifact?.candidateTreeManifestSha256 !== audit.packageIdentity.candidateTreeManifestSha256 || artifact?.candidateTreeObjectId !== audit.packageIdentity.candidateTreeObjectId || !/^[a-f0-9]{40}$/i.test(artifact?.candidateTreeObjectId ?? "") || artifact?.archiveGitHead !== expected.candidateId || audit.packageIdentity.archiveGitHead !== expected.candidateId || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, candidate binding, timing, and artifact operations`);
+    if (!text("cli-transcript").includes("PACKED_INSTALL") || !text("cli-transcript").includes("packed CLI create") || (tupleCli && !text("cli-transcript").includes(tupleCli)) || (!audit.tuple && (!text("cli-transcript").includes("packed CLI WASM run") || !text("cli-transcript").includes("packed CLI serve"))) || !Array.isArray(api) || !api.some((entry) => entry?.path === "/api/health") || !Array.isArray(browser) || JSON.stringify(timing) !== JSON.stringify(audit.timings) || artifact?.candidateId !== expected.candidateId || artifact?.candidatePackageSha256 !== expected.candidatePackageSha256 || artifact?.packedPackageSha256 !== expected.candidatePackageSha256 || artifact?.candidatePackageJsonSha256 !== audit.packageIdentity.candidatePackageJsonSha256 || artifact?.installedPackageJsonSha256 !== audit.packageIdentity.installedPackageJsonSha256 || artifact?.declaredCandidateExecutableSha256 !== audit.packageIdentity.declaredCandidateExecutableSha256 || artifact?.candidateExecutableSha256 !== audit.packageIdentity.candidateExecutableSha256 || artifact?.candidateExecutableSha256 !== artifact?.declaredCandidateExecutableSha256 || artifact?.candidateExecutableReceiptSha256 !== audit.packageIdentity.candidateExecutableReceiptSha256 || artifact?.candidateExecutableReceiptId !== audit.packageIdentity.candidateExecutableReceiptId || artifact?.candidateExecutableReceiptIssuer !== audit.packageIdentity.candidateExecutableReceiptIssuer || artifact?.candidateTreeManifestCandidateId !== expected.candidateId || artifact?.candidateTreeManifestSha256 !== audit.packageIdentity.candidateTreeManifestSha256 || artifact?.candidateTreeObjectId !== audit.packageIdentity.candidateTreeObjectId || !/^[a-f0-9]{40}$/i.test(artifact?.candidateTreeObjectId ?? "") || (artifact?.archiveGitHead !== undefined && artifact.archiveGitHead !== expected.candidateId) || (audit.packageIdentity.archiveGitHead !== undefined && audit.packageIdentity.archiveGitHead !== expected.candidateId) || !text("reproduction").includes("Persona:") || !text("error")) fail(`${label} workflow evidence does not prove its packed CLI, Studio API, candidate binding, timing, and artifact operations`);
+    const cleanup = evidenceById.get(audit.cleanup?.evidenceId);
+    let cleanupRecord;
+    try { cleanupRecord = JSON.parse(cleanup?.contents.toString("utf8") ?? ""); } catch { fail(`${label} cleanup evidence is not machine JSON`); }
+    if (cleanup?.item.kind !== "cleanup" || cleanupRecord.kind !== "p8-05-cleanup" || cleanupRecord.processTreeDrained !== true || cleanupRecord.resourcesDrained !== true || cleanupRecord.contextRemoved !== true || JSON.stringify(cleanupRecord) !== JSON.stringify(Object.fromEntries(Object.entries(audit.cleanup ?? {}).filter(([key]) => key !== "evidenceId"))) || !Array.isArray(cleanupRecord.ownership) || !cleanupRecord.ownership.length || cleanupRecord.ownership.some((owner) => !owner?.spawnedAt || !Number.isInteger(owner.pid) || owner.pid < 1 || owner.drain?.processTreeDrained !== true || owner.drain?.resourcesDrained !== true)) fail(`${label} cleanup evidence does not prove spawn-time owned resource drainage`);
     // Recovery is its own UI/UX tuple in the tuple ledger.  Requiring every
     // independently owned child to replay it would make one child execute
     // several workflows and would erase already accepted receipts after a
     // later recovery failure.
-    if (audit.tuple !== undefined) return;
+    if (audit.tuple !== undefined && audit.workflowScope?.recoveryRequired !== true) return;
     // Recovery must be a captured runtime result, not a collection of booleans
     // copied into `rendered`.  In particular reports use their own `id` (not a
     // fictional `simulationId`), so the cancellation assertion is only useful
@@ -383,10 +426,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     if (!runtime || recoveryNames.some((name) => runtimeRecovery?.[name] !== true) || transactions.length < 9 || transactions.some((transaction) => !transactionValid(transaction)) || durableTransactionNames.some((name) => !terminalTransactionValid(runtime.value.transactions?.[name])) || runtime.value.transactions?.activeReloadCancellation?.confirmation?.state !== "confirmed" || runtime.value.transactions?.cooperativeCancellation?.confirmation?.state !== "confirmed" || runtime.value.transactions?.activeReloadCancellation?.confirmation?.control?.identityAttribute !== "id" || runtime.value.transactions?.cooperativeCancellation?.confirmation?.control?.identityAttribute !== "id" || typeof runtime.value.reload?.activeJobId !== "string" || runtime.value.reload.activeJobId.length === 0 || runtime.value.reload?.terminal?.status !== "cancelled" || runtime.value.reload?.discoveredAfterReload !== true || !Number.isSafeInteger(runtime.value.staleResponse?.responseCount) || runtime.value.staleResponse.responseCount < 1 || typeof runtime.value.staleResponse?.delayedRequestId !== "string" || runtime.value.staleResponse.completedAfterSwitch !== true || runtime.value.staleResponse?.sourceRoute === runtime.value.staleResponse?.destinationRoute || typeof runtime.value.unsavedWork?.editedControl !== "string" || !runtime.value.unsavedWork.editedControl || !keyboardDomControl(runtime.value.unsavedWork?.editControl) || !keyboardDomControl(runtime.value.unsavedWork?.navigationControl) || !keyboardDomControl(runtime.value.unsavedWork?.cancelControl) || typeof runtime.value.unsavedWork?.protectionText !== "string" || !/unsaved/i.test(runtime.value.unsavedWork.protectionText) || runtime.value.unsavedWork.preserved !== true || typeof runtime.value.restart?.activeJobId !== "string" || !runtime.value.restart.activeJobId || runtime.value.restart.recovered !== true || runtime.value.jobs?.success?.status !== "completed" || runtime.value.jobs?.actionableFailure === undefined || runtime.value.jobs?.cooperativeCancellation?.status !== "cancelled" || typeof runtime.value.jobs?.retryWithoutPartialArtifacts?.id !== "string" || typeof cancelledId !== "string" || !Array.isArray(reports) || reports.some((report) => report?.id === cancelledId) || runtime.value.outcomes?.cancelledReportAbsent !== true || Object.values(audit.rendered.recovery ?? {}).some((value) => value?.evidenceId !== runtime.evidenceId) || Object.values(audit.rendered.jobs ?? {}).some((value) => value?.evidenceId !== runtime.evidenceId)) fail(`${label} lacks captured recovery, terminal-job, and cancelled-report identity evidence`);
     try { validateP805HomeProjectSwitchReceipt(runtime.value.projectSwitchReceipt); }
     catch { fail(`${label} lacks a DOM-bound Home project-switch recovery receipt`); }
-    const cleanup = evidenceById.get(audit.cleanup?.evidenceId);
-    let cleanupRecord;
-    try { cleanupRecord = JSON.parse(cleanup?.contents.toString("utf8") ?? ""); } catch { fail(`${label} cleanup evidence is not machine JSON`); }
-    if (cleanup?.item.kind !== "cleanup" || cleanupRecord.kind !== "p8-05-cleanup" || cleanupRecord.processTreeDrained !== true || cleanupRecord.resourcesDrained !== true || cleanupRecord.contextRemoved !== true || !Array.isArray(cleanupRecord.ownership) || !cleanupRecord.ownership.length || cleanupRecord.ownership.some((owner) => !owner?.spawnedAt || !Number.isInteger(owner.pid) || owner.pid < 1 || owner.drain?.processTreeDrained !== true || owner.drain?.resourcesDrained !== true)) fail(`${label} cleanup evidence does not prove spawn-time owned resource drainage`);
+
 }
 
 function validateFinding(value, label) {
@@ -394,7 +434,7 @@ function validateFinding(value, label) {
 }
 
 function frozenFields(initial, later) {
-    for (const field of ["id", "severity", "material", "persona", "publicSurface", "reproducer", "owner", "evidence"]) {
+    for (const field of ["id", "severity", "material", "persona", "publicSurface", "reproducer", "owner", "evidence", "measurement"]) {
         if (JSON.stringify(initial[field]) !== JSON.stringify(later[field])) fail(`finding ${initial.id} rewrites frozen ${field}`);
     }
 }
@@ -406,7 +446,7 @@ function auditRecord(record, phase, initial, finalCandidate) {
     const expectedObservations = tuple === undefined ? P805_REQUIRED_OBSERVATIONS[record?.persona] : [tuple.observation];
     if (!record || !P805_PERSONAS.includes(record.persona) || record.phase !== phase || typeof record.auditId !== "string" || !record.auditId || !iso(record.startedAt) || !iso(record.endedAt) || Date.parse(record.startedAt) >= Date.parse(record.endedAt) || !Array.isArray(record.observations) || !expectedObservations || expectedObservations.some((required) => !record.observations.includes(required)) || (tuple !== undefined && (!tupleIsValid || record.persona !== tuple.persona || record.observations.length !== 1 || record.observations[0] !== tuple.observation)) || !Array.isArray(cleanContexts) || cleanContexts.length === 0 || cleanContexts.some((context) => !context || !path.isAbsolute(context.workspace) || !path.isAbsolute(context.configurationRoot) || !path.isAbsolute(context.browserProfile) || context.reused !== false) || !Array.isArray(record.evidence) || P805_REQUIRED_EVIDENCE_KINDS.some((kind) => !record.evidence.some((item) => item?.kind === kind)) || !record.observationEvidence || typeof record.observationEvidence !== "object" || !timings || typeof timings !== "object" || timingNames.some((name) => !Number.isSafeInteger(timings[name]) || timings[name] <= 0 || timings[name] > 30 * 60 * 1000) || !record.performance || timingNames.some((name) => !Number.isSafeInteger(record.performance[name]?.budgetMs) || record.performance[name].budgetMs <= 0 || record.performance[name].elapsedMs !== timings[name] || !["within-budget", "regression"].includes(record.performance[name].classification))) fail(`${phase} audit is incomplete for ${record?.persona ?? "unknown persona"}`);
     candidate(record, phase === "initial" ? initial : finalCandidate, `${phase} audit ${record.persona}`);
-    validateP805RenderedPersonaAudit(record);
+    if (!record.tupleReceipts) validateP805RenderedPersonaAudit(record);
 }
 
 /** Campaign records remain readable by the five-persona schema, while the
@@ -421,7 +461,7 @@ export function validateP805AuditMatrix(audits, phase) {
     for (const audit of audits) {
         // A persona record is a projection only: it is valid solely while it
         // retains every immutable child reference it aggregates.
-        const expected = P805_REQUIRED_TUPLES.filter((tuple) => tuple.persona === audit.persona).map(tupleKey), actual = audit.tupleReceipts.map((receipt) => tupleKey(receipt?.tuple));
+        const expected = P805_REQUIRED_TUPLES.filter((tuple) => tuple.persona === audit.persona).map(tupleKey), actual = (audit.tupleReceipts ?? []).map((receipt) => tupleKey(receipt?.tuple));
         if (!Array.isArray(audit.tupleReceipts) || actual.length !== expected.length || JSON.stringify(actual) !== JSON.stringify(expected) || audit.tupleReceipts.some((receipt) => typeof receipt?.auditId !== "string" || !receipt.auditId || !sha(receipt.auditSha256) || !sha(receipt.tupleReceiptSha256) || !sha(receipt.cleanupSha256) || !Array.isArray(receipt.checkpointReceiptSha256s) || receipt.checkpointReceiptSha256s.length !== 1 || !sha(receipt.checkpointReceiptSha256s[0]) || typeof receipt.auditPath !== "string" || typeof receipt.tupleReceiptPath !== "string" || typeof receipt.cleanupPath !== "string")) fail(`${phase} ${audit.persona} aggregate omits an immutable child tuple receipt`);
     }
     return false;
@@ -438,7 +478,7 @@ function qualityDefects(audit) {
         ["performance", Object.values(audit.performance ?? {}).some((entry) => entry?.classification === "regression") ? 1 : 0],
     ].filter(([, count]) => count > 0).map(([kind]) => kind);
     if (!Array.isArray(audit.rendered?.defects) || defects.some((kind) => !audit.rendered.defects.some((defect) => defect?.kind === kind && typeof defect.evidenceId === "string" && defect.evidenceId))) fail(`${audit.phase} ${audit.persona} does not retain every measured browser defect as evidence`);
-    return defects;
+    return [...new Set([...defects, ...audit.rendered.defects.map((item) => item.kind)])];
 }
 
 /**
@@ -446,17 +486,28 @@ function qualityDefects(audit) {
  * controller, never inferred from mutable campaign files.
  */
 export async function validateP805ProductReadinessCampaign(directory, expected) {
+    return validateCampaignRecords(directory, expected);
+}
+
+/** Controller preflight uses the same validator before appending closeout.
+ * Release consumers always call the canonical on-disk entry point above. */
+export async function validateP805ProspectiveCloseout(directory, expected, closeout) {
+    if (existsSync(path.join(directory, "closeout.json"))) fail("closeout is append-only");
+    return validateCampaignRecords(directory, expected, {value:closeout, contents:`${JSON.stringify(closeout, null, 2)}\n`});
+}
+
+async function validateCampaignRecords(directory, expected, prospectiveCloseout) {
     const root = path.resolve(directory);
     if (!expected || !commit(expected.candidateId) || !sha(expected.candidatePackageSha256) || !sha(expected.freezeAnchorSha256) || !sha(expected.closeoutAnchorSha256)) fail("verifier-supplied retest candidate, package digest, freeze anchor digest, and closeout anchor digest are required");
-    for (const name of RECORDS) if (!existsSync(path.join(root, name))) fail(`missing required campaign record ${name}`);
-    const entries = await Promise.all(RECORDS.map((name) => json(root, name)));
+    for (const name of RECORDS) if (!(name === "closeout.json" && prospectiveCloseout) && !existsSync(path.join(root, name))) fail(`missing required campaign record ${name}`);
+    const entries = await Promise.all(RECORDS.map((name) => name === "closeout.json" && prospectiveCloseout ? prospectiveCloseout : json(root, name)));
     const records = Object.fromEntries(RECORDS.map((name, index) => [name, entries[index].value]));
     const provenance = records["PROVENANCE.json"];
     if (provenance.schemaVersion !== P805_SCHEMA_VERSION || typeof provenance.campaignId !== "string" || !provenance.campaignId || !provenance.cleanRoomAttestation || provenance.cleanRoomAttestation !== "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence." || !provenance.initialCandidate || !commit(provenance.initialCandidate.candidateId) || !sha(provenance.initialCandidate.candidatePackageSha256) || !iso(provenance.startedAt)) fail("provenance lacks a clean-room initial candidate attestation");
     const initialCandidate = provenance.initialCandidate;
     const finalCandidate = {candidateId:expected.candidateId, candidatePackageSha256:expected.candidatePackageSha256};
     if (initialCandidate.candidateId === finalCandidate.candidateId) fail("blind retests must use a new candidate after the initial audit");
-    const used = new Set(), contexts = new Set();
+    const used = new Map(), contexts = new Set();
     const initial = records["initial-audits.json"];
     if (initial.schemaVersion !== P805_SCHEMA_VERSION || initial.campaignId !== provenance.campaignId) fail("initial audit record is not bound to the campaign");
     validateP805AuditMatrix(initial.audits, "initial");
@@ -477,11 +528,20 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     try { anchor = JSON.parse(anchorContents); } catch { fail("external finding-freeze anchor is not JSON"); }
     if (anchor.kind !== "p8-05-freeze-anchor" || anchor.campaignId !== provenance.campaignId || anchor.candidateId !== initialCandidate.candidateId || anchor.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || anchor.frozenFindingsSha256 !== frozenDigest(frozen) || anchor.initialAuditsSha256 !== digest(entries[1].contents) || typeof anchor.receiptId !== "string" || !anchor.receiptId || !iso(anchor.anchoredAt) || Date.parse(anchor.anchoredAt) < Date.parse(frozen.frozenAt)) fail("external finding-freeze anchor does not bind the initial audit and frozen register");
     unique(frozen.findings, "frozen findings");
-    for (const item of frozen.findings) { validateFinding(item, `frozen finding ${item?.id ?? "unknown"}`); await boundedEvidence(root, item.evidence, initialCandidate, `frozen finding ${item.id}`, {after:provenance.startedAt, before:frozen.frozenAt, used}); }
-    for (const audit of initial.audits) for (const defect of qualityDefects(audit)) {
-        const measured = audit.rendered.defects.find((value) => value.kind === defect);
-        const evidence = audit.evidence.find((item) => item.evidenceId === measured?.evidenceId);
-        if (!evidence || !["browser-log", "live-dom-transaction", "page-state", "timing"].includes(evidence.kind) || !frozen.findings.some((finding) => finding.persona === audit.persona && finding.evidence?.evidenceId === measured?.evidenceId && finding.evidence?.sha256 === evidence.sha256 && finding.measurement?.kind === defect && finding.measurement?.evidenceId === measured?.evidenceId && finding.measurement?.sha256 === evidence.sha256)) fail(`initial ${audit.persona} ${defect} defect was not frozen against its measured evidence`);
+    for (const item of frozen.findings) {
+        validateFinding(item, `frozen finding ${item?.id ?? "unknown"}`);
+        if (BLOCKING(item) && item.status !== "open") fail(`frozen material finding ${item.id} was already disposed before the fix/retest boundary`);
+        const definition = used.get(item.evidence?.evidenceId);
+        if (definition && JSON.stringify(definition) !== JSON.stringify(item.evidence)) fail(`frozen finding ${item.id} rewrites an evidence reference`);
+        await boundedEvidence(root, item.evidence, initialCandidate, `frozen finding ${item.id}`, {after:provenance.startedAt, before:frozen.frozenAt, used:definition ? undefined : used});
+    }
+    for (const audit of initial.audits) {
+        qualityDefects(audit);
+        for (const measured of audit.rendered.defects) {
+            const defect = measured.kind;
+            const evidence = audit.evidence.find((item) => item.evidenceId === measured?.evidenceId);
+            if (!evidence || !["browser-log", "live-dom-transaction", "page-state", "timing"].includes(evidence.kind) || !frozen.findings.some((finding) => finding.persona === audit.persona && finding.evidence?.evidenceId === measured?.evidenceId && finding.evidence?.sha256 === evidence.sha256 && finding.measurement?.kind === defect && finding.measurement?.evidenceId === measured?.evidenceId && finding.measurement?.sha256 === evidence.sha256)) fail(`initial ${audit.persona} ${defect} defect was not frozen against its measured evidence`);
+        }
     }
     const findingRegister = records["finding-register.json"];
     if (findingRegister.schemaVersion !== P805_SCHEMA_VERSION || findingRegister.campaignId !== provenance.campaignId || !Array.isArray(findingRegister.findings)) fail("finding register is incomplete");
@@ -495,7 +555,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     const regressions = records["regressions.json"];
     if (regressions.schemaVersion !== P805_SCHEMA_VERSION || regressions.campaignId !== provenance.campaignId || !Array.isArray(regressions.regressions)) fail("regression register is incomplete");
     unique(regressions.regressions, "regressions", "findingId");
-    const machineReceipts = new Set();
+    const machineReceipts = new Set(), regressionCompletionTimes = new Map();
     for (const finding of findingRegister.findings) {
         validateFinding(finding, `finding register ${finding?.id ?? "unknown"}`);
         if (BLOCKING(finding)) {
@@ -512,6 +572,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
             machineReceipts.add(receipt.sha256);
             const authentication = machineReceipt.value?.authentication;
             if (digest(machineReceipt.contents) !== receipt.sha256 || machineReceipt.value?.kind !== "p8-05-machine-receipt" || typeof machineReceipt.value?.issuer !== "string" || !machineReceipt.value.issuer || typeof machineReceipt.value?.receiptId !== "string" || !machineReceipt.value.receiptId || !authentication || authentication.scheme !== "verifier-owned-digest" || typeof authentication.verifierId !== "string" || !authentication.verifierId || authentication.attestedResultSha256 !== digest(`${JSON.stringify(resultPayload)}\n`) || machineReceipt.value?.candidateId !== finalCandidate.candidateId || machineReceipt.value?.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || machineReceipt.value?.testPath !== regression.testPath || machineReceipt.value?.passed !== true || machineReceipt.value?.resultSha256 !== digest(`${JSON.stringify(resultPayload)}\n`) || !iso(machineReceipt.value?.completedAt) || Date.parse(machineReceipt.value.completedAt) < Date.parse(result.completedAt)) fail(`regression ${finding.id} machine receipt is not an independent authenticated result`);
+            regressionCompletionTimes.set(finding.id, machineReceipt.value.completedAt);
         }
     }
     const retests = records["retests.json"];
@@ -523,7 +584,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
         if (qualityDefects(audit).length) fail(`clean retest ${audit.persona} retains a browser quality defect`);
         for (const context of audit.cleanContexts ?? [audit.cleanContext]) for (const value of Object.values(context)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
-        for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && Date.parse(regression.verifiedAt) > Date.parse(audit.startedAt)) fail(`retest ${audit.persona} predates regression verification`);
+        for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && (Date.parse(regression.verifiedAt) >= Date.parse(audit.startedAt) || Date.parse(regressionCompletionTimes.get(regression.findingId)) >= Date.parse(audit.startedAt))) fail(`retest ${audit.persona} predates regression verification`);
         await validateAuditEvidence(root, audit, finalCandidate, `retest ${audit.persona}`, used);
     }
     const manifest = records["manifest.json"];
@@ -534,8 +595,9 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     for (const audit of [...initial.audits, ...retests.audits]) for (const item of audit.evidence) boundEvidence.set(item.evidenceId, item.sha256);
     for (const finding of frozen.findings) boundEvidence.set(finding.evidence.evidenceId, finding.evidence.sha256);
     for (const regression of regressions.regressions) if (regression.machineResultEvidence) boundEvidence.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
+    unique(manifest.evidence, "manifest evidence definitions", "evidenceId");
     if (manifest.evidence.length !== boundEvidence.size || manifest.evidence.some((item) => !item || boundEvidence.get(item.evidenceId) !== item.sha256)) fail("immutable campaign manifest does not bind the complete evidence index");
-    const cleanupEvidence = [...initial.audits, ...retests.audits].map((audit) => audit.cleanup?.evidenceId);
+    const cleanupEvidence = [...initial.audits, ...retests.audits].flatMap((audit) => audit.tupleReceipts.map((receipt) => receipt.cleanupEvidenceId));
     if (cleanupEvidence.some((id) => typeof id !== "string") || manifest.cleanupEvidence.length !== cleanupEvidence.length || manifest.cleanupEvidence.some((id, index) => id !== cleanupEvidence[index])) fail("immutable campaign manifest does not bind every measured cleanup record");
     const closeout = records["closeout.json"];
     if (closeout.schemaVersion !== P805_SCHEMA_VERSION || closeout.campaignId !== provenance.campaignId || closeout.manifestSha256 !== digest(entries[RECORDS.indexOf("manifest.json")].contents) || !iso(closeout.closedAt) || !Array.isArray(closeout.dispositions) || closeout.dispositions.length !== frozen.findings.length || closeout.releaseReady !== true || !closeout.externalAnchor || !path.isAbsolute(closeout.externalAnchor.path || "") || path.resolve(closeout.externalAnchor.path).startsWith(`${root}${path.sep}`) || closeout.externalAnchor.sha256 !== expected.closeoutAnchorSha256) fail("closeout is incomplete or lacks the verifier-supplied immutable anchor");
@@ -550,7 +612,7 @@ export async function validateP805ProductReadinessCampaign(directory, expected) 
     if (!closeout.cleanup || closeout.cleanup.noOwnedProcessesRemain !== true || closeout.cleanup.failedOrCancelledArtifactsRemoved !== true) fail("closeout lacks cleanup attestations");
     const closeoutAnchor = await externalJson(closeout.externalAnchor.path, "trusted closeout anchor");
     if (digest(closeoutAnchor.contents) !== expected.closeoutAnchorSha256 || closeoutAnchor.value.kind !== "p8-05-closeout-anchor" || closeoutAnchor.value.campaignId !== provenance.campaignId || closeoutAnchor.value.closeoutSha256 !== closeoutDigest(closeout) || closeoutAnchor.value.manifestSha256 !== closeout.manifestSha256 || !iso(closeoutAnchor.value.anchoredAt) || Date.parse(closeoutAnchor.value.anchoredAt) < Date.parse(closeout.closedAt)) fail("trusted closeout anchor does not bind the completed campaign");
-    return {campaignId:provenance.campaignId, candidateId:finalCandidate.candidateId, candidatePackageSha256:finalCandidate.candidatePackageSha256, frozenFindingsSha256:frozenDigest(frozen), closeoutSha256:closeoutDigest(closeout), closedAt:closeout.closedAt, freezeAnchorSha256:expected.freezeAnchorSha256, closeoutAnchorSha256:expected.closeoutAnchorSha256, personas:[...P805_PERSONAS]};
+    return {campaignId:provenance.campaignId, candidateId:finalCandidate.candidateId, candidatePackageSha256:finalCandidate.candidatePackageSha256, frozenFindingsSha256:frozenDigest(frozen), closeoutSha256:closeoutDigest(closeout), closedAt:closeout.closedAt, manifestSha256:closeout.manifestSha256, freezeAnchorSha256:expected.freezeAnchorSha256, closeoutAnchorSha256:expected.closeoutAnchorSha256, personas:[...P805_PERSONAS]};
 }
 
 function usage() { fail("usage: --campaign-dir <absolute-path> --expected-candidate <40-char-sha> --expected-package-sha256 <sha256> --freeze-anchor-sha256 <sha256> --closeout-anchor-sha256 <sha256>"); }

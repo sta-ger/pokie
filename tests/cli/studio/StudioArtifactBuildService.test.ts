@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
@@ -38,6 +38,32 @@ describe("StudioArtifactBuildService", () => {
         fs.writeFileSync(filePath, JSON.stringify(blueprint));
         return filePath;
     }
+
+    it("waits for all staging cleanup even when another executor has already failed", async () => {
+        let release!: () => void;
+        const cleanup = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        jest.spyOn(service, "build")
+            .mockImplementationOnce(() => Promise.reject(new Error("executor cleanup failed")))
+            .mockImplementationOnce(async () => {
+                await cleanup;
+                return {status: "cancelled", message: "Staging cleaned", plan: new ArtifactConversionPlanner().planType("blueprint", "tsPackage")};
+            });
+        expect(service.start(workDir, "tsPackage", path.join(workDir, "first")).status).toBe("created");
+        expect(service.start(workDir, "tsPackage", path.join(workDir, "second")).status).toBe("created");
+        await Promise.resolve();
+        let settled = false;
+        const draining = service.cancelAll();
+        const rejected = expect(draining).rejects.toThrow("executor cleanup failed");
+        draining.catch(() => {
+            settled = true;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        release();
+        await rejected;
+    });
 
     it("rejects every real WASM sidecar state before creating an artifact build job or destination", () => {
         const wasmPath = path.join(workDir, "component.wasm");

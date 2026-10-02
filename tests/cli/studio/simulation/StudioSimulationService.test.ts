@@ -625,6 +625,10 @@ describe("StudioSimulationService", () => {
 
     it("cancels a queued/running job, stopping further progress", async () => {
         const gate = createControlledYield();
+        let finishRelease!: () => void;
+        const release = jest.fn(() => new Promise<void>((resolve) => {
+            finishRelease = resolve;
+        }));
         const durableDirectory = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-jobs-")), "jobs");
         const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
         const repository = new InMemoryStudioSimulationRepository();
@@ -635,6 +639,11 @@ describe("StudioSimulationService", () => {
             10, // chunkSize
             undefined,
             gate.yieldToEventLoop,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve({runtimePath: "/a", ownsRuntimePath: true, release}),
         );
         service.attachJobService(durableJobs);
 
@@ -654,6 +663,18 @@ describe("StudioSimulationService", () => {
 
         gate.release();
         await flushMacrotask();
+
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(service.getStatus(result.job.id)?.status).toBe("cancelling");
+        expect(durableJobs.list("/a")).toEqual([expect.objectContaining({id: result.job.id, status: "cancelling"})]);
+        let drained = false;
+        const drainage = service.cancelAll().then(() => {
+            drained = true;
+        });
+        await flushMacrotask();
+        expect(drained).toBe(false);
+        finishRelease();
+        await drainage;
 
         const job = service.getStatus(result.job.id);
         expect(job?.status).toBe("cancelled");

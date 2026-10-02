@@ -6,7 +6,7 @@
  */
 import {createHash} from "node:crypto";
 import {execFileSync, spawnSync} from "node:child_process";
-import {mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
+import {copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -29,10 +29,13 @@ function optionsFrom(argv) {
     return options;
 }
 
-async function archiveExecutableManifest(archive) {
+export async function archiveExecutableManifest(archive) {
     const extraction = await mkdtemp(path.join(tmpdir(), "p8-05-candidate-verifier-"));
     try {
-        execFileSync("tar", ["-xzf", archive, "-C", extraction], {stdio:"pipe"});
+        const names = execFileSync("tar", ["-tzf", archive], {encoding:"utf8", maxBuffer:8 * 1024 * 1024}).trim().split("\n");
+        const types = execFileSync("tar", ["-tvzf", archive], {encoding:"utf8", maxBuffer:8 * 1024 * 1024}).trim().split("\n");
+        if (names.some((name) => !name.startsWith("package/") || name.split("/").includes("..") || path.isAbsolute(name)) || types.some((entry) => !["-", "d"].includes(entry[0])) || new Set(names).size !== names.length) fail("archive contains escaping, duplicate, or nonregular package entries");
+        execFileSync("tar", ["-xzf", archive, "-C", extraction, "--no-same-owner"], {stdio:"pipe"});
         const packageRoot = path.join(extraction, "package"), packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8")), files = [];
         const collect = async (directory, relative = "") => {
             for (const entry of await readdir(directory, {withFileTypes:true})) {
@@ -45,28 +48,45 @@ async function archiveExecutableManifest(archive) {
         if (!files.includes("package.json") || !files.some((file) => file.startsWith("dist/"))) fail("archive contains no executable package projection");
         const entries = [];
         for (const file of files.sort()) entries.push({path:file, sha256:digest(await readFile(path.join(packageRoot, file)))});
-        return {packageJson, files:entries.length, sha256:digest(JSON.stringify(entries))};
+        return {packageJson, entries, files:entries.length, sha256:digest(JSON.stringify(entries))};
     } finally { await rm(extraction, {recursive:true, force:true}); }
 }
 
-/** npm --ignore-scripts intentionally omits npm's gitHead decoration.  Add
- * that metadata from the declared candidate before calculating the archive
- * projection, so the installed package can prove the same immutable commit. */
-async function bindArchiveToCandidate(sourceArchive, candidateArchive, candidateId) {
-    const extraction = await mkdtemp(path.join(tmpdir(), "p8-05-candidate-bind-"));
+/** Build the immutable candidate tree in an empty directory. The checkout's
+ * dist is never an input, and the archive remains the canonical npm output. */
+async function verifyCandidateBuild(options, projection, repository) {
+    const parent = path.join(repository, "node_modules", ".cache", "p8-05-verifier");
+    await mkdir(parent, {recursive:true});
+    const workspace = await mkdtemp(path.join(parent, "candidate-"));
     try {
-        execFileSync("tar", ["-xzf", sourceArchive, "-C", extraction], {stdio:"pipe"});
-        const packageRoot = path.join(extraction, "package"), packagePath = path.join(packageRoot, "package.json"), packageJson = JSON.parse(await readFile(packagePath, "utf8"));
-        const source = spawnSync("git", ["show", `${candidateId}:package.json`], {cwd:root, encoding:"utf8"});
-        if (source.status !== 0) fail("candidate package declaration cannot be read");
-        const candidatePackage = JSON.parse(source.stdout);
-        if (packageJson.name !== candidatePackage.name || packageJson.version !== candidatePackage.version || (packageJson.gitHead && packageJson.gitHead !== candidateId)) fail("packed source archive is not the declared candidate package");
-        await writeFile(packagePath, `${JSON.stringify({...packageJson, gitHead:candidateId}, null, 2)}\n`);
-        execFileSync("tar", ["-czf", candidateArchive, "-C", extraction, "package"], {stdio:"pipe"});
-    } finally { await rm(extraction, {recursive:true, force:true}); }
+        const source = execFileSync("git", ["archive", options.candidateId], {cwd:repository, maxBuffer:128 * 1024 * 1024});
+        execFileSync("tar", ["-x", "-C", workspace], {input:source, stdio:["pipe", "pipe", "pipe"]});
+        const declaration = JSON.parse(await readFile(path.join(workspace, "package.json"), "utf8"));
+        const {gitHead, ...packedDeclaration} = projection.packageJson;
+        if (gitHead !== undefined && gitHead !== options.candidateId || JSON.stringify(packedDeclaration) !== JSON.stringify(declaration)) fail("canonical archive package declaration differs from candidate");
+        // Use the clone-installed dependencies only for the identical lockfile.
+        if (digest(await readFile(path.join(repository, "package-lock.json"))) !== digest(await readFile(path.join(workspace, "package-lock.json")))) fail("candidate build dependency lock differs from installed checkout");
+        await symlink(path.join(repository, "node_modules"), path.join(workspace, "node_modules"), "dir");
+        if (typeof declaration.scripts?.build !== "string" || !declaration.scripts.build) fail("candidate has no canonical build script");
+        const buildOutput = execFileSync("/bin/sh", ["-c", declaration.scripts.build], {cwd:workspace, env:{...process.env, PATH:`${path.join(workspace, "node_modules", ".bin")}${path.delimiter}${process.env.PATH ?? ""}`}, encoding:"utf8", timeout:300_000, maxBuffer:8 * 1024 * 1024});
+        const entries = [];
+        const collect = async (directory, prefix) => {
+            for (const entry of await readdir(directory, {withFileTypes:true})) {
+                const file = `${prefix}/${entry.name}`, target = path.join(directory, entry.name);
+                if (entry.isDirectory()) await collect(target, file);
+                else if (entry.isFile()) entries.push({path:file, sha256:digest(await readFile(target))});
+                else fail("candidate build contains a nonregular executable");
+            }
+        };
+        await collect(path.join(workspace, "dist"), "dist");
+        entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+        const archived = projection.entries.filter((entry) => entry.path.startsWith("dist/"));
+        if (JSON.stringify(entries) !== JSON.stringify(archived)) fail("archive executables differ from the verified candidate build");
+        return {kind:"p8-05-verified-candidate-build", candidateId:options.candidateId, command:declaration.scripts.build, commandSource:"candidate package.json#scripts.build", executableFiles:entries.length, executableSha256:digest(JSON.stringify(entries)), outputSha256:digest(buildOutput)};
+    } finally { await rm(workspace, {recursive:true, force:true}); }
 }
 
-function candidateTreeExecutableManifest(candidateId) {
+function candidateTreeExecutableManifest(candidateId, root) {
     const listing = spawnSync("git", ["ls-tree", "-r", "--name-only", candidateId, "--", "package.json", "package-lock.json", "tsconfig.json", "cli", "src", "scripts", "generate-barrels.js"], {cwd:root, encoding:"utf8"});
     if (listing.status !== 0) fail("candidate tree cannot be read");
     const files = listing.stdout.split("\n").filter(Boolean).filter((file) => file === "package.json" || file === "package-lock.json" || file === "tsconfig.json" || file === "generate-barrels.js" || file.startsWith("cli/") || file.startsWith("src/") || file.startsWith("scripts/"));
@@ -82,11 +102,14 @@ function candidateTreeExecutableManifest(candidateId) {
 }
 
 export async function verifyP805CandidatePackage(options) {
-    await bindArchiveToCandidate(options.sourceArchive, options.candidateArchive, options.candidateId);
-    const archive = await readFile(options.candidateArchive), projection = await archiveExecutableManifest(options.candidateArchive), tree = candidateTreeExecutableManifest(options.candidateId);
-    if (projection.packageJson?.gitHead !== options.candidateId) fail("archive package gitHead does not match candidate");
+    const repository = options.repositoryRoot ?? root;
+    if (!commit(options.candidateId)) fail("invalid candidate commit");
+    const archive = await readFile(options.sourceArchive), projection = await archiveExecutableManifest(options.sourceArchive), tree = candidateTreeExecutableManifest(options.candidateId, repository);
+    const verifiedBuild = await verifyCandidateBuild(options, projection, repository);
+    if (digest(await readFile(options.sourceArchive)) !== digest(archive)) fail("canonical archive changed during candidate build verification");
+    if (options.candidateArchive && path.resolve(options.sourceArchive) !== path.resolve(options.candidateArchive)) await copyFile(options.sourceArchive, options.candidateArchive, 1);
     const verifierExecutable = await readFile(fileURLToPath(import.meta.url));
-    const receipt = {kind:"p8-05-candidate-executable-receipt", receiptId:`local-candidate-${digest(archive).slice(0, 16)}`, issuer:"p8-05-candidate-package-verifier", candidateId:options.candidateId, candidatePackageSha256:digest(archive), candidateExecutableSha256:projection.sha256, candidateExecutableFiles:projection.files, candidateTreeManifestCandidateId:options.candidateId, candidateTreeManifestSha256:tree.sha256, candidateTreeObjectId:tree.tree, authentication:{scheme:"verifier-owned-candidate-tree", verifierId:"p8-05-candidate-package-verifier", verifierExecutableSha256:digest(verifierExecutable), attestedCandidateId:options.candidateId, attestedCandidateTreeManifestSha256:tree.sha256, attestedExecutableSha256:projection.sha256}};
+    const receipt = {kind:"p8-05-candidate-executable-receipt", receiptId:`local-candidate-${digest(archive).slice(0, 16)}`, issuer:"p8-05-candidate-package-verifier", candidateId:options.candidateId, candidatePackageSha256:digest(archive), candidateExecutableSha256:projection.sha256, candidateExecutableFiles:projection.files, candidateTreeManifestCandidateId:options.candidateId, candidateTreeManifestSha256:tree.sha256, candidateTreeObjectId:tree.tree, verifiedBuild, authentication:{scheme:"verifier-owned-candidate-tree", verifierId:"p8-05-candidate-package-verifier", verifierExecutableSha256:digest(verifierExecutable), attestedCandidateId:options.candidateId, attestedCandidateTreeManifestSha256:tree.sha256, attestedExecutableSha256:projection.sha256, attestedBuildSha256:digest(JSON.stringify(verifiedBuild))}};
     await writeFile(options.receipt, `${JSON.stringify(receipt, null, 2)}\n`, {flag:"wx"});
     return receipt;
 }

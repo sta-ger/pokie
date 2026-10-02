@@ -1,3 +1,4 @@
+import {ArtifactConversionPlanner} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -5,6 +6,7 @@ import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBluepr
 import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
 import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
+import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
@@ -20,18 +22,62 @@ async function post(url: string, body: unknown): Promise<{status: number; body: 
 describe("Studio common job routes", () => {
     let directory: string;
     let server: StudioServer | undefined;
+    let jobs: StudioJobService | undefined;
 
     beforeEach(() => {
         directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-common-job-routes-"));
     });
     afterEach(async () => {
-        await server?.stop();
+        const activeServer = server;
+        const activeJobs = jobs;
+        server = undefined;
+        jobs = undefined;
+        for (const job of activeJobs?.list() ?? []) activeJobs?.cancelled(job.id, {summary: "Manual route fixture released by its test owner."});
+        await activeServer?.stop();
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it("keeps server shutdown pending until artifact staging cleanup settles", async () => {
+        const repository = new FileStudioJobRepository(path.join(directory, "jobs"));
+        jobs = new StudioJobService(repository, () => 100, () => "shutdown-artifact");
+        const artifacts = new StudioArtifactBuildService("1.3.0");
+        const staging = path.join(directory, "staging");
+        let release!: () => void;
+        const cleanup = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        jest.spyOn(artifacts, "build").mockImplementation(async () => {
+            fs.mkdirSync(staging);
+            await cleanup;
+            fs.rmSync(staging, {recursive: true});
+            return {status: "cancelled", message: "Staging removed", plan: new ArtifactConversionPlanner().planType("blueprint", "tsPackage")};
+        });
+        const home = new StudioHomeService("1.3.0");
+        server = new StudioServer({pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: directory, homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home), initialContext: {mode: "home"}, jobService: jobs, artifactBuildService: artifacts});
+        await server.start();
+        const started = artifacts.start(directory, "tsPackage");
+        if (started.status !== "created") throw new Error("expected an artifact executor");
+        await Promise.resolve();
+        const stopping = server.stop();
+        let stopped = false;
+        stopping.then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        expect(fs.existsSync(staging)).toBe(true);
+        expect(jobs.get(directory, started.job.id)?.status).toBe("cancelling");
+        expect(repository.getProcessState()?.status).toBe("running");
+        release();
+        await stopping;
+        expect(fs.existsSync(staging)).toBe(false);
+        expect(jobs.get(directory, started.job.id)?.status).toBe("cancelled");
+        expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
     });
 
     it("lists only the active project's durable common records", async () => {
         let nextId = 0;
-        const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => `job-${++nextId}`);
+        jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => `job-${++nextId}`);
         const started = jobs.start({projectId: "/project-a", operation: "certification-validate", request: {bundleDir: "bundle"}, conflictKey: "validation:/project-a/bundle"});
         if (started.status !== "created") throw new Error("expected a common Studio job");
         jobs.complete(started.job.id, {summary: "validated"});
@@ -59,7 +105,7 @@ describe("Studio common job routes", () => {
     it("rejects common-job detail and cancellation across project identities", async () => {
         const projectA = path.join(directory, "project-a");
         const projectB = path.join(directory, "project-b");
-        const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => "project-a-job");
+        jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => "project-a-job");
         const started = jobs.start({projectId: projectA, operation: "certification-build", request: {bundleDir: "bundle"}, conflictKey: "certification:project-a"});
         if (started.status !== "created") throw new Error("expected a common Studio job");
 
@@ -78,7 +124,7 @@ describe("Studio common job routes", () => {
     });
 
     it("keeps a Home Design job source-discoverable and names it before another project can open", async () => {
-        const jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => "design-job");
+        jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")), () => 100, () => "design-job");
         const sourcePath = path.join(directory, "draft.json");
         const started = jobs.start({
             projectId: `design:${sourcePath}`,

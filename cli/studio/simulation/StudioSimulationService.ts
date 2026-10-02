@@ -62,6 +62,11 @@ export type GetSimulationReportResult =
 // class is left with only the job-lifecycle bookkeeping (queued/running/completed/failed/cancelled,
 // retention, per-project conflict checks) — none of the simulation logic itself.
 export class StudioSimulationService {
+    private readonly activeExecutions = new Set<string>();
+    private readonly pendingTerminals = new Map<string, StudioSimulationJobRecord["status"]>();
+    private readonly pendingNotifications = new Set<string>();
+    private readonly executionFailures: unknown[] = [];
+    private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly repository: StudioSimulationRepository;
     private readonly loadGame: typeof loadPokieGame;
     private readonly reportBuilder: SimulationReportBuilding;
@@ -189,19 +194,15 @@ export class StudioSimulationService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-        // Deferred via queueMicrotask rather than called directly: run() sets record.status to
+        // Deferred via a promise microtask rather than called directly: run() sets record.status to
         // "running" before its own first await (calling createParallelSimulationRunner/.run()
         // synchronously starts that work), so calling it inline here would let that synchronous
         // prefix flip the status before this function's own `return` below runs — a caller polling
         // status right after POST would then never observe "queued" at all. Queuing it instead
         // guarantees run() doesn't execute until after start() has already returned.
-        queueMicrotask(() => {
-            this.run(record).catch(() => {
-                // run() already catches every failure into the record's own "failed" status (see
-                // below) — this is an extra safety net only, so a bug there can never surface as an
-                // unhandled promise rejection and crash the process.
-            });
-        });
+        this.activeExecutions.add(record.id);
+        const execution = Promise.resolve().then(() => this.run(record)).then(() => this.publishPendingTerminal(record));
+        this.trackExecution(execution);
 
         return {status: "created", job: this.toJobView(record)};
     }
@@ -253,10 +254,12 @@ export class StudioSimulationService {
     // Best-effort: aborts every currently active job — called from StudioServer.stop() so a stopped
     // Studio process never leaves a simulation (or its worker threads) running against an event loop
     // nobody is serving HTTP requests on anymore.
-    public cancelAll(): void {
+    public async cancelAll(): Promise<void> {
         for (const record of this.repository.listActive()) {
             this.cancelActiveRecord(record);
         }
+        await Promise.allSettled([...this.pendingExecutions]);
+        if (this.executionFailures.length > 0) throw this.executionFailures[0];
     }
 
     // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
@@ -428,7 +431,7 @@ export class StudioSimulationService {
             }
             this.fail(record, error);
         } finally {
-            await runtime.release().catch(() => undefined);
+            await runtime.release();
         }
     }
 
@@ -491,7 +494,7 @@ export class StudioSimulationService {
                 payoutHistogram: statistics.payoutHistogram,
             };
             this.markTerminal(record);
-            this.onCompleted(record);
+            this.notifyCompleted(record);
         } catch (error) {
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
@@ -631,7 +634,18 @@ export class StudioSimulationService {
         };
         record.lastReplay = lastReplay;
         this.markTerminal(record);
-        this.onCompleted(record);
+        this.notifyCompleted(record);
+    }
+
+    private trackExecution(execution: Promise<void>): void {
+        this.pendingExecutions.add(execution);
+        execution.then(
+            () => this.pendingExecutions.delete(execution),
+            (error: unknown) => {
+                this.executionFailures.push(error);
+                this.pendingExecutions.delete(execution);
+            },
+        );
     }
 
     private fail(record: StudioSimulationJobRecord, error: unknown): void {
@@ -666,9 +680,8 @@ export class StudioSimulationService {
         // only by markTerminal() after that cleanup has completed.
         this.jobService?.cancel(record.projectRoot, record.id);
         // This compatibility record has no durable executor after the
-        // process exits. The shared job service records the final graceful
-        // cancellation only after Studio has drained every owner; keeping the
-        // local record cancellable until then preserves the existing cleanup
+        // process exits. Its run promise owns terminal cancellation after
+        // cleanup; keeping the local record cancellable preserves the existing cleanup
         // and Retry contracts.
         record.abortController.abort();
         if (record.status === "queued" && isWasmComponentFile(record.projectRoot)) this.cancelRecord(record);
@@ -680,6 +693,13 @@ export class StudioSimulationService {
     // this class updates `record` in place without a second save() call, since the repository stores
     // it by reference; this one call is the deliberate exception.
     private markTerminal(record: StudioSimulationJobRecord): void {
+        if (this.activeExecutions.has(record.id)) {
+            // The repository retains this object by reference. Keep both its
+            // public status and durable terminal pending through runtime release.
+            this.pendingTerminals.set(record.id, record.status);
+            record.status = "running";
+            return;
+        }
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
         this.repository.save(record);
@@ -695,6 +715,22 @@ export class StudioSimulationService {
         } else if (record.status === "failed") {
             this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: "Correct the reported problem and run the simulation again."});
         }
+    }
+
+    private publishPendingTerminal(record: StudioSimulationJobRecord): void {
+        this.activeExecutions.delete(record.id);
+        const terminal = this.pendingTerminals.get(record.id);
+        this.pendingTerminals.delete(record.id);
+        if (terminal !== undefined) {
+            record.status = terminal;
+            this.markTerminal(record);
+        }
+        if (this.pendingNotifications.delete(record.id)) this.onCompleted(record);
+    }
+
+    private notifyCompleted(record: StudioSimulationJobRecord): void {
+        if (this.activeExecutions.has(record.id)) this.pendingNotifications.add(record.id);
+        else this.onCompleted(record);
     }
 
     private markRunning(record: StudioSimulationJobRecord): void {
