@@ -135,9 +135,15 @@ type OutcomeLibraryProgressSnapshot = {
 // authority for discovery after reload.
 export const OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT = 64;
 export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLibraryProgressSnapshot[], snapshot: OutcomeLibraryProgressSnapshot): readonly OutcomeLibraryProgressSnapshot[] {
-    return history.length < OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT
-        ? [...history, snapshot]
-        : [history[0]!, ...history.slice(-(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT - 2)), snapshot];
+    const observations = [...history, snapshot];
+    if (observations.length <= OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT) return observations;
+    // A resumed run can poll for hours. Keep its cancellation/recovery
+    // identity as well as the first submission and the current observation.
+    const initial = observations[0]!;
+    const terminal = [...history].reverse().find((item) => !["queued", "running", "cancelling"].includes(item.durableStatus));
+    const pinned = terminal === undefined || terminal === initial ? [initial] : [initial, terminal];
+    const recent = observations.filter((item) => !pinned.includes(item));
+    return [...pinned, ...recent.slice(-(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT - pinned.length))];
 }
 
 type OutcomeLibraryRunView =
@@ -163,7 +169,7 @@ function outcomeLibraryProgressSnapshot(source: OutcomeLibraryProgressSnapshot["
         jobId: job.id,
         durableStatus: job.status,
         ...(job.lifecycleStage === undefined ? {} : {lifecycleStage: job.lifecycleStage}),
-        ...(job.durableProgress === undefined ? {} : {durableProgress: job.durableProgress}),
+        ...(job.durableProgress === undefined ? {} : {durableProgress: {...job.durableProgress}}),
     };
 }
 

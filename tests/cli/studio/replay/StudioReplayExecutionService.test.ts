@@ -341,6 +341,8 @@ describe("StudioReplayExecutionService", () => {
                 expect(durableRepository.getProcessState()?.status).toBe("running");
             } else {
                 expect(service.getDownload("/a", result.job.id).status).toBe("ok");
+                expect(onCompleted).toHaveBeenCalledTimes(1);
+                expect(onCompleted.mock.calls[0]?.[0].status).toBe("completed");
                 await service.cancelAll();
             }
         } finally {
@@ -349,15 +351,21 @@ describe("StudioReplayExecutionService", () => {
         }
     });
 
-    it("cancels a canonical WASM replay after runtime acquisition and disposes its portable resources", async () => {
+    it.each([false, true])("keeps WASM replay cancellation pending through asynchronous disposal rejection=%s", async (rejectDisposal) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-replay-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmPath, "");
         fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}, capabilities: ["runtime.replay"]}));
         const gate = createControlledYield();
         let jobId = "";
+        let finishDisposal!: () => void;
+        let failDisposal!: (error: Error) => void;
         const disposeRuntime = jest.fn(() => {
             expect(service.getStatus(wasmPath, jobId)?.status).toBe("running");
+            return new Promise<void>((resolve, reject) => {
+                finishDisposal = resolve;
+                failDisposal = reject;
+            });
         });
         const runtime = {
             manifest: {component: {id: "wasm", version: "1.0.0"}, capabilities: ["runtime.replay"], artifact: {configurationHash: "config"}},
@@ -387,9 +395,17 @@ describe("StudioReplayExecutionService", () => {
             await waitFor(() => gate.pendingCount() === 1, "WASM replay did not acquire its session before yielding.");
             service.cancel(wasmPath, started.job.id);
             gate.release();
-            await expect(waitForTerminal(service, wasmPath, started.job.id)).resolves.toMatchObject({status: "cancelled"});
+            await waitFor(() => disposeRuntime.mock.calls.length === 1, "WASM disposal did not start.");
+            expect(service.getActiveCount()).toBe(1);
+            expect(service.getDownload(wasmPath, started.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            if (rejectDisposal) failDisposal(new Error("WASM release rejected"));
+            else finishDisposal();
+            await expect(waitForTerminal(service, wasmPath, started.job.id)).resolves.toMatchObject({status: rejectDisposal ? "failed" : "cancelled"});
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectDisposal) await expect(service.cancelAll()).rejects.toThrow("WASM release rejected");
             expect(disposeRuntime).toHaveBeenCalledTimes(1);
         } finally {
+            finishDisposal?.();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });

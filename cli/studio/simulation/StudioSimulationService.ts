@@ -64,7 +64,6 @@ export type GetSimulationReportResult =
 export class StudioSimulationService {
     private readonly activeExecutions = new Set<string>();
     private readonly pendingTerminals = new Map<string, StudioSimulationJobRecord["status"]>();
-    private readonly pendingNotifications = new Set<string>();
     private readonly executionFailures: unknown[] = [];
     private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly repository: StudioSimulationRepository;
@@ -496,13 +495,15 @@ export class StudioSimulationService {
                 payoutHistogram: statistics.payoutHistogram,
             };
             this.markTerminal(record);
-            this.notifyCompleted(record);
         } catch (error) {
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
         } finally {
-            disposeSession?.();
-            runtime?.dispose();
+            try {
+                await disposeSession?.();
+            } finally {
+                await runtime?.dispose();
+            }
         }
     }
 
@@ -636,7 +637,6 @@ export class StudioSimulationService {
         };
         record.lastReplay = lastReplay;
         this.markTerminal(record);
-        this.notifyCompleted(record);
     }
 
     // A rejected runtime release is not a successful job, even after the
@@ -644,7 +644,6 @@ export class StudioSimulationService {
     // marker can claim that these resources were drained.
     private failExecution(record: StudioSimulationJobRecord, error: unknown): void {
         this.executionFailures.push(error);
-        this.pendingNotifications.delete(record.id);
         Reflect.deleteProperty(record, "report");
         Reflect.deleteProperty(record, "statistics");
         Reflect.deleteProperty(record, "lastReplay");
@@ -739,12 +738,8 @@ export class StudioSimulationService {
             record.status = terminal;
             this.markTerminal(record);
         }
-        if (this.pendingNotifications.delete(record.id)) this.onCompleted(record);
-    }
-
-    private notifyCompleted(record: StudioSimulationJobRecord): void {
-        if (this.activeExecutions.has(record.id)) this.pendingNotifications.add(record.id);
-        else this.onCompleted(record);
+        // Only a successfully drained terminal can notify output consumers.
+        if (record.status === "completed") this.onCompleted(record);
     }
 
     private markRunning(record: StudioSimulationJobRecord): void {

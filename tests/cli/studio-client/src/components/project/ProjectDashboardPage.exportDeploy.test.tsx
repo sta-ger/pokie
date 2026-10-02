@@ -1,3 +1,4 @@
+import {OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT, retainOutcomeLibraryProgressSnapshot} from "../../../../../../cli/studio-client/src/components/project/ExportDeployTab";
 import {act, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -69,6 +70,24 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
         return Promise.reject(new Error(`no fake route for ${url} (init: ${JSON.stringify(init)})`));
     };
 }
+
+it("retains a cancellation terminal through a long resumed run within the progress bound", () => {
+    const initial = {source: "start", jobId: "bounded-job", durableStatus: "queued"} as const;
+    const cancelled = {source: "poll", jobId: "bounded-job", durableStatus: "cancelled"} as const;
+    let history = retainOutcomeLibraryProgressSnapshot([initial], cancelled);
+    for (let current = 0; current < 1000; current++) {
+        history = retainOutcomeLibraryProgressSnapshot(history, {source: "poll", jobId: "bounded-job", durableStatus: "running", durableProgress: {stage: "Enumerating", unit: "combinations", current: String(current), total: "1000"}});
+        expect(history.length).toBeLessThanOrEqual(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT);
+    }
+    expect(history[0]).toBe(initial);
+    expect(history).toContain(cancelled);
+    expect(history[history.length - 1]?.durableProgress?.current).toBe("999");
+    const completed = {source: "poll", jobId: "bounded-job", durableStatus: "completed"} as const;
+    history = retainOutcomeLibraryProgressSnapshot(history, completed);
+    expect(history.length).toBe(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT);
+    expect(history).toContain(cancelled);
+    expect(history[history.length - 1]).toBe(completed);
+});
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("retains the captured Build/Export navigation node while its same-project context refresh is loading", async () => {

@@ -8,7 +8,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {clickP805CapturedControl, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {activateP805KeyboardControl, setP805ReplayArtifactInput, clickP805CapturedControl, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -570,6 +570,29 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.deepEqual(await evaluate("window.drawerActivation"), {trusted:true, controlId:"studio-navigation-toggle"});
         await evaluate("document.getElementById('navigation-result').setAttribute('data-pokie-lifecycle-route', 'simulation')");
         assert.equal(await navigationReady(), false, "another route's terminal cannot release capture");
+        // Exercise the shared native input/activation boundary at each
+        // assigned viewport, including the narrow drawer's bottom control.
+        await evaluate(`(()=>{
+            document.body.insertAdjacentHTML('beforeend','<textarea id="replay-artifact-json"></textarea><button id="replay-artifact-load" disabled>Validate &amp; load</button>');
+            const field=document.getElementById('replay-artifact-json'),load=document.getElementById('replay-artifact-load');
+            field.addEventListener('input',(event)=>{window.artifactInputTrusted=event.isTrusted;load.disabled=!field.value.trim();});
+            load.addEventListener('click',(event)=>{window.artifactActivation={trusted:event.isTrusted,body:field.value};});
+        })()`);
+        for (const [width,height] of [[1440,900],[960,800],[390,844]]) {
+            await cdp.send("Emulation.setDeviceMetricsOverride", {width,height,mobile:width===390,deviceScaleFactor:1});
+            const text=JSON.stringify({round:1,seed:'viewport-'+width},null,2);
+            await setP805ReplayArtifactInput(cdp,evaluate,text);
+            const activation=await clickP805CapturedControl(cdp,evaluate,"replay-artifact-load",true,true);
+            assert.equal(activation.hitTest.matchesCapturedControl,true);
+            assert.equal(await evaluate("window.artifactInputTrusted"),true);
+            assert.deepEqual(await evaluate("window.artifactActivation"),{trusted:true,body:text});
+            await evaluate("document.getElementById('replay-artifact-load').focus({preventScroll:true})");
+            const keyboard=await activateP805KeyboardControl(cdp,evaluate,"replay-artifact-load");
+            assert.equal(keyboard.dispatch.focus.trusted,true);
+            assert.equal(keyboard.dispatch.keyDownCount,1);
+            assert.equal(keyboard.dispatch.keyUpCount,1);
+            assert.deepEqual(await evaluate("({width:innerWidth,height:innerHeight})"),{width,height});
+        }
         await cdp.send("Emulation.clearDeviceMetricsOverride");
         for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "confirmation-pointer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
@@ -615,7 +638,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             await poll(() => cdp.events.some((event) => event.method === "Network.loadingFinished" && event.params.requestId === terminalEvent.params.requestId));
             const terminal = JSON.parse((await cdp.send("Network.getResponseBody", {requestId:terminalEvent.params.requestId})).body);
             const receipt = {status:terminal.status, jobId:terminal.id, result:terminal, resultSha256:hash(JSON.stringify(terminal)), browserRequestId:terminalEvent.params.requestId};
-            const transaction = {operation:"simulation-retry", stateClass:"recovery-operation", control:{stableControlId:"simulation-retry"}, pointerActivations:[pointer], keyboardActivations:[], requestCount:1, request:{browserRequestId, method:"POST", path:"/api/project/simulations"}, terminal:{...receipt, causedByRequestId:browserRequestId}};
+            const transaction = {confirmation:{required:false, state:"not-required"}, operation:"simulation-retry", stateClass:"recovery-operation", control:{stableControlId:"simulation-retry"}, pointerActivations:[pointer], keyboardActivations:[], requestCount:1, request:{browserRequestId, method:"POST", path:"/api/project/simulations"}, terminal:{...receipt, causedByRequestId:browserRequestId}};
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "the network terminal cannot replace a rendered result");
             await evaluate("window.renderTerminal('unrelated-job')");
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "an unrelated rendered job cannot release this receipt");

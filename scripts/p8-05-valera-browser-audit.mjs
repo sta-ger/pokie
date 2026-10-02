@@ -79,12 +79,15 @@ export const tupleBootstrapContract = (tuple) => [
 export const P805_PUBLIC_HELP_ARGUMENTS = [["--help"], ...["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"].map((command) => [command, "--help"]), ...[["certification", "build"], ["certification", "verify"], ["fairness", "seed-commit"], ["fairness", "commit"], ["fairness", "reveal"], ["fairness", "verify"], ["par", "import"], ["par", "export"], ["reel", "generate"]].map((command) => [...command, "--help"])];
 export function hasP805NativeActivation(activation, controlId) {
     if (activation?.count !== 1 || activation.controlId !== controlId) return false;
-    if (activation.kind === "keyboard") return activation.nativeFocus === true && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true;
+    if (activation.kind === "keyboard") return activation.nativeFocus === true && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
+        && activation.dispatch?.kind === "native-keyboard" && activation.dispatch.pressed === true && activation.dispatch.released === true
+        && activation.dispatch.keyDownCount === 1 && activation.dispatch.keyUpCount === 1 && ["Enter", " "].includes(activation.dispatch.key)
+        && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
     return activation.kind === "pointer" && activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
         && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
         && activation.hitTest?.capturedControlId === controlId && activation.hitTest.matchesCapturedControl === true
         && activation.dispatch?.kind === "native-pointer" && activation.dispatch.pressed === true && activation.dispatch.released === true
-        && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
+        && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
 }
 export function hasP805TransactionActivations(transaction) {
     if (!Array.isArray(transaction?.pointerActivations) || !Array.isArray(transaction?.keyboardActivations)) return false;
@@ -96,6 +99,7 @@ export function hasP805TransactionActivations(transaction) {
 }
 const hasRenderedActivation = (action, controlId) => {
     const {interaction, transaction} = action ?? {};
+    if (!interaction || !hasP805TransactionActivations(transaction)) return false;
     const pointer = transaction?.pointerActivations?.[0];
     if (interaction.activation === "pointer") {
         const postTransition = transaction?.postTransitionRenderedState;
@@ -133,7 +137,7 @@ export function validateP805HomeProjectSwitchReceipt(receipt) {
 export function validateP805RestartRecoveryTerminalReceipt(receipt) {
     const transaction = receipt?.transaction, terminal = receipt?.terminal, rendered = receipt?.rendered, replacement = rendered?.postRestartReplacementState, drain = receipt?.ownedProcessDrain, priorStudio = receipt?.priorStudio ?? drain?.priorStudioShutdown, preLossJob = priorStudio?.durableJobBeforeLoss, postLossJob = priorStudio?.durableJob;
     const pointer = transaction?.pointerActivations?.[0];
-    if (receipt?.operation !== "simulation" || receipt?.controlId !== "simulation-run" || receipt?.stateClass !== "editable-submission" || transaction?.operation !== "simulation" || transaction?.stateClass !== "editable-submission" || transaction?.control?.stableControlId !== "simulation-run" || transaction?.requestCount !== 1 || transaction?.request?.method !== "POST" || transaction?.request?.path !== "/api/project/simulations" || typeof transaction.request?.browserRequestId !== "string" || !transaction.request.browserRequestId || typeof receipt?.capturedJobId !== "string" || !receipt.capturedJobId || priorStudio?.shutdown?.kind !== "abrupt-service-loss" || priorStudio.shutdown?.gracefulShutdownReceived !== false || priorStudio.shutdown?.requestedSignal !== "SIGKILL" || priorStudio.shutdown?.observedSignal !== "SIGKILL" || priorStudio?.processStateBeforeLoss?.status !== "running" || !Number.isSafeInteger(priorStudio.processStateBeforeLoss?.updatedAt) || [preLossJob, postLossJob].some((job) => job?.id !== receipt.capturedJobId || job?.operation !== "simulation" || !P805_ACTIVE_JOB_STATUSES.has(job?.status) || job?.terminal !== false || job?.causedByRequestId !== transaction.request.browserRequestId || !Number.isSafeInteger(job?.request?.rounds) || job.request.rounds <= 0 || !Number.isSafeInteger(job?.request?.workers) || job.request.workers <= 0) || JSON.stringify(preLossJob?.request) !== JSON.stringify(postLossJob?.request) || terminal?.status !== "recovery-required" || typeof terminal?.jobId !== "string" || !terminal.jobId || receipt.capturedJobId !== terminal.jobId || terminal?.operation !== "simulation" || JSON.stringify(terminal?.request) !== JSON.stringify(postLossJob.request) || terminal?.causedByRequestId !== transaction.request.browserRequestId || !sha(terminal?.resultSha256) || !pointer || pointer.controlId !== "simulation-run" || pointer.capturedControlId !== "simulation-run" || typeof pointer.captureKey !== "string" || !pointer.captureKey || pointer.preDispatchFocus?.controlId !== "simulation-run" || pointer.preDispatchFocus?.native !== true || pointer.hitTest?.capturedControlId !== "simulation-run" || pointer.hitTest?.matchesCapturedControl !== true || pointer.dispatch?.kind !== "native-pointer" || pointer.dispatch?.pressed !== true || pointer.dispatch?.released !== true || pointer.dispatch?.focus?.controlId !== "simulation-run" || pointer.dispatch?.focus?.native !== true || pointer.dispatch?.focus?.targetMatchesCapturedControl !== true || rendered?.resultControlId !== "simulation-run" || rendered?.resultOperation !== "simulation" || rendered?.resultStateClass !== "editable-submission" || rendered?.resultReceipt !== "durable-terminal" || rendered?.resultJobId !== terminal.jobId || rendered?.resultRequestId !== terminal.jobId || rendered?.resultTerminal !== "recovery-required" || rendered?.resultRecovery !== "restart-reconciled" || rendered?.resultExecutor !== "unavailable-after-restart" || rendered?.renderedTerminal !== true || replacement?.capturedControlId !== "simulation-run" || replacement?.captureKey !== pointer.captureKey || replacement?.controlState !== "replaced-after-restart" || replacement?.currentControlId !== "simulation-run" || replacement?.capturedControlConnected !== false || !Number.isSafeInteger(receipt?.timing?.elapsedMs) || receipt.timing.elapsedMs <= 0 || typeof receipt?.evidence?.screenshotEvidenceId !== "string" || !receipt.evidence.screenshotEvidenceId || typeof receipt?.evidence?.cleanupEvidenceId !== "string" || !receipt.evidence.cleanupEvidenceId || !drain || drain.processTreeDrained !== true || drain.resourcesDrained !== true) fail("simulation restart recovery receipt must preserve a pre- and post-abrupt-loss nonterminal durable job through exact rendered recovery, timing, evidence, and owned-process drainage");
+    if (!hasP805TransactionActivations(transaction) || receipt?.operation !== "simulation" || receipt?.controlId !== "simulation-run" || receipt?.stateClass !== "editable-submission" || transaction?.operation !== "simulation" || transaction?.stateClass !== "editable-submission" || transaction?.control?.stableControlId !== "simulation-run" || transaction?.requestCount !== 1 || transaction?.request?.method !== "POST" || transaction?.request?.path !== "/api/project/simulations" || typeof transaction.request?.browserRequestId !== "string" || !transaction.request.browserRequestId || typeof receipt?.capturedJobId !== "string" || !receipt.capturedJobId || priorStudio?.shutdown?.kind !== "abrupt-service-loss" || priorStudio.shutdown?.gracefulShutdownReceived !== false || priorStudio.shutdown?.requestedSignal !== "SIGKILL" || priorStudio.shutdown?.observedSignal !== "SIGKILL" || priorStudio?.processStateBeforeLoss?.status !== "running" || !Number.isSafeInteger(priorStudio.processStateBeforeLoss?.updatedAt) || [preLossJob, postLossJob].some((job) => job?.id !== receipt.capturedJobId || job?.operation !== "simulation" || !P805_ACTIVE_JOB_STATUSES.has(job?.status) || job?.terminal !== false || job?.causedByRequestId !== transaction.request.browserRequestId || !Number.isSafeInteger(job?.request?.rounds) || job.request.rounds <= 0 || !Number.isSafeInteger(job?.request?.workers) || job.request.workers <= 0) || JSON.stringify(preLossJob?.request) !== JSON.stringify(postLossJob?.request) || terminal?.status !== "recovery-required" || typeof terminal?.jobId !== "string" || !terminal.jobId || receipt.capturedJobId !== terminal.jobId || terminal?.operation !== "simulation" || JSON.stringify(terminal?.request) !== JSON.stringify(postLossJob.request) || terminal?.causedByRequestId !== transaction.request.browserRequestId || !sha(terminal?.resultSha256) || !pointer || pointer.controlId !== "simulation-run" || pointer.capturedControlId !== "simulation-run" || typeof pointer.captureKey !== "string" || !pointer.captureKey || pointer.preDispatchFocus?.controlId !== "simulation-run" || pointer.preDispatchFocus?.native !== true || pointer.hitTest?.capturedControlId !== "simulation-run" || pointer.hitTest?.matchesCapturedControl !== true || pointer.dispatch?.kind !== "native-pointer" || pointer.dispatch?.pressed !== true || pointer.dispatch?.released !== true || pointer.dispatch?.focus?.controlId !== "simulation-run" || pointer.dispatch?.focus?.native !== true || pointer.dispatch?.focus?.targetMatchesCapturedControl !== true || rendered?.resultControlId !== "simulation-run" || rendered?.resultOperation !== "simulation" || rendered?.resultStateClass !== "editable-submission" || rendered?.resultReceipt !== "durable-terminal" || rendered?.resultJobId !== terminal.jobId || rendered?.resultRequestId !== terminal.jobId || rendered?.resultTerminal !== "recovery-required" || rendered?.resultRecovery !== "restart-reconciled" || rendered?.resultExecutor !== "unavailable-after-restart" || rendered?.renderedTerminal !== true || replacement?.capturedControlId !== "simulation-run" || replacement?.captureKey !== pointer.captureKey || replacement?.controlState !== "replaced-after-restart" || replacement?.currentControlId !== "simulation-run" || replacement?.capturedControlConnected !== false || !Number.isSafeInteger(receipt?.timing?.elapsedMs) || receipt.timing.elapsedMs <= 0 || typeof receipt?.evidence?.screenshotEvidenceId !== "string" || !receipt.evidence.screenshotEvidenceId || typeof receipt?.evidence?.cleanupEvidenceId !== "string" || !receipt.evidence.cleanupEvidenceId || !drain || drain.processTreeDrained !== true || drain.resourcesDrained !== true) fail("simulation restart recovery receipt must preserve a pre- and post-abrupt-loss nonterminal durable job through exact rendered recovery, timing, evidence, and owned-process drainage");
     return receipt;
 }
 /**
@@ -565,7 +569,7 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
     diagnostics.phase = "rejected-response";
     if (response.params.response.status !== 200 || payload.status !== "ok") fail(`initial rendered Design validation did not accept the starter game: HTTP ${response.params.response.status}, status ${payload.status}`);
     diagnostics.phase = "dom-unready";
-    const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || ![null, 'false'].includes(item.getAttribute('aria-busy')) || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
+    const control = await evaluate("(() => { if (document.readyState !== 'complete' || location.hash !== '#/home/design') return false; const item=document.getElementById('blueprint-create-game'); if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('data-pokie-validation-state') !== 'ok' || ![null, 'false'].includes(item.getAttribute('aria-busy')) || item.textContent?.trim() !== 'Create game' || item.getClientRects().length === 0) return false; item.focus({preventScroll:true}); return document.activeElement === item ? {stableControlId:item.id, validationState:item.getAttribute('data-pokie-validation-state')} : false; })()");
     if (superseded()) return false;
     if (!control) return false;
     diagnostics.phase = "ready";
@@ -592,6 +596,45 @@ export async function observeP805NavigationReadiness(evaluate, route) {
 // Both the packed runner and its bounded Chromium regression use this one
 // native pointer boundary. Post-activation control replacement is permitted;
 // pre-dispatch identity, focus, and hit testing remain mandatory.
+export async function activateP805KeyboardControl(cdp, evaluate, controlId) {
+    const captureKey = randomBytes(16).toString("hex");
+    const captured = await evaluate(`(()=>{
+        const item=document.getElementById(${JSON.stringify(controlId)});
+        if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled||document.activeElement!==item)return null;
+        const key=item instanceof HTMLInputElement&&item.type==='radio'?' ':'Enter';
+        const receipt={kind:'native-keyboard',key,pressed:false,released:false,keyDownCount:0,keyUpCount:0,focus:null};
+        const capture=(event)=>{
+            if(event.key!==key)return;
+            if(event.type==='keydown'){
+                receipt.keyDownCount++;receipt.pressed=true;
+                receipt.focus={controlId:item.id,native:document.activeElement===item,trusted:event.isTrusted,targetMatchesCapturedControl:event.target===item||item.contains(event.target)};
+            }else{receipt.keyUpCount++;receipt.released=event.isTrusted;}
+        };
+        document.addEventListener('keydown',capture,true);document.addEventListener('keyup',capture,true);
+        window.__p805KeyboardReceipts??=new Map();window.__p805KeyboardReceipts.set(${JSON.stringify(captureKey)},{capture,receipt});
+        return {key,preDispatchFocus:{controlId:item.id,native:true}};
+    })()`);
+    if (!captured) fail(`rendered ${controlId} lost native keyboard focus`);
+    let dispatch;
+    try {
+        if (captured.key === ' ') {
+            await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:" ", code:"Space", text:" ", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
+            await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
+        } else await pressP805Enter(cdp);
+    } finally {
+        // Always remove observers, including rejected native dispatches.
+        dispatch = await evaluate(`(()=>{const record=window.__p805KeyboardReceipts?.get(${JSON.stringify(captureKey)});if(record){document.removeEventListener('keydown',record.capture,true);document.removeEventListener('keyup',record.capture,true);}window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
+    }
+    const activation = {kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:captured.preDispatchFocus, dispatch};
+    if (!hasP805NativeActivation(activation, controlId)) fail(`rendered ${controlId} did not receive one native keyboard activation`);
+    return activation;
+}
+export async function setP805ReplayArtifactInput(cdp, evaluate, text) {
+    const ready = await evaluate(`(()=>{const item=document.getElementById('replay-artifact-json');if(!(item instanceof HTMLTextAreaElement)||item.disabled)return false;item.scrollIntoView({block:'center',inline:'nearest'});item.focus({preventScroll:true});item.select();return document.activeElement===item;})()`);
+    if (!ready) fail("Replay Artifact input is not ready for native text entry");
+    await cdp.send("Input.insertText", {text});
+    await waitFor(() => evaluate(`document.getElementById('replay-artifact-json')?.value === ${JSON.stringify(text)}`), "native Replay Artifact text entry");
+}
 export async function clickP805CapturedControl(cdp, evaluate, stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit, retainCapturedControl = false) {
     // A control can be rendered yet sit below the compact viewport.
     // CDP accepts that off-screen coordinate without giving React a
@@ -696,7 +739,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         // require both the pre-dispatch native hit-test and a document
         // capture-phase native pointer dispatch to target that exact
         // node; this is evidence, not a keyboard fallback.
-        if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
+        if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.trusted !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
         return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, focus:dispatchFocus}};
     } catch (error) {
         await removeCapture();
@@ -948,7 +991,7 @@ async function trustedSharedRuntime(runtime, options, services) {
 /** Runs one persona in a fresh workspace, configuration root, and browser profile. */
 export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     if (!validOptions(options)) fail("runner configuration is incomplete");
-    const services = {spawn, link, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile, exists:existsSync, chromium:process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ...nativeNpmCommand(), now, ...dependencies}, startedAt = services.now(), nonce = digest(`${startedAt}:${options.phase}:${options.persona}:${Math.random()}`).slice(0, 16), auditId = `${options.phase}-${options.persona}-${nonce}`, worker = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce, startedAt}, base = await services.mkdtemp(path.join(tmpdir(), `p8-05-${options.phase}-${options.persona}-`)), context = {workspace:path.join(base, "workspace"), configurationRoot:path.join(base, "configuration"), documents:path.join(base, "documents"), browserProfile:path.join(base, "browser-profile"), reused:false}, installationRoot = options.runtime?.root ?? path.join(base, "packed-install"), port = await freeLoopbackPort(), devtoolsPort = await freeLoopbackPort(), origin = `http://127.0.0.1:${port}`, devtools = `http://127.0.0.1:${devtoolsPort}`, evidence = [], checkpointReceipts = [], transcript = [], api = [], errors = [], observationEvidence = {}, timings = {startupMs:null, projectCreationMs:null, validationMs:null, buildMs:null, simulationMs:null, replayMs:null, cancellationMs:null, restartRecoveryMs:null};
+    const services = {spawn, link, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile, exists:existsSync, chromium:process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ...nativeNpmCommand(), now, ...dependencies}, startedAt = services.now(), nonce = digest(`${startedAt}:${options.phase}:${options.persona}:${Math.random()}`).slice(0, 16), auditId = `${options.phase}-${options.persona}-${nonce}`, worker = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce, startedAt}, base = await services.mkdtemp(path.join(tmpdir(), `p8-05-${options.phase}-${options.persona}-`)), context = {workspace:path.join(base, "workspace"), configurationRoot:path.join(base, "configuration"), documents:path.join(base, "documents"), browserProfile:path.join(base, "browser-profile"), reused:false}, installationRoot = options.runtime?.root ?? path.join(base, "packed-install"), port = await freeLoopbackPort(), devtoolsPort = await freeLoopbackPort(), origin = `http://127.0.0.1:${port}`, devtools = `http://127.0.0.1:${devtoolsPort}`, evidence = [], checkpointReceipts = [], transcript = [], api = [], errors = [], observationEvidence = {}, timings = {startupMs:null, projectCreationMs:null, validationMs:null, buildMs:null, simulationMs:null, replayMs:null, cancellationMs:null, restartRecoveryMs:null, retryMs:null, replayArtifactMs:null, screenshotMs:null, recursiveHelpMs:null};
     const save = async (kind, name, content, observationIds = []) => { const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content), relativePath = path.join(options.phase, options.persona, nonce, name), target = path.join(options.output, relativePath); await services.mkdir(path.dirname(target), {recursive:true}); await writeImmutableReceipt(target, bytes, services); const evidenceId = `${options.phase}-${options.persona}-${nonce}-${kind}-${evidence.length + 1}`; evidence.push({evidenceId, kind, path:relativePath, sha256:digest(bytes), sizeBytes:bytes.length, capturedAt:services.now(), candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, observationIds}); for (const observation of observationIds) if (!observationEvidence[observation]) observationEvidence[observation] = evidenceId; return evidenceId; };
     // The aggregate audit may only reference receipts written immediately
     // after a real public workflow chunk settles.  This prevents closeout
@@ -1100,6 +1143,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         if (candidateReceipt.candidateTreeManifestSha256 !== candidateTreeManifest.sha256 || candidateReceipt.candidateTreeObjectId !== candidateTreeManifest.tree) fail("candidate executable receipt does not bind the declared candidate tree manifest");
         candidateExecutable = await candidateExecutableManifest(path.join(installationRoot, "node_modules", "pokie"), options.candidateId, services); if (candidateExecutable.sha256 !== options.candidateExecutableSha256) fail("packed archive executable manifest differs from the verifier-supplied declared candidate manifest"); const packedEnvironment = {...process.env, HOME:context.configurationRoot, XDG_CONFIG_HOME:context.configurationRoot, XDG_DOCUMENTS_DIR:context.documents, PATH:`${path.dirname(installedCli)}${path.delimiter}${process.env.PATH ?? ""}`}; const runPackedCli = async (label, args, expectedExitCode = 0) => { process.stderr.write(`P805_CLI command=${label} phase=start\n`); const commandStarted = Date.now(), commandOwnership = ownershipEnvironment(label), child = own(label, services.spawn(installedCli, args, {cwd:context.workspace, env:{...packedEnvironment, ...commandOwnership.env}, stdio:"pipe"}), commandOwnership); let result; try { result = await childResult(child, label, expectedExitCode); } finally { await settleChild(child); } transcript.push(`[${services.now()}] ${label} ${args.join(" ")}\n${result.stdout}${result.stderr}`); const timingName = {create:"projectCreationMs", import:"projectCreationMs", validate:"validationMs", build:"buildMs", sim:"simulationMs", replay:"replayMs"}[args[0]];
             if (timingName && !args.includes("--help")) timings[timingName] = Math.max(timings[timingName] ?? 0, Date.now() - commandStarted);
+            if (args.includes("--help") && (!options.tuple || options.tuple.observation === "recursive-help")) timings.recursiveHelpMs = (timings.recursiveHelpMs ?? 0) + Date.now() - commandStarted;
             process.stderr.write(`P805_CLI command=${label} phase=complete\n`); return result; };
         const blueprint = path.join(context.workspace, "Valera audit blueprint.json"), workbook = path.join(context.workspace, "Valera audit.xlsx"), importedBlueprint = path.join(context.workspace, "Valera imported blueprint.json"), wasm = path.join(context.workspace, "Valera audit.wasm"), packageRoot = path.join(context.workspace, "Valera audit package"), simulationReport = path.join(context.workspace, "Valera simulation report.json"), renderedReport = path.join(context.workspace, "Valera simulation report.md"), diffReport = path.join(context.workspace, "Valera simulation diff.json"), replayArtifact = path.join(context.workspace, "Valera replay.json"), outcomeBundle = path.join(context.workspace, "Valera outcomes"), certificationConfig = path.join(context.workspace, "Valera certification config.json"), certificationBundle = path.join(context.workspace, "Valera certification"), serverSeed = path.join(context.workspace, "Valera server seed.txt"), seedCommitment = path.join(context.workspace, "Valera seed commitment.json"), roundCommitment = path.join(context.workspace, "Valera round commitment.json"), fairnessProof = path.join(context.workspace, "Valera fairness proof.json");
         const requireOutput = async (label, target) => { if (!services.exists(target)) fail(`${label} did not create its declared output ${target}`); };
@@ -1275,6 +1319,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // code as well as the DOM key name to perform a button's default
         // keyboard activation.  Without it, focus evidence was recorded but
         // React's actual public action owner was never invoked.
+        const captureScreenshot = async () => {
+            const captureStartedAt = Date.now();
+            const result = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false});
+            timings.screenshotMs = Math.max(timings.screenshotMs ?? 0, Date.now() - captureStartedAt);
+            return result;
+        };
         const pressEnter = () => pressP805Enter(cdp);
         const pressSpace = async () => {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:" ", code:"Space", text:" ", unmodifiedText:" ", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
@@ -1297,14 +1347,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // leaving a recorded click without the public submission.
                 // Enter is the focused button's native, keyboard-operable
                 // public activation and retains the exact rendered identity.
-                const preDispatchFocus = await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); return item instanceof HTMLElement ? {controlId:item.id,native:document.activeElement===item} : null;})()`);
-                if (preDispatchFocus?.native !== true) fail(`rendered ${lifecycle} control lost native focus before keyboard activation`);
-                const isRadio = await evaluate(`document.getElementById(${JSON.stringify(stableControlId)}) instanceof HTMLInputElement && document.getElementById(${JSON.stringify(stableControlId)}).type === 'radio'`);
-                if (isRadio) {
-                    await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:" ", code:"Space", text:" ", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
-                    await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
-                } else await pressEnter();
-                return {kind:"keyboard", controlId:stableControlId, count:1, nativeFocus:true, preDispatchFocus};
+                return activateP805KeyboardControl(cdp, evaluate, stableControlId);
             }
             // A compact NavLink can remain in the DOM after its drawer has
             // moved off canvas.  It is not an interactable public control
@@ -1604,7 +1647,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const disabled = 'disabled' in item && Boolean(item.disabled);
             const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
             const disabledExplanation = item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null;
-            item.focus();
+            item.focus({preventScroll:true});
             return document.activeElement === item ? {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:true, enabled:!disabled, disabled, disabledExplanation, accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id', transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:${JSON.stringify(lifecycle)}, value:${JSON.stringify(operation)}}} : null;
         })()`);
         const renderedTransactionControl = async ({lifecycle, operation, observation, formState}) => {
@@ -1657,7 +1700,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     const disabled = item.disabled;
                     const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
                     const disabledExplanation = item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null;
-                    item.focus();
+                    item.focus({preventScroll:true});
                     return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:accessibleName(item), enabled:!disabled, disabled, disabledExplanation, role:item.getAttribute('role') || item.tagName.toLowerCase()} : false;
                 })()`), `${observation} rendered ${operation} confirmation`);
                 if (!confirmationControl.enabled) fail(`Studio rendered ${operation} confirmation disabled: ${confirmationControl.disabledExplanation ?? "no explanation"}`);
@@ -1761,7 +1804,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const disabled = 'disabled' in item && Boolean(item.disabled);
             const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
             const disabledExplanation = item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null;
-            item.focus();
+            item.focus({preventScroll:true});
             return {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:document.activeElement === item,
                 enabled:!disabled, disabled, disabledExplanation, accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(),
                 stableControlId:item.id, identityAttribute:'id', transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:lifecycle, value}};
@@ -1776,7 +1819,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const predicate = ${predicateSource};
             const item = [...document.querySelectorAll(${JSON.stringify(selector)})].find((candidate) => candidate instanceof HTMLElement && visible(candidate) && predicate(candidate, accessibleName(candidate)));
             if (!(item instanceof HTMLElement) || ('disabled' in item && Boolean(item.disabled))) return null;
-            item.focus();
+            item.focus({preventScroll:true});
             return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:accessibleName(item), keyboardFocused:true, enabled:true, disabled:false} : null;
         })()`);
         const setScreenField = async (label, value) => evaluate(`(() => {
@@ -1810,7 +1853,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // control state and let the keyboard activation verify the
                 // transition instead of rejecting a stale ARIA snapshot.
                 if (!(item instanceof HTMLElement) || item.id !== 'simulation-configure' || ('disabled' in item && Boolean(item.disabled))) return false;
-                item.focus();
+                item.focus({preventScroll:true});
                 return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
             })()`), `${observation} rendered simulation Configure step`);
             if (configured.stableControlId !== "simulation-configure" || configured.identityAttribute !== "id") fail(`${observation} did not expose its rendered Configure control identity`);
@@ -1853,6 +1896,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
                 const item = [...document.querySelectorAll('button,a')].find((candidate) => {
                     if (!(candidate instanceof HTMLElement) || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
+                    const panel = candidate.closest('#studio-navigation-panel');
+                    if (panel instanceof HTMLElement && panel.getBoundingClientRect().left >= 0) candidate.scrollIntoView({block:'nearest',inline:'nearest'});
                     const box = candidate.getBoundingClientRect();
                     if (box.width <= 0 || box.height <= 0 || box.left < 0 || box.right > window.innerWidth || box.top < 0 || box.bottom > window.innerHeight) return false;
                     const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
@@ -1886,26 +1931,24 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const burger = await waitFor(() => evaluate(`(() => {
                         const item = [...document.querySelectorAll('button')].find((candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label') === 'Toggle navigation' && !candidate.disabled);
                         if (!(item instanceof HTMLElement)) return false;
-                        item.focus();
+                        item.focus({preventScroll:true});
                         return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
                     })()`), `${observation} rendered narrow navigation drawer control`);
             // This is one native pointer activation of the product's Burger.
             // `activateFocusedControl` preserves its complete pointer state
             // and live hit-test boundary, so Mantine receives the disclosure
             // click before the drawer's transition can expose the tab.
-            await activateFocusedControl("navigation-drawer", burger);
+            const drawerOpen = await evaluate("document.getElementById('studio-navigation-toggle')?.getAttribute('aria-expanded') === 'true'");
+            if (!drawerOpen) await activateFocusedControl("navigation-drawer", burger);
             return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
         };
         const navigateRenderedControl = async (route, expectedRoute, observation) => {
             if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
             const control = await revealRenderedNavigationControl(route, observation);
-            // The compact drawer can close as soon as its live tab loses the
-            // pointer hit target. Its focused button remains a real keyboard
-            // control, so use one native Enter activation at phone width;
-            // NavTabs owns that explicit keyboard lifecycle just as it owns
-            // its pointer lifecycle.
-            const compactNavigation = await evaluate("(()=>{const item=document.getElementById('studio-navigation-toggle'); return item instanceof HTMLButtonElement && !!(item.offsetWidth||item.offsetHeight||item.getClientRects().length);})()");
-            const activation = await activateFocusedControl("navigation", control, compactNavigation ? "keyboard" : "pointer");
+            // Keep the drawer's captured tab as the native pointer target;
+            // revealRenderedNavigationControl scrolls its real scroll region
+            // before capture, and focus never changes that geometry.
+            const activation = await activateFocusedControl("navigation", control);
             try {
                 await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);
             } catch (error) {
@@ -1938,7 +1981,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                         const item = [...document.querySelectorAll('[data-pokie-confirmation="confirm"]')]
                             .find((candidate) => candidate instanceof HTMLElement && visible(candidate) && !('disabled' in candidate && Boolean(candidate.disabled)));
                         if (!(item instanceof HTMLElement)) return null;
-                        item.focus();
+                        item.focus({preventScroll:true});
                         return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:(item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim()} : null;
                     })()`);
                     if (!confirmation) return false;
@@ -2118,7 +2161,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`);
             if (!locationSet) fail(`${observation} could not set the rendered project import location`);
             const activate = async (id, label) => {
-                const control = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
+                const control = await evaluate(`(() => { const item = document.getElementById(${JSON.stringify(id)}); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus({preventScroll:true}); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
                 if (!control?.stableControlId) fail(`${observation} did not expose its rendered ${label} control`);
                 // Project import controls replace their own preview/card while
                 // handling the action.  Native keyboard activation keeps the
@@ -2136,7 +2179,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`), `${observation} rendered project import preview or existing registered project`);
             if (importState === "preview") await activate("project-import-add", "Add to projects");
             await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
-            const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus(); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
+            const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus({preventScroll:true}); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
             if (!opened?.stableControlId) fail(`${observation} did not expose the rendered imported-project Open control`);
             await activateFocusedControl("operation", opened);
             await waitFor(() => evaluate("location.hash.includes('/project/')"), `${observation} rendered imported project dashboard`);
@@ -2180,7 +2223,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return {reel:${reel}, first:${first}, last:${last}, mountedSymbolCount:inputs.length, firstValue:first.value, lastValue:last.value, pager:${pager}, nextDisabled:next instanceof HTMLButtonElement ? next.disabled : null};
             })()`), `${observation} bounded reel ${reel} symbols ${first}–${last}`);
             const screenshot = async (name) => {
-                const image = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false});
+                const image = await captureScreenshot();
                 return save("screenshot", `bounded-reel-${viewport}-${name}.png`, Buffer.from(image.data, "base64"), [observation]);
             };
             await activate("game-model-reels-edit");
@@ -2212,7 +2255,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const edited = await evaluate(`(() => {
                 const item = document.getElementById('reel-modeler-6-symbol-300');
                 if (!(item instanceof HTMLInputElement) || item.disabled) return false;
-                item.focus();
+                item.focus({preventScroll:true});
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(item, ${JSON.stringify(replacement)});
                 item.dispatchEvent(new Event('input', {bubbles:true}));
                 item.dispatchEvent(new Event('change', {bubbles:true}));
@@ -2494,7 +2537,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // actually see at that breakpoint.  Full-page captures repeatedly
             // rasterise hidden long-form panels and make the all-persona,
             // three-viewport proof exceed its bounded test window.
-            const screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false});
+            const elapsedMs = Date.now() - transaction.startedAtMs;
+            const screenshot = await captureScreenshot();
             const screenshotEvidenceId = await save("screenshot", `${viewport}-${observation}.png`, Buffer.from(screenshot.data, "base64"), [observation]);
             // This persisted object is the immutable boundary between the
             // browser's live control activation and the parent receipt.  It
@@ -2510,7 +2554,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 renderedTerminal:{state:"rendered", observedAfterRequestId:entry.browserRequestId, text:terminalText.text, liveText:terminalText.live, beforeTextSha256:digest(beforeActionText), textSha256:digest(terminalText.text), resultSha256:entry.terminal.resultSha256, observedAt:services.now(), changedAfterRequest:terminalText.text !== beforeActionText || terminalText.live.length > 0, lifecycle:lifecycleResult},
                 workflow:{persona:options.persona, source:"rendered-control", transactionState:transaction.stateClass, expectedApi:contract.api, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedArtifact:contract.artifact ?? null, terminal:contract.terminal}, state:productState};
             liveDomTransaction.contextRevalidation = entered.contextRevalidation;
-            const elapsedMs = Date.now() - transaction.startedAtMs, timingName = {"project-validation":"validationMs", build:"buildMs", simulation:"simulationMs", replay:"replayMs"}[transaction.operation];
+            const timingName = {"project-validation":"validationMs", "artifact-build":"buildMs", build:"buildMs", simulation:"simulationMs", replay:"replayMs"}[transaction.operation];
             if (timingName) timings[timingName] = Math.max(timings[timingName] ?? 0, elapsedMs);
             const evidenceId = await save("live-dom-transaction", `${viewport}-${observation}.json`, JSON.stringify(liveDomTransaction), [observation]);
             return {elapsedMs, evidenceId, screenshotEvidenceId, state:productState, interaction, transaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, contextRevalidation:entered.contextRevalidation, screen, screenNavigationControl:stateMachine.navigationControl, precondition:liveDomTransaction.precondition, visibleTerminal:liveDomTransaction.renderedTerminal};
@@ -2584,7 +2628,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     ? control
                     : terminal instanceof HTMLElement && terminal.tabIndex >= -1 ? terminal : null;
                 if (!item) return {namedRegions:[], visibleFocus:false, target:null};
-                item.focus();
+                item.focus({preventScroll:true});
                 // Chromium's native focus ring is painted outside computed
                 // CSS, so outlineStyle is not a reliable accessibility
                 // signal for a real CDP focus. The focused DOM identity plus
@@ -2601,6 +2645,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             action.interaction.pointerActivated = page.transaction.pointerActivations.length === 1;
             action.interaction.keyboardActivated = page.transaction.keyboardActivations.length === 1;
             action.interaction.activation = page.transaction.keyboardActivations.length === 1 ? "keyboard" : "pointer";
+            const operationTiming = {"project-validation":"validationMs", "artifact-build":"buildMs", simulation:"simulationMs", replay:"replayMs"}[page.transaction.operation];
+            if (operationTiming) timings[operationTiming] = Math.max(timings[operationTiming] ?? 0, page.elapsedMs);
             await saveCheckpoint(action);
             const observations = [observation], bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, renderedBootstrap}), observations), scopedBootstrap = bootstrap.map((entry) => ({...entry, evidenceId:bootstrapEvidenceId})), workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple:options.tuple, bootstrap:scopedBootstrap, recoveryRequired:false};
             workflowScope.scopeEvidenceId = await save("provenance", "workflow-scope.json", JSON.stringify(workflowScope), observations);
@@ -2741,7 +2787,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         for (const [viewport, dimensions] of Object.entries(viewportDimensions).filter(([viewport]) => !options.tuple || viewport === options.tuple.viewport)) {
             await cdp.send("Emulation.setDeviceMetricsOverride", {...dimensions, deviceScaleFactor:1});
             await waitFor(() => evaluate("document.readyState === 'complete' && document.body.innerText.trim().length > 40"), `${viewport} responsive Studio state`);
-            const state = await evaluate("(()=>{const item=[...document.querySelectorAll('button,a,input,select,textarea')].find((value)=>!value.disabled&&!!(value.offsetWidth||value.offsetHeight||value.getClientRects().length)); item?.focus(); const style=item?getComputedStyle(item):undefined; return {overflow:document.documentElement.scrollWidth>window.innerWidth,visibleFocus:!!item&&document.activeElement===item&&!!style&&(style.outlineStyle!=='none'||style.boxShadow!=='none')};})()"), screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false}), screenshotEvidenceId = await save("screenshot", `responsive-${viewport}.png`, Buffer.from(screenshot.data, "base64"));
+            const state = await evaluate("(()=>{const item=[...document.querySelectorAll('button,a,input,select,textarea')].find((value)=>!value.disabled&&!!(value.offsetWidth||value.offsetHeight||value.getClientRects().length)); item?.focus(); const style=item?getComputedStyle(item):undefined; return {overflow:document.documentElement.scrollWidth>window.innerWidth,visibleFocus:!!item&&document.activeElement===item&&!!style&&(style.outlineStyle!=='none'||style.boxShadow!=='none')};})()"), screenshot = await captureScreenshot(), screenshotEvidenceId = await save("screenshot", `responsive-${viewport}.png`, Buffer.from(screenshot.data, "base64"));
             responsive.push({viewport, ...state, screenshotEvidenceId});
         }
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[recoveryViewport], deviceScaleFactor:1});
@@ -2755,10 +2801,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const replay = await startRenderedReplay(projectBaseRoute, "successful replay");
         const replayTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replay.payload.id)}`, "successful replay", replay.cursor, ["completed"], replay.transaction);
         if (!replayTerminal.descriptor) fail("Replay produced no valid artifact for rendered loading");
+        timings.replayMs = replay.transaction.elapsedMs;
         const artifactSource = await waitFor(() => focusRenderedControl("input", "(item) => item.type === 'radio' && item.value === 'artifact'"), "rendered Replay Artifact source");
         await activateFocusedControl("precondition", artifactSource, "keyboard");
         const loadReplayArtifact = async (observation, descriptor, expectedStatus) => {
-            await waitFor(() => setLifecycleField("replay-artifact-json", JSON.stringify(descriptor)), `${observation} pasted artifact field`);
+            await setP805ReplayArtifactInput(cdp, evaluate, JSON.stringify(descriptor));
             const cursor = cdp.events.length;
             const control = await renderedTransactionControl({lifecycle:"operation", operation:"replay-artifact", observation});
             const formState = await captureRenderedEditableFormState("replay-artifact", observation, control.stableControlId);
@@ -2773,14 +2820,15 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return text?{controlId:result.getAttribute('data-pokie-lifecycle-result-control'),status:result.getAttribute('data-pokie-lifecycle-terminal'),round,seed,text}:false;
             })()`), `${observation} rendered artifact diagnostic or loaded round`);
             await evaluate("document.querySelector('[data-pokie-lifecycle-result=\"replay-artifact\"]')?.scrollIntoView({block:'center',inline:'nearest'})");
-            const screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false});
+            const screenshot = await captureScreenshot();
+            loaded.transaction.elapsedMs = Date.now() - loaded.transaction.startedAtMs;
+            timings.replayArtifactMs = Math.max(timings.replayArtifactMs ?? 0, loaded.transaction.elapsedMs);
             loaded.screenshotEvidenceId = await save("screenshot", `${recoveryViewport}-${observation}.png`, Buffer.from(screenshot.data,"base64"), [options.tuple?.observation ?? observation]);
             return loaded;
         };
         const replayArtifactValid = await loadReplayArtifact("replay-artifact-valid", replayTerminal.descriptor, 200);
         const replayFailure = await loadReplayArtifact("replay-artifact-invalid", {round:0, seed:"invalid-artifact"}, 400);
         const replayArtifactInspection = await loadReplayArtifact("replay-artifact-recovery", replayTerminal.descriptor, 200);
-        timings.replayMs = replay.transaction.elapsedMs;
         // Keep this long enough for the rendered Cancel operation to attach,
         // but short enough that its rendered Retry can repeat the captured
         // request and reach a terminal report inside this tuple worker.
@@ -2792,7 +2840,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // may replace it as the request begins, but the receipt keeps the
         // captured identity, native focus, hit-test, and press/release proof.
         await waitFor(() => evaluate("(()=>{const item=document.getElementById('simulation-retry'); return item instanceof HTMLButtonElement && item.getAttribute('data-pokie-lifecycle') === 'recovery' && item.getAttribute('data-pokie-lifecycle-operation') === 'simulation-retry' && item.textContent?.trim() === 'Repeat simulation' && !item.disabled;})()"), "cooperative cancellation stable rendered retry control");
-        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"});
+        const retryCursor = cdp.events.length, retry = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-retry", observation:"simulation retry", cursor:retryCursor, method:"POST", stateClass:"recovery-operation", capturePostTransition:true}); if (retry.response.status !== 202 || typeof retry.payload?.id !== "string") fail("Studio did not start a fresh rendered retry through its recovery control"); const retryTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(retry.payload.id)}`, "simulation retry", retryCursor, ["completed"], retry.transaction, 180_000, true), retryReceipt = {operation:"simulation-retry", controlId:retry.transaction.control.stableControlId, stateClass:"recovery-operation", transaction:retry.transaction}; validateP805RetryTerminalReceipt(retryReceipt); timings.retryMs = retry.transaction.elapsedMs; const reportsEvent = await waitFor(async () => { const event = cdp.events.slice(retryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/reports"); if (!event) return false; try { const response = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(response.body || "[]"); return Array.isArray(payload) ? {event, payload} : false; } catch { return false; } }, "rendered simulation reports"); const reports = {response:{status:reportsEvent.event.params.response.status, ok:true}, payload:reportsEvent.payload}; api.push({observation:"simulation retry", method:"GET", path:"/api/project/reports", status:reports.response.status, payload:reports.payload, browserRequestId:reportsEvent.event.params.requestId, initiator:"rendered-poll"});
         // A package project is intentionally read-only in Game Model.  The
         // first-time-user Design Game is the product-owned editable surface,
         // so use its native text field and its public Projects/Open workflow
@@ -2804,7 +2852,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
             const item = [...document.querySelectorAll('input')].find((candidate) => candidate instanceof HTMLInputElement && visible(candidate) && !candidate.disabled && candidate.type !== 'hidden' && [...candidate.labels || []].some((label) => label.textContent?.trim() === 'Game name'));
             if (!(item instanceof HTMLInputElement)) return false;
-            item.focus();
+            item.focus({preventScroll:true});
             const accessibleName = [...item.labels || []].map((label) => label.textContent?.trim()).find(Boolean) || item.getAttribute('aria-label') || item.name || '';
             return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName, keyboardFocused:true, enabled:true, disabled:false} : false;
         })()`), "rendered editable Design Game field");
@@ -2829,7 +2877,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         const openProject = await waitFor(() => focusRenderedControl("[data-pokie-project-location]", "(_item, name) => name.length > 0"), "rendered project Open control for unsaved-work protection");
         if (!openProject?.keyboardFocused || !openProject.stableControlId || !openProject.accessibleName) fail("Studio did not expose a project Open control for unsaved-work protection");
         const cancelledProjectOpenCursor = cdp.events.length;
-        await activateFocusedControl("navigation", openProject);
+        const openProjectActivation = await activateFocusedControl("navigation", openProject);
         const protectionText = await waitFor(() => evaluate("document.body.innerText.match(/You have unsaved[^\\n]*/i)?.[0] || false"), "rendered unsaved-work protection");
         const cancelUnsaved = await waitFor(async () => {
             // The shared navigation guard publishes the rendered cancel
@@ -2849,7 +2897,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // endpoint and falsely make the cancelled transition look unsafe.
         const cancelledProjectOpenRequestCount = cdp.events.slice(cancelledProjectOpenCursor)
             .filter((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/home/projects/open").length;
-        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, keyboardActivations:1}, navigationControl:{stableControlId:openProject.stableControlId, identityAttribute:openProject.identityAttribute, accessibleName:openProject.accessibleName, keyboardFocused:openProject.keyboardFocused, keyboardActivations:1}, cancelControl:{...cancelUnsaved, keyboardActivations:1}, protectionText, preserved:routeAfterStay === recoveryBefore};
+        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, input:{kind:"native-text", text:" P805 unsaved", value:await evaluate(`document.getElementById(${JSON.stringify(editedControl.stableControlId)})?.value`)}}, navigationControl:{...openProject, activation:openProjectActivation}, cancelControl:{...cancelUnsaved, activation:stayActivation}, protectionText, preserved:routeAfterStay === recoveryBefore};
         const staleCursor = cdp.events.length;
         const startGameNavigation = await navigateHome("design", "project-switch source");
         if (!startGameNavigation || startGameNavigation.control?.stableControlId !== "home-tab:design" || startGameNavigation.control?.accessibleName !== "Start a game" || startGameNavigation.activation?.kind !== "pointer") fail("Studio did not activate the live visible Start a game control through one native pointer interaction");
@@ -2903,7 +2951,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
         }, "post-loss durable nonterminal simulation job before restart reconciliation");
         abruptStudioLosses.add(studio);
-        const priorStudio = studio, restartDrain = await settleChild(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart", 90_000); const restartRecoveryCursor = cdp.events.length; await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "Studio server restart recovery"); const restartedProjectBaseRoute = (await evaluate("location.hash")).replace(/\/[^/]+$/, ""); await navigateProjectTab(restartedProjectBaseRoute, "simulation", "restart recovery"); const restartJobs = await waitFor(async () => { const event = cdp.events.slice(restartRecoveryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id && job?.status === "recovery-required"), restartRecovered = restartTerminal !== undefined; if (!restartRecovered) fail("Studio restart did not discover the durable simulation recovery-required terminal"); const restartRendered = await waitFor(() => evaluate(`(()=>{const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')==='simulation-run'&&item.getAttribute('data-pokie-lifecycle-result-operation')==='simulation'&&item.getAttribute('data-pokie-lifecycle-result-state')==='editable-submission'&&item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-request-id')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-terminal')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-captured-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-durable-status')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-recovery')==='restart-reconciled'&&item.getAttribute('data-pokie-lifecycle-result-executor')==='unavailable-after-restart'); if(!(result instanceof HTMLElement))return false; return {resultControlId:result.getAttribute('data-pokie-lifecycle-result-control'),resultOperation:result.getAttribute('data-pokie-lifecycle-result-operation'),resultStateClass:result.getAttribute('data-pokie-lifecycle-result-state'),resultReceipt:result.getAttribute('data-pokie-lifecycle-result-receipt'),capturedJobId:result.getAttribute('data-pokie-lifecycle-result-captured-job'),resultJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'),resultRequestId:result.getAttribute('data-pokie-lifecycle-result-request-id'),resultTerminal:result.getAttribute('data-pokie-lifecycle-result-durable-status'),resultRecovery:result.getAttribute('data-pokie-lifecycle-result-recovery'),resultExecutor:result.getAttribute('data-pokie-lifecycle-result-executor'),renderedTerminal:true,postRestartReplacementState:{capturedControlId:${JSON.stringify(restartJob.transaction.control.stableControlId)},captureKey:${JSON.stringify(restartJob.transaction.pointerActivations[0].captureKey)},controlState:'replaced-after-restart',currentControlId:document.getElementById('simulation-run') instanceof HTMLElement?'simulation-run':null,capturedControlConnected:false}}})()`), "rendered restart recovery terminal"), restartScreenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false}), restartScreenshotEvidenceId = await save("screenshot", `${recoveryViewport}-restart-recovery.png`, Buffer.from(restartScreenshot.data, "base64"), [options.tuple?.observation ?? "restart recovery"]); timings.restartRecoveryMs = Date.now() - restartRecoveryStartedAt; const restartReceipt = {operation:"simulation", controlId:restartJob.transaction.control.stableControlId, stateClass:restartJob.transaction.stateClass, capturedJobId:restartJob.payload.id, transaction:restartJob.transaction, terminal:{status:restartTerminal.status, jobId:restartTerminal.id, resultSha256:digest(JSON.stringify(restartTerminal)), causedByRequestId:restartJob.transaction.request.browserRequestId}, rendered:restartRendered, timing:{elapsedMs:timings.restartRecoveryMs}, evidence:{screenshotEvidenceId:restartScreenshotEvidenceId}, ownedProcessDrain:restartDrain}; api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation, unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered && restartTerminal.status === "recovery-required" && restartRendered.renderedTerminal === true}; if (!Object.values(recovery).every(Boolean)) fail(`Studio recovery controls did not produce measured results: ${JSON.stringify(recovery)}`);
+        const priorStudio = studio, restartDrain = await settleChild(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart", 90_000); const restartRecoveryCursor = cdp.events.length; await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "Studio server restart recovery"); const restartedProjectBaseRoute = (await evaluate("location.hash")).replace(/\/[^/]+$/, ""); await navigateProjectTab(restartedProjectBaseRoute, "simulation", "restart recovery"); const restartJobs = await waitFor(async () => { const event = cdp.events.slice(restartRecoveryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id && job?.status === "recovery-required"), restartRecovered = restartTerminal !== undefined; if (!restartRecovered) fail("Studio restart did not discover the durable simulation recovery-required terminal"); const restartRendered = await waitFor(() => evaluate(`(()=>{const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')==='simulation-run'&&item.getAttribute('data-pokie-lifecycle-result-operation')==='simulation'&&item.getAttribute('data-pokie-lifecycle-result-state')==='editable-submission'&&item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-request-id')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-terminal')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-captured-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-durable-status')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-recovery')==='restart-reconciled'&&item.getAttribute('data-pokie-lifecycle-result-executor')==='unavailable-after-restart'); if(!(result instanceof HTMLElement))return false; return {resultControlId:result.getAttribute('data-pokie-lifecycle-result-control'),resultOperation:result.getAttribute('data-pokie-lifecycle-result-operation'),resultStateClass:result.getAttribute('data-pokie-lifecycle-result-state'),resultReceipt:result.getAttribute('data-pokie-lifecycle-result-receipt'),capturedJobId:result.getAttribute('data-pokie-lifecycle-result-captured-job'),resultJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'),resultRequestId:result.getAttribute('data-pokie-lifecycle-result-request-id'),resultTerminal:result.getAttribute('data-pokie-lifecycle-result-durable-status'),resultRecovery:result.getAttribute('data-pokie-lifecycle-result-recovery'),resultExecutor:result.getAttribute('data-pokie-lifecycle-result-executor'),renderedTerminal:true,postRestartReplacementState:{capturedControlId:${JSON.stringify(restartJob.transaction.control.stableControlId)},captureKey:${JSON.stringify(restartJob.transaction.pointerActivations[0].captureKey)},controlState:'replaced-after-restart',currentControlId:document.getElementById('simulation-run') instanceof HTMLElement?'simulation-run':null,capturedControlConnected:false}}})()`), "rendered restart recovery terminal"), restartScreenshot = await captureScreenshot(), restartScreenshotEvidenceId = await save("screenshot", `${recoveryViewport}-restart-recovery.png`, Buffer.from(restartScreenshot.data, "base64"), [options.tuple?.observation ?? "restart recovery"]); timings.restartRecoveryMs = Date.now() - restartRecoveryStartedAt; const restartReceipt = {operation:"simulation", controlId:restartJob.transaction.control.stableControlId, stateClass:restartJob.transaction.stateClass, capturedJobId:restartJob.payload.id, transaction:restartJob.transaction, terminal:{status:restartTerminal.status, jobId:restartTerminal.id, resultSha256:digest(JSON.stringify(restartTerminal)), causedByRequestId:restartJob.transaction.request.browserRequestId}, rendered:restartRendered, timing:{elapsedMs:timings.restartRecoveryMs}, evidence:{screenshotEvidenceId:restartScreenshotEvidenceId}, ownedProcessDrain:restartDrain}; api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation, unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered && restartTerminal.status === "recovery-required" && restartRendered.renderedTerminal === true}; if (!Object.values(recovery).every(Boolean)) fail(`Studio recovery controls did not produce measured results: ${JSON.stringify(recovery)}`);
         if (JSON.stringify(restartTerminal.request) !== JSON.stringify(preCrashJob.request)) fail("Studio restart recovery did not retain the captured durable simulation request");
         restartReceipt.terminal.operation = restartTerminal.operation;
         restartReceipt.terminal.request = restartTerminal.request;

@@ -6,6 +6,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {P805_PUBLIC_HELP_ARGUMENTS, hasP805TransactionActivations, tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {
+    matchesP805ReplayArtifactInput,
     P805_PERSONAS,
     P805_REQUIRED_EVIDENCE_KINDS,
     P805_REQUIRED_OBSERVATIONS,
@@ -60,6 +61,7 @@ const timings = {
     cancellationMs: 1,
     restartRecoveryMs: 1,
 };
+const nativeKeyboardActivation = (controlId) => ({kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:{controlId, native:true}, dispatch:{kind:"native-keyboard", key:"Enter", pressed:true, released:true, keyDownCount:1, keyUpCount:1, focus:{controlId, native:true, trusted:true, targetMatchesCapturedControl:true}}});
 let recoveryTransactionSequence = 0;
 const transaction = (operation, controlId, accessibleName, confirmed = false) => ({
     operation,
@@ -69,7 +71,7 @@ const transaction = (operation, controlId, accessibleName, confirmed = false) =>
         ? {required: true, state: "confirmed", control: {stableControlId: "simulation-cancel-confirm", identityAttribute: "id", accessibleName: "Confirm", enabled: true, disabled: false, disabledExplanation: null}, activation: nativePointerActivation("simulation-cancel-confirm")}
         : {required: false, state: "not-required", control: null},
     pointerActivations: operation === "replay" ? [] : [{phase: "operation", ...nativePointerActivation(controlId)}],
-    keyboardActivations: operation === "replay" ? [{phase: "operation", kind: "keyboard", controlId, count: 1, nativeFocus: true, preDispatchFocus: {controlId, native: true}}] : [],
+    keyboardActivations: operation === "replay" ? [{phase:"operation", ...nativeKeyboardActivation(controlId)}] : [],
     request: {browserRequestId: `runtime-${operation}-${recoveryTransactionSequence}`, method: "POST", path: `/api/project/${operation}`, status: 200, responseSha256: hash(`response-${operation}`)},
     terminal: {status: "completed", resultSha256: hash(`terminal-${operation}`), source: "rendered-poll", pollPath: `/api/project/${operation}/job`, browserRequestId: `terminal-${operation}`, causedByRequestId: `runtime-${operation}-${recoveryTransactionSequence}`},
 });
@@ -87,7 +89,7 @@ const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jo
             kind: "pointer", count: 1, controlId, capturedControlId: controlId, captureKey,
             preDispatchFocus: {controlId, native: true},
             hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
-            dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
+            dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, trusted: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
         }],
         requestCount: 1,
         request: {browserRequestId: requestId, method: "POST", path: "/api/project/simulations", status: 202, responseSha256: hash(`response-${operation}-${jobId}`)},
@@ -130,7 +132,7 @@ const nativePointerActivation = (controlId) => ({
     captureKey: `capture-${controlId}`,
     preDispatchFocus: {controlId, native: true},
     hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
-    dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
+    dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, trusted: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
 });
 test("unexecuted operations retain null timing and cannot borrow tuple duration", () => {
     const measured = {...timings, validationMs:null, simulationMs:null, replayMs:null, cancellationMs:null};
@@ -152,6 +154,24 @@ test("recovery consumes pointer and keyboard receipts without extra activations"
         (value) => { value.confirmation.activation.dispatch.focus.targetMatchesCapturedControl = false; },
     ]) {
         const invalid = structuredClone(pointer); mutate(invalid);
+        assert.equal(hasP805TransactionActivations(invalid), false);
+    }
+});
+test("Replay Artifact binds parsed input to transmitted bytes without accepting another descriptor", () => {
+    assert.equal(matchesP805ReplayArtifactInput('{\n  "round": 1, "seed": "valid"\n}', '{"round":1,"seed":"valid"}'), true);
+    assert.equal(matchesP805ReplayArtifactInput('{"round":0}', '{"round":1}'), false);
+    assert.equal(matchesP805ReplayArtifactInput('invalid JSON', '{}'), false);
+});
+test("keyboard evidence requires one trusted dispatch on the captured control", () => {
+    const captured = transaction("replay", "replay-run", "Run again");
+    for (const mutate of [
+        (activation) => { delete activation.dispatch; },
+        (activation) => { activation.dispatch.focus.trusted = false; },
+        (activation) => { activation.dispatch.focus.controlId = "substituted"; },
+        (activation) => { activation.dispatch.keyDownCount = 2; },
+        (activation) => { activation.dispatch.keyUpCount = 0; },
+    ]) {
+        const invalid = structuredClone(captured); mutate(invalid.keyboardActivations[0]);
         assert.equal(hasP805TransactionActivations(invalid), false);
     }
 });
@@ -200,7 +220,7 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
             ...(contract.body === "outcome-library" ? {preflight: {state: "ready", status: "ok", controlId: "outcome-library-generate", cardLabel: "Outcome library generator", enabled: true, disabled: false}} : {}),
             confirmation: {required: false, state: "not-required", control: null},
             pointerActivations: [],
-            keyboardActivations: [{phase: "operation", kind: "keyboard", controlId: contract.actionControlId ?? screen.navigationControlId, count: 1, nativeFocus: true, preDispatchFocus: {controlId: contract.actionControlId ?? screen.navigationControlId, native: true}}],
+            keyboardActivations: [{phase:"operation", ...nativeKeyboardActivation(contract.actionControlId ?? screen.navigationControlId)}],
         };
     return {
         bodySha256,
@@ -325,8 +345,13 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                 packedPackageSha256: candidate.candidatePackageSha256,
             }),
         };
-        const body = contents ?? defaults[kind] ?? `P8-05 bounded ${kind} ${evidenceSequence}\n`,
-            relativePath = `records/${evidenceSequence}.txt`;
+        let body = contents ?? defaults[kind] ?? `P8-05 bounded ${kind} ${evidenceSequence}\n`;
+        if (kind === "page-state" && JSON.parse(body).kind === "p8-05-runtime-observation") {
+            const runtime = JSON.parse(body), viewport = {width:{wide:1440, compact:960, narrow:390}[runtime.viewport], height:{wide:900, compact:800, narrow:844}[runtime.viewport]};
+            for (const captured of Object.values(runtime.transactions)) captured.viewport = viewport;
+            body = JSON.stringify(runtime);
+        }
+        const relativePath = `records/${evidenceSequence}.txt`;
         await mkdir(path.join(directory, "records"), {recursive: true});
         await writeFile(path.join(directory, relativePath), body);
         return {
@@ -456,7 +481,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             const submitted = JSON.stringify(status === 400 ? {round:0, seed:"invalid-artifact"} : {round:1, seed:"p8-05"});
             captured.viewport = {width:{wide:1440, compact:960, narrow:390}[tuple.viewport], height:{wide:900, compact:800, narrow:844}[tuple.viewport]};
             captured.request.bodySha256 = hash(submitted);
-            captured.formState = {operation:"replay-artifact", fields:[{stableControlId:"replay-artifact-json", value:submitted}]};
+            captured.formState = {operation:"replay-artifact", fields:[{stableControlId:"replay-artifact-json", value:JSON.stringify(JSON.parse(submitted), null, 2)}]};
             browserEvents.push({method:"Network.requestWillBeSent", params:{requestId:captured.request.browserRequestId, request:{method:"POST", url:"http://localhost/api/project/replays/inspect-artifact", postData:submitted}}}, {method:"Network.responseReceived", params:{requestId:captured.request.browserRequestId, response:{url:"http://localhost/api/project/replays/inspect-artifact", status}}});
             apiEntries.push({...captured.request, payload, initiator:"rendered-control"});
             return [name, {payload, transaction:captured, screenshotEvidenceId:artifacts.find((item) => item.kind === "screenshot").evidenceId, rendered:{controlId:"replay-artifact-load", status:status === 200 ? "loaded" : "error", text:status === 200 ? "Round 1, seed p8-05." : "round must be positive", ...(status === 200 ? {round:"1", seed:"p8-05"} : {})}}];
@@ -528,9 +553,9 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                 },
                 unsavedWork: {
                     editedControl: "Game basics name",
-                    editControl: {stableControlId: "game-model-basics-edit", identityAttribute: "id", accessibleName: "Edit", keyboardFocused: true, keyboardActivations: 1},
-                    navigationControl: {stableControlId: "project-tab:overview", identityAttribute: "id", accessibleName: "Overview", keyboardFocused: true, keyboardActivations: 1},
-                    cancelControl: {stableControlId: "game-model-unsaved-stay", identityAttribute: "id", accessibleName: "Stay", keyboardFocused: true, keyboardActivations: 1},
+                    editControl: {stableControlId: "game-model-basics-edit", identityAttribute: "id", accessibleName: "Edit", keyboardFocused: true, input:{kind:"native-text", text:" P805 unsaved", value:"Game P805 unsaved"}},
+                    navigationControl: {stableControlId: "project-tab:overview", identityAttribute: "id", accessibleName:"Overview", keyboardFocused:true, activation:nativePointerActivation("project-tab:overview")},
+                    cancelControl: {stableControlId: "game-model-unsaved-stay", identityAttribute: "id", accessibleName:"Stay", keyboardFocused:true, activation:nativePointerActivation("game-model-unsaved-stay")},
                     protectionText: "You have unsaved changes to this game model section. Leave and lose them?",
                     preserved: true,
                 },

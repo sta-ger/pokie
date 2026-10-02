@@ -73,7 +73,6 @@ export type GetReplayDownloadResult =
 export class StudioReplayExecutionService {
     private readonly activeExecutions = new Set<string>();
     private readonly pendingTerminals = new Map<string, StudioReplayJobRecord["status"]>();
-    private readonly pendingNotifications = new Set<string>();
     private readonly executionFailures: unknown[] = [];
     private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly repository: StudioReplayRepository;
@@ -449,7 +448,6 @@ export class StudioReplayExecutionService {
             record.status = "completed";
             record.descriptor = descriptor;
             this.markTerminal(record);
-            this.notifyCompleted(record);
         } catch (error) {
             this.fail(record, error);
         } finally {
@@ -515,12 +513,11 @@ export class StudioReplayExecutionService {
                 ...(canSerialize ? {stateAfter: state as unknown as Record<string, unknown>} : {}),
             };
             this.markTerminal(record);
-            this.notifyCompleted(record);
         } catch (error) {
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
         } finally {
-            runtime?.dispose();
+            await runtime?.dispose();
         }
     }
 
@@ -667,7 +664,6 @@ export class StudioReplayExecutionService {
         record.status = "completed";
         record.descriptor = descriptor;
         this.markTerminal(record);
-        this.notifyCompleted(record);
     }
 
     // "useInitialStateDirectly" covers round 1's own "before" snapshot: at that point no play() has
@@ -758,7 +754,6 @@ export class StudioReplayExecutionService {
     // marker can claim that these resources were drained.
     private failExecution(record: StudioReplayJobRecord, error: unknown): void {
         this.executionFailures.push(error);
-        this.pendingNotifications.delete(record.id);
         Reflect.deleteProperty(record, "descriptor");
         this.fail(record, new Error(`Replay cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
     }
@@ -836,12 +831,8 @@ export class StudioReplayExecutionService {
             record.status = terminal;
             this.markTerminal(record);
         }
-        if (this.pendingNotifications.delete(record.id)) this.onCompleted(record);
-    }
-
-    private notifyCompleted(record: StudioReplayJobRecord): void {
-        if (this.activeExecutions.has(record.id)) this.pendingNotifications.add(record.id);
-        else this.onCompleted(record);
+        // Only a successfully drained terminal can notify output consumers.
+        if (record.status === "completed") this.onCompleted(record);
     }
 
     private markRunning(record: StudioReplayJobRecord): void {

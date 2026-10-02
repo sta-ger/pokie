@@ -163,6 +163,7 @@ describe("StudioSimulationService", () => {
             expect(service.getStatusForProject("/a", result.job.id)?.report).toBeUndefined();
             expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
             expect(onCompleted).not.toHaveBeenCalled();
+            expect(service.listReports("/a")).toEqual([]);
             if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
             else finishRelease();
             for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
@@ -182,6 +183,9 @@ describe("StudioSimulationService", () => {
                 expect(durableRepository.getProcessState()?.status).toBe("running");
             } else {
                 expect(service.getReport("/a", result.job.id).status).toBe("ok");
+                expect(onCompleted).toHaveBeenCalledTimes(1);
+                expect(onCompleted.mock.calls[0]?.[0].status).toBe("completed");
+                expect(service.listReports("/a")).toHaveLength(1);
                 await service.cancelAll();
             }
         } finally {
@@ -190,13 +194,18 @@ describe("StudioSimulationService", () => {
         }
     });
 
-    it("cancels a canonical WASM job after session acquisition and disposes its portable resources", async () => {
+    it.each([false, true])("keeps WASM cancellation pending through asynchronous disposal rejection=%s", async (rejectDisposal) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-simulation-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmPath, "");
         fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}}));
         const gate = createControlledYield();
-        const disposeRuntime = jest.fn();
+        let finishDisposal!: () => void;
+        let failDisposal!: (error: Error) => void;
+        const disposeRuntime = jest.fn(() => new Promise<void>((resolve, reject) => {
+            finishDisposal = resolve;
+            failDisposal = reject;
+        }));
         const disposeSession = jest.fn();
         const runtime = {
             manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
@@ -230,10 +239,18 @@ describe("StudioSimulationService", () => {
             expect(gate.pendingCount()).toBe(1);
             service.cancel(started.job.id);
             gate.release();
-            await expect(waitForTerminal(service, started.job.id)).resolves.toMatchObject({status: "cancelled"});
+            for (let attempt = 0; attempt < 20 && disposeRuntime.mock.calls.length === 0; attempt++) await flushMacrotask();
+            expect(service.getActiveCount()).toBe(1);
+            expect(service.getReport(wasmPath, started.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            if (rejectDisposal) failDisposal(new Error("WASM release rejected"));
+            else finishDisposal();
+            await expect(waitForTerminal(service, started.job.id)).resolves.toMatchObject({status: rejectDisposal ? "failed" : "cancelled"});
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectDisposal) await expect(service.cancelAll()).rejects.toThrow("WASM release rejected");
             expect(disposeSession).toHaveBeenCalledTimes(1);
             expect(disposeRuntime).toHaveBeenCalledTimes(1);
         } finally {
+            finishDisposal?.();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
