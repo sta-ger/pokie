@@ -754,7 +754,6 @@ export class StudioReplayExecutionService {
     // marker can claim that these resources were drained.
     private failExecution(record: StudioReplayJobRecord, error: unknown): void {
         this.executionFailures.push(error);
-        Reflect.deleteProperty(record, "descriptor");
         this.fail(record, new Error(`Replay cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
     }
 
@@ -770,6 +769,8 @@ export class StudioReplayExecutionService {
     }
 
     private fail(record: StudioReplayJobRecord, error: unknown): void {
+        // Failed computation or cleanup invalidates every staged success output.
+        Reflect.deleteProperty(record, "descriptor");
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
         this.markTerminal(record);
@@ -819,7 +820,7 @@ export class StudioReplayExecutionService {
         } else if (record.status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
         } else if (record.status === "failed") {
-            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: "Correct the reported problem and run the replay again."});
+            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the replay again."});
         }
     }
 

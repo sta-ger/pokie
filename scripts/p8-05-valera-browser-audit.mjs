@@ -87,6 +87,9 @@ export function hasP805NativeActivation(activation, controlId) {
         && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
         && activation.hitTest?.capturedControlId === controlId && activation.hitTest.matchesCapturedControl === true
         && activation.dispatch?.kind === "native-pointer" && activation.dispatch.pressed === true && activation.dispatch.released === true
+        && activation.dispatch.pointerDownCount === 1 && activation.dispatch.pointerUpCount === 1 && activation.dispatch.clickCount === 1
+        && activation.dispatch.eventsTrusted === true && activation.dispatch.targetsMatchCapturedControl === true
+        && activation.dispatch.focus?.observedAt === "pre-dispatch" && typeof activation.dispatch.focus.atDispatchNative === "boolean"
         && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
 }
 export function hasP805TransactionActivations(transaction) {
@@ -647,8 +650,39 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         if (!isP805CreateValidationReady(control)) fail(`Missing rendered Create game validation-ready boundary before pointer dispatch; readiness: ${p805CreateReadinessPhase(control)}; control: ${JSON.stringify(control)}`);
     }
     const captureKey = randomBytes(16).toString("hex");
-    const capturePoint = async () => evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(stableControlId)}); if (!(item instanceof HTMLElement) || item.disabled) return null; if (item.id==='blueprint-create-game' && (item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy')))) return null; if (${JSON.stringify(scrollIntoViewIfNeeded)}) item.scrollIntoView({block:'center',inline:'nearest'}); item.focus({preventScroll:true}); const preDispatchFocus={controlId:item.id,native:document.activeElement===item}; const box=item.getBoundingClientRect(), x=box.left+box.width/2, y=box.top+box.height/2, hit=document.elementFromPoint(x,y), sized=box.width>0&&box.height>0, matchesCapturedControl=hit===item||item.contains(hit), capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement ? hit.id || null : null,targetRole:hit instanceof HTMLElement ? hit.getAttribute('role') || hit.tagName.toLowerCase() : null,matchesCapturedControl}}; if (!window.__p805CapturedControls) window.__p805CapturedControls=new Map(); if (!window.__p805PointerDispatchReceipts) window.__p805PointerDispatchReceipts=new Map(); const receipt={dispatch:null}; const capture=(event)=>{if(receipt.dispatch!==null)return; const target=event.target; receipt.dispatch={eventType:event.type,trusted:event.isTrusted,validationState:item.getAttribute('data-pokie-validation-state'),enabled:!item.disabled,ariaBusy:item.getAttribute('aria-busy'),controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement ? target.id || null : null,targetRole:target instanceof HTMLElement ? target.getAttribute('role') || target.tagName.toLowerCase() : null,targetMatchesCapturedControl:target===item||item.contains(target)};}; document.addEventListener('pointerdown',capture,true); document.addEventListener('mousedown',capture,true); window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item); window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl}); return sized&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight)) ? {x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest} : null;})()`);
-    const removeCapture = () => evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});})()`);
+    const capturePoint = async () => evaluate(`(()=>{
+        const item=document.getElementById(${JSON.stringify(stableControlId)});
+        if(!(item instanceof HTMLElement)||item.disabled)return null;
+        if(item.id==='blueprint-create-game'&&(item.getAttribute('data-pokie-validation-state')!=='ok'||![null,'false'].includes(item.getAttribute('aria-busy'))))return null;
+        if(${JSON.stringify(scrollIntoViewIfNeeded)})item.scrollIntoView({block:'center',inline:'nearest'});
+        item.focus({preventScroll:true});
+        const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
+        const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2,hit=document.elementFromPoint(x,y);
+        const matchesCapturedControl=hit===item||item.contains(hit);
+        const capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl}};
+        window.__p805CapturedControls??=new Map();window.__p805PointerDispatchReceipts??=new Map();
+        const receipt={dispatch:null,pointerDownCount:0,pointerUpCount:0,clickCount:0,eventsTrusted:true,targetsMatchCapturedControl:true};
+        const capture=(event)=>{
+            const target=event.target,matches=target===item||item.contains(target);
+            receipt.eventsTrusted&&=event.isTrusted;
+            receipt.targetsMatchCapturedControl&&=matches;
+            if(event.type==='pointerup')receipt.pointerUpCount++;
+            if(event.type==='click')receipt.clickCount++;
+            if(event.type!=='pointerdown')return;
+            receipt.pointerDownCount++;
+            if(receipt.dispatch!==null)return;
+            receipt.dispatch={eventType:event.type,trusted:event.isTrusted,validationState:item.getAttribute('data-pokie-validation-state'),enabled:!item.disabled,ariaBusy:item.getAttribute('aria-busy'),controlId:capturedControl.controlId,native:document.activeElement===item,targetId:target instanceof HTMLElement?target.id||null:null,targetRole:target instanceof HTMLElement?target.getAttribute('role')||target.tagName.toLowerCase():null,targetMatchesCapturedControl:matches};
+        };
+        for(const type of ['pointerdown','pointerup','click'])document.addEventListener(type,capture,true);
+        window.__p805CapturedControls.set(${JSON.stringify(captureKey)},item);
+        window.__p805PointerDispatchReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,capturedControl});
+        return box.width>0&&box.height>0&&preDispatchFocus.native&&matchesCapturedControl&&(!${JSON.stringify(requireViewportHit)}||(box.left>=0&&box.right<=window.innerWidth&&box.top>=0&&box.bottom<=window.innerHeight))?{x,y,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},preDispatchFocus:capturedControl.preDispatchFocus,hitTest:capturedControl.hitTest}:null;
+    })()`);
+    const removeCapture = () => evaluate(`(()=>{
+        const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)});
+        if(record){for(const type of ['pointerdown','pointerup','click'])document.removeEventListener(type,record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});}
+        window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});
+    })()`);
     let point = await waitFor(async () => {
         const captured = await capturePoint();
         if (captured) return captured;
@@ -731,16 +765,27 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         // immediately before that press, so preserve those observed facts
         // rather than treating a post-dispatch focus transfer as a second
         // control identity.
-        const dispatchFocus = await evaluate(`(()=>{const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)}); if(record){document.removeEventListener('pointerdown',record.capture,true);document.removeEventListener('mousedown',record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});} if (!${JSON.stringify(retainCapturedControl)}) window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)}); const capturedControl=record?.capturedControl, dispatch=record?.receipt?.dispatch; return {eventType:dispatch?.eventType ?? null,trusted:dispatch?.trusted === true,validationState:dispatch?.validationState ?? null,enabled:dispatch?.enabled === true,ariaBusy:dispatch?.ariaBusy ?? null,controlId:capturedControl?.controlId ?? null,native:dispatch?.native === true,preDispatchNative:capturedControl?.preDispatchFocus?.native === true,hitTest:capturedControl?.hitTest ?? null,targetId:dispatch?.targetId ?? null,targetRole:dispatch?.targetRole ?? null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl === true};})()`);
-        // React is free to replace the Retry button while its accepted
-        // pointer activation starts a new simulation.  The transaction
-        // identity is consequently the captured pre-dispatch node, not
-        // whichever similarly named node exists after the release.  Do
-        // require both the pre-dispatch native hit-test and a document
-        // capture-phase native pointer dispatch to target that exact
-        // node; this is evidence, not a keyboard fallback.
-        if (dispatchFocus?.controlId !== stableControlId || dispatchFocus.preDispatchNative !== true || dispatchFocus.native !== true || dispatchFocus.trusted !== true || dispatchFocus.hitTest?.capturedControlId !== stableControlId || dispatchFocus.hitTest?.matchesCapturedControl !== true || dispatchFocus.eventType === null || dispatchFocus.targetMatchesCapturedControl !== true) fail("rendered control lost native focus or its captured hit target at pointer dispatch");
-        return {...point, dispatch:{kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, focus:dispatchFocus}};
+        const observed = await evaluate(`(()=>{
+            const record=window.__p805PointerDispatchReceipts?.get(${JSON.stringify(captureKey)});
+            if(record){for(const type of ['pointerdown','pointerup','click'])document.removeEventListener(type,record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});}
+            if(!${JSON.stringify(retainCapturedControl)})window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});
+            const capturedControl=record?.capturedControl,receipt=record?.receipt,dispatch=receipt?.dispatch;
+            return {pointerDownCount:receipt?.pointerDownCount,pointerUpCount:receipt?.pointerUpCount,clickCount:receipt?.clickCount,eventsTrusted:receipt?.eventsTrusted===true,targetsMatchCapturedControl:receipt?.targetsMatchCapturedControl===true,focus:{
+                observedAt:'pre-dispatch',eventType:dispatch?.eventType??null,trusted:dispatch?.trusted===true,
+                validationState:dispatch?.validationState??null,enabled:dispatch?.enabled===true,ariaBusy:dispatch?.ariaBusy??null,
+                controlId:capturedControl?.controlId??null,native:capturedControl?.preDispatchFocus?.native===true,atDispatchNative:dispatch?.native===true,
+                hitTest:capturedControl?.hitTest??null,targetId:dispatch?.targetId??null,targetRole:dispatch?.targetRole??null,targetMatchesCapturedControl:dispatch?.targetMatchesCapturedControl===true
+            }};
+        })()`);
+        // Native focus is measured immediately before the press on the exact
+        // captured node. Chromium or a capture-phase product handler can move
+        // it during dispatch; retain that separate observation without
+        // relabelling it as lost identity. All three trusted native events
+        // must still target this node, and only one click may authorize it.
+        const dispatch = {kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, ...observed};
+        const activation = {kind:"pointer", count:1, controlId:stableControlId, ...point, dispatch};
+        if (!hasP805NativeActivation(activation, stableControlId)) fail(`rendered control lost native focus or its captured hit target at pointer dispatch; captured boundary: ${JSON.stringify(activation)}`);
+        return {...point, dispatch};
     } catch (error) {
         await removeCapture();
         throw error;

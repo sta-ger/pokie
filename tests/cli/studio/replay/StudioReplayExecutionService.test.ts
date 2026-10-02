@@ -331,7 +331,7 @@ describe("StudioReplayExecutionService", () => {
             }
             expect(service.getActiveCount()).toBe(0);
             if (rejectRelease) {
-                expect(service.getStatus("/a", result.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("restart Studio before retrying"), recovery: {action: "retry"}});
+                expect(service.getStatus("/a", result.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("restart Studio before retrying"), recovery: {action: "retry", reason: expect.stringContaining("restart Studio before retrying")}});
                 expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
                 expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
                 expect(onCompleted).not.toHaveBeenCalled();

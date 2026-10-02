@@ -49,13 +49,13 @@ function acceptedTupleAudit(ledger, audits, index) {
 }
 export const projectP805RenderedTupleEvidence = (ledger, tupleAudits) => ledger.children.map((child, index) => {
     const audit = acceptedTupleAudit(ledger, tupleAudits, index), action = audit.rendered?.actions?.[0], pointer = action?.transaction?.pointerActivations?.[0], keyboard = action?.transaction?.keyboardActivations?.[0], isPointer = action?.interaction?.activation === "pointer", activation = isPointer ? pointer : keyboard;
-    if (!audit || !action || !activation || !hasP805TransactionActivations(action.transaction)) fail(`controller cannot project rendered evidence for ${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`);
+    if (!audit || !action || !activation || activation.controlId !== action.stableControlId || !hasP805TransactionActivations(action.transaction)) fail(`controller cannot project rendered evidence for ${child.tuple.persona}/${child.tuple.observation}/${child.tuple.viewport}`);
     return {
         tuple:child.tuple,
         auditSha256:child.auditSha256,
         checkpointReceiptSha256:child.checkpointReceiptSha256s[0],
         actionSha256:ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256,
-        activation:{...activation, kind:isPointer ? "pointer" : "keyboard", controlId:action.stableControlId, capturedControlId:isPointer ? activation.capturedControlId : undefined, captureKey:isPointer ? activation.captureKey : undefined, preDispatchFocus:activation.preDispatchFocus, hitTest:isPointer ? activation.hitTest : undefined, dispatch:activation.dispatch},
+        activation:JSON.parse(JSON.stringify(activation)),
         request:action.transaction.request,
         terminal:{status:action.terminal.status, resultSha256:action.terminal.resultSha256},
         rendered:{state:action.visibleTerminal.state, observedAfterRequestId:action.visibleTerminal.observedAfterRequestId, resultSha256:action.visibleTerminal.resultSha256, postTransitionRenderedState:isPointer ? action.transaction.postTransitionRenderedState : undefined},

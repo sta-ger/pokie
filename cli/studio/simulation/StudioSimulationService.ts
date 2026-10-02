@@ -644,9 +644,6 @@ export class StudioSimulationService {
     // marker can claim that these resources were drained.
     private failExecution(record: StudioSimulationJobRecord, error: unknown): void {
         this.executionFailures.push(error);
-        Reflect.deleteProperty(record, "report");
-        Reflect.deleteProperty(record, "statistics");
-        Reflect.deleteProperty(record, "lastReplay");
         this.fail(record, new Error(`Simulation cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
     }
 
@@ -662,6 +659,10 @@ export class StudioSimulationService {
     }
 
     private fail(record: StudioSimulationJobRecord, error: unknown): void {
+        // Failed computation or cleanup invalidates every staged success output.
+        Reflect.deleteProperty(record, "report");
+        Reflect.deleteProperty(record, "statistics");
+        Reflect.deleteProperty(record, "lastReplay");
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
         this.markTerminal(record);
@@ -726,7 +727,7 @@ export class StudioSimulationService {
         } else if (record.status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Simulation cancelled after the last completed round.", provenance: {simulationId: record.id, projectRoot: record.projectRoot}, detail: {simulationId: record.id, rounds: record.roundsCompleted}}, {action: "retry", reason: "Run the simulation again with the captured parameters."});
         } else if (record.status === "failed") {
-            this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: "Correct the reported problem and run the simulation again."});
+            this.jobService?.fail(record.id, record.error ?? "Simulation failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the simulation again."});
         }
     }
 

@@ -479,6 +479,7 @@ test("native navigation waits for rendered context and Retry retains captured id
                 const result = document.getElementById('simulation-results');
                 const mode = new URL(location.href).searchParams.get('mode');
                 window.activations = [];
+                if (mode === 'dispatch-focus-transfer') document.addEventListener('pointerdown', () => result.focus(), true);
                 button.addEventListener('mouseover', () => {
                     if (mode === 'changed-hit') {
                         const overlay = document.createElement('div');
@@ -593,8 +594,34 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(keyboard.dispatch.keyUpCount,1);
             assert.deepEqual(await evaluate("({width:innerWidth,height:innerHeight})"),{width,height});
         }
+        // Trace the retained finding's actual Open control shape at the
+        // assigned narrow viewport, with a native focus transfer at press.
+        const importedLocation = '/games/Bounded reel editor.json';
+        const importedControlId = 'project-open:' + importedLocation;
+        await evaluate(`(()=>{
+            const panel=document.createElement('section');panel.tabIndex=-1;
+            const button=document.createElement('button');button.id=${JSON.stringify(importedControlId)};
+            button.dataset.pokieProjectLocation=${JSON.stringify(importedLocation)};
+            button.innerHTML='<span>Open</span>';button.style.marginTop='1800px';
+            panel.append(button);document.body.append(panel);
+            window.importedOpenActivations=[];
+            document.addEventListener('pointerdown',(event)=>{if(button.contains(event.target))panel.focus({preventScroll:true});},true);
+            button.addEventListener('click',(event)=>{
+                window.importedOpenActivations.push({trusted:event.isTrusted,controlId:event.currentTarget.id});
+                location.hash='#/project/imported/overview';button.remove();
+            });
+        })()`);
+        const importedOpen = await clickP805CapturedControl(cdp, evaluate, importedControlId, true, true, true, true);
+        const acceptedOpenBytes = JSON.stringify(importedOpen);
+        assert.equal(importedOpen.capturedControlId, importedControlId);
+        assert.equal(importedOpen.preDispatchFocus.native, true);
+        assert.equal(importedOpen.hitTest.matchesCapturedControl, true);
+        assert.equal(importedOpen.dispatch.focus.atDispatchNative, false);
+        assert.deepEqual([importedOpen.dispatch.pointerDownCount, importedOpen.dispatch.pointerUpCount, importedOpen.dispatch.clickCount], [1,1,1]);
+        assert.deepEqual(await evaluate("window.importedOpenActivations"), [{trusted:true, controlId:importedControlId}]);
+        assert.equal(await evaluate("location.hash"), '#/project/imported/overview');
         await cdp.send("Emulation.clearDeviceMetricsOverride");
-        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "confirmation-pointer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
+        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "confirmation-pointer", "dispatch-focus-transfer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
             await cdp.send("Page.navigate", {url});
             await poll(() => evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && typeof window.renderTerminal === 'function'`));
@@ -613,6 +640,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"].includes(mode)) {
                 await assert.rejects(click(), mode === "dispatch-failed" ? /native pointer dispatch rejected/ : /changed its captured identity, native focus, or hit target/);
                 assert.deepEqual(await evaluate("window.activations"), []);
+                assert.equal(JSON.stringify(importedOpen), acceptedOpenBytes, "a later rejected tuple cannot alter an accepted capture");
                 assert.equal(cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST").length, 0);
                 assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
                 continue;
@@ -621,6 +649,13 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(pointer.preDispatchFocus.native, true);
             assert.equal(pointer.hitTest.matchesCapturedControl, true);
             assert.equal(pointer.dispatch.focus.native, true);
+            assert.equal(pointer.dispatch.focus.observedAt, "pre-dispatch");
+            assert.equal(pointer.dispatch.focus.atDispatchNative, mode !== "dispatch-focus-transfer");
+            assert.equal(pointer.dispatch.pointerDownCount, 1);
+            assert.equal(pointer.dispatch.pointerUpCount, 1);
+            assert.equal(pointer.dispatch.clickCount, 1);
+            assert.equal(pointer.dispatch.eventsTrusted, true);
+            assert.equal(pointer.dispatch.targetsMatchCapturedControl, true);
             assert.equal(pointer.dispatch.focus.targetMatchesCapturedControl, true);
             assert.equal(pointer.dispatch.pressed, true);
             assert.equal(pointer.dispatch.released, true);
@@ -646,7 +681,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "a hidden terminal cannot replace the visible result");
             await evaluate("document.getElementById('simulation-results').hidden = false; document.getElementById('simulation-results').focus()");
             transaction.postTransitionRenderedState = await observeP805PointerTerminal(evaluate, transaction, receipt);
-            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "confirmation-pointer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
+            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "confirmation-pointer", "dispatch-focus-transfer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
             assert.equal(transaction.postTransitionRenderedState.controlState, expectedControlState);
             assert.equal(transaction.postTransitionRenderedState.capturedControlConnected, expectedControlState === "retained");
             assert.equal(transaction.postTransitionRenderedState.activeElementId, "simulation-results");
@@ -670,7 +705,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
             assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations/retry-job") && event.params.request.method === "GET").length, 1);
         }
-        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 8);
+        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 9);
     } finally {
         pendingContext?.end();
         await cdp?.close();

@@ -171,7 +171,7 @@ test("controller projects every accepted tuple action instead of a persona aggre
     const tupleAudits = tuples.map((tuple, index) => {
         const controlId = `control-${index}`, browserRequestId = `request-${index}`, resultSha256 = digest({terminal:index});
         const keyboard = tuple.viewport === "compact", kind = keyboard ? "keyboard" : "pointer";
-        const activation = {count:1, kind, controlId, capturedControlId:controlId, captureKey:`capture-${index}`, preDispatchFocus:{controlId, native:true}, nativeFocus:true, hitTest:{capturedControlId:controlId, matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pressed:true, released:true, focus:{controlId, native:true, trusted:true, targetMatchesCapturedControl:true}}};
+        const activation = {count:1, kind, controlId, capturedControlId:controlId, captureKey:`capture-${index}`, preDispatchFocus:{controlId, native:true}, nativeFocus:true, hitTest:{capturedControlId:controlId, matchesCapturedControl:true}, dispatch:{kind:"native-pointer", pointerDownCount:1, pointerUpCount:1, clickCount:1, eventsTrusted:true, targetsMatchCapturedControl:true, pressed:true, released:true, focus:{observedAt:"pre-dispatch", atDispatchNative:true, controlId, native:true, trusted:true, targetMatchesCapturedControl:true}}};
         if (keyboard) activation.dispatch = {kind:"native-keyboard", key:"Enter", pressed:true, released:true, keyDownCount:1, keyUpCount:1, focus:{controlId, native:true, trusted:true, targetMatchesCapturedControl:true}};
         const action = {...tuple, stableControlId:controlId, interaction:{activation:kind}, transaction:{control:{stableControlId:controlId}, confirmation:{required:false, state:"not-required"}, pointerActivations:keyboard ? [] : [activation], keyboardActivations:keyboard ? [activation] : [], request:{browserRequestId, method:"GET", path:"/api/project/context", responseSha256:digest({response:index})}, postTransitionRenderedState:keyboard ? undefined : {capturedControlId:controlId, captureKey:activation.captureKey, controlState:"replaced", currentControlId:controlId, capturedControlConnected:false, requestId:browserRequestId, resultSha256, renderedTerminal:true}}, terminal:{status:"completed", resultSha256}, visibleTerminal:{state:"rendered", observedAfterRequestId:browserRequestId, resultSha256, lifecycle:{artifact:null}}, elapsedMs:index + 1, accessibility:{visibleFocus:true, namedRegions:["main"], unexplainedDisabledControls:0}, evidenceId:`action-${index}`, screenshotEvidenceId:`screenshot-${index}`};
         return {auditId:`audit-${index}`, persona:tuple.persona, tuple, worker:{pid:100}, rendered:{actions:[action]}, packageIdentity:{archiveGitHead:"1".repeat(40), candidateTreeObjectId:"2".repeat(40), candidateExecutableReceiptSha256:"3".repeat(64)}, cleanup:{evidenceId:`cleanup-${index}`}};
@@ -180,6 +180,12 @@ test("controller projects every accepted tuple action instead of a persona aggre
         children:tupleAudits.map((audit, index) => ({tuple:audit.tuple, worker:audit.worker, auditSha256:digest({audit:index}), checkpointReceiptSha256s:[digest({checkpoint:index})], cleanupEvidenceId:audit.cleanup.evidenceId})),
         acceptedReceipts:tupleAudits.map((audit) => ({receipt:{auditId:audit.auditId, checkpointReceipt:{actionSha256:digest(audit.rendered.actions[0])}}})),
     };
+    // A digest-bound action with a different label/id cannot repair its native
+    // activation by having the projection overwrite the captured control id.
+    const substitutedAudits = structuredClone(tupleAudits), substitutedLedger = structuredClone(ledger);
+    substitutedAudits[0].rendered.actions[0].stableControlId = "substituted-action-control";
+    substitutedLedger.acceptedReceipts[0].receipt.checkpointReceipt.actionSha256 = digest(substitutedAudits[0].rendered.actions[0]);
+    assert.throws(() => projectP805RenderedTupleEvidence(substitutedLedger, substitutedAudits), /cannot project rendered evidence/);
     const original = JSON.stringify({ledger, tupleAudits});
     const projected = projectP805RenderedTupleEvidence(ledger, [...tupleAudits].reverse());
     assert.equal(projected.length, 75);
@@ -188,6 +194,9 @@ test("controller projects every accepted tuple action instead of a persona aggre
     for (const [index, entry] of projected.entries()) {
         const audit = tupleAudits[index], action = audit.rendered.actions[0];
         assert.equal(entry.activation.controlId, action.stableControlId);
+        const originalActivation = action.transaction.pointerActivations[0] ?? action.transaction.keyboardActivations[0];
+        assert.equal(JSON.stringify(entry.activation), JSON.stringify(originalActivation));
+        assert.notEqual(entry.activation, originalActivation);
         assert.equal(entry.actionSha256, ledger.acceptedReceipts[index].receipt.checkpointReceipt.actionSha256);
         assert.deepEqual(entry.request, action.transaction.request);
         assert.deepEqual(entry.terminal, action.terminal);

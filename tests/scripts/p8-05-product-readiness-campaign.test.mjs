@@ -60,6 +60,10 @@ const timings = {
     replayMs: 1,
     cancellationMs: 1,
     restartRecoveryMs: 1,
+    retryMs: 1,
+    replayArtifactMs: 1,
+    screenshotMs: 1,
+    recursiveHelpMs: 1,
 };
 const nativeKeyboardActivation = (controlId) => ({kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:{controlId, native:true}, dispatch:{kind:"native-keyboard", key:"Enter", pressed:true, released:true, keyDownCount:1, keyUpCount:1, focus:{controlId, native:true, trusted:true, targetMatchesCapturedControl:true}}});
 let recoveryTransactionSequence = 0;
@@ -89,12 +93,12 @@ const pointerTransaction = (operation, controlId, stateClass, terminalStatus, jo
             kind: "pointer", count: 1, controlId, capturedControlId: controlId, captureKey,
             preDispatchFocus: {controlId, native: true},
             hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
-            dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, trusted: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
+            dispatch: {kind: "native-pointer", pointerDownCount: 1, pointerUpCount: 1, clickCount: 1, eventsTrusted: true, targetsMatchCapturedControl: true, pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {observedAt: "pre-dispatch", atDispatchNative: true, eventType: "pointerdown", controlId, native: true, trusted: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
         }],
         requestCount: 1,
         request: {browserRequestId: requestId, method: "POST", path: "/api/project/simulations", status: 202, responseSha256: hash(`response-${operation}-${jobId}`)},
         terminal: {status: terminalStatus, jobId, resultSha256, source: "rendered-poll", pollPath: `/api/project/simulations/${jobId}`, browserRequestId: `terminal-${operation}-${jobId}`, causedByRequestId: requestId},
-        postTransitionRenderedState: {capturedControlId: controlId, captureKey, preDispatchEvidence: {capturedControlId: controlId, focus: {controlId, native: true}, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, dispatch: {kind: "native-pointer", pressed: true, released: true, focus: {controlId, native: true, targetMatchesCapturedControl: true}}}, controlState: "replaced", currentControlId: controlId, capturedControlConnected: false, requestId, resultSha256, renderedTerminal: true, resultControlId: controlId, resultOperation: operation, resultStateClass: stateClass, resultReceipt: "durable-terminal", resultJobId: jobId, resultTerminal: terminalStatus},
+        postTransitionRenderedState: {capturedControlId: controlId, captureKey, preDispatchEvidence: {capturedControlId: controlId, focus: {controlId, native: true}, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, dispatch: {kind: "native-pointer", pointerDownCount: 1, pointerUpCount: 1, clickCount: 1, eventsTrusted: true, targetsMatchCapturedControl: true, pressed: true, released: true, focus: {observedAt: "pre-dispatch", atDispatchNative: true, controlId, native: true, targetMatchesCapturedControl: true}}}, controlState: "replaced", currentControlId: controlId, capturedControlConnected: false, requestId, resultSha256, renderedTerminal: true, resultControlId: controlId, resultOperation: operation, resultStateClass: stateClass, resultReceipt: "durable-terminal", resultJobId: jobId, resultTerminal: terminalStatus},
     };
 };
 test.each(["retained", "replaced", "removed"])("accepts Retry's captured native pointer evidence with a %s post-transition control", (controlState) => {
@@ -132,7 +136,7 @@ const nativePointerActivation = (controlId) => ({
     captureKey: `capture-${controlId}`,
     preDispatchFocus: {controlId, native: true},
     hitTest: {capturedControlId: controlId, targetId: controlId, targetRole: "button", matchesCapturedControl: true},
-    dispatch: {kind: "native-pointer", pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {eventType: "pointerdown", controlId, native: true, trusted: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
+    dispatch: {kind: "native-pointer", pointerDownCount: 1, pointerUpCount: 1, clickCount: 1, eventsTrusted: true, targetsMatchCapturedControl: true, pressed: true, released: true, buttons: 1, pointerType: "mouse", focus: {observedAt: "pre-dispatch", atDispatchNative: true, eventType: "pointerdown", controlId, native: true, trusted: true, hitTest: {capturedControlId: controlId, matchesCapturedControl: true}, targetId: controlId, targetRole: "button", targetMatchesCapturedControl: true}},
 });
 test("unexecuted operations retain null timing and cannot borrow tuple duration", () => {
     const measured = {...timings, validationMs:null, simulationMs:null, replayMs:null, cancellationMs:null};
@@ -150,6 +154,12 @@ test("recovery consumes pointer and keyboard receipts without extra activations"
         (value) => { value.keyboardActivations.push(keyboard.keyboardActivations[0]); },
         (value) => { value.pointerActivations.push(value.pointerActivations[0]); },
         (value) => { value.pointerActivations[0].controlId = "substituted"; },
+        (value) => { value.pointerActivations[0].dispatch.pointerDownCount = 2; },
+        (value) => { value.pointerActivations[0].dispatch.pointerUpCount = 0; },
+        (value) => { value.pointerActivations[0].dispatch.clickCount = 2; },
+        (value) => { value.pointerActivations[0].dispatch.eventsTrusted = false; },
+        (value) => { value.pointerActivations[0].dispatch.targetsMatchCapturedControl = false; },
+        (value) => { value.pointerActivations[0].dispatch.focus.observedAt = "post-transition"; },
         (value) => { value.confirmation.activation.controlId = "substituted"; },
         (value) => { value.confirmation.activation.dispatch.focus.targetMatchesCapturedControl = false; },
     ]) {

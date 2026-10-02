@@ -135,12 +135,15 @@ type OutcomeLibraryProgressSnapshot = {
 // authority for discovery after reload.
 export const OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT = 64;
 export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLibraryProgressSnapshot[], snapshot: OutcomeLibraryProgressSnapshot): readonly OutcomeLibraryProgressSnapshot[] {
-    const observations = [...history, snapshot];
+    // A resumed/reloaded job may have a new durable id. Its history must not
+    // inherit another job's submission or terminal while sharing this bound.
+    const boundHistory = history.filter((item) => item.jobId === snapshot.jobId);
+    const observations = [...boundHistory, snapshot];
     if (observations.length <= OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT) return observations;
     // A resumed run can poll for hours. Keep its cancellation/recovery
     // identity as well as the first submission and the current observation.
     const initial = observations[0]!;
-    const terminal = [...history].reverse().find((item) => !["queued", "running", "cancelling"].includes(item.durableStatus));
+    const terminal = [...boundHistory].reverse().find((item) => !["queued", "running", "cancelling"].includes(item.durableStatus));
     const pinned = terminal === undefined || terminal === initial ? [initial] : [initial, terminal];
     const recent = observations.filter((item) => !pinned.includes(item));
     return [...pinned, ...recent.slice(-(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT - pinned.length))];

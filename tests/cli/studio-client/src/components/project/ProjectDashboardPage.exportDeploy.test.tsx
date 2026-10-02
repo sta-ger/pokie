@@ -89,6 +89,16 @@ it("retains a cancellation terminal through a long resumed run within the progre
     expect(history[history.length - 1]).toBe(completed);
 });
 
+it("binds a replaced durable job's progress history without retaining a prior job terminal", () => {
+    const initial = {source: "start", jobId: "old-job", durableStatus: "queued"} as const;
+    const cancelled = {source: "poll", jobId: "old-job", durableStatus: "cancelled"} as const;
+    const replacement = {source: "start", jobId: "new-job", durableStatus: "running"} as const;
+    const history = retainOutcomeLibraryProgressSnapshot([initial, cancelled], replacement);
+    expect(history).toEqual([replacement]);
+    const completed = {source: "poll", jobId: "new-job", durableStatus: "completed"} as const;
+    expect(retainOutcomeLibraryProgressSnapshot(history, completed)).toEqual([replacement, completed]);
+});
+
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
     it("retains the captured Build/Export navigation node while its same-project context refresh is loading", async () => {
         let contexts = 0;

@@ -1,7 +1,9 @@
 import {createHash} from "node:crypto";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
-export function p805OperationPerformance(timings, budgets = {startupMs:60_000, projectCreationMs:60_000, validationMs:60_000, buildMs:300_000, simulationMs:300_000, replayMs:300_000, cancellationMs:120_000}) {
+export const P805_OPERATION_BUDGETS = {startupMs:60_000, projectCreationMs:60_000, validationMs:60_000, buildMs:300_000, simulationMs:300_000, replayMs:300_000, cancellationMs:120_000, restartRecoveryMs:120_000, retryMs:180_000, replayArtifactMs:60_000, screenshotMs:60_000, recursiveHelpMs:300_000};
+
+export function p805OperationPerformance(timings, budgets = P805_OPERATION_BUDGETS) {
     return Object.fromEntries(Object.entries(budgets).map(([name, budgetMs]) => [name, {elapsedMs:timings[name], budgetMs, classification:timings[name] === null ? "not-executed" : timings[name] <= budgetMs ? "within-budget" : "regression"}]));
 }
 
