@@ -189,6 +189,7 @@ describe("Guided Design Game: automatic validation", () => {
         await waitFor(() => expect(finishValidation).toBeDefined());
         await act(() => finishValidation?.());
         expect(create).toHaveAttribute("data-pokie-validation-state", "ok");
+        finishValidation = undefined;
 
         const id = screen.getByLabelText("Game id");
         await user.click(id);
@@ -198,10 +199,15 @@ describe("Guided Design Game: automatic validation", () => {
         expect(create).toHaveAttribute("data-pokie-validation-state", "stale");
         expect(create).toBeDisabled();
         await user.click(create);
-        expect(requests).toHaveLength(1);
+        // The automatic debounce may run during user.click under contention.
+        // Only a save/open is forbidden while the changed draft is unchecked.
+        expect(create).toBeDisabled();
+        expect(writes).toEqual([]);
 
-        finishValidation = undefined;
-        await waitFor(() => expect(requests).toHaveLength(2));
+        await waitFor(() => {
+            expect(requests).toHaveLength(2);
+            expect(finishValidation).toBeDefined();
+        });
         expect(JSON.parse(requests[1]).blueprint.manifest.id).toBe("edited-slot");
         expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
         expect(create).toBeDisabled();

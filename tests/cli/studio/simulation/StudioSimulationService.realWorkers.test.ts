@@ -18,11 +18,16 @@ describe("StudioSimulationService (integration, real worker threads via --worker
     // makes progress, which still fails well inside it.
     jest.setTimeout(120000);
     const fixtureRoot = path.join(__dirname, "..", "..", "fixtures", "playable-game");
+    const services: StudioSimulationService[] = [];
 
-    // waitForTerminal (in StudioSimulationService.test.ts) polls via a bare setImmediate — fine for
-    // the fake-driven tests there, where progress advances in lockstep with queued microtasks, but
-    // real worker threads take real wall-clock time to spin up/load/compute, which thousands of
-    // back-to-back setImmediate ticks don't reliably span. This polls with a real delay instead.
+    afterEach(async () => {
+        // Also drain after a failed assertion or polling timeout: no executor
+        // may outlive the VM that owns its callbacks and fixture resources.
+        await Promise.all(services.splice(0).map((service) => service.cancelAll()));
+    });
+
+    // Real worker threads take wall-clock time to spin up/load/compute. Keep a
+    // larger polling budget than the in-process and PAR preparation tests.
     // Bounded to comfortably fit inside the jest.setTimeout(120000) above (rather than the far
     // shorter cap this loop used to carry), since the biggest job here (200,000 rounds across real
     // worker threads) is exactly the case the full-gate contention headroom above was raised for --
@@ -50,12 +55,40 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             if (job && job.roundsCompleted > 0) {
                 return job;
             }
+            if (job && job.status !== "queued" && job.status !== "running") {
+                throw new Error(job.error ?? `Simulation became ${job.status} before reporting progress.`);
+            }
             await new Promise((resolve) => {
                 setTimeout(resolve, 20);
             });
         }
         throw new Error("Timed out waiting for the simulation to report progress.");
     }
+
+    it("runs real workers when the VM's native import callback belongs to a torn-down environment", async () => {
+        const nativeImport = jest.fn(() => Promise.reject(new Error("Test environment has been torn down")));
+        const originalFunction = globalThis.Function;
+        const functionSpy = jest.spyOn(globalThis, "Function").mockImplementation((...args: string[]) =>
+            args[args.length - 1] === "return import(specifier)" ? nativeImport : originalFunction(...args),
+        );
+        let coordinator: import("../../../../src/simulation/parallel/SimulationWorkerCoordinator.js").SimulationWorkerCoordinator | undefined;
+        try {
+            jest.isolateModules(() => {
+                const {SimulationWorkerCoordinator} = jest.requireActual<typeof import("../../../../src/simulation/parallel/SimulationWorkerCoordinator.js")>(
+                    "../../../../src/simulation/parallel/SimulationWorkerCoordinator.js",
+                );
+                coordinator = new SimulationWorkerCoordinator(TEST_WORKER_ENTRY_URL);
+            });
+        } finally {
+            functionSpy.mockRestore();
+        }
+        if (coordinator === undefined) throw new Error("expected isolated worker coordinator");
+        const results = await coordinator.run([0, 1].map((workerIndex) => ({
+            workerIndex, totalWorkers: 2, packageRoot: fixtureRoot, rounds: 10, progressChunkSize: 10,
+        })));
+        expect(results.map((result) => result.accumulator.rounds)).toEqual([10, 10]);
+        expect(nativeImport).not.toHaveBeenCalled();
+    });
 
     it("runs a workers=2 simulation across real worker threads and reports workers on the job/report", async () => {
         const service = new StudioSimulationService(
@@ -68,6 +101,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
+        services.push(service);
 
         const result = service.start(fixtureRoot, {rounds: 1000, seed: "demo", workers: 2});
         if (result.status !== "created") {
@@ -96,6 +130,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
+        services.push(service);
 
         const result = service.start(fixtureRoot, {rounds: 1001, workers: 4});
         if (result.status !== "created") {
@@ -120,6 +155,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
+        services.push(service);
 
         const result = service.start(fixtureRoot, {rounds: 200_000, workers: 2});
         if (result.status !== "created") {
@@ -151,6 +187,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
+        services.push(service);
 
         const result = service.start(fixtureRoot, {rounds: 200_000, workers: 2});
         if (result.status !== "created") {
@@ -181,6 +218,7 @@ describe("StudioSimulationService (integration, real worker threads via --worker
             undefined,
             TEST_WORKER_ENTRY_URL,
         );
+        services.push(service);
 
         const result = service.start(path.join(__dirname, "does-not-exist"), {rounds: 100, workers: 2});
         if (result.status !== "created") {

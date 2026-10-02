@@ -196,6 +196,13 @@ export class SimulationWorkerCoordinator {
     }
 
     private async resolveWorkerThreads(): Promise<WorkerThreadsModule> {
+        // Jest reuses a Node process across VM test environments. A native
+        // import of this builtin can retain a callback from an environment
+        // that has already been torn down. Resolve it synchronously in the
+        // CommonJS VM, as the default worker entry resolver already does.
+        if (typeof process !== "undefined" && process.env?.JEST_WORKER_ID !== undefined && typeof require === "function") {
+            return requireWorkerThreads(require);
+        }
         try {
             return await importWorkerThreads("worker_threads");
         } catch (error) {

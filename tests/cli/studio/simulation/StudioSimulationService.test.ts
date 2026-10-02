@@ -99,12 +99,18 @@ function flushMacrotask(): Promise<void> {
 }
 
 async function waitForTerminal(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
-    for (let i = 0; i < 2000; i++) {
+    // PAR recognition performs real asynchronous ZIP/filesystem work. A fixed
+    // number of setImmediate ticks can expire before that I/O runs on a busy
+    // gate worker, leaving it to finish after Jest tears down this environment.
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
         const job = service.getStatus(id);
         if (job && job.status !== "queued" && job.status !== "running") {
             return job;
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 5);
+        });
     }
     throw new Error("Timed out waiting for the simulation to reach a terminal state.");
 }
@@ -279,6 +285,7 @@ describe("StudioSimulationService", () => {
             }
             expect(loadGame).not.toHaveBeenCalled();
         } finally {
+            await service.cancelAll();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
