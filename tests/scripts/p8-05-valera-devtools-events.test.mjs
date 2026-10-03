@@ -745,6 +745,38 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(nextNavigation.routeAfter,'#/project/source/simulation');
         assert.equal(await evaluate('window.drawerActivations.length'),2);
         assert.deepEqual(await evaluate('window.navigationActivations'),[{trusted:true,controlId:'project-tab:gameModel'},{trusted:true,controlId:'project-tab:simulation'}]);
+        // A closing Mantine drawer still has visible, hit-testable tabs for
+        // part of its transition. Reproduce the terminal-to-next-run boundary
+        // with a delayed capture: DOM visibility must not authorize a tab
+        // whose live disclosure already says closed.
+        await evaluate(`(()=>{
+            location.hash='#/project/source/gameModel';
+            const result=document.getElementById('navigation-result');
+            result.setAttribute('data-pokie-lifecycle-route','gameModel');
+            result.setAttribute('data-pokie-lifecycle-result-control','project-tab:gameModel');
+            const panel=document.getElementById('studio-navigation-panel');
+            panel.style.transform='none';
+            panel.getBoundingClientRect();
+            panel.style.transition='transform 200ms linear';
+            panel.style.transform='translateX(-260px)';
+            document.getElementById('studio-navigation-toggle').setAttribute('aria-expanded','false');
+        })()`);
+        let delayedCapture=false;
+        const delayedEvaluate=async(expression)=>{
+            if(!delayedCapture&&expression.includes('window.__p805CapturedControls??=')){
+                delayedCapture=true;
+                await new Promise((resolve)=>setTimeout(resolve,250));
+            }
+            return evaluate(expression);
+        };
+        const returnToSimulation=await navigateP805RenderedControl(navigationDispatcher,delayedEvaluate,'simulation','#/project/source/simulation','simulation-success-failure-cancellation');
+        assert.equal(delayedCapture,true);
+        assert.equal(hasP805NativeActivation(returnToSimulation.control.navigationDisclosure,'studio-navigation-toggle'),true);
+        assert.equal(hasP805NativeActivation(returnToSimulation.activation,'project-tab:simulation'),true);
+        assert.equal(returnToSimulation.routeBefore,'#/project/source/gameModel');
+        assert.equal(returnToSimulation.routeAfter,'#/project/source/simulation');
+        assert.equal(await evaluate('window.drawerActivations.length'),3);
+        assert.deepEqual(await evaluate('window.navigationActivations'),[{trusted:true,controlId:'project-tab:gameModel'},{trusted:true,controlId:'project-tab:simulation'},{trusted:true,controlId:'project-tab:simulation'}]);
         for (const corrupt of [
             (value)=>{delete value.capturedControlId;},
             (value)=>{delete value.captureKey;},

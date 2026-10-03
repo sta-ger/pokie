@@ -3,6 +3,7 @@ import {render, screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {readFileSync} from "fs";
 import {join} from "path";
+import {useState} from "react";
 import {AppShellLayout} from "../../../../../../cli/studio-client/src/components/layout/AppShellLayout";
 import {NavTabs} from "../../../../../../cli/studio-client/src/components/layout/NavTabs";
 
@@ -121,6 +122,56 @@ describe("AppShellLayout - mobile navigation", () => {
         await user.keyboard("[Space]");
         expect(burger).toHaveAttribute("aria-expanded", "false");
         expect(isBurgerOpened(burger)).toBe(false);
+    });
+
+    it("reopens the retained disclosure before returning to Simulation after a terminal workflow", async () => {
+        const user = userEvent.setup();
+        const selections = jest.fn();
+        function WorkflowLayout() {
+            const [active, setActive] = useState("simulation");
+            return (
+                <AppShellLayout navbar={<NavTabs
+                    items={[
+                        {value: "simulation", label: "Simulation", auditControlId: "project-tab:simulation"},
+                        {value: "replay", label: "Replay", auditControlId: "project-tab:replay"},
+                    ]}
+                    active={active}
+                    onSelect={(value) => {
+                        selections(value);
+                        setActive(value);
+                    }}
+                />}>
+                    <div role="status">{active} terminal result</div>
+                </AppShellLayout>
+            );
+        }
+        render(<MantineProvider><WorkflowLayout /></MantineProvider>);
+        const burger = screen.getByRole("button", {name: "Toggle navigation"});
+        const panel = document.getElementById("studio-navigation-panel");
+        const simulation = screen.getByRole("button", {name: "Simulation"});
+
+        burger.focus();
+        await user.keyboard("[Space]");
+        await user.click(screen.getByRole("button", {name: "Replay"}));
+        expect(screen.getByRole("status")).toHaveTextContent("replay terminal result");
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+        expect(document.activeElement).toBe(burger);
+        // Mantine retains the drawer's controls through the closing transition.
+        // Presence and focus alone do not reopen the product disclosure.
+        expect(document.getElementById("project-tab:simulation")).toBe(simulation);
+        expect(panel).toContainElement(simulation);
+        simulation.focus();
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+
+        burger.focus();
+        await user.keyboard("[Space]");
+        expect(burger).toHaveAttribute("aria-expanded", "true");
+        expect(document.getElementById("studio-navigation-panel")).toBe(panel);
+        await user.click(simulation);
+        expect(screen.getByRole("status")).toHaveTextContent("simulation terminal result");
+        expect(selections.mock.calls).toEqual([["replay"], ["simulation"]]);
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+        expect(document.activeElement).toBe(burger);
     });
 
     it("selects a visible drawer section through its keyboard control", async () => {

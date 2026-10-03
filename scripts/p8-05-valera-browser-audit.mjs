@@ -682,21 +682,23 @@ export async function observeP805NavigationReadiness(evaluate, route) {
 }
 export async function revealP805RenderedNavigationControl(cdp, evaluate, route, observation) {
     await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
-    // Find and focus one live target in the same browser turn. A
-    // narrow drawer is allowed to finish closing once a tab receives
-    // focus, so a successful visibility probe must itself return the
-    // control receipt rather than asking a later DOM lookup to find
-    // the same tab again.
+    // Find and focus one live target in the same browser turn. A closing
+    // narrow drawer can still expose a hit-testable tab for a transition
+    // frame. Its closed disclosure cannot authorize capture: reopen it
+    // through the native toggle before retaining the next tab.
     const focusVisibleNavigationControl = () => evaluate(`(() => {
         const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
         const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
         const item = [...document.querySelectorAll('button,a')].find((candidate) => {
             if (!(candidate instanceof HTMLElement) || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
             const panel = candidate.closest('#studio-navigation-panel');
-            if (document.getElementById('studio-navigation-toggle')?.getAttribute('aria-expanded') === 'true' && !(panel instanceof HTMLElement)) return false;
-            if (panel instanceof HTMLElement && panel.getBoundingClientRect().left >= 0) candidate.scrollIntoView({block:'nearest',inline:'nearest'});
+            const toggle = document.getElementById('studio-navigation-toggle');
+            if (toggle instanceof HTMLButtonElement && visible(toggle)
+                && (toggle.getAttribute('aria-expanded') !== 'true' || !(panel instanceof HTMLElement))) return false;
+            if (panel instanceof HTMLElement && panel.getBoundingClientRect().left >= 0) candidate.scrollIntoView({behavior:'instant',block:'nearest',inline:'nearest'});
             const box = candidate.getBoundingClientRect();
-            if (box.width <= 0 || box.height <= 0 || box.left < 0 || box.right > window.innerWidth || box.top < 0 || box.bottom > window.innerHeight) return false;
+            const viewport = (${measureP805VisualViewport.toString()})();
+            if (box.width <= 0 || box.height <= 0 || box.left < viewport.offsetLeft || box.right > viewport.offsetLeft + viewport.width || box.top < viewport.offsetTop || box.bottom > viewport.offsetTop + viewport.height) return false;
             const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
             return hit === candidate || candidate.contains(hit);
         });
