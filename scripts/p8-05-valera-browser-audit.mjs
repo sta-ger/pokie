@@ -771,6 +771,7 @@ export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "ope
 export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
     const controlId = `project-open:${projectLocation}`;
     const priorRoute = await evaluate("location.hash");
+    const cursor = cdp.events.length;
     // Focus and retain the exact Button in the same browser turn. A separate
     // lookup after focus could silently capture an intervening replacement.
     const activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
@@ -778,7 +779,32 @@ export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
         const current = await evaluate("location.hash");
         return current !== priorRoute && /^#\/project\/[^/]+\/overview$/.test(current) ? current : false;
     }, "keyboard imported-project Open dashboard");
-    return {projectLocation, controlId, activation, priorRoute, route};
+    const requests = cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent"
+        && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/home/projects/open");
+    if (requests.length !== 1) fail("imported-project Open did not submit exactly one public Open request");
+    const request = requests[0].params;
+    const response = await waitFor(() => cdp.events.slice(cursor).find((event) => event.method === "Network.responseReceived"
+        && event.params.requestId === request.requestId), "imported-project Open response");
+    const body = await cdp.send("Network.getResponseBody", {requestId:request.requestId});
+    const payload = JSON.parse(body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body);
+    const opened = {projectLocation, controlId, activation, priorRoute, route,
+        request:{browserRequestId:request.requestId, method:request.request.method, path:new URL(request.request.url).pathname, body:request.request.postData},
+        response:{browserRequestId:response.params.requestId, status:response.params.response.status, projectRoot:payload.context?.projectRoot}};
+    validateP805ImportedProjectOpen(opened);
+    return opened;
+}
+export function validateP805ImportedProjectOpen(opened) {
+    // A Blueprint may resolve to a generated runtime directory. Bind the
+    // dashboard to the server's result, rather than guessing from the import
+    // path or accepting an unrelated route change as a successful Open.
+    if (opened.request?.method !== "POST" || opened.request.path !== "/api/home/projects/open"
+        || opened.request.body !== JSON.stringify({projectRoot:opened.projectLocation})
+        || typeof opened.request.browserRequestId !== "string" || !opened.request.browserRequestId
+        || opened.response?.browserRequestId !== opened.request.browserRequestId || opened.response.status !== 200
+        || typeof opened.response.projectRoot !== "string" || !opened.response.projectRoot
+        || opened.route !== `#/project/${encodeURIComponent(opened.response.projectRoot)}/overview`
+        || opened.route === opened.priorRoute || opened.controlId !== `project-open:${opened.projectLocation}`
+        || !hasP805NativeActivation(opened.activation, opened.controlId)) fail("imported-project Open dashboard is not bound to its native activation and server context");
 }
 export async function setP805ReplayArtifactInput(cdp, evaluate, text) {
     const ready = await evaluate(`(()=>{const item=document.getElementById('replay-artifact-json');if(!(item instanceof HTMLTextAreaElement)||item.disabled)return false;item.scrollIntoView({block:'center',inline:'nearest'});item.focus({preventScroll:true});item.select();return document.activeElement===item;})()`);

@@ -8,7 +8,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {openP805ImportedProject, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {openP805ImportedProject, validateP805ImportedProjectOpen, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
@@ -473,6 +473,7 @@ test("Blueprint mutation receipts follow each public endpoint's HTTP and domain 
 
 test("native navigation waits for rendered context and Retry retains captured identity through deferred layout and terminal replacement", async () => {
     const requests = [];
+    const importedRuntimeRoot = "/games/Generated imported runtime";
     let pendingContext;
     const server = createServer((request, response) => {
         requests.push({method:request.method, path:request.url});
@@ -504,7 +505,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             </script>`);
         } else if (request.url === "/api/home/projects/open") {
             response.writeHead(200, {"Content-Type":"application/json"});
-            response.end(JSON.stringify({context:{projectRoot:"/games/Bounded reel editor.json"}}));
+            response.end(JSON.stringify({context:{projectRoot:importedRuntimeRoot}}));
         } else if (request.url === "/api/project/simulations") {
             response.writeHead(202, {"Content-Type":"application/json"});
             response.end(JSON.stringify({id:"retry-job", status:"queued"}));
@@ -772,16 +773,18 @@ test("native navigation waits for rendered context and Retry retains captured id
                 location.hash='#/project/'+encodeURIComponent(context.context.projectRoot)+'/overview';button.remove();
             });
         })()`);
-        let validKeyboardOpen;
+        let validKeyboardOpen, validImportedOpen;
         for (const [width,height] of [[1440,900],[960,800],[390,844]]) {
             await cdp.send("Emulation.setDeviceMetricsOverride", {width,height,mobile:width===390,deviceScaleFactor:1});
             await mountImportedOpen();
             const beforeRequests=requests.filter((request)=>request.path==='/api/home/projects/open').length;
             const commands=[];
-            const opened=await openP805ImportedProject({send:async(method,params)=>{
-                assert.equal(method,'Input.dispatchKeyEvent','Open must use only its one native keyboard interaction');
-                commands.push(params);return cdp.send(method,params);
+            const opened=await openP805ImportedProject({events:cdp.events,send:async(method,params)=>{
+                if(method==='Input.dispatchKeyEvent')commands.push(params);
+                else assert.equal(method,'Network.getResponseBody','only response observation may accompany the native keyboard interaction');
+                return cdp.send(method,params);
             }},evaluate,importedLocation);
+            validImportedOpen=opened;
             validKeyboardOpen=opened.activation;
             assert.deepEqual(commands.map((command)=>[command.type,command.key]),[['keyDown',' '],['keyUp',' ']]);
             assert.equal(hasP805NativeActivation(opened.activation,importedControlId),true);
@@ -789,9 +792,30 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(opened.activation.dispatch.clickCount,1);
             assert.equal(opened.activation.capturedControlId,importedControlId);
             assert.equal(opened.priorRoute,'#/home/projects');
-            assert.equal(opened.route,'#/project/'+encodeURIComponent(importedLocation)+'/overview');
+            assert.equal(opened.route,'#/project/'+encodeURIComponent(importedRuntimeRoot)+'/overview');
+            assert.equal(opened.request.body,JSON.stringify({projectRoot:importedLocation}));
+            assert.equal(opened.response.projectRoot,importedRuntimeRoot);
+            assert.equal(opened.response.browserRequestId,opened.request.browserRequestId);
+            assert.equal(opened.response.status,200);
             assert.deepEqual(await evaluate('window.keyboardOpenActivations'),[{trusted:true,controlId:importedControlId}]);
             assert.equal(requests.filter((request)=>request.path==='/api/home/projects/open').length,beforeRequests+1);
+        }
+        // Mutate the actual native receipt: neither a stale request nor an
+        // unrelated dashboard can stand in for the imported Open result.
+        for(const corrupt of [
+            (value)=>{value.request.body=JSON.stringify({projectRoot:'/another'});},
+            (value)=>{value.request.method='GET';},
+            (value)=>{value.request.path='/api/project/context';},
+            (value)=>{value.response.browserRequestId='another-request';},
+            (value)=>{value.response.status=500;},
+            (value)=>{value.response.projectRoot='/another';},
+            (value)=>{value.route='#/project/another/overview';},
+            (value)=>{value.priorRoute=value.route;},
+            (value)=>{value.controlId='project-open:/another';},
+            (value)=>{value.activation.dispatch.clickCount=2;},
+        ]) {
+            const invalid=structuredClone(validImportedOpen);corrupt(invalid);
+            assert.throws(()=>validateP805ImportedProjectOpen(invalid),/not bound to its native activation and server context/);
         }
         // The unsaved-work audit uses the generic navigation boundary with
         // its default transport. It must choose the same retained keyboard
