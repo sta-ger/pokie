@@ -8,7 +8,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {activateP805KeyboardControl, setP805ReplayArtifactInput, clickP805CapturedControl, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {activateP805KeyboardControl, setP805ReplayArtifactInput, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -479,6 +479,16 @@ test("native navigation waits for rendered context and Retry retains captured id
                 const result = document.getElementById('simulation-results');
                 const mode = new URL(location.href).searchParams.get('mode');
                 window.activations = [];
+                if (mode === 'detached-dispatch-label') {
+                    button.style.cssText = 'width:125px;height:24px';
+                    button.innerHTML = '<span id="retry-label">Repeat simulation</span>';
+                    // The browser retains the button in its native event path
+                    // after an earlier public handler detaches the hit label.
+                    document.addEventListener('click', (event) => {
+                        if (event.target !== button && button.contains(event.target)) event.target.remove();
+                    }, true);
+                }
+                if (mode === 'retargeted-dispatch-region') button.addEventListener('pointerdown', (event) => button.parentElement.setPointerCapture(event.pointerId));
                 if (mode === 'dispatch-focus-transfer') document.addEventListener('pointerdown', () => result.focus(), true);
                 button.addEventListener('mouseover', () => {
                     if (mode === 'transient-hit' && !window.overlayShown) {
@@ -487,7 +497,8 @@ test("native navigation waits for rendered context and Retry retains captured id
                         overlay.style.cssText = 'position:fixed;inset:0;z-index:1000';
                         document.body.append(overlay);
                         setTimeout(() => overlay.remove(), 180);
-                    } else if (mode === 'changed-hit') {
+                    } else if (mode === 'lost-focus') result.focus();
+                    else if (mode === 'changed-hit') {
                         const overlay = document.createElement('div');
                         overlay.style.cssText = 'position:fixed;inset:0;z-index:1000';
                         document.body.append(overlay);
@@ -513,8 +524,10 @@ test("native navigation waits for rendered context and Retry retains captured id
                         });
                     }
                 });
-                button.addEventListener('click', async (event) => {
-                    window.activations.push({trusted:event.isTrusted, controlId:event.currentTarget.id});
+                const activationRegion = mode === 'retargeted-dispatch-region' ? button.parentElement : button;
+                activationRegion.addEventListener('click', async (event) => {
+                    if (!event.isTrusted) return;
+                    window.activations.push({trusted:event.isTrusted, controlId:button.id});
                     if (mode === 'replaced' || mode === 'moving-replaced') button.replaceWith(button.cloneNode(true));
                     if (mode === 'removed') button.remove();
                     result.focus();
@@ -640,7 +653,7 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(await evaluate("location.hash"), '#/project/imported/overview');
         await evaluate("document.documentElement.style.scrollBehavior='auto'");
         await cdp.send("Emulation.clearDeviceMetricsOverride");
-        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
+        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region", "moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
             await cdp.send("Page.navigate", {url});
             await poll(() => evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && typeof window.renderTerminal === 'function'`));
@@ -648,23 +661,69 @@ test("native navigation waits for rendered context and Retry retains captured id
             // only at the production helper's capture-to-dispatch boundary.
             await cdp.send("Input.dispatchMouseEvent", {type:"mouseMoved", x:400, y:300, pointerType:"mouse"});
             const cursor = cdp.events.length;
-            const dispatcher = mode === "dispatch-failed" ? {
-                send: (method, params) => method === "Input.dispatchMouseEvent" && params.type === "mousePressed"
-                    ? Promise.reject(new Error("native pointer dispatch rejected")) : cdp.send(method, params),
-            } : cdp;
+            const dispatcher = {
+                send: async (method, params) => {
+                    if (method === "Input.dispatchMouseEvent" && params.type === "mousePressed") {
+                        if (mode === "dispatch-failed") throw new Error("native pointer dispatch rejected");
+                        // Mutate after the last measured boundary, so a stale
+                        // snapshot or a same-id replacement cannot be accepted.
+                        if (mode === "late-overlay") await evaluate("document.body.insertAdjacentHTML('beforeend','<div style=\"position:fixed;inset:0;z-index:1000\"></div>')");
+                        if (mode === "late-replacement") await evaluate("document.getElementById('simulation-retry').replaceWith(document.getElementById('simulation-retry').cloneNode(true))");
+                        if (mode === "synthetic-events") await evaluate(`(()=>{
+                            const item=document.getElementById('simulation-retry');
+                            for(const type of ['pointerdown','pointerup','click'])item.dispatchEvent(new PointerEvent(type,{bubbles:true,composed:true,clientX:${params.x},clientY:${params.y}}));
+                        })()`);
+                        if (mode === "stale-coordinate") return cdp.send(method, {...params, x:400, y:300});
+                    }
+                    const result = await cdp.send(method, params);
+                    if (mode === "duplicate-activation" && method === "Input.dispatchMouseEvent" && params.type === "mouseReleased") {
+                        await cdp.send(method, {...params, type:"mousePressed", buttons:1});
+                        await cdp.send(method, params);
+                    }
+                    return result;
+                },
+            };
             // Confirmations use the helper's simpler native pointer options;
             // preserve that sibling caller as well as the Retry configuration.
             const fullPointerState = mode !== "confirmation-pointer";
             const click = () => clickP805CapturedControl(dispatcher, evaluate, "simulation-retry", fullPointerState, fullPointerState, fullPointerState, true);
-            if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"].includes(mode)) {
-                await assert.rejects(click(), mode === "dispatch-failed" ? /native pointer dispatch rejected/ : /changed its captured identity, native focus, or hit target/);
-                assert.deepEqual(await evaluate("window.activations"), []);
+            if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"].includes(mode)) {
+                const afterMeasurement = ["late-overlay", "late-replacement", "stale-coordinate", "duplicate-activation", "synthetic-events"].includes(mode);
+                await assert.rejects(click(), mode === "dispatch-failed" ? /native pointer dispatch rejected/ : afterMeasurement ? /lost native focus or its captured hit target at pointer dispatch/ : /changed its captured identity, native focus, or hit target/);
+                const expectedActivations = mode === "duplicate-activation" ? 2 : mode === "synthetic-events" ? 1 : 0;
+                assert.deepEqual(await evaluate("window.activations"), Array.from({length:expectedActivations}, () => ({trusted:true, controlId:"simulation-retry"})));
                 assert.equal(JSON.stringify(importedOpen), acceptedOpenBytes, "a later rejected tuple cannot alter an accepted capture");
-                assert.equal(cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST").length, 0);
+                assert.equal(cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST").length, expectedActivations);
                 assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
                 continue;
             }
             const pointer = {kind:"pointer", count:1, controlId:"simulation-retry", ...await click()};
+            assert.equal(hasP805NativeActivation(pointer, "simulation-retry"), true);
+            assert.deepEqual(pointer.dispatch.eventBindings.map((event) => event.eventType), ["pointerdown", "pointerup", "click"]);
+            for (const binding of pointer.dispatch.eventBindings) {
+                assert.equal(binding.captureKey, pointer.captureKey);
+                assert.equal(binding.capturedControlId, pointer.capturedControlId);
+                assert.equal(binding.pointMatchesMeasured, true);
+                assert.equal(binding.regionMatchesMeasured, true);
+                assert.equal(binding.hitMatchesCapturedControl, true);
+                assert.ok(binding.pathContainsCapturedControl || binding.dispatchRegionAncestor);
+                if (!binding.pathContainsCapturedControl) assert.equal(binding.relationship, "captured-dispatch-region");
+            }
+            if (mode === "detached-dispatch-label") {
+                assert.equal(pointer.dispatch.eventBindings[2].targetId, "retry-label");
+                assert.equal(pointer.dispatch.eventBindings[2].directTargetMatchesCapturedControl, false);
+                assert.equal(pointer.dispatch.eventBindings[2].relationship, "captured-dispatch-path");
+                assert.equal(pointer.dispatch.eventBindings[0].capturedControlConnected, true);
+                assert.equal(pointer.dispatch.eventBindings[0].enabled, true);
+                assert.equal(pointer.hitTest.targetId, "retry-label");
+            }
+            if (mode === "retargeted-dispatch-region") {
+                assert.deepEqual(pointer.dispatch.eventBindings.map((event) => event.relationship), ["captured-control", "captured-dispatch-region", "captured-dispatch-region"]);
+                assert.equal(pointer.dispatch.eventBindings[1].directTargetMatchesCapturedControl, false);
+                assert.equal(pointer.dispatch.eventBindings[1].dispatchRegionAncestor, true);
+            }
+            assert.equal(pointer.hitTest.x, pointer.x);
+            assert.equal(pointer.hitTest.y, pointer.y);
             assert.equal(pointer.preDispatchFocus.native, true);
             assert.equal(pointer.hitTest.matchesCapturedControl, true);
             assert.equal(pointer.dispatch.focus.native, true);
@@ -700,7 +759,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "a hidden terminal cannot replace the visible result");
             await evaluate("document.getElementById('simulation-results').hidden = false; document.getElementById('simulation-results').focus()");
             transaction.postTransitionRenderedState = await observeP805PointerTerminal(evaluate, transaction, receipt);
-            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
+            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
             assert.equal(transaction.postTransitionRenderedState.controlState, expectedControlState);
             assert.equal(transaction.postTransitionRenderedState.capturedControlConnected, expectedControlState === "retained");
             assert.equal(transaction.postTransitionRenderedState.activeElementId, "simulation-results");
@@ -711,6 +770,14 @@ test("native navigation waits for rendered context and Retry retains captured id
                 (value) => { value.transaction.pointerActivations[0].preDispatchFocus.native = false; },
                 (value) => { value.transaction.pointerActivations[0].hitTest.matchesCapturedControl = false; },
                 (value) => { value.transaction.pointerActivations[0].dispatch.focus.targetMatchesCapturedControl = false; },
+                ...["pointMatchesMeasured", "regionMatchesMeasured", "hitMatchesCapturedControl", "capturedControlConnected", "identityPreserved", "enabled", "pathContainsCapturedControl", "trusted"].map((field) => (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0][field] = false; }),
+                (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].captureKey = "another-capture"; },
+                (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].relationship = "overlay"; },
+                (value) => { value.transaction.pointerActivations[0].dispatch.clickCount = 2; },
+                (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings = null; },
+                (value) => { delete value.transaction.pointerActivations[0].dispatch.eventBindings; },
+                (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].x += 100; },
+                (value) => { value.transaction.pointerActivations[0].hitTest.x += 100; },
                 (value) => { value.transaction.pointerActivations = []; value.transaction.keyboardActivations = [{kind:"keyboard", controlId:"simulation-retry", count:1, nativeFocus:true}]; },
                 (value) => { value.transaction.postTransitionRenderedState.requestId = "unrelated-request"; },
                 (value) => { value.transaction.postTransitionRenderedState.resultJobId = "unrelated-job"; },
@@ -724,7 +791,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
             assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations/retry-job") && event.params.request.method === "GET").length, 1);
         }
-        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 10);
+        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 15);
     } finally {
         pendingContext?.end();
         await cdp?.close();

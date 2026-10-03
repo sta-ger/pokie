@@ -89,6 +89,21 @@ export function hasP805NativeActivation(activation, controlId) {
         && activation.dispatch?.kind === "native-pointer" && activation.dispatch.pressed === true && activation.dispatch.released === true
         && activation.dispatch.pointerDownCount === 1 && activation.dispatch.pointerUpCount === 1 && activation.dispatch.clickCount === 1
         && activation.dispatch.eventsTrusted === true && activation.dispatch.targetsMatchCapturedControl === true
+        // Existing immutable direct-target receipts retain their original
+        // format. A measured dispatch receipt must validate every binding;
+        // dropping its event records cannot downgrade it to that older format.
+        && (activation.dispatch.bindingVersion === undefined && activation.dispatch.eventBindings === undefined
+            || activation.dispatch.bindingVersion === 1 && Array.isArray(activation.dispatch.eventBindings) && activation.dispatch.eventBindings.length === 3
+            && activation.hitTest.x === activation.x && activation.hitTest.y === activation.y
+            && activation.hitTest.region?.width > 0 && activation.hitTest.region?.height > 0
+            && activation.dispatch.eventBindings.every((event, index) => event.eventType === ["pointerdown", "pointerup", "click"][index]
+                && event.trusted === true && event.capturedControlId === controlId && event.captureKey === activation.captureKey
+                && Number.isFinite(event.x) && Number.isFinite(event.y) && Math.abs(event.x - activation.x) < 1 && Math.abs(event.y - activation.y) < 1
+                && event.pointMatchesMeasured === true && event.regionMatchesMeasured === true && event.hitMatchesCapturedControl === true
+                && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
+                && (event.pathContainsCapturedControl === true && (event.relationship === "captured-control" && event.directTargetMatchesCapturedControl === true
+                    || event.relationship === "captured-dispatch-path" && event.directTargetMatchesCapturedControl === false)
+                    || event.pathContainsCapturedControl === false && event.dispatchRegionAncestor === true && event.relationship === "captured-dispatch-region")))
         && activation.dispatch.focus?.observedAt === "pre-dispatch" && typeof activation.dispatch.focus.atDispatchNative === "boolean"
         && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
 }
@@ -659,11 +674,33 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
         const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2,hit=document.elementFromPoint(x,y);
         const matchesCapturedControl=hit===item||item.contains(hit);
-        const capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl}};
+        const capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,x,y,region:{left:box.left,top:box.top,width:box.width,height:box.height},targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl}};
         window.__p805CapturedControls??=new Map();window.__p805PointerDispatchReceipts??=new Map();
-        const receipt={dispatch:null,pointerDownCount:0,pointerUpCount:0,clickCount:0,eventsTrusted:true,targetsMatchCapturedControl:true};
+        // Freeze the original non-interactive dispatch region. A native
+        // pointer capture can retarget to this enclosing region; a newly
+        // inserted overlay or another public control is not in that relationship.
+        const dispatchRegionAncestors=[];
+        for(let parent=item.parentElement;parent&&parent!==document.body&&parent!==document.documentElement;parent=parent.parentElement){
+            if(parent.matches('button,a,input,select,textarea,[role="button"],[role="link"]'))break;
+            dispatchRegionAncestors.push(parent);
+        }
+        const receipt={dispatch:null,eventBindings:[],pointerDownCount:0,pointerUpCount:0,clickCount:0,eventsTrusted:true,targetsMatchCapturedControl:true};
         const capture=(event)=>{
-            const target=event.target,matches=target===item||item.contains(target);
+            // DOM containment is mutable during dispatch. The browser's event
+            // path retains the original public button even if an earlier
+            // capture handler detaches its label. A parent/overlay target alone
+            // is never sufficient: prove its original relationship and live region.
+            const target=event.target,direct=target===item||item.contains(target);
+            const pathContainsCapturedControl=event.composedPath().includes(item);
+            const dispatchRegionAncestor=dispatchRegionAncestors.includes(target)&&target.isConnected&&target.contains(item);
+            const measured=capturedControl.hitTest,box=item.getBoundingClientRect();
+            const close=(left,right)=>Number.isFinite(left)&&Number.isFinite(right)&&Math.abs(left-right)<1;
+            const pointMatchesMeasured=close(event.clientX,measured.x)&&close(event.clientY,measured.y);
+            const regionMatchesMeasured=close(box.left,measured.region.left)&&close(box.top,measured.region.top)&&close(box.width,measured.region.width)&&close(box.height,measured.region.height);
+            const hit=document.elementFromPoint(event.clientX,event.clientY),hitMatchesCapturedControl=hit===item||item.contains(hit);
+            const capturedControlConnected=item.isConnected,identityPreserved=document.getElementById(${JSON.stringify(stableControlId)})===item,enabled=!item.disabled;
+            const matches=(pathContainsCapturedControl||dispatchRegionAncestor)&&pointMatchesMeasured&&regionMatchesMeasured&&hitMatchesCapturedControl&&capturedControlConnected&&identityPreserved&&enabled;
+            receipt.eventBindings.push({eventType:event.type,trusted:event.isTrusted,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},x:event.clientX,y:event.clientY,targetId:target instanceof HTMLElement?target.id||null:null,targetRole:target instanceof HTMLElement?target.getAttribute('role')||target.tagName.toLowerCase():null,directTargetMatchesCapturedControl:direct,pathContainsCapturedControl,dispatchRegionAncestor,pointMatchesMeasured,regionMatchesMeasured,hitMatchesCapturedControl,capturedControlConnected,identityPreserved,enabled,relationship:matches?(direct?'captured-control':pathContainsCapturedControl?'captured-dispatch-path':'captured-dispatch-region'):'unbound'});
             receipt.eventsTrusted&&=event.isTrusted;
             receipt.targetsMatchCapturedControl&&=matches;
             if(event.type==='pointerup')receipt.pointerUpCount++;
@@ -725,7 +762,8 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                     clearTimeout(timeout);
                     if(!finished||!sameControl())return null;
                 }
-                item.focus({preventScroll:true});
+                // Preserve the captured native focus; a hover handler that
+                // moved it must not be repaired by refocusing another boundary.
                 // Import panels and mobile scrolling can reflow the table
                 // without registering an animation on this control's ancestors.
                 // Require its geometry and viewport to settle on the same node
@@ -753,7 +791,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                 const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2;
                 const hit=document.elementFromPoint(x,y);
                 const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
-                const hitTest={capturedControlId:item.id,targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl:hit===item||item.contains(hit)};
+                const hitTest={capturedControlId:item.id,x,y,region:{left:box.left,top:box.top,width:box.width,height:box.height},targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl:hit===item||item.contains(hit)};
                 if(!sameControl()||box.width<=0||box.height<=0||!preDispatchFocus.native||!hitTest.matchesCapturedControl||(${JSON.stringify(requireViewportHit)}&&(box.left<0||box.right>window.innerWidth||box.top<0||box.bottom>window.innerHeight)))return null;
                 // The capture-phase dispatch listener retains this same receipt
                 // object; update its measured boundary without replacing its node.
@@ -794,7 +832,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
             if(record){for(const type of ['pointerdown','pointerup','click'])document.removeEventListener(type,record.capture,true);window.__p805PointerDispatchReceipts.delete(${JSON.stringify(captureKey)});}
             if(!${JSON.stringify(retainCapturedControl)})window.__p805CapturedControls?.delete(${JSON.stringify(captureKey)});
             const capturedControl=record?.capturedControl,receipt=record?.receipt,dispatch=receipt?.dispatch;
-            return {pointerDownCount:receipt?.pointerDownCount,pointerUpCount:receipt?.pointerUpCount,clickCount:receipt?.clickCount,eventsTrusted:receipt?.eventsTrusted===true,targetsMatchCapturedControl:receipt?.targetsMatchCapturedControl===true,focus:{
+            return {bindingVersion:1,eventBindings:receipt?.eventBindings,pointerDownCount:receipt?.pointerDownCount,pointerUpCount:receipt?.pointerUpCount,clickCount:receipt?.clickCount,eventsTrusted:receipt?.eventsTrusted===true,targetsMatchCapturedControl:receipt?.targetsMatchCapturedControl===true,focus:{
                 observedAt:'pre-dispatch',eventType:dispatch?.eventType??null,trusted:dispatch?.trusted===true,
                 validationState:dispatch?.validationState??null,enabled:dispatch?.enabled===true,ariaBusy:dispatch?.ariaBusy??null,
                 controlId:capturedControl?.controlId??null,native:capturedControl?.preDispatchFocus?.native===true,atDispatchNative:dispatch?.native===true,
@@ -805,7 +843,8 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         // captured node. Chromium or a capture-phase product handler can move
         // it during dispatch; retain that separate observation without
         // relabelling it as lost identity. All three trusted native events
-        // must still target this node, and only one click may authorize it.
+        // must retain this node in their verified dispatch path and measured
+        // hit region, and only one click may authorize it.
         const dispatch = {kind:"native-pointer", pressed:true, released:true, buttons:completePointerState ? 1 : 0, pointerType:completePointerState ? "mouse" : null, ...observed};
         const activation = {kind:"pointer", count:1, controlId:stableControlId, ...point, dispatch};
         if (!hasP805NativeActivation(activation, stableControlId)) fail(`rendered control lost native focus or its captured hit target at pointer dispatch; captured boundary: ${JSON.stringify(activation)}`);
