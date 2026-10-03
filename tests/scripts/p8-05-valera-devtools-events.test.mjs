@@ -481,6 +481,26 @@ test("native navigation waits for rendered context and Retry retains captured id
             pendingContext = response;
             response.writeHead(200, {"Content-Type":"application/json"});
             response.write('{"status":');
+        } else if (request.url === "/overview-validation") {
+            response.setHeader("Content-Type", "text/html");
+            response.end(`<!doctype html><style>body{margin:0}#project-tab\\:gameModel{position:fixed;left:16px;top:116.796875px;width:227px;height:40.796875px}</style>
+                <button type="button" id="project-tab:gameModel" data-pokie-lifecycle="navigation" data-pokie-lifecycle-route="gameModel"><div>Game Model</div></button>
+                <p data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="rendered">Overview ready</p>
+                <div id="validation" data-pokie-lifecycle-result="project-validation" data-pokie-lifecycle-result-control="project-validation-run" data-pokie-lifecycle-terminal="idle">Checking project…</div>
+                <script>
+                    location.hash='#/project/source/overview';
+                    window.navigationActivations=[];
+                    window.finishValidation=(status='completed')=>{
+                        const validation=document.getElementById('validation');
+                        validation.style.height='1200px';
+                        validation.textContent=status==='error'?'Could not check project. Re-check project.':'Valid, with warnings. Integrity information.';
+                        validation.setAttribute('data-pokie-lifecycle-terminal',status);
+                    };
+                    document.getElementById('project-tab:gameModel').addEventListener('click',(event)=>{
+                        window.navigationActivations.push({trusted:event.isTrusted,controlId:event.currentTarget.id});
+                        location.hash='#/project/source/gameModel';
+                    });
+                </script>`);
         } else if (request.url === "/navigation-readiness") {
             response.setHeader("Content-Type", "text/html");
             response.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><button id="studio-navigation-toggle" style="position:fixed;top:8px;left:8px">Toggle navigation</button><div id="drawer" style="position:fixed;top:60px;transform:translateX(-260px)"></div><script>
@@ -612,6 +632,58 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(result.exceptionDetails, undefined);
             return result.result.value;
         };
+        await cdp.send("Emulation.setDeviceMetricsOverride", {width:1440,height:900,mobile:false,deviceScaleFactor:1});
+        const overviewUrl=`http://127.0.0.1:${server.address().port}/overview-validation`;
+        const loadOverview=async()=>{
+            await cdp.send("Page.navigate",{url:overviewUrl});
+            await poll(()=>evaluate("document.readyState==='complete' && typeof window.finishValidation==='function' && location.hash==='#/project/source/overview'"));
+        };
+        await loadOverview();
+        // Reproduce the saved native boundary: Overview's shell is terminal,
+        // but its validation can add a scrollbar after the final measurement.
+        let failedBoundary;
+        await assert.rejects(()=>activateP805FocusedControl({send:async(method,params)=>{
+            if(method==='Input.dispatchMouseEvent'&&params.type==='mousePressed'){
+                await evaluate("window.finishValidation()");
+                await poll(()=>evaluate("visualViewport.width===1425"));
+            }
+            return cdp.send(method,params);
+        }},evaluate,"navigation",{stableControlId:"project-tab:gameModel"}), (error)=>{
+            assert.match(error.message,/lost native focus or its captured hit target at pointer dispatch/);
+            failedBoundary=JSON.parse(error.message.split('; captured boundary: ')[1]);
+            return true;
+        });
+        assert.equal(failedBoundary.hitTest.visualViewport.width,1440);
+        assert.equal(failedBoundary.dispatch.eventBindings[0].visualViewport.width,1425);
+        assert.equal(failedBoundary.dispatch.eventBindings[0].regionMatchesMeasured,true);
+        assert.equal(failedBoundary.dispatch.eventBindings[0].hitMatchesCapturedControl,true);
+        assert.equal(failedBoundary.preDispatchFocus.native,true);
+        assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"),[0,0]);
+        // The public navigation path must hold capture until this independent
+        // rendered validation is terminal, including a recoverable error.
+        for(const status of ['completed','error']){
+            await loadOverview();
+            assert.equal(await observeP805NavigationReadiness(evaluate,'gameModel'),false,'idle Overview validation cannot authorize pointer capture');
+            await evaluate("document.getElementById('validation').setAttribute('data-pokie-lifecycle-terminal','loading')");
+            assert.equal(await observeP805NavigationReadiness(evaluate,'gameModel'),false,'a rendered shell cannot substitute for pending validation');
+            assert.deepEqual(await evaluate('window.navigationActivations'),[]);
+            await evaluate(`window.finishValidation(${JSON.stringify(status)})`);
+            await poll(()=>evaluate("visualViewport.width===1425"));
+            const ready=await observeP805NavigationReadiness(evaluate,'gameModel');
+            assert.deepEqual(ready,{controlId:'project-tab:gameModel',currentRoute:'#/project/source/overview',terminal:'rendered'});
+            const activation=await activateP805FocusedControl(cdp,evaluate,'navigation',{stableControlId:ready.controlId});
+            assert.equal(hasP805NativeActivation(activation,'project-tab:gameModel'),true);
+            assert.equal(activation.hitTest.visualViewport.width,1425);
+            for(const binding of activation.dispatch.eventBindings){
+                assert.equal(binding.viewportMatchesMeasured,true);
+                assert.deepEqual(binding.visualViewport,activation.hitTest.visualViewport);
+            }
+            assert.deepEqual(await evaluate('window.navigationActivations'),[{trusted:true,controlId:'project-tab:gameModel'}]);
+            assert.equal(await evaluate('location.hash'),'#/project/source/gameModel');
+            const staleViewport=structuredClone(activation);
+            staleViewport.hitTest.visualViewport.width=1440;
+            assert.equal(hasP805NativeActivation(staleViewport,'project-tab:gameModel'),false,'the repair must preserve exact viewport binding');
+        }
         await cdp.send("Emulation.setDeviceMetricsOverride", {width:390, height:844, mobile:true, deviceScaleFactor:1});
         await cdp.send("Page.navigate", {url:`http://127.0.0.1:${server.address().port}/navigation-readiness`});
         await poll(() => evaluate("typeof window.renderContext === 'function' && document.readyState === 'complete'"));

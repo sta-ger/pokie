@@ -650,7 +650,9 @@ export async function observeP805CreatorValidation(cdp, evaluate, readBrowserRes
     return {control, validation:{browserRequestId, payload, status:response.params.response.status, completed:true, bodySha256:digest(bytes), responseSha256:digest(JSON.stringify(payload)), renderedValidation:{controlId:control.stableControlId, status:control.validationState}}};
 }
 // A routed dashboard can expose its shell before its context and dependent
-// tabs render. Do not capture that transitional shell's disclosure control.
+// tabs render. Overview also validates independently after opening a project:
+// its diagnostics can add a scrollbar while the shell already says "ready".
+// Wait for that rendered terminal before capturing navigation's viewport.
 export async function observeP805NavigationReadiness(evaluate, route) {
     return evaluate(`(()=>{
         const item=[...document.querySelectorAll('[data-pokie-lifecycle="navigation"]')].find((candidate)=>candidate.getAttribute('data-pokie-lifecycle-route')===${JSON.stringify(route)});
@@ -663,6 +665,11 @@ export async function observeP805NavigationReadiness(evaluate, route) {
             if(!(result instanceof HTMLElement)||result.getClientRects().length===0)return false;
             terminal=result.getAttribute('data-pokie-lifecycle-terminal');
             if(!['rendered','error'].includes(terminal))return false;
+            if(selectedRoute==='overview'){
+                const validations=[...document.querySelectorAll('[data-pokie-lifecycle-result="project-validation"]')]
+                    .filter((candidate)=>candidate instanceof HTMLElement&&candidate.getClientRects().length>0);
+                if(validations.some((candidate)=>!['completed','error'].includes(candidate.getAttribute('data-pokie-lifecycle-terminal'))))return false;
+            }
         }
         return {controlId:item.id,currentRoute,terminal};
     })()`);
