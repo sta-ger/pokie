@@ -119,6 +119,47 @@ test.each(["npm wrapper", "direct Jest"])("candidate verification isolates %s co
     }
 });
 
+test("saved simulation-cancel boundary accepts only authenticated delivery reflow without rewriting its measured rectangle", () => {
+    // Exact numeric boundary retained by candidate ee4690d3 after nine accepted
+    // tuples. The press includes Mantine's 1px feedback atop a 16.796875px reflow.
+    const controlId = "simulation-cancel", captureKey = "67d77ce6136e376211ce2a956b4c8cea";
+    const region = {left:276, top:704.890625, width:90.28125, height:36};
+    const visualViewport = {offsetLeft:0, offsetTop:0, width:1425, height:900, scale:1};
+    const hitTest = {capturedControlId:controlId, x:321.140625, y:722.890625, region, visualViewport, pressFeedback:{kind:"mantine-active-translation", translateY:1}, matchesCapturedControl:true};
+    const eventBindings = ["pointerdown", "pointerup", "click"].map((eventType, index) => ({
+        eventType, trusted:true, capturedControlId:controlId, captureKey,
+        x:index === 2 ? 321 : hitTest.x, y:index === 2 ? 722 : hitTest.y,
+        visualViewport, viewportMatchesMeasured:true, directTargetMatchesCapturedControl:true,
+        pathContainsCapturedControl:true, dispatchRegionAncestor:false, pointMatchesMeasured:true,
+        regionMatchesMeasured:false, regionMatchesCapturedPress:false,
+        region:{...region, top:index === 0 ? 722.6875 : 721.6875},
+        pressFeedback:{active:index === 0, classRetained:true, inlineTransformUnchanged:true, is2D:true, matrix:[1,0,0,1,0,index === 0 ? 1 : 0]},
+        hitMatchesCapturedControl:true, capturedControlConnected:true, identityPreserved:true, enabled:true, relationship:"unbound",
+    }));
+    const activation = {kind:"pointer", count:1, controlId, capturedControlId:controlId, captureKey,
+        x:hitTest.x, y:hitTest.y, dispatchPoint:{x:hitTest.x, y:hitTest.y}, preDispatchFocus:{controlId, native:true}, hitTest,
+        dispatch:{kind:"native-pointer", pressed:true, released:true, bindingVersion:2, eventBindings,
+            pointerDownCount:1, pointerUpCount:1, clickCount:1, eventsTrusted:true, targetsMatchCapturedControl:false,
+            focus:{observedAt:"pre-dispatch", atDispatchNative:true, controlId, native:true, trusted:true, targetMatchesCapturedControl:false}}};
+    const preserved = JSON.stringify(activation);
+    assert.equal(hasP805NativeActivation(activation, controlId), false, "the retained unbound finding must reproduce its rejection");
+    const repaired = structuredClone(activation);
+    for (const event of repaired.dispatch.eventBindings) {
+        event.reflow = {kind:"same-node-delivery-reflow", measuredRegion:structuredClone(region), deliveredRegion:structuredClone(event.region)};
+        event.relationship = "captured-control";
+    }
+    repaired.dispatch.targetsMatchCapturedControl = true;
+    repaired.dispatch.focus.targetMatchesCapturedControl = true;
+    assert.equal(hasP805NativeActivation(repaired, controlId), true);
+    assert.equal(JSON.stringify(activation), preserved, "the original retained finding remains immutable");
+    assert.equal(JSON.stringify(repaired.hitTest), JSON.stringify(hitTest), "delivery diagnostics must not alter the measured receipt");
+    const geometryOnly = structuredClone(repaired);
+    geometryOnly.dispatch.eventBindings[0].pathContainsCapturedControl = false;
+    geometryOnly.dispatch.eventBindings[0].dispatchRegionAncestor = true;
+    geometryOnly.dispatch.eventBindings[0].relationship = "captured-dispatch-region";
+    assert.equal(hasP805NativeActivation(geometryOnly, controlId), false);
+});
+
 const poll = async (predicate, timeoutMs = 10_000, diagnostic = () => "focused DevTools boundary timed out") => {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
@@ -428,6 +469,187 @@ async function runProductionDrawerRecovery() {
         await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
     }
 }
+
+async function runProductionPointerReflow() {
+    const {createServer:createViteServer} = await import('vite');
+    const profile = await mkdtemp(path.join(tmpdir(), 'p805-production-pointer-reflow-'));
+    const requests = [], jobs = new Map();
+    const source = `
+        import React,{useEffect,useState} from 'react';
+        import {createRoot} from 'react-dom/client';
+        import {MantineProvider,Button} from '@mantine/core';
+        import {ModalsProvider} from '@mantine/modals';
+        import '@mantine/core/styles.css';
+        import '/cli/studio-client/src/global.css';
+        import {SimulationTab} from '/cli/studio-client/src/components/project/SimulationTab.tsx';
+        import {ReplayTab} from '/cli/studio-client/src/components/project/ReplayTab.tsx';
+        import {StudioApiProvider} from '/cli/studio-client/src/context/StudioApiProvider.tsx';
+        import {useSimulationPoll} from '/cli/studio-client/src/hooks/useSimulationPoll.ts';
+        import {inspectReplayArtifact} from '/cli/studio-client/src/api/apiClient.ts';
+        const h=React.createElement,noop=()=>{};
+        function Fixture(){
+            const sim=useSimulationPoll(),[route,setRoute]=useState('simulation'),[expected,setExpected]=useState({status:'empty'});
+            useEffect(()=>{const id=sessionStorage.getItem('job');if(id)sim.restore(id);},[]);
+            useEffect(()=>{if(sim.currentJobId)sessionStorage.setItem('job',sim.currentJobId);},[sim.currentJobId]);
+            const load=async raw=>{try{setExpected({status:'loaded',...await inspectReplayArtifact(fetch,JSON.parse(raw))});}catch(error){setExpected({status:'error',message:error.message});}};
+            return h('main',null,h(Button,{id:'project-tab:replay',onClick:()=>setRoute('replay')},'Replay'),
+                route==='simulation'?h(SimulationTab,{
+                    progress:sim.progress,error:sim.error,cancellationRequested:sim.cancellationRequested,operation:sim.operation,terminalReceipt:sim.terminalReceipt,
+                    onRun:sim.run,onCancel:sim.cancel,onRetry:sim.retry,recentRuns:{status:'empty'},onRefreshRecentRuns:noop,
+                    reviewedDetail:{status:'empty'},compareDetail:{status:'empty'},onOpenHistoric:noop,onRunAgain:noop,onCompare:noop,onClearCompare:noop
+                }):h(ReplayTab,{listView:{status:'empty'},recentSpins:{status:'empty'},recentRuns:{status:'empty'},expected,
+                    onLoadExpectedFromPaste:load,onRun:noop,onCancel:noop,onRetry:noop,onRefreshList:noop,onInspectStored:async()=>{},onCompareStored:noop,
+                    onClearExpected:()=>setExpected({status:'empty'}),onRefreshRecentSpins:noop,onRefreshRecentRuns:noop}));
+        }
+        window.activations=[];
+        document.addEventListener('click',event=>{const item=event.target.closest('button');if(item)window.activations.push({id:item.id,trusted:event.isTrusted});},true);
+        createRoot(document.getElementById('root')).render(h(MantineProvider,null,h(ModalsProvider,null,h(StudioApiProvider,{fetchImpl:fetch},h(Fixture)))));
+    `;
+    const server = await createViteServer({configFile:false,root:process.cwd(),cacheDir:path.join(profile,'vite'),server:{host:'127.0.0.1',port:0},plugins:[{
+        name:'p805-production-pointer-reflow',resolveId:id=>id==='/reflow.js'?id:undefined,load:id=>id==='/reflow.js'?source:undefined,
+        configureServer(vite){vite.middlewares.use((request,response,next)=>{
+            if(request.url==='/reflow'){
+                response.setHeader('Content-Type','text/html');
+                response.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/reflow.js"></script>');return;
+            }
+            if(!request.url.startsWith('/api/project/'))return next();
+            let body='';request.on('data',chunk=>{body+=chunk;});request.on('end',()=>{
+                requests.push({method:request.method,path:request.url,body});
+                response.setHeader('Content-Type','application/json');
+                if(request.url==='/api/project/simulations'&&request.method==='POST'){
+                    const id=`job-${jobs.size+1}`,status=jobs.size===0?'running':jobs.size===1?'failed':'completed';
+                    const job={...JSON.parse(body),id,status,startedAt:new Date().toISOString(),roundsCompleted:0,durationMs:20,...(status==='failed'?{error:'Focused failed run'}:{})};
+                    jobs.set(id,job);response.writeHead(202);response.end(JSON.stringify(job));
+                }else if(request.url.startsWith('/api/project/simulations/')){
+                    const job=jobs.get(request.url.split('/').at(-1));
+                    if(request.method==='DELETE')job.status='cancelled';
+                    response.end(JSON.stringify(job));
+                }else if(request.url==='/api/project/replays/inspect-artifact'){
+                    const descriptor=JSON.parse(body);response.writeHead(descriptor.round>0?200:400);
+                    response.end(JSON.stringify(descriptor.round>0?{...descriptor,artifactWarnings:[]}:{error:'"round" must be a positive integer.'}));
+                }else{response.writeHead(404);response.end('{}');}
+            });
+        });}
+    }]});
+    let browser,exited,cdp;
+    try {
+        await server.listen();const launched=launchFocusedBrowser(profile);({browser,exited}=launched);
+        cdp=await connectP805Devtools(`http://127.0.0.1:${await launched.waitForPort()}`);
+        const evaluate=async expression=>{const result=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.equal(result.exceptionDetails,undefined);return result.result.value;};
+        await cdp.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,mobile:false,deviceScaleFactor:1});
+        await cdp.send('Page.navigate',{url:`http://127.0.0.1:${server.httpServer.address().port}/reflow`});
+        await poll(()=>evaluate("!!document.getElementById('simulation-run')"),30_000);
+        const accepted=[],snapshots=[],pages=[];
+        const activate=async(id,lifecycle='recovery',reflow=false,retain=false)=>{
+            if(['simulation-cancel-dismiss','simulation-cancel-confirm'].includes(id)){
+                await poll(()=>evaluate(`!!document.getElementById(${JSON.stringify(id)})`));
+                // Match beginRenderedTransaction: let the production portal
+                // install its focus trap before capturing the native control.
+                await new Promise(resolve=>setTimeout(resolve,250));
+            }
+            const dispatcher={send:async(method,params)=>{
+                // Deliver the native gesture once, at its original point, after
+                // a progress render moves the exact public control. No remeasure
+                // or second click can hide this delivery-time race.
+                if(reflow&&method==='Input.dispatchMouseEvent'&&params.type==='mousePressed')await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(id)});item.style.marginTop=(parseFloat(getComputedStyle(item).marginTop)+12)+'px';})()`);
+                return cdp.send(method,params);
+            }};
+            const activation=await activateP805FocusedControl(dispatcher,evaluate,lifecycle,{stableControlId:id},'pointer',retain);
+            assert.equal(hasP805NativeActivation(activation,id),true);
+            if(reflow){
+                assert.equal(activation.dispatch.eventBindings.length,3);
+                for(const event of activation.dispatch.eventBindings){
+                    assert.equal(event.reflow.kind,'same-node-delivery-reflow');
+                    assert.equal(event.pathContainsCapturedControl,true);
+                    assert.equal(event.regionMatchesMeasured,false);
+                    assert.deepEqual(event.reflow.measuredRegion,activation.hitTest.region);
+                    assert.deepEqual(event.reflow.deliveredRegion,event.region);
+                }
+                for(const corrupt of [
+                    value=>{value.preDispatchFocus.native=false;},
+                    value=>{value.hitTest.matchesCapturedControl=false;},
+                    value=>{value.dispatch.clickCount=2;},
+                    value=>{value.dispatch.eventBindings.pop();},
+                    ...['trusted','pathContainsCapturedControl','capturedControlConnected','identityPreserved','hitMatchesCapturedControl','enabled'].flatMap(field=>[0,1,2].map(index=>value=>{value.dispatch.eventBindings[index][field]=false;})),
+                    value=>{value.dispatch.eventBindings[0].relationship='overlay';},
+                    value=>{value.dispatch.eventBindings[0].x+=100;},
+                    value=>{value.dispatch.eventBindings[0].visualViewport.width+=15;},
+                    value=>{value.dispatchPoint.x+=1;},
+                    value=>{value.dispatch.eventBindings[0].region.top+=100;},
+                    value=>{delete value.dispatch.eventBindings[0].reflow;},
+                    value=>{value.dispatch.eventBindings[0].reflow.kind='geometry-only';},
+                    value=>{value.dispatch.eventBindings[1].pathContainsCapturedControl=false;value.dispatch.eventBindings[1].dispatchRegionAncestor=true;value.dispatch.eventBindings[1].relationship='captured-dispatch-region';value.dispatch.eventBindings[1].regionMatchesMeasured=true;delete value.dispatch.eventBindings[1].reflow;},
+                ]){const invalid=structuredClone(activation);corrupt(invalid);assert.equal(hasP805NativeActivation(invalid,id),false);}
+            }
+            accepted.forEach((receipt,index)=>assert.equal(JSON.stringify(receipt),snapshots[index],'later workflow cannot rewrite an accepted native receipt'));
+            accepted.push(activation);snapshots.push(JSON.stringify(activation));return activation;
+        };
+        await activate('simulation-run','operation');
+        await poll(()=>evaluate("document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-terminal')==='running'"));
+        await cdp.send('Page.reload',{ignoreCache:true});
+        await poll(()=>evaluate("document.getElementById('simulation-cancel')?.isConnected && document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-result-job')==='job-1'"));
+        await activate('simulation-cancel','recovery',true);
+        await activate('simulation-cancel-dismiss','precondition');
+        assert.equal(requests.filter(item=>item.method==='DELETE').length,0,'dismissal must leave the restored job active');
+        await activate('simulation-cancel','recovery',true);
+        await activate('simulation-cancel-confirm','precondition');
+        await poll(()=>evaluate("document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-terminal')==='cancelled' && !!document.getElementById('simulation-retry')"));
+        assert.equal(requests.filter(item=>item.method==='DELETE').length,1);
+        for(const [status,jobId] of [['failed','job-2'],['completed','job-3']]){
+            const cursor=cdp.events.length,start=Date.now(),pointer=await activate('simulation-retry','recovery',true,true);
+            await poll(()=>evaluate(`document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(status)}`));
+            const request=await poll(()=>cdp.events.slice(cursor).find(event=>event.method==='Network.requestWillBeSent'&&event.params.request.method==='POST'&&event.params.request.url.endsWith('/api/project/simulations')));
+            const terminal={status,jobId,result:jobs.get(jobId),resultSha256:hash(JSON.stringify(jobs.get(jobId)))};
+            const transaction={operation:'simulation-retry',stateClass:'recovery-operation',control:{stableControlId:'simulation-retry'},confirmation:{required:false,state:'not-required'},pointerActivations:[pointer],keyboardActivations:[],requestCount:1,request:{browserRequestId:request.params.requestId,method:'POST',path:'/api/project/simulations'},terminal:{...terminal,causedByRequestId:request.params.requestId}};
+            transaction.postTransitionRenderedState=await poll(()=>observeP805PointerTerminal(evaluate,transaction,terminal));
+            const retry={operation:'simulation-retry',controlId:'simulation-retry',stateClass:'recovery-operation',transaction};
+            if(status==='completed')assert.equal(validateP805RetryTerminalReceipt(retry).transaction,transaction);
+            else assert.throws(()=>validateP805RetryTerminalReceipt(retry),/not bound to its captured Retry control/,'a failed Retry must not substitute for the required completed retry');
+            const page={control:{id:'simulation-retry'},interaction:{activation:'pointer',pointerActivated:true},transaction,request:transaction.request,terminal,elapsedMs:Date.now()-start};
+            assert.equal(hasP805LiveDomActivation(page),true,'aggregate and closeout consume the original native retry');
+            const stale=structuredClone(page);delete stale.transaction.postTransitionRenderedState.preDispatchEvidence.dispatch.eventBindings[0].reflow;
+            assert.equal(hasP805LiveDomActivation(stale),false,'terminal evidence must preserve the exact reflow receipt');
+            const substituted=structuredClone(page);substituted.transaction.pointerActivations=[];substituted.transaction.keyboardActivations=[{kind:'keyboard',count:1,controlId:'simulation-retry',nativeFocus:true}];
+            assert.equal(hasP805LiveDomActivation(substituted),false);
+            pages.push(page);
+        }
+        await activate('project-tab:replay','navigation');
+        const artifact=await evaluate("(()=>{const item=document.querySelector('input[type=radio][value=artifact]');item.focus();return {stableControlId:item.id};})()");
+        await activateP805FocusedControl(cdp,evaluate,'precondition',artifact,'keyboard');
+        for(const round of [1,0,1]){
+            await setP805ReplayArtifactInput(cdp,evaluate,JSON.stringify({round,seed:'recovery-seed'}));
+            await activate('replay-artifact-load','operation',true);
+            await poll(()=>evaluate(`document.querySelector('[data-pokie-lifecycle-result=replay-artifact]')?.getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(round?'loaded':'error')}`));
+        }
+        assert.deepEqual(requests.filter(item=>item.path==='/api/project/replays/inspect-artifact').map(item=>JSON.parse(item.body).round),[1,0,1]);
+        assert.equal(requests.filter(item=>item.method==='POST'&&item.path==='/api/project/simulations').length,3);
+        assert.deepEqual(accepted.map(item=>item.controlId),['simulation-run','simulation-cancel','simulation-cancel-dismiss','simulation-cancel','simulation-cancel-confirm','simulation-retry','simulation-retry','project-tab:replay','replay-artifact-load','replay-artifact-load','replay-artifact-load']);
+        const children=pages.map((page,index)=>({timings:{retryMs:page.elapsedMs},performance:{retryMs:{budgetMs:180000}},observations:['simulation-retry'],evidence:[],observationEvidence:{},checkpointReceipts:[{sha256:hash(JSON.stringify(page))}],startedAt:new Date().toISOString(),endedAt:new Date().toISOString(),cleanup:{evidenceId:'focused-cleanup'},tuple:{viewport:index?'compact':'wide'},rendered:{responsive:[{viewport:index?'compact':'wide'}],measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true},actions:[page],recovery:{},jobs:{},defects:[]}}));
+        const bytes=JSON.stringify(children),projection=projectP805PersonaAudit(children,children.map(child=>({auditSha256:hash(JSON.stringify(child))})),'initial','mathematician');
+        assert.equal(JSON.stringify(children),bytes);
+        assert.deepEqual(projection.rendered.actions,pages);
+        assert.equal(projection.timings.retryMs,Math.max(...pages.map(page=>page.elapsedMs)));
+        assert.ok(projection.rendered.actions.every(hasP805LiveDomActivation));
+        accepted.forEach((receipt,index)=>assert.equal(JSON.stringify(receipt),snapshots[index]));
+    } finally {
+        cdp?.close();browser?.kill('SIGTERM');if(exited)await exited;
+        await server.close();await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+    }
+}
+
+test('native delivery reflow survives restored Simulation cancellation, dismissal, failed Retry, completed Retry and Replay Artifact recovery',()=>{
+    try{execFileSync(process.execPath,['--input-type=module','-e',`
+        import assert from 'node:assert/strict';import {spawn} from 'node:child_process';
+        import {mkdtemp,readFile,rm} from 'node:fs/promises';import {createHash} from 'node:crypto';
+        import {tmpdir} from 'node:os';import path from 'node:path';
+        import {activateP805FocusedControl,setP805ReplayArtifactInput,hasP805NativeActivation,connectP805Devtools,observeP805PointerTerminal,validateP805RetryTerminalReceipt} from './scripts/p8-05-valera-browser-audit.mjs';
+        import {hasP805LiveDomActivation} from './scripts/p8-05-product-readiness-campaign.mjs';
+        import {projectP805PersonaAudit} from './scripts/p8-05-persona-projection.mjs';
+        const hash=${hash.toString()};const poll=${poll.toString()};${launchFocusedBrowser.toString()}
+        await (${runProductionPointerReflow.toString()})();
+    `],{cwd:process.cwd(),encoding:'utf8',stdio:'pipe',timeout:60_000});}
+    catch(error){throw new Error(`Production pointer reflow failed: ${error.stderr||error.message}`);}
+},65_000);
 
 test("the production phone drawer returns from Replay recovery through Design, dirty-draft Projects and Stay", () => {
     // Vite's native resolver needs Node's own RegExp realm, rather than Jest's
@@ -1463,10 +1685,10 @@ test("native navigation waits for rendered context and Retry retains captured id
             // preserve that sibling caller as well as the Retry configuration.
             const fullPointerState = mode !== "confirmation-pointer";
             const click = () => clickP805CapturedControl(dispatcher, evaluate, "simulation-retry", fullPointerState, fullPointerState, fullPointerState, true);
-            if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-layout-shift", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"].includes(mode)) {
-                const afterMeasurement = ["late-overlay", "late-replacement", "late-layout-shift", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events"].includes(mode);
+            if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"].includes(mode)) {
+                const afterMeasurement = ["late-overlay", "late-replacement", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events"].includes(mode);
                 await assert.rejects(click(), mode === "dispatch-failed" ? /native pointer dispatch rejected/ : afterMeasurement ? /lost native focus or its captured hit target at pointer dispatch/ : /changed its captured identity, native focus, or hit target/);
-                const expectedActivations = mode === "duplicate-activation" ? 2 : ["synthetic-events", "late-layout-shift", "late-transform-shift", "late-feedback-scale"].includes(mode) ? 1 : 0;
+                const expectedActivations = mode === "duplicate-activation" ? 2 : ["synthetic-events", "late-transform-shift", "late-feedback-scale"].includes(mode) ? 1 : 0;
                 assert.deepEqual(await evaluate("window.activations"), Array.from({length:expectedActivations}, () => ({trusted:true, controlId:"simulation-retry"})));
                 assert.equal(JSON.stringify(importedOpen), acceptedOpenBytes, "a later rejected tuple cannot alter an accepted capture");
                 assert.equal(cdp.events.slice(cursor).filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.method === "POST").length, expectedActivations);
@@ -1481,7 +1703,7 @@ test("native navigation waits for rendered context and Retry retains captured id
                 assert.equal(binding.capturedControlId, pointer.capturedControlId);
                 assert.equal(binding.pointMatchesMeasured, true);
                 const activePress = mode.startsWith("active-") && binding.eventType === "pointerdown";
-                assert.equal(binding.regionMatchesMeasured, !activePress);
+                assert.equal(binding.regionMatchesMeasured, !activePress && mode !== "late-layout-shift");
                 assert.equal(binding.regionMatchesCapturedPress, activePress);
                 assert.equal(binding.hitMatchesCapturedControl, true);
                 assert.ok(binding.pathContainsCapturedControl || binding.dispatchRegionAncestor);
@@ -1562,7 +1784,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "a hidden terminal cannot replace the visible result");
             await evaluate("document.getElementById('simulation-results').hidden = false; document.getElementById('simulation-results').focus()");
             transaction.postTransitionRenderedState = await observeP805PointerTerminal(evaluate, transaction, receipt);
-            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region", "active-press", "active-scaled-press"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
+            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region", "active-press", "active-scaled-press", "late-layout-shift"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
             assert.equal(transaction.postTransitionRenderedState.controlState, expectedControlState);
             assert.equal(transaction.postTransitionRenderedState.capturedControlConnected, expectedControlState === "retained");
             assert.equal(transaction.postTransitionRenderedState.activeElementId, "simulation-results");
@@ -1574,7 +1796,7 @@ test("native navigation waits for rendered context and Retry retains captured id
                 (value) => { value.transaction.pointerActivations[0].hitTest.matchesCapturedControl = false; },
                 (value) => { value.transaction.pointerActivations[0].dispatch.focus.targetMatchesCapturedControl = false; },
                 ...["pointMatchesMeasured", "hitMatchesCapturedControl", "capturedControlConnected", "identityPreserved", "enabled", "pathContainsCapturedControl", "trusted"].map((field) => (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0][field] = false; }),
-                (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].regionMatchesMeasured = false; value.transaction.pointerActivations[0].dispatch.eventBindings[0].regionMatchesCapturedPress = false; },
+                (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].regionMatchesMeasured = false; value.transaction.pointerActivations[0].dispatch.eventBindings[0].regionMatchesCapturedPress = false; delete value.transaction.pointerActivations[0].dispatch.eventBindings[0].reflow; },
                 (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].captureKey = "another-capture"; },
                 (value) => { value.transaction.pointerActivations[0].dispatch.eventBindings[0].relationship = "overlay"; },
                 (value) => { value.transaction.pointerActivations[0].dispatch.clickCount = 2; },
@@ -1595,8 +1817,8 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
             assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations/retry-job") && event.params.request.method === "GET").length, 1);
         }
-        // Fourteen accepted paths and six native clicks from deliberately
-        // rejected dispatches (duplicate, synthetic, and three late changes).
+        // Fifteen accepted paths plus five clicks from deliberately rejected
+        // duplicate, synthetic, transform and feedback dispatches.
         assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 20);
     } finally {
         pendingContext?.end();

@@ -109,6 +109,31 @@ function hasP805PressedRegion(event, measured) {
         && close(region?.left, measured.region?.left) && close(region?.top - expected.translateY, measured.region?.top)
         && close(region?.width, measured.region?.width) && close(region?.height, measured.region?.height);
 }
+// A delivery-time layout change is diagnostic evidence, never a larger
+// rectangle tolerance. Authenticate the same live node at the unchanged point.
+function hasP805ReflowRegion(event, measured) {
+    const region = event?.region, original = measured?.region;
+    const diagnostic = event?.reflow;
+    const finiteRegion = (value) => value && ["left", "top", "width", "height"].every((key) => Number.isFinite(value[key])) && value.width > 0 && value.height > 0;
+    const sameRegion = (left, right) => finiteRegion(left) && finiteRegion(right) && ["left", "top", "width", "height"].every((key) => left[key] === right[key]);
+    const pointInside = (x, y, box) => Number.isFinite(x) && Number.isFinite(y) && x >= box.left && x < box.left + box.width && y >= box.top && y < box.top + box.height;
+    if (diagnostic?.kind !== "same-node-delivery-reflow" || !sameRegion(diagnostic.measuredRegion, original)
+        || !sameRegion(diagnostic.deliveredRegion, region) || sameRegion(region, original)
+        || event.regionMatchesMeasured !== false || event.regionMatchesCapturedPress !== false
+        || event.trusted !== true || event.pathContainsCapturedControl !== true
+        || event.hitMatchesCapturedControl !== true || event.capturedControlConnected !== true
+        || event.identityPreserved !== true || event.enabled !== true || event.pointMatchesMeasured !== true
+        || !pointInside(event.x, event.y, region) || !pointInside(measured.x, measured.y, original)) return false;
+    // Preserve Mantine's captured press style contract independently of layout.
+    // A changed transform or feedback scale cannot masquerade as native reflow.
+    if (measured.pressFeedback?.kind === "mantine-active-translation") {
+        const feedback = event.pressFeedback, translateY = feedback?.active === true ? measured.pressFeedback.translateY : 0;
+        if (feedback?.classRetained !== true || feedback.inlineTransformUnchanged !== true || feedback.is2D !== true
+            || !Array.isArray(feedback.matrix) || feedback.matrix.length !== 6
+            || !feedback.matrix.every((value, index) => Number.isFinite(value) && Math.abs(value - [1, 0, 0, 1, 0, translateY][index]) < 0.01)) return false;
+    }
+    return true;
+}
 function measureP805VisualViewport() {
     const viewport = window.visualViewport;
     return {offsetLeft:viewport?.offsetLeft ?? 0, offsetTop:viewport?.offsetTop ?? 0,
@@ -173,11 +198,15 @@ export function hasP805NativeActivation(activation, controlId) {
                 && event.trusted === true && event.capturedControlId === controlId && event.captureKey === activation.captureKey
                 && Number.isFinite(event.x) && Number.isFinite(event.y) && Math.abs(event.x - activation.x) < 1 && Math.abs(event.y - activation.y) < 1
                 && (activation.hitTest.visualViewport === undefined || event.viewportMatchesMeasured === true && hasP805ViewportBinding(event.visualViewport, activation.hitTest.visualViewport))
-                && event.pointMatchesMeasured === true && (event.regionMatchesMeasured === true || event.regionMatchesCapturedPress === true && hasP805PressedRegion(event, activation.hitTest)) && event.hitMatchesCapturedControl === true
+                && event.pointMatchesMeasured === true && (event.regionMatchesMeasured === true || event.regionMatchesCapturedPress === true && hasP805PressedRegion(event, activation.hitTest) || hasP805ReflowRegion(event, activation.hitTest)) && event.hitMatchesCapturedControl === true
                 && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
+                && (event.reflow === undefined || hasP805ReflowRegion(event, activation.hitTest))
                 && (event.pathContainsCapturedControl === true && (event.relationship === "captured-control" && event.directTargetMatchesCapturedControl === true
                     || event.relationship === "captured-dispatch-path" && event.directTargetMatchesCapturedControl === false)
                     || event.pathContainsCapturedControl === false && event.dispatchRegionAncestor === true && event.relationship === "captured-dispatch-region")))
+        // Reflow may not use the legacy enclosing-region fallback for any event.
+        && (!activation.dispatch.eventBindings?.some((event) => event.reflow !== undefined)
+            || activation.dispatch.eventBindings.every((event) => event.pathContainsCapturedControl === true))
         && activation.dispatch.focus?.observedAt === "pre-dispatch" && typeof activation.dispatch.focus.atDispatchNative === "boolean"
         && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
 }
@@ -288,10 +317,8 @@ export function validateP805RenderedPersonaAudit(audit) {
     if (!audit?.finalResult || audit.finalResult.status !== "passed" || audit.finalResult.aggregation !== "verified-checkpoint-receipts-only" || audit.finalResult.chunks !== expectedChunks || !Array.isArray(receipts) || receipts.length !== expectedChunks || !Array.isArray(audit.finalResult.checkpointReceiptSha256s) || audit.finalResult.checkpointReceiptSha256s.length !== expectedChunks || !audit.finalResult.cleanupEvidenceId) fail(`rendered ${audit?.persona ?? "persona"} audit lacks a checkpointed packed final result`);
     const receiptIds = new Set(), receiptActions = new Set();
     for (const receipt of receipts) {
-        // Validate the compatibility view above, but authenticate the exact
-        // persisted pointer action.  Hashing the compatibility projection
-        // would make a valid immutable checkpoint look substituted merely
-        // because validation exposes its legacy keyboard-shaped fields.
+        // Authenticate the unchanged persisted action, including its native
+        // pointer bindings and optional delivery-time reflow diagnostics.
         const action = rendered.actions.find((value) => (value?.persona ?? audit.persona) === receipt?.persona && value?.observation === receipt?.observation && value?.viewport === receipt?.viewport), rawAction = rawRendered?.actions?.find((value) => (value?.persona ?? audit.persona) === receipt?.persona && value?.observation === receipt?.observation && value?.viewport === receipt?.viewport), actionKey = `${receipt?.persona}/${receipt?.observation}/${receipt?.viewport}`;
         if (!receipt || typeof receipt.receiptId !== "string" || !receipt.receiptId || receiptIds.has(receipt.receiptId) || receiptActions.has(actionKey) || receipt.candidateId !== audit.candidateId || receipt.candidatePackageSha256 !== audit.candidatePackageSha256 || receipt.persona === undefined || receipt.observation === undefined || receipt.viewport === undefined || !action || !rawAction || receipt.actionSha256 !== digest(JSON.stringify(rawAction))) fail(`rendered ${audit?.persona ?? "persona"} audit has a missing, duplicate, stale, or substituted checkpoint receipt`);
         receiptIds.add(receipt.receiptId); receiptActions.add(actionKey);
@@ -1080,8 +1107,10 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
             const regionMatchesCapturedPress=(${hasP805PressedRegion.toString()})({eventType:event.type,region,pressFeedback},measured);
             const hit=document.elementFromPoint(event.clientX,event.clientY),hitMatchesCapturedControl=hit===item||item.contains(hit);
             const capturedControlConnected=item.isConnected,identityPreserved=document.getElementById(${JSON.stringify(stableControlId)})===item,enabled=!item.disabled;
-            const matches=(pathContainsCapturedControl||dispatchRegionAncestor)&&pointMatchesMeasured&&viewportMatchesMeasured&&(regionMatchesMeasured||regionMatchesCapturedPress)&&hitMatchesCapturedControl&&capturedControlConnected&&identityPreserved&&enabled;
-            receipt.eventBindings.push({eventType:event.type,trusted:event.isTrusted,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},x:event.clientX,y:event.clientY,visualViewport,viewportMatchesMeasured,targetId:target instanceof HTMLElement?target.id||null:null,targetRole:target instanceof HTMLElement?target.getAttribute('role')||target.tagName.toLowerCase():null,directTargetMatchesCapturedControl:direct,pathContainsCapturedControl,dispatchRegionAncestor,pointMatchesMeasured,regionMatchesMeasured,regionMatchesCapturedPress,region,pressFeedback,hitMatchesCapturedControl,capturedControlConnected,identityPreserved,enabled,relationship:matches?(direct?'captured-control':pathContainsCapturedControl?'captured-dispatch-path':'captured-dispatch-region'):'unbound'});
+            const reflow=regionMatchesMeasured||regionMatchesCapturedPress?undefined:{kind:'same-node-delivery-reflow',measuredRegion:{...measured.region},deliveredRegion:{...region}};
+            const reflowMatches=(${hasP805ReflowRegion.toString()})({reflow,region,regionMatchesMeasured,regionMatchesCapturedPress,trusted:event.isTrusted,pathContainsCapturedControl,hitMatchesCapturedControl,capturedControlConnected,identityPreserved,enabled,pointMatchesMeasured,x:event.clientX,y:event.clientY,pressFeedback},measured);
+            const matches=(pathContainsCapturedControl||dispatchRegionAncestor)&&pointMatchesMeasured&&viewportMatchesMeasured&&(regionMatchesMeasured||regionMatchesCapturedPress||reflowMatches)&&hitMatchesCapturedControl&&capturedControlConnected&&identityPreserved&&enabled;
+            receipt.eventBindings.push({eventType:event.type,trusted:event.isTrusted,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},x:event.clientX,y:event.clientY,visualViewport,viewportMatchesMeasured,targetId:target instanceof HTMLElement?target.id||null:null,targetRole:target instanceof HTMLElement?target.getAttribute('role')||target.tagName.toLowerCase():null,directTargetMatchesCapturedControl:direct,pathContainsCapturedControl,dispatchRegionAncestor,pointMatchesMeasured,regionMatchesMeasured,regionMatchesCapturedPress,region,pressFeedback,...(reflowMatches?{reflow}:{}),hitMatchesCapturedControl,capturedControlConnected,identityPreserved,enabled,relationship:matches?(direct?'captured-control':pathContainsCapturedControl?'captured-dispatch-path':'captured-dispatch-region'):'unbound'});
             receipt.eventsTrusted&&=event.isTrusted;
             receipt.targetsMatchCapturedControl&&=matches;
             if(event.type==='pointerup')receipt.pointerUpCount++;

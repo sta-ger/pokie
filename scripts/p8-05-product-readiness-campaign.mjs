@@ -197,9 +197,9 @@ export function matchesP805ReplayArtifactInput(input, transmitted) {
     try { return JSON.stringify(JSON.parse(input)) === JSON.stringify(JSON.parse(transmitted)); }
     catch { return false; }
 }
-function liveDomTransaction(contents, observation, persona, label, initial = false) {
-    let page;
-    try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed live-DOM transaction evidence`); }
+// Aggregate and closeout share this boundary: consume the actual pointer
+// receipt, retaining reflow diagnostics through its rendered terminal proof.
+export function hasP805LiveDomActivation(page) {
     const pointer = page.transaction?.pointerActivations?.[0], keyboard = page.transaction?.keyboardActivations?.[0];
     const postTransition = page.transaction?.postTransitionRenderedState;
     const replacementStateIsBound = postTransition?.controlState === "retained"
@@ -207,9 +207,16 @@ function liveDomTransaction(contents, observation, persona, label, initial = fal
         : postTransition?.controlState === "replaced"
             ? postTransition.currentControlId === page.control?.id && postTransition.capturedControlConnected === false
             : postTransition?.controlState === "removed" && postTransition.currentControlId === null && postTransition.capturedControlConnected === false;
-    const renderedActivation = hasP805TransactionActivations(page.transaction) && (page.interaction?.activation === "pointer"
+    return hasP805TransactionActivations(page.transaction) && (page.interaction?.activation === "pointer"
         ? page.interaction.pointerActivated === true && page.transaction?.pointerActivations?.length === 1 && pointer?.kind === "pointer" && pointer.count === 1 && pointer.controlId === page.control?.id && pointer.capturedControlId === page.control?.id && typeof pointer.captureKey === "string" && pointer.captureKey.length > 0 && pointer.preDispatchFocus?.controlId === page.control?.id && pointer.preDispatchFocus?.native === true && pointer.hitTest?.capturedControlId === page.control?.id && pointer.hitTest?.matchesCapturedControl === true && pointer.dispatch?.kind === "native-pointer" && pointer.dispatch?.pressed === true && pointer.dispatch?.released === true && postTransition?.capturedControlId === page.control?.id && postTransition.captureKey === pointer.captureKey && replacementStateIsBound && postTransition.requestId === page.request?.browserRequestId && postTransition.resultSha256 === page.terminal?.resultSha256 && postTransition.renderedTerminal === true
+            && (!pointer.dispatch.eventBindings?.some((event) => event.reflow !== undefined)
+                || JSON.stringify(postTransition.preDispatchEvidence) === JSON.stringify({capturedControlId:pointer.capturedControlId, focus:pointer.preDispatchFocus, hitTest:pointer.hitTest, dispatch:pointer.dispatch}))
         : page.interaction?.activation === "keyboard" && page.interaction.keyboardFocused === true && page.interaction.keyboardActivated === true && page.transaction?.keyboardActivations?.length === 1 && keyboard?.kind === "keyboard" && keyboard?.nativeFocus === true && keyboard?.preDispatchFocus?.controlId === page.control?.id && keyboard?.preDispatchFocus?.native === true && keyboard?.count === 1 && keyboard.controlId === page.control?.id);
+}
+function liveDomTransaction(contents, observation, persona, label, initial = false) {
+    let page;
+    try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed live-DOM transaction evidence`); }
+    const renderedActivation = hasP805LiveDomActivation(page);
     const contract = P805_WORKFLOW_CONTRACTS[persona]?.[observation];
     const screenState = contract && P805_SCREEN_CONTROL_STATES[contract.route];
     const modern = page.request?.method !== undefined;

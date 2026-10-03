@@ -15,6 +15,49 @@ const runCandidateNpm = (args: string[]) => {
     return execFileSync(process.execPath, [npmCli, ...args], {cwd: process.cwd(), encoding: "utf8", env: {...process.env, NODE_ENV: "production", PATH: candidatePath}, stdio: "pipe", maxBuffer: 64 * 1024 * 1024});
 };
 
+type PointerDelivery = {
+    kind: string;
+    controlId: string;
+    capturedControlId: string;
+    count: number;
+    captureKey: string;
+    preDispatchFocus: {controlId: string; native: boolean};
+    hitTest: {region: unknown};
+    dispatch: {
+        pointerDownCount: number; pointerUpCount: number; clickCount: number;
+        eventBindings: Array<{
+            eventType: string; trusted: boolean; captureKey: string; capturedControlId: string;
+            pathContainsCapturedControl: boolean; capturedControlConnected: boolean;
+            identityPreserved: boolean; hitMatchesCapturedControl: boolean;
+            region: unknown;
+            reflow?: {kind: string; measuredRegion: unknown; deliveredRegion: unknown};
+        }>;
+    };
+};
+
+// The complete packed proof consumes the producer's unchanged pointer records,
+// including delivery-time diagnostics, rather than substituting keyboard claims.
+const assertPointerDeliveries = (pointers: PointerDelivery[]) => {
+    for (const pointer of pointers) {
+        expect(pointer.kind).toBe("pointer");
+        expect(pointer.count).toBe(1);
+        expect(pointer.preDispatchFocus).toEqual({controlId: pointer.controlId, native: true});
+        expect(pointer.dispatch.pointerDownCount).toBe(1);
+        expect(pointer.dispatch.pointerUpCount).toBe(1);
+        expect(pointer.dispatch.clickCount).toBe(1);
+        expect(pointer.dispatch.eventBindings.map((event) => event.eventType)).toEqual(["pointerdown", "pointerup", "click"]);
+        const reflowed = pointer.dispatch.eventBindings.some((event) => event.reflow !== undefined);
+        for (const event of pointer.dispatch.eventBindings) {
+            expect(event).toEqual(expect.objectContaining({trusted: true, captureKey: pointer.captureKey, capturedControlId: pointer.capturedControlId, capturedControlConnected: true, identityPreserved: true, hitMatchesCapturedControl: true}));
+            if (reflowed) expect(event.pathContainsCapturedControl).toBe(true);
+            if (event.reflow !== undefined) {
+                expect(event.reflow).toEqual({kind: "same-node-delivery-reflow", measuredRegion: pointer.hitTest.region, deliveredRegion: event.region});
+                expect(event.region).not.toEqual(pointer.hitTest.region);
+            }
+        }
+    }
+};
+
 type PackedTupleChild = {
     tuple: {persona: string; observation: string; viewport: string};
     worker: {pid: number; processIdentity: string; nonce: string};
@@ -477,6 +520,23 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 const accepted = aggregate.acceptedReceipts[index] as {receipt: {auditId: string; tuple: unknown; cleanupEvidenceId: string; cleanupSha256: string; checkpointReceipt: {actionSha256: string}}; cleanup: {cleanupEvidenceId: string; cleanup: {exit: string; processTreeDrained: boolean; resourcesDrained: boolean; contextRemoved: boolean}}};
                 const auditPath = `initial-${child.tuple.persona}--${child.tuple.observation.replaceAll(/[^a-z0-9]+/gi, "-")}--${child.tuple.viewport}-audit.json`;
                 const [tupleReceiptBytes, cleanupBytes, auditBytes] = await Promise.all([readOperationArtifact(child.tupleReceiptPath), readOperationArtifact(child.cleanupPath), readOperationArtifact(auditPath)]);
+                const tupleAudit = JSON.parse(auditBytes.toString("utf8")) as {
+                    rendered: {actions: Array<{transaction: {pointerActivations: PointerDelivery[]}}>};
+                    evidence: Array<{kind: string; path: string; sha256: string}>;
+                };
+                assertPointerDeliveries(tupleAudit.rendered.actions.flatMap((action) => action.transaction.pointerActivations));
+                // Includes restored-job Cancel, its real portal confirmation,
+                // Retry and later Replay Artifact requests in this child's history.
+                const apiEvidence = tupleAudit.evidence.find((evidence) => evidence.kind === "api-log");
+                expect(apiEvidence).toBeDefined();
+                if (apiEvidence === undefined) throw new Error("packed tuple is missing its actual API transaction log");
+                const apiBytes = await readOperationArtifact(apiEvidence.path);
+                expect(createHash("sha256").update(apiBytes).digest("hex")).toBe(apiEvidence.sha256);
+                const api = JSON.parse(apiBytes.toString("utf8")) as Array<{transaction?: {pointerActivations: PointerDelivery[]; confirmation?: {activation?: PointerDelivery}}}>;
+                assertPointerDeliveries(api.flatMap((entry) => [
+                    ...(entry.transaction?.pointerActivations ?? []),
+                    ...(entry.transaction?.confirmation?.activation?.kind === "pointer" ? [entry.transaction.confirmation.activation] : []),
+                ]));
                 const tupleReceipt = JSON.parse(tupleReceiptBytes.toString("utf8"));
                 const cleanup = JSON.parse(cleanupBytes.toString("utf8"));
                 expect(createHash("sha256").update(tupleReceiptBytes).digest("hex")).toBe(child.tupleReceiptSha256);
