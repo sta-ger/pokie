@@ -694,6 +694,13 @@ export async function setP805ReplayArtifactInput(cdp, evaluate, text) {
     await cdp.send("Input.insertText", {text});
     await waitFor(() => evaluate(`document.getElementById('replay-artifact-json')?.value === ${JSON.stringify(text)}`), "native Replay Artifact text entry");
 }
+export function validateP805ReplayArtifactInspection(observation, descriptor, expectedStatus, loaded) {
+    const text = JSON.stringify(descriptor);
+    const field = loaded.transaction?.formState?.fields?.find((item) => item.stableControlId === "replay-artifact-json");
+    if (field?.value !== text || loaded.entry?.bodySha256 !== digest(text)) fail(`${observation} did not submit the actual pasted Replay Artifact`);
+    if (loaded.response?.status !== expectedStatus) fail(`${observation} did not inspect the actual pasted Replay Artifact: HTTP ${loaded.response?.status}, ${loaded.payload?.error ?? "unexpected response"}`);
+    if (expectedStatus === 200 && (loaded.payload?.round !== descriptor.round || loaded.payload?.seed !== (descriptor.seed ?? undefined))) fail(`${observation} inspection differs from the pasted Replay Artifact round/seed`);
+}
 export async function clickP805CapturedControl(cdp, evaluate, stableControlId, requireViewportHit = false, completePointerState = false, scrollIntoViewIfNeeded = requireViewportHit, retainCapturedControl = false) {
     // A control can be rendered yet sit below the compact viewport.
     // CDP accepts that off-screen coordinate without giving React a
@@ -2974,7 +2981,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const control = await renderedTransactionControl({lifecycle:"operation", operation:"replay-artifact", observation});
             const formState = await captureRenderedEditableFormState("replay-artifact", observation, control.stableControlId);
             const loaded = await activateRenderedTransaction({lifecycle:"operation", operation:"replay-artifact", observation, cursor, method:"POST", path:"/api/project/replays/inspect-artifact", formState, stateClass:"editable-submission", control});
-            if (loaded.response.status !== expectedStatus) fail(`${observation} did not inspect the actual pasted Replay Artifact`);
+            validateP805ReplayArtifactInspection(observation, descriptor, expectedStatus, loaded);
             loaded.transaction.terminal = {status:expectedStatus === 200 ? "loaded" : "error", source:"response", browserRequestId:loaded.entry.browserRequestId, causedByRequestId:loaded.entry.browserRequestId, resultSha256:digest(JSON.stringify(loaded.payload))};
             loaded.rendered = await waitFor(() => evaluate(`(()=>{
                 const result=document.querySelector('[data-pokie-lifecycle-result="replay-artifact"]');

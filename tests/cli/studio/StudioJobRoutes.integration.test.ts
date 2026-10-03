@@ -8,6 +8,9 @@ import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRep
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {InMemoryStudioReplayRepository} from "../../../cli/studio/replay/InMemoryStudioReplayRepository.js";
+import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
+import type {StudioReplayJobView} from "../../../cli/studio/replay/StudioReplayJobView.js";
 
 async function get(url: string): Promise<{status: number; body: unknown}> {
     const response = await fetch(url);
@@ -35,6 +38,56 @@ describe("Studio common job routes", () => {
         for (const job of activeJobs?.list() ?? []) activeJobs?.cancelled(job.id, {summary: "Manual route fixture released by its test owner."});
         await activeServer?.stop();
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it("inspects the exact downloaded unseeded replay and recovers after an invalid artifact", async () => {
+        const projectRoot = path.join(__dirname, "..", "fixtures", "playable-game");
+        const home = new StudioHomeService("1.3.0");
+        jobs = new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs")));
+        server = new StudioServer({
+            pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: directory,
+            homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
+            initialContext: {mode: "project", projectRoot}, jobService: jobs,
+            replayService: new StudioReplayExecutionService(new InMemoryStudioReplayRepository()),
+        });
+        const address = await server.start();
+        const baseUrl = `http://${address.host}:${address.port}/api/project/replays`;
+        const started = await post(baseUrl, {round: 1});
+        expect(started.status).toBe(202);
+        const id = (started.body as {id: string}).id;
+        let terminal: StudioReplayJobView;
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+            terminal = (await get(`${baseUrl}/${id}`)).body as StudioReplayJobView;
+            if (["completed", "failed", "cancelled"].includes(terminal.status)) break;
+            if (Date.now() > deadline) throw new Error("Replay did not settle");
+            await new Promise((resolve) => {
+                setTimeout(resolve, 10);
+            });
+        }
+        expect(terminal.status).toBe("completed");
+        const download = await get(`${baseUrl}/${id}/download`);
+        expect(download.status).toBe(200);
+        expect(download.body).toEqual(terminal.descriptor);
+        expect(download.body).toMatchObject({round: 1, seed: null});
+        const inspect = () => post(`${baseUrl}/inspect-artifact`, download.body);
+        await expect(inspect()).resolves.toEqual({status: 200, body: {round: 1, artifactWarnings: []}});
+        await expect(post(`${baseUrl}/inspect-artifact`, {round: 0, seed: null})).resolves.toEqual({
+            status: 400, body: {error: '"round" must be a positive integer.'},
+        });
+        await expect(inspect()).resolves.toEqual({status: 200, body: {round: 1, artifactWarnings: []}});
+        for (const seed of ["", "   ", 805, {}]) {
+            await expect(post(`${baseUrl}/inspect-artifact`, {round: 1, seed})).resolves.toEqual({
+                status: 400, body: {error: '"seed" must be a non-empty string when given.'},
+            });
+        }
+        // Null belongs to the portable descriptor contract, not the run form.
+        await expect(post(baseUrl, {round: 1, seed: null})).resolves.toEqual({
+            status: 400, body: {error: '"seed" must be a non-empty string when given.'},
+        });
+        await expect(post(`${baseUrl}/inspect-artifact`, {round: 1, seed: null, outcomeSource: {modeName: "base"}})).resolves.toEqual({
+            status: 400, body: {error: "Cannot exactly replay an outcome-library round without a seed. Restore the original session seed and retry."},
+        });
     });
 
     it("keeps server shutdown pending until artifact staging cleanup settles", async () => {

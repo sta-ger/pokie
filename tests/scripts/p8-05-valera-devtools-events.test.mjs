@@ -8,10 +8,38 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {activateP805KeyboardControl, setP805ReplayArtifactInput, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
+
+test("Replay Artifact inspection binds valid, invalid and recovered receipts to the exact pasted descriptor", () => {
+    for (const [descriptor, expectedStatus, payload] of [
+        [{round:1, seed:null}, 200, {round:1, artifactWarnings:[]}],
+        [{round:1, seed:"recorded-seed"}, 200, {round:1, seed:"recorded-seed", artifactWarnings:[]}],
+        [{round:0, seed:"invalid-artifact"}, 400, {error:'"round" must be a positive integer.'}],
+        [{round:1, seed:null}, 200, {round:1, artifactWarnings:[]}],
+    ]) {
+        const text = JSON.stringify(descriptor);
+        const receipt = {response:{status:expectedStatus}, payload, entry:{bodySha256:hash(text)}, transaction:{formState:{fields:[{stableControlId:"replay-artifact-json", value:text}]}}};
+        assert.doesNotThrow(() => validateP805ReplayArtifactInspection("artifact", descriptor, expectedStatus, receipt));
+        const staleField = structuredClone(receipt);
+        staleField.transaction.formState.fields[0].value = '{}';
+        assert.throws(() => validateP805ReplayArtifactInspection("artifact", descriptor, expectedStatus, staleField), /did not submit the actual pasted/);
+        const staleRequest = structuredClone(receipt);
+        staleRequest.entry.bodySha256 = hash('{}');
+        assert.throws(() => validateP805ReplayArtifactInspection("artifact", descriptor, expectedStatus, staleRequest), /did not submit the actual pasted/);
+        const rejected = structuredClone(receipt);
+        rejected.response.status = 500;
+        rejected.payload = {error:"inspection failed"};
+        assert.throws(() => validateP805ReplayArtifactInspection("artifact", descriptor, expectedStatus, rejected), /HTTP 500, inspection failed/);
+        if (expectedStatus === 200) {
+            for (const changed of [{...payload, round:2}, {...payload, seed:"other-seed"}]) {
+                assert.throws(() => validateP805ReplayArtifactInspection("artifact", descriptor, expectedStatus, {...receipt, payload:changed}), /differs from the pasted/);
+            }
+        }
+    }
+});
 
 test.each(["npm wrapper", "direct Jest"])("candidate verification isolates %s context and retains canonical archive bytes", async (launcher) => {
     // This bounded fixture exercises the verifier's real build/receipt path;
@@ -616,7 +644,9 @@ test("native navigation waits for rendered context and Retry retains captured id
         })()`);
         for (const [width,height] of [[1440,900],[960,800],[390,844]]) {
             await cdp.send("Emulation.setDeviceMetricsOverride", {width,height,mobile:width===390,deviceScaleFactor:1});
-            const text=JSON.stringify({round:1,seed:'viewport-'+width},null,2);
+            // Preserve exported unseeded bytes as well as invalid input and
+            // recovery while replacing the textarea through native entry.
+            const text=JSON.stringify({round:width===960?0:1,seed:width===960?'invalid-artifact':null},null,2);
             await setP805ReplayArtifactInput(cdp,evaluate,text);
             const activation=await clickP805CapturedControl(cdp,evaluate,"replay-artifact-load",true,true);
             assert.equal(activation.hitTest.matchesCapturedControl,true);

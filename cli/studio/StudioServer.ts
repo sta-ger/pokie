@@ -3517,8 +3517,11 @@ export class StudioServer implements StudioServerHandling {
         try {
             const outcomeSource = record.outcomeSource;
             const modeName = typeof outcomeSource === "object" && outcomeSource !== null ? (outcomeSource as {modeName?: unknown}).modeName : undefined;
+            // Portable ReplayDescriptor exports use null for an unseeded run.
+            // Inspection must accept those bytes as an absent seed; live run
+            // requests and exact outcome-library provenance remain strict.
             validated = validateReplayRequest(
-                {round: record.round, seed: record.seed, modeName} as ReplayRequestInput,
+                {round: record.round, seed: record.seed === null ? undefined : record.seed, modeName} as ReplayRequestInput,
                 {requireOutcomeSourceProvenance: outcomeSource !== undefined},
             );
         } catch (error) {
