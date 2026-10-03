@@ -12,7 +12,7 @@ import process from "node:process";
 import {isDeepStrictEqual} from "node:util";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
-import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS, P805_SCREEN_CONTROL_STATES, P805_WORKFLOW_CONTRACTS, p805TransactionStateClass, validateP805AuditEvidenceKinds} from "./p8-05-product-readiness-campaign.mjs";
+import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS, P805_SCREEN_CONTROL_STATES, P805_WORKFLOW_CONTRACTS, p805TerminalResponseStatus, p805TransactionStateClass, validateP805AuditEvidenceKinds} from "./p8-05-product-readiness-campaign.mjs";
 import {createPc20OwnershipTracker, drainProcessTree, processIdentity, registerPc20OwnedResource} from "./pc-20-release-completion.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,6 +27,19 @@ const nativeNpmCommand = () => {
 };
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
+// A navigation context read can also be the navigation's observed result.
+// Keep one API record for that Chromium identity, with both roles, rather than
+// duplicating its bytes and making the aggregate's exact-id lookup ambiguous.
+export function recordP805RenderedApiResponse(api, entry) {
+    const existing = api.filter((item) => item.browserRequestId === entry.browserRequestId);
+    if (existing.length === 0) { api.push(entry); return; }
+    const context = existing[0];
+    if (existing.length !== 1 || context.initiator !== "rendered-navigation-context" || entry.initiator !== "rendered-control"
+        || entry.method !== "GET" || entry.path !== "/api/project/context"
+        || ["observation", "method", "path", "status", "responseSha256"].some((key) => context[key] !== entry[key])
+        || !isDeepStrictEqual(context.payload, entry.payload)) fail("rendered response substitutes a captured browser request identity");
+    api[api.indexOf(context)] = {...context, ...entry};
+}
 const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
@@ -1902,8 +1915,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const responseEvent = await waitFor(() => cdp.events.slice(activationCursor).find((event) => event.method === "Network.responseReceived" && event.params.requestId === browserRequestId) || false, `${observation} rendered response`);
             if (!requestEvent) fail(`${observation} lost its selected browser request identity`);
             const response = await readBrowserResponseBody(browserRequestId, observation), body = response.body ?? "", payload = JSON.parse(body || "{}"), serialized = requestEvent.params.request.postData ?? "", entry = {observation, method:requestEvent.params.request.method, path:contract.api, bodyKind:contract.body ?? null, bodySha256:digest(serialized), status:responseEvent.params.response.status, responseSha256:digest(JSON.stringify(payload)), payload, browserRequestId, initiator:"rendered-control"};
-            api.push(entry);
+            recordP805RenderedApiResponse(api, entry);
             transaction.request = {browserRequestId:entry.browserRequestId, method:entry.method, path:entry.path, bodySha256:entry.bodySha256, status:entry.status, responseSha256:entry.responseSha256};
+            if (contract.body === "outcome-library") transaction.request.body = serialized;
             transaction.elapsedMs = Date.now() - transaction.startedAtMs;
             transaction.requestCount = 1;
             if (entry.method !== contract.method || entry.status < 200 || entry.status >= 400 || payload?.ok === false || payload?.success === false || payload?.valid === false || payload?.error !== undefined || (Array.isArray(payload) && payload.length === 0) || ["failed", "error", "cancelled", "incomplete", "load-error", "invalid"].includes(payload?.status)) fail(`${observation} rendered control did not produce a successful semantic response (HTTP ${entry.status}: ${JSON.stringify(payload)})`);
@@ -1919,7 +1933,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 // (for example `loaded`), not an operation outcome.  The
                 // visible lifecycle result is the terminal outcome while the
                 // complete response remains bound verbatim below.
-                const terminalStatus = ["completed", "success", "ok", "valid", "partial"].includes(started?.status) ? started.status : "success";
+                const terminalStatus = p805TerminalResponseStatus(contract, started);
+                if (!terminalStatus) fail(`${observation} response is not a terminal result for ${contract.api}: ${JSON.stringify(started)}`);
                 const terminal = {status:terminalStatus, result:started, resultSha256:digest(JSON.stringify(started)), jobId:undefined, source:"response"};
                 transaction.terminal = {status:terminal.status, resultSha256:terminal.resultSha256, source:terminal.source};
                 return {...entry, terminal};

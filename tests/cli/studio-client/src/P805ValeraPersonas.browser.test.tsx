@@ -311,7 +311,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(action.expectedApi).toBe("/api/project/outcome-libraries/generate/jobs");
                 expect(action.stableControlId).toBe("outcome-library-generate");
                 expect(action.transaction.preflight).toEqual({state: "ready", status: "ok", controlId: "outcome-library-generate", cardLabel: "Outcome library generator", enabled: true, disabled: false});
-                expect(pointer).toEqual(expect.objectContaining({kind: "pointer", controlId: "outcome-library-generate", capturedControlId: "outcome-library-generate", preDispatchFocus: {controlId: "outcome-library-generate", native: true}, hitTest: {capturedControlId: "outcome-library-generate", matchesCapturedControl: true}, dispatch: expect.objectContaining({kind: "native-pointer", pressed: true, released: true, focus: {controlId: "outcome-library-generate", native: true, targetMatchesCapturedControl: true}})}));
+                expect(pointer).toEqual(expect.objectContaining({kind: "pointer", controlId: "outcome-library-generate", capturedControlId: "outcome-library-generate", preDispatchFocus: {controlId: "outcome-library-generate", native: true}, hitTest: expect.objectContaining({capturedControlId: "outcome-library-generate", matchesCapturedControl: true}), dispatch: expect.objectContaining({kind: "native-pointer", pressed: true, released: true, focus: expect.objectContaining({controlId: "outcome-library-generate", native: true, targetMatchesCapturedControl: true})})}));
                 expect(action.visibleTerminal.lifecycle).toEqual(expect.objectContaining({controlId: "outcome-library-generate", operation: "outcome-library", receipt: "durable-terminal", requestId: expect.stringMatching(/^outcome-library-/), progressSnapshots: expect.stringMatching(/^[2-9][0-9]*$/), durableJobId: action.terminal.jobId, durableStatus: action.terminal.status, artifact: expect.objectContaining({name: "outcome-library", accessibleName: expect.any(String), outputPath: expect.any(String)})}));
                 const compoundOutputs = audit.workflowScope.compoundCliOutputs as Array<{output: string; command: string; candidateId: string; candidatePackageSha256: string; candidateExecutableSha256: string; sha256: string; files: Array<{path: string; sha256: string; sizeBytes: number; contentsBase64: string}>; evidenceId: string}>;
                 expect(compoundOutputs.map(({output, command}) => ({output, command}))).toEqual([
@@ -532,7 +532,39 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 if (apiEvidence === undefined) throw new Error("packed tuple is missing its actual API transaction log");
                 const apiBytes = await readOperationArtifact(apiEvidence.path);
                 expect(createHash("sha256").update(apiBytes).digest("hex")).toBe(apiEvidence.sha256);
-                const api = JSON.parse(apiBytes.toString("utf8")) as Array<{transaction?: {pointerActivations: PointerDelivery[]; confirmation?: {activation?: PointerDelivery}}}>;
+                const api = JSON.parse(apiBytes.toString("utf8")) as Array<{browserRequestId?: string; transaction?: {pointerActivations: PointerDelivery[]; confirmation?: {activation?: PointerDelivery}}}>;
+                const requestIds = api.flatMap((entry) => entry.browserRequestId === undefined ? [] : [entry.browserRequestId]);
+                expect(new Set(requestIds).size).toBe(requestIds.length);
+                const transactionEvidence = tupleAudit.evidence.find((evidence) => evidence.kind === "live-dom-transaction");
+                if (transactionEvidence === undefined) throw new Error("packed tuple is missing its live-DOM transaction");
+                const pageBytes = await readOperationArtifact(transactionEvidence.path);
+                expect(createHash("sha256").update(pageBytes).digest("hex")).toBe(transactionEvidence.sha256);
+                const page = JSON.parse(pageBytes.toString("utf8"));
+                if (page.request.path === "/api/project/context") {
+                    expect(page.terminal.result.status).toBe(page.contextRevalidation.projectStatus);
+                    expect(["loaded", "outcome-source", "artifact"]).toContain(page.terminal.result.status);
+                    expect(page.terminal.status).toBe("success");
+                    expect(page.request.browserRequestId).toBe(page.contextRevalidation.browserRequestId);
+                    expect(page.request.responseSha256).toBe(page.contextRevalidation.responseSha256);
+                    expect(api.filter((entry) => entry.browserRequestId === page.request.browserRequestId)).toHaveLength(1);
+                }
+                if (page.transaction.operation === "outcome-library") {
+                    const body = page.transaction.request.body;
+                    expect(createHash("sha256").update(body).digest("hex")).toBe(page.request.bodySha256);
+                    const input = JSON.parse(body);
+                    expect(["default", "sampled", "bounded"]).toContain(input.generation);
+                    const generation = input.generation === "default" ? "exact" : input.generation;
+                    const mode = input.mode.trim() || page.terminal.result.result.mode.modeName;
+                    expect(page.interaction.matchedLabel).toBe(`Generate ${generation} outcome library (${mode})`);
+                    expect(page.interaction.control).toBe(page.interaction.matchedLabel);
+                    expect(page.terminal.result.result.generator.strategy).toBe(generation === "exact" ? "exact" : "bounded-coverage");
+                }
+                if (child.tuple.persona === "ui-ux" && child.tuple.observation === "reload-reconnect-recovery-cancellation-project-switch") {
+                    expect(page.terminal.source).toBe("rendered-poll");
+                    expect(page.terminal.result.status).toBe("completed");
+                    expect(page.terminal.pollPath).toBe(`/api/project/simulations/${page.terminal.jobId}`);
+                    expect(page.renderedTerminal.lifecycle.jobId).toBe(page.terminal.jobId);
+                }
                 assertPointerDeliveries(api.flatMap((entry) => [
                     ...(entry.transaction?.pointerActivations ?? []),
                     ...(entry.transaction?.confirmation?.activation?.kind === "pointer" ? [entry.transaction.confirmation.activation] : []),

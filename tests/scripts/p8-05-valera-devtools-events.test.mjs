@@ -8,10 +8,120 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
+import {P805_WORKFLOW_CONTRACTS, P805_SCREEN_CONTROL_STATES, hasP805SharedNavigationContext, p805TerminalResponseStatus, p805WorkflowActionLabel, validateP805LiveDomTransaction} from "../../scripts/p8-05-product-readiness-campaign.mjs";
+import {projectP805PersonaAudit} from "../../scripts/p8-05-persona-projection.mjs";
+import {recordP805RenderedApiResponse} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {navigateP805RenderedControl, openP805ImportedProject, validateP805ImportedProjectOpen, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
+
+test("retained blueprint native receipt survives resource-response collection, persona projection and strict campaign consumption", () => {
+    // Bounded extract of the saved d2e0a946 blueprint transaction: Chromium's
+    // original coordinates, request identity, status and three native events.
+    // This is regression data, not a new persona or whole-campaign receipt.
+    const controlId = "project-tab:overview", captureKey = "7c33f226e55b0675c35c72f874b303fe", requestId = "114021.57";
+    const region = {left:16, top:76, width:227, height:40.796875};
+    const visualViewport = {offsetLeft:0, offsetTop:0, width:1425, height:900, scale:1};
+    const pointer = {kind:"pointer", count:1, controlId, capturedControlId:controlId, captureKey, x:129.5, y:96.3984375,
+        dispatchPoint:{x:129.5, y:96.3984375}, preDispatchFocus:{controlId, native:true},
+        hitTest:{capturedControlId:controlId, x:129.5, y:96.3984375, visualViewport, region, matchesCapturedControl:true},
+        dispatch:{kind:"native-pointer", pressed:true, released:true, bindingVersion:2, pointerDownCount:1, pointerUpCount:1, clickCount:1, eventsTrusted:true, targetsMatchCapturedControl:true,
+            focus:{observedAt:"pre-dispatch", atDispatchNative:true, controlId, native:true, trusted:true, targetMatchesCapturedControl:true},
+            eventBindings:["pointerdown", "pointerup", "click"].map((eventType, index) => ({eventType, trusted:true, capturedControlId:controlId, captureKey,
+                x:index === 2 ? 129 : 129.5, y:index === 2 ? 96 : 96.3984375, visualViewport, viewportMatchesMeasured:true,
+                directTargetMatchesCapturedControl:true, pathContainsCapturedControl:true, dispatchRegionAncestor:false,
+                pointMatchesMeasured:true, regionMatchesMeasured:true, regionMatchesCapturedPress:false, region,
+                hitMatchesCapturedControl:true, capturedControlConnected:true, identityPreserved:true, enabled:true, relationship:"captured-control"}))}};
+    const result = {status:"loaded", projectRoot:"/fixture/starter-slot/blueprint.json", game:{id:"starter-slot", name:"Starter Slot", version:"0.1.0"}, type:"blueprint", capabilities:["blueprint.build"], origin:"managed"};
+    const resultSha256 = hash(JSON.stringify(result)), contract = P805_WORKFLOW_CONTRACTS.mathematician.blueprint;
+    const interaction = {control:"Overview", matchedLabel:"Overview", stableControlId:controlId, identityAttribute:"id", accessibleName:"Overview", enabled:true, disabled:false, disabledExplanation:null,
+        transactionState:"navigation", lifecycle:{kind:"navigation", value:"overview"}, activation:"pointer", pointerActivated:true};
+    const request = {browserRequestId:requestId, method:"GET", path:contract.api, status:200, bodyKind:null, bodySha256:hash(""), responseSha256:resultSha256, initiator:"rendered-control"};
+    const page = {kind:"p8-05-live-dom-transaction", operation:"blueprint", expectedOutcome:contract.terminal, route:"#/project/fixture/overview", viewport:"wide", elapsedMs:456,
+        screen:{name:"overview", ...P805_SCREEN_CONTROL_STATES.overview, terminalText:"Overview"},
+        control:{id:controlId, role:"button", accessibleName:"Overview", enabled:true}, precondition:{...interaction, region:"project-dashboard-heading"}, interaction, request,
+        contextRevalidation:{browserRequestId:requestId, method:"GET", path:contract.api, status:200, responseSha256:resultSha256, projectStatus:"loaded", completedBeforeSelection:true},
+        transaction:{operation:"overview", stateClass:"navigation", control:interaction, confirmation:{required:false, state:"not-required", control:null}, pointerActivations:[pointer], keyboardActivations:[], request,
+            postTransitionRenderedState:{capturedControlId:controlId, captureKey, controlState:"retained", currentControlId:controlId, capturedControlConnected:true, requestId, resultSha256, renderedTerminal:true}},
+        terminal:{status:"success", result, resultSha256, source:"response", complete:true},
+        renderedTerminal:{state:"rendered", changedAfterRequest:true, observedAfterRequestId:requestId, resultSha256, beforeTextSha256:hash("Play ready"), textSha256:hash("Overview ready"), text:"Overview ready", observedAt:"2026-10-03T17:57:14.956Z", lifecycle:{role:"status", terminal:"rendered", text:"Overview ready", controlId, stateClass:"navigation"}},
+        workflow:{persona:"mathematician", source:"rendered-control", transactionState:"navigation", expectedApi:contract.api, expectedMethod:"GET", expectedBodyKind:null, expectedArtifact:null, terminal:contract.terminal},
+        state:{text:"Overview ready", controls:[], overflow:false, accessibility:{visibleFocus:true, namedRegions:["project-dashboard-heading"], unexplainedDisabledControls:0}}};
+    const before = JSON.stringify(page), context = {...page.contextRevalidation, observation:"blueprint", payload:result, initiator:"rendered-navigation-context"};
+    const api = [context], response = {...request, observation:"blueprint", payload:result};
+    recordP805RenderedApiResponse(api, response);
+    assert.equal(api.length, 1, "one Chromium request cannot become two API records");
+    assert.deepEqual(api[0], {...context, ...response});
+    assert.equal(hasP805SharedNavigationContext(page), true);
+    assert.equal(hasP805NativeActivation(pointer, controlId), true);
+    assert.deepEqual(validateP805LiveDomTransaction(Buffer.from(before), "blueprint", "mathematician", "retained blueprint"), page);
+    assert.equal(JSON.stringify(page), before);
+    // All context consumers use the same resource contract, across personas.
+    for (const [persona, contracts] of Object.entries(P805_WORKFLOW_CONTRACTS)) for (const [observation, next] of Object.entries(contracts)) {
+        if (next.api !== contract.api) continue;
+        const captured = structuredClone(page);
+        captured.operation = observation; captured.expectedOutcome = next.terminal; captured.route = `#/project/fixture/${next.route}`;
+        captured.screen = {name:next.route, ...P805_SCREEN_CONTROL_STATES[next.route], terminalText:P805_SCREEN_CONTROL_STATES[next.route].result};
+        captured.workflow.persona = persona; captured.workflow.terminal = next.terminal;
+        if (next.route !== "overview") {
+            const id = P805_SCREEN_CONTROL_STATES[next.route].navigationControlId, name = next.control;
+            captured.control.id = id; captured.control.accessibleName = name;
+            captured.precondition.accessibleName = name;
+            for (const control of [captured.interaction, captured.transaction.control]) Object.assign(control, {control:name, matchedLabel:name, accessibleName:name, stableControlId:id, lifecycle:{kind:"navigation",value:next.route}});
+            const activation = captured.transaction.pointerActivations[0];
+            activation.controlId = id; activation.capturedControlId = id; activation.preDispatchFocus.controlId = id;
+            activation.hitTest.capturedControlId = id; activation.dispatch.focus.controlId = id;
+            activation.dispatch.eventBindings.forEach(event=>{event.capturedControlId=id;});
+            Object.assign(captured.transaction.postTransitionRenderedState,{capturedControlId:id,currentControlId:id});
+            captured.renderedTerminal.lifecycle.controlId = id;
+        }
+        assert.doesNotThrow(() => validateP805LiveDomTransaction(Buffer.from(JSON.stringify(captured)), observation, persona, `${persona}/${observation}`));
+    }
+    const child = {timings:{validationMs:page.elapsedMs}, performance:{validationMs:{budgetMs:60000}}, observations:["blueprint"], evidence:[], observationEvidence:{}, checkpointReceipts:[{sha256:hash(before)}],
+        startedAt:"2026-10-03T17:57:14.000Z", endedAt:page.renderedTerminal.observedAt, cleanup:{evidenceId:"bounded-cleanup"}, tuple:{viewport:"wide"},
+        rendered:{responsive:[], measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true}, defects:[], actions:[page], recovery:{},jobs:{}}};
+    const projection = projectP805PersonaAudit([child], [{auditSha256:hash(JSON.stringify(child))}], "initial", "mathematician");
+    assert.equal(JSON.stringify(projection.rendered.actions[0]), before);
+    assert.equal(projection.timings.validationMs, 456);
+    for (const mutate of [
+        value => {value.contextRevalidation.responseSha256 = hash("foreign-context");},
+        value => {value.transaction.stateClass = "editable-submission";},
+        value => {value.transaction.pointerActivations[0].dispatch.clickCount = 2;},
+        value => {value.transaction.pointerActivations[0].dispatch.eventBindings[1].pathContainsCapturedControl = false;},
+        value => {value.terminal.result.status = "loading"; value.terminal.resultSha256 = hash(JSON.stringify(value.terminal.result));},
+    ]) {const invalid = structuredClone(page); mutate(invalid); assert.throws(() => validateP805LiveDomTransaction(Buffer.from(JSON.stringify(invalid)), "blueprint", "mathematician", "substitution"));}
+    for (const mutate of [value=>{value.status=201;},value=>{value.responseSha256=hash("foreign-response");},value=>{value.observation="another-tuple";},value=>{value.payload={status:"empty"};}]) {
+        const invalid=structuredClone(response);mutate(invalid);assert.throws(()=>recordP805RenderedApiResponse([context],invalid),/substitutes a captured browser request identity/);
+    }
+    assert.throws(() => recordP805RenderedApiResponse(api, response), /substitutes a captured browser request identity/, "a second operation cannot reuse the accepted identity");
+});
+
+test("later model, reports, sampled Outcome Library and UI/UX simulation consume their actual public response contracts", () => {
+    const contracts = P805_WORKFLOW_CONTRACTS.mathematician;
+    assert.equal(p805TerminalResponseStatus(contracts["reels-paytable-modes-mechanics"], {basics:{status:"available"},layout:{status:"available"}}), "success");
+    assert.equal(p805TerminalResponseStatus(contracts["reels-paytable-modes-mechanics"], {}), undefined);
+    assert.equal(p805TerminalResponseStatus(contracts["simulation-rtp-volatility-features"], [{id:"report-1",status:"completed"}]), "success");
+    for (const result of [[], [{id:"running",status:"running"}], {status:"unsupported"}]) assert.equal(p805TerminalResponseStatus(contracts["simulation-rtp-volatility-features"], result), undefined);
+    const library = contracts["outcome-library-report-diff-replay"];
+    for (const generation of ["default", "sampled", "bounded"]) {
+        const body = JSON.stringify({mode:"base", generation}), transaction = {request:{body, bodySha256:hash(body)}};
+        const result = {status:"completed",result:{mode:{modeName:"base"},generator:{strategy:generation === "default" ? "exact" : "bounded-coverage"}}};
+        assert.equal(p805WorkflowActionLabel(library, transaction, result), `Generate ${generation === "default" ? "exact" : generation} outcome library (base)`);
+        assert.equal(p805WorkflowActionLabel(library, transaction, {...result,result:{...result.result,mode:{modeName:"foreign-mode"}}}), undefined);
+        assert.equal(p805WorkflowActionLabel(library, {request:{...transaction.request,bodySha256:hash("foreign-body")}}, result), undefined);
+        const substituted = {transaction, request:{bodySha256:hash("another-browser-request")}, terminal:{status:"completed",result}};
+        assert.throws(() => validateP805LiveDomTransaction(Buffer.from(JSON.stringify(substituted)), "outcome-library-report-diff-replay", "mathematician", "body substitution"), /submitted-body diagnostic differs from its browser request/);
+    }
+    const recovery = P805_WORKFLOW_CONTRACTS["ui-ux"]["reload-reconnect-recovery-cancellation-project-switch"];
+    assert.equal(recovery.poll, "/api/project/simulations/{id}");
+    for (const result of [{status:"queued"},{status:"running"},{status:"cancelled"},{status:"failed"},{status:"recovery-required"},{status:"completed",error:"cleanup failed"},{status:"completed",ok:false}]) assert.equal(p805TerminalResponseStatus(recovery,result), undefined);
+    assert.equal(p805TerminalResponseStatus(recovery,{status:"completed"}), "completed");
+    for (const contract of Object.values(P805_WORKFLOW_CONTRACTS).flatMap(Object.values)) {
+        if (contract.api === "/api/project/simulations") assert.equal(contract.poll, "/api/project/simulations/{id}");
+        for (const result of [{status:"queued"},{status:"loading"},{status:"unsupported"},{status:"failed"},{status:"success",error:"cleanup failed"}]) assert.equal(p805TerminalResponseStatus(contract,result), undefined);
+    }
+});
 
 test("Replay Artifact inspection binds valid, invalid and recovered receipts to the exact pasted descriptor", () => {
     for (const [descriptor, expectedStatus, payload] of [
@@ -537,8 +647,17 @@ async function runProductionPointerReflow() {
         cdp=await connectP805Devtools(`http://127.0.0.1:${await launched.waitForPort()}`);
         const evaluate=async expression=>{const result=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert.equal(result.exceptionDetails,undefined);return result.result.value;};
         await cdp.send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,mobile:false,deviceScaleFactor:1});
+        // CDP can reject a readiness read while navigation destroys the old
+        // execution context. Retry only that read, never a native activation.
+        const navigationReady = async expression => {
+            try { return await evaluate(expression); }
+            catch (error) {
+                if (/"code":-32000/.test(String(error)) && /Inspected target navigated or closed|Execution context was destroyed|Cannot find context with specified id/.test(String(error))) return false;
+                throw error;
+            }
+        };
         await cdp.send('Page.navigate',{url:`http://127.0.0.1:${server.httpServer.address().port}/reflow`});
-        await poll(()=>evaluate("!!document.getElementById('simulation-run')"),30_000);
+        await poll(()=>navigationReady("!!document.getElementById('simulation-run')"),30_000);
         const accepted=[],snapshots=[],pages=[];
         const activate=async(id,lifecycle='recovery',reflow=false,retain=false)=>{
             if(['simulation-cancel-dismiss','simulation-cancel-confirm'].includes(id)){
@@ -586,8 +705,11 @@ async function runProductionPointerReflow() {
         };
         await activate('simulation-run','operation');
         await poll(()=>evaluate("document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-terminal')==='running'"));
+        const reloadCursor = cdp.events.length;
         await cdp.send('Page.reload',{ignoreCache:true});
-        await poll(()=>evaluate("document.getElementById('simulation-cancel')?.isConnected && document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-result-job')==='job-1'"));
+        const reloadRequest = await poll(()=>cdp.events.slice(reloadCursor).find(event=>event.method==='Network.requestWillBeSent'&&event.params.type==='Document'));
+        await poll(()=>cdp.events.slice(reloadCursor).find(event=>event.method==='Network.loadingFinished'&&event.params.requestId===reloadRequest.params.requestId));
+        await poll(()=>navigationReady("document.getElementById('simulation-cancel')?.isConnected && document.querySelector('[data-pokie-lifecycle-result=simulation]')?.getAttribute('data-pokie-lifecycle-result-job')==='job-1'"));
         await activate('simulation-cancel','recovery',true);
         await activate('simulation-cancel-dismiss','precondition');
         assert.equal(requests.filter(item=>item.method==='DELETE').length,0,'dismissal must leave the restored job active');

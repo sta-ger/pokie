@@ -81,7 +81,7 @@ export const P805_WORKFLOW_CONTRACTS = {
         "spaces-invalid-inputs-exit-codes-ci-recovery": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", cli:"packed CLI invalid-input recovery", terminal:"actionable-exit-code"}, "build-export-output-folder": {route:"exportDeploy", control:"Build/Export", actionControl:"Build", actionControlId:"artifact-build-parWorkbook", method:"POST", api:"/api/project/artifacts/build", body:"artifact-build", poll:"/api/project/artifacts/build/{id}", cli:"packed CLI PAR build", artifact:"artifact-build-output", terminal:"output-written"},
     },
     producer: {"product-framing": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"project-context"}, "end-to-end-navigation": {route:"play", control:"Play", method:"GET", api:"/api/project/context", terminal:"navigation-visible"}, trust: {route:"certification", control:"Certification", actionControl:"Validate source bundle", actionControlId:"certification-validate-source", method:"POST", api:"/api/project/certification/validate-source", body:"certification", terminal:"trust-state"}},
-    "ui-ux": {"onboarding-terminology-forms-progress": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"labels-visible"}, "reload-reconnect-recovery-cancellation-project-switch": {route:"simulation", control:"Simulation", actionControl:"Run Simulation", actionControlId:"simulation-run", method:"POST", api:"/api/project/simulations", body:"simulation", terminal:"recovered"}, "keyboard-responsive-accessibility": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"keyboard-visible"}},
+    "ui-ux": {"onboarding-terminology-forms-progress": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"labels-visible"}, "reload-reconnect-recovery-cancellation-project-switch": {route:"simulation", control:"Simulation", actionControl:"Run Simulation", actionControlId:"simulation-run", method:"POST", api:"/api/project/simulations", body:"simulation", poll:"/api/project/simulations/{id}", terminal:"recovered"}, "keyboard-responsive-accessibility": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"keyboard-visible"}},
     "graphic-designer": {"hierarchy-typography-spacing-density-controls-finish": {route:"overview", control:"Overview", method:"GET", api:"/api/project/context", terminal:"rendered-finish"}},
 };
 // Recovery controls are rendered operations too. They are deliberately
@@ -213,18 +213,61 @@ export function hasP805LiveDomActivation(page) {
                 || JSON.stringify(postTransition.preDispatchEvidence) === JSON.stringify({capturedControlId:pointer.capturedControlId, focus:pointer.preDispatchFocus, hitTest:pointer.hitTest, dispatch:pointer.dispatch}))
         : page.interaction?.activation === "keyboard" && page.interaction.keyboardFocused === true && page.interaction.keyboardActivated === true && page.transaction?.keyboardActivations?.length === 1 && keyboard?.kind === "keyboard" && keyboard?.nativeFocus === true && keyboard?.preDispatchFocus?.controlId === page.control?.id && keyboard?.preDispatchFocus?.native === true && keyboard?.count === 1 && keyboard.controlId === page.control?.id);
 }
-function liveDomTransaction(contents, observation, persona, label, initial = false) {
+// Resource reads and durable operations have different public result shapes.
+// Share their interpretation with the collector; never turn an unknown or
+// still-active response into success merely because HTTP transport succeeded.
+export function p805TerminalResponseStatus(contract, result) {
+    if (!result || typeof result !== "object" || result.ok === false || result.success === false
+        || result.valid === false || result.error !== undefined || (Array.isArray(result.errors) && result.errors.length > 0)) return undefined;
+    if (contract?.poll) return result.status === "completed" ? "completed" : undefined;
+    if (["completed", "success", "ok", "valid", "partial"].includes(result.status)) return result.status;
+    if (contract?.method === "GET" && contract.api === "/api/project/context") {
+        return ["loaded", "outcome-source", "artifact"].includes(result.status) ? "success" : undefined;
+    }
+    if (contract?.method === "GET" && contract.api === "/api/project/gameModel") {
+        return result.status === undefined && result.basics?.status === "available" && result.layout?.status === "available" ? "success" : undefined;
+    }
+    if (contract?.method === "GET" && contract.api === "/api/project/reports") {
+        return Array.isArray(result) && result.length > 0 && result.every((report) => report?.status === "completed" && typeof report.id === "string" && report.id.length > 0) ? "success" : undefined;
+    }
+    return undefined;
+}
+export function p805WorkflowActionLabel(contract, transaction, result) {
+    if (contract?.body !== "outcome-library") return contract?.actionControl ?? contract?.control;
+    const submitted = transaction?.request?.body;
+    // Earlier immutable exact-generation receipts have no submitted-body
+    // diagnostic. They keep their original exact-label acceptance contract.
+    if (submitted === undefined) return contract.actionControl;
+    if (typeof submitted !== "string" || digest(submitted) !== transaction.request.bodySha256) return undefined;
+    let input;
+    try { input = JSON.parse(submitted); } catch { return undefined; }
+    if (!["default", "sampled", "bounded"].includes(input.generation) || typeof input.mode !== "string") return undefined;
+    const generation = input.generation === "default" ? "exact" : input.generation;
+    const mode = input.mode.trim() || result?.result?.mode?.modeName;
+    const strategy = generation === "exact" ? "exact" : "bounded-coverage";
+    if (!mode || mode !== result?.result?.mode?.modeName || strategy !== result?.result?.generator?.strategy) return undefined;
+    return `Generate ${generation} outcome library (${mode})`;
+}
+export function hasP805SharedNavigationContext(page) {
+    return page.transaction?.stateClass === "navigation" && page.interaction?.lifecycle?.kind === "navigation"
+        && page.request?.method === "GET" && page.request.path === "/api/project/context"
+        && page.request.browserRequestId === page.contextRevalidation?.browserRequestId
+        && page.request.status === page.contextRevalidation.status
+        && page.request.responseSha256 === page.contextRevalidation.responseSha256
+        && page.terminal?.source === "response" && page.terminal.result?.status === page.contextRevalidation.projectStatus;
+}
+export function validateP805LiveDomTransaction(contents, observation, persona, label, initial = false) {
     let page;
     try { page = JSON.parse(contents.toString("utf8")); } catch { fail(`${label} is not parsed live-DOM transaction evidence`); }
     const renderedActivation = hasP805LiveDomActivation(page);
     const contract = P805_WORKFLOW_CONTRACTS[persona]?.[observation];
     const screenState = contract && P805_SCREEN_CONTROL_STATES[contract.route];
     const modern = page.request?.method !== undefined;
-    const activatedControl = contract?.actionControl ?? contract?.control;
+    const activatedControl = p805WorkflowActionLabel(contract, page.transaction, page.terminal?.result);
     const operation = contract?.operation ?? contract?.body;
     const expectedLifecycle = operation === undefined ? {kind: "navigation", value: contract?.route} : {kind: "operation", value:operation};
     const matchedControl = page.interaction?.matchedLabel;
-    const correctRenderedControl = contract?.actionControlMatch === "prefix" ? typeof matchedControl === "string" && matchedControl.startsWith(activatedControl) : matchedControl === undefined || matchedControl === activatedControl;
+    const correctRenderedControl = typeof activatedControl === "string" && (contract?.actionControlMatch === "prefix" ? typeof matchedControl === "string" && matchedControl.startsWith(activatedControl) : matchedControl === activatedControl);
     const terminalResult = page.terminal?.result;
     const transactionState = p805TransactionStateClass(page.transaction);
     const stateClassMatchesRequest = expectedLifecycle.kind === "navigation"
@@ -253,7 +296,11 @@ function liveDomTransaction(contents, observation, persona, label, initial = fal
     // terminal success.  This prevents a collector from recording a 202,
     // empty list, or HTTP-200 failure as a completed persona operation.
     const resultStatus = terminalResult?.status;
-    const terminalSucceeded = terminalResult && ["completed", "success", "ok", "valid", "partial"].includes(resultStatus ?? page.terminal?.status);
+    const responseStatus = p805TerminalResponseStatus(contract, terminalResult);
+    const terminalSucceeded = typeof responseStatus === "string" && responseStatus === page.terminal?.status;
+    if (!terminalSucceeded) fail(`${label} response status ${resultStatus ?? "absent"} is not a terminal result for ${contract?.api}`);
+    if (contract?.body === "outcome-library" && page.transaction?.request?.body !== undefined && page.transaction.request.bodySha256 !== page.request?.bodySha256) fail(`${label} Outcome Library submitted-body diagnostic differs from its browser request`);
+    if (page.request?.browserRequestId === page.contextRevalidation?.browserRequestId && !hasP805SharedNavigationContext(page)) fail(`${label} substitutes its action request for context`);
     const terminalDigest = terminalResult === undefined ? undefined : digest(JSON.stringify(terminalResult));
     const nonEmptyReport = contract?.terminal === "report-completed" ? Array.isArray(terminalResult) && terminalResult.length > 0 : true;
     // An id merely says that an operation was accepted.  A persona can only
@@ -353,7 +400,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         const action = audit.rendered.actions.find((value) => (value.persona ?? audit.persona) === persona && value.observation === observation && value.viewport === viewport);
         const evidenceId = action?.evidenceId, transactionEvidence = evidenceById.get(evidenceId);
         if (!transactionEvidence || transactionEvidence.item.kind !== "live-dom-transaction" || !transactionEvidence.item.observationIds.includes(observation) || !action) fail(`${label} lacks ${persona} ${viewport} live-DOM transaction evidence for ${observation}`);
-        const page = liveDomTransaction(transactionEvidence.contents, observation, persona, `${label} ${persona} ${viewport} ${observation}`, audit.phase === "initial");
+        const page = validateP805LiveDomTransaction(transactionEvidence.contents, observation, persona, `${label} ${persona} ${viewport} ${observation}`, audit.phase === "initial");
         if (!Number.isSafeInteger(page.elapsedMs) || page.elapsedMs <= 0 || action.elapsedMs !== page.elapsedMs) fail(`${label} checkpoint action timing differs from its captured transaction`);
         if (action.browserRequestId !== page.request.browserRequestId || action.stableControlId !== page.interaction.stableControlId || action.terminal?.resultSha256 !== page.terminal.resultSha256 || JSON.stringify(action.contextRevalidation) !== JSON.stringify(page.contextRevalidation) || JSON.stringify(action.transaction) !== JSON.stringify(page.transaction)) fail(`${label} checkpoint action and captured transaction disagree`);
         const observedDefects = [["accessibility", page.state.controls.some((control) => !control.disabled && control.accessible === false)], ["overflow", page.state.overflow], ["named-region", page.state.accessibility.namedRegions.length === 0], ["focus", !page.state.accessibility.visibleFocus], ["disabled-control", page.state.accessibility.unexplainedDisabledControls > 0]];
@@ -362,7 +409,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         const requestOwner = `${persona} ${viewport} ${observation} action`, contextOwner = `${persona} ${viewport} ${observation} context`, sharedNavigationContext = page.contextRevalidation.browserRequestId === page.request.browserRequestId;
         claimBrowserRequestId(page.request.browserRequestId, requestOwner);
         if (!sharedNavigationContext) claimBrowserRequestId(page.contextRevalidation.browserRequestId, contextOwner);
-        if (page.request.browserRequestId === page.contextRevalidation.browserRequestId) fail(`${label} ${persona} ${viewport} ${observation} substitutes its action request for context`);
+        if (sharedNavigationContext && !hasP805SharedNavigationContext(page)) fail(`${label} ${persona} ${viewport} ${observation} substitutes its action request for context`);
         // Select the machine record once, by Chromium's request identity,
         // before comparing any semantic fields.  Method/path/body equality is
         // corroboration only: it must never be the lookup that lets an
