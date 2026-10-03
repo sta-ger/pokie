@@ -8,7 +8,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {openP805ImportedProject, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {openP805ImportedProject, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
@@ -630,7 +630,9 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(await navigationReady(), false, "a hidden terminal cannot authorize capture");
         await evaluate("document.getElementById('navigation-result').hidden = false");
         assert.equal(await evaluate("window.initialBurger.isConnected"), false);
-        const disclosure = await clickP805CapturedControl(cdp, evaluate, "studio-navigation-toggle", true, true, false);
+        const disclosure = await activateP805FocusedControl(cdp, evaluate, "navigation-drawer", {stableControlId:"studio-navigation-toggle"});
+        assert.equal(disclosure.kind, "pointer");
+        assert.equal(hasP805NativeActivation(disclosure, "studio-navigation-toggle"), true);
         assert.equal(disclosure.preDispatchFocus.native, true);
         assert.equal(disclosure.hitTest.matchesCapturedControl, true);
         assert.equal(disclosure.dispatch.focus.targetMatchesCapturedControl, true);
@@ -651,12 +653,16 @@ test("native navigation waits for rendered context and Retry retains captured id
             // recovery while replacing the textarea through native entry.
             const text=JSON.stringify({round:width===960?0:1,seed:width===960?'invalid-artifact':null},null,2);
             await setP805ReplayArtifactInput(cdp,evaluate,text);
-            const activation=await clickP805CapturedControl(cdp,evaluate,"replay-artifact-load",true,true);
+            const activation=await activateP805FocusedControl(cdp,evaluate,"operation",{stableControlId:"replay-artifact-load"});
+            assert.equal(activation.kind,"pointer");
+            assert.equal(hasP805NativeActivation(activation,"replay-artifact-load"),true);
             assert.equal(activation.hitTest.matchesCapturedControl,true);
             assert.equal(await evaluate("window.artifactInputTrusted"),true);
             assert.deepEqual(await evaluate("window.artifactActivation"),{trusted:true,body:text});
             await evaluate("document.getElementById('replay-artifact-load').focus({preventScroll:true})");
-            const keyboard=await activateP805KeyboardControl(cdp,evaluate,"replay-artifact-load");
+            const keyboard=await activateP805FocusedControl(cdp,evaluate,"operation",{stableControlId:"replay-artifact-load"},"keyboard");
+            assert.equal(keyboard.kind,"keyboard");
+            assert.equal(hasP805NativeActivation(keyboard,"replay-artifact-load"),true);
             assert.equal(keyboard.dispatch.focus.trusted,true);
             assert.equal(keyboard.dispatch.keyDownCount,1);
             assert.equal(keyboard.dispatch.keyUpCount,1);
@@ -786,6 +792,45 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(opened.route,'#/project/'+encodeURIComponent(importedLocation)+'/overview');
             assert.deepEqual(await evaluate('window.keyboardOpenActivations'),[{trusted:true,controlId:importedControlId}]);
             assert.equal(requests.filter((request)=>request.path==='/api/home/projects/open').length,beforeRequests+1);
+        }
+        // The unsaved-work audit uses the generic navigation boundary with
+        // its default transport. It must choose the same retained keyboard
+        // Open even when the Projects card lies outside the pointer viewport.
+        // Stay is a distinct public action: no Open request or route change
+        // may have happened before it completes.
+        for (const [width,height] of [[1440,900],[960,800],[390,844]]) {
+            await cdp.send("Emulation.setDeviceMetricsOverride", {width,height,mobile:width===390,deviceScaleFactor:1});
+            await mountImportedOpen();
+            await evaluate(`(()=>{
+                const original=document.getElementById(${JSON.stringify(importedControlId)});
+                const button=original.cloneNode(true);original.replaceWith(button);
+                window.draft='P805 unsaved';
+                button.addEventListener('click',()=>{
+                    button.disabled=true;
+                    const dialog=document.createElement('dialog');
+                    dialog.innerHTML='<p>You have unsaved changes in Design Game.</p><button type="button" id="design-navigation-guard-stay">Stay</button>';
+                    document.body.append(dialog);dialog.showModal();
+                    dialog.querySelector('button').addEventListener('click',()=>{dialog.close();dialog.remove();button.disabled=false;});
+                });
+                scrollTo(0,0);button.focus({preventScroll:true});
+            })()`);
+            const beforeRequests=requests.filter((request)=>request.path==='/api/home/projects/open').length;
+            const commands=[];
+            const dispatcher={send:async(method,params)=>{commands.push({method,...params});return cdp.send(method,params);}};
+            const openActivation=await activateP805FocusedControl(dispatcher,evaluate,'navigation',{stableControlId:importedControlId});
+            assert.equal(openActivation.kind,'keyboard');
+            assert.equal(hasP805NativeActivation(openActivation,importedControlId),true);
+            assert.deepEqual(commands.map(({method,type,key})=>[method,type,key]),[['Input.dispatchKeyEvent','keyDown',' '],['Input.dispatchKeyEvent','keyUp',' ']]);
+            assert.equal(await evaluate("!!document.querySelector('dialog[open]')"),true);
+            const stayActivation=await activateP805FocusedControl(dispatcher,evaluate,'recovery',{stableControlId:'design-navigation-guard-stay'});
+            assert.equal(stayActivation.kind,'pointer','Stay keeps the generic recovery pointer contract');
+            assert.equal(hasP805NativeActivation(stayActivation,'design-navigation-guard-stay'),true);
+            assert.equal(await evaluate("!!document.querySelector('dialog[open]')"),false);
+            assert.equal(await evaluate('window.draft'),'P805 unsaved');
+            assert.equal(await evaluate('location.hash'),'#/home/projects');
+            assert.equal(await evaluate(`document.getElementById(${JSON.stringify(importedControlId)}).disabled`),false);
+            assert.equal(requests.filter((request)=>request.path==='/api/home/projects/open').length,beforeRequests);
+            assert.equal(await evaluate('window.__p805KeyboardReceipts.size'),0);
         }
         for (const corrupt of [
             (value)=>{value.capturedControlId='project-open:another';},

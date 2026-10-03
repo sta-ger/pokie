@@ -721,6 +721,53 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId, focu
     if (!hasP805NativeActivation(activation, controlId)) fail(`rendered ${controlId} did not receive one native keyboard activation`);
     return activation;
 }
+export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "operation", control, transport = "pointer", retainCapturedControl = false) {
+    const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
+    if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before native activation`);
+    if (transport === "keyboard" || stableControlId.startsWith("project-open:")) {
+        // Open can reflow Projects or display the unsaved-work dialog while
+        // a pointer target is being measured. Every Open caller, including
+        // the draft-protection audit, uses the same retained native keyboard
+        // boundary. Other navigation controls keep their pointer contract.
+        // Replay also replaces its review action during submission.
+        return activateP805KeyboardControl(cdp, evaluate, stableControlId);
+    }
+    // A compact NavLink can remain in the DOM after its drawer has
+    // moved off canvas.  It is not an interactable public control
+    // until its current rendered hit target is inside the viewport.
+    // Re-check that boundary for navigation just as for forms before
+    // issuing the sole browser pointer activation.
+    // Navigation was already exposed through the product's visible
+    // desktop tab or narrow drawer. Scrolling that drawer item again
+    // can move the overlay between focus and pointer dispatch, so
+    // retain the live hit-test but do not mutate its rendered layout.
+    // A form operation can be mounted below a narrow viewport just as
+    // a navigation tab can live in its drawer. Its DOM presence and
+    // focus are not enough: bring the exact public control into the
+    // live hit-test area before its single browser pointer action.
+    // Every operation is a live rendered control, including the
+    // initial Create game button before a project tab has published a
+    // transaction state.  Treating that button as an exception let
+    // CDP press an off-viewport coordinate and record focus without
+    // delivering the product action.  Scroll and hit-test every
+    // public operation at the pointer boundary instead.
+    // The mobile Burger is a real rendered navigation control too.
+    // It must receive the same complete native pointer sequence as
+    // the tab it exposes; omitting `buttons`/`pointerType` lets CDP
+    // focus the Burger while Mantine never receives the click, which
+    // leaves the requested tab off-canvas at the narrow breakpoint.
+    // Recovery has the same visible hit-target requirement as every
+    // other operation. Settle its review layout on the captured node.
+    const requiresViewportHit = ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle);
+    // Preserve the complete native pointer state for every rendered
+    // public operation as well as navigation/preconditions. Mantine's
+    // initial Create game action has no tab transaction attribute;
+    // without `buttons` and `pointerType` its visual focus was
+    // captured but React never received the click that starts the
+    // validation/save/navigation lifecycle.
+    const pointer = await clickP805CapturedControl(cdp, evaluate, stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), !["navigation", "navigation-drawer"].includes(lifecycle), retainCapturedControl);
+    return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
+}
 export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
     const controlId = `project-open:${projectLocation}`;
     const priorRoute = await evaluate("location.hash");
@@ -1547,60 +1594,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await wait(50);
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:" ", code:"Space", windowsVirtualKeyCode:32, nativeVirtualKeyCode:32});
         };
-        // Focus establishes the accessibility receipt, but the public action
-        // itself is a browser-native pointer interaction. Chromium's CDP key
-        // dispatch can focus Mantine NavLink buttons without delivering their
-        // React click default; treating that focus as an activation produced
-        // a route-only claim. Capture the focused visible control and click
-        // its actual rendered hit target instead.
-        const activateFocusedControl = async (lifecycle = "operation", control, transport = "pointer", retainCapturedControl = false) => {
-            const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
-            if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before pointer activation`);
-            if (transport === "keyboard") {
-                // Replay replaces its review action with durable progress in
-                // the same React update that submits it.  On a narrow screen
-                // a CDP pointer release can be retargeted during that update,
-                // leaving a recorded click without the public submission.
-                // Enter is the focused button's native, keyboard-operable
-                // public activation and retains the exact rendered identity.
-                return activateP805KeyboardControl(cdp, evaluate, stableControlId);
-            }
-            // A compact NavLink can remain in the DOM after its drawer has
-            // moved off canvas.  It is not an interactable public control
-            // until its current rendered hit target is inside the viewport.
-            // Re-check that boundary for navigation just as for forms before
-            // issuing the sole browser pointer activation.
-            // Navigation was already exposed through the product's visible
-            // desktop tab or narrow drawer. Scrolling that drawer item again
-            // can move the overlay between focus and pointer dispatch, so
-            // retain the live hit-test but do not mutate its rendered layout.
-            // A form operation can be mounted below a narrow viewport just as
-            // a navigation tab can live in its drawer. Its DOM presence and
-            // focus are not enough: bring the exact public control into the
-            // live hit-test area before its single browser pointer action.
-            // Every operation is a live rendered control, including the
-            // initial Create game button before a project tab has published a
-            // transaction state.  Treating that button as an exception let
-            // CDP press an off-viewport coordinate and record focus without
-            // delivering the product action.  Scroll and hit-test every
-            // public operation at the pointer boundary instead.
-            // The mobile Burger is a real rendered navigation control too.
-            // It must receive the same complete native pointer sequence as
-            // the tab it exposes; omitting `buttons`/`pointerType` lets CDP
-            // focus the Burger while Mantine never receives the click, which
-            // leaves the requested tab off-canvas at the narrow breakpoint.
-            // Recovery has the same visible hit-target requirement as every
-            // other operation. Settle its review layout on the captured node.
-            const requiresViewportHit = ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle);
-            // Preserve the complete native pointer state for every rendered
-            // public operation as well as navigation/preconditions. Mantine's
-            // initial Create game action has no tab transaction attribute;
-            // without `buttons` and `pointerType` its visual focus was
-            // captured but React never received the click that starts the
-            // validation/save/navigation lifecycle.
-            const pointer = await clickCapturedControl(stableControlId, requiresViewportHit, ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle), !["navigation", "navigation-drawer"].includes(lifecycle), retainCapturedControl);
-            return {kind:"pointer", controlId:stableControlId, count:1, ...pointer};
-        };
+        const activateFocusedControl = (...args) => activateP805FocusedControl(cdp, evaluate, ...args);
         const clickCapturedControl = (...args) => clickP805CapturedControl(cdp, evaluate, ...args);
         // A semantic observation is only valid when the browser itself issued
         // the declared request after the rendered control was activated.  Do

@@ -1195,6 +1195,59 @@ describe("ProjectsPanel: Import Project", () => {
         expect(submissions).toEqual([JSON.stringify({projectRoot: location}), JSON.stringify({projectRoot: location})]);
     });
 
+    it("guards keyboard Open before its request, preserves the draft on Stay, then opens once after Leave", async () => {
+        const user = userEvent.setup();
+        const location = "/games/Imported keyboard design.json";
+        const resolvedRoot = "/games/keyboard runtime";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...AUTOMATIC_VALIDATION_ROUTE,
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
+                {location, name: "Imported design", type: "blueprint", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
+            ]}),
+            "/api/home/projects/open": () => ({ok: true, status: 200, body: {context: {mode: "project", projectRoot: resolvedRoot}}}),
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: resolvedRoot, game: {id: "keyboard", name: "Keyboard game", version: "0.1.0"}}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: resolvedRoot, valid: true}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await user.click(screen.getByRole("tab", {name: "Symbols"}));
+        const symbols = within(screen.getByRole("tabpanel"));
+        fireEvent.change(symbols.getByLabelText("New symbol id"), {target: {value: "keyboard-draft"}});
+        await user.click(symbols.getByRole("button", {name: "Add symbol"}));
+        await goToProjects(user);
+        const open = await screen.findByRole("button", {name: "Open"});
+        open.focus();
+        await user.keyboard("[Space]");
+        const dialog = await screen.findByRole("dialog");
+        expect(open).toBeDisabled();
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        const stay = within(dialog).getByRole("button", {name: "Stay"});
+        stay.focus();
+        await user.keyboard("[Space]");
+        await waitFor(() => expect(open).toBeEnabled());
+        expect(document.getElementById(`project-open:${location}`)).toBe(open);
+        expect(router.state.location.pathname).toBe("/home/projects");
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        const startGame = within(screen.getByRole("navigation", {name: "Sections"})).getByRole("button", {name: "Start a game"});
+        await user.click(startGame);
+        await waitFor(() => expect(startGame).toHaveAttribute("aria-current", "page"));
+        expect(within(screen.getByRole("tabpanel")).getByDisplayValue("keyboard-draft")).toBeVisible();
+        await goToProjects(user);
+        await waitFor(() => expect(router.state.location.pathname).toBe("/home/projects"));
+        open.focus();
+        await user.keyboard("[Space]");
+        const leave = within(await screen.findByRole("dialog")).getByRole("button", {name: "Leave"});
+        leave.focus();
+        await user.keyboard("[Space]");
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(resolvedRoot)}/overview`));
+        expect(await screen.findByRole("heading", {name: "Keyboard game"})).toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toEqual([
+            expect.objectContaining({init: expect.objectContaining({body: JSON.stringify({projectRoot: location})})}),
+        ]);
+    });
+
     it("uses the labelled card layout while desktop navigation leaves the Projects panel too narrow for every action", () => {
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
 
