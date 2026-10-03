@@ -77,6 +77,26 @@ export const tupleBootstrapContract = (tuple) => [
     ...(tuple.persona === "mathematician" && tuple.observation === "outcome-library-report-diff-replay" ? P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS.map(({output, command}) => ({kind:"packed-cli-output", purpose:"compound-mathematician-output", publicWorkflow:tuple.observation, output, command})) : []),
 ];
 export const P805_PUBLIC_HELP_ARGUMENTS = [["--help"], ...["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"].map((command) => [command, "--help"]), ...[["certification", "build"], ["certification", "verify"], ["fairness", "seed-commit"], ["fairness", "commit"], ["fairness", "reveal"], ["fairness", "verify"], ["par", "import"], ["par", "export"], ["reel", "generate"]].map((command) => [...command, "--help"])];
+function measureP805PressFeedback(item) {
+    // Mantine's native :active feedback translates by 0.0625rem * scale.
+    // Capture that expected offset before pressing, without changing styles
+    // or expanding the tolerance for unrelated layout/transform changes.
+    const style = getComputedStyle(item);
+    const translateY = parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 * Number(style.getPropertyValue("--mantine-scale"));
+    return item.classList.contains("mantine-active") && style.transform === "none" && item.style.transform === "" && Number.isFinite(translateY) && translateY > 0
+        ? {kind:"mantine-active-translation", translateY} : null;
+}
+function hasP805PressedRegion(event, measured) {
+    const expected = measured?.pressFeedback, observed = event?.pressFeedback, region = event?.region;
+    const close = (left, right) => Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) < 0.01;
+    return ["pointerdown", "pointerup"].includes(event?.eventType)
+        && expected?.kind === "mantine-active-translation" && Number.isFinite(expected.translateY) && expected.translateY > 0
+        && observed?.active === true && observed.classRetained === true && observed.inlineTransformUnchanged === true && observed.is2D === true
+        && Array.isArray(observed.matrix) && observed.matrix.length === 6
+        && observed.matrix.every((value, index) => close(value, [1, 0, 0, 1, 0, expected.translateY][index]))
+        && close(region?.left, measured.region?.left) && close(region?.top - expected.translateY, measured.region?.top)
+        && close(region?.width, measured.region?.width) && close(region?.height, measured.region?.height);
+}
 export function hasP805NativeActivation(activation, controlId) {
     if (activation?.count !== 1 || activation.controlId !== controlId) return false;
     if (activation.kind === "keyboard") return activation.nativeFocus === true && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
@@ -99,7 +119,7 @@ export function hasP805NativeActivation(activation, controlId) {
             && activation.dispatch.eventBindings.every((event, index) => event.eventType === ["pointerdown", "pointerup", "click"][index]
                 && event.trusted === true && event.capturedControlId === controlId && event.captureKey === activation.captureKey
                 && Number.isFinite(event.x) && Number.isFinite(event.y) && Math.abs(event.x - activation.x) < 1 && Math.abs(event.y - activation.y) < 1
-                && event.pointMatchesMeasured === true && event.regionMatchesMeasured === true && event.hitMatchesCapturedControl === true
+                && event.pointMatchesMeasured === true && (event.regionMatchesMeasured === true || event.regionMatchesCapturedPress === true && hasP805PressedRegion(event, activation.hitTest)) && event.hitMatchesCapturedControl === true
                 && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
                 && (event.pathContainsCapturedControl === true && (event.relationship === "captured-control" && event.directTargetMatchesCapturedControl === true
                     || event.relationship === "captured-dispatch-path" && event.directTargetMatchesCapturedControl === false)
@@ -674,7 +694,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
         const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
         const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2,hit=document.elementFromPoint(x,y);
         const matchesCapturedControl=hit===item||item.contains(hit);
-        const capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,x,y,region:{left:box.left,top:box.top,width:box.width,height:box.height},targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl}};
+        const capturedControl={controlId:item.id,preDispatchFocus,hitTest:{capturedControlId:item.id,x,y,region:{left:box.left,top:box.top,width:box.width,height:box.height},pressFeedback:(${measureP805PressFeedback.toString()})(item),targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl}};
         window.__p805CapturedControls??=new Map();window.__p805PointerDispatchReceipts??=new Map();
         // Freeze the original non-interactive dispatch region. A native
         // pointer capture can retarget to this enclosing region; a newly
@@ -697,10 +717,15 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
             const close=(left,right)=>Number.isFinite(left)&&Number.isFinite(right)&&Math.abs(left-right)<1;
             const pointMatchesMeasured=close(event.clientX,measured.x)&&close(event.clientY,measured.y);
             const regionMatchesMeasured=close(box.left,measured.region.left)&&close(box.top,measured.region.top)&&close(box.width,measured.region.width)&&close(box.height,measured.region.height);
+            const region={left:box.left,top:box.top,width:box.width,height:box.height};
+            const transformValue=getComputedStyle(item).transform;
+            const transform=new DOMMatrixReadOnly(transformValue==='none'?undefined:transformValue);
+            const pressFeedback={active:item.matches(':active'),classRetained:item.classList.contains('mantine-active'),inlineTransformUnchanged:item.style.transform==='',is2D:transform.is2D,matrix:[transform.a,transform.b,transform.c,transform.d,transform.e,transform.f]};
+            const regionMatchesCapturedPress=(${hasP805PressedRegion.toString()})({eventType:event.type,region,pressFeedback},measured);
             const hit=document.elementFromPoint(event.clientX,event.clientY),hitMatchesCapturedControl=hit===item||item.contains(hit);
             const capturedControlConnected=item.isConnected,identityPreserved=document.getElementById(${JSON.stringify(stableControlId)})===item,enabled=!item.disabled;
-            const matches=(pathContainsCapturedControl||dispatchRegionAncestor)&&pointMatchesMeasured&&regionMatchesMeasured&&hitMatchesCapturedControl&&capturedControlConnected&&identityPreserved&&enabled;
-            receipt.eventBindings.push({eventType:event.type,trusted:event.isTrusted,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},x:event.clientX,y:event.clientY,targetId:target instanceof HTMLElement?target.id||null:null,targetRole:target instanceof HTMLElement?target.getAttribute('role')||target.tagName.toLowerCase():null,directTargetMatchesCapturedControl:direct,pathContainsCapturedControl,dispatchRegionAncestor,pointMatchesMeasured,regionMatchesMeasured,hitMatchesCapturedControl,capturedControlConnected,identityPreserved,enabled,relationship:matches?(direct?'captured-control':pathContainsCapturedControl?'captured-dispatch-path':'captured-dispatch-region'):'unbound'});
+            const matches=(pathContainsCapturedControl||dispatchRegionAncestor)&&pointMatchesMeasured&&(regionMatchesMeasured||regionMatchesCapturedPress)&&hitMatchesCapturedControl&&capturedControlConnected&&identityPreserved&&enabled;
+            receipt.eventBindings.push({eventType:event.type,trusted:event.isTrusted,capturedControlId:capturedControl.controlId,captureKey:${JSON.stringify(captureKey)},x:event.clientX,y:event.clientY,targetId:target instanceof HTMLElement?target.id||null:null,targetRole:target instanceof HTMLElement?target.getAttribute('role')||target.tagName.toLowerCase():null,directTargetMatchesCapturedControl:direct,pathContainsCapturedControl,dispatchRegionAncestor,pointMatchesMeasured,regionMatchesMeasured,regionMatchesCapturedPress,region,pressFeedback,hitMatchesCapturedControl,capturedControlConnected,identityPreserved,enabled,relationship:matches?(direct?'captured-control':pathContainsCapturedControl?'captured-dispatch-path':'captured-dispatch-region'):'unbound'});
             receipt.eventsTrusted&&=event.isTrusted;
             receipt.targetsMatchCapturedControl&&=matches;
             if(event.type==='pointerup')receipt.pointerUpCount++;
@@ -791,7 +816,7 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                 const box=item.getBoundingClientRect(),x=box.left+box.width/2,y=box.top+box.height/2;
                 const hit=document.elementFromPoint(x,y);
                 const preDispatchFocus={controlId:item.id,native:document.activeElement===item};
-                const hitTest={capturedControlId:item.id,x,y,region:{left:box.left,top:box.top,width:box.width,height:box.height},targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl:hit===item||item.contains(hit)};
+                const hitTest={capturedControlId:item.id,x,y,region:{left:box.left,top:box.top,width:box.width,height:box.height},pressFeedback:(${measureP805PressFeedback.toString()})(item),targetId:hit instanceof HTMLElement?hit.id||null:null,targetRole:hit instanceof HTMLElement?hit.getAttribute('role')||hit.tagName.toLowerCase():null,matchesCapturedControl:hit===item||item.contains(hit)};
                 if(!sameControl()||box.width<=0||box.height<=0||!preDispatchFocus.native||!hitTest.matchesCapturedControl||(${JSON.stringify(requireViewportHit)}&&(box.left<0||box.right>window.innerWidth||box.top<0||box.bottom>window.innerHeight)))return null;
                 // The capture-phase dispatch listener retains this same receipt
                 // object; update its measured boundary without replacing its node.
