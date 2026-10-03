@@ -584,6 +584,7 @@ async function runProductionPointerReflow() {
     const {createServer:createViteServer} = await import('vite');
     const profile = await mkdtemp(path.join(tmpdir(), 'p805-production-pointer-reflow-'));
     const requests = [], jobs = new Map();
+    let dashboardJob, dashboardNextStatus, advanced = false;
     const source = `
         import React,{useEffect,useState} from 'react';
         import {createRoot} from 'react-dom/client';
@@ -591,6 +592,8 @@ async function runProductionPointerReflow() {
         import {ModalsProvider} from '@mantine/modals';
         import '@mantine/core/styles.css';
         import '/cli/studio-client/src/global.css';
+        import {ProjectDashboardPage} from '/cli/studio-client/src/components/project/ProjectDashboardPage.tsx';
+        import {createHashRouter,RouterProvider} from 'react-router-dom';
         import {SimulationTab} from '/cli/studio-client/src/components/project/SimulationTab.tsx';
         import {ReplayTab} from '/cli/studio-client/src/components/project/ReplayTab.tsx';
         import {StudioApiProvider} from '/cli/studio-client/src/context/StudioApiProvider.tsx';
@@ -613,20 +616,37 @@ async function runProductionPointerReflow() {
         }
         window.activations=[];
         document.addEventListener('click',event=>{const item=event.target.closest('button');if(item)window.activations.push({id:item.id,trusted:event.isTrusted});},true);
-        createRoot(document.getElementById('root')).render(h(MantineProvider,null,h(ModalsProvider,null,h(StudioApiProvider,{fetchImpl:fetch},h(Fixture)))));
+        const surface=location.pathname==='/dashboard'
+            ?h(RouterProvider,{router:createHashRouter([{path:'/project/:tab',element:h(ProjectDashboardPage)}])}):h(Fixture);
+        createRoot(document.getElementById('root')).render(h(MantineProvider,null,h(ModalsProvider,null,h(StudioApiProvider,{fetchImpl:fetch},surface))));
     `;
     const server = await createViteServer({configFile:false,root:process.cwd(),cacheDir:path.join(profile,'vite'),server:{host:'127.0.0.1',port:0},plugins:[{
         name:'p805-production-pointer-reflow',resolveId:id=>id==='/reflow.js'?id:undefined,load:id=>id==='/reflow.js'?source:undefined,
         configureServer(vite){vite.middlewares.use((request,response,next)=>{
-            if(request.url==='/reflow'){
+            if(request.url==='/reflow'||request.url==='/dashboard'){
                 response.setHeader('Content-Type','text/html');
                 response.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/reflow.js"></script>');return;
             }
+            if(request.url==='/api/fixture/advance'){advanced=true;response.end('{}');return;}
             if(!request.url.startsWith('/api/project/'))return next();
             let body='';request.on('data',chunk=>{body+=chunk;});request.on('end',()=>{
                 requests.push({method:request.method,path:request.url,body});
                 response.setHeader('Content-Type','application/json');
-                if(request.url==='/api/project/simulations'&&request.method==='POST'){
+                if(dashboardJob){
+                    const common={id:dashboardJob.id,projectId:'/games/a',operation:'simulation',request:{rounds:500000,workers:1},conflictKey:'simulation:/games/a',status:dashboardJob.status,createdAt:1,startedAt:Date.now()-1000,
+                        progress:{stage:'Sampling rounds',current:advanced?123456:0,total:500000,unit:'rounds',...(advanced?{message:'Sampling the next batch of rounds; elapsed time and throughput update while this simulation runs.'}:{})}};
+                    if(request.url==='/api/project/simulations'&&request.method==='POST'){
+                        dashboardJob={...JSON.parse(body),id:'dashboard-'+dashboardNextStatus,status:dashboardNextStatus,startedAt:new Date().toISOString(),roundsCompleted:500000,durationMs:123456,...(dashboardNextStatus==='failed'?{error:'Focused dashboard failure'}:{})};
+                        response.writeHead(202);response.end(JSON.stringify(dashboardJob));
+                    }else if(request.url==='/api/project/context')response.end(JSON.stringify({status:'loaded',projectRoot:'/games/a',game:{id:'a',name:'A',version:'1.0.0'},type:'blueprint',capabilities:['blueprint.build']}));
+                    else if(request.url==='/api/project/jobs')response.end(JSON.stringify({jobs:[common]}));
+                    else if(request.url.startsWith('/api/project/jobs/'))response.end(JSON.stringify(common));
+                    else if(request.url.startsWith('/api/project/simulations/')){
+                        if(request.method==='DELETE')dashboardJob.status='cancelled';
+                        response.end(JSON.stringify({...dashboardJob,roundsCompleted:advanced?123456:0,durationMs:advanced?123456:20}));
+                    }else if(request.url==='/api/project/inspect')response.end(JSON.stringify({packageRoot:'/games/a',valid:true,generated:false}));
+                    else response.end('[]');
+                }else if(request.url==='/api/project/simulations'&&request.method==='POST'){
                     const id=`job-${jobs.size+1}`,status=jobs.size===0?'running':jobs.size===1?'failed':'completed';
                     const job={...JSON.parse(body),id,status,startedAt:new Date().toISOString(),roundsCompleted:0,durationMs:20,...(status==='failed'?{error:'Focused failed run'}:{})};
                     jobs.set(id,job);response.writeHead(202);response.end(JSON.stringify(job));
@@ -752,6 +772,45 @@ async function runProductionPointerReflow() {
         assert.deepEqual(projection.rendered.actions,pages);
         assert.equal(projection.timings.retryMs,Math.max(...pages.map(page=>page.elapsedMs)));
         assert.ok(projection.rendered.actions.every(hasP805LiveDomActivation));
+        accepted.forEach((receipt,index)=>assert.equal(JSON.stringify(receipt),snapshots[index]));
+        // The retained d73e1756 miss happened in the full dashboard, whose
+        // common job cards poll independently of SimulationTab. Exercise both
+        // real polling hooks at the exact narrow pointer-delivery boundary.
+        dashboardJob={id:'dashboard-job',status:'running',rounds:500000,workers:1,startedAt:new Date().toISOString(),roundsCompleted:0,durationMs:20};
+        await cdp.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,mobile:true,deviceScaleFactor:1});
+        await cdp.send('Page.navigate',{url:`http://127.0.0.1:${server.httpServer.address().port}/dashboard#/project/simulation`});
+        await poll(()=>navigationReady("!!document.getElementById('simulation-cancel') && !!document.querySelector('.studio-job-card')"),30_000);
+        const before=await evaluate("({cardHeight:document.querySelector('.studio-job-card').getBoundingClientRect().height})");
+        let measured,delivered;
+        const dispatcher={send:async(method,params)=>{
+            if(method==='Input.dispatchMouseEvent'&&params.type==='mousePressed'){
+                measured=await evaluate("document.getElementById('simulation-cancel').getBoundingClientRect().top");
+                await evaluate("fetch('/api/fixture/advance').then(response=>response.text())");
+                await poll(()=>evaluate("document.querySelector('.studio-job-card').innerText.includes('123456') && document.querySelector('[data-pokie-lifecycle-result=simulation]').innerText.includes('123456')"));
+                delivered=await evaluate("document.getElementById('simulation-cancel').getBoundingClientRect().top");
+            }
+            return cdp.send(method,params);
+        }};
+        const cancel=await activateP805FocusedControl(dispatcher,evaluate,'recovery',{stableControlId:'simulation-cancel'});
+        assert.equal(delivered,measured,'live polling must not move the captured feature action before the native press');
+        assert.equal(hasP805NativeActivation(cancel,'simulation-cancel'),true);
+        assert.ok(await evaluate('document.querySelector(".studio-job-card").getBoundingClientRect().height')>before.cardHeight,'the real common progress card must actually grow');
+        await activate('simulation-cancel-dismiss','precondition');
+        assert.equal(dashboardJob.status,'running','dismissal preserves the active simulation');
+        await activate('simulation-cancel','recovery');
+        await activate('simulation-cancel-confirm','precondition');
+        await poll(()=>evaluate("!!document.getElementById('simulation-retry') && document.querySelector('[data-pokie-lifecycle-result=simulation]').getAttribute('data-pokie-lifecycle-terminal')==='cancelled'"));
+        for(const status of ['failed','completed']){
+            dashboardNextStatus=status;
+            const cursor=cdp.events.length,start=Date.now(),pointer=await activate('simulation-retry','recovery',false,true);
+            await poll(()=>evaluate(`document.querySelector('[data-pokie-lifecycle-result=simulation]').getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(status)}`));
+            const request=await poll(()=>cdp.events.slice(cursor).find(event=>event.method==='Network.requestWillBeSent'&&event.params.request.method==='POST'&&event.params.request.url.endsWith('/api/project/simulations')));
+            const terminal={status,jobId:dashboardJob.id,result:dashboardJob,resultSha256:hash(JSON.stringify(dashboardJob))};
+            const transaction={operation:'simulation-retry',stateClass:'recovery-operation',control:{stableControlId:'simulation-retry'},confirmation:{required:false,state:'not-required'},pointerActivations:[pointer],keyboardActivations:[],requestCount:1,request:{browserRequestId:request.params.requestId,method:'POST',path:'/api/project/simulations'},terminal:{...terminal,causedByRequestId:request.params.requestId}};
+            transaction.postTransitionRenderedState=await poll(()=>observeP805PointerTerminal(evaluate,transaction,terminal));
+            assert.equal(hasP805LiveDomActivation({control:{id:'simulation-retry'},interaction:{activation:'pointer',pointerActivated:true},transaction,request:transaction.request,terminal,elapsedMs:Date.now()-start}),true);
+            if(status==='completed')validateP805RetryTerminalReceipt({operation:'simulation-retry',controlId:'simulation-retry',stateClass:'recovery-operation',transaction});
+        }
         accepted.forEach((receipt,index)=>assert.equal(JSON.stringify(receipt),snapshots[index]));
     } finally {
         cdp?.close();browser?.kill('SIGTERM');if(exited)await exited;
@@ -1770,7 +1829,7 @@ test("native navigation waits for rendered context and Retry retains captured id
         await evaluate("document.documentElement.style.scrollBehavior='auto'");
         await cdp.send("Emulation.setPageScaleFactor", {pageScaleFactor:1});
         await cdp.send("Emulation.clearDeviceMetricsOverride");
-        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region", "active-press", "active-scaled-press", "moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-layout-shift", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"]) {
+        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region", "active-press", "active-scaled-press", "moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-layout-shift", "late-missed-reflow", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
             await cdp.send("Page.navigate", {url});
             await poll(() => evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && typeof window.renderTerminal === 'function'`));
@@ -1786,6 +1845,7 @@ test("native navigation waits for rendered context and Retry retains captured id
                         // snapshot or a same-id replacement cannot be accepted.
                         if (mode === "late-overlay") await evaluate("document.body.insertAdjacentHTML('beforeend','<div style=\"position:fixed;inset:0;z-index:1000\"></div>')");
                         if (mode === "late-replacement") await evaluate("document.getElementById('simulation-retry').replaceWith(document.getElementById('simulation-retry').cloneNode(true))");
+                        if (mode === "late-missed-reflow") await evaluate("document.getElementById('simulation-retry').style.marginTop='34px'");
                         if (mode === "late-layout-shift") await evaluate("document.getElementById('simulation-retry').style.marginTop='2px'");
                         if (mode === "late-transform-shift") await evaluate("document.getElementById('simulation-retry').style.transform='translateY(2px)'");
                         if (mode === "late-feedback-scale") await evaluate("document.documentElement.style.setProperty('--mantine-scale','2')");
@@ -1807,9 +1867,22 @@ test("native navigation waits for rendered context and Retry retains captured id
             // preserve that sibling caller as well as the Retry configuration.
             const fullPointerState = mode !== "confirmation-pointer";
             const click = () => clickP805CapturedControl(dispatcher, evaluate, "simulation-retry", fullPointerState, fullPointerState, fullPointerState, true);
-            if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"].includes(mode)) {
-                const afterMeasurement = ["late-overlay", "late-replacement", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events"].includes(mode);
-                await assert.rejects(click(), mode === "dispatch-failed" ? /native pointer dispatch rejected/ : afterMeasurement ? /lost native focus or its captured hit target at pointer dispatch/ : /changed its captured identity, native focus, or hit target/);
+            if (["moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-missed-reflow", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"].includes(mode)) {
+                const afterMeasurement = ["late-overlay", "late-replacement", "late-missed-reflow", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events"].includes(mode);
+                await assert.rejects(click(), mode === "late-missed-reflow" ? (error) => {
+                    const receipt=JSON.parse(error.message.split('; captured boundary: ')[1]);
+                    assert.equal(receipt.preDispatchFocus.native,true);
+                    assert.equal(hasP805NativeActivation(receipt,'simulation-retry'),false);
+                    for(const event of receipt.dispatch.eventBindings){
+                        assert.equal(event.reflow.kind,'same-node-delivery-reflow');
+                        assert.equal(event.capturedControlConnected,true);
+                        assert.equal(event.identityPreserved,true);
+                        assert.equal(event.pathContainsCapturedControl,false);
+                        assert.equal(event.hitMatchesCapturedControl,false);
+                        assert.equal(event.relationship,'unbound');
+                    }
+                    return true;
+                } : mode === "dispatch-failed" ? /native pointer dispatch rejected/ : afterMeasurement ? /lost native focus or its captured hit target at pointer dispatch/ : /changed its captured identity, native focus, or hit target/);
                 const expectedActivations = mode === "duplicate-activation" ? 2 : ["synthetic-events", "late-transform-shift", "late-feedback-scale"].includes(mode) ? 1 : 0;
                 assert.deepEqual(await evaluate("window.activations"), Array.from({length:expectedActivations}, () => ({trusted:true, controlId:"simulation-retry"})));
                 assert.equal(JSON.stringify(importedOpen), acceptedOpenBytes, "a later rejected tuple cannot alter an accepted capture");

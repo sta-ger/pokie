@@ -1301,18 +1301,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     >
                         {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "loading" ? `Opening ${activeTabLabel}…` : `${activeTabLabel} ready`}
                     </Text>
-                    {visibleCommonJobs.length > 0 && (
-                        <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
-                            <Title id="studio-operations-heading" order={3}>Studio operations</Title>
-                            <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) =>
-                                job.status === "queued" || job.status === "running" || job.status === "cancelling"
-                                    ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                                    : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
-                            )}
-                        </Stack>
-                    )}
-                    {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
                             <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />
@@ -1471,6 +1459,21 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                         </>
                     )}
+                    {/* Polling job details belong after the active workflow so
+                        progress, throughput and retained terminals cannot move
+                        its controls while a user presses them. */}
+                    {visibleCommonJobs.length > 0 && (
+                        <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
+                            <Title id="studio-operations-heading" order={3}>Studio operations</Title>
+                            <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
+                            {visibleCommonJobs.map((job) =>
+                                job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                                    ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
+                                    : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
+                            )}
+                        </Stack>
+                    )}
+                    {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                 </div>
             )}
         </AppShellLayout>

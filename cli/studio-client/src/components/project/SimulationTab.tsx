@@ -209,44 +209,6 @@ export function SimulationTab({
 
     return (
         <div>
-            {/*
-             * This status is deliberately outside the Run step.  A completed
-             * simulation advances straight to Review, but its operation
-             * receipt must remain rendered there so assistive technology (and
-             * users returning to the result) can still tell which request
-             * reached which terminal state.  The stable lifecycle attributes
-             * are product UI, not audit-only data: they bind the visible
-             * progress/result to the Run Simulation control's operation.
-             */}
-            {(progress !== undefined || terminalReceipt !== undefined) && (
-                <div
-                    tabIndex={-1}
-                    data-pokie-lifecycle-result="simulation"
-                    data-pokie-lifecycle-result-control={resultControlId}
-                    data-pokie-lifecycle-result-operation={receiptOperation}
-                    data-pokie-lifecycle-result-state={resultState}
-                    data-pokie-lifecycle-result-job={resultJobId}
-                    data-pokie-lifecycle-terminal={resultStatus}
-                    data-pokie-lifecycle-result-receipt={terminalReceipt === undefined ? "progress" : "durable-terminal"}
-                    data-pokie-lifecycle-result-durable-job={terminalReceipt?.jobId}
-                    data-pokie-lifecycle-result-captured-job={terminalReceipt?.capturedJobId}
-                    data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
-                    data-pokie-lifecycle-result-request-id={terminalReceipt?.requestId}
-                    data-pokie-lifecycle-result-recovery={terminalReceipt?.recoveredAfterRestart === true ? "restart-reconciled" : undefined}
-                    data-pokie-lifecycle-result-executor={terminalReceipt?.recoveredAfterRestart === true ? "unavailable-after-restart" : undefined}
-                >
-                    <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
-                        {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
-                        {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
-                        {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
-                    </Text>
-                    {resultStatus === "completed" && (
-                        <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
-                            Open completed simulation report
-                        </Button>
-                    )}
-                </div>
-            )}
             {!exportReachable && (
                 <Text id="simulation-export-unavailable" size="xs" c="dimmed" mb={4}>
                     Export becomes available after a completed simulation report is ready.
@@ -462,6 +424,47 @@ export function SimulationTab({
                                 Download HTML
                             </Anchor>
                         </QuickActions>
+                    )}
+                </div>
+            )}
+
+            {/*
+             * This status stays outside the Run step and below its controls.  A completed
+             * simulation advances straight to Review, but its operation
+             * receipt must remain rendered there so assistive technology (and
+             * users returning to the result) can still tell which request
+             * reached which terminal state.  The stable lifecycle attributes
+             * are product UI, not audit-only data: they bind the visible
+             * progress/result to the Run Simulation control's operation.
+             * Polling counters may wrap on phones; keeping them below the
+             * workflow prevents them from moving Cancel beneath a pointer.
+             */}
+            {(progress !== undefined || terminalReceipt !== undefined) && (
+                <div
+                    tabIndex={-1}
+                    data-pokie-lifecycle-result="simulation"
+                    data-pokie-lifecycle-result-control={resultControlId}
+                    data-pokie-lifecycle-result-operation={receiptOperation}
+                    data-pokie-lifecycle-result-state={resultState}
+                    data-pokie-lifecycle-result-job={resultJobId}
+                    data-pokie-lifecycle-terminal={resultStatus}
+                    data-pokie-lifecycle-result-receipt={terminalReceipt === undefined ? "progress" : "durable-terminal"}
+                    data-pokie-lifecycle-result-durable-job={terminalReceipt?.jobId}
+                    data-pokie-lifecycle-result-captured-job={terminalReceipt?.capturedJobId}
+                    data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
+                    data-pokie-lifecycle-result-request-id={terminalReceipt?.requestId}
+                    data-pokie-lifecycle-result-recovery={terminalReceipt?.recoveredAfterRestart === true ? "restart-reconciled" : undefined}
+                    data-pokie-lifecycle-result-executor={terminalReceipt?.recoveredAfterRestart === true ? "unavailable-after-restart" : undefined}
+                >
+                    <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
+                        {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
+                        {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
+                        {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
+                    </Text>
+                    {resultStatus === "completed" && (
+                        <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
+                            Open completed simulation report
+                        </Button>
                     )}
                 </div>
             )}
