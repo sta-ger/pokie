@@ -641,6 +641,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             button.innerHTML='<span>Open</span>';
             const spacer=document.createElement('div');spacer.style.height='1800px';
             const table=document.createElement('table'),cell=table.insertRow().insertCell();cell.append(button);
+            table.style.marginLeft='220px';
             panel.append(spacer,table);document.body.append(panel);
             document.documentElement.style.scrollBehavior='smooth';
             button.addEventListener('mouseover',()=>{
@@ -657,8 +658,59 @@ test("native navigation waits for rendered context and Retry retains captured id
                 location.hash='#/project/imported/overview';button.remove();
             });
         })()`);
-        const importedOpen = await clickP805CapturedControl(cdp, evaluate, importedControlId, true, true, true, true);
+        // Mobile focus/scroll can pan the visual viewport independently of
+        // the layout viewport. CDP consumes visual coordinates, while native
+        // event.clientY and getBoundingClientRect retain layout coordinates.
+        await cdp.send("Emulation.setPageScaleFactor", {pageScaleFactor:2});
+        const importedMouseCommands = [];
+        const importedOpen = await clickP805CapturedControl({send:async (method, params) => {
+            if (method === "Input.dispatchMouseEvent") importedMouseCommands.push(params);
+            return cdp.send(method, params);
+        }}, evaluate, importedControlId, true, true, true, true);
         const acceptedOpenBytes = JSON.stringify(importedOpen);
+        const importedActivation = {kind:"pointer", count:1, controlId:importedControlId, ...importedOpen};
+        assert.equal(hasP805NativeActivation(importedActivation, importedControlId), true);
+        assert.equal(importedOpen.dispatch.bindingVersion, 2);
+        assert.equal(importedOpen.hitTest.visualViewport.scale, 2);
+        assert.ok(importedOpen.hitTest.visualViewport.offsetLeft > 0);
+        assert.ok(importedOpen.hitTest.visualViewport.offsetTop > 0);
+        assert.equal(importedOpen.dispatchPoint.x, importedOpen.x - importedOpen.hitTest.visualViewport.offsetLeft);
+        assert.equal(importedOpen.dispatchPoint.y, importedOpen.y - importedOpen.hitTest.visualViewport.offsetTop);
+        for (const command of importedMouseCommands.slice(-3)) {
+            assert.equal(command.x, importedOpen.dispatchPoint.x);
+            assert.equal(command.y, importedOpen.dispatchPoint.y);
+        }
+        assert.deepEqual(importedMouseCommands.slice(-3).map((command) => command.type), ["mouseMoved", "mousePressed", "mouseReleased"]);
+        for (const binding of importedOpen.dispatch.eventBindings) {
+            assert.equal(binding.pointMatchesMeasured, true);
+            assert.equal(binding.viewportMatchesMeasured, true);
+            assert.deepEqual(binding.visualViewport, importedOpen.hitTest.visualViewport);
+            assert.ok(Math.abs(binding.x - importedOpen.x) < 1);
+            assert.ok(Math.abs(binding.y - importedOpen.y) < 1);
+        }
+        for (const corrupt of [
+            (value) => { value.dispatchPoint.y += 1; },
+            (value) => { delete value.dispatchPoint; },
+            (value) => { value.hitTest.visualViewport.offsetLeft += 1; },
+            (value) => { value.dispatch.eventBindings[0].visualViewport.offsetTop += 1; },
+            (value) => { value.dispatch.eventBindings[1].visualViewport.scale += 1; },
+            (value) => { value.dispatch.eventBindings[2].viewportMatchesMeasured = false; },
+            (value) => { delete value.dispatch.eventBindings[0].visualViewport; },
+            (value) => { delete value.dispatchPoint; delete value.hitTest.visualViewport; },
+        ]) {
+            const invalid = structuredClone(importedActivation);
+            corrupt(invalid);
+            assert.equal(hasP805NativeActivation(invalid, importedControlId), false, "visual coordinate receipts require the measured origin and native event bindings");
+        }
+        const legacyActivation = structuredClone(importedActivation);
+        legacyActivation.dispatch.bindingVersion = 1;
+        delete legacyActivation.dispatchPoint;
+        delete legacyActivation.hitTest.visualViewport;
+        for (const binding of legacyActivation.dispatch.eventBindings) {
+            delete binding.visualViewport;
+            delete binding.viewportMatchesMeasured;
+        }
+        assert.equal(hasP805NativeActivation(legacyActivation, importedControlId), true, "accepted layout-coordinate receipts remain readable without rewriting history");
         assert.equal(importedOpen.capturedControlId, importedControlId);
         assert.equal(importedOpen.preDispatchFocus.native, true);
         assert.equal(importedOpen.hitTest.matchesCapturedControl, true);
@@ -668,6 +720,7 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.deepEqual(await evaluate("window.importedOpenActivations"), [{trusted:true, controlId:importedControlId}]);
         assert.equal(await evaluate("location.hash"), '#/project/imported/overview');
         await evaluate("document.documentElement.style.scrollBehavior='auto'");
+        await cdp.send("Emulation.setPageScaleFactor", {pageScaleFactor:1});
         await cdp.send("Emulation.clearDeviceMetricsOverride");
         for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "detached-dispatch-label", "retargeted-dispatch-region", "active-press", "active-scaled-press", "moving-obstructed", "changed-hit", "changed-node", "disabled", "lost-focus", "late-overlay", "late-replacement", "late-layout-shift", "late-transform-shift", "late-feedback-scale", "stale-coordinate", "duplicate-activation", "synthetic-events", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
