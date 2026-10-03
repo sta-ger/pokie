@@ -3218,13 +3218,13 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const item = document.getElementById(${JSON.stringify(editedControl.stableControlId)});
             return item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement ? item.value.includes('P805 unsaved') ? item.getAttribute('aria-label') || [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(' ') || item.name || 'Design Game field' : false : false;
         })()`), "rendered unsaved Design Game input");
-        const projects = await waitFor(async () => {
-            const control = await focusLifecycleControl("navigation", "projects", "button,a");
-            return control?.keyboardFocused ? control : false;
-        }, "rendered Projects navigation control");
-        if (!projects?.keyboardFocused || !projects.stableControlId || !projects.accessibleName) fail("Studio did not expose a Projects navigation control for unsaved-work protection");
-        await activateFocusedControl("navigation", projects);
-        await waitFor(() => evaluate("location.hash === '#/home/projects' && document.body.innerText.includes('Projects')"), "rendered Projects navigation");
+        // Selecting Design closes the phone drawer. Its retained Projects
+        // button is then inert, so DOM presence cannot authorize focus or an
+        // activation. Reopen and settle the same product disclosure before
+        // capturing Projects, just as for every other public tab transition.
+        const projectsNavigation = await navigateHome("projects", "unsaved-work Projects");
+        if (projectsNavigation?.control?.stableControlId !== "home-tab:projects" || projectsNavigation.control.accessibleName !== "Projects"
+            || !hasP805NativeActivation(projectsNavigation.activation, "home-tab:projects")) fail("Studio did not activate the visible Projects navigation control for unsaved-work protection");
         const recoveryBefore = await evaluate("location.hash");
         // Projects is still inside Home, so it correctly does not prompt for
         // a Design Game draft. Opening a project is the actual public exit
@@ -3253,7 +3253,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // endpoint and falsely make the cancelled transition look unsafe.
         const cancelledProjectOpenRequestCount = cdp.events.slice(cancelledProjectOpenCursor)
             .filter((event) => event.method === "Network.requestWillBeSent" && new URL(event.params.request.url).pathname === "/api/home/projects/open").length;
-        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, input:{kind:"native-text", text:" P805 unsaved", value:await evaluate(`document.getElementById(${JSON.stringify(editedControl.stableControlId)})?.value`)}}, navigationControl:{...openProject, activation:openProjectActivation}, cancelControl:{...cancelUnsaved, activation:stayActivation}, protectionText, preserved:routeAfterStay === recoveryBefore};
+        const unsavedWork = {editedControl:dirtyInput, editControl:{...editedControl, input:{kind:"native-text", text:" P805 unsaved", value:await evaluate(`document.getElementById(${JSON.stringify(editedControl.stableControlId)})?.value`)}}, projectsNavigation, navigationControl:{...openProject, activation:openProjectActivation}, cancelControl:{...cancelUnsaved, activation:stayActivation}, protectionText, preserved:routeAfterStay === recoveryBefore};
         const staleCursor = cdp.events.length;
         const startGameNavigation = await navigateHome("design", "project-switch source");
         if (!startGameNavigation || startGameNavigation.control?.stableControlId !== "home-tab:design" || startGameNavigation.control?.accessibleName !== "Start a game" || startGameNavigation.activation?.kind !== "pointer") fail("Studio did not activate the live visible Start a game control through one native pointer interaction");

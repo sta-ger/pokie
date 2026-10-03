@@ -175,12 +175,13 @@ async function runProductionDrawerRecovery() {
         import {createHashRouter,RouterProvider} from 'react-router-dom';
         const h=React.createElement;
         const noop=()=>{};
-        const fetchImpl=async(url)=>new Response(JSON.stringify(
-            url.startsWith('/api/home/projects/registry')?[]:
+        window.fixtureRequests=[];
+        const fetchImpl=async(url)=>{window.fixtureRequests.push(url);return new Response(JSON.stringify(
+            url.startsWith('/api/home/projects/registry')?[{location:'/games/source',name:'Source game',type:'tsPackage',capabilities:[],origin:'managed',lastOpenedAt:'2026-01-01T00:00:00.000Z',status:'ok'}]:
             url.startsWith('/api/home/jobs')?{jobs:[]}:
             url==='/api/home/blueprints/validate'?{status:'ok',warnings:[]}:
             {status:'unavailable',reason:'Focused drawer fixture'}
-        ),{headers:{'Content-Type':'application/json'}});
+        ),{headers:{'Content-Type':'application/json'}});};
         function HomeReturn(){
             const [router]=useState(()=>createHashRouter([{path:'/home/:tab',element:h(HomePage)}]));
             return h(StudioApiProvider,{fetchImpl},h(ModalsProvider,null,h(RouterProvider,{router})));
@@ -297,9 +298,51 @@ async function runProductionDrawerRecovery() {
         assert.equal(proof.target.connected && proof.target.enabled && proof.target.viewportVisible && proof.target.hit,true);
         assert.deepEqual(proof.target.visualViewport,design.activation.hitTest.visualViewport);
         assert.deepEqual(proof.target.region,design.activation.hitTest.region);
-        await navigateP805RenderedControl(cdp,evaluate,'projects','#/home/projects','unsaved-work Projects');
+        const draft=await poll(()=>evaluate(`(()=>{
+            const item=[...document.querySelectorAll('input')].find(candidate=>candidate.labels&&[...candidate.labels].some(label=>label.textContent.trim()==='Game name'));
+            if(!item || item.getClientRects().length===0 || item.disabled)return false;
+            item.scrollIntoView({block:'center',inline:'nearest'});item.focus({preventScroll:true});
+            window.dirtyGameName=item;
+            return document.activeElement===item?{id:item.id,value:item.value}:false;
+        })()`));
+        await cdp.send('Input.insertText',{text:' P805 unsaved'});
+        const dirtyValue=draft.value+' P805 unsaved';
+        await poll(()=>evaluate(`window.dirtyGameName.value===${JSON.stringify(dirtyValue)}`));
+        // Reproduce the retained machine finding: Design closes the drawer,
+        // so its DOM-present Projects button cannot receive native focus.
+        assert.equal(await evaluate("document.getElementById('studio-navigation-panel').inert"),true);
+        assert.equal(await evaluate("(()=>{const item=document.getElementById('home-tab:projects');item.focus({preventScroll:true});return document.activeElement===item;})()"),false);
+        const projectCommands=[];
+        const projectDispatcher={send:async(method,params)=>{projectCommands.push({method,...params});return cdp.send(method,params);}};
+        const projects=await navigateP805RenderedControl(projectDispatcher,evaluate,'projects','#/home/projects','unsaved-work Projects');
+        assert.equal(projects.routeBefore,'#/home/design');
+        assert.equal(projects.routeAfter,'#/home/projects');
+        assert.equal(projects.control.stableControlId,'home-tab:projects');
+        assert.equal(projects.control.accessibleName,'Projects');
+        assert.equal(hasP805NativeActivation(projects.control.navigationDisclosure,'studio-navigation-toggle'),true);
+        assert.equal(projects.control.navigationDisclosureState.before.closed,true);
+        assert.equal(projects.control.navigationDisclosureState.settled.settled,true);
+        assert.equal(projects.control.navigationDisclosureState.target.controlId,'home-tab:projects');
+        assert.equal(projects.control.navigationDisclosureState.target.viewportVisible && projects.control.navigationDisclosureState.target.hit,true);
+        assert.equal(hasP805NativeActivation(projects.activation,'home-tab:projects'),true);
+        assert.deepEqual(projectCommands.filter(({method})=>method==='Input.dispatchKeyEvent').map(({type})=>type),['keyDown','keyUp']);
+        assert.deepEqual(projectCommands.filter(({method,type})=>method==='Input.dispatchMouseEvent' && ['mousePressed','mouseReleased'].includes(type)).map(({type})=>type),['mousePressed','mouseReleased']);
+        assert.equal(await evaluate("window.activations.filter(value=>value.id==='home-tab:projects').length"),1);
         assert.equal(await evaluate("document.getElementById('home-tab:projects').getAttribute('aria-current')"),'page');
         assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"),'false');
+        assert.equal(await evaluate(`document.getElementById(${JSON.stringify(draft.id)})===window.dirtyGameName && window.dirtyGameName.value===${JSON.stringify(dirtyValue)}`),true);
+        assert.equal(await evaluate("document.getElementById('home-design-panel').getClientRects().length"),0);
+        assert.equal(await evaluate("document.getElementById('home-projects-panel').getClientRects().length>0"),true);
+        const open=await poll(()=>evaluate("(()=>{const item=document.querySelector('[data-pokie-project-location=\"/games/source\"]');if(!item||item.disabled)return false;item.scrollIntoView({block:'center',inline:'nearest'});item.focus({preventScroll:true});return document.activeElement===item?{stableControlId:item.id}:false;})()"));
+        const openActivation=await activateP805FocusedControl(cdp,evaluate,'navigation',open);
+        assert.equal(hasP805NativeActivation(openActivation,open.stableControlId),true);
+        await poll(()=>evaluate("document.body.innerText.includes('You have unsaved changes in Design Game. Leave and lose them?')"));
+        const stay=await poll(()=>evaluate("(()=>{const item=document.getElementById('design-navigation-guard-stay');return item&&!item.disabled&&item.textContent.trim()==='Stay'?{stableControlId:item.id}:false;})()"));
+        const stayActivation=await activateP805FocusedControl(cdp,evaluate,'recovery',stay);
+        assert.equal(hasP805NativeActivation(stayActivation,'design-navigation-guard-stay'),true);
+        await poll(()=>evaluate("!document.getElementById('design-navigation-guard-stay')"));
+        assert.equal(await evaluate('location.hash'),'#/home/projects');
+        assert.equal(await evaluate("window.fixtureRequests.filter(url=>url==='/api/home/projects/open').length"),0);
         // Expansion is a requested product state, not completed execution.
         // Start a real panel transition after native opening and observe it
         // without toggling the already expanded drawer a second time.
@@ -317,6 +360,7 @@ async function runProductionDrawerRecovery() {
         assert.equal(expandedDesign.control.navigationDisclosureState.settled.moving,false);
         assert.equal(expandedDesign.control.navigationDisclosureState.target.controlId,'home-tab:design');
         assert.equal(expandedDesign.routeAfter,'#/home/design');
+        assert.equal(await evaluate(`document.getElementById(${JSON.stringify(draft.id)})===window.dirtyGameName && window.dirtyGameName.value===${JSON.stringify(dirtyValue)}`),true,'Stay and the native Home tab return preserve the same edited draft');
         assert.equal(hasP805NativeActivation(expandedDesign.activation,'home-tab:design'),true);
         assert.equal(commands.filter(({method})=>method==='Input.dispatchKeyEvent').length,0);
         assert.deepEqual(commands.filter(({method,type})=>method==='Input.dispatchMouseEvent' && ['mousePressed','mouseReleased'].includes(type)).map(({type})=>type),['mousePressed','mouseReleased']);
@@ -330,7 +374,7 @@ async function runProductionDrawerRecovery() {
     }
 }
 
-test("the production phone drawer returns from native Replay Artifact recovery to cooperative cancellation", () => {
+test("the production phone drawer returns from Replay recovery through Design, dirty-draft Projects and Stay", () => {
     // Vite's native resolver needs Node's own RegExp realm, rather than Jest's
     // VM realm. The child owns and drains this one focused browser/server.
     try {execFileSync(process.execPath,["--input-type=module","-e",`

@@ -104,7 +104,7 @@ describe("AppShellLayout - mobile navigation", () => {
         }
     });
 
-    it("keeps a closed phone panel inert through the compound workflow's Home Design return", async () => {
+    it("reopens the closed phone panel for Projects after editing the compound workflow's retained Home Design draft", async () => {
         const previous = Reflect.getOwnPropertyDescriptor(window, "matchMedia");
         Reflect.defineProperty(window, "matchMedia", {configurable: true, value: (query: string) => ({
             matches: query === "(max-width: 48em)", media: query,
@@ -114,6 +114,7 @@ describe("AppShellLayout - mobile navigation", () => {
         function HomeReturn() {
             const [home, setHome] = useState(false);
             const [active, setActive] = useState("simulation");
+            const [draft, setDraft] = useState("Starter game");
             return <AppShellLayout key={home ? "home" : "project"}
                 breadcrumbs={home ? [] : [{label: "Your projects", onClick: () => {
                     setHome(true);
@@ -130,6 +131,9 @@ describe("AppShellLayout - mobile navigation", () => {
                     setActive(value);
                 }} />}>
                 <p role="status">{active} terminal result</p>
+                {home && <label style={{display: active === "design" ? undefined : "none"}}>
+                    Game name <input value={draft} onChange={(event) => setDraft(event.target.value)} />
+                </label>}
             </AppShellLayout>;
         }
         try {
@@ -166,6 +170,31 @@ describe("AppShellLayout - mobile navigation", () => {
             expect(panel).toHaveAttribute("inert");
             expect(burger).toHaveAttribute("aria-expanded", "false");
             expect(document.activeElement).toBe(burger);
+            const draft = screen.getByRole("textbox", {name: "Game name"});
+            await user.type(draft, " P805 unsaved");
+            expect(draft).toHaveValue("Starter game P805 unsaved");
+            expect(panel).toHaveAttribute("inert");
+            for (const label of ["Projects", "Start a game"]) {
+                burger.focus();
+                await user.keyboard("[Space]");
+                expect(burger).toHaveAttribute("aria-expanded", "true");
+                expect(panel).not.toHaveAttribute("inert");
+                const tab = screen.getByRole("button", {name: label});
+                expect(panel).toContainElement(tab);
+                expect(tab).toBeEnabled();
+                await user.click(tab);
+                expect(burger).toHaveAttribute("aria-expanded", "false");
+                expect(panel).toHaveAttribute("inert");
+                expect(document.activeElement).toBe(burger);
+                expect(draft).toHaveValue("Starter game P805 unsaved");
+                if (label === "Projects") {
+                    expect(screen.getByRole("status")).toHaveTextContent("projects terminal result");
+                    expect(draft).not.toBeVisible();
+                }
+            }
+            expect(screen.getByRole("textbox", {name: "Game name"})).toBe(draft);
+            expect(screen.getByRole("status")).toHaveTextContent("design terminal result");
+            expect(selections.mock.calls).toEqual([["replay"], ["simulation"], ["design"], ["projects"], ["design"]]);
         } finally {
             if (previous) Reflect.defineProperty(window, "matchMedia", previous);
             else Reflect.deleteProperty(window, "matchMedia");
