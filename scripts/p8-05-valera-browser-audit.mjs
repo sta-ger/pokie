@@ -268,6 +268,17 @@ export function validateP805HomeProjectSwitchReceipt(receipt) {
 // A server restart has no executor to poll to completion.  Its terminal is
 // therefore valid only when the original rendered submission, durable job,
 // newly rendered recovery result, and the owned server drain all agree.
+/** Keep restart-list provenance separate from the interrupted native submission. */
+export function captureP805RestartRecoveryResponse(jobs, jobId) {
+    const response = jobs?.event?.params?.response;
+    const records = Array.isArray(jobs?.payload) ? jobs.payload : jobs?.payload?.jobs;
+    const matches = records?.filter((job) => job?.id === jobId);
+    if (typeof jobs?.event?.params?.requestId !== "string" || !jobs.event.params.requestId
+        || response?.status !== 200 || !response.url?.endsWith("/api/project/jobs")
+        || matches?.length !== 1 || matches[0].status !== "recovery-required" || matches[0].operation !== "simulation") fail("restart recovery lacks its captured durable jobs-list response");
+    return {browserRequestId:jobs.event.params.requestId, method:"GET", path:"/api/project/jobs", status:response.status,
+        responseSha256:digest(JSON.stringify(jobs.payload)), jobSha256:digest(JSON.stringify(matches[0]))};
+}
 export function validateP805RestartRecoveryTerminalReceipt(receipt) {
     const transaction = receipt?.transaction, terminal = receipt?.terminal, rendered = receipt?.rendered, replacement = rendered?.postRestartReplacementState, drain = receipt?.ownedProcessDrain, priorStudio = receipt?.priorStudio ?? drain?.priorStudioShutdown, preLossJob = priorStudio?.durableJobBeforeLoss, postLossJob = priorStudio?.durableJob;
     const pointer = transaction?.pointerActivations?.[0];
@@ -3369,6 +3380,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         if (JSON.stringify(restartTerminal.request) !== JSON.stringify(preCrashJob.request)) fail("Studio restart recovery did not retain the captured durable simulation request");
         restartReceipt.terminal.operation = restartTerminal.operation;
         restartReceipt.terminal.request = restartTerminal.request;
+        restartReceipt.recoveryResponse = captureP805RestartRecoveryResponse(restartJobs, restartJob.payload.id);
         // Preserve the abrupt-loss receipt as an explicit nested shutdown
         // record.  The terminal validator deliberately distinguishes the
         // prior service's signal boundary from the post-restart process drain;

@@ -8,13 +8,65 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {P805_WORKFLOW_CONTRACTS, P805_SCREEN_CONTROL_STATES, hasP805SharedNavigationContext, p805TerminalResponseStatus, p805WorkflowActionLabel, validateP805LiveDomTransaction} from "../../scripts/p8-05-product-readiness-campaign.mjs";
+import {P805_WORKFLOW_CONTRACTS, P805_SCREEN_CONTROL_STATES, hasP805SharedNavigationContext, p805TerminalResponseStatus, p805WorkflowActionLabel, validateP805LiveDomTransaction, validateP805RuntimeRecoveryEvidence} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {projectP805PersonaAudit} from "../../scripts/p8-05-persona-projection.mjs";
-import {recordP805RenderedApiResponse} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {captureP805RestartRecoveryResponse, recordP805RenderedApiResponse} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {navigateP805RenderedControl, openP805ImportedProject, validateP805ImportedProjectOpen, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
+
+
+test("retained cancellation, Retry and interrupted restart sequence reaches campaign recovery validation", async () => {
+    const captured = JSON.parse(await readFile(new URL("./fixtures/p805-retained-restart-recovery.json", import.meta.url), "utf8"));
+    const {runtime, audit, api, browser} = captured;
+    audit.rendered.jobs.retryWithoutPartialArtifacts.receipt.transaction = runtime.value.transactions.simulationRetry;
+    audit.rendered.jobs.restartRecovery.receipt.transaction = runtime.value.transactions.restartSimulation;
+    const restartReceipt = audit.rendered.jobs.restartRecovery.receipt;
+    const restartApi = api.find((entry) => entry.initiator === "rendered-restart");
+    const response = browser.find((event) => event.method === "Network.responseReceived" && event.params.requestId === restartApi.browserRequestId);
+    // Run the production producer on the retained, real post-restart response.
+    restartReceipt.recoveryResponse = captureP805RestartRecoveryResponse({event:response, payload:restartApi.payload}, runtime.value.restart.activeJobId);
+    runtime.value.restart.receipt = {...restartReceipt, evidence:{screenshotEvidenceId:restartReceipt.evidence.screenshotEvidenceId}};
+    const evidence = new Map(captured.screenshots.map((evidenceId) => [evidenceId, {item:{kind:"screenshot"}}]));
+    assert.equal(runtime.value.transactions.restartSimulation.terminal, undefined, "the lost executor never returned a simulation poll terminal");
+    assert.equal(runtime.value.restart.terminal.status, "recovery-required");
+    assert.equal(runtime.value.jobs.cooperativeCancellation.status, "cancelled");
+    assert.equal(runtime.value.jobs.retryWithoutPartialArtifacts.status, "completed");
+    assert.doesNotThrow(() => validateP805RuntimeRecoveryEvidence(runtime, audit, api, browser, evidence, captured.origin.auditId));
+    const before = JSON.stringify({runtime, audit, api, browser});
+    for (const mutate of [
+        value => {value.runtime.value.transactions.simulationRetry.pointerActivations[0].dispatch.clickCount = 2;},
+        value => {value.runtime.value.transactions.cooperativeCancellation.confirmation.activation.dispatch.eventsTrusted = false;},
+        value => {delete value.runtime.value.transactions.activeReloadStart.terminal;},
+        value => {value.runtime.value.restart.terminal.status = "completed";},
+        value => {value.runtime.value.restart.activeJobId = "foreign-job";},
+        value => {value.audit.rendered.jobs.restartRecovery.receipt.terminal.causedByRequestId = "foreign-submission";},
+        value => {value.audit.rendered.jobs.restartRecovery.receipt.ownedProcessDrain.priorStudioShutdown.durableJob.terminal = true;},
+        value => {value.audit.rendered.jobs.restartRecovery.receipt.rendered.resultExecutor = "available";},
+        value => {value.audit.rendered.jobs.restartRecovery.receipt.recoveryResponse.browserRequestId = "foreign-list";},
+        value => {value.api.find(entry => entry.initiator === "rendered-restart").payload = [];},
+        value => {value.browser.find(event => event.method === "Network.responseReceived" && event.params.requestId === restartApi.browserRequestId).params.response.status = 500;},
+        value => {value.runtime.value.outcomes.reports.push({id:value.runtime.value.outcomes.cancelledSimulationId});},
+        value => {value.runtime.value.transactions.restartSimulation.viewport.width = 390;},
+        value => {value.runtime.value.replayArtifacts.recovered.transaction.formState.fields.find(field => field.stableControlId === "replay-artifact-json").value = "{}";},
+        value => {value.runtime.value.projectSwitchReceipt.cancelledProjectOpen.projectOpenRequestCount = 1;},
+    ]) {
+        const invalid = JSON.parse(before);
+        mutate(invalid);
+        assert.throws(() => validateP805RuntimeRecoveryEvidence(invalid.runtime, invalid.audit, invalid.api, invalid.browser, evidence, "substitution"));
+    }
+    const children = ["mathematician", "ui-ux"].map((persona) => ({...audit, persona, timings:{restartRecoveryMs:restartReceipt.timing.elapsedMs}, performance:{restartRecoveryMs:{budgetMs:120000}}, observations:[audit.tuple.observation], evidence:[], observationEvidence:{}, checkpointReceipts:[], startedAt:"2026-10-03T21:10:00.000Z", endedAt:"2026-10-03T21:12:00.000Z", cleanup:{evidenceId:"retained-cleanup"}, rendered:{...audit.rendered, responsive:[], actions:[], defects:[], measurements:{}}}));
+    for (const child of children) {
+        const projection = projectP805PersonaAudit([child], [{auditSha256:hash(JSON.stringify(child))}], "initial", child.persona);
+        assert.equal(JSON.stringify(projection.rendered.jobs), JSON.stringify(child.rendered.jobs));
+        // Both aggregation and prospective closeout recurse into this same
+        // child-evidence consumer; they must keep the recovered list terminal.
+        assert.doesNotThrow(() => validateP805RuntimeRecoveryEvidence(runtime, {...child, rendered:projection.rendered}, api, browser, evidence, child.persona));
+    }
+    assert.equal(JSON.stringify({runtime, audit, api, browser}), before, "validation never rewrites accepted native receipts");
+
+});
 
 test("retained blueprint native receipt survives resource-response collection, persona projection and strict campaign consumption", () => {
     // Bounded extract of the saved d2e0a946 blueprint transaction: Chromium's

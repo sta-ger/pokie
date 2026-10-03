@@ -14,7 +14,7 @@ import {lstat, readFile, stat} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {P805_PUBLIC_HELP_ARGUMENTS, hasP805NativeActivation, hasP805TransactionActivations, validateP805HomeProjectSwitchReceipt, validateP805RenderedPersonaAudit} from "./p8-05-valera-browser-audit.mjs";
+import {P805_PUBLIC_HELP_ARGUMENTS, captureP805RestartRecoveryResponse, validateP805RestartRecoveryTerminalReceipt, validateP805RetryTerminalReceipt, hasP805NativeActivation, hasP805TransactionActivations, validateP805HomeProjectSwitchReceipt, validateP805RenderedPersonaAudit} from "./p8-05-valera-browser-audit.mjs";
 
 export const P805_SCHEMA_VERSION = 4;
 export const P805_EVIDENCE_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "docs", "evidence", "p8-05-product-readiness");
@@ -484,8 +484,14 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
             if (value?.kind === "p8-05-runtime-observation") runtime = {value, evidenceId:entry.item.evidenceId};
         } catch { /* tuple transaction parsing above reports its own error */ }
     }
+    validateP805RuntimeRecoveryEvidence(runtime, audit, api, browser, evidenceById, label);
+
+}
+
+/** The collector and closeout authenticate the same captured recovery sequence. */
+export function validateP805RuntimeRecoveryEvidence(runtime, audit, api, browser, evidenceById, label) {
     const recoveryNames = ["reloadReconnect", "projectSwitch", "staleResponseIsolation", "unsavedWorkProtection", "serverRestart"], runtimeRecovery = runtime?.value?.recovery, cancelledId = runtime?.value?.outcomes?.cancelledSimulationId, reports = runtime?.value?.outcomes?.reports, transactions = Object.values(runtime?.value?.transactions ?? {}), transactionValid = (transaction) => transaction?.control?.identityAttribute === "id" && typeof transaction.control.stableControlId === "string" && transaction.control.stableControlId.length > 0 && typeof transaction.control.accessibleName === "string" && transaction.control.accessibleName.length > 0 && transaction.control.enabled === true && transaction.control.disabled === false && transaction.control.disabledExplanation === null && hasP805TransactionActivations(transaction);
-    const durableTransactionNames = ["activeReloadStart", "activeReloadCancellation", "simulationSuccess", "replaySuccess", "cancellableSimulation", "cooperativeCancellation", "simulationRetry", "restartSimulation"];
+    const durableTransactionNames = ["activeReloadStart", "activeReloadCancellation", "simulationSuccess", "replaySuccess", "cancellableSimulation", "cooperativeCancellation", "simulationRetry"];
     // The runtime transcript and controller handoff must describe the same
     // captured recovery actions. Equivalent status/job labels cannot stand in
     // for the native Retry or interrupted submission that actually occurred.
@@ -493,6 +499,26 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         if (!receipt?.transaction || JSON.stringify(runtime?.value?.transactions?.[name]) !== JSON.stringify(receipt.transaction)) fail(`${label} captured recovery receipts disagree for ${name}`);
     }
     const terminalTransactionValid = (transaction) => transaction?.request?.browserRequestId && typeof transaction.request.method === "string" && typeof transaction.request.path === "string" && Number.isInteger(transaction.request.status) && /^[a-f0-9]{64}$/i.test(transaction.request.responseSha256 ?? "") && transaction?.terminal?.source === "rendered-poll" && typeof transaction.terminal.pollPath === "string" && typeof transaction.terminal.browserRequestId === "string" && transaction.terminal.browserRequestId && transaction.terminal.causedByRequestId === transaction.request.browserRequestId && /^[a-f0-9]{64}$/i.test(transaction.terminal.resultSha256 ?? "");
+    // A killed executor cannot return a simulation poll. Authenticate its
+    // actual post-restart jobs-list terminal, retaining the original native
+    // submission and both nonterminal durable snapshots across abrupt loss.
+    const restartReceipt = audit.rendered.jobs?.restartRecovery?.receipt;
+    validateP805RetryTerminalReceipt(audit.rendered.jobs?.retryWithoutPartialArtifacts?.receipt);
+    validateP805RestartRecoveryTerminalReceipt(restartReceipt);
+    const capturedResponse = restartReceipt.recoveryResponse;
+    const restartApi = api.find((entry) => entry.browserRequestId === capturedResponse?.browserRequestId);
+    const restartRequest = browser.find((event) => event.method === "Network.requestWillBeSent" && event.params?.requestId === capturedResponse?.browserRequestId);
+    const restartResponse = browser.find((event) => event.method === "Network.responseReceived" && event.params?.requestId === capturedResponse?.browserRequestId);
+    const restartTerminal = runtime?.value?.restart?.terminal;
+    const expectedResponse = captureP805RestartRecoveryResponse({event:restartResponse, payload:restartApi?.payload}, restartReceipt.capturedJobId);
+    if (JSON.stringify(capturedResponse) !== JSON.stringify(expectedResponse)
+        || restartRequest?.params?.request?.method !== "GET" || !restartRequest.params.request.url.endsWith("/api/project/jobs")
+        || restartApi?.method !== "GET" || restartApi.path !== "/api/project/jobs" || restartApi.status !== 200 || restartApi.initiator !== "rendered-restart"
+        || runtime.value.restart.activeJobId !== restartReceipt.capturedJobId || runtime.value.restart.recovered !== true
+        || restartTerminal?.id !== restartReceipt.capturedJobId || restartTerminal.status !== "recovery-required" || restartTerminal.operation !== "simulation"
+        || JSON.stringify(restartTerminal.request) !== JSON.stringify(restartReceipt.terminal.request)
+        || digest(JSON.stringify(restartTerminal)) !== capturedResponse.jobSha256 || capturedResponse.jobSha256 !== restartReceipt.terminal.resultSha256
+        || JSON.stringify(runtime.value.restart.receipt) !== JSON.stringify({...restartReceipt, evidence:Object.fromEntries(Object.entries(restartReceipt.evidence).filter(([key]) => key !== "cleanupEvidenceId"))})) fail(`${label} lacks the exact captured restart jobs-list recovery terminal`);
     const nativeDomControl = (control) => control?.identityAttribute === "id" && typeof control.stableControlId === "string" && control.stableControlId.length > 0 && typeof control.accessibleName === "string" && control.accessibleName.length > 0 && hasP805NativeActivation(control.activation, control.stableControlId);
     const nativeEditControl = (control) => control?.identityAttribute === "id" && typeof control.stableControlId === "string" && control.stableControlId.length > 0 && control.keyboardFocused === true && control.input?.kind === "native-text" && typeof control.input.text === "string" && control.input.text.length > 0 && typeof control.input.value === "string" && control.input.value.includes(control.input.text);
     if (!runtime || recoveryNames.some((name) => runtimeRecovery?.[name] !== true) || transactions.length < 9 || transactions.some((transaction) => !transactionValid(transaction)) || durableTransactionNames.some((name) => !terminalTransactionValid(runtime.value.transactions?.[name])) || runtime.value.transactions?.activeReloadCancellation?.confirmation?.state !== "confirmed" || runtime.value.transactions?.cooperativeCancellation?.confirmation?.state !== "confirmed" || runtime.value.transactions?.activeReloadCancellation?.confirmation?.control?.identityAttribute !== "id" || runtime.value.transactions?.cooperativeCancellation?.confirmation?.control?.identityAttribute !== "id" || typeof runtime.value.reload?.activeJobId !== "string" || runtime.value.reload.activeJobId.length === 0 || runtime.value.reload?.terminal?.status !== "cancelled" || runtime.value.reload?.discoveredAfterReload !== true || !Number.isSafeInteger(runtime.value.staleResponse?.responseCount) || runtime.value.staleResponse.responseCount < 1 || typeof runtime.value.staleResponse?.delayedRequestId !== "string" || runtime.value.staleResponse.completedAfterSwitch !== true || runtime.value.staleResponse?.sourceRoute === runtime.value.staleResponse?.destinationRoute || typeof runtime.value.unsavedWork?.editedControl !== "string" || !runtime.value.unsavedWork.editedControl || !nativeEditControl(runtime.value.unsavedWork?.editControl) || !nativeDomControl(runtime.value.unsavedWork?.navigationControl) || !nativeDomControl(runtime.value.unsavedWork?.cancelControl) || typeof runtime.value.unsavedWork?.protectionText !== "string" || !/unsaved/i.test(runtime.value.unsavedWork.protectionText) || runtime.value.unsavedWork.preserved !== true || typeof runtime.value.restart?.activeJobId !== "string" || !runtime.value.restart.activeJobId || runtime.value.restart.recovered !== true || runtime.value.jobs?.success?.status !== "completed" || runtime.value.jobs?.actionableFailure === undefined || runtime.value.jobs?.cooperativeCancellation?.status !== "cancelled" || typeof runtime.value.jobs?.retryWithoutPartialArtifacts?.id !== "string" || typeof cancelledId !== "string" || !Array.isArray(reports) || reports.some((report) => report?.id === cancelledId) || runtime.value.outcomes?.cancelledReportAbsent !== true || Object.values(audit.rendered.recovery ?? {}).some((value) => value?.evidenceId !== runtime.evidenceId) || Object.values(audit.rendered.jobs ?? {}).some((value) => value?.evidenceId !== runtime.evidenceId)) fail(`${label} lacks captured recovery, terminal-job, and cancelled-report identity evidence`);
@@ -509,6 +535,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     try { validateP805HomeProjectSwitchReceipt(runtime.value.projectSwitchReceipt); }
     catch { fail(`${label} lacks a DOM-bound Home project-switch recovery receipt`); }
 
+    return runtime.value;
 }
 
 function validateFinding(value, label) {
