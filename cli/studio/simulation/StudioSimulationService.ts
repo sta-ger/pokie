@@ -719,6 +719,11 @@ export class StudioSimulationService {
         }
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
+        if (record.status === "completed" && record.report !== undefined) {
+            // The downloadable report and completion hook consume the drained
+            // terminal, including time spent releasing the materialized runtime.
+            record.report = {...record.report, durationMs: record.durationMs, spinsPerSecond: Math.round(record.report.rounds / (Math.max(record.durationMs, 1) / 1000))};
+        }
         this.repository.save(record);
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {

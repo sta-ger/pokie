@@ -810,6 +810,11 @@ export class StudioReplayExecutionService {
         }
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
+        if (record.status === "completed" && record.descriptor !== undefined) {
+            // Publish the same post-release duration through downloads, durable
+            // results and the round-history completion hook.
+            record.descriptor = {...record.descriptor, durationMs: record.durationMs};
+        }
         this.repository.save(record);
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {

@@ -737,6 +737,11 @@ export async function clickP805CapturedControl(cdp, evaluate, stableControlId, r
                     const sample=(time)=>{
                         if(!sameControl()){finish(false);return;}
                         const box=item.getBoundingClientRect(),viewport=window.visualViewport;
+                        const hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
+                        // A sibling overlay or scrolling table can change the
+                        // hit target while this button's rectangle stays still.
+                        // Settle the actual hit region, not geometry alone.
+                        if(!(hit===item||item.contains(hit))){previous=null;stableSince=null;frame=requestAnimationFrame(sample);return;}
                         const signature=JSON.stringify([box.left,box.top,box.width,box.height,scrollX,scrollY,viewport?.offsetLeft,viewport?.offsetTop,viewport?.scale]);
                         if(signature!==previous){previous=signature;stableSince=time;}
                         else if(time-stableSince>=100){finish(true);return;}
@@ -2609,7 +2614,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             // intentionally carries the DOM identity, browser request and
             // rendered terminal together; neither a route transition nor a
             // Node-side request can manufacture a valid tuple transaction.
-            const liveDomTransaction = {kind:"p8-05-live-dom-transaction", operation:observation, expectedOutcome:contract.terminal, route:entered.route, viewport,
+            const liveDomTransaction = {kind:"p8-05-live-dom-transaction", operation:observation, expectedOutcome:contract.terminal, route:entered.route, viewport, elapsedMs,
                 screen:{name:screen, region:stateMachine.region, navigationControl:stateMachine.navigationControl, terminalText:stateMachine.result},
                 control:{id:interaction.stableControlId, role:interaction.role, accessibleName:interaction.accessibleName, enabled:interaction.enabled},
                 precondition:{enabled:interaction.enabled, disabled:interaction.disabled, disabledExplanation:interaction.disabledExplanation, accessibleName:interaction.accessibleName, region:stateMachine.region}, interaction, transaction,
@@ -2824,7 +2829,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // runtime package while the receipt merely *claimed* the Blueprint.
         const projectBaseRoute = await openImportedProject(blueprint, "primary Blueprint workflow import"), viewports = ["wide", "compact", "narrow"], actions = [], workflows = options.tuple ? [options.tuple] : options.workflowPersonas.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => viewports.map((viewport) => ({persona, observation, viewport}))));
         for (const {persona, observation, viewport} of workflows) {
-            const contract = P805_WORKFLOW_CONTRACTS[persona][observation], actionStart = Date.now(), primaryPersona = options.persona;
+            const contract = P805_WORKFLOW_CONTRACTS[persona][observation], primaryPersona = options.persona;
             options.persona = persona;
             let page;
             const workflowProjectBaseRoute = contract.route === "certification"
@@ -2834,7 +2839,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     : projectBaseRoute;
             if (workflowProjectBaseRoute === undefined) fail(`${observation} is missing its declared imported-project bootstrap`);
             try { page = await runScreenControlState(workflowProjectBaseRoute, viewport, observation, contract); } finally { options.persona = primaryPersona; }
-            const action = {persona, observation, route:`${workflowProjectBaseRoute}/${contract.route}`, viewport, elapsedMs:Date.now() - actionStart,
+            const action = {persona, observation, route:`${workflowProjectBaseRoute}/${contract.route}`, viewport, elapsedMs:page.elapsedMs,
                 pageTextLength:page.state.text.length, controlCount:page.state.controls.length, inaccessiblePrimaryActions:page.state.controls.filter((control) => !control.disabled && control.accessible === false).length, overflow:page.state.overflow,
                 screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:page.state.accessibility,
                 expectedControl:contract.control, expectedMethod:contract.method,

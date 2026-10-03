@@ -137,6 +137,7 @@ describe("StudioSimulationService", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
     it.each([[false, false], [true, false], [false, true], [true, true]])("withholds output through release rejection=%s and cancellation=%s", async (rejectRelease, cancelDuringRelease) => {
+        let clock = 1000;
         let finishRelease!: () => void;
         let rejectCleanup!: (error: Error) => void;
         const release = jest.fn(() => new Promise<void>((resolve, reject) => {
@@ -145,10 +146,10 @@ describe("StudioSimulationService", () => {
         }));
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-simulation-release-boundary-"));
         const durableRepository = new FileStudioJobRepository(directory);
-        const durableJobs = new StudioJobService(durableRepository);
+        const durableJobs = new StudioJobService(durableRepository, () => clock);
         const repository = new InMemoryStudioSimulationRepository();
         const onCompleted = jest.fn();
-        const service = new StudioSimulationService(repository, () => Promise.resolve(createFakeGame(manifest)), undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve({runtimePath: "/a", release}), onCompleted);
+        const service = new StudioSimulationService(repository, () => Promise.resolve(createFakeGame(manifest)), undefined, undefined, () => clock, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve({runtimePath: "/a", release}), onCompleted);
         service.attachJobService(durableJobs);
         const result = service.start("/a", {rounds: 1, seed: "cleanup"});
         if (result.status !== "created") throw new Error("expected created job");
@@ -169,6 +170,7 @@ describe("StudioSimulationService", () => {
                 expect(durableJobs.get("/a", result.job.id)?.status).toBe("cancelling");
                 expect(onCompleted).not.toHaveBeenCalled();
             }
+            clock = 1300;
             if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
             else finishRelease();
             for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
@@ -196,8 +198,12 @@ describe("StudioSimulationService", () => {
                 await service.cancelAll();
             } else {
                 expect(service.getReport("/a", result.job.id).status).toBe("ok");
+                expect(service.getReport("/a", result.job.id)).toMatchObject({report: {durationMs: 300, spinsPerSecond: 3}});
+                expect(service.getStatusForProject("/a", result.job.id)?.durationMs).toBe(300);
+                expect(durableJobs.get("/a", result.job.id)?.result?.detail?.report).toMatchObject({durationMs: 300, spinsPerSecond: 3});
                 expect(onCompleted).toHaveBeenCalledTimes(1);
                 expect(onCompleted.mock.calls[0]?.[0].status).toBe("completed");
+                expect(onCompleted.mock.calls[0]?.[0].report?.durationMs).toBe(300);
                 expect(service.listReports("/a")).toHaveLength(1);
                 await service.cancelAll();
             }

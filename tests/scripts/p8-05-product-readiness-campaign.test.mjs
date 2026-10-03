@@ -254,6 +254,7 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
             expectedOutcome: contract.terminal,
             route,
             viewport,
+            elapsedMs: 1,
             screen: {name: contract.route, region: screen.region, navigationControl: screen.navigationControl, terminalText: screen.result},
             control: {id: contract.actionControlId ?? screen.navigationControlId, role: "button", accessibleName: matchedLabel, enabled: true},
             precondition: {enabled: true, disabled: false, disabledExplanation: null, accessibleName: matchedLabel, region: screen.region},
@@ -586,6 +587,8 @@ async function campaignFixture({initialOverflow = false, throughController = fal
         );
         const runtimeValue = JSON.parse(await readFile(path.join(directory, runtime.path), "utf8"));
         for (const captured of Object.values(runtimeValue.transactions)) captured.viewport = {width:{wide:1440, compact:960, narrow:390}[tuple.viewport], height:{wide:900, compact:800, narrow:844}[tuple.viewport]};
+        Object.assign(retryTransaction, runtimeValue.transactions.simulationRetry);
+        Object.assign(restartTransaction, runtimeValue.transactions.restartSimulation);
         const runtimeContents = JSON.stringify(runtimeValue);
         await writeFile(path.join(directory, runtime.path), runtimeContents);
         runtime.sha256 = hash(runtimeContents); runtime.sizeBytes = Buffer.byteLength(runtimeContents);
@@ -1418,6 +1421,55 @@ test("requires browser defects to be frozen initially and absent after retest", 
             () => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}),
             /clean retest .* browser quality defect|aggregate differs|immutable child/i,
         );
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test("rejects action timing inflated beyond the saved rendered transaction", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const file = path.join(fixture.directory, "retests.json");
+        const audits = JSON.parse(await readFile(file, "utf8"));
+        const action = audits.audits[0].rendered.actions[0];
+        const entry = audits.audits[0].evidence.find((item) => item.evidenceId === action.evidenceId);
+        const value = JSON.parse(await readFile(path.join(fixture.directory, entry.path), "utf8"));
+        value.elapsedMs = action.elapsedMs + 1000;
+        const contents = JSON.stringify(value);
+        await writeFile(path.join(fixture.directory, entry.path), contents);
+        entry.sha256 = hash(contents);
+        entry.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(file, JSON.stringify(audits));
+        await rebindFixtureChildEvidence(fixture.directory, file);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /checkpoint action timing differs/);
+    } finally {
+        await fixture.cleanup();
+    }
+});
+
+test.each(["simulationRetry", "restartSimulation"])("rejects %s runtime recovery differing from the accepted native receipt", async (operation) => {
+    const fixture = await campaignFixture();
+    try {
+        const file = path.join(fixture.directory, "retests.json");
+        const audits = JSON.parse(await readFile(file, "utf8"));
+        const audit = audits.audits[3];
+        const reference = audit.tupleReceipts.find((item) => item.tuple.observation === "reload-reconnect-recovery-cancellation-project-switch" && item.tuple.viewport === "narrow");
+        assert.ok(reference, "the declared narrow recovery tuple must be present");
+        const child = JSON.parse(await readFile(path.join(fixture.directory, reference.auditPath), "utf8"));
+        assert.equal(child.workflowScope.recoveryRequired, true);
+        const receipt = child.rendered.jobs[operation === "simulationRetry" ? "retryWithoutPartialArtifacts" : "restartRecovery"];
+        const entry = audit.evidence.find((item) => item.evidenceId === receipt.evidenceId);
+        assert.equal(entry.kind, "page-state");
+        const value = JSON.parse(await readFile(path.join(fixture.directory, entry.path), "utf8"));
+        assert.equal(value.transactions[operation].control.stableControlId, operation === "simulationRetry" ? "simulation-retry" : "simulation-run");
+        value.transactions[operation].terminal.resultSha256 = "f".repeat(64);
+        const contents = JSON.stringify(value);
+        await writeFile(path.join(fixture.directory, entry.path), contents);
+        entry.sha256 = hash(contents);
+        entry.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(file, JSON.stringify(audits));
+        await rebindFixtureChildEvidence(fixture.directory, file);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), new RegExp(`captured recovery receipts disagree for ${operation}`));
     } finally {
         await fixture.cleanup();
     }

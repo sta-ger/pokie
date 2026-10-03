@@ -168,6 +168,11 @@ test("controller machine-proof handoff is bound to its exact candidate ledger", 
     }
 
     assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, candidateId:retest.candidateId}}, "initial", initial, ledgerContents), /exact candidate/i);
+    for (const elapsedMs of [0, -1, 30 * 60 * 1000 + 1, Number.MAX_SAFE_INTEGER]) {
+        const invalid = structuredClone(proof);
+        invalid.audits.renderedTupleEvidence[0].timing.elapsedMs = elapsedMs;
+        assert.throws(() => validateP805ControllerMachineProof(invalid, "initial", initial, ledgerContents), /five persona aggregates/i);
+    }
     assert.throws(() => validateP805ControllerMachineProof({...proof, tuples:[...proof.tuples, proof.tuples[0]], audits:{count:2, personas:P805_PERSONAS, ids:["audit-1", "audit-2"], tupleReceiptAuditIds:proof.audits.tupleReceiptAuditIds}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, audits:{...proof.audits, tupleReceiptAuditIds:["substituted-audit", ...proof.audits.tupleReceiptAuditIds.slice(1)]}}, "initial", initial, ledgerContents), /five persona aggregates/i);
     assert.throws(() => validateP805ControllerMachineProof({...proof, proofLedger:{...proof.proofLedger, operationRoot:"/tmp/substituted-operation-root"}}, "initial", initial, ledgerContents), /five persona aggregates/i);

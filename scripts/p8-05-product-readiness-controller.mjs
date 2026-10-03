@@ -139,6 +139,9 @@ const validRestartRecoveryTerminalEvidence = (value, expected) => Array.isArray(
 function validRenderedTupleEvidence(value, expected, phase) {
     if (!Array.isArray(value) || value.length !== expected.length) return false;
     return value.every((entry, index) => {
+        // A safe integer alone permits an arbitrarily inflated workflow time.
+        // Use the campaign's bounded action window at this handoff too.
+        if (!Number.isSafeInteger(entry?.timing?.elapsedMs) || entry.timing.elapsedMs <= 0 || entry.timing.elapsedMs > 30 * 60 * 1000) return false;
         const bound = expected[index], pointer = entry?.activation?.kind === "pointer", activation = entry?.activation, request = entry?.request, terminal = entry?.terminal, rendered = entry?.rendered, accessibility = entry?.accessibility, provenance = entry?.provenance, evidence = entry?.evidence, postTransition = rendered?.postTransitionRenderedState;
         const replacementStateIsBound = postTransition?.controlState === "retained"
             ? postTransition.currentControlId === activation?.controlId && postTransition.capturedControlConnected === true

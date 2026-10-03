@@ -481,7 +481,13 @@ test("native navigation waits for rendered context and Retry retains captured id
                 window.activations = [];
                 if (mode === 'dispatch-focus-transfer') document.addEventListener('pointerdown', () => result.focus(), true);
                 button.addEventListener('mouseover', () => {
-                    if (mode === 'changed-hit') {
+                    if (mode === 'transient-hit' && !window.overlayShown) {
+                        window.overlayShown = true;
+                        const overlay = document.createElement('div');
+                        overlay.style.cssText = 'position:fixed;inset:0;z-index:1000';
+                        document.body.append(overlay);
+                        setTimeout(() => overlay.remove(), 180);
+                    } else if (mode === 'changed-hit') {
                         const overlay = document.createElement('div');
                         overlay.style.cssText = 'position:fixed;inset:0;z-index:1000';
                         document.body.append(overlay);
@@ -634,7 +640,7 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(await evaluate("location.hash"), '#/project/imported/overview');
         await evaluate("document.documentElement.style.scrollBehavior='auto'");
         await cdp.send("Emulation.clearDeviceMetricsOverride");
-        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "confirmation-pointer", "dispatch-focus-transfer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
+        for (const mode of ["retained", "replaced", "removed", "moving", "moving-parent", "moving-deferred-parent", "moving-replaced", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer", "moving-obstructed", "changed-hit", "changed-node", "disabled", "dispatch-failed"]) {
             const url = `http://127.0.0.1:${server.address().port}/?mode=${mode}`;
             await cdp.send("Page.navigate", {url});
             await poll(() => evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete' && typeof window.renderTerminal === 'function'`));
@@ -694,7 +700,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.equal(await observeP805PointerTerminal(evaluate, transaction, receipt), false, "a hidden terminal cannot replace the visible result");
             await evaluate("document.getElementById('simulation-results').hidden = false; document.getElementById('simulation-results').focus()");
             transaction.postTransitionRenderedState = await observeP805PointerTerminal(evaluate, transaction, receipt);
-            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "confirmation-pointer", "dispatch-focus-transfer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
+            const expectedControlState = ["moving", "moving-parent", "moving-deferred-parent", "transient-hit", "confirmation-pointer", "dispatch-focus-transfer"].includes(mode) ? "retained" : mode === "moving-replaced" ? "replaced" : mode;
             assert.equal(transaction.postTransitionRenderedState.controlState, expectedControlState);
             assert.equal(transaction.postTransitionRenderedState.capturedControlConnected, expectedControlState === "retained");
             assert.equal(transaction.postTransitionRenderedState.activeElementId, "simulation-results");
@@ -718,7 +724,7 @@ test("native navigation waits for rendered context and Retry retains captured id
             assert.deepEqual(await evaluate("[window.__p805CapturedControls.size,window.__p805PointerDispatchReceipts.size]"), [0, 0]);
             assert.equal(events.filter((event) => event.method === "Network.requestWillBeSent" && event.params.request.url.endsWith("/api/project/simulations/retry-job") && event.params.request.method === "GET").length, 1);
         }
-        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 9);
+        assert.equal(requests.filter(({method, path}) => method === "POST" && path === "/api/project/simulations").length, 10);
     } finally {
         pendingContext?.end();
         await cdp?.close();

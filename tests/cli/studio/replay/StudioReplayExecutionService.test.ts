@@ -296,6 +296,7 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 describe("StudioReplayExecutionService", () => {
 
     it.each([[false, false], [true, false], [false, true], [true, true]])("withholds output through release rejection=%s and cancellation=%s", async (rejectRelease, cancelDuringRelease) => {
+        let clock = 1000;
         let finishRelease!: () => void;
         let rejectCleanup!: (error: Error) => void;
         const release = jest.fn(() => new Promise<void>((resolve, reject) => {
@@ -304,10 +305,10 @@ describe("StudioReplayExecutionService", () => {
         }));
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-release-boundary-"));
         const durableRepository = new FileStudioJobRepository(directory);
-        const durableJobs = new StudioJobService(durableRepository);
+        const durableJobs = new StudioJobService(durableRepository, () => clock);
         const repository = new InMemoryStudioReplayRepository();
         const onCompleted = jest.fn();
-        const service = new StudioReplayExecutionService(repository, () => Promise.resolve(createSeedAwareFakeGame(manifest)), undefined, undefined, undefined, undefined, undefined, onCompleted, undefined, undefined, undefined, release);
+        const service = new StudioReplayExecutionService(repository, () => Promise.resolve(createSeedAwareFakeGame(manifest)), undefined, () => clock, undefined, undefined, undefined, onCompleted, undefined, undefined, undefined, release);
         service.attachJobService(durableJobs);
         const result = service.start("/a", {round: 1, seed: "cleanup"});
         if (result.status !== "created") throw new Error("expected created job");
@@ -327,6 +328,7 @@ describe("StudioReplayExecutionService", () => {
                 expect(durableJobs.get("/a", result.job.id)?.status).toBe("cancelling");
                 expect(onCompleted).not.toHaveBeenCalled();
             }
+            clock = 1300;
             if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
             else finishRelease();
             for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
@@ -354,8 +356,12 @@ describe("StudioReplayExecutionService", () => {
                 await service.cancelAll();
             } else {
                 expect(service.getDownload("/a", result.job.id).status).toBe("ok");
+                expect(service.getDownload("/a", result.job.id)).toMatchObject({descriptor: {durationMs: 300}});
+                expect(service.getStatus("/a", result.job.id)?.durationMs).toBe(300);
+                expect(durableJobs.get("/a", result.job.id)?.result?.detail?.descriptor).toMatchObject({durationMs: 300});
                 expect(onCompleted).toHaveBeenCalledTimes(1);
                 expect(onCompleted.mock.calls[0]?.[0].status).toBe("completed");
+                expect(onCompleted.mock.calls[0]?.[0].descriptor?.durationMs).toBe(300);
                 await service.cancelAll();
             }
         } finally {

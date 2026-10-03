@@ -71,6 +71,19 @@ function fetchImplFrom(routes: Record<string, () => {ok: boolean; status: number
     };
 }
 
+it("retains distinct progress through repeated identical polls", () => {
+    const initial = {source: "start", jobId: "bounded-job", durableStatus: "queued"} as const;
+    const running = {source: "poll", jobId: "bounded-job", durableStatus: "running", durableProgress: {stage: "Enumerating", unit: "combinations", current: "10", total: "1000"}} as const;
+    let history = retainOutcomeLibraryProgressSnapshot([initial], running);
+    for (let poll = 0; poll < 1000; poll++) history = retainOutcomeLibraryProgressSnapshot(history, {...running});
+    expect(history).toEqual([initial, running]);
+    const cancelled = {...running, durableStatus: "cancelled"} as const;
+    history = retainOutcomeLibraryProgressSnapshot(history, cancelled);
+    expect(history).toEqual([initial, running, cancelled]);
+    const resumed = {...running, durableProgress: {...running.durableProgress, current: "20"}} as const;
+    expect(retainOutcomeLibraryProgressSnapshot(history, resumed)).toEqual([initial, running, cancelled, resumed]);
+});
+
 it("retains a cancellation terminal through a long resumed run within the progress bound", () => {
     const initial = {source: "start", jobId: "bounded-job", durableStatus: "queued"} as const;
     const cancelled = {source: "poll", jobId: "bounded-job", durableStatus: "cancelled"} as const;

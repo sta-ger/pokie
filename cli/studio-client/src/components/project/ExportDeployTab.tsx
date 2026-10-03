@@ -138,6 +138,11 @@ export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLi
     // A resumed/reloaded job may have a new durable id. Its history must not
     // inherit another job's submission or terminal while sharing this bound.
     const boundHistory = history.filter((item) => item.jobId === snapshot.jobId);
+    const latest = boundHistory.at(-1);
+    // Reconnecting can return the same durable observation many times. Keep
+    // meaningful progress and recovery transitions, rather than letting those
+    // duplicate polls consume the history available to the terminal receipt.
+    if (boundHistory.length <= OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT && latest !== undefined && JSON.stringify(latest) === JSON.stringify(snapshot)) return boundHistory;
     const observations = [...boundHistory, snapshot];
     if (observations.length <= OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT) return observations;
     // A resumed run can poll for hours. Keep its cancellation/recovery
