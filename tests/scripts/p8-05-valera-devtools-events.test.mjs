@@ -156,6 +156,120 @@ function launchFocusedBrowser(profile) {
     return {browser, exited, waitForPort};
 }
 
+async function runProductionDrawerRecovery() {
+    const {createServer:createViteServer}=await import("vite");
+    const profile = await mkdtemp(path.join(tmpdir(), "p805-devtools-drawer-recovery-"));
+    const fixtureId = "/p805-drawer-recovery.js";
+    const source = `
+        import React, {useState} from 'react';
+        import {createRoot} from 'react-dom/client';
+        import {MantineProvider} from '@mantine/core';
+        import '@mantine/core/styles.css';
+        import '/cli/studio-client/src/global.css';
+        import {AppShellLayout} from '/cli/studio-client/src/components/layout/AppShellLayout.tsx';
+        import {NavTabs} from '/cli/studio-client/src/components/layout/NavTabs.tsx';
+        import {ReplayTab} from '/cli/studio-client/src/components/project/ReplayTab.tsx';
+        const h=React.createElement;
+        const noop=()=>{};
+        function Fixture(){
+            const [route,setRoute]=useState('simulation'),[expected,setExpected]=useState({status:'empty'});
+            const items=['overview','gameModel','play','simulation','replay','exportDeploy','certification','provablyFair'].map(value=>({value,label:value,auditControlId:'project-tab:'+value}));
+            return h(MantineProvider,null,h(AppShellLayout,{navbar:h(NavTabs,{items,active:route,onSelect:value=>{location.hash='#/project/source/'+value;setRoute(value);}})},
+                h('section',{className:'studio-page','data-pokie-lifecycle-result':'navigation','data-pokie-lifecycle-route':route,'data-pokie-lifecycle-result-control':'project-tab:'+route,'data-pokie-lifecycle-terminal':'rendered'},
+                    route==='replay'?h(ReplayTab,{listView:{status:'empty'},recentSpins:{status:'empty'},recentRuns:{status:'empty'},expected,
+                        onLoadExpectedFromPaste:raw=>{const value=JSON.parse(raw);setExpected(value.round>0?{status:'loaded',...value,artifactWarnings:[]}:{status:'error',message:'Round must be positive'});},
+                        onRun:noop,onCancel:noop,onRetry:noop,onRefreshList:noop,onInspectStored:async()=>{},onCompareStored:noop,onClearExpected:()=>setExpected({status:'empty'}),onRefreshRecentSpins:noop,onRefreshRecentRuns:noop
+                    }):h('p',null,'Simulation terminal result'))));
+        }
+        location.hash='#/project/source/simulation';
+        window.activations=[];
+        document.addEventListener('click',event=>{const control=event.target.closest('button');if(control)window.activations.push({id:control.id,trusted:event.isTrusted});},true);
+        createRoot(document.getElementById('root')).render(h(Fixture));
+    `;
+    const server = await createViteServer({configFile:false, root:process.cwd(), cacheDir:path.join(profile,"vite"),
+        server:{host:"127.0.0.1",port:0}, plugins:[{name:"p805-drawer-fixture",resolveId:id=>id===fixtureId?id:undefined,load:id=>id===fixtureId?source:undefined,
+            configureServer(vite){vite.middlewares.use((request,response,next)=>{
+                if(request.url!=="/drawer-recovery")return next();
+                response.setHeader("Content-Type","text/html");
+                response.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="${fixtureId}"></script>`);
+            });}
+        }]});
+    let browser, exited, cdp;
+    try {
+        await server.listen();
+        const launched=launchFocusedBrowser(profile);({browser,exited}=launched);
+        cdp=await connectP805Devtools(`http://127.0.0.1:${await launched.waitForPort()}`);
+        const evaluate=async(expression)=>{
+            const result=await cdp.send("Runtime.evaluate",{expression,returnByValue:true,awaitPromise:true});
+            assert.equal(result.exceptionDetails,undefined);return result.result.value;
+        };
+        await cdp.send("Emulation.setDeviceMetricsOverride",{width:390,height:844,mobile:true,deviceScaleFactor:1});
+        await cdp.send("Page.navigate",{url:`http://127.0.0.1:${server.httpServer.address().port}/drawer-recovery`});
+        await poll(()=>evaluate("document.getElementById('project-tab:simulation')?.isConnected"),30_000);
+        const replay=await navigateP805RenderedControl(cdp,evaluate,'replay','#/project/source/replay','successful replay');
+        assert.equal(hasP805NativeActivation(replay.control.navigationDisclosure,'studio-navigation-toggle'),true);
+        const artifact=await evaluate("(()=>{const item=document.querySelector('input[type=radio][value=artifact]');item.focus();return {stableControlId:item.id};})()");
+        await activateP805FocusedControl(cdp,evaluate,'precondition',artifact,'keyboard');
+        for(const round of [1,0,1]){
+            await setP805ReplayArtifactInput(cdp,evaluate,JSON.stringify({round,seed:'recovery-seed'}));
+            const load=await activateP805FocusedControl(cdp,evaluate,'operation',{stableControlId:'replay-artifact-load'});
+            assert.equal(hasP805NativeActivation(load,'replay-artifact-load'),true);
+            await poll(()=>evaluate(`document.querySelector('[data-pokie-lifecycle-result="replay-artifact"]')?.getAttribute('data-pokie-lifecycle-terminal')===${JSON.stringify(round?'loaded':'error')}`));
+            await evaluate("document.querySelector('[data-pokie-lifecycle-result=replay-artifact]').scrollIntoView({block:'center',inline:'nearest'})");
+        }
+        const navigationBoundary=()=>evaluate(`(()=>{
+            const panel=document.getElementById('studio-navigation-panel'),tab=document.getElementById('project-tab:simulation'),box=tab.getBoundingClientRect();
+            return {scrollY,layoutWidth:innerWidth,documentWidth:document.documentElement.scrollWidth,
+                viewport:{left:visualViewport.offsetLeft,top:visualViewport.offsetTop,width:visualViewport.width,height:visualViewport.height,scale:visualViewport.scale},
+                panel:panel.getBoundingClientRect().toJSON(),tab:box.toJSON(),
+                hit:document.elementFromPoint(box.left+box.width/2,box.top+box.height/2)?.outerHTML,
+                animations:document.getAnimations().map(animation=>({target:animation.effect.target.tagName,playState:animation.playState}))};
+        })()`);
+        const before=await navigationBoundary();
+        let cancellation;
+        try {
+            cancellation=await navigateP805RenderedControl(cdp,evaluate,'simulation','#/project/source/simulation','cooperative cancellation');
+        } catch(error) {
+            throw new Error(`${error.message}; before: ${JSON.stringify(before)}; after: ${JSON.stringify(await navigationBoundary())}`,{cause:error});
+        }
+        assert.deepEqual(before.viewport,{left:0,top:0,width:390,height:844,scale:1},'Artifact scrolling must retain the assigned mobile viewport');
+        assert.equal(before.layoutWidth,390);
+        assert.equal(before.documentWidth,390,'the source picker must not overflow the real Replay workspace');
+        assert.equal(before.panel.width,390,'the production drawer must fit the assigned mobile viewport');
+        assert.equal(cancellation.activation.hitTest.visualViewport.width,390);
+        assert.ok(cancellation.activation.hitTest.region.left>=0);
+        assert.ok(cancellation.activation.hitTest.region.left+cancellation.activation.hitTest.region.width<=390);
+        assert.equal(hasP805NativeActivation(cancellation.control.navigationDisclosure,'studio-navigation-toggle'),true,JSON.stringify(before));
+        assert.equal(hasP805NativeActivation(cancellation.activation,'project-tab:simulation'),true);
+        assert.equal(cancellation.routeBefore,'#/project/source/replay');
+        assert.equal(cancellation.routeAfter,'#/project/source/simulation');
+        assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"),'false');
+        assert.equal(await evaluate("window.activations.filter(value=>value.id==='project-tab:simulation').length"),1);
+    } finally {
+        cdp?.close();
+        browser?.kill("SIGTERM");if(exited)await exited;
+        await server.close();
+        await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+    }
+}
+
+test("the production phone drawer returns from native Replay Artifact recovery to cooperative cancellation", () => {
+    // Vite's native resolver needs Node's own RegExp realm, rather than Jest's
+    // VM realm. The child owns and drains this one focused browser/server.
+    try {execFileSync(process.execPath,["--input-type=module","-e",`
+        import assert from 'node:assert/strict';
+        import {spawn} from 'node:child_process';
+        import {mkdtemp,readFile,rm} from 'node:fs/promises';
+        import {tmpdir} from 'node:os';
+        import path from 'node:path';
+        import {navigateP805RenderedControl,activateP805FocusedControl,setP805ReplayArtifactInput,hasP805NativeActivation,connectP805Devtools} from './scripts/p8-05-valera-browser-audit.mjs';
+        const poll=${poll.toString()};
+        ${launchFocusedBrowser.toString()}
+        await (${runProductionDrawerRecovery.toString()})();
+    `],{cwd:process.cwd(),encoding:"utf8",stdio:"pipe",timeout:60_000});}
+    catch(error){throw new Error(`Production drawer recovery failed: ${error.stderr || error.message}`);}
+},65_000);
+
 test("the live DevTools collector retains exact request completion without retaining data notifications", async () => {
     const targetUrls = [], commands = [];
     const initialUrl = "http://localhost/#/home/design";

@@ -6,6 +6,7 @@ import {join} from "path";
 import {useState} from "react";
 import {AppShellLayout} from "../../../../../../cli/studio-client/src/components/layout/AppShellLayout";
 import {NavTabs} from "../../../../../../cli/studio-client/src/components/layout/NavTabs";
+import {ReplayTab, type ExpectedReplayState} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
 
 // Mantine's Burger renders its animated "opened" indicator as data-opened="true"/absent on an inner
 // element, driven entirely by AppShellLayout's own `opened` state -- the most direct DOM signal
@@ -39,6 +40,69 @@ function renderLayout() {
 }
 
 describe("AppShellLayout - mobile navigation", () => {
+    it.each([true, false])("keeps Replay Artifact recovery and its drawer navigation responsive (phone: %s)", async (phone) => {
+        const previous = Reflect.getOwnPropertyDescriptor(window, "matchMedia");
+        Reflect.defineProperty(window, "matchMedia", {configurable: true, value: (query: string) => ({
+            matches: phone && query === "(max-width: 48em)", media: query,
+            addEventListener: jest.fn(), removeEventListener: jest.fn(),
+        })});
+        const submissions = jest.fn();
+        function RecoveryLayout() {
+            const [route, setRoute] = useState("replay");
+            const [expected, setExpected] = useState<ExpectedReplayState>({status: "empty"});
+            return <AppShellLayout navbar={<NavTabs items={[
+                {value: "simulation", label: "Simulation", auditControlId: "project-tab:simulation"},
+                {value: "replay", label: "Replay", auditControlId: "project-tab:replay"},
+            ]} active={route} onSelect={setRoute} />}>
+                <div className="studio-page">
+                    {route === "replay" ? <ReplayTab
+                        progress={undefined} result={undefined} error={undefined}
+                        onRun={() => undefined} onCancel={() => undefined} onRetry={() => undefined}
+                        listView={{status: "empty"}} listError={undefined} onRefreshList={() => undefined}
+                        onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined}
+                        expected={expected} onLoadExpectedFromPaste={(raw) => {
+                            submissions(raw);
+                            const value = JSON.parse(raw) as {round: number; seed: string};
+                            setExpected(value.round > 0 ? {status: "loaded", ...value, artifactWarnings: []} : {status: "error", message: "Round must be positive"});
+                        }} onClearExpected={() => setExpected({status: "empty"})} comparison={undefined}
+                        recentSpins={{status: "empty"}} recentSpinsError={undefined} onRefreshRecentSpins={() => undefined}
+                        recentRuns={{status: "empty"}} recentRunsError={undefined} onRefreshRecentRuns={() => undefined}
+                        currentGame={undefined}
+                    /> : <p role="status">Simulation configuration</p>}
+                </div>
+            </AppShellLayout>;
+        }
+        try {
+            const user = userEvent.setup();
+            render(<MantineProvider><RecoveryLayout /></MantineProvider>);
+            const source = screen.getByLabelText("Replay Artifact");
+            const picker = source.closest(".mantine-SegmentedControl-root");
+            expect(picker).toHaveAttribute("data-orientation", phone ? "vertical" : "horizontal");
+            if (phone) expect(picker).toHaveAttribute("data-full-width", "true");
+            else expect(picker).not.toHaveAttribute("data-full-width");
+            await user.click(source);
+            const field = screen.getByLabelText(/Paste a replay artifact JSON/);
+            for (const round of [1, 0, 1]) {
+                await user.clear(field);
+                await user.type(field, `{{"round":${round},"seed":"recovery"}`);
+                await user.click(screen.getByRole("button", {name: "Validate & load"}));
+                expect(document.querySelector('[data-pokie-lifecycle-result="replay-artifact"]')).toHaveAttribute("data-pokie-lifecycle-terminal", round ? "loaded" : "error");
+            }
+            expect(submissions.mock.calls).toEqual([1, 0, 1].map((round) => [JSON.stringify({round, seed: "recovery"})]));
+            const burger = screen.getByRole("button", {name: "Toggle navigation"});
+            burger.focus();
+            await user.keyboard("[Space]");
+            expect(burger).toHaveAttribute("aria-expanded", "true");
+            await user.click(screen.getByRole("button", {name: "Simulation"}));
+            expect(screen.getByRole("status")).toHaveTextContent("Simulation configuration");
+            expect(burger).toHaveAttribute("aria-expanded", "false");
+            expect(document.activeElement).toBe(burger);
+        } finally {
+            if (previous) Reflect.defineProperty(window, "matchMedia", previous);
+            else Reflect.deleteProperty(window, "matchMedia");
+        }
+    });
+
     it("clears the inherited desktop navbar offset at phone width", () => {
         renderLayout();
 

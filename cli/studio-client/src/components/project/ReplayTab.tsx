@@ -1,5 +1,6 @@
 import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
+import {useMediaQuery} from "@mantine/hooks";
 import {useEffect, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
@@ -213,6 +214,7 @@ export function ReplayTab({
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
+    const isPhoneWidth = useMediaQuery("(max-width: 48em)");
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
     useEffect(() => {
@@ -429,6 +431,11 @@ export function ReplayTab({
             <SegmentedControl
                 value={findMethod}
                 onChange={(value) => switchSource(value as FindMethod)}
+                // Four source labels exceed a phone's width. Mobile Chromium
+                // then enlarges and pans the layout viewport, leaving even the
+                // fixed navigation drawer outside the visible viewport.
+                orientation={isPhoneWidth ? "vertical" : "horizontal"}
+                fullWidth={isPhoneWidth}
                 data={[
                     {label: "Recreate from seed", value: "seedRound"},
                     {label: "Replay Artifact", value: "artifact"},
