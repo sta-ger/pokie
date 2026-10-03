@@ -172,11 +172,11 @@ async function runProductionDrawerRecovery() {
         const h=React.createElement;
         const noop=()=>{};
         function Fixture(){
-            const [route,setRoute]=useState('simulation'),[expected,setExpected]=useState({status:'empty'});
+            const [route,setRoute]=useState('simulation'),[expected,setExpected]=useState({status:'empty'}),[home,setHome]=useState(false);
             const items=['overview','gameModel','play','simulation','replay','exportDeploy','certification','provablyFair'].map(value=>({value,label:value,auditControlId:'project-tab:'+value}));
-            return h(MantineProvider,null,h(AppShellLayout,{navbar:h(NavTabs,{items,active:route,onSelect:value=>{location.hash='#/project/source/'+value;setRoute(value);}})},
+            return h(MantineProvider,null,h(AppShellLayout,{key:home?'home':'project',breadcrumbs:home?[]:[{label:'Your projects',id:'close-project',onClick:()=>{location.hash='#/home/projects';setRoute('projects');setHome(true);}}],navbar:h(NavTabs,{items:home?[{value:'design',label:'Start a game',auditControlId:'home-tab:design'},{value:'projects',label:'Projects',auditControlId:'home-tab:projects'}]:items,active:route,onSelect:value=>{location.hash=(home?'#/home/':'#/project/source/')+value;setRoute(value);}})},
                 h('section',{className:'studio-page','data-pokie-lifecycle-result':'navigation','data-pokie-lifecycle-route':route,'data-pokie-lifecycle-result-control':'project-tab:'+route,'data-pokie-lifecycle-terminal':'rendered'},
-                    route==='replay'?h(ReplayTab,{listView:{status:'empty'},recentSpins:{status:'empty'},recentRuns:{status:'empty'},expected,
+                    home?h('p',null,route==='design'?'Design Game editor':'Projects registry'):route==='replay'?h(ReplayTab,{listView:{status:'empty'},recentSpins:{status:'empty'},recentRuns:{status:'empty'},expected,
                         onLoadExpectedFromPaste:raw=>{const value=JSON.parse(raw);setExpected(value.round>0?{status:'loaded',...value,artifactWarnings:[]}:{status:'error',message:'Round must be positive'});},
                         onRun:noop,onCancel:noop,onRetry:noop,onRefreshList:noop,onInspectStored:async()=>{},onCompareStored:noop,onClearExpected:()=>setExpected({status:'empty'}),onRefreshRecentSpins:noop,onRefreshRecentRuns:noop
                     }):h('p',null,'Simulation terminal result'))));
@@ -245,6 +245,55 @@ async function runProductionDrawerRecovery() {
         assert.equal(cancellation.routeAfter,'#/project/source/simulation');
         assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"),'false');
         assert.equal(await evaluate("window.activations.filter(value=>value.id==='project-tab:simulation').length"),1);
+        const close=await evaluate("(()=>{const item=document.getElementById('close-project');item.focus({preventScroll:true});return {stableControlId:item.id};})()");
+        await activateP805FocusedControl(cdp,evaluate,'navigation',close,'keyboard');
+        await poll(()=>evaluate("location.hash==='#/home/projects' && document.getElementById('home-tab:design')?.isConnected"));
+        const design=await navigateP805RenderedControl(cdp,evaluate,'design','#/home/design','unsaved-work source');
+        assert.equal(hasP805NativeActivation(design.activation,'home-tab:design'),true);
+        assert.equal(design.routeBefore,'#/home/projects');
+        assert.equal(design.routeAfter,'#/home/design');
+        assert.equal(await evaluate("window.activations.filter(value=>value.id==='home-tab:design').length"),1);
+        const proof=design.control.navigationDisclosureState;
+        assert.equal(hasP805NativeActivation(design.control.navigationDisclosure,'studio-navigation-toggle'),true);
+        assert.equal(proof.before.closed,true);
+        assert.equal(proof.before.expanded,'false');
+        assert.equal(proof.before.panelInert,true);
+        assert.equal(proof.settled.expanded,'true');
+        assert.equal(proof.settled.panelInert,false);
+        assert.equal(proof.settled.settled,true);
+        assert.equal(proof.settled.moving,false);
+        assert.equal(proof.settled.panelVisible,true);
+        assert.equal(proof.settled.controlId,'studio-navigation-toggle');
+        assert.equal(proof.settled.accessibleName,'Toggle navigation');
+        assert.equal(proof.settled.panelId,'studio-navigation-panel');
+        assert.equal(proof.settled.connected && proof.settled.enabled && proof.settled.identityPreserved && proof.settled.toggleVisible && proof.settled.toggleHit,true);
+        assert.equal(proof.target.controlId,'home-tab:design');
+        assert.equal(proof.target.connected && proof.target.enabled && proof.target.viewportVisible && proof.target.hit,true);
+        assert.deepEqual(proof.target.visualViewport,design.activation.hitTest.visualViewport);
+        assert.deepEqual(proof.target.region,design.activation.hitTest.region);
+        await navigateP805RenderedControl(cdp,evaluate,'projects','#/home/projects','unsaved-work Projects');
+        // Expansion is a requested product state, not completed execution.
+        // Start a real panel transition after native opening and observe it
+        // without toggling the already expanded drawer a second time.
+        await evaluate("document.getElementById('studio-navigation-toggle').focus({preventScroll:true})");
+        await activateP805FocusedControl(cdp,evaluate,'navigation-drawer',{stableControlId:'studio-navigation-toggle'});
+        await evaluate("window.openingPanelAnimation=document.getElementById('studio-navigation-panel').animate([{transform:'translateX(-100%)'},{transform:'translateX(0px)'}],{duration:450})");
+        assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"),'true');
+        assert.equal(await evaluate("window.openingPanelAnimation.playState"),'running');
+        const commands=[];
+        const dispatcher={send:async(method,params)=>{commands.push({method,...params});return cdp.send(method,params);}};
+        const expandedDesign=await navigateP805RenderedControl(dispatcher,evaluate,'design','#/home/design','settling unsaved-work source');
+        assert.equal(expandedDesign.control.navigationDisclosure,undefined);
+        assert.equal(expandedDesign.control.navigationDisclosureState.before.expanded,'true');
+        assert.equal(expandedDesign.control.navigationDisclosureState.before.closed,false);
+        assert.equal(expandedDesign.control.navigationDisclosureState.settled.moving,false);
+        assert.equal(expandedDesign.control.navigationDisclosureState.target.controlId,'home-tab:design');
+        assert.equal(expandedDesign.routeAfter,'#/home/design');
+        assert.equal(hasP805NativeActivation(expandedDesign.activation,'home-tab:design'),true);
+        assert.equal(commands.filter(({method})=>method==='Input.dispatchKeyEvent').length,0);
+        assert.deepEqual(commands.filter(({method,type})=>method==='Input.dispatchMouseEvent' && ['mousePressed','mouseReleased'].includes(type)).map(({type})=>type),['mousePressed','mouseReleased']);
+        assert.equal(await evaluate("window.activations.filter(value=>value.id==='home-tab:design').length"),2);
+        assert.equal(await evaluate("window.__p805NavigationDisclosures.size"),0);
     } finally {
         cdp?.close();
         browser?.kill("SIGTERM");if(exited)await exited;

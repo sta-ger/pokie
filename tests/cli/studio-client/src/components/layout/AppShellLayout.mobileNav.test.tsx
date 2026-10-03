@@ -103,6 +103,73 @@ describe("AppShellLayout - mobile navigation", () => {
         }
     });
 
+    it("keeps a closed phone panel inert through the compound workflow's Home Design return", async () => {
+        const previous = Reflect.getOwnPropertyDescriptor(window, "matchMedia");
+        Reflect.defineProperty(window, "matchMedia", {configurable: true, value: (query: string) => ({
+            matches: query === "(max-width: 48em)", media: query,
+            addEventListener: jest.fn(), removeEventListener: jest.fn(),
+        })});
+        const selections = jest.fn();
+        function HomeReturn() {
+            const [home, setHome] = useState(false);
+            const [active, setActive] = useState("simulation");
+            return <AppShellLayout key={home ? "home" : "project"}
+                breadcrumbs={home ? [] : [{label: "Your projects", onClick: () => {
+                    setHome(true);
+                    setActive("projects");
+                }}]}
+                navbar={<NavTabs items={home ? [
+                    {value: "design", label: "Start a game", auditControlId: "home-tab:design"},
+                    {value: "projects", label: "Projects", auditControlId: "home-tab:projects"},
+                ] : [
+                    {value: "simulation", label: "Simulation", auditControlId: "project-tab:simulation"},
+                    {value: "replay", label: "Replay", auditControlId: "project-tab:replay"},
+                ]} active={active} onSelect={(value) => {
+                    selections(value);
+                    setActive(value);
+                }} />}>
+                <p role="status">{active} terminal result</p>
+            </AppShellLayout>;
+        }
+        try {
+            const user = userEvent.setup();
+            render(<MantineProvider><HomeReturn /></MantineProvider>);
+            for (const label of ["Replay", "Simulation"]) {
+                const burger = screen.getByRole("button", {name: "Toggle navigation"});
+                const panel = document.getElementById("studio-navigation-panel");
+                expect(panel).toHaveAttribute("inert");
+                burger.focus();
+                await user.keyboard("[Space]");
+                expect(panel).not.toHaveAttribute("inert");
+                await user.click(screen.getByRole("button", {name: label}));
+                expect(panel).toHaveAttribute("inert");
+                expect(burger).toHaveAttribute("aria-expanded", "false");
+            }
+            const projectBurger = screen.getByRole("button", {name: "Toggle navigation"});
+            await user.click(screen.getByRole("button", {name: "Your projects"}));
+            const burger = screen.getByRole("button", {name: "Toggle navigation"});
+            const panel = document.getElementById("studio-navigation-panel");
+            expect(burger).not.toBe(projectBurger);
+            expect(panel).toHaveAttribute("aria-labelledby", burger.id);
+            expect(panel).toHaveAttribute("inert");
+            burger.focus();
+            await user.keyboard("[Space]");
+            expect(burger).toHaveAttribute("aria-expanded", "true");
+            expect(panel).not.toHaveAttribute("inert");
+            const design = screen.getByRole("button", {name: "Start a game"});
+            expect(panel).toContainElement(design);
+            await user.click(design);
+            expect(screen.getByRole("status")).toHaveTextContent("design terminal result");
+            expect(selections.mock.calls).toEqual([["replay"], ["simulation"], ["design"]]);
+            expect(panel).toHaveAttribute("inert");
+            expect(burger).toHaveAttribute("aria-expanded", "false");
+            expect(document.activeElement).toBe(burger);
+        } finally {
+            if (previous) Reflect.defineProperty(window, "matchMedia", previous);
+            else Reflect.deleteProperty(window, "matchMedia");
+        }
+    });
+
     it("clears the inherited desktop navbar offset at phone width", () => {
         renderLayout();
 

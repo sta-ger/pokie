@@ -682,15 +682,59 @@ export async function observeP805NavigationReadiness(evaluate, route) {
 }
 export async function revealP805RenderedNavigationControl(cdp, evaluate, route, observation) {
     await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
-    // Find and focus one live target in the same browser turn. A closing
-    // narrow drawer can still expose a hit-testable tab for a transition
-    // frame. Its closed disclosure cannot authorize capture: reopen it
-    // through the native toggle before retaining the next tab.
+    const disclosureKey = randomBytes(16).toString("hex");
+    // Retain the product disclosure and its actual controlled panel across
+    // settling and activation. A new node with the same id is not this drawer.
+    const observeDisclosure = () => evaluate(`(() => {
+        const toggle = document.getElementById('studio-navigation-toggle');
+        const visible = (item) => item instanceof HTMLElement && item.getClientRects().length > 0;
+        if (!visible(toggle)) return {compact:false};
+        const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+        if (!(toggle instanceof HTMLButtonElement) || toggle.disabled || toggle.getAttribute('aria-label') !== 'Toggle navigation'
+            || toggle.getAttribute('aria-controls') !== 'studio-navigation-panel' || !(panel instanceof HTMLElement)) return false;
+        window.__p805NavigationDisclosures ??= new Map();
+        const key = ${JSON.stringify(disclosureKey)};
+        const retained = window.__p805NavigationDisclosures.get(key);
+        if (retained && (retained.toggle !== toggle || retained.panel !== panel)) throw new Error('Navigation disclosure identity changed while settling');
+        window.__p805NavigationDisclosures.set(key, {toggle,panel});
+        const viewport = (${measureP805VisualViewport.toString()})();
+        const region = (item) => { const box=item.getBoundingClientRect(); return {left:box.left,top:box.top,width:box.width,height:box.height}; };
+        const toggleRegion = region(toggle), panelRegion = region(panel);
+        const hit = document.elementFromPoint(toggleRegion.left + toggleRegion.width / 2, toggleRegion.top + toggleRegion.height / 2);
+        const inViewport = (box) => box.width > 0 && box.height > 0 && box.left >= viewport.offsetLeft && box.top >= viewport.offsetTop
+            && box.left + box.width <= viewport.offsetLeft + viewport.width && box.top + box.height <= viewport.offsetTop + viewport.height;
+        const moving = document.getAnimations().some((animation) => {
+            const target = animation.effect?.target;
+            return target instanceof Element && (target === panel || target.contains(panel)) && !['finished','idle'].includes(animation.playState);
+        });
+        const expanded = toggle.getAttribute('aria-expanded');
+        return {compact:true, controlId:toggle.id, accessibleName:toggle.getAttribute('aria-label'), panelId:panel.id,
+            connected:toggle.isConnected && panel.isConnected, enabled:!toggle.disabled, identityPreserved:true, expanded,
+            toggleRegion, toggleVisible:inViewport(toggleRegion), toggleHit:hit === toggle || toggle.contains(hit),
+            panelRegion, panelVisible:inViewport(panelRegion), panelInert:panel.inert, panelTransform:getComputedStyle(panel).transform,
+            closed:expanded === 'false' && (panelRegion.left + panelRegion.width <= viewport.offsetLeft || panelRegion.left >= viewport.offsetLeft + viewport.width),
+            moving, visualViewport:viewport, route:location.hash};
+    })()`);
+    let previousDisclosure;
+    const settledDisclosure = async () => {
+        const state = await observeDisclosure();
+        const previous = previousDisclosure;
+        previousDisclosure = state;
+        if (!state || !state.compact) return state;
+        const geometry = (value) => JSON.stringify([value.toggleRegion,value.panelRegion,value.panelTransform,value.visualViewport,value.expanded]);
+        if (!state.connected || !state.enabled || !state.toggleVisible || !state.toggleHit || state.moving
+            || !previous?.compact || geometry(previous) !== geometry(state)
+            || !(state.closed || state.expanded === 'true' && state.panelVisible && !state.panelInert)) return false;
+        return {...state,settled:true,observedAt:Date.now()};
+    };
+    // A closing drawer can still expose a tab for a transition frame. An
+    // opening drawer can already say expanded before its panel is in place.
+    // Neither authorizes retaining the next native pointer target.
     const focusVisibleNavigationControl = () => evaluate(`(() => {
         const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
         const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
         const item = [...document.querySelectorAll('button,a')].find((candidate) => {
-            if (!(candidate instanceof HTMLElement) || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
+            if (!(candidate instanceof HTMLElement) || !candidate.isConnected || ('disabled' in candidate && candidate.disabled) || candidate.getAttribute('aria-disabled') === 'true' || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
             const panel = candidate.closest('#studio-navigation-panel');
             const toggle = document.getElementById('studio-navigation-toggle');
             if (toggle instanceof HTMLButtonElement && visible(toggle)
@@ -734,30 +778,53 @@ export async function revealP805RenderedNavigationControl(cdp, evaluate, route, 
     // control and clicking their off-canvas coordinates is not a user
     // workflow.  Open the product's own Burger first, then obtain the
     // tab from the visible drawer exactly as a phone user would.
-    const visibleControl = await focusVisibleNavigationControl();
-    if (visibleControl) return visibleControl;
-    // Use the rendered disclosure rather than a runner-side viewport
-    // threshold. Chromium mobile emulation and Mantine's `sm`
-    // breakpoint need not expose the same `innerWidth`; the live
-    // Burger is the product's authoritative indication that the tabs
-    // are currently in the collapsed drawer.
-    const compactNavigation = await evaluate("(()=>{const item=document.getElementById('studio-navigation-toggle'); return item instanceof HTMLButtonElement && !!(item.offsetWidth||item.offsetHeight||item.getClientRects().length);})()");
-    if (!compactNavigation) {
-        await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
-        return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
+    try {
+        const before = await waitFor(settledDisclosure, `${observation} settled navigation disclosure`);
+        if (!before.compact) {
+            const visibleControl = await focusVisibleNavigationControl();
+            if (visibleControl) return visibleControl;
+            await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
+            return await waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
+        }
+        let disclosure;
+        if (before.closed) {
+            const burger = await evaluate(`(() => {
+                const retained = window.__p805NavigationDisclosures.get(${JSON.stringify(disclosureKey)});
+                retained.toggle.focus({preventScroll:true});
+                return document.activeElement === retained.toggle ? {stableControlId:retained.toggle.id, identityAttribute:'id'} : false;
+            })()`);
+            if (!burger) fail(`${observation} navigation disclosure lost native focus`);
+            disclosure = await activateP805FocusedControl(cdp, evaluate, "navigation-drawer", burger);
+        }
+        // Nominal expansion never requests another activation. Observe the
+        // same product panel through its completed geometry instead.
+        previousDisclosure = undefined;
+        await waitFor(async () => {
+            const state = await settledDisclosure();
+            return state?.expanded === 'true' && state.panelVisible && !state.panelInert ? state : false;
+        }, `${observation} settled open navigation panel`);
+        const control = await waitFor(async () => {
+            const state = await settledDisclosure();
+            if (!state?.settled || state.expanded !== 'true' || !state.panelVisible || state.panelInert) return false;
+            const control = await focusVisibleNavigationControl();
+            if (!control) return false;
+            const target = await evaluate(`(() => {
+                const retained=window.__p805NavigationDisclosures.get(${JSON.stringify(disclosureKey)});
+                const item=document.getElementById(${JSON.stringify(control.stableControlId)}),box=item?.getBoundingClientRect();
+                const hit=box&&document.elementFromPoint(box.left+box.width/2,box.top+box.height/2),viewport=(${measureP805VisualViewport.toString()})();
+                return item instanceof HTMLElement && item.isConnected && retained.panel.contains(item) && document.activeElement === item
+                    && !('disabled' in item && item.disabled) && item.getAttribute('aria-disabled') !== 'true' && (hit === item || item.contains(hit))
+                    && box.width > 0 && box.height > 0 && box.left >= viewport.offsetLeft && box.top >= viewport.offsetTop
+                    && box.right <= viewport.offsetLeft + viewport.width && box.bottom <= viewport.offsetTop + viewport.height
+                    ? {controlId:item.id,panelId:retained.panel.id,connected:true,enabled:true,viewportVisible:true,hit:true,
+                        region:{left:box.left,top:box.top,width:box.width,height:box.height},visualViewport:viewport} : false;
+            })()`);
+            return target ? {...control,navigationDisclosureState:{before,settled:state,target},...(disclosure ? {navigationDisclosure:disclosure} : {})} : false;
+        }, `${observation} rendered ${route} navigation control`);
+        return control;
+    } finally {
+        await evaluate(`window.__p805NavigationDisclosures?.delete(${JSON.stringify(disclosureKey)})`);
     }
-    const burger = await waitFor(() => evaluate(`(() => {
-                const item = document.getElementById('studio-navigation-toggle');
-                if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('aria-label') !== 'Toggle navigation') return false;
-                item.focus({preventScroll:true});
-                return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
-            })()`), `${observation} rendered narrow navigation drawer control`);
-    // One focused native Space activation opens the product disclosure.
-    // The revealed tab still needs its own visible captured pointer target.
-    const drawerOpen = await evaluate("document.getElementById('studio-navigation-toggle')?.getAttribute('aria-expanded') === 'true'");
-    const disclosure = !drawerOpen ? await activateP805FocusedControl(cdp, evaluate, "navigation-drawer", burger) : undefined;
-    const control = await waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
-    return {...control, ...(disclosure ? {navigationDisclosure:disclosure} : {})};
 }
 export async function navigateP805RenderedControl(cdp, evaluate, route, expectedRoute, observation) {
     if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
