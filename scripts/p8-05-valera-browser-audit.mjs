@@ -676,6 +676,16 @@ export async function observeP805NavigationReadiness(evaluate, route) {
                     .filter((candidate)=>candidate instanceof HTMLElement&&candidate.getClientRects().length>0);
                 if(validations.some((candidate)=>!['completed','error'].includes(candidate.getAttribute('data-pokie-lifecycle-terminal'))))return false;
             }
+        }else if(currentRoute.startsWith('#/home/')){
+            // Home retains both bodies. A changed hash alone can precede the
+            // router commit, its selected tab and its panel-focus effect.
+            const selectedRoute=currentRoute.split('?')[0].split('/').at(-1);
+            const selected=document.getElementById('home-tab:'+selectedRoute);
+            const panel=document.getElementById(selected?.getAttribute('aria-controls'));
+            if(!(selected instanceof HTMLElement)||selected.getAttribute('aria-current')!=='page'
+                ||selected.getAttribute('data-pokie-lifecycle-route')!==selectedRoute
+                ||!(panel instanceof HTMLElement)||!panel.isConnected||panel.getClientRects().length===0)return false;
+            terminal='rendered';
         }
         return {controlId:item.id,currentRoute,terminal};
     })()`);
@@ -822,6 +832,8 @@ export async function revealP805RenderedNavigationControl(cdp, evaluate, route, 
             return target ? {...control,navigationDisclosureState:{before,settled:state,target},...(disclosure ? {navigationDisclosure:disclosure} : {})} : false;
         }, `${observation} rendered ${route} navigation control`);
         return control;
+    } catch (error) {
+        throw new Error(`${error instanceof Error ? error.message : String(error)}; last navigation disclosure: ${JSON.stringify(previousDisclosure)}`, {cause:error});
     } finally {
         await evaluate(`window.__p805NavigationDisclosures?.delete(${JSON.stringify(disclosureKey)})`);
     }
@@ -835,7 +847,8 @@ export async function navigateP805RenderedControl(cdp, evaluate, route, expected
     // before capture, and focus never changes that geometry.
     const activation = await activateP805FocusedControl(cdp, evaluate, "navigation", control);
     try {
-        await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);
+        await waitFor(async () => await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)
+            && await observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation`, 60_000);
     } catch (error) {
         const rendered = await evaluate(`(() => ({route:location.hash, control:document.getElementById(${JSON.stringify(control.stableControlId)})?.outerHTML?.slice(0, 500), active:[...document.querySelectorAll('[data-pokie-lifecycle="navigation"][aria-current="page"]')].map((item) => ({id:item.id, route:item.getAttribute('data-pokie-lifecycle-route'), name:(item.innerText || item.textContent || '').trim()})), terminal:[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].map((item) => ({route:item.getAttribute('data-pokie-lifecycle-route'), terminal:item.getAttribute('data-pokie-lifecycle-terminal'), text:(item.textContent || '').trim()})), text:document.body.innerText.slice(0, 1000)}))()`);
         throw new Error(`${error instanceof Error ? error.message : String(error)}; rendered navigation state: ${JSON.stringify(rendered)}`);

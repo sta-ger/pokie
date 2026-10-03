@@ -169,14 +169,29 @@ async function runProductionDrawerRecovery() {
         import {AppShellLayout} from '/cli/studio-client/src/components/layout/AppShellLayout.tsx';
         import {NavTabs} from '/cli/studio-client/src/components/layout/NavTabs.tsx';
         import {ReplayTab} from '/cli/studio-client/src/components/project/ReplayTab.tsx';
+        import {HomePage} from '/cli/studio-client/src/components/home/HomePage.tsx';
+        import {StudioApiProvider} from '/cli/studio-client/src/context/StudioApiProvider.tsx';
+        import {ModalsProvider} from '@mantine/modals';
+        import {createHashRouter,RouterProvider} from 'react-router-dom';
         const h=React.createElement;
         const noop=()=>{};
+        const fetchImpl=async(url)=>new Response(JSON.stringify(
+            url.startsWith('/api/home/projects/registry')?[]:
+            url.startsWith('/api/home/jobs')?{jobs:[]}:
+            url==='/api/home/blueprints/validate'?{status:'ok',warnings:[]}:
+            {status:'unavailable',reason:'Focused drawer fixture'}
+        ),{headers:{'Content-Type':'application/json'}});
+        function HomeReturn(){
+            const [router]=useState(()=>createHashRouter([{path:'/home/:tab',element:h(HomePage)}]));
+            return h(StudioApiProvider,{fetchImpl},h(ModalsProvider,null,h(RouterProvider,{router})));
+        }
         function Fixture(){
             const [route,setRoute]=useState('simulation'),[expected,setExpected]=useState({status:'empty'}),[home,setHome]=useState(false);
+            if(home)return h(MantineProvider,null,h(HomeReturn));
             const items=['overview','gameModel','play','simulation','replay','exportDeploy','certification','provablyFair'].map(value=>({value,label:value,auditControlId:'project-tab:'+value}));
-            return h(MantineProvider,null,h(AppShellLayout,{key:home?'home':'project',breadcrumbs:home?[]:[{label:'Your projects',id:'close-project',onClick:()=>{location.hash='#/home/projects';setRoute('projects');setHome(true);}}],navbar:h(NavTabs,{items:home?[{value:'design',label:'Start a game',auditControlId:'home-tab:design'},{value:'projects',label:'Projects',auditControlId:'home-tab:projects'}]:items,active:route,onSelect:value=>{location.hash=(home?'#/home/':'#/project/source/')+value;setRoute(value);}})},
+            return h(MantineProvider,null,h(AppShellLayout,{breadcrumbs:[{label:'Your projects',id:'close-project',onClick:()=>{location.hash='#/home/projects';setHome(true);}}],navbar:h(NavTabs,{items,active:route,onSelect:value=>{location.hash='#/project/source/'+value;setRoute(value);}})},
                 h('section',{className:'studio-page','data-pokie-lifecycle-result':'navigation','data-pokie-lifecycle-route':route,'data-pokie-lifecycle-result-control':'project-tab:'+route,'data-pokie-lifecycle-terminal':'rendered'},
-                    home?h('p',null,route==='design'?'Design Game editor':'Projects registry'):route==='replay'?h(ReplayTab,{listView:{status:'empty'},recentSpins:{status:'empty'},recentRuns:{status:'empty'},expected,
+                    route==='replay'?h(ReplayTab,{listView:{status:'empty'},recentSpins:{status:'empty'},recentRuns:{status:'empty'},expected,
                         onLoadExpectedFromPaste:raw=>{const value=JSON.parse(raw);setExpected(value.round>0?{status:'loaded',...value,artifactWarnings:[]}:{status:'error',message:'Round must be positive'});},
                         onRun:noop,onCancel:noop,onRetry:noop,onRefreshList:noop,onInspectStored:async()=>{},onCompareStored:noop,onClearExpected:()=>setExpected({status:'empty'}),onRefreshRecentSpins:noop,onRefreshRecentRuns:noop
                     }):h('p',null,'Simulation terminal result'))));
@@ -248,6 +263,14 @@ async function runProductionDrawerRecovery() {
         const close=await evaluate("(()=>{const item=document.getElementById('close-project');item.focus({preventScroll:true});return {stableControlId:item.id};})()");
         await activateP805FocusedControl(cdp,evaluate,'navigation',close,'keyboard');
         await poll(()=>evaluate("location.hash==='#/home/projects' && document.getElementById('home-tab:design')?.isConnected"));
+        // The native Home route still has to commit its selected tab and
+        // visible retained body; the address bar cannot stand in for either.
+        assert.deepEqual(await observeP805NavigationReadiness(evaluate,'design'),{controlId:'home-tab:design',currentRoute:'#/home/projects',terminal:'rendered'});
+        await evaluate("document.getElementById('home-tab:projects').removeAttribute('aria-current')");
+        assert.equal(await observeP805NavigationReadiness(evaluate,'design'),false);
+        await evaluate("document.getElementById('home-tab:projects').setAttribute('aria-current','page');document.getElementById('home-projects-panel').hidden=true");
+        assert.equal(await observeP805NavigationReadiness(evaluate,'design'),false);
+        await evaluate("document.getElementById('home-projects-panel').hidden=false");
         const design=await navigateP805RenderedControl(cdp,evaluate,'design','#/home/design','unsaved-work source');
         assert.equal(hasP805NativeActivation(design.activation,'home-tab:design'),true);
         assert.equal(design.routeBefore,'#/home/projects');
@@ -263,6 +286,9 @@ async function runProductionDrawerRecovery() {
         assert.equal(proof.settled.settled,true);
         assert.equal(proof.settled.moving,false);
         assert.equal(proof.settled.panelVisible,true);
+        assert.equal(proof.settled.panelRegion.width,390,'the actual Home drawer, including its border, fits the assigned phone viewport');
+        assert.deepEqual(proof.settled.visualViewport,{offsetLeft:0,offsetTop:0,width:390,height:844,scale:1});
+        assert.equal(await evaluate("document.getElementById('home-projects-panel')?.isConnected && document.getElementById('home-design-panel')?.isConnected"),true,'the regression must retain both production Home panels');
         assert.equal(proof.settled.controlId,'studio-navigation-toggle');
         assert.equal(proof.settled.accessibleName,'Toggle navigation');
         assert.equal(proof.settled.panelId,'studio-navigation-panel');
@@ -272,6 +298,8 @@ async function runProductionDrawerRecovery() {
         assert.deepEqual(proof.target.visualViewport,design.activation.hitTest.visualViewport);
         assert.deepEqual(proof.target.region,design.activation.hitTest.region);
         await navigateP805RenderedControl(cdp,evaluate,'projects','#/home/projects','unsaved-work Projects');
+        assert.equal(await evaluate("document.getElementById('home-tab:projects').getAttribute('aria-current')"),'page');
+        assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"),'false');
         // Expansion is a requested product state, not completed execution.
         // Start a real panel transition after native opening and observe it
         // without toggling the already expanded drawer a second time.
@@ -311,7 +339,7 @@ test("the production phone drawer returns from native Replay Artifact recovery t
         import {mkdtemp,readFile,rm} from 'node:fs/promises';
         import {tmpdir} from 'node:os';
         import path from 'node:path';
-        import {navigateP805RenderedControl,activateP805FocusedControl,setP805ReplayArtifactInput,hasP805NativeActivation,connectP805Devtools} from './scripts/p8-05-valera-browser-audit.mjs';
+        import {navigateP805RenderedControl,activateP805FocusedControl,setP805ReplayArtifactInput,hasP805NativeActivation,connectP805Devtools,observeP805NavigationReadiness} from './scripts/p8-05-valera-browser-audit.mjs';
         const poll=${poll.toString()};
         ${launchFocusedBrowser.toString()}
         await (${runProductionDrawerRecovery.toString()})();

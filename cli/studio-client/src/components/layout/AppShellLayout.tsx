@@ -131,7 +131,10 @@ export function AppShellLayout({
                     {headerRight !== undefined && <div className="studio-app-header-actions">{headerRight}</div>}
                 </Group>
             </AppShell.Header>
-            <AppShell.Navbar id="studio-navigation-panel" aria-labelledby="studio-navigation-toggle" inert={isPhoneWidth && !opened} p="md" style={{overflowY: "auto", overscrollBehavior: "contain"}}>
+            {/* Mobile layout can expand its percentage containing block when Home mounts retained
+                editor content. Bound the drawer itself to the viewport, including its border, so
+                opening it never puts its native tab targets beyond the phone's visible edge. */}
+            <AppShell.Navbar id="studio-navigation-panel" aria-labelledby="studio-navigation-toggle" inert={isPhoneWidth && !opened} p="md" style={{maxWidth: isPhoneWidth ? "100vw" : undefined, overflowY: "auto", overscrollBehavior: "contain"}}>
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
             <AppShell.Main className="studio-app-main" style={isPhoneWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>

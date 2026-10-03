@@ -93,6 +93,7 @@ describe("AppShellLayout - mobile navigation", () => {
             burger.focus();
             await user.keyboard("[Space]");
             expect(burger).toHaveAttribute("aria-expanded", "true");
+            expect(document.getElementById("studio-navigation-panel")?.style.maxWidth).toBe(phone ? "100vw" : "");
             await user.click(screen.getByRole("button", {name: "Simulation"}));
             expect(screen.getByRole("status")).toHaveTextContent("Simulation configuration");
             expect(burger).toHaveAttribute("aria-expanded", "false");
@@ -152,6 +153,7 @@ describe("AppShellLayout - mobile navigation", () => {
             expect(burger).not.toBe(projectBurger);
             expect(panel).toHaveAttribute("aria-labelledby", burger.id);
             expect(panel).toHaveAttribute("inert");
+            expect(panel).toHaveStyle({maxWidth: "100vw"});
             burger.focus();
             await user.keyboard("[Space]");
             expect(burger).toHaveAttribute("aria-expanded", "true");
