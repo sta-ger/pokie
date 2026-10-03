@@ -92,6 +92,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
         const candidate = execFileSync("git", ["rev-parse", "HEAD"], {cwd: process.cwd(), encoding: "utf8"}).trim();
         const candidateDirectory = await mkdtemp(path.join(tmpdir(), "p8-05-packed-candidate-"));
         const output = await mkdtemp(path.join(tmpdir(), "p8-05-real-runner-"));
+        let passed = false;
         try {
             // The controller reads tuple artifacts from this one operation
             // root.  Keep the final public proof honest about that boundary:
@@ -551,13 +552,18 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     immutableArtifacts.add(artifact);
                 }
             }
+            passed = true;
+        } catch (error) {
+            throw new Error(`${error instanceof Error ? error.message : String(error)}\nRetained P8-05 failure evidence: ${output}\nRetained candidate configuration: ${candidateDirectory}`, {cause: error});
         } finally {
             // The passing receipt deliberately retains a read-only packed
             // runtime for inspection; test-owned temporary evidence must
             // restore cleanup permissions after those assertions.
-            await makeWritableForCleanup(output);
-            await rm(output, {recursive: true, force: true});
-            await rm(candidateDirectory, {recursive: true, force: true});
+            if (passed) {
+                await makeWritableForCleanup(output);
+                await rm(output, {recursive: true, force: true});
+                await rm(candidateDirectory, {recursive: true, force: true});
+            }
         }
     }, 40_000_000);
 });

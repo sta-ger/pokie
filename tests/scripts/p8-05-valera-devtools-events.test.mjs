@@ -219,10 +219,33 @@ async function runProductionDrawerRecovery() {
             const result=await cdp.send("Runtime.evaluate",{expression,returnByValue:true,awaitPromise:true});
             assert.equal(result.exceptionDetails,undefined);return result.result.value;
         };
+        const workflowEvidence = [];
+        const save = async (kind, name, contents, observationIds) => {
+            const target = path.join(profile, name);
+            await writeFile(target, contents, {flag:'wx'});
+            const evidence = {evidenceId:name, kind, path:target, sha256:hash(contents), observationIds};
+            workflowEvidence.push(evidence);
+            return evidence.evidenceId;
+        };
+        const recordNavigation = async (receipt, observation) => {
+            const state = await poll(()=>evaluate(`(()=>({route:location.hash,text:document.body.innerText,
+                controls:[...document.querySelectorAll('button,input,textarea')].filter(item=>item.getClientRects().length).map(item=>({id:item.id,disabled:item.disabled})),
+                viewport:{width:visualViewport.width,height:visualViewport.height},layout:{width:innerWidth,height:innerHeight,documentWidth:document.documentElement.scrollWidth},draft:window.dirtyGameName?.value}))()`));
+            assert.equal(state.route, receipt.routeAfter);
+            const transaction = {route:state.route, state, interaction:receipt.control, activation:receipt.activation};
+            const evidenceId = await saveP805RenderedWorkflowEvidence(save, 'narrow', observation, transaction);
+            assert.deepEqual(JSON.parse(await readFile(path.join(profile, evidenceId), 'utf8')), transaction);
+            const page = JSON.parse(await readFile(path.join(profile, `narrow-${observation}-page-state.json`), 'utf8'));
+            assert.deepEqual(page, {kind:'p8-05-rendered-page-state', operation:observation, route:state.route, viewport:'narrow', state});
+            assert.deepEqual(state.viewport, {width:390,height:844}, JSON.stringify(state.layout));
+            return workflowEvidence.slice(-2);
+        };
+        const recorded = [];
         await cdp.send("Emulation.setDeviceMetricsOverride",{width:390,height:844,mobile:true,deviceScaleFactor:1});
         await cdp.send("Page.navigate",{url:`http://127.0.0.1:${server.httpServer.address().port}/drawer-recovery`});
         await poll(()=>evaluate("document.getElementById('project-tab:simulation')?.isConnected"),30_000);
         const replay=await navigateP805RenderedControl(cdp,evaluate,'replay','#/project/source/replay','successful replay');
+        recorded.push(await recordNavigation(replay, 'replay'));
         assert.equal(hasP805NativeActivation(replay.control.navigationDisclosure,'studio-navigation-toggle'),true);
         const artifact=await evaluate("(()=>{const item=document.querySelector('input[type=radio][value=artifact]');item.focus();return {stableControlId:item.id};})()");
         await activateP805FocusedControl(cdp,evaluate,'precondition',artifact,'keyboard');
@@ -259,6 +282,7 @@ async function runProductionDrawerRecovery() {
         assert.equal(hasP805NativeActivation(cancellation.activation,'project-tab:simulation'),true);
         assert.equal(cancellation.routeBefore,'#/project/source/replay');
         assert.equal(cancellation.routeAfter,'#/project/source/simulation');
+        recorded.push(await recordNavigation(cancellation, 'simulation'));
         assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"),'false');
         assert.equal(await evaluate("window.activations.filter(value=>value.id==='project-tab:simulation').length"),1);
         const close=await evaluate("(()=>{const item=document.getElementById('close-project');item.focus({preventScroll:true});return {stableControlId:item.id};})()");
@@ -276,6 +300,7 @@ async function runProductionDrawerRecovery() {
         assert.equal(hasP805NativeActivation(design.activation,'home-tab:design'),true);
         assert.equal(design.routeBefore,'#/home/projects');
         assert.equal(design.routeAfter,'#/home/design');
+        recorded.push(await recordNavigation(design, 'design'));
         assert.equal(await evaluate("window.activations.filter(value=>value.id==='home-tab:design').length"),1);
         const proof=design.control.navigationDisclosureState;
         assert.equal(hasP805NativeActivation(design.control.navigationDisclosure,'studio-navigation-toggle'),true);
@@ -317,6 +342,7 @@ async function runProductionDrawerRecovery() {
         const projects=await navigateP805RenderedControl(projectDispatcher,evaluate,'projects','#/home/projects','unsaved-work Projects');
         assert.equal(projects.routeBefore,'#/home/design');
         assert.equal(projects.routeAfter,'#/home/projects');
+        recorded.push(await recordNavigation(projects, 'projects'));
         assert.equal(projects.control.stableControlId,'home-tab:projects');
         assert.equal(projects.control.accessibleName,'Projects');
         assert.equal(hasP805NativeActivation(projects.control.navigationDisclosure,'studio-navigation-toggle'),true);
@@ -360,12 +386,41 @@ async function runProductionDrawerRecovery() {
         assert.equal(expandedDesign.control.navigationDisclosureState.settled.moving,false);
         assert.equal(expandedDesign.control.navigationDisclosureState.target.controlId,'home-tab:design');
         assert.equal(expandedDesign.routeAfter,'#/home/design');
+        recorded.push(await recordNavigation(expandedDesign, 'design-after-stay'));
         assert.equal(await evaluate(`document.getElementById(${JSON.stringify(draft.id)})===window.dirtyGameName && window.dirtyGameName.value===${JSON.stringify(dirtyValue)}`),true,'Stay and the native Home tab return preserve the same edited draft');
         assert.equal(hasP805NativeActivation(expandedDesign.activation,'home-tab:design'),true);
         assert.equal(commands.filter(({method})=>method==='Input.dispatchKeyEvent').length,0);
         assert.deepEqual(commands.filter(({method,type})=>method==='Input.dispatchMouseEvent' && ['mousePressed','mouseReleased'].includes(type)).map(({type})=>type),['mousePressed','mouseReleased']);
         assert.equal(await evaluate("window.activations.filter(value=>value.id==='home-tab:design').length"),2);
         assert.equal(await evaluate("window.__p805NavigationDisclosures.size"),0);
+        // Reproduce the retained producer/consumer failure, rather than
+        // assuming a persona aggregate can lend evidence to a scoped child.
+        // Only the two relevant kinds come from this real bounded browser
+        // workflow; other kinds below are schema fixtures, not campaign proof.
+        const otherKinds = P805_REQUIRED_EVIDENCE_KINDS.filter(kind=>!['live-dom-transaction','page-state'].includes(kind)).map(kind=>({kind}));
+        assert.deepEqual(recorded.map(pair=>pair.map(item=>item.observationIds[0])),
+            ['replay','simulation','design','projects','design-after-stay'].map(name=>[name,name]));
+        for (const [index, pair] of recorded.entries()) {
+            const evidence = [...otherKinds, ...pair];
+            assert.throws(()=>validateP805AuditEvidenceKinds(evidence.filter(item=>item.kind!=='page-state'), 'initial audit for mathematician'), /missing page-state evidence/);
+            assert.doesNotThrow(()=>validateP805AuditEvidenceKinds(evidence, 'initial audit for mathematician'));
+            const page = JSON.parse(await readFile(pair[1].path, 'utf8'));
+            assert.equal(page.kind, 'p8-05-rendered-page-state');
+            assert.equal(Object.hasOwn(page, 'recovery'), false, 'a scoped page cannot fabricate compound recovery');
+            if(index>=3) assert.equal(page.state.draft, dirtyValue);
+        }
+        const children = recorded.map((evidence, index)=>({
+            auditId:`bounded-${index}`, tuple:{viewport:'narrow'}, timings:{startupMs:1}, performance:{},
+            observations:evidence[0].observationIds, evidence, observationEvidence:{[evidence[0].observationIds[0]]:evidence[0].evidenceId},
+            checkpointReceipts:[], startedAt:'2026-10-03T00:00:00.000Z', endedAt:'2026-10-03T00:00:01.000Z', cleanup:{evidenceId:`cleanup-${index}`},
+            rendered:{responsive:[],measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true},defects:[],actions:[],recovery:{},jobs:{}},
+        }));
+        const beforeProjection = JSON.stringify(children);
+        const projection = projectP805PersonaAudit(children, children.map(child=>({auditSha256:hash(JSON.stringify(child))})), 'initial', 'mathematician');
+        assert.equal(JSON.stringify(children), beforeProjection);
+        assert.deepEqual(projection.evidence, workflowEvidence);
+        assert.deepEqual(projection.observations, ['replay','simulation','design','projects','design-after-stay']);
+        assert.equal(projection.evidence.filter(item=>item.kind==='page-state').length, children.length);
     } finally {
         cdp?.close();
         browser?.kill("SIGTERM");if(exited)await exited;
@@ -380,10 +435,14 @@ test("the production phone drawer returns from Replay recovery through Design, d
     try {execFileSync(process.execPath,["--input-type=module","-e",`
         import assert from 'node:assert/strict';
         import {spawn} from 'node:child_process';
-        import {mkdtemp,readFile,rm} from 'node:fs/promises';
+        import {mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+        import {createHash} from 'node:crypto';
         import {tmpdir} from 'node:os';
         import path from 'node:path';
-        import {navigateP805RenderedControl,activateP805FocusedControl,setP805ReplayArtifactInput,hasP805NativeActivation,connectP805Devtools,observeP805NavigationReadiness} from './scripts/p8-05-valera-browser-audit.mjs';
+        import {navigateP805RenderedControl,activateP805FocusedControl,setP805ReplayArtifactInput,hasP805NativeActivation,connectP805Devtools,observeP805NavigationReadiness,saveP805RenderedWorkflowEvidence} from './scripts/p8-05-valera-browser-audit.mjs';
+        import {P805_REQUIRED_EVIDENCE_KINDS,validateP805AuditEvidenceKinds} from './scripts/p8-05-product-readiness-campaign.mjs';
+        import {projectP805PersonaAudit} from './scripts/p8-05-persona-projection.mjs';
+        const hash=${hash.toString()};
         const poll=${poll.toString()};
         ${launchFocusedBrowser.toString()}
         await (${runProductionDrawerRecovery.toString()})();

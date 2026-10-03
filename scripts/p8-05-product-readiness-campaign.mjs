@@ -21,6 +21,10 @@ export const P805_EVIDENCE_DIRECTORY = path.resolve(path.dirname(fileURLToPath(i
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const P805_PERSONAS = ["mathematician", "programmer", "producer", "ui-ux", "graphic-designer"];
 export const P805_REQUIRED_EVIDENCE_KINDS = ["screenshot", "live-dom-transaction", "page-state", "cli-transcript", "browser-log", "api-log", "error", "timing", "reproduction", "artifact", "cleanup"];
+export function validateP805AuditEvidenceKinds(evidence, label) {
+    const missing = P805_REQUIRED_EVIDENCE_KINDS.filter((kind) => !evidence?.some((item) => item?.kind === kind));
+    if (missing.length) fail(`${label} is incomplete: missing ${missing.join(", ")} evidence`);
+}
 export const P805_REQUIRED_OBSERVATIONS = {
     mathematician:["blueprint", "par-xlsx-round-trip", "reels-paytable-modes-mechanics", "simulation-success-failure-cancellation", "simulation-rtp-volatility-features", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "certification-conditional", "fairness-conditional", "build-export-output-folder", "import-export-defaults"],
     programmer:["packed-install", "npx-pokie", "recursive-help", "create-build-inspect", "validate-sim-report-diff-replay-serve-wasm", "spaces-invalid-inputs-exit-codes-ci-recovery", "build-export-output-folder"],
@@ -464,6 +468,7 @@ function frozenFields(initial, later) {
 }
 
 function auditRecord(record, phase, initial, finalCandidate) {
+    validateP805AuditEvidenceKinds(record?.evidence, `${phase} audit for ${record?.persona ?? "unknown persona"}${record?.tuple ? `/${record.tuple.observation}/${record.tuple.viewport}` : ""}`);
     const timings = record?.timings;
     const timingNames = Object.keys(P805_OPERATION_BUDGETS);
     const tuple = record?.tuple, tupleIsValid = tuple !== undefined && P805_REQUIRED_TUPLES.some((required) => tupleKey(required) === tupleKey(tuple)), cleanContexts = record?.cleanContexts ?? [record?.cleanContext];

@@ -12,7 +12,7 @@ import process from "node:process";
 import {isDeepStrictEqual} from "node:util";
 import {fileURLToPath} from "node:url";
 import WebSocket from "ws";
-import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS, P805_SCREEN_CONTROL_STATES, P805_WORKFLOW_CONTRACTS, p805TransactionStateClass} from "./p8-05-product-readiness-campaign.mjs";
+import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS, P805_SCREEN_CONTROL_STATES, P805_WORKFLOW_CONTRACTS, p805TransactionStateClass, validateP805AuditEvidenceKinds} from "./p8-05-product-readiness-campaign.mjs";
 import {createPc20OwnershipTracker, drainProcessTree, processIdentity, registerPc20OwnedResource} from "./pc-20-release-completion.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,6 +41,18 @@ class OutcomeLibraryTerminalBoundaryError extends Error {
     }
 }
 const auditTuples = (audit) => audit?.tuple ? [audit.tuple] : (audit?.workflowPersonas ?? [audit?.persona]).flatMap((persona) => (P805_REQUIRED_OBSERVATIONS[persona] ?? []).flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
+
+/** Persist the observed page independently of the control/request receipt.
+ * Both scoped and compound workflows use this boundary; a scoped child must
+ * not depend on another child's recovery page to satisfy its evidence schema. */
+export async function saveP805RenderedWorkflowEvidence(save, viewport, observation, transaction) {
+    const evidenceId = await save("live-dom-transaction", `${viewport}-${observation}.json`, JSON.stringify(transaction), [observation]);
+    await save("page-state", `${viewport}-${observation}-page-state.json`, JSON.stringify({
+        kind:"p8-05-rendered-page-state", operation:observation, route:transaction.route, viewport,
+        state:transaction.state, renderedTerminal:transaction.renderedTerminal,
+    }), [observation]);
+    return evidenceId;
+}
 // These observations name several terminal outcomes. Their tuple worker must
 // run that whole workflow, not label one representative request as the whole
 // scenario. The remaining tuples retain their single-workflow isolation.
@@ -2912,7 +2924,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             liveDomTransaction.contextRevalidation = entered.contextRevalidation;
             const timingName = {"project-validation":"validationMs", "artifact-build":"buildMs", build:"buildMs", simulation:"simulationMs", replay:"replayMs"}[transaction.operation];
             if (timingName) timings[timingName] = Math.max(timings[timingName] ?? 0, elapsedMs);
-            const evidenceId = await save("live-dom-transaction", `${viewport}-${observation}.json`, JSON.stringify(liveDomTransaction), [observation]);
+            const evidenceId = await saveP805RenderedWorkflowEvidence(save, viewport, observation, liveDomTransaction);
             return {elapsedMs, evidenceId, screenshotEvidenceId, state:productState, interaction, transaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, contextRevalidation:entered.contextRevalidation, screen, screenNavigationControl:stateMachine.navigationControl, precondition:liveDomTransaction.precondition, visibleTerminal:liveDomTransaction.renderedTerminal};
         };
         const creation = Date.now();
@@ -3350,7 +3362,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         if (action.accessibility.unexplainedDisabledControls > 0) retainDefect("disabled-control", action.evidenceId);
     }
     audit.rendered.defects = [...measuredDefects.values()];
-    try { validateP805RenderedPersonaAudit(audit); }
+    try {
+        validateP805AuditEvidenceKinds(audit.evidence, `${audit.phase} ${audit.persona}/${audit.tuple?.observation ?? "persona"}/${audit.tuple?.viewport ?? "all"}`);
+        validateP805RenderedPersonaAudit(audit);
+    }
     catch (error) { process.stderr.write(`P805_INVALID_TUPLE_ACTION ${JSON.stringify(audit?.rendered?.actions?.[0])}\n`); throw error; }
     if (options.tupleReceiptPath) {
         if (!pendingTupleReceipt || !publishedTupleCleanup || audit.checkpointReceipts.length !== 1 || audit.rendered.actions.length !== 1) fail(`tuple ${options.tuple.persona}/${options.tuple.observation}/${options.tuple.viewport} did not complete exactly one cleaned rendered workflow`);
