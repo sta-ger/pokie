@@ -118,10 +118,25 @@ function hasP805DispatchPoint(activation) {
 }
 export function hasP805NativeActivation(activation, controlId) {
     if (activation?.count !== 1 || activation.controlId !== controlId) return false;
-    if (activation.kind === "keyboard") return activation.nativeFocus === true && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
-        && activation.dispatch?.kind === "native-keyboard" && activation.dispatch.pressed === true && activation.dispatch.released === true
-        && activation.dispatch.keyDownCount === 1 && activation.dispatch.keyUpCount === 1 && ["Enter", " "].includes(activation.dispatch.key)
-        && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
+    if (activation.kind === "keyboard") {
+        const focused = activation.nativeFocus === true && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
+            && activation.dispatch?.kind === "native-keyboard" && activation.dispatch.pressed === true && activation.dispatch.released === true
+            && activation.dispatch.keyDownCount === 1 && activation.dispatch.keyUpCount === 1 && ["Enter", " "].includes(activation.dispatch.key)
+            && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
+        if (!focused) return false;
+        // Imported Open needs all three events on the retained Button. Keep
+        // older non-Open keyboard receipts readable without weakening this branch.
+        if (!controlId.startsWith("project-open:")) return true;
+        return activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
+            && activation.dispatch.bindingVersion === 1 && activation.dispatch.invalid !== true && activation.dispatch.key === " " && activation.dispatch.clickCount === 1
+            && Array.isArray(activation.dispatch.eventBindings) && activation.dispatch.eventBindings.length === 3
+            && activation.dispatch.eventBindings.every((event, index) => event.eventType === ["keydown", "keyup", "click"][index]
+                && event.trusted === true && event.capturedControlId === controlId && event.captureKey === activation.captureKey
+                && event.targetId === controlId && event.targetMatchesCapturedControl === true && event.nativeFocus === true
+                && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
+                && event.projectLocation === controlId.slice("project-open:".length)
+                && (event.eventType === "click" ? event.detail === 0 : event.key === " " && event.repeat === false));
+    }
     return activation.kind === "pointer" && activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
         && activation.preDispatchFocus?.controlId === controlId && activation.preDispatchFocus.native === true
         && activation.hitTest?.capturedControlId === controlId && activation.hitTest.matchesCapturedControl === true
@@ -652,28 +667,45 @@ export async function observeP805NavigationReadiness(evaluate, route) {
         return {controlId:item.id,currentRoute,terminal};
     })()`);
 }
-// Both the packed runner and its bounded Chromium regression use this one
-// native pointer boundary. Post-activation control replacement is permitted;
-// pre-dispatch identity, focus, and hit testing remain mandatory.
-export async function activateP805KeyboardControl(cdp, evaluate, controlId) {
-    const captureKey = randomBytes(16).toString("hex");
+// Shared native keyboard boundary. Open uses Space so keyup reaches the
+// captured Button before its native click submits and replaces the panel.
+export async function activateP805KeyboardControl(cdp, evaluate, controlId, focusControl = false) {
+    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:");
     const captured = await evaluate(`(()=>{
-        const item=document.getElementById(${JSON.stringify(controlId)});
-        if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled||document.activeElement!==item)return null;
-        const key=item instanceof HTMLInputElement&&item.type==='radio'?' ':'Enter';
-        const receipt={kind:'native-keyboard',key,pressed:false,released:false,keyDownCount:0,keyUpCount:0,focus:null};
+        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen};
+        if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled)return null;
+        if(projectOpen&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.dataset.pokieProjectLocation!==${JSON.stringify(controlId.slice("project-open:".length))}))return null;
+        if(${focusControl}){item.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});item.focus({preventScroll:true});}
+        if(document.activeElement!==item||document.getElementById(${JSON.stringify(controlId)})!==item)return null;
+        const key=projectOpen||item instanceof HTMLInputElement&&item.type==='radio'?' ':'Enter';
+        const receipt={kind:'native-keyboard',key,pressed:false,released:false,keyDownCount:0,keyUpCount:0,focus:null,
+            ...(projectOpen?{bindingVersion:1,clickCount:0,eventBindings:[]}: {})};
         const capture=(event)=>{
-            if(event.key!==key)return;
+            if(event.type!=='click'&&event.key!==key)return;
+            if(!projectOpen&&event.type==='click')return;
+            if(projectOpen){
+                const binding={eventType:event.type,trusted:event.isTrusted,capturedControlId:${JSON.stringify(controlId)},captureKey:${JSON.stringify(captureKey)},
+                    targetId:event.target?.id??null,targetMatchesCapturedControl:event.target===item,nativeFocus:document.activeElement===item,
+                    capturedControlConnected:item.isConnected,identityPreserved:document.getElementById(${JSON.stringify(controlId)})===item,
+                    enabled:!item.disabled,projectLocation:item.dataset.pokieProjectLocation,key:event.key??null,repeat:event.repeat??false,detail:event.detail};
+                receipt.eventBindings.push(binding);
+                receipt.invalid ||= !binding.trusted||!binding.targetMatchesCapturedControl||!binding.nativeFocus||!binding.capturedControlConnected||!binding.identityPreserved||!binding.enabled||binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))}||binding.repeat||event.type!==['keydown','keyup','click'][receipt.eventBindings.length-1];
+                if(receipt.invalid){
+                    event.preventDefault();event.stopImmediatePropagation();
+                }
+            }
             if(event.type==='keydown'){
                 receipt.keyDownCount++;receipt.pressed=true;
-                receipt.focus={controlId:item.id,native:document.activeElement===item,trusted:event.isTrusted,targetMatchesCapturedControl:event.target===item||item.contains(event.target)};
-            }else{receipt.keyUpCount++;receipt.released=event.isTrusted;}
+                receipt.focus={controlId:item.id,native:document.activeElement===item,trusted:event.isTrusted,targetMatchesCapturedControl:event.target===item||!projectOpen&&item.contains(event.target)};
+            }else if(event.type==='keyup'){receipt.keyUpCount++;receipt.released=event.isTrusted;}
+            else receipt.clickCount++;
         };
         document.addEventListener('keydown',capture,true);document.addEventListener('keyup',capture,true);
+        if(projectOpen)document.addEventListener('click',capture,true);
         window.__p805KeyboardReceipts??=new Map();window.__p805KeyboardReceipts.set(${JSON.stringify(captureKey)},{capture,receipt});
         return {key,preDispatchFocus:{controlId:item.id,native:true}};
     })()`);
-    if (!captured) fail(`rendered ${controlId} lost native keyboard focus`);
+    if (!captured) fail(`rendered ${controlId} lost native keyboard focus or its captured Button identity`);
     let dispatch;
     try {
         if (captured.key === ' ') {
@@ -682,11 +714,24 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId) {
         } else await pressP805Enter(cdp);
     } finally {
         // Always remove observers, including rejected native dispatches.
-        dispatch = await evaluate(`(()=>{const record=window.__p805KeyboardReceipts?.get(${JSON.stringify(captureKey)});if(record){document.removeEventListener('keydown',record.capture,true);document.removeEventListener('keyup',record.capture,true);}window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
+        dispatch = await evaluate(`(()=>{const record=window.__p805KeyboardReceipts?.get(${JSON.stringify(captureKey)});if(record){for(const type of ['keydown','keyup','click'])document.removeEventListener(type,record.capture,true);}window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
     }
-    const activation = {kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:captured.preDispatchFocus, dispatch};
+    const activation = {kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:captured.preDispatchFocus, dispatch,
+        ...(projectOpen ? {capturedControlId:controlId, captureKey} : {})};
     if (!hasP805NativeActivation(activation, controlId)) fail(`rendered ${controlId} did not receive one native keyboard activation`);
     return activation;
+}
+export async function openP805ImportedProject(cdp, evaluate, projectLocation) {
+    const controlId = `project-open:${projectLocation}`;
+    const priorRoute = await evaluate("location.hash");
+    // Focus and retain the exact Button in the same browser turn. A separate
+    // lookup after focus could silently capture an intervening replacement.
+    const activation = await activateP805KeyboardControl(cdp, evaluate, controlId, true);
+    const route = await waitFor(async () => {
+        const current = await evaluate("location.hash");
+        return current !== priorRoute && /^#\/project\/[^/]+\/overview$/.test(current) ? current : false;
+    }, "keyboard imported-project Open dashboard");
+    return {projectLocation, controlId, activation, priorRoute, route};
 }
 export async function setP805ReplayArtifactInput(cdp, evaluate, text) {
     const ready = await evaluate(`(()=>{const item=document.getElementById('replay-artifact-json');if(!(item instanceof HTMLTextAreaElement)||item.disabled)return false;item.scrollIntoView({block:'center',inline:'nearest'});item.focus({preventScroll:true});item.select();return document.activeElement===item;})()`);
@@ -2350,12 +2395,9 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             })()`), `${observation} rendered project import preview or existing registered project`);
             if (importState === "preview") await activate("project-import-add", "Add to projects");
             await waitFor(() => evaluate(`!!document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]')`), `${observation} rendered registered project`);
-            const opened = await evaluate(`(() => { const item = document.querySelector('[data-pokie-project-location=${JSON.stringify(projectLocation)}]'); if (!(item instanceof HTMLElement) || ('disabled' in item && item.disabled)) return false; item.focus({preventScroll:true}); return document.activeElement === item ? {stableControlId:item.id} : false; })()`);
-            if (!opened?.stableControlId) fail(`${observation} did not expose the rendered imported-project Open control`);
-            await activateFocusedControl("operation", opened);
-            await waitFor(() => evaluate("location.hash.includes('/project/')"), `${observation} rendered imported project dashboard`);
-            const route = await evaluate("location.hash");
-            if (typeof route !== "string" || !/^#\/project(?:\/[^/]+){1,2}$/.test(route)) fail(`${observation} did not open a project-scoped imported route`);
+            const opened = await openP805ImportedProject(cdp, evaluate, projectLocation);
+            await save("json", `${observation.replace(/[^a-z0-9]+/gi, "-")}-${evidence.length + 1}-import-open.json`, JSON.stringify(opened, null, 2), [observation]);
+            const route = opened.route;
             return route.replace(/\/[^/]+$/, "");
         };
         const runBoundedReelEditorWorkflow = async (viewport, observation) => {

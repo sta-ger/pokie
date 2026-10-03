@@ -423,7 +423,7 @@ export function ProjectsPanel({
             <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
                     {entry.status === "ok" && isOpenable(entry) && (
-                        <Button id={`project-open:${entry.location}`} data-pokie-project-location={entry.location} variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
+                        <Button type="button" id={`project-open:${entry.location}`} data-pokie-project-location={entry.location} variant="default" size="xs" disabled={openingLocation !== undefined} loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>

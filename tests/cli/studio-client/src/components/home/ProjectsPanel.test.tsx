@@ -736,7 +736,14 @@ describe("ProjectsPanel: Import Project", () => {
         // The freshly registered Blueprint row gets the same Open action a Package row does -- not just
         // Remove (StudioHomeService.openProject materializes a "blueprint" location into a real runtime
         // before loading it, so it reaches the exact same Project Dashboard a Package does).
-        await user.click(screen.getByRole("button", {name: "Open"}));
+        const open = screen.getByRole("button", {name: "Open"});
+        expect(open).toHaveAttribute("id", "project-open:/games/blueprint.json");
+        expect(open).toHaveAttribute("data-pokie-project-location", "/games/blueprint.json");
+        expect(open).toHaveAttribute("type", "button");
+        open.focus();
+        await user.keyboard("[Space>]");
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        await user.keyboard("[/Space]");
 
         await waitFor(() =>
             expect(calls).toContainEqual(
@@ -746,6 +753,7 @@ describe("ProjectsPanel: Import Project", () => {
                 }),
             ),
         );
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
         expect(await screen.findByRole("heading", {name: "blueprint"})).toBeInTheDocument();
         expect(within(screen.getByRole("navigation", {name: "Sections"})).getByRole("button", {name: "Overview"})).toBeInTheDocument();
         expect(within(screen.getByRole("navigation", {name: "Sections"})).getByRole("button", {name: "Game Model"})).toBeInTheDocument();
@@ -1131,6 +1139,60 @@ describe("ProjectsPanel: Import Project", () => {
         expect(within(buildArtifactSection).getByText(/republished-sheet\.xlsx/)).toBeInTheDocument();
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
         expect(screen.queryByText(/WASM/)).not.toBeInTheDocument();
+    });
+
+    it("disables every Open during a keyboard submission and restores the same control after failure for a single retry", async () => {
+        const user = userEvent.setup();
+        const location = "/games/Bounded reel editor.json";
+        const resolvedRoot = "/games/generated runtime";
+        let failOpen = true;
+        let finishOpen: (() => void) | undefined;
+        const routed = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: [
+                {location, name: "Imported design", type: "blueprint", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
+                {location: "/games/other", name: "Other game", type: "tsPackage", capabilities: [], origin: "external", lastOpenedAt: "2026-01-01T00:00:00.000Z", status: "ok"},
+            ]}),
+            "/api/home/projects/open": () => failOpen
+                ? {ok: false, status: 500, body: {error: "Materialization failed"}}
+                : {ok: true, status: 200, body: {context: {mode: "project", projectRoot: resolvedRoot}}},
+        });
+        const submissions: string[] = [];
+        const fetchImpl: typeof routed.fetchImpl = (url, init) => {
+            if (url !== "/api/home/projects/open") return routed.fetchImpl(url, init);
+            submissions.push(init?.body ?? "");
+            return new Promise((resolve) => {
+                finishOpen = () => resolve(routed.fetchImpl(url, init));
+            });
+        };
+        renderWithProviders(<><ProjectsPanel /><LocationProbe /></>, {fetchImpl, initialEntries: ["/home/projects"]});
+        await screen.findByText("Imported design");
+        const open = document.getElementById(`project-open:${location}`) as HTMLButtonElement;
+        open.focus();
+        await user.keyboard("[Space]");
+        await waitFor(() => expect(open).toBeDisabled());
+        expect(document.getElementById("project-open:/games/other")).toBeDisabled();
+        await user.keyboard("[Space]");
+        await user.click(screen.getAllByRole("button", {name: "Open"})[1]);
+        expect(submissions).toEqual([JSON.stringify({projectRoot: location})]);
+        await act(async () => {
+            finishOpen?.();
+            await Promise.resolve();
+        });
+        expect(await screen.findByRole("alert")).toHaveTextContent("The game design could not be completed. Try again. If it continues, choose the location again and retry.");
+        await waitFor(() => expect(open).toBeEnabled());
+        expect(document.getElementById(`project-open:${location}`)).toBe(open);
+        expect(document.getElementById("project-open:/games/other")).toBeEnabled();
+        expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}").pathname).toBe("/home/projects");
+        failOpen = false;
+        open.focus();
+        await user.keyboard("[Space]");
+        await act(async () => {
+            finishOpen?.();
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(JSON.parse(screen.getByTestId("location").textContent ?? "{}").pathname)
+            .toBe(`/project/${encodeURIComponent(resolvedRoot)}/overview`));
+        expect(submissions).toEqual([JSON.stringify({projectRoot: location}), JSON.stringify({projectRoot: location})]);
     });
 
     it("uses the labelled card layout while desktop navigation leaves the Projects panel too narrow for every action", () => {

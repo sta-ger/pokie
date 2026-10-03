@@ -8,7 +8,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {openP805ImportedProject, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
@@ -502,6 +502,9 @@ test("native navigation waits for rendered context and Retry retains captured id
                     result.setAttribute('data-pokie-lifecycle-terminal', 'rendered');
                 };
             </script>`);
+        } else if (request.url === "/api/home/projects/open") {
+            response.writeHead(200, {"Content-Type":"application/json"});
+            response.end(JSON.stringify({context:{projectRoot:"/games/Bounded reel editor.json"}}));
         } else if (request.url === "/api/project/simulations") {
             response.writeHead(202, {"Content-Type":"application/json"});
             response.end(JSON.stringify({id:"retry-job", status:"queued"}));
@@ -749,6 +752,84 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.deepEqual([importedOpen.dispatch.pointerDownCount, importedOpen.dispatch.pointerUpCount, importedOpen.dispatch.clickCount], [1,1,1]);
         assert.deepEqual(await evaluate("window.importedOpenActivations"), [{trusted:true, controlId:importedControlId}]);
         assert.equal(await evaluate("location.hash"), '#/project/imported/overview');
+        // The product import path uses a focused native Button, rather than
+        // retrying the failed compact pointer transition. Exercise its shared
+        // production boundary with a browser-owned request and route terminal.
+        const mountImportedOpen = async () => evaluate(`(()=>{
+            document.body.innerHTML='<input id="other-target"><section style="padding-top:1800px"><button type="button" id="${importedControlId}" data-pokie-project-location="${importedLocation}"><span>Open</span></button></section>';
+            location.hash='#/home/projects';window.keyboardOpenActivations=[];
+            const button=document.getElementById(${JSON.stringify(importedControlId)});
+            button.addEventListener('click',async(event)=>{
+                window.keyboardOpenActivations.push({trusted:event.isTrusted,controlId:event.currentTarget.id});
+                button.disabled=true;
+                const context=await(await fetch('/api/home/projects/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectRoot:button.dataset.pokieProjectLocation})})).json();
+                location.hash='#/project/'+encodeURIComponent(context.context.projectRoot)+'/overview';button.remove();
+            });
+        })()`);
+        let validKeyboardOpen;
+        for (const [width,height] of [[1440,900],[960,800],[390,844]]) {
+            await cdp.send("Emulation.setDeviceMetricsOverride", {width,height,mobile:width===390,deviceScaleFactor:1});
+            await mountImportedOpen();
+            const beforeRequests=requests.filter((request)=>request.path==='/api/home/projects/open').length;
+            const commands=[];
+            const opened=await openP805ImportedProject({send:async(method,params)=>{
+                assert.equal(method,'Input.dispatchKeyEvent','Open must use only its one native keyboard interaction');
+                commands.push(params);return cdp.send(method,params);
+            }},evaluate,importedLocation);
+            validKeyboardOpen=opened.activation;
+            assert.deepEqual(commands.map((command)=>[command.type,command.key]),[['keyDown',' '],['keyUp',' ']]);
+            assert.equal(hasP805NativeActivation(opened.activation,importedControlId),true);
+            assert.deepEqual(opened.activation.dispatch.eventBindings.map((event)=>event.eventType),['keydown','keyup','click']);
+            assert.equal(opened.activation.dispatch.clickCount,1);
+            assert.equal(opened.activation.capturedControlId,importedControlId);
+            assert.equal(opened.priorRoute,'#/home/projects');
+            assert.equal(opened.route,'#/project/'+encodeURIComponent(importedLocation)+'/overview');
+            assert.deepEqual(await evaluate('window.keyboardOpenActivations'),[{trusted:true,controlId:importedControlId}]);
+            assert.equal(requests.filter((request)=>request.path==='/api/home/projects/open').length,beforeRequests+1);
+        }
+        for (const corrupt of [
+            (value)=>{value.capturedControlId='project-open:another';},
+            (value)=>{delete value.captureKey;},
+            (value)=>{delete value.dispatch.eventBindings;},
+            (value)=>{delete value.dispatch.bindingVersion;},
+            (value)=>{value.dispatch.clickCount=2;},
+            (value)=>{value.dispatch.key='Enter';},
+            ...['trusted','targetMatchesCapturedControl','nativeFocus','capturedControlConnected','identityPreserved','enabled'].flatMap((field)=>[0,1,2].map((index)=>(value)=>{value.dispatch.eventBindings[index][field]=false;})),
+            (value)=>{value.dispatch.eventBindings[1].targetId='other-target';},
+            (value)=>{value.dispatch.eventBindings[2].projectLocation='/another';},
+            (value)=>{value.dispatch.eventBindings[0].repeat=true;},
+            (value)=>{value.dispatch.eventBindings[2].detail=1;},
+        ]) {
+            const invalid=structuredClone(validKeyboardOpen);corrupt(invalid);
+            assert.equal(hasP805NativeActivation(invalid,importedControlId),false,'Open requires exact retained identity and all trusted focused events');
+        }
+        for (const mode of ['disabled','unfocused','nonmatching-location','replacement','late-disabled','late-unfocused','keyup-replacement','keyup-disabled','keyup-unfocused','nonmatching-event-target','synthetic-events','duplicate-keydown','dispatch-failed']) {
+            await mountImportedOpen();
+            await evaluate(`document.getElementById(${JSON.stringify(importedControlId)}).focus({preventScroll:true})`);
+            const beforeRequests=requests.filter((request)=>request.path==='/api/home/projects/open').length;
+            const mutation=['disabled','late-disabled','keyup-disabled'].includes(mode)?'item.disabled=true'
+                :mode==='nonmatching-location'?"item.dataset.pokieProjectLocation='/another'"
+                :['replacement','keyup-replacement'].includes(mode)?'const replacement=item.cloneNode(true);item.replaceWith(replacement);replacement.focus()'
+                :"document.getElementById('other-target').focus()";
+            if(['disabled','unfocused','nonmatching-location'].includes(mode))await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(importedControlId)});${mutation};})()`);
+            const commands=[];
+            const dispatcher={send:async(method,params)=>{
+                commands.push(params);
+                if(mode==='dispatch-failed')throw new Error('native keyboard dispatch rejected');
+                if(params.type==='keyDown'&&['replacement','late-disabled','late-unfocused','nonmatching-event-target'].includes(mode))await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(importedControlId)});${mutation};})()`);
+                if(params.type==='keyUp'&&['keyup-replacement','keyup-disabled','keyup-unfocused'].includes(mode))await evaluate(`(()=>{const item=document.getElementById(${JSON.stringify(importedControlId)});${mutation};})()`);
+                if(mode==='synthetic-events')return evaluate(`document.getElementById(${JSON.stringify(importedControlId)}).dispatchEvent(new KeyboardEvent('${params.type==='keyDown'?'keydown':'keyup'}',{key:' ',bubbles:true,cancelable:true}))`);
+                const result=await cdp.send(method,params);
+                if(mode==='duplicate-keydown'&&params.type==='keyDown')await cdp.send(method,params);
+                return result;
+            }};
+            await assert.rejects(()=>activateP805KeyboardControl(dispatcher,evaluate,importedControlId),/lost native keyboard focus|did not receive one native keyboard activation|native keyboard dispatch rejected/);
+            assert.ok(commands.length<=2,'failure never retries or adds a second activation');
+            assert.deepEqual(await evaluate('window.keyboardOpenActivations'),[]);
+            assert.equal(await evaluate('location.hash'),'#/home/projects');
+            assert.equal(await evaluate('window.__p805KeyboardReceipts?.size ?? 0'),0,'failure removes its observers');
+            assert.equal(requests.filter((request)=>request.path==='/api/home/projects/open').length,beforeRequests);
+        }
         await evaluate("document.documentElement.style.scrollBehavior='auto'");
         await cdp.send("Emulation.setPageScaleFactor", {pageScaleFactor:1});
         await cdp.send("Emulation.clearDeviceMetricsOverride");
