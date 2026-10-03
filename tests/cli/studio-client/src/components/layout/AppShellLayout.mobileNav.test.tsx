@@ -66,17 +66,61 @@ describe("AppShellLayout - mobile navigation", () => {
         expect(document.activeElement).toBe(burger);
     });
 
-    it("opens the labelled drawer through the Burger's keyboard control", async () => {
+    it("opens one labelled drawer on native Space release, then selects its tab by pointer", async () => {
         const user = userEvent.setup();
-        const {burger} = renderLayout();
+        const {burger, onSelect} = renderLayout();
+        const panel = document.getElementById("studio-navigation-panel");
+        const clicks = jest.fn();
+        burger.addEventListener("click", clicks);
 
         burger.focus();
-        await user.keyboard("{Enter}");
+        expect(burger).toHaveAttribute("id", "studio-navigation-toggle");
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+        await user.keyboard("[Space>]");
+        expect(isBurgerOpened(burger)).toBe(false);
+        expect(clicks).not.toHaveBeenCalled();
+        await user.keyboard("[/Space]");
 
+        expect(clicks).toHaveBeenCalledTimes(1);
+        expect(document.activeElement).toBe(burger);
         expect(isBurgerOpened(burger)).toBe(true);
         expect(burger).toHaveAttribute("aria-expanded", "true");
         expect(burger).toHaveAttribute("aria-controls", "studio-navigation-panel");
-        expect(document.getElementById("studio-navigation-panel")).toBeInTheDocument();
+        expect(document.getElementById("studio-navigation-toggle")).toBe(burger);
+        expect(document.getElementById("studio-navigation-panel")).toBe(panel);
+
+        const section = screen.getByRole("button", {name: "Section B"});
+        expect(panel).toContainElement(section);
+        await user.click(section);
+        expect(onSelect).toHaveBeenCalledTimes(1);
+        expect(onSelect).toHaveBeenCalledWith("b");
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+        expect(document.activeElement).toBe(burger);
+
+        // Follow the next workflow through the same disclosure identity.
+        await user.keyboard("[Space]");
+        expect(clicks).toHaveBeenCalledTimes(2);
+        expect(burger).toHaveAttribute("aria-expanded", "true");
+        await user.click(screen.getByRole("button", {name: "Section A"}));
+        expect(onSelect.mock.calls).toEqual([["b"], ["a"]]);
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("keeps the drawer closed when Space is pressed on a disabled toggle or another control", async () => {
+        const user = userEvent.setup();
+        const {burger, onSelect} = renderLayout();
+        burger.focus();
+        burger.setAttribute("disabled", "");
+        await user.keyboard("[Space]");
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+        expect(isBurgerOpened(burger)).toBe(false);
+        expect(onSelect).not.toHaveBeenCalled();
+
+        burger.removeAttribute("disabled");
+        burger.blur();
+        await user.keyboard("[Space]");
+        expect(burger).toHaveAttribute("aria-expanded", "false");
+        expect(isBurgerOpened(burger)).toBe(false);
     });
 
     it("selects a visible drawer section through its keyboard control", async () => {

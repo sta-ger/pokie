@@ -124,9 +124,14 @@ export function hasP805NativeActivation(activation, controlId) {
             && activation.dispatch.keyDownCount === 1 && activation.dispatch.keyUpCount === 1 && ["Enter", " "].includes(activation.dispatch.key)
             && activation.dispatch.focus?.controlId === controlId && activation.dispatch.focus.native === true && activation.dispatch.focus.trusted === true && activation.dispatch.focus.targetMatchesCapturedControl === true;
         if (!focused) return false;
-        // Imported Open needs all three events on the retained Button. Keep
-        // older non-Open keyboard receipts readable without weakening this branch.
-        if (!controlId.startsWith("project-open:")) return true;
+        // Open and the narrow disclosure bind all three events to one Button.
+        const navigationToggle = controlId === "studio-navigation-toggle";
+        if (!controlId.startsWith("project-open:") && !navigationToggle) return true;
+        const disclosure = activation.dispatch.disclosure;
+        if (navigationToggle && (disclosure?.expandedBefore !== "false" || disclosure.expandedAfter !== "true"
+            || disclosure.panelId !== "studio-navigation-panel" || disclosure.panelConnected !== true
+            || disclosure.identityPreserved !== true || disclosure.enabled !== true
+            || disclosure.routeBefore !== disclosure.routeAfter || typeof disclosure.routeBefore !== "string")) return false;
         return activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
             && activation.dispatch.bindingVersion === 1 && activation.dispatch.invalid !== true && activation.dispatch.key === " " && activation.dispatch.clickCount === 1
             && Array.isArray(activation.dispatch.eventBindings) && activation.dispatch.eventBindings.length === 3
@@ -134,7 +139,8 @@ export function hasP805NativeActivation(activation, controlId) {
                 && event.trusted === true && event.capturedControlId === controlId && event.captureKey === activation.captureKey
                 && event.targetId === controlId && event.targetMatchesCapturedControl === true && event.nativeFocus === true
                 && event.capturedControlConnected === true && event.identityPreserved === true && event.enabled === true
-                && event.projectLocation === controlId.slice("project-open:".length)
+                && (navigationToggle ? event.accessibleName === "Toggle navigation" && event.panelId === "studio-navigation-panel" && event.expanded === "false"
+                    : event.projectLocation === controlId.slice("project-open:".length))
                 && (event.eventType === "click" ? event.detail === 0 : event.key === " " && event.repeat === false));
     }
     return activation.kind === "pointer" && activation.capturedControlId === controlId && typeof activation.captureKey === "string" && activation.captureKey.length > 0
@@ -674,42 +680,122 @@ export async function observeP805NavigationReadiness(evaluate, route) {
         return {controlId:item.id,currentRoute,terminal};
     })()`);
 }
-// Shared native keyboard boundary. Open uses Space so keyup reaches the
-// captured Button before its native click submits and replaces the panel.
+export async function revealP805RenderedNavigationControl(cdp, evaluate, route, observation) {
+    await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
+    // Find and focus one live target in the same browser turn. A
+    // narrow drawer is allowed to finish closing once a tab receives
+    // focus, so a successful visibility probe must itself return the
+    // control receipt rather than asking a later DOM lookup to find
+    // the same tab again.
+    const focusVisibleNavigationControl = () => evaluate(`(() => {
+        const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
+        const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
+        const item = [...document.querySelectorAll('button,a')].find((candidate) => {
+            if (!(candidate instanceof HTMLElement) || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
+            const panel = candidate.closest('#studio-navigation-panel');
+            if (document.getElementById('studio-navigation-toggle')?.getAttribute('aria-expanded') === 'true' && !(panel instanceof HTMLElement)) return false;
+            if (panel instanceof HTMLElement && panel.getBoundingClientRect().left >= 0) candidate.scrollIntoView({block:'nearest',inline:'nearest'});
+            const box = candidate.getBoundingClientRect();
+            if (box.width <= 0 || box.height <= 0 || box.left < 0 || box.right > window.innerWidth || box.top < 0 || box.bottom > window.innerHeight) return false;
+            const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+            return hit === candidate || candidate.contains(hit);
+        });
+        if (!(item instanceof HTMLElement) || ('disabled' in item && Boolean(item.disabled))) return false;
+        item.focus({preventScroll:true});
+        const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
+        return {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:document.activeElement === item, enabled:true, disabled:false,
+            disabledExplanation:item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null,
+            accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id',
+            transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:'navigation', value:${JSON.stringify(route)}}};
+    })()`);
+    // On a narrow viewport Mantine retains the tab buttons in its
+    // collapsed drawer.  Their DOM presence is not a visible public
+    // control and clicking their off-canvas coordinates is not a user
+    // workflow.  Open the product's own Burger first, then obtain the
+    // tab from the visible drawer exactly as a phone user would.
+    const visibleControl = await focusVisibleNavigationControl();
+    if (visibleControl) return visibleControl;
+    // Use the rendered disclosure rather than a runner-side viewport
+    // threshold. Chromium mobile emulation and Mantine's `sm`
+    // breakpoint need not expose the same `innerWidth`; the live
+    // Burger is the product's authoritative indication that the tabs
+    // are currently in the collapsed drawer.
+    const compactNavigation = await evaluate("(()=>{const item=document.getElementById('studio-navigation-toggle'); return item instanceof HTMLButtonElement && !!(item.offsetWidth||item.offsetHeight||item.getClientRects().length);})()");
+    if (!compactNavigation) {
+        await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
+        return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
+    }
+    const burger = await waitFor(() => evaluate(`(() => {
+                const item = document.getElementById('studio-navigation-toggle');
+                if (!(item instanceof HTMLButtonElement) || item.disabled || item.getAttribute('aria-label') !== 'Toggle navigation') return false;
+                item.focus({preventScroll:true});
+                return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
+            })()`), `${observation} rendered narrow navigation drawer control`);
+    // One focused native Space activation opens the product disclosure.
+    // The revealed tab still needs its own visible captured pointer target.
+    const drawerOpen = await evaluate("document.getElementById('studio-navigation-toggle')?.getAttribute('aria-expanded') === 'true'");
+    const disclosure = !drawerOpen ? await activateP805FocusedControl(cdp, evaluate, "navigation-drawer", burger) : undefined;
+    const control = await waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
+    return {...control, ...(disclosure ? {navigationDisclosure:disclosure} : {})};
+}
+export async function navigateP805RenderedControl(cdp, evaluate, route, expectedRoute, observation) {
+    if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
+    const routeBefore = await evaluate("location.hash");
+    const control = await revealP805RenderedNavigationControl(cdp, evaluate, route, observation);
+    // Keep the drawer's captured tab as the native pointer target;
+    // revealRenderedNavigationControl scrolls its real scroll region
+    // before capture, and focus never changes that geometry.
+    const activation = await activateP805FocusedControl(cdp, evaluate, "navigation", control);
+    try {
+        await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);
+    } catch (error) {
+        const rendered = await evaluate(`(() => ({route:location.hash, control:document.getElementById(${JSON.stringify(control.stableControlId)})?.outerHTML?.slice(0, 500), active:[...document.querySelectorAll('[data-pokie-lifecycle="navigation"][aria-current="page"]')].map((item) => ({id:item.id, route:item.getAttribute('data-pokie-lifecycle-route'), name:(item.innerText || item.textContent || '').trim()})), terminal:[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].map((item) => ({route:item.getAttribute('data-pokie-lifecycle-route'), terminal:item.getAttribute('data-pokie-lifecycle-terminal'), text:(item.textContent || '').trim()})), text:document.body.innerText.slice(0, 1000)}))()`);
+        throw new Error(`${error instanceof Error ? error.message : String(error)}; rendered navigation state: ${JSON.stringify(rendered)}`);
+    }
+    return {control, activation, routeBefore, routeAfter:await evaluate("location.hash")};
+}
+
+// Space delivers keyup to the retained Button before its native click changes
+// the product state. Both Open and the narrow disclosure need that ordering.
 export async function activateP805KeyboardControl(cdp, evaluate, controlId, focusControl = false) {
-    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:");
+    const captureKey = randomBytes(16).toString("hex"), projectOpen = controlId.startsWith("project-open:"), navigationToggle = controlId === "studio-navigation-toggle";
     const captured = await evaluate(`(()=>{
-        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen};
+        const item=document.getElementById(${JSON.stringify(controlId)}),projectOpen=${projectOpen},navigationToggle=${navigationToggle},boundButton=projectOpen||navigationToggle;
         if(!(item instanceof HTMLElement)||!item.isConnected||item.disabled)return null;
         if(projectOpen&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.dataset.pokieProjectLocation!==${JSON.stringify(controlId.slice("project-open:".length))}))return null;
+        if(navigationToggle&&(!(item instanceof HTMLButtonElement)||item.type!=='button'||item.getClientRects().length===0||item.getAttribute('aria-label')!=='Toggle navigation'||item.getAttribute('aria-controls')!=='studio-navigation-panel'||item.getAttribute('aria-expanded')!=='false'||!document.getElementById('studio-navigation-panel')?.isConnected))return null;
         if(${focusControl}){item.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});item.focus({preventScroll:true});}
         if(document.activeElement!==item||document.getElementById(${JSON.stringify(controlId)})!==item)return null;
-        const key=projectOpen||item instanceof HTMLInputElement&&item.type==='radio'?' ':'Enter';
+        const key=boundButton||item instanceof HTMLInputElement&&item.type==='radio'?' ':'Enter';
         const receipt={kind:'native-keyboard',key,pressed:false,released:false,keyDownCount:0,keyUpCount:0,focus:null,
-            ...(projectOpen?{bindingVersion:1,clickCount:0,eventBindings:[]}: {})};
+            ...(boundButton?{bindingVersion:1,clickCount:0,eventBindings:[]}: {}),
+            ...(navigationToggle?{disclosure:{expandedBefore:item.getAttribute('aria-expanded'),panelId:item.getAttribute('aria-controls'),routeBefore:location.hash}}:{})};
         const capture=(event)=>{
             if(event.type!=='click'&&event.key!==key)return;
-            if(!projectOpen&&event.type==='click')return;
-            if(projectOpen){
+            if(!boundButton&&event.type==='click')return;
+            if(boundButton){
                 const binding={eventType:event.type,trusted:event.isTrusted,capturedControlId:${JSON.stringify(controlId)},captureKey:${JSON.stringify(captureKey)},
                     targetId:event.target?.id??null,targetMatchesCapturedControl:event.target===item,nativeFocus:document.activeElement===item,
                     capturedControlConnected:item.isConnected,identityPreserved:document.getElementById(${JSON.stringify(controlId)})===item,
-                    enabled:!item.disabled,projectLocation:item.dataset.pokieProjectLocation,key:event.key??null,repeat:event.repeat??false,detail:event.detail};
+                    enabled:!item.disabled,projectLocation:item.dataset.pokieProjectLocation,key:event.key??null,repeat:event.repeat??false,detail:event.detail,
+                    ...(navigationToggle?{accessibleName:item.getAttribute('aria-label'),panelId:item.getAttribute('aria-controls'),expanded:item.getAttribute('aria-expanded')}:{})};
                 receipt.eventBindings.push(binding);
-                receipt.invalid ||= !binding.trusted||!binding.targetMatchesCapturedControl||!binding.nativeFocus||!binding.capturedControlConnected||!binding.identityPreserved||!binding.enabled||binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))}||binding.repeat||event.type!==['keydown','keyup','click'][receipt.eventBindings.length-1];
+                receipt.invalid ||= !binding.trusted||!binding.targetMatchesCapturedControl||!binding.nativeFocus||!binding.capturedControlConnected||!binding.identityPreserved||!binding.enabled
+                    ||(navigationToggle?binding.accessibleName!=='Toggle navigation'||binding.panelId!=='studio-navigation-panel'||binding.expanded!=='false':binding.projectLocation!==${JSON.stringify(controlId.slice("project-open:".length))})
+                    ||binding.repeat||event.type!==['keydown','keyup','click'][receipt.eventBindings.length-1];
                 if(receipt.invalid){
                     event.preventDefault();event.stopImmediatePropagation();
                 }
             }
             if(event.type==='keydown'){
                 receipt.keyDownCount++;receipt.pressed=true;
-                receipt.focus={controlId:item.id,native:document.activeElement===item,trusted:event.isTrusted,targetMatchesCapturedControl:event.target===item||!projectOpen&&item.contains(event.target)};
+                receipt.focus={controlId:item.id,native:document.activeElement===item,trusted:event.isTrusted,targetMatchesCapturedControl:event.target===item||!boundButton&&item.contains(event.target)};
             }else if(event.type==='keyup'){receipt.keyUpCount++;receipt.released=event.isTrusted;}
             else receipt.clickCount++;
         };
         document.addEventListener('keydown',capture,true);document.addEventListener('keyup',capture,true);
-        if(projectOpen)document.addEventListener('click',capture,true);
-        window.__p805KeyboardReceipts??=new Map();window.__p805KeyboardReceipts.set(${JSON.stringify(captureKey)},{capture,receipt});
+        if(boundButton)document.addEventListener('click',capture,true);
+        window.__p805KeyboardReceipts??=new Map();window.__p805KeyboardReceipts.set(${JSON.stringify(captureKey)},{capture,receipt,item});
         return {key,preDispatchFocus:{controlId:item.id,native:true}};
     })()`);
     if (!captured) fail(`rendered ${controlId} lost native keyboard focus or its captured Button identity`);
@@ -721,21 +807,26 @@ export async function activateP805KeyboardControl(cdp, evaluate, controlId, focu
         } else await pressP805Enter(cdp);
     } finally {
         // Always remove observers, including rejected native dispatches.
-        dispatch = await evaluate(`(()=>{const record=window.__p805KeyboardReceipts?.get(${JSON.stringify(captureKey)});if(record){for(const type of ['keydown','keyup','click'])document.removeEventListener(type,record.capture,true);}window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
+        dispatch = await evaluate(`(()=>{const record=window.__p805KeyboardReceipts?.get(${JSON.stringify(captureKey)});if(record){
+            for(const type of ['keydown','keyup','click'])document.removeEventListener(type,record.capture,true);
+            if(record.receipt.disclosure)Object.assign(record.receipt.disclosure,{expandedAfter:record.item.getAttribute('aria-expanded'),routeAfter:location.hash,
+                identityPreserved:record.item.isConnected&&document.getElementById(${JSON.stringify(controlId)})===record.item,enabled:!record.item.disabled,panelConnected:document.getElementById('studio-navigation-panel')?.isConnected===true});
+        }window.__p805KeyboardReceipts?.delete(${JSON.stringify(captureKey)});return record?.receipt;})()`);
     }
     const activation = {kind:"keyboard", controlId, count:1, nativeFocus:true, preDispatchFocus:captured.preDispatchFocus, dispatch,
-        ...(projectOpen ? {capturedControlId:controlId, captureKey} : {})};
+        ...(projectOpen || navigationToggle ? {capturedControlId:controlId, captureKey} : {})};
     if (!hasP805NativeActivation(activation, controlId)) fail(`rendered ${controlId} did not receive one native keyboard activation`);
     return activation;
 }
 export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "operation", control, transport = "pointer", retainCapturedControl = false) {
     const stableControlId = control?.stableControlId ?? await evaluate("(()=>{const active=document.activeElement; return active instanceof HTMLElement ? active.id || active.closest('[id]')?.id || '' : '';})()");
     if (typeof stableControlId !== "string" || !stableControlId) fail(`rendered ${lifecycle} control lost its focused DOM identity before native activation`);
-    if (transport === "keyboard" || stableControlId.startsWith("project-open:")) {
+    if (transport === "keyboard" || stableControlId.startsWith("project-open:") || stableControlId === "studio-navigation-toggle") {
         // Open can reflow Projects or display the unsaved-work dialog while
         // a pointer target is being measured. Every Open caller, including
         // the draft-protection audit, uses the same retained native keyboard
-        // boundary. Other navigation controls keep their pointer contract.
+        // boundary. The native disclosure uses it too; visible tabs and all
+        // other pointer-operated controls retain their captured hit contract.
         // Replay also replaces its review action during submission.
         return activateP805KeyboardControl(cdp, evaluate, stableControlId);
     }
@@ -758,11 +849,6 @@ export async function activateP805FocusedControl(cdp, evaluate, lifecycle = "ope
     // CDP press an off-viewport coordinate and record focus without
     // delivering the product action.  Scroll and hit-test every
     // public operation at the pointer boundary instead.
-    // The mobile Burger is a real rendered navigation control too.
-    // It must receive the same complete native pointer sequence as
-    // the tab it exposes; omitting `buttons`/`pointerType` lets CDP
-    // focus the Burger while Mantine never receives the click, which
-    // leaves the requested tab off-canvas at the narrow breakpoint.
     // Recovery has the same visible hit-target requirement as every
     // other operation. Settle its review layout on the captured node.
     const requiresViewportHit = ["precondition", "navigation", "navigation-drawer", "operation", "recovery"].includes(lifecycle);
@@ -2127,79 +2213,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // CDP is an observer/keyboard transport, never a route adapter.  A
         // route becomes eligible only after the product's visible navigation
         // control received its keyboard activation.
-        const revealRenderedNavigationControl = async (route, observation) => {
-            await waitFor(() => observeP805NavigationReadiness(evaluate, route), `${observation} rendered ${route} navigation context`);
-            // Find and focus one live target in the same browser turn. A
-            // narrow drawer is allowed to finish closing once a tab receives
-            // focus, so a successful visibility probe must itself return the
-            // control receipt rather than asking a later DOM lookup to find
-            // the same tab again.
-            const focusVisibleNavigationControl = () => evaluate(`(() => {
-                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
-                const accessibleName = (item) => (item.getAttribute('aria-label') || item.innerText || item.textContent || '').trim();
-                const item = [...document.querySelectorAll('button,a')].find((candidate) => {
-                    if (!(candidate instanceof HTMLElement) || !visible(candidate) || candidate.getAttribute('data-pokie-lifecycle') !== 'navigation' || candidate.getAttribute('data-pokie-lifecycle-route') !== ${JSON.stringify(route)}) return false;
-                    const panel = candidate.closest('#studio-navigation-panel');
-                    if (panel instanceof HTMLElement && panel.getBoundingClientRect().left >= 0) candidate.scrollIntoView({block:'nearest',inline:'nearest'});
-                    const box = candidate.getBoundingClientRect();
-                    if (box.width <= 0 || box.height <= 0 || box.left < 0 || box.right > window.innerWidth || box.top < 0 || box.bottom > window.innerHeight) return false;
-                    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-                    return hit === candidate || candidate.contains(hit);
-                });
-                if (!(item instanceof HTMLElement) || ('disabled' in item && Boolean(item.disabled))) return false;
-                item.focus({preventScroll:true});
-                const descriptionIds = (item.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
-                return {control:accessibleName(item), matchedLabel:accessibleName(item), keyboardFocused:document.activeElement === item, enabled:true, disabled:false,
-                    disabledExplanation:item.getAttribute('title') || descriptionIds.map((id) => document.getElementById(id)?.textContent?.trim()).find(Boolean) || null,
-                    accessibleName:accessibleName(item), role:item.getAttribute('role') || item.tagName.toLowerCase(), stableControlId:item.id, identityAttribute:'id',
-                    transactionState:item.getAttribute('data-pokie-transaction-state'), lifecycle:{kind:'navigation', value:${JSON.stringify(route)}}};
-            })()`);
-            // On a narrow viewport Mantine retains the tab buttons in its
-            // collapsed drawer.  Their DOM presence is not a visible public
-            // control and clicking their off-canvas coordinates is not a user
-            // workflow.  Open the product's own Burger first, then obtain the
-            // tab from the visible drawer exactly as a phone user would.
-            const visibleControl = await focusVisibleNavigationControl();
-            if (visibleControl) return visibleControl;
-            // Use the rendered disclosure rather than a runner-side viewport
-            // threshold. Chromium mobile emulation and Mantine's `sm`
-            // breakpoint need not expose the same `innerWidth`; the live
-            // Burger is the product's authoritative indication that the tabs
-            // are currently in the collapsed drawer.
-            const compactNavigation = await evaluate("(()=>{const item=document.getElementById('studio-navigation-toggle'); return item instanceof HTMLButtonElement && !!(item.offsetWidth||item.offsetHeight||item.getClientRects().length);})()");
-            if (!compactNavigation) {
-                await evaluate(`document.querySelector('[data-pokie-lifecycle="navigation"][data-pokie-lifecycle-route=${JSON.stringify(route)}]')?.scrollIntoView({block:'nearest'});`);
-                return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
-            }
-            const burger = await waitFor(() => evaluate(`(() => {
-                        const item = [...document.querySelectorAll('button')].find((candidate) => candidate instanceof HTMLButtonElement && candidate.getAttribute('aria-label') === 'Toggle navigation' && !candidate.disabled);
-                        if (!(item instanceof HTMLElement)) return false;
-                        item.focus({preventScroll:true});
-                        return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id'} : false;
-                    })()`), `${observation} rendered narrow navigation drawer control`);
-            // This is one native pointer activation of the product's Burger.
-            // `activateFocusedControl` preserves its complete pointer state
-            // and live hit-test boundary, so Mantine receives the disclosure
-            // click before the drawer's transition can expose the tab.
-            const drawerOpen = await evaluate("document.getElementById('studio-navigation-toggle')?.getAttribute('aria-expanded') === 'true'");
-            if (!drawerOpen) await activateFocusedControl("navigation-drawer", burger);
-            return waitFor(focusVisibleNavigationControl, `${observation} rendered ${route} navigation control`);
-        };
-        const navigateRenderedControl = async (route, expectedRoute, observation) => {
-            if (await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;
-            const control = await revealRenderedNavigationControl(route, observation);
-            // Keep the drawer's captured tab as the native pointer target;
-            // revealRenderedNavigationControl scrolls its real scroll region
-            // before capture, and focus never changes that geometry.
-            const activation = await activateFocusedControl("navigation", control);
-            try {
-                await waitFor(() => evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`), `${observation} rendered ${route} navigation`, 60_000);
-            } catch (error) {
-                const rendered = await evaluate(`(() => ({route:location.hash, control:document.getElementById(${JSON.stringify(control.stableControlId)})?.outerHTML?.slice(0, 500), active:[...document.querySelectorAll('[data-pokie-lifecycle="navigation"][aria-current="page"]')].map((item) => ({id:item.id, route:item.getAttribute('data-pokie-lifecycle-route'), name:(item.innerText || item.textContent || '').trim()})), terminal:[...document.querySelectorAll('[data-pokie-lifecycle-result="navigation"]')].map((item) => ({route:item.getAttribute('data-pokie-lifecycle-route'), terminal:item.getAttribute('data-pokie-lifecycle-terminal'), text:(item.textContent || '').trim()})), text:document.body.innerText.slice(0, 1000)}))()`);
-                throw new Error(`${error instanceof Error ? error.message : String(error)}; rendered navigation state: ${JSON.stringify(rendered)}`);
-            }
-            return {control, activation};
-        };
+        const revealRenderedNavigationControl = (route, observation) => revealP805RenderedNavigationControl(cdp, evaluate, route, observation);
+        const navigateRenderedControl = (route, expectedRoute, observation) => navigateP805RenderedControl(cdp, evaluate, route, expectedRoute, observation);
         const navigateProjectTab = async (projectBaseRoute, tab, observation, force = false) => {
             const expectedRoute = `${projectBaseRoute}/${tab}`;
             if (!force && await evaluate(`location.hash === ${JSON.stringify(expectedRoute)}`)) return;

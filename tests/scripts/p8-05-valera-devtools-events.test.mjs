@@ -8,7 +8,7 @@ import path from "node:path";
 import {test} from "@jest/globals";
 import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {openP805ImportedProject, validateP805ImportedProjectOpen, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {navigateP805RenderedControl, openP805ImportedProject, validateP805ImportedProjectOpen, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nativeButtonStyles = await readFile(new URL("../../node_modules/@mantine/core/styles/global.css", import.meta.url), "utf8");
@@ -503,11 +503,24 @@ test("native navigation waits for rendered context and Retry retains captured id
                 </script>`);
         } else if (request.url === "/navigation-readiness") {
             response.setHeader("Content-Type", "text/html");
-            response.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><button id="studio-navigation-toggle" style="position:fixed;top:8px;left:8px">Toggle navigation</button><div id="drawer" style="position:fixed;top:60px;transform:translateX(-260px)"></div><script>
+            response.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><button type="button" id="studio-navigation-toggle" aria-label="Toggle navigation" aria-controls="studio-navigation-panel" aria-expanded="false" style="position:fixed;top:8px;left:8px">Toggle navigation</button><button id="other-target" style="position:fixed;top:8px;right:8px">Other</button><div id="studio-navigation-panel" style="position:fixed;top:60px;transform:translateX(-260px)"></div><script>
                 location.hash = '#/project/source/overview';
+                window.navigationActivations = [];
+                window.drawerActivations = [];
                 window.initialBurger = document.getElementById('studio-navigation-toggle');
                 window.mountTarget = () => {
-                    document.getElementById('drawer').innerHTML = '<button id="project-tab:gameModel" data-pokie-lifecycle="navigation" data-pokie-lifecycle-route="gameModel">Game Model</button>';
+                    document.getElementById('studio-navigation-panel').innerHTML = '<button id="project-tab:gameModel" data-pokie-lifecycle="navigation" data-pokie-lifecycle-route="gameModel">Game Model</button><button id="project-tab:simulation" data-pokie-lifecycle="navigation" data-pokie-lifecycle-route="simulation">Simulation</button>';
+                    for (const tab of document.querySelectorAll('[data-pokie-lifecycle="navigation"]')) tab.addEventListener('click', (event) => {
+                        window.navigationActivations.push({trusted:event.isTrusted,controlId:event.currentTarget.id});
+                        const route = tab.getAttribute('data-pokie-lifecycle-route');
+                        location.hash = '#/project/source/' + route;
+                        const result = document.getElementById('navigation-result');
+                        result.setAttribute('data-pokie-lifecycle-route', route);
+                        result.setAttribute('data-pokie-lifecycle-result-control', 'project-tab:' + route);
+                        document.getElementById('studio-navigation-panel').style.transform = 'translateX(-260px)';
+                        const burger = document.getElementById('studio-navigation-toggle');
+                        burger.setAttribute('aria-expanded', 'false');burger.focus({preventScroll:true});
+                    });
                     document.body.insertAdjacentHTML('beforeend', '<p id="navigation-result" data-pokie-lifecycle-result="navigation" data-pokie-lifecycle-route="overview" data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading">Opening game</p>');
                 };
                 window.beginContext = async () => { window.context = await (await fetch('/api/project/context')).json(); };
@@ -516,7 +529,9 @@ test("native navigation waits for rendered context and Retry retains captured id
                     window.initialBurger.replaceWith(burger);
                     burger.addEventListener('click', (event) => {
                         window.drawerActivation = {trusted:event.isTrusted, controlId:event.currentTarget.id};
-                        document.getElementById('drawer').style.transform = 'none';
+                        window.drawerActivations.push(window.drawerActivation);
+                        burger.setAttribute('aria-expanded', 'true');
+                        document.getElementById('studio-navigation-panel').style.transform = 'none';
                     });
                     const result = document.getElementById('navigation-result');
                     result.textContent = 'Overview ready';
@@ -703,14 +718,86 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(await navigationReady(), false, "a hidden terminal cannot authorize capture");
         await evaluate("document.getElementById('navigation-result').hidden = false");
         assert.equal(await evaluate("window.initialBurger.isConnected"), false);
-        const disclosure = await activateP805FocusedControl(cdp, evaluate, "navigation-drawer", {stableControlId:"studio-navigation-toggle"});
-        assert.equal(disclosure.kind, "pointer");
+        const navigationCommands = [];
+        const navigationDispatcher = {send:async(method, params) => {navigationCommands.push({method,...params});return cdp.send(method,params);}};
+        const navigation = await navigateP805RenderedControl(navigationDispatcher, evaluate, 'gameModel', '#/project/source/gameModel', 'simulation-success-failure-cancellation');
+        const disclosure = navigation.control.navigationDisclosure;
+        assert.equal(disclosure.kind, "keyboard");
         assert.equal(hasP805NativeActivation(disclosure, "studio-navigation-toggle"), true);
         assert.equal(disclosure.preDispatchFocus.native, true);
-        assert.equal(disclosure.hitTest.matchesCapturedControl, true);
+        assert.equal(disclosure.dispatch.clickCount, 1);
         assert.equal(disclosure.dispatch.focus.targetMatchesCapturedControl, true);
+        assert.deepEqual(disclosure.dispatch.disclosure, {expandedBefore:'false',expandedAfter:'true',panelId:'studio-navigation-panel',routeBefore:'#/project/source/overview',routeAfter:'#/project/source/overview',identityPreserved:true,enabled:true,panelConnected:true});
+        assert.deepEqual(navigationCommands.filter(({method})=>method==='Input.dispatchKeyEvent').map(({type,key})=>[type,key]),[['keyDown',' '],['keyUp',' ']]);
+        assert.equal(navigation.activation.kind, 'pointer');
+        assert.equal(hasP805NativeActivation(navigation.activation, 'project-tab:gameModel'), true);
+        assert.equal(navigation.routeBefore, '#/project/source/overview');
+        assert.equal(navigation.routeAfter, '#/project/source/gameModel');
+        assert.deepEqual(await evaluate('window.navigationActivations'), [{trusted:true,controlId:'project-tab:gameModel'}]);
+        assert.equal(await evaluate("document.getElementById('studio-navigation-toggle').getAttribute('aria-expanded')"), 'false');
         assert.deepEqual(await evaluate("window.drawerActivation"), {trusted:true, controlId:"studio-navigation-toggle"});
-        await evaluate("document.getElementById('navigation-result').setAttribute('data-pokie-lifecycle-route', 'simulation')");
+        // The retained finding occurred after the first terminal workflow,
+        // when a closed drawer had to be opened again for the next simulation.
+        const nextNavigation = await navigateP805RenderedControl(navigationDispatcher, evaluate, 'simulation', '#/project/source/simulation', 'simulation-success-failure-cancellation');
+        assert.equal(hasP805NativeActivation(nextNavigation.control.navigationDisclosure,'studio-navigation-toggle'),true);
+        assert.equal(hasP805NativeActivation(nextNavigation.activation,'project-tab:simulation'),true);
+        assert.equal(nextNavigation.activation.kind,'pointer');
+        assert.equal(nextNavigation.routeAfter,'#/project/source/simulation');
+        assert.equal(await evaluate('window.drawerActivations.length'),2);
+        assert.deepEqual(await evaluate('window.navigationActivations'),[{trusted:true,controlId:'project-tab:gameModel'},{trusted:true,controlId:'project-tab:simulation'}]);
+        for (const corrupt of [
+            (value)=>{delete value.capturedControlId;},
+            (value)=>{delete value.captureKey;},
+            (value)=>{delete value.dispatch.eventBindings;},
+            (value)=>{delete value.dispatch.bindingVersion;},
+            (value)=>{value.dispatch.clickCount=2;},
+            (value)=>{value.dispatch.key='Enter';},
+            ...['trusted','targetMatchesCapturedControl','nativeFocus','capturedControlConnected','identityPreserved','enabled'].flatMap((field)=>[0,1,2].map((index)=>(value)=>{value.dispatch.eventBindings[index][field]=false;})),
+            (value)=>{value.dispatch.eventBindings[0].repeat=true;},
+            (value)=>{value.dispatch.eventBindings[1].targetId='other-target';},
+            (value)=>{value.dispatch.eventBindings[2].detail=1;},
+            ...['accessibleName','panelId','expanded'].map((field)=>(value)=>{value.dispatch.eventBindings[2][field]='wrong';}),
+            ...['expandedBefore','expandedAfter','panelId','routeAfter','identityPreserved','enabled','panelConnected'].map((field)=>(value)=>{value.dispatch.disclosure[field]='wrong';}),
+        ]) {
+            const invalid=structuredClone(disclosure);corrupt(invalid);
+            assert.equal(hasP805NativeActivation(invalid,'studio-navigation-toggle'),false,'disclosure receipts must retain the exact focused native activation and expanded panel');
+        }
+        for (const mode of ['disabled','unfocused','nonmatching-label','nonmatching-panel','already-expanded','replacement','late-disabled','late-unfocused','keyup-replacement','keyup-disabled','keyup-unfocused','synthetic-events','duplicate-keydown','duplicate-click','dispatch-failed','no-expansion','substitute-disclosure','route-mutation']) {
+            await evaluate(`(()=>{
+                const old=document.getElementById('studio-navigation-toggle'),item=old.cloneNode(true);old.replaceWith(item);
+                item.disabled=false;item.setAttribute('aria-label','Toggle navigation');item.setAttribute('aria-controls','studio-navigation-panel');item.setAttribute('aria-expanded','false');item.focus({preventScroll:true});
+                window.drawerActivations=[];location.hash='#/project/source/overview';
+                item.addEventListener('click',(event)=>{
+                    window.drawerActivations.push({trusted:event.isTrusted,controlId:event.currentTarget.id});
+                    if(${JSON.stringify(mode)}==='substitute-disclosure'){const replacement=item.cloneNode(true);item.replaceWith(replacement);replacement.setAttribute('aria-expanded','true');}
+                    else if(${JSON.stringify(mode)}!=='no-expansion')item.setAttribute('aria-expanded','true');
+                    if(${JSON.stringify(mode)}==='route-mutation')location.hash='#/project/other/simulation';
+                });
+            })()`);
+            const mutation = ['disabled','late-disabled','keyup-disabled'].includes(mode) ? 'item.disabled=true'
+                : mode==='nonmatching-label' ? "item.setAttribute('aria-label','Other navigation')"
+                : mode==='nonmatching-panel' ? "item.setAttribute('aria-controls','other-panel')"
+                : mode==='already-expanded' ? "item.setAttribute('aria-expanded','true')"
+                : ['replacement','keyup-replacement'].includes(mode) ? 'const replacement=item.cloneNode(true);item.replaceWith(replacement);replacement.focus()'
+                : "document.getElementById('other-target').focus()";
+            if(['disabled','unfocused','nonmatching-label','nonmatching-panel','already-expanded'].includes(mode))await evaluate(`(()=>{const item=document.getElementById('studio-navigation-toggle');${mutation};})()`);
+            const commands=[];
+            const dispatcher={send:async(method,params)=>{
+                commands.push(params);
+                if(mode==='dispatch-failed')throw new Error('native keyboard dispatch rejected');
+                if(params.type==='keyDown'&&['replacement','late-disabled','late-unfocused'].includes(mode)||params.type==='keyUp'&&['keyup-replacement','keyup-disabled','keyup-unfocused'].includes(mode))await evaluate(`(()=>{const item=document.getElementById('studio-navigation-toggle');${mutation};})()`);
+                if(mode==='synthetic-events')return evaluate(`document.getElementById('studio-navigation-toggle').dispatchEvent(new KeyboardEvent('${params.type==='keyDown'?'keydown':'keyup'}',{key:' ',bubbles:true,cancelable:true}))`);
+                const result=await cdp.send(method,params);
+                if(mode==='duplicate-keydown'&&params.type==='keyDown')await cdp.send(method,params);
+                if(mode==='duplicate-click'&&params.type==='keyUp')await evaluate("document.getElementById('studio-navigation-toggle').click()");
+                return result;
+            }};
+            await assert.rejects(()=>activateP805FocusedControl(dispatcher,evaluate,'navigation-drawer',{stableControlId:'studio-navigation-toggle'}),/lost native keyboard focus|did not receive one native keyboard activation|native keyboard dispatch rejected/);
+            assert.ok(commands.length<=2,'failure never retries the disclosure or falls back to pointer activation');
+            assert.equal(await evaluate('window.__p805KeyboardReceipts?.size ?? 0'),0);
+            assert.equal(await evaluate('window.drawerActivations.length'),['duplicate-click','no-expansion','substitute-disclosure','route-mutation'].includes(mode)?1:0,mode);
+        }
+        await evaluate("location.hash='#/project/source/overview';document.getElementById('navigation-result').setAttribute('data-pokie-lifecycle-route', 'simulation')");
         assert.equal(await navigationReady(), false, "another route's terminal cannot release capture");
         // Exercise the shared native input/activation boundary at each
         // assigned viewport, including the narrow drawer's bottom control.
