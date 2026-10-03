@@ -149,6 +149,10 @@ describe("AppShellLayout - mobile navigation", () => {
         const burger = screen.getByRole("button", {name: "Toggle navigation"});
         const panel = document.getElementById("studio-navigation-panel");
         const simulation = screen.getByRole("button", {name: "Simulation"});
+        if (!panel) {
+            throw new Error("Navigation panel was not rendered");
+        }
+        panel.scrollTop = 420;
 
         burger.focus();
         await user.keyboard("[Space]");
@@ -160,6 +164,7 @@ describe("AppShellLayout - mobile navigation", () => {
         // Presence and focus alone do not reopen the product disclosure.
         expect(document.getElementById("project-tab:simulation")).toBe(simulation);
         expect(panel).toContainElement(simulation);
+        expect(panel.scrollTop).toBe(420);
         simulation.focus();
         expect(burger).toHaveAttribute("aria-expanded", "false");
 
@@ -167,6 +172,7 @@ describe("AppShellLayout - mobile navigation", () => {
         await user.keyboard("[Space]");
         expect(burger).toHaveAttribute("aria-expanded", "true");
         expect(document.getElementById("studio-navigation-panel")).toBe(panel);
+        expect(panel.scrollTop).toBe(420);
         await user.click(simulation);
         expect(screen.getByRole("status")).toHaveTextContent("simulation terminal result");
         expect(selections.mock.calls).toEqual([["replay"], ["simulation"]]);

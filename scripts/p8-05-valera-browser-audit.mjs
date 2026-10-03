@@ -695,9 +695,28 @@ export async function revealP805RenderedNavigationControl(cdp, evaluate, route, 
             const toggle = document.getElementById('studio-navigation-toggle');
             if (toggle instanceof HTMLButtonElement && visible(toggle)
                 && (toggle.getAttribute('aria-expanded') !== 'true' || !(panel instanceof HTMLElement))) return false;
-            if (panel instanceof HTMLElement && panel.getBoundingClientRect().left >= 0) candidate.scrollIntoView({behavior:'instant',block:'nearest',inline:'nearest'});
-            const box = candidate.getBoundingClientRect();
             const viewport = (${measureP805VisualViewport.toString()})();
+            if (panel instanceof HTMLElement) {
+                // An expanded disclosure can still be sliding into place.
+                // Scrolling a transformed drawer with scrollIntoView also
+                // scrolls outer ancestors (including the replay page). Settle
+                // the drawer first, then reveal the tab in its own scrollport.
+                const moving = document.getAnimations().some((animation) => {
+                    const target = animation.effect?.target;
+                    return target instanceof Element && (target === panel || target.contains(panel))
+                        && !['finished','idle'].includes(animation.playState);
+                });
+                if (moving) return false;
+                const panelBox = panel.getBoundingClientRect();
+                const top = Math.max(panelBox.top + panel.clientTop, viewport.offsetTop);
+                const bottom = Math.min(panelBox.top + panel.clientTop + panel.clientHeight, viewport.offsetTop + viewport.height);
+                const before = candidate.getBoundingClientRect();
+                if (bottom <= top || before.height > bottom - top) return false;
+                if (before.top < top || before.bottom > bottom) {
+                    panel.scrollBy({top:before.top + before.height / 2 - (top + bottom) / 2, behavior:'instant'});
+                }
+            }
+            const box = candidate.getBoundingClientRect();
             if (box.width <= 0 || box.height <= 0 || box.left < viewport.offsetLeft || box.right > viewport.offsetLeft + viewport.width || box.top < viewport.offsetTop || box.bottom > viewport.offsetTop + viewport.height) return false;
             const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
             return hit === candidate || candidate.contains(hit);

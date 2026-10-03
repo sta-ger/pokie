@@ -777,6 +777,45 @@ test("native navigation waits for rendered context and Retry retains captured id
         assert.equal(returnToSimulation.routeAfter,'#/project/source/simulation');
         assert.equal(await evaluate('window.drawerActivations.length'),3);
         assert.deepEqual(await evaluate('window.navigationActivations'),[{trusted:true,controlId:'project-tab:gameModel'},{trusted:true,controlId:'project-tab:simulation'},{trusted:true,controlId:'project-tab:simulation'}]);
+        // Replay Artifact leaves the page scrolled to its terminal diagnostic.
+        // The full-width phone drawer retains its own scroll position too.
+        await cdp.send("Emulation.setDeviceMetricsOverride", {width:390,height:844,mobile:true,deviceScaleFactor:1});
+        await evaluate(`(async()=>{
+            location.hash='#/project/source/replay';
+            const result=document.getElementById('navigation-result');
+            result.setAttribute('data-pokie-lifecycle-route','replay');
+            result.setAttribute('data-pokie-lifecycle-result-control','project-tab:replay');
+            result.style.marginTop='1800px';result.scrollIntoView({block:'center'});
+            const panel=document.getElementById('studio-navigation-panel');
+            panel.style.cssText='position:fixed;top:60px;left:0;width:100%;height:calc(100dvh - 60px);overflow-y:auto;overscroll-behavior:contain;transform:translateX(-100%)';
+            for(const tab of panel.querySelectorAll('button'))tab.style.cssText='display:block;width:100%;height:40px';
+            panel.insertAdjacentHTML('afterbegin','<div style="height:900px;flex-shrink:0"></div>');
+            panel.scrollTop=80;
+            document.getElementById('studio-navigation-toggle').setAttribute('aria-expanded','false');
+            await new Promise((resolve)=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+            window.drawerScrollEvents=[];
+            panel.addEventListener('scroll',()=>{
+                window.drawerScrollEvents.push({moving:panel.getAnimations().some((animation)=>animation.playState==='running'),scrollTop:panel.scrollTop});
+            });
+            // A viewport pan/reflow can leave an opening drawer partly in
+            // view before its native disclosure transition has finished.
+            // Even measurable tabs must not scroll that moving container.
+            document.getElementById('studio-navigation-toggle').addEventListener('click',()=>{
+                panel.animate([{transform:'translateX(120px)'},{transform:'translateX(0px)'}],{duration:350});
+            });
+        })()`);
+        const replayScroll = await evaluate('scrollY');
+        const cancellationNavigation=await navigateP805RenderedControl(navigationDispatcher,evaluate,'simulation','#/project/source/simulation','cooperative cancellation');
+        assert.equal(hasP805NativeActivation(cancellationNavigation.control.navigationDisclosure,'studio-navigation-toggle'),true);
+        assert.equal(hasP805NativeActivation(cancellationNavigation.activation,'project-tab:simulation'),true);
+        assert.equal(cancellationNavigation.routeBefore,'#/project/source/replay');
+        assert.equal(cancellationNavigation.routeAfter,'#/project/source/simulation');
+        assert.equal(await evaluate('scrollY'),replayScroll,'revealing a fixed drawer tab must scroll its own panel, preserving the terminal page viewport');
+        const drawerScrollEvents=await evaluate('window.drawerScrollEvents');
+        assert.ok(drawerScrollEvents.length>0 && drawerScrollEvents.at(-1).scrollTop>80,'the clipped tab is revealed through the actual drawer scrollport');
+        assert.ok(drawerScrollEvents.every(({moving})=>moving===false),'disclosure geometry settles before scrolling its retained tab');
+        await evaluate("document.getElementById('studio-navigation-panel').style.cssText='position:fixed;top:60px;transform:translateX(-260px)';document.getElementById('navigation-result').style.marginTop='';document.getElementById('studio-navigation-panel').firstElementChild.remove()");
+        await cdp.send("Emulation.setDeviceMetricsOverride", {width:1440,height:900,mobile:false,deviceScaleFactor:1});
         for (const corrupt of [
             (value)=>{delete value.capturedControlId;},
             (value)=>{delete value.captureKey;},
