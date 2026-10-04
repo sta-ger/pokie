@@ -183,6 +183,29 @@ async function waitForText(text, label, timeout) {
     await waitFor(() => bodyIncludes(text), label, timeout);
 }
 
+export async function waitForP804CreateGame(evaluateControl, timeout = 120_000) {
+    let control;
+    try {
+        await waitFor(async () => {
+            control = await evaluateControl(`(() => {
+                const node = document.getElementById("blueprint-create-game");
+                if (!(node instanceof HTMLButtonElement)) return null;
+                const rect = node.getBoundingClientRect();
+                return {label: node.textContent?.trim(), validation: node.getAttribute("data-pokie-validation-state"),
+                    disabled: node.disabled, busy: node.getAttribute("aria-busy"),
+                    visible: node.getClientRects().length > 0 && rect.width > 0 && rect.height > 0};
+            })()`);
+            if (["invalid", "error"].includes(control?.validation)) {
+                throw new Error(`Automatic design validation ${control.validation}`);
+            }
+            return control?.label === "Create game" && control.validation === "ok" && !control.disabled
+                && (control.busy === null || control.busy === "false") && control.visible;
+        }, "rendered validation-ready Create game control", timeout);
+    } catch (error) {
+        throw new Error(`${error.message}; Create game readiness: ${JSON.stringify(control)}`, {cause: error});
+    }
+}
+
 async function createProject() {
     // The primary Design surface starts with an editable recommended model.
     // Reaching generation through its progressive-disclosure entry keeps this
@@ -202,6 +225,11 @@ async function createProject() {
     await waitForText("Generated", "real random blueprint result", 120_000);
     await clickText("Use this game idea");
     await waitForText("Create game", "real guided blueprint editor");
+    // The label appears during the automatic validation debounce/request.
+    // Wait for the real primary action, not explanatory text or an enabled
+    // control whose validation belongs to an earlier design.
+    await waitForP804CreateGame(evaluate);
+    note("LIFECYCLE guided creation: visible enabled Create game action after successful automatic validation");
     await clickText("Create game");
     await waitForText("Close project", "created real project dashboard", 120_000);
     await waitForText(name, "long project name on the real project dashboard");
@@ -284,7 +312,7 @@ async function main() {
     note("PASS real built Studio project creation, responsive navigation, simulation cancellation/completion, and no document-level horizontal overflow at wide, compact, and small viewports.");
 }
 
-main().catch((error) => {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => {
     note(`FAILED ${error.stack ?? error}`);
     process.exitCode = 1;
 }).finally(async () => {
