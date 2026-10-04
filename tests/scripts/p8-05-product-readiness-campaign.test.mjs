@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {test} from "@jest/globals";
+import {afterAll, beforeAll, describe, test} from "@jest/globals";
 import {P805_PUBLIC_HELP_ARGUMENTS, captureP805RestartRecoveryResponse, hasP805TransactionActivations, tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {
     matchesP805ReplayArtifactInput,
@@ -1199,11 +1199,20 @@ test("authenticates each aggregate child before applying every bounded leaf reje
     } finally { await fixture.cleanup(); }
 });
 
-test("validates installed programmer transcripts through immutable children at collection and post-cleanup closeout", async () => {
-    const fixture = await campaignFixture({throughController:true});
-    try {
+describe("installed programmer transcripts through immutable children at collection and post-cleanup closeout", () => {
+    let fixture, original;
+    // Each row re-authenticates the matrix at all three assigned viewports.
+    // Give rows separate test deadlines rather than charging fixture creation,
+    // 21 negative matrix runs, and final closeout to one 60-second test.
+    // Jest runs these tests sequentially; each mutation is restored in finally.
+    beforeAll(async () => {
+        fixture = await campaignFixture({throughController:true});
+        original = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8"));
+    });
+    afterAll(async () => { await fixture?.cleanup(); });
+
+    test("authenticates the collected projection and installed child transcripts", async () => {
         await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
-        const original = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8"));
         const programmer = original.audits.find((audit) => audit.persona === "programmer");
         const children = await Promise.all(programmer.tupleReceipts.map(async (reference) => JSON.parse(await readFile(path.join(fixture.directory, reference.auditPath), "utf8"))));
         assert.deepEqual(programmer, JSON.parse(JSON.stringify(projectP805PersonaAudit(children, programmer.tupleReceipts, "retest", "programmer"))));
@@ -1214,38 +1223,42 @@ test("validates installed programmer transcripts through immutable children at c
             assert.equal(programmerCliTranscript(child.tuple.observation).includes("packed CLI install"), false);
             assert.equal(programmerCliTranscript(child.tuple.observation).includes("packed CLI recursive help"), false);
         }
-        // Rebind modified bytes so every failure reaches semantic leaf
-        // validation, rather than stopping at the immutable audit digest.
-        for (const [observation, remove, rejection] of [
-            ["packed-install", "PACKED_INSTALL", /packed CLI commands: missing PACKED_INSTALL/],
-            ["packed-install", "packed CLI create", /packed CLI commands: missing packed CLI create/],
-            ["npx-pokie", "PACKED_NPX_HELP", /packed CLI commands: missing PACKED_NPX_HELP/],
-            ["recursive-help", `packed CLI help ${P805_PUBLIC_HELP_ARGUMENTS.at(-1).join("-")} ${P805_PUBLIC_HELP_ARGUMENTS.at(-1).join(" ")}`, /packed recursive help omits a public or nested command/],
-            ["validate-sim-report-diff-replay-serve-wasm", "packed CLI WASM build", /packed CLI commands: missing packed CLI WASM build/],
-            ["spaces-invalid-inputs-exit-codes-ci-recovery", "packed CLI invalid-input recovery", /packed CLI commands: missing packed CLI invalid-input recovery/],
-            ["build-export-output-folder", "packed CLI PAR build", /packed CLI commands: missing packed CLI PAR build/],
-        ]) {
-            // Exercise all assigned viewports, including later sibling tuples
-            // after install and recursive-help have been accepted.
-            for (const viewport of ["wide", "compact", "narrow"]) {
-                const audits = structuredClone(original.audits), aggregate = audits.find((audit) => audit.persona === "programmer"), reference = aggregate.tupleReceipts.find((item) => item.tuple.observation === observation && item.tuple.viewport === viewport);
-                const childPath = path.join(fixture.directory, reference.auditPath), childBytes = await readFile(childPath, "utf8"), child = JSON.parse(childBytes), evidence = child.evidence.find((item) => item.kind === "cli-transcript"), transcriptPath = path.join(fixture.directory, evidence.path), transcript = await readFile(transcriptPath, "utf8");
-                try {
-                    const changed = transcript.split("\n").filter((line) => !line.includes(remove)).join("\n");
-                    await writeFile(transcriptPath, changed);
-                    evidence.sha256 = hash(changed); evidence.sizeBytes = Buffer.byteLength(changed);
-                    const changedChild = `${JSON.stringify(child)}\n`;
-                    await writeFile(childPath, changedChild); reference.auditSha256 = hash(changedChild);
-                    await assert.rejects(() => validateP805CollectedAudits(fixture.directory, audits, "retest", retest), rejection, `${observation}/${viewport}`);
-                } finally {
-                    await writeFile(transcriptPath, transcript);
-                    await writeFile(childPath, childBytes);
-                }
+    });
+
+    // Rebind modified bytes so every failure reaches semantic leaf
+    // validation, rather than stopping at the immutable audit digest.
+    test.each([
+        ["packed-install", "PACKED_INSTALL", /packed CLI commands: missing PACKED_INSTALL/],
+        ["packed-install", "packed CLI create", /packed CLI commands: missing packed CLI create/],
+        ["npx-pokie", "PACKED_NPX_HELP", /packed CLI commands: missing PACKED_NPX_HELP/],
+        ["recursive-help", `packed CLI help ${P805_PUBLIC_HELP_ARGUMENTS.at(-1).join("-")} ${P805_PUBLIC_HELP_ARGUMENTS.at(-1).join(" ")}`, /packed recursive help omits a public or nested command/],
+        ["validate-sim-report-diff-replay-serve-wasm", "packed CLI WASM build", /packed CLI commands: missing packed CLI WASM build/],
+        ["spaces-invalid-inputs-exit-codes-ci-recovery", "packed CLI invalid-input recovery", /packed CLI commands: missing packed CLI invalid-input recovery/],
+        ["build-export-output-folder", "packed CLI PAR build", /packed CLI commands: missing packed CLI PAR build/],
+    ])("rejects %s without %s at every assigned viewport", async (observation, remove, rejection) => {
+        // Exercise all assigned viewports, including later sibling tuples
+        // after install and recursive-help have been accepted.
+        for (const viewport of ["wide", "compact", "narrow"]) {
+            const audits = structuredClone(original.audits), aggregate = audits.find((audit) => audit.persona === "programmer"), reference = aggregate.tupleReceipts.find((item) => item.tuple.observation === observation && item.tuple.viewport === viewport);
+            const childPath = path.join(fixture.directory, reference.auditPath), childBytes = await readFile(childPath, "utf8"), child = JSON.parse(childBytes), evidence = child.evidence.find((item) => item.kind === "cli-transcript"), transcriptPath = path.join(fixture.directory, evidence.path), transcript = await readFile(transcriptPath, "utf8");
+            try {
+                const changed = transcript.split("\n").filter((line) => !line.includes(remove)).join("\n");
+                await writeFile(transcriptPath, changed);
+                evidence.sha256 = hash(changed); evidence.sizeBytes = Buffer.byteLength(changed);
+                const changedChild = `${JSON.stringify(child)}\n`;
+                await writeFile(childPath, changedChild); reference.auditSha256 = hash(changedChild);
+                await assert.rejects(() => validateP805CollectedAudits(fixture.directory, audits, "retest", retest), rejection, `${observation}/${viewport}`);
+            } finally {
+                await writeFile(transcriptPath, transcript);
+                await writeFile(childPath, childBytes);
             }
         }
+    });
+
+    test("accepts the restored immutable matrix and post-cleanup closeout", async () => {
         await validateP805CollectedAudits(fixture.directory, original.audits, "retest", retest);
         await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
-    } finally { await fixture.cleanup(); }
+    });
 });
 
 test("rejects missing, repeated, tampered, or incompletely reconstructed packed output chunks", async () => {
