@@ -7,6 +7,6 @@ cleanup attestations. `scripts/p8-05-release-completion.mjs` permits the
 existing PC-20 release lifecycle only after that validator accepts the exact
 retest commit and package digest.
 
-No candidate evidence is checked in here: audits and release receipts are
-created by the independent controller after the candidate is final. Historical
-`docs/evidence/p8-05-runtime/` remains untouched.
+Candidate-bound verifier receipts are retained here only after an independent
+controller has completed them. Historical `docs/evidence/p8-05-runtime/`
+remains untouched.
