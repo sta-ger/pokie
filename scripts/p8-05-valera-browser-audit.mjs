@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Execute one isolated, packed-CLI and rendered-Studio P8-05 persona audit. */
+import {P805_MAX_EVIDENCE_BYTES, hasP805PackedOutputManifest, preserveP805PackedCliOutput} from "./p8-05-packed-output-evidence.mjs";
 import {p805OperationPerformance} from "./p8-05-persona-projection.mjs";
 import {createHash, randomBytes} from "node:crypto";
 import {spawn, spawnSync} from "node:child_process";
@@ -331,8 +332,7 @@ export function validateP805RenderedPersonaAudit(audit) {
     if (audit.tuple?.persona === "mathematician" && audit.tuple.observation === "outcome-library-report-diff-replay") {
         const outputs = audit.workflowScope?.compoundCliOutputs;
         const validOutputs = Array.isArray(outputs) && JSON.stringify(outputs.map(({output, command}) => ({output, command}))) === JSON.stringify(P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS) && outputs.every((entry) => {
-            const files = entry?.files;
-            return entry?.kind === "p8-05-packed-cli-output" && entry.candidateId === audit.candidateId && entry.candidatePackageSha256 === audit.candidatePackageSha256 && entry.candidateExecutableSha256 === audit.packageIdentity?.candidateExecutableSha256 && sha(entry.sha256) && typeof entry.evidenceId === "string" && entry.evidenceId && Array.isArray(files) && files.length > 0 && files.every((file) => typeof file?.path === "string" && file.path && sha(file.sha256) && Number.isSafeInteger(file.sizeBytes) && file.sizeBytes > 0 && typeof file.contentsBase64 === "string" && Buffer.from(file.contentsBase64, "base64").length === file.sizeBytes && digest(Buffer.from(file.contentsBase64, "base64")) === file.sha256) && entry.sha256 === digest(JSON.stringify(files.map(({path, sha256, sizeBytes, contentsBase64}) => ({path, sha256, sizeBytes, contentsBase64})).sort((left, right) => left.path.localeCompare(right.path))));
+            return entry?.kind === "p8-05-packed-cli-output" && entry.candidateId === audit.candidateId && entry.candidatePackageSha256 === audit.candidatePackageSha256 && entry.candidateExecutableSha256 === audit.packageIdentity?.candidateExecutableSha256 && sha(entry.sha256) && typeof entry.evidenceId === "string" && entry.evidenceId && hasP805PackedOutputManifest(entry);
         });
         if (!validOutputs) fail("rendered mathematician Outcome Library tuple does not retain its exact packed CLI output artifacts");
     }
@@ -1542,7 +1542,7 @@ async function trustedSharedRuntime(runtime, options, services) {
 export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
     if (!validOptions(options)) fail("runner configuration is incomplete");
     const services = {spawn, link, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile, exists:existsSync, chromium:process.env.P805_CHROMIUM_BINARY ?? "chromium-browser", ...nativeNpmCommand(), now, ...dependencies}, startedAt = services.now(), nonce = digest(`${startedAt}:${options.phase}:${options.persona}:${Math.random()}`).slice(0, 16), auditId = `${options.phase}-${options.persona}-${nonce}`, worker = {pid:process.pid, processIdentity:processIdentity(process.pid), nonce, startedAt}, base = await services.mkdtemp(path.join(tmpdir(), `p8-05-${options.phase}-${options.persona}-`)), context = {workspace:path.join(base, "workspace"), configurationRoot:path.join(base, "configuration"), documents:path.join(base, "documents"), browserProfile:path.join(base, "browser-profile"), reused:false}, installationRoot = options.runtime?.root ?? path.join(base, "packed-install"), port = await freeLoopbackPort(), devtoolsPort = await freeLoopbackPort(), origin = `http://127.0.0.1:${port}`, devtools = `http://127.0.0.1:${devtoolsPort}`, evidence = [], checkpointReceipts = [], transcript = [], api = [], errors = [], observationEvidence = {}, timings = {startupMs:null, projectCreationMs:null, validationMs:null, buildMs:null, simulationMs:null, replayMs:null, cancellationMs:null, restartRecoveryMs:null, retryMs:null, replayArtifactMs:null, screenshotMs:null, recursiveHelpMs:null};
-    const save = async (kind, name, content, observationIds = []) => { const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content), relativePath = path.join(options.phase, options.persona, nonce, name), target = path.join(options.output, relativePath); await services.mkdir(path.dirname(target), {recursive:true}); await writeImmutableReceipt(target, bytes, services); const evidenceId = `${options.phase}-${options.persona}-${nonce}-${kind}-${evidence.length + 1}`; evidence.push({evidenceId, kind, path:relativePath, sha256:digest(bytes), sizeBytes:bytes.length, capturedAt:services.now(), candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, observationIds}); for (const observation of observationIds) if (!observationEvidence[observation]) observationEvidence[observation] = evidenceId; return evidenceId; };
+    const save = async (kind, name, content, observationIds = []) => { const bytes = Buffer.isBuffer(content) ? content : Buffer.from(content); if (bytes.length < 1 || bytes.length > P805_MAX_EVIDENCE_BYTES) fail(`${kind} ${name} exceeds the bounded evidence size contract`); const relativePath = path.join(options.phase, options.persona, nonce, name), target = path.join(options.output, relativePath); await services.mkdir(path.dirname(target), {recursive:true}); await writeImmutableReceipt(target, bytes, services); const evidenceId = `${options.phase}-${options.persona}-${nonce}-${kind}-${evidence.length + 1}`; evidence.push({evidenceId, kind, path:relativePath, sha256:digest(bytes), sizeBytes:bytes.length, capturedAt:services.now(), candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, observationIds}); for (const observation of observationIds) if (!observationEvidence[observation]) observationEvidence[observation] = evidenceId; return evidenceId; };
     // The aggregate audit may only reference receipts written immediately
     // after a real public workflow chunk settles.  This prevents closeout
     // from substituting an equivalent action from another viewport/persona.
@@ -1702,30 +1702,11 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // deliberately cleaned after the tuple, so preserve a candidate-bound
         // immutable manifest now; a transcript alone cannot later prove that
         // those commands actually wrote their declared outputs.
-        const preservePackedCliOutput = async (output, command, target) => {
-            const entries = [];
-            const collect = async (directory, relative = "") => {
-                for (const entry of await services.readdir(directory, {withFileTypes:true})) {
-                    const next = path.join(relative, entry.name), candidate = path.join(directory, entry.name);
-                    if (entry.isDirectory()) await collect(candidate, next);
-                    else if (entry.isFile()) {
-                        const bytes = await services.readFile(candidate);
-                        entries.push({path:next.replaceAll(path.sep, "/"), sha256:digest(bytes), sizeBytes:bytes.length, contentsBase64:Buffer.from(bytes).toString("base64")});
-                    }
-                }
-            };
-            const metadata = await services.stat(target);
-            if (metadata.isDirectory()) await collect(target);
-            else if (metadata.isFile()) {
-                const bytes = await services.readFile(target);
-                entries.push({path:path.basename(target), sha256:digest(bytes), sizeBytes:bytes.length, contentsBase64:Buffer.from(bytes).toString("base64")});
-            }
-            if (entries.length === 0) fail(`${command} created no retainable ${output} output`);
-            entries.sort((left, right) => left.path.localeCompare(right.path));
-            const receipt = {kind:"p8-05-packed-cli-output", candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, candidateExecutableSha256:options.candidateExecutableSha256, publicWorkflow:"outcome-library-report-diff-replay", output, command, files:entries, sha256:digest(JSON.stringify(entries))};
-            const evidenceId = await save("artifact", `compound-${output}.json`, JSON.stringify(receipt), ["outcome-library-report-diff-replay"]);
-            return {...receipt, evidenceId};
-        };
+        const preservePackedCliOutput = (output, command, target) => preserveP805PackedCliOutput(output, command, target, {
+            candidateId:options.candidateId,
+            candidatePackageSha256:options.candidatePackageSha256,
+            candidateExecutableSha256:options.candidateExecutableSha256,
+        }, save, services);
         await runPackedCli("packed CLI create", ["create", "Valera audit", "--random", "--seed", "805", "--out", blueprint]); await requireOutput("packed CLI create", blueprint);
         const tupleContract = options.tuple ? P805_WORKFLOW_CONTRACTS[options.tuple.persona][options.tuple.observation] : undefined,
             requiresOutcomeBootstrap = tupleContract?.route === "certification" || tupleContract?.route === "provablyFair",

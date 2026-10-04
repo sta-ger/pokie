@@ -4,7 +4,7 @@ import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {P805_PUBLIC_HELP_ARGUMENTS, hasP805TransactionActivations, tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {P805_PUBLIC_HELP_ARGUMENTS, captureP805RestartRecoveryResponse, hasP805TransactionActivations, tupleBootstrapContract, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {
     matchesP805ReplayArtifactInput,
     P805_PERSONAS,
@@ -20,7 +20,8 @@ import {
     validateP805ProductReadinessCampaign,
 } from "../../scripts/p8-05-product-readiness-campaign.mjs";
 
-import {p805OperationPerformance} from "../../scripts/p8-05-persona-projection.mjs";
+import {P805_MAX_EVIDENCE_BYTES, preserveP805PackedCliOutput} from "../../scripts/p8-05-packed-output-evidence.mjs";
+import {p805OperationPerformance, projectP805PersonaAudit} from "../../scripts/p8-05-persona-projection.mjs";
 import {aggregateP805PersonaAudits, prepareP805Closeout, runP805Closeout} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {
@@ -280,7 +281,7 @@ const liveDomTransaction = (persona, observation, contract, viewport) => {
                 initiator: "rendered-control",
             },
             terminal: {
-                status: "completed",
+                status: Array.isArray(result) ? "success" : "completed",
                 complete: true,
                 resultSha256: responseSha256,
                 artifact: contract.artifact ?? null,
@@ -338,7 +339,7 @@ test("transaction state classes are accepted only from rendered control or resul
     assert.equal(p805TransactionStateClass("unsupported"), undefined);
 });
 
-async function campaignFixture({initialOverflow = false, throughController = false} = {}) {
+async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false} = {}) {
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
     let sequence = 0;
     const evidence = async (candidate, kind, at, observationIds = [], contents) => {
@@ -463,7 +464,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                 expectedApi: contract.api,
                 expectedArtifact: contract.artifact ?? null,
                 expectedTerminal: contract.terminal,
-                terminal: {status: "completed", resultSha256: viewportSource.responseSha256, result: viewportSource.result, ...(contract.poll ? {jobId: viewportSource.result.id} : {})},
+                terminal: {status: Array.isArray(viewportSource.result) ? "success" : "completed", resultSha256: viewportSource.responseSha256, result: viewportSource.result, ...(contract.poll ? {jobId: viewportSource.result.id} : {})},
                 evidenceId: page.evidenceId,
                 screenshotEvidenceId: screenshot.evidenceId,
                 viewport: actionViewport,
@@ -498,8 +499,18 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             return [name, {payload, transaction:captured, screenshotEvidenceId:artifacts.find((item) => item.kind === "screenshot").evidenceId, rendered:{controlId:"replay-artifact-load", status:status === 200 ? "loaded" : "error", text:status === 200 ? "Round 1, seed p8-05." : "round must be positive", ...(status === 200 ? {round:"1", seed:"p8-05"} : {})}}];
         }));
         const retryTransaction = pointerTransaction("simulation-retry", "simulation-retry", "recovery-operation", "completed", "simulation-retry"),
-            restartTransaction = pointerTransaction("simulation", "simulation-run", "editable-submission", "recovery-required", "simulation-restart"),
-            runtime = await evidence(
+            restartTransaction = pointerTransaction("simulation", "simulation-run", "editable-submission", "recovery-required", "simulation-restart");
+        // Match the real interrupted submission: no terminal poll exists
+        // until the newly started Studio returns its durable jobs list.
+        delete restartTransaction.terminal;
+        delete restartTransaction.postTransitionRenderedState;
+        const restartTerminal = {id:"simulation-restart", status:"recovery-required", operation:"simulation", request:{rounds:1, workers:1}},
+            restartRequestId = `restart-${phase}-${persona}-${tuple.observation}-${tuple.viewport}`,
+            restartResponse = {method:"Network.responseReceived", params:{requestId:restartRequestId, response:{status:200, url:"http://localhost/api/project/jobs"}}},
+            recoveryResponse = captureP805RestartRecoveryResponse({event:restartResponse, payload:[restartTerminal]}, restartTerminal.id);
+        browserEvents.push({method:"Network.requestWillBeSent", params:{requestId:restartRequestId, request:{method:"GET", url:"http://localhost/api/project/jobs"}}}, restartResponse);
+        apiEntries.push({browserRequestId:restartRequestId, method:"GET", path:"/api/project/jobs", status:200, payload:[restartTerminal], initiator:"rendered-restart"});
+        const runtime = await evidence(
             candidate,
             "page-state",
             stamp(offset + 30),
@@ -570,7 +581,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                     protectionText: "You have unsaved changes to this game model section. Leave and lose them?",
                     preserved: true,
                 },
-                restart: {activeJobId: "simulation-restart", recovered: true},
+                restart: {activeJobId: "simulation-restart", recovered: true, terminal:restartTerminal},
                 jobs: {
                     success: {id: "simulation-completed", status: "completed"},
                     actionableFailure: {error: "Rounds must be positive"},
@@ -661,7 +672,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             await writeFile(path.join(directory, relativePath), contents);
             return {receiptId, path: relativePath, sha256: hash(contents), sizeBytes: Buffer.byteLength(contents), capturedAt, candidateId: candidate.candidateId, candidatePackageSha256: candidate.candidatePackageSha256, persona: action.persona ?? persona, observation: action.observation, viewport: action.viewport, actionSha256: hash(JSON.stringify(action))};
         }));
-        return {
+        const value = {
             auditId,
             tuple,
             worker:{pid:offset + 2, nonce:`${phase}-${persona}-${offset}`},
@@ -728,8 +739,8 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                     cooperativeCancellation: {observed: true, evidenceId: measured},
                     retryWithoutPartialArtifacts: {observed: true, evidenceId: measured, receipt: {operation: "simulation-retry", controlId: "simulation-retry", stateClass: "recovery-operation", transaction: retryTransaction}},
                     restartRecovery: {observed: true, evidenceId: measured, receipt: {
-                        operation: "simulation", controlId: "simulation-run", stateClass: "editable-submission", capturedJobId: "simulation-restart", transaction: restartTransaction,
-                        terminal: {status: "recovery-required", jobId: "simulation-restart", operation: "simulation", request: {rounds: 1, workers: 1}, resultSha256: restartTransaction.terminal.resultSha256, causedByRequestId: restartTransaction.request.browserRequestId},
+                        operation: "simulation", controlId: "simulation-run", stateClass: "editable-submission", capturedJobId: "simulation-restart", transaction: restartTransaction, recoveryResponse,
+                        terminal: {status: "recovery-required", jobId: "simulation-restart", operation: "simulation", request: {rounds: 1, workers: 1}, resultSha256: recoveryResponse.jobSha256, causedByRequestId: restartTransaction.request.browserRequestId},
                         rendered: {
                             resultControlId: "simulation-run", resultOperation: "simulation", resultStateClass: "editable-submission", resultReceipt: "durable-terminal", resultJobId: "simulation-restart", resultRequestId: "simulation-restart", resultTerminal: "recovery-required", resultRecovery: "restart-reconciled", resultExecutor: "unavailable-after-restart", renderedTerminal: true,
                             postRestartReplacementState: {capturedControlId: "simulation-run", captureKey: restartTransaction.pointerActivations[0].captureKey, controlState: "replaced-after-restart", currentControlId: "simulation-run", capturedControlConnected: false},
@@ -765,6 +776,12 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             },
             evidence: artifacts,
         };
+        const receipt = value.rendered.jobs.restartRecovery.receipt;
+        runtimeValue.restart.receipt = {...receipt, evidence:{screenshotEvidenceId:receipt.evidence.screenshotEvidenceId}};
+        const settledRuntime = JSON.stringify(runtimeValue);
+        await writeFile(path.join(directory, runtime.path), settledRuntime);
+        runtime.sha256 = hash(settledRuntime); runtime.sizeBytes = Buffer.byteLength(settledRuntime);
+        return value;
     };
     const collect = async (phase, candidate, baseOffset) => {
         const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
@@ -780,21 +797,45 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             const timingEvidence = value.evidence.find((item) => item.kind === "timing"), timingContents = JSON.stringify(value.timings);
             await writeFile(path.join(directory, timingEvidence.path), timingContents);
             timingEvidence.sha256 = hash(timingContents); timingEvidence.sizeBytes = Buffer.byteLength(timingContents);
+            const recoveryRequired = ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation);
+            value.workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple, bootstrap:tupleBootstrapContract(tuple).map((item) => ({...item, evidenceId:value.evidence[0].evidenceId})), scopeEvidenceId:value.evidence[0].evidenceId, recoveryRequired};
+            if (!recoveryRequired) { value.rendered.recovery = {}; value.rendered.jobs = {}; }
+            if (tuple.observation === "outcome-library-report-diff-replay") {
+                const outputs = [], outputEvidence = [];
+                for (const {output, command} of tupleBootstrapContract(tuple).filter((item) => item.kind === "packed-cli-output")) {
+                    const contents = largeCompoundOutput && output === "outcome-library-export"
+                        ? Buffer.alloc(P805_MAX_EVIDENCE_BYTES + 17, "x")
+                        : Buffer.from(`fixture-${phase}-${output}`);
+                    const target = path.join(directory, `${value.auditId}-${output}.output`);
+                    if (output === "outcome-library-export") {
+                        await mkdir(path.join(target, "library"), {recursive:true});
+                        await writeFile(path.join(target, "library", "outcomes.jsonl"), contents);
+                        await writeFile(path.join(target, "manifest.json"), '{"kind":"outcome-library-export"}');
+                    } else await writeFile(target, contents);
+                    outputs.push(await preserveP805PackedCliOutput(output, command, target, {
+                        candidateId:candidate.candidateId,
+                        candidatePackageSha256:candidate.candidatePackageSha256,
+                        candidateExecutableSha256:candidate.candidateExecutableSha256,
+                    }, async (kind, name, bytes, observations) => {
+                        const record = await evidence(candidate, kind, stamp(baseOffset + index + 30), observations, bytes), nextPath = `records/${value.worker.nonce}-${name}`;
+                        await rename(path.join(directory, record.path), path.join(directory, nextPath));
+                        record.path = nextPath;
+                        outputEvidence.push(record);
+                        return record.evidenceId;
+                    }));
+                    await rm(target, {recursive:true, force:true});
+                }
+                // Match the real producer's ordering: public output receipts
+                // precede candidate.json and cannot impersonate provenance.
+                value.evidence = [...outputEvidence, ...value.evidence];
+                value.workflowScope.compoundCliOutputs = outputs;
+            }
             const namespace = `${phase}/${tuple.persona}/${value.worker.nonce}`;
             await mkdir(path.join(directory, namespace), {recursive:true});
             for (const item of [...value.evidence, ...value.checkpointReceipts]) {
                 const nextPath = `${namespace}/${path.basename(item.path)}`;
                 await rename(path.join(directory, item.path), path.join(directory, nextPath));
                 item.path = nextPath;
-            }
-            const recoveryRequired = ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation);
-            value.workflowScope = {kind:"p8-05-single-tuple-workflow-scope", tuple, bootstrap:tupleBootstrapContract(tuple).map((item) => ({...item, evidenceId:value.evidence[0].evidenceId})), scopeEvidenceId:value.evidence[0].evidenceId, recoveryRequired};
-            if (!recoveryRequired) { value.rendered.recovery = {}; value.rendered.jobs = {}; }
-            if (tuple.observation === "outcome-library-report-diff-replay") {
-                value.workflowScope.compoundCliOutputs = tupleBootstrapContract(tuple).filter((item) => item.kind === "packed-cli-output").map(({output, command}) => {
-                    const contents = Buffer.from(`fixture-${phase}-${output}`), files = [{path:output, sha256:hash(contents), sizeBytes:contents.length, contentsBase64:contents.toString("base64")}];
-                    return {kind:"p8-05-packed-cli-output", output, command, ...candidate, evidenceId:value.evidence[0].evidenceId, files, sha256:hash(JSON.stringify(files))};
-                });
             }
             const save = async (name, record) => { const contents = `${JSON.stringify(record)}\n`; await writeFile(path.join(directory, name), contents); return hash(contents); };
             const cleanupEvidence = value.evidence.find((item) => item.evidenceId === value.cleanup.evidenceId), cleanupRecord = JSON.parse(await readFile(path.join(directory, cleanupEvidence.path), "utf8"));
@@ -1030,6 +1071,125 @@ test("requires every evidence kind, verifier anchors, live-DOM bindings, final-c
         await fixture.cleanup();
     }
 });
+test("projects large public CLI outputs through bounded immutable leaves from collection to post-cleanup closeout", async () => {
+    const fixture = await campaignFixture({throughController:true, largeCompoundOutput:true});
+    try {
+        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
+        const manifest = JSON.parse(await readFile(path.join(fixture.directory, "manifest.json"), "utf8"));
+        for (const [recordPath, phase, candidate] of [["initial-audits.json", "initial", initial], ["retests.json", "retest", retest]]) {
+            const {audits} = JSON.parse(await readFile(path.join(fixture.directory, recordPath), "utf8"));
+            await validateP805CollectedAudits(fixture.directory, audits, phase, candidate);
+            for (const aggregate of audits) {
+                assert.deepEqual(aggregate.tupleReceipts.map((receipt) => receipt.tuple), P805_REQUIRED_OBSERVATIONS[aggregate.persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona:aggregate.persona, observation, viewport}))));
+                const children = await Promise.all(aggregate.tupleReceipts.map(async (reference) => JSON.parse(await readFile(path.join(fixture.directory, reference.auditPath), "utf8"))));
+                assert.deepEqual(aggregate, JSON.parse(JSON.stringify(projectP805PersonaAudit(children, aggregate.tupleReceipts, phase, aggregate.persona))));
+                assert.deepEqual(aggregate.evidence, children.flatMap((child) => child.evidence));
+                assert.deepEqual(aggregate.checkpointReceipts, children.flatMap((child) => child.checkpointReceipts));
+                assert.equal(aggregate.workflowScope, undefined);
+                assert.equal(new Set(aggregate.evidence.map((item) => item.evidenceId)).size, aggregate.evidence.length);
+                for (const child of children) {
+                    assert.equal(child.evidence.every((item) => item.sizeBytes > 0 && item.sizeBytes <= P805_MAX_EVIDENCE_BYTES), true);
+                    if (child.tuple.observation !== "outcome-library-report-diff-replay") continue;
+                    assert.equal(JSON.stringify(child.workflowScope).includes("contentsBase64"), false);
+                    const output = child.workflowScope.compoundCliOutputs.find((entry) => entry.output === "outcome-library-export"), file = output.files[0];
+                    assert.equal(file.sizeBytes, P805_MAX_EVIDENCE_BYTES + 17);
+                    assert.equal(file.chunks.length, 6);
+                    const bytes = await Promise.all(file.chunks.map(async (chunk) => {
+                        const evidence = child.evidence.find((item) => item.evidenceId === chunk.evidenceId);
+                        assert.equal(manifest.evidence.some((item) => item.evidenceId === evidence.evidenceId && item.sha256 === evidence.sha256), true);
+                        return readFile(path.join(fixture.directory, evidence.path));
+                    }));
+                    assert.equal(hash(Buffer.concat(bytes)), file.sha256);
+                    assert.equal(manifest.cleanupEvidence.includes(child.cleanup.evidenceId), true);
+                    assert.equal(child.rendered.jobs.restartRecovery.receipt.transaction.terminal, undefined);
+                    assert.equal(child.rendered.jobs.restartRecovery.receipt.terminal.status, "recovery-required");
+                }
+            }
+        }
+        // Reproduce the retained false predicate with authentic oversized
+        // bytes, digests, and metadata, rather than merely lying about size.
+        const records = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), aggregate = records.audits[0], reference = aggregate.tupleReceipts.find((item) => item.tuple.observation === "outcome-library-report-diff-replay" && item.tuple.viewport === "wide"), childPath = path.join(fixture.directory, reference.auditPath), child = JSON.parse(await readFile(childPath, "utf8")), output = child.workflowScope.compoundCliOutputs.find((entry) => entry.output === "outcome-library-export");
+        const bytes = await Promise.all(output.files[0].chunks.map((chunk) => readFile(path.join(fixture.directory, child.evidence.find((item) => item.evidenceId === chunk.evidenceId).path))));
+        const {chunks, ...file} = output.files[0];
+        output.files = [{...file, contentsBase64:Buffer.concat(bytes).toString("base64")}];
+        output.sha256 = hash(JSON.stringify(output.files));
+        const {evidenceId, ...receipt} = output, legacyBytes = JSON.stringify(receipt), evidence = child.evidence.find((item) => item.evidenceId === evidenceId);
+        evidence.kind = "artifact"; evidence.sizeBytes = Buffer.byteLength(legacyBytes); evidence.sha256 = hash(legacyBytes);
+        assert.ok(evidence.sizeBytes > P805_MAX_EVIDENCE_BYTES);
+        await writeFile(path.join(fixture.directory, evidence.path), legacyBytes);
+        const childBytes = `${JSON.stringify(child)}\n`;
+        await writeFile(childPath, childBytes);
+        reference.auditSha256 = hash(childBytes);
+        await assert.rejects(() => validateP805CollectedAudits(fixture.directory, records.audits, "retest", retest), /lacks bounded evidence metadata for artifact .*compound-outcome-library-export/);
+    } finally { await fixture.cleanup(); }
+});
+
+test("authenticates each aggregate child before applying every bounded leaf rejection", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const original = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), reference = original.audits[0].tupleReceipts[0], target = path.join(fixture.directory, reference.auditPath), contents = await readFile(target, "utf8");
+        await validateP805CollectedAudits(fixture.directory, original.audits, "retest", retest);
+        for (const [label, mutate, rejection] of [
+            ["missing child", (_child, reference) => { reference.auditPath = "missing-audit.json"; }, /immutable child audit does not exist/],
+            ["missing tuple", (_child, reference) => { reference.tupleReceiptPath = "missing-receipt.json"; }, /immutable child tuple receipt does not exist/],
+            ["missing cleanup", (_child, reference) => { reference.cleanupPath = "missing-cleanup.json"; }, /immutable child cleanup does not exist/],
+            ["stale leaf", (child) => { child.evidence[0].capturedAt = stamp(-1000); }, /evidence timestamp is outside/],
+            ["cross-candidate leaf", (child) => { child.evidence[0].candidateId = initial.candidateId; }, /evidence is not bound to the exact candidate/],
+            ["cross-persona child", (child) => { child.persona = "programmer"; }, /evidence escapes its immutable child namespace/],
+            ["cross-viewport child", (child) => { child.tuple.viewport = "compact"; }, /immutable child identity/],
+            ["duplicate tuple", (_child, _reference, aggregate) => { aggregate.tupleReceipts[1] = aggregate.tupleReceipts[0]; }, /aggregate omits an immutable child tuple/],
+            ["namespace escape", (child) => { child.evidence[0].path = "records/escape.txt"; }, /evidence escapes its immutable child namespace/],
+            ["digest mismatch", (child) => { child.evidence[0].sha256 = "0".repeat(64); }, /evidence digest or size differs/],
+            ["metadata incomplete", (child) => { delete child.evidence[0].sizeBytes; }, /lacks bounded evidence metadata/],
+            ["oversized leaf", (child) => { child.evidence[0].sizeBytes = P805_MAX_EVIDENCE_BYTES + 1; }, /lacks bounded evidence metadata/],
+            ["duplicate leaf", (child) => { child.evidence.push({...child.evidence[0]}); }, /reuses evidence/],
+        ]) {
+            const records = structuredClone(original), aggregate = records.audits[0], reference = aggregate.tupleReceipts[0], child = JSON.parse(contents);
+            mutate(child, reference, aggregate);
+            const rebound = `${JSON.stringify(child)}\n`;
+            await writeFile(target, rebound);
+            reference.auditSha256 = hash(rebound);
+            await assert.rejects(() => validateP805CollectedAudits(fixture.directory, records.audits, "retest", retest), rejection, label);
+        }
+        await writeFile(target, contents);
+        const changedProjection = structuredClone(original.audits);
+        changedProjection[0].evidence.push({...changedProjection[0].evidence[0], evidenceId:"fabricated-aggregate-leaf"});
+        await assert.rejects(() => validateP805CollectedAudits(fixture.directory, changedProjection, "retest", retest), /aggregate differs from its authenticated immutable children/);
+        await validateP805CollectedAudits(fixture.directory, original.audits, "retest", retest);
+    } finally { await fixture.cleanup(); }
+});
+
+test("rejects missing, repeated, tampered, or incompletely reconstructed packed output chunks", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const records = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), reference = records.audits[0].tupleReceipts.find((item) => item.tuple.observation === "outcome-library-report-diff-replay" && item.tuple.viewport === "wide"), target = path.join(fixture.directory, reference.auditPath), originalChild = await readFile(target, "utf8"), child = JSON.parse(originalChild), output = child.workflowScope.compoundCliOutputs[0], manifest = child.evidence.find((item) => item.evidenceId === output.evidenceId), chunk = child.evidence.find((item) => item.evidenceId === output.files[0].chunks[0].evidenceId), manifestPath = path.join(fixture.directory, manifest.path), chunkPath = path.join(fixture.directory, chunk.path), manifestBytes = await readFile(manifestPath), chunkBytes = await readFile(chunkPath);
+        for (const [label, mutate, rejection] of [
+            ["missing chunk", async (child, output) => { child.evidence = child.evidence.filter((item) => item.evidenceId !== output.files[0].chunks[0].evidenceId); }, /packed CLI output has a missing, duplicate, or digest-mismatched chunk/],
+            ["repeated chunk", async (_child, output) => { output.files[0].chunks.push({...output.files[0].chunks[0]}); }, /does not retain its exact packed CLI output artifacts/],
+            ["tampered bytes", async () => { await writeFile(chunkPath, Buffer.alloc(chunkBytes.length, "z")); }, /evidence digest or size differs/],
+            ["complete file digest", async (child, output) => {
+                output.files[0].sha256 = "0".repeat(64);
+                output.sha256 = hash(JSON.stringify(output.files));
+                const {evidenceId, ...receipt} = output, bytes = JSON.stringify(receipt), evidence = child.evidence.find((item) => item.evidenceId === evidenceId);
+                await writeFile(manifestPath, bytes);
+                evidence.sha256 = hash(bytes); evidence.sizeBytes = Buffer.byteLength(bytes);
+            }, /packed CLI output chunks differ from the complete output digest/],
+        ]) {
+            await writeFile(manifestPath, manifestBytes);
+            await writeFile(chunkPath, chunkBytes);
+            const audits = structuredClone(records.audits), reference = audits[0].tupleReceipts.find((item) => item.auditPath === path.basename(target)), child = JSON.parse(originalChild);
+            await mutate(child, child.workflowScope.compoundCliOutputs[0]);
+            const bytes = `${JSON.stringify(child)}\n`;
+            await writeFile(target, bytes);
+            reference.auditSha256 = hash(bytes);
+            await assert.rejects(() => validateP805CollectedAudits(fixture.directory, audits, "retest", retest), rejection, label);
+        }
+        await writeFile(manifestPath, manifestBytes);
+        await writeFile(chunkPath, chunkBytes);
+        await writeFile(target, originalChild);
+        await validateP805CollectedAudits(fixture.directory, records.audits, "retest", retest);
+    } finally { await fixture.cleanup(); }
+});
 test("rejects missing, duplicate, stale, and cross-candidate packed checkpoint receipts", async () => {
     for (const mutate of [
         (audit) => audit.checkpointReceipts.pop(),
@@ -1249,29 +1409,26 @@ test("rejects a non-PAR durable terminal whose rendered result belongs to a diff
     } finally { await fixture.cleanup(); }
 });
 
-test("rejects missing, loading, unsupported, disabled, or stale Outcome Library card receipts before generic route evidence", async () => {
-    const corruptions = [
-        (page) => { delete page.transaction.preflight; },
-        (page) => { page.transaction.preflight.state = "loading"; },
-        (page) => { page.transaction.preflight.status = "error"; },
-        (page) => { page.transaction.preflight.enabled = false; page.transaction.preflight.disabled = true; },
-        (page) => { page.transaction.preflight.controlId = "outcome-library-generate-stale"; },
-        (page) => { page.renderedTerminal.lifecycle.durableJobId = "job-from-a-stale-result"; },
-    ];
-    for (const corrupt of corruptions) {
-        const fixture = await campaignFixture();
-        try {
-            const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "outcome-library-report-diff-replay" && item.viewport === "wide"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), page = JSON.parse(await readFile(target, "utf8"));
-            corrupt(page);
-            const contents = JSON.stringify(page);
-            await writeFile(target, contents);
-            evidence.sha256 = hash(contents);
-            evidence.sizeBytes = Buffer.byteLength(contents);
-            await writeFile(record, `${JSON.stringify(audits)}\n`);
+test.each([
+    ["missing preflight", (page) => { delete page.transaction.preflight; }],
+    ["loading preflight", (page) => { page.transaction.preflight.state = "loading"; }],
+    ["unsupported preflight", (page) => { page.transaction.preflight.status = "error"; }],
+    ["disabled preflight", (page) => { page.transaction.preflight.enabled = false; page.transaction.preflight.disabled = true; }],
+    ["stale control", (page) => { page.transaction.preflight.controlId = "outcome-library-generate-stale"; }],
+    ["stale durable result", (page) => { page.renderedTerminal.lifecycle.durableJobId = "job-from-a-stale-result"; }],
+])("rejects an Outcome Library %s receipt before generic route evidence", async (_label, corrupt) => {
+    const fixture = await campaignFixture();
+    try {
+        const record = path.join(fixture.directory, "retests.json"), audits = JSON.parse(await readFile(record, "utf8")), audit = audits.audits.find((item) => item.persona === "mathematician"), action = audit.rendered.actions.find((item) => item.observation === "outcome-library-report-diff-replay" && item.viewport === "wide"), evidence = audit.evidence.find((item) => item.evidenceId === action.evidenceId), target = path.join(fixture.directory, evidence.path), page = JSON.parse(await readFile(target, "utf8"));
+        corrupt(page);
+        const contents = JSON.stringify(page);
+        await writeFile(target, contents);
+        evidence.sha256 = hash(contents);
+        evidence.sizeBytes = Buffer.byteLength(contents);
+        await writeFile(record, `${JSON.stringify(audits)}\n`);
         await rebindFixtureChildEvidence(fixture.directory, record);
-            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result|aggregate differs|immutable child/i);
-        } finally { await fixture.cleanup(); }
-    }
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /Outcome Library control, preflight, or durable result|aggregate differs|immutable child/i);
+    } finally { await fixture.cleanup(); }
 });
 
 test("rejects a rendered terminal captured without the browser request that produced it", async () => {
@@ -1315,7 +1472,7 @@ test("rejects an HTTP-success semantic record whose completed terminal result ac
         evidence.sizeBytes = bytes.length;
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await rebindFixtureChildEvidence(fixture.directory, record);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome|aggregate differs|immutable child/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal result|terminal outcome|aggregate differs|immutable child/i);
     } finally {
         await fixture.cleanup();
     }
@@ -1332,7 +1489,7 @@ test("rejects a durable result whose browser poll is from a different public job
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await rebindFixtureChildEvidence(fixture.directory, record);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome|aggregate differs|immutable child/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal result|terminal outcome|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1348,7 +1505,7 @@ test("rejects an HTTP-success report observation with no completed report or bro
         evidence.sizeBytes = Buffer.byteLength(contents);
         await writeFile(record, `${JSON.stringify(audits)}\n`);
         await rebindFixtureChildEvidence(fixture.directory, record);
-        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal outcome|aggregate differs|immutable child/i);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /terminal result|terminal outcome|aggregate differs|immutable child/i);
     } finally { await fixture.cleanup(); }
 });
 
@@ -1462,7 +1619,7 @@ test.each(["simulationRetry", "restartSimulation"])("rejects %s runtime recovery
         assert.equal(entry.kind, "page-state");
         const value = JSON.parse(await readFile(path.join(fixture.directory, entry.path), "utf8"));
         assert.equal(value.transactions[operation].control.stableControlId, operation === "simulationRetry" ? "simulation-retry" : "simulation-run");
-        value.transactions[operation].terminal.resultSha256 = "f".repeat(64);
+        value.transactions[operation].request.responseSha256 = "f".repeat(64);
         const contents = JSON.stringify(value);
         await writeFile(path.join(fixture.directory, entry.path), contents);
         entry.sha256 = hash(contents);

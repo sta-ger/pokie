@@ -7,6 +7,7 @@
  * closeout.  Reviewers write bounded records and this module rejects records
  * that are not tied to the candidate which they actually exercised.
  */
+import {P805_MAX_EVIDENCE_BYTES, authenticateP805PackedOutput} from "./p8-05-packed-output-evidence.mjs";
 import {P805_OPERATION_BUDGETS, projectP805PersonaAudit} from "./p8-05-persona-projection.mjs";
 import {createHash} from "node:crypto";
 import {existsSync} from "node:fs";
@@ -170,7 +171,7 @@ async function evidencePath(directory, name, label) {
 }
 
 async function boundedEvidence(directory, record, expected, label, {after, before, used} = {}) {
-    if (!record || typeof record.evidenceId !== "string" || !record.evidenceId || !relative(record.path) || !sha(record.sha256) || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 1 || record.sizeBytes > 5 * 1024 * 1024 || !iso(record.capturedAt) || typeof record.kind !== "string" || !record.kind || !Array.isArray(record.observationIds) || !record.observationIds.every((value) => typeof value === "string" && value)) fail(`${label} lacks bounded evidence metadata`);
+    if (!record || typeof record.evidenceId !== "string" || !record.evidenceId || !relative(record.path) || !sha(record.sha256) || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 1 || record.sizeBytes > P805_MAX_EVIDENCE_BYTES || !iso(record.capturedAt) || typeof record.kind !== "string" || !record.kind || !Array.isArray(record.observationIds) || !record.observationIds.every((value) => typeof value === "string" && value)) fail(`${label} lacks bounded evidence metadata for ${record?.kind ?? "unknown kind"} ${record?.path ?? "unknown path"} (${record?.sizeBytes ?? "unknown"} bytes)`);
     candidate(record, expected, `${label} evidence`);
     if ((after && Date.parse(record.capturedAt) < Date.parse(after)) || (before && Date.parse(record.capturedAt) > Date.parse(before))) fail(`${label} evidence timestamp is outside its audit`);
     if (used?.has(record.evidenceId)) fail(`${label} reuses evidence ${record.evidenceId}`);
@@ -374,8 +375,16 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     const one = (kind) => [...evidenceById.values()].find((entry) => entry.item.kind === kind)?.contents;
     const text = (kind) => one(kind)?.toString("utf8") ?? "";
     let api, browser, timing, artifact;
-    try { api = JSON.parse(text("api-log")); browser = JSON.parse(text("browser-log")); timing = JSON.parse(text("timing")); artifact = JSON.parse(text("artifact")); } catch { fail(`${label} has unparsed machine workflow evidence`); }
+    try { api = JSON.parse(text("api-log")); browser = JSON.parse(text("browser-log")); timing = JSON.parse(text("timing")); const candidates = [...evidenceById.values()].filter((entry) => entry.item.kind === "artifact").map((entry) => JSON.parse(entry.contents.toString("utf8"))).filter((value) => value.packedPackageSha256 !== undefined);
+        if (candidates.length !== 1) fail(`${label} lacks exactly one packed candidate artifact`);
+        artifact = candidates[0]; } catch { fail(`${label} has unparsed machine workflow evidence`); }
     if (audit.rendered.measurements.consoleExceptions !== browser.filter((event) => event.method === "Runtime.exceptionThrown").length || audit.rendered.measurements.unhandledRequestFailures !== browser.filter((event) => event.method === "Network.loadingFailed").length) fail(`${label} browser measurements differ from its captured child log`);
+    const usedOutputChunks = new Set();
+    for (const output of audit.workflowScope?.compoundCliOutputs ?? []) {
+        try { authenticateP805PackedOutput(output, evidenceById, usedOutputChunks); }
+        catch (error) { fail(`${label} ${error.message}`); }
+    }
+    if ([...evidenceById.values()].some((entry) => entry.item.kind === "packed-cli-output-chunk" && !usedOutputChunks.has(entry.item.evidenceId))) fail(`${label} has an unreferenced packed CLI output chunk`);
     const claimedBrowserRequestIds = new Map();
     const claimBrowserRequestId = (browserRequestId, owner) => {
         if (typeof browserRequestId !== "string" || !browserRequestId) fail(`${label} ${owner} lacks a browser request identity`);
@@ -447,7 +456,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     const checkpointIds = new Set(), checkpointPaths = new Set(), checkpointActions = new Set();
     for (const receipt of audit.checkpointReceipts ?? []) {
         const actionKey = `${receipt?.persona}/${receipt?.observation}/${receipt?.viewport}`;
-        if (!receipt || typeof receipt.receiptId !== "string" || !receipt.receiptId || checkpointIds.has(receipt.receiptId) || checkpointPaths.has(receipt.path) || checkpointActions.has(actionKey) || !relative(receipt.path) || !sha(receipt.sha256) || !Number.isSafeInteger(receipt.sizeBytes) || receipt.sizeBytes < 1 || receipt.sizeBytes > 5 * 1024 * 1024 || !iso(receipt.capturedAt) || Date.parse(receipt.capturedAt) < Date.parse(audit.startedAt) || Date.parse(receipt.capturedAt) > Date.parse(audit.endedAt) || receipt.candidateId !== expected.candidateId || receipt.candidatePackageSha256 !== expected.candidatePackageSha256 || !sha(receipt.actionSha256)) fail(`${label} has a missing, duplicate, stale, cross-candidate, or substituted checkpoint receipt`);
+        if (!receipt || typeof receipt.receiptId !== "string" || !receipt.receiptId || checkpointIds.has(receipt.receiptId) || checkpointPaths.has(receipt.path) || checkpointActions.has(actionKey) || !relative(receipt.path) || !sha(receipt.sha256) || !Number.isSafeInteger(receipt.sizeBytes) || receipt.sizeBytes < 1 || receipt.sizeBytes > P805_MAX_EVIDENCE_BYTES || !iso(receipt.capturedAt) || Date.parse(receipt.capturedAt) < Date.parse(audit.startedAt) || Date.parse(receipt.capturedAt) > Date.parse(audit.endedAt) || receipt.candidateId !== expected.candidateId || receipt.candidatePackageSha256 !== expected.candidatePackageSha256 || !sha(receipt.actionSha256)) fail(`${label} has a missing, duplicate, stale, cross-candidate, or substituted checkpoint receipt`);
         const target = await evidencePath(directory, receipt.path, label);
         if (!target.startsWith(`${path.resolve(directory)}${path.sep}`)) fail(`${label} checkpoint receipt escapes the campaign directory`);
         let contents, checkpoint;

@@ -9,6 +9,11 @@ export function p805OperationPerformance(timings, budgets = P805_OPERATION_BUDGE
 
 /** A persona summary is only a deterministic view of unchanged child receipts. */
 export function projectP805PersonaAudit(audits, tupleReceipts, phase, persona) {
+    // Projection cannot mint another leaf or hide repeated evidence. The
+    // filesystem consumer authenticates these references before calling us.
+    if (!Array.isArray(audits) || audits.length === 0 || audits.length !== tupleReceipts?.length || audits.some((audit, index) => audit.phase !== phase || audit.persona !== persona || audit.auditId !== tupleReceipts[index].auditId || JSON.stringify(audit.tuple) !== JSON.stringify(tupleReceipts[index].tuple))) throw new Error("persona projection requires matching immutable child audits and receipts");
+    const evidence = audits.flatMap((audit) => audit.evidence);
+    if (new Set(evidence.map((item) => item.evidenceId)).size !== evidence.length || new Set(evidence.map((item) => item.path)).size !== evidence.length) throw new Error("persona projection repeats immutable child evidence");
     const first = audits[0], timings = Object.fromEntries(Object.keys(first.timings).map((name) => [name, audits.every((audit) => audit.timings[name] === null) ? null : Math.max(...audits.map((audit) => audit.timings[name]).filter((value) => value !== null))]));
     return {
         ...first,
@@ -17,7 +22,7 @@ export function projectP805PersonaAudit(audits, tupleReceipts, phase, persona) {
         workflowScope:undefined,
         observations:[...new Set(audits.flatMap((audit) => audit.observations))],
         cleanContexts:audits.map((audit) => audit.cleanContext),
-        evidence:audits.flatMap((audit) => audit.evidence),
+        evidence,
         observationEvidence:Object.assign({}, ...audits.map((audit) => audit.observationEvidence)),
         checkpointReceipts:audits.flatMap((audit) => audit.checkpointReceipts),
         tupleReceipts,
