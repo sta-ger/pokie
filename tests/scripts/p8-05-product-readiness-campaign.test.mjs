@@ -1146,6 +1146,29 @@ test("authenticates each aggregate child before applying every bounded leaf reje
     try {
         const original = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8")), reference = original.audits[0].tupleReceipts[0], target = path.join(fixture.directory, reference.auditPath), contents = await readFile(target, "utf8");
         await validateP805CollectedAudits(fixture.directory, original.audits, "retest", retest);
+        const aggregate = original.audits[0], children = await Promise.all(aggregate.tupleReceipts.map(async (item) => JSON.parse(await readFile(path.join(fixture.directory, item.auditPath), "utf8"))));
+        const acceptedBytes = JSON.stringify({children, references:aggregate.tupleReceipts});
+        assert.deepEqual(JSON.parse(JSON.stringify(projectP805PersonaAudit(children, aggregate.tupleReceipts, aggregate.phase, aggregate.persona))), aggregate);
+        // Reproduce each false predicate of the retained compound failure
+        // against persisted children. A digest-only reference cannot replace
+        // the controller's audit identity and exact persona/observation/viewport.
+        for (const [mutate, rejection] of [
+            [(value) => {delete value.children[0].phase;}, /child 0 phase/],
+            [(value) => {delete value.children[0].persona;}, /child 0 persona/],
+            [(value) => {delete value.children[0].auditId; delete value.references[0].auditId;}, /child 0 auditId/],
+            [(value) => {value.references[0].auditId = "another-child";}, /child 0 auditId/],
+            [(value) => {delete value.children[0].tuple; delete value.references[0].tuple;}, /child 0 tuple/],
+            [(value) => {value.references[0].tuple.viewport = "compact";}, /child 0 tuple/],
+            [(value) => {value.children[0].tuple.persona = value.references[0].tuple.persona = "programmer";}, /child 0 tuple/],
+            [(value) => {value.references[0] = {auditSha256:value.references[0].auditSha256};}, /child 0 auditId/],
+            [(value) => {delete value.references[0].auditSha256;}, /child 0 auditSha256/],
+            [(value) => {value.references.pop();}, /child\/receipt count/],
+        ]) {
+            const invalid = JSON.parse(acceptedBytes);
+            mutate(invalid);
+            assert.throws(() => projectP805PersonaAudit(invalid.children, invalid.references, aggregate.phase, aggregate.persona), rejection);
+        }
+        assert.equal(JSON.stringify({children, references:aggregate.tupleReceipts}), acceptedBytes, "projection and rejection preserve the accepted immutable inputs");
         for (const [label, mutate, rejection] of [
             ["missing child", (_child, reference) => { reference.auditPath = "missing-audit.json"; }, /immutable child audit does not exist/],
             ["missing tuple", (_child, reference) => { reference.tupleReceiptPath = "missing-receipt.json"; }, /immutable child tuple receipt does not exist/],

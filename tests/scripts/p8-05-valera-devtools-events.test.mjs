@@ -56,9 +56,12 @@ test("retained cancellation, Retry and interrupted restart sequence reaches camp
         mutate(invalid);
         assert.throws(() => validateP805RuntimeRecoveryEvidence(invalid.runtime, invalid.audit, invalid.api, invalid.browser, evidence, "substitution"));
     }
-    const children = ["mathematician", "ui-ux"].map((persona) => ({...audit, persona, timings:{restartRecoveryMs:restartReceipt.timing.elapsedMs}, performance:{restartRecoveryMs:{budgetMs:120000}}, observations:[audit.tuple.observation], evidence:[], observationEvidence:{}, checkpointReceipts:[], startedAt:"2026-10-03T21:10:00.000Z", endedAt:"2026-10-03T21:12:00.000Z", cleanup:{evidenceId:"retained-cleanup"}, rendered:{...audit.rendered, responsive:[], actions:[], defects:[], measurements:{}}}));
+    // The retained extract contains recovery data, not a complete audit
+    // envelope. Bind each bounded test child explicitly, as the controller
+    // does, without rewriting any retained transaction or native receipt.
+    const children = ["mathematician", "ui-ux"].map((persona) => ({...audit, phase:"initial", persona, auditId:`bounded-recovery-${persona}`, tuple:{...audit.tuple, persona}, timings:{restartRecoveryMs:restartReceipt.timing.elapsedMs}, performance:{restartRecoveryMs:{budgetMs:120000}}, observations:[audit.tuple.observation], evidence:[], observationEvidence:{}, checkpointReceipts:[], startedAt:"2026-10-03T21:10:00.000Z", endedAt:"2026-10-03T21:12:00.000Z", cleanup:{evidenceId:"retained-cleanup"}, rendered:{...audit.rendered, responsive:[], actions:[], defects:[], measurements:{}}}));
     for (const child of children) {
-        const projection = projectP805PersonaAudit([child], [{auditSha256:hash(JSON.stringify(child))}], "initial", child.persona);
+        const projection = projectP805PersonaAudit([child], [{auditId:child.auditId, tuple:child.tuple, auditSha256:hash(JSON.stringify(child))}], child.phase, child.persona);
         assert.equal(JSON.stringify(projection.rendered.jobs), JSON.stringify(child.rendered.jobs));
         // Both aggregation and prospective closeout recurse into this same
         // child-evidence consumer; they must keep the recovered list terminal.
@@ -130,10 +133,10 @@ test("retained blueprint native receipt survives resource-response collection, p
         }
         assert.doesNotThrow(() => validateP805LiveDomTransaction(Buffer.from(JSON.stringify(captured)), observation, persona, `${persona}/${observation}`));
     }
-    const child = {timings:{validationMs:page.elapsedMs}, performance:{validationMs:{budgetMs:60000}}, observations:["blueprint"], evidence:[], observationEvidence:{}, checkpointReceipts:[{sha256:hash(before)}],
-        startedAt:"2026-10-03T17:57:14.000Z", endedAt:page.renderedTerminal.observedAt, cleanup:{evidenceId:"bounded-cleanup"}, tuple:{viewport:"wide"},
+    const child = {phase:"initial", persona:"mathematician", auditId:"bounded-blueprint", timings:{validationMs:page.elapsedMs}, performance:{validationMs:{budgetMs:60000}}, observations:["blueprint"], evidence:[], observationEvidence:{}, checkpointReceipts:[{sha256:hash(before)}],
+        startedAt:"2026-10-03T17:57:14.000Z", endedAt:page.renderedTerminal.observedAt, cleanup:{evidenceId:"bounded-cleanup"}, tuple:{persona:"mathematician", observation:"blueprint", viewport:"wide"},
         rendered:{responsive:[], measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true}, defects:[], actions:[page], recovery:{},jobs:{}}};
-    const projection = projectP805PersonaAudit([child], [{auditSha256:hash(JSON.stringify(child))}], "initial", "mathematician");
+    const projection = projectP805PersonaAudit([child], [{auditId:child.auditId, tuple:child.tuple, auditSha256:hash(JSON.stringify(child))}], child.phase, child.persona);
     assert.equal(JSON.stringify(projection.rendered.actions[0]), before);
     assert.equal(projection.timings.validationMs, 456);
     for (const mutate of [
@@ -613,13 +616,13 @@ async function runProductionDrawerRecovery() {
             if(index>=3) assert.equal(page.state.draft, dirtyValue);
         }
         const children = recorded.map((evidence, index)=>({
-            auditId:`bounded-${index}`, tuple:{viewport:'narrow'}, timings:{startupMs:1}, performance:{},
+            phase:'initial', persona:'mathematician', auditId:`bounded-${index}`, tuple:{persona:'mathematician', observation:evidence[0].observationIds[0], viewport:'narrow'}, timings:{startupMs:1}, performance:{},
             observations:evidence[0].observationIds, evidence, observationEvidence:{[evidence[0].observationIds[0]]:evidence[0].evidenceId},
             checkpointReceipts:[], startedAt:'2026-10-03T00:00:00.000Z', endedAt:'2026-10-03T00:00:01.000Z', cleanup:{evidenceId:`cleanup-${index}`},
             rendered:{responsive:[],measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true},defects:[],actions:[],recovery:{},jobs:{}},
         }));
         const beforeProjection = JSON.stringify(children);
-        const projection = projectP805PersonaAudit(children, children.map(child=>({auditSha256:hash(JSON.stringify(child))})), 'initial', 'mathematician');
+        const projection = projectP805PersonaAudit(children, children.map(child=>({auditId:child.auditId, tuple:child.tuple, auditSha256:hash(JSON.stringify(child))})), 'initial', 'mathematician');
         assert.equal(JSON.stringify(children), beforeProjection);
         assert.deepEqual(projection.evidence, workflowEvidence);
         assert.deepEqual(projection.observations, ['replay','simulation','design','projects','design-after-stay']);
@@ -818,8 +821,10 @@ async function runProductionPointerReflow() {
         assert.deepEqual(requests.filter(item=>item.path==='/api/project/replays/inspect-artifact').map(item=>JSON.parse(item.body).round),[1,0,1]);
         assert.equal(requests.filter(item=>item.method==='POST'&&item.path==='/api/project/simulations').length,3);
         assert.deepEqual(accepted.map(item=>item.controlId),['simulation-run','simulation-cancel','simulation-cancel-dismiss','simulation-cancel','simulation-cancel-confirm','simulation-retry','simulation-retry','project-tab:replay','replay-artifact-load','replay-artifact-load','replay-artifact-load']);
-        const children=pages.map((page,index)=>({timings:{retryMs:page.elapsedMs},performance:{retryMs:{budgetMs:180000}},observations:['simulation-retry'],evidence:[],observationEvidence:{},checkpointReceipts:[{sha256:hash(JSON.stringify(page))}],startedAt:new Date().toISOString(),endedAt:new Date().toISOString(),cleanup:{evidenceId:'focused-cleanup'},tuple:{viewport:index?'compact':'wide'},rendered:{responsive:[{viewport:index?'compact':'wide'}],measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true},actions:[page],recovery:{},jobs:{},defects:[]}}));
-        const bytes=JSON.stringify(children),projection=projectP805PersonaAudit(children,children.map(child=>({auditSha256:hash(JSON.stringify(child))})),'initial','mathematician');
+        // Both retries ran at 1440px. Distinguish their real terminals, rather
+        // than relabelling the second activation as a compact-viewport run.
+        const children=pages.map((page,index)=>({phase:'initial',persona:'mathematician',auditId:`bounded-retry-${index}`,timings:{retryMs:page.elapsedMs},performance:{retryMs:{budgetMs:180000}},observations:[`simulation-retry-${page.terminal.status}`],evidence:[],observationEvidence:{},checkpointReceipts:[{sha256:hash(JSON.stringify(page))}],startedAt:new Date().toISOString(),endedAt:new Date().toISOString(),cleanup:{evidenceId:'focused-cleanup'},tuple:{persona:'mathematician',observation:`simulation-retry-${page.terminal.status}`,viewport:'wide'},rendered:{responsive:[{viewport:'wide'}],measurements:{consoleExceptions:0,unhandledRequestFailures:0,documentOverflow:false,inaccessiblePrimaryActions:0,unexplainedDisabledControls:0,namedRegions:1,visibleFocus:true},actions:[page],recovery:{},jobs:{},defects:[]}}));
+        const bytes=JSON.stringify(children),projection=projectP805PersonaAudit(children,children.map(child=>({auditId:child.auditId,tuple:child.tuple,auditSha256:hash(JSON.stringify(child))})),'initial','mathematician');
         assert.equal(JSON.stringify(children),bytes);
         assert.deepEqual(projection.rendered.actions,pages);
         assert.equal(projection.timings.retryMs,Math.max(...pages.map(page=>page.elapsedMs)));

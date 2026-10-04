@@ -11,7 +11,16 @@ export function p805OperationPerformance(timings, budgets = P805_OPERATION_BUDGE
 export function projectP805PersonaAudit(audits, tupleReceipts, phase, persona) {
     // Projection cannot mint another leaf or hide repeated evidence. The
     // filesystem consumer authenticates these references before calling us.
-    if (!Array.isArray(audits) || audits.length === 0 || audits.length !== tupleReceipts?.length || audits.some((audit, index) => audit.phase !== phase || audit.persona !== persona || audit.auditId !== tupleReceipts[index].auditId || JSON.stringify(audit.tuple) !== JSON.stringify(tupleReceipts[index].tuple))) throw new Error("persona projection requires matching immutable child audits and receipts");
+    const mismatch = (detail) => { throw new Error(`persona projection requires matching immutable child audits and receipts: ${detail}`); };
+    if (!Array.isArray(audits) || audits.length === 0 || !Array.isArray(tupleReceipts) || audits.length !== tupleReceipts.length) mismatch("child/receipt count");
+    for (const [index, audit] of audits.entries()) {
+        const receipt = tupleReceipts[index], label = `child ${index}`;
+        if (audit?.phase !== phase) mismatch(`${label} phase`);
+        if (audit?.persona !== persona) mismatch(`${label} persona`);
+        if (typeof audit?.auditId !== "string" || !audit.auditId || audit.auditId !== receipt?.auditId) mismatch(`${label} auditId`);
+        if (!audit.tuple || audit.tuple.persona !== persona || typeof audit.tuple.observation !== "string" || !audit.tuple.observation || !["wide", "compact", "narrow"].includes(audit.tuple.viewport) || JSON.stringify(audit.tuple) !== JSON.stringify(receipt?.tuple)) mismatch(`${label} tuple`);
+        if (!/^[a-f0-9]{64}$/i.test(receipt?.auditSha256 ?? "")) mismatch(`${label} auditSha256`);
+    }
     const evidence = audits.flatMap((audit) => audit.evidence);
     if (new Set(evidence.map((item) => item.evidenceId)).size !== evidence.length || new Set(evidence.map((item) => item.path)).size !== evidence.length) throw new Error("persona projection repeats immutable child evidence");
     const first = audits[0], timings = Object.fromEntries(Object.keys(first.timings).map((name) => [name, audits.every((audit) => audit.timings[name] === null) ? null : Math.max(...audits.map((audit) => audit.timings[name]).filter((value) => value !== null))]));
