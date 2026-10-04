@@ -38,6 +38,22 @@ const initial = {
     };
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const stamp = (offset) => new Date(Date.parse("2026-09-19T20:00:00.000Z") + offset).toISOString();
+// Match the installed runner's per-tuple transcript, independently of the
+// validator's labels. The retained packed-install child wrote PACKED_INSTALL,
+// and recursive-help wrote each command; neither wrote a summary command.
+const programmerCliTranscript = (observation) => [
+    "PACKED_INSTALL parent-authenticated shared runtime /packed/node_modules/.bin/pokie",
+    "packed CLI create create Valera audit --random --seed 805 --out /workspace/Valera audit blueprint.json",
+    ...({
+        "packed-install": [],
+        "npx-pokie": ["PACKED_NPX_HELP"],
+        "recursive-help": P805_PUBLIC_HELP_ARGUMENTS.map((args) => `packed CLI help ${args.join("-")} ${args.join(" ")}`),
+        "create-build-inspect": ["packed CLI package build", "packed CLI inspect"],
+        "validate-sim-report-diff-replay-serve-wasm": ["packed CLI WASM build", "packed CLI WASM inspect", "packed CLI WASM validate", "packed CLI WASM run", "packed CLI package build", "packed CLI sim", "packed CLI report", "packed CLI diff", "packed CLI replay", "packed CLI serve"],
+        "spaces-invalid-inputs-exit-codes-ci-recovery": ["packed CLI CI validate", "packed CLI invalid-input recovery"],
+        "build-export-output-folder": ["packed CLI PAR build"],
+    }[observation]),
+].join("\n");
 const rendered = {
     execution: "packed-public-cli-built-studio-rendered-controls",
     viewports: ["wide", "compact", "narrow"],
@@ -383,7 +399,8 @@ async function campaignFixture({initialOverflow = false, throughController = fal
         for (const [index, kind] of P805_REQUIRED_EVIDENCE_KINDS.filter(
             (kind) => !["live-dom-transaction", "page-state", "screenshot"].includes(kind),
         ).entries())
-            artifacts.push(await evidence(candidate, kind, stamp(offset + 2 + index), observations));
+            artifacts.push(await evidence(candidate, kind, stamp(offset + 2 + index), observations,
+                kind === "cli-transcript" && persona === "programmer" ? programmerCliTranscript(tuple.observation) : undefined));
         const actions = [],
             apiEntries = [{path: "/api/health"}], browserEvents = [];
         for (const [index, observation] of observations.entries()) {
@@ -1156,6 +1173,55 @@ test("authenticates each aggregate child before applying every bounded leaf reje
         changedProjection[0].evidence.push({...changedProjection[0].evidence[0], evidenceId:"fabricated-aggregate-leaf"});
         await assert.rejects(() => validateP805CollectedAudits(fixture.directory, changedProjection, "retest", retest), /aggregate differs from its authenticated immutable children/);
         await validateP805CollectedAudits(fixture.directory, original.audits, "retest", retest);
+    } finally { await fixture.cleanup(); }
+});
+
+test("validates installed programmer transcripts through immutable children at collection and post-cleanup closeout", async () => {
+    const fixture = await campaignFixture({throughController:true});
+    try {
+        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
+        const original = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8"));
+        const programmer = original.audits.find((audit) => audit.persona === "programmer");
+        const children = await Promise.all(programmer.tupleReceipts.map(async (reference) => JSON.parse(await readFile(path.join(fixture.directory, reference.auditPath), "utf8"))));
+        assert.deepEqual(programmer, JSON.parse(JSON.stringify(projectP805PersonaAudit(children, programmer.tupleReceipts, "retest", "programmer"))));
+        assert.deepEqual(programmer.evidence, children.flatMap((child) => child.evidence));
+        for (const child of children) {
+            const transcript = child.evidence.find((item) => item.kind === "cli-transcript");
+            assert.equal(await readFile(path.join(fixture.directory, transcript.path), "utf8"), programmerCliTranscript(child.tuple.observation));
+            assert.equal(programmerCliTranscript(child.tuple.observation).includes("packed CLI install"), false);
+            assert.equal(programmerCliTranscript(child.tuple.observation).includes("packed CLI recursive help"), false);
+        }
+        // Rebind modified bytes so every failure reaches semantic leaf
+        // validation, rather than stopping at the immutable audit digest.
+        for (const [observation, remove, rejection] of [
+            ["packed-install", "PACKED_INSTALL", /packed CLI commands: missing PACKED_INSTALL/],
+            ["packed-install", "packed CLI create", /packed CLI commands: missing packed CLI create/],
+            ["npx-pokie", "PACKED_NPX_HELP", /packed CLI commands: missing PACKED_NPX_HELP/],
+            ["recursive-help", `packed CLI help ${P805_PUBLIC_HELP_ARGUMENTS.at(-1).join("-")} ${P805_PUBLIC_HELP_ARGUMENTS.at(-1).join(" ")}`, /packed recursive help omits a public or nested command/],
+            ["validate-sim-report-diff-replay-serve-wasm", "packed CLI WASM build", /packed CLI commands: missing packed CLI WASM build/],
+            ["spaces-invalid-inputs-exit-codes-ci-recovery", "packed CLI invalid-input recovery", /packed CLI commands: missing packed CLI invalid-input recovery/],
+            ["build-export-output-folder", "packed CLI PAR build", /packed CLI commands: missing packed CLI PAR build/],
+        ]) {
+            // Exercise all assigned viewports, including later sibling tuples
+            // after install and recursive-help have been accepted.
+            for (const viewport of ["wide", "compact", "narrow"]) {
+                const audits = structuredClone(original.audits), aggregate = audits.find((audit) => audit.persona === "programmer"), reference = aggregate.tupleReceipts.find((item) => item.tuple.observation === observation && item.tuple.viewport === viewport);
+                const childPath = path.join(fixture.directory, reference.auditPath), childBytes = await readFile(childPath, "utf8"), child = JSON.parse(childBytes), evidence = child.evidence.find((item) => item.kind === "cli-transcript"), transcriptPath = path.join(fixture.directory, evidence.path), transcript = await readFile(transcriptPath, "utf8");
+                try {
+                    const changed = transcript.split("\n").filter((line) => !line.includes(remove)).join("\n");
+                    await writeFile(transcriptPath, changed);
+                    evidence.sha256 = hash(changed); evidence.sizeBytes = Buffer.byteLength(changed);
+                    const changedChild = `${JSON.stringify(child)}\n`;
+                    await writeFile(childPath, changedChild); reference.auditSha256 = hash(changedChild);
+                    await assert.rejects(() => validateP805CollectedAudits(fixture.directory, audits, "retest", retest), rejection, `${observation}/${viewport}`);
+                } finally {
+                    await writeFile(transcriptPath, transcript);
+                    await writeFile(childPath, childBytes);
+                }
+            }
+        }
+        await validateP805CollectedAudits(fixture.directory, original.audits, "retest", retest);
+        await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors});
     } finally { await fixture.cleanup(); }
 });
 
