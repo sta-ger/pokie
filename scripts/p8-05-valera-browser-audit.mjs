@@ -67,6 +67,53 @@ export async function saveP805RenderedWorkflowEvidence(save, viewport, observati
     }), [observation]);
     return evidenceId;
 }
+/** Runs in the page realm in both workflow snapshots and the recovery audit.
+ * Layout boxes alone include inert drawers and Mantine's aria-hidden number
+ * steppers. Keep real unnamed actions so accessibility defects remain visible. */
+export function collectP805RenderedControls(focusFirst = false) {
+    const visible = (item) => item instanceof HTMLElement && item.isConnected
+        && !item.closest('[inert],[hidden],[aria-hidden="true"]')
+        && !item.matches('input[type="hidden"]')
+        && !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length)
+        && !['hidden', 'collapse'].includes(getComputedStyle(item).visibility);
+    const text = (item) => (item?.innerText || item?.textContent || '').trim();
+    const accessibleName = (item) => {
+        const labelledBy = (item.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
+            .map((id) => text(document.getElementById(id))).filter(Boolean).join(' ');
+        const labels = [...item.labels || []].map(text).filter(Boolean).join(' ');
+        const content = item.matches('input,textarea,select')
+            ? (item.matches('input[type="button"],input[type="submit"],input[type="reset"]') ? item.value : '')
+            : text(item) || [...item.querySelectorAll('img[alt]')].map((image) => image.alt.trim()).filter(Boolean).join(' ');
+        return (labelledBy || item.getAttribute('aria-label')?.trim() || labels || content || item.getAttribute('title') || '').trim();
+    };
+    const isDisabled = (item) => item.matches(':disabled') || item.getAttribute('aria-disabled') === 'true';
+    const hasExplanation = (item) => {
+        if (item.getAttribute('title')?.trim()) return true;
+        const ids = (item.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+        return ids.length > 0 && ids.every((id) => {
+            const description = document.getElementById(id);
+            return visible(description) && Boolean(text(description));
+        });
+    };
+    const controls = [...document.querySelectorAll('button,a[href],input,select,textarea,summary,[role="button"],[role="link"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"],[role="combobox"],[role="spinbutton"],[role="textbox"]')].filter(visible);
+    const records = controls.map((item) => ({id:item.id, label:accessibleName(item), disabled:isDisabled(item), accessible:Boolean(accessibleName(item)), explained:hasExplanation(item)}));
+    // Retain the existing policy for disabled decorative/internal controls.
+    const disabled = controls.filter((item) => isDisabled(item) && accessibleName(item));
+    const explainedDisabledControls = disabled.filter(hasExplanation).length;
+    const focusable = focusFirst ? controls.find((item) => !isDisabled(item) && item.tabIndex >= 0) : document.activeElement;
+    if (focusFirst) focusable?.focus();
+    const focusStyle = focusable instanceof HTMLElement ? getComputedStyle(focusable) : null;
+    return {
+        controls:records,
+        namedRegions:[...document.querySelectorAll('main,[role="main"],[role="region"],nav')].filter(visible).length,
+        visibleFocus:controls.includes(focusable) && document.activeElement === focusable && Boolean(focusStyle)
+            && (focusStyle.outlineStyle !== 'none' || focusStyle.boxShadow !== 'none'),
+        disabledControls:disabled.length,
+        explainedDisabledControls,
+        unexplainedDisabledControls:disabled.length - explainedDisabledControls,
+        disabledControlDetails:disabled.map((item) => ({id:item.id, label:accessibleName(item), title:item.getAttribute('title'), describedBy:item.getAttribute('aria-describedby')})),
+    };
+}
 /** Focus the activated control or its own rendered terminal after a transition.
  * Collapsed drawers retain layout boxes, but their inert descendants cannot
  * receive focus. Never substitute an unrelated control from the new screen. */
@@ -2923,47 +2970,19 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             const focus = await observeP805RenderedFocus(evaluate, contract, interaction.stableControlId, lifecycleResult);
             const productState = await evaluate(`(() => {
-                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
-                const accessibleName = (item) => {
-                    const labelledBy = (item.getAttribute("aria-labelledby") || "").split(/\\s+/).filter(Boolean)
-                        .map((id) => document.getElementById(id)?.textContent?.trim()).filter(Boolean).join(" ");
-                    const labels = item instanceof HTMLInputElement || item instanceof HTMLTextAreaElement || item instanceof HTMLSelectElement
-                        ? [...item.labels || []].map((label) => label.textContent?.trim()).filter(Boolean).join(" ") : "";
-                    return (item.getAttribute("aria-label") || labelledBy || labels || item.innerText || item.textContent || item.getAttribute("name") || "").trim();
-                };
-                const controls = [...document.querySelectorAll("button,a,input,select,textarea")].filter(visible);
-                // Browser-native number steppers can expose disabled internal
-                // buttons alongside their named input. They are not public
-                // controls a person can discover or operate, so require a
-                // rendered accessible name before treating a disabled element
-                // as a product action that needs explanatory text.
-                const disabled = controls.filter((item) => item.disabled && accessibleName(item));
-                const hasDisabledExplanation = (item) => {
-                    if (item.getAttribute("title")) return true;
-                    const ids = (item.getAttribute("aria-describedby") || "").split(/\\s+/).filter(Boolean);
-                    return ids.length > 0 && ids.every((id) => {
-                        const description = document.getElementById(id);
-                        return description && visible(description) && Boolean(description.textContent?.trim());
-                    });
-                };
-                const explainedDisabledControls = disabled.filter(hasDisabledExplanation).length;
+                const collected = (${collectP805RenderedControls.toString()})();
                 return {
                     title: document.title,
                     text: document.body.innerText.slice(0, 1600),
-                    controls: controls.map((item) => ({
-                        id: item.id,
-                        label: accessibleName(item),
-                        disabled: Boolean(item.disabled),
-                        accessible: Boolean(accessibleName(item)),
-                    })),
+                    controls: collected.controls,
                     overflow: document.documentElement.scrollWidth > window.innerWidth,
                     accessibility: {
                         namedRegions: ${JSON.stringify(focus.namedRegions)},
                         visibleFocus: ${JSON.stringify(focus.visibleFocus)},
-                        disabledControls: disabled.length,
-                        explainedDisabledControls,
-                        unexplainedDisabledControls: disabled.length - explainedDisabledControls,
-                        disabledControlDetails: disabled.map((item) => ({id:item.id, label:accessibleName(item), title:item.getAttribute("title"), describedBy:item.getAttribute("aria-describedby")})),
+                        disabledControls: collected.disabledControls,
+                        explainedDisabledControls: collected.explainedDisabledControls,
+                        unexplainedDisabledControls: collected.unexplainedDisabledControls,
+                        disabledControlDetails: collected.disabledControlDetails,
                     },
                 };
             })()`);
@@ -3387,7 +3406,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             workflowScope.scopeEvidenceId = await save("provenance", "workflow-scope.json", JSON.stringify(workflowScope), observations);
         }
         const performance = p805OperationPerformance(timings);
-        const controls = await evaluate("(()=>{const visible=(item)=>!!(item.offsetWidth||item.offsetHeight||item.getClientRects().length), controls=[...document.querySelectorAll('button,a,input,select,textarea')].filter(visible); const focusable=controls.find((item)=>!item.disabled); focusable?.focus(); const style=focusable?getComputedStyle(focusable):undefined, visibleFocus=!!focusable && document.activeElement===focusable && style && (style.outlineStyle!==\"none\"||style.boxShadow!==\"none\"); return {controls:controls.map((item)=>({disabled:!!item.disabled,accessible:!!(item.innerText||item.getAttribute('aria-label')||item.getAttribute('aria-labelledby')||item.name),explained:!!item.getAttribute('title')||!!item.getAttribute('aria-describedby')})),namedRegions:[...document.querySelectorAll('[role=region],[role=main],main,nav')].filter(visible).length,visibleFocus};})()"), measurements = {consoleExceptions:cdp.events.filter((event) => event.method === "Runtime.exceptionThrown").length, unhandledRequestFailures:cdp.events.filter((event) => event.method === "Network.loadingFailed").length, documentOverflow:actions.some((action) => action.overflow) || responsive.some((entry) => entry.overflow), inaccessiblePrimaryActions:controls.controls.filter((control) => !control.disabled && !control.accessible).length, unexplainedDisabledControls:controls.controls.filter((control) => control.disabled && !control.explained).length, namedRegions:controls.namedRegions, visibleFocus:controls.visibleFocus}, defects = [["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures], ["accessibility", measurements.inaccessiblePrimaryActions], ["disabled-control", measurements.unexplainedDisabledControls], ["overflow", measurements.documentOverflow ? 1 : 0], ["named-region", measurements.namedRegions < 1 ? 1 : 0], ["focus", measurements.visibleFocus ? 0 : 1], ["performance", Object.values(performance).some((item) => item.classification === "regression") ? 1 : 0]].filter(([, count]) => count > 0).map(([kind]) => ({kind, evidenceId:recoveryEvidenceId})); audit = {auditId, worker, persona:options.persona, workflowPersonas:options.workflowPersonas, tuple:options.tuple, phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packageIdentity:{archiveSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, declaredPackedCli:options.packedCli, installedCli, sharedRuntimeReceiptSha256:options.runtime?.receipt.sha256, sharedRuntimeRoot:options.runtime?.root, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}, startedAt, endedAt:undefined, cleanContext:context, observations, observationEvidence, evidence, checkpointReceipts, finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:checkpointReceipts.length, checkpointReceiptSha256s:checkpointReceipts.map((receipt) => receipt.sha256)}, timings, performance, rendered:{execution:"packed-public-cli-built-studio-rendered-controls", viewports:options.tuple ? [options.tuple.viewport] : ["wide", "compact", "narrow"], responsive, measurements, defects, actions, recovery:Object.fromEntries(Object.entries(recovery).map(([name, observed]) => [name, {observed, evidenceId:recoveryEvidenceId}])), jobs:{success:{observed:simulationTerminal.status === "completed", evidenceId:recoveryEvidenceId}, actionableFailure:{observed:failure.response.status === 400, evidenceId:recoveryEvidenceId}, cooperativeCancellation:{observed:cancelledTerminal.status === "cancelled", evidenceId:recoveryEvidenceId}, retryWithoutPartialArtifacts:{observed:retryTerminal.status === "completed" && cancelledTerminal.status === "cancelled" && !reports.payload.some((report) => report?.id === cancellable.payload.id), evidenceId:recoveryEvidenceId, receipt:retryReceipt}, restartRecovery:{observed:restartReceipt.terminal.status === "recovery-required", evidenceId:recoveryEvidenceId, receipt:restartReceipt}}}};
+        const controls = await evaluate(`(${collectP805RenderedControls.toString()})(true)`), measurements = {consoleExceptions:cdp.events.filter((event) => event.method === "Runtime.exceptionThrown").length, unhandledRequestFailures:cdp.events.filter((event) => event.method === "Network.loadingFailed").length, documentOverflow:actions.some((action) => action.overflow) || responsive.some((entry) => entry.overflow), inaccessiblePrimaryActions:controls.controls.filter((control) => !control.disabled && !control.accessible).length, unexplainedDisabledControls:controls.unexplainedDisabledControls, namedRegions:controls.namedRegions, visibleFocus:controls.visibleFocus}, defects = [["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures], ["accessibility", measurements.inaccessiblePrimaryActions], ["disabled-control", measurements.unexplainedDisabledControls], ["overflow", measurements.documentOverflow ? 1 : 0], ["named-region", measurements.namedRegions < 1 ? 1 : 0], ["focus", measurements.visibleFocus ? 0 : 1], ["performance", Object.values(performance).some((item) => item.classification === "regression") ? 1 : 0]].filter(([, count]) => count > 0).map(([kind]) => ({kind, evidenceId:recoveryEvidenceId})); audit = {auditId, worker, persona:options.persona, workflowPersonas:options.workflowPersonas, tuple:options.tuple, phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, packageIdentity:{archiveSha256:digest(packageBytes), archiveGitHead:installedPackage.gitHead, declaredPackedCli:options.packedCli, installedCli, sharedRuntimeReceiptSha256:options.runtime?.receipt.sha256, sharedRuntimeRoot:options.runtime?.root, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree}, startedAt, endedAt:undefined, cleanContext:context, observations, observationEvidence, evidence, checkpointReceipts, finalResult:{status:"passed", aggregation:"verified-checkpoint-receipts-only", chunks:checkpointReceipts.length, checkpointReceiptSha256s:checkpointReceipts.map((receipt) => receipt.sha256)}, timings, performance, rendered:{execution:"packed-public-cli-built-studio-rendered-controls", viewports:options.tuple ? [options.tuple.viewport] : ["wide", "compact", "narrow"], responsive, measurements, defects, actions, recovery:Object.fromEntries(Object.entries(recovery).map(([name, observed]) => [name, {observed, evidenceId:recoveryEvidenceId}])), jobs:{success:{observed:simulationTerminal.status === "completed", evidenceId:recoveryEvidenceId}, actionableFailure:{observed:failure.response.status === 400, evidenceId:recoveryEvidenceId}, cooperativeCancellation:{observed:cancelledTerminal.status === "cancelled", evidenceId:recoveryEvidenceId}, retryWithoutPartialArtifacts:{observed:retryTerminal.status === "completed" && cancelledTerminal.status === "cancelled" && !reports.payload.some((report) => report?.id === cancellable.payload.id), evidenceId:recoveryEvidenceId, receipt:retryReceipt}, restartRecovery:{observed:restartReceipt.terminal.status === "recovery-required", evidenceId:recoveryEvidenceId, receipt:restartReceipt}}}};
         if (options.tuple) audit.workflowScope = workflowScope;
         }
     } catch (error) { thrown = error; } finally { cdp?.close(); const drains = []; for (const owner of ownership.slice().reverse()) { try { if (!owner.settled) { clearInterval(owner.descendantSampler); if (owner.resourceId) releaseP805BrowserOwner(owner); let ownershipError; try { owner.tracker?.capture({final:true}); } catch (error) { ownershipError = error; } for (const [pid, identity] of descendants(owner.pid)) owner.ownedProcesses.set(pid, identity); owner.drain = await drainProcessTree(owner.child, 5_000, owner.tracker?.ownedProcesses ?? owner.ownedProcesses, owner.tracker?.ownedResources); if (!owner.drain.processTreeDrained || !owner.drain.resourcesDrained) fail(`owned ${owner.label} resources could not be drained`); if (ownershipError) throw ownershipError; } } catch (error) { owner.drain = {processTreeDrained:false, resourcesDrained:false, error:String(error)}; thrown ??= error; } finally { owner.tracker?.stop(); } delete owner.child; delete owner.ownedProcesses; delete owner.tracker; delete owner.descendantSampler; delete owner.resourceRegistrySecret; delete owner.operationId; drains.push(owner.drain); } await services.rm(base, {recursive:true, force:true}); const cleanup = {kind:"p8-05-cleanup", exit:thrown ? "error" : "success", processTreeDrained:drains.every((drain) => drain.processTreeDrained === true), resourcesDrained:drains.every((drain) => drain.resourcesDrained === true), contextRemoved:!services.exists(base), ownership}; const cleanupEvidenceId = await save("cleanup", "cleanup.json", JSON.stringify(cleanup), audit?.observations ?? []); if (audit) { audit.cleanup = {...cleanup, evidenceId:cleanupEvidenceId}; audit.finalResult.cleanupEvidenceId = cleanupEvidenceId; const restartReceipt = audit.rendered?.jobs?.restartRecovery?.receipt; if (restartReceipt) restartReceipt.evidence = {...restartReceipt.evidence, cleanupEvidenceId}; audit.endedAt = services.now(); } else if (thrown && typeof thrown === "object") { thrown.cleanupEvidenceId = cleanupEvidenceId; thrown.cleanup = cleanup; } if (options.tupleCleanupPath) { const tupleCleanup = {schemaVersion:1, kind:"p8-05-packed-tuple-cleanup", phase:options.phase, candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, tuple:options.tuple, worker, cleanup, cleanupEvidenceId}; const contents = `${JSON.stringify(tupleCleanup)}\n`; await services.mkdir(path.dirname(options.tupleCleanupPath), {recursive:true}); await writeImmutableReceipt(options.tupleCleanupPath, contents, services); publishedTupleCleanup = {cleanupEvidenceId, sha256:digest(contents)}; } }
