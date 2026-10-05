@@ -67,6 +67,40 @@ export async function saveP805RenderedWorkflowEvidence(save, viewport, observati
     }), [observation]);
     return evidenceId;
 }
+/** Focus the activated control or its own rendered terminal after a transition.
+ * Collapsed drawers retain layout boxes, but their inert descendants cannot
+ * receive focus. Never substitute an unrelated control from the new screen. */
+export async function observeP805RenderedFocus(evaluate, contract, controlId, lifecycle) {
+    return evaluate(`(() => {
+        const rendered = (item) => item instanceof HTMLElement && item.isConnected
+            && !item.closest('[inert],[hidden],[aria-hidden="true"]')
+            && !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length)
+            && !['hidden', 'collapse'].includes(getComputedStyle(item).visibility);
+        const operation = ${JSON.stringify(contract.operation ?? contract.body ?? null)};
+        const control = document.getElementById(${JSON.stringify(controlId)});
+        const terminal = [...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item) => rendered(item)
+            && item.getAttribute('data-pokie-lifecycle-result') === (operation ?? 'navigation')
+            && (operation !== null || item.getAttribute('data-pokie-lifecycle-route') === ${JSON.stringify(contract.route)})
+            && item.getAttribute('data-pokie-lifecycle-result-control') === ${JSON.stringify(controlId)}
+            && item.getAttribute('data-pokie-lifecycle-result-state') === ${JSON.stringify(lifecycle.stateClass)}
+            && item.getAttribute('data-pokie-lifecycle-terminal') === ${JSON.stringify(lifecycle.terminal)}
+            && (${JSON.stringify(lifecycle.jobId ?? null)} === null || item.getAttribute('data-pokie-lifecycle-result-job') === ${JSON.stringify(lifecycle.jobId ?? null)}));
+        const namedRegions = [...document.querySelectorAll('main,[role=main],[role=region],nav')]
+            .filter(rendered).map((item) => item.id || item.getAttribute('aria-label') || item.getAttribute('aria-labelledby') || item.tagName);
+        for (const item of [control, terminal]) {
+            if (!rendered(item) || item.matches(':disabled') || item.getAttribute('aria-disabled') === 'true') continue;
+            item.scrollIntoView({block:'center', inline:'nearest'});
+            item.focus({preventScroll:true});
+            const box = item.getBoundingClientRect(), viewport = window.visualViewport;
+            const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
+            const visible = box.width > 0 && box.height > 0 && box.right > left && box.bottom > top
+                && box.left < left + (viewport?.width ?? innerWidth) && box.top < top + (viewport?.height ?? innerHeight);
+            // Native Chromium focus rings need not appear in computed CSS.
+            if (document.activeElement === item && visible) return {namedRegions, visibleFocus:true, target:item === control ? 'control' : 'terminal-result'};
+        }
+        return {namedRegions, visibleFocus:false, target:null};
+    })()`);
+}
 // These observations name several terminal outcomes. Their tuple worker must
 // run that whole workflow, not label one representative request as the whole
 // scenario. The remaining tuples retain their single-workflow isolation.
@@ -2887,6 +2921,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 })()`);
                 if (!hasRenderedActivation({interaction:{activation:"pointer", pointerActivated:true}, transaction}, transaction.control.stableControlId)) fail(`${observation} pointer transaction lost its captured identity, hit-tested dispatch, request, terminal, or post-transition rendered state`);
             }
+            const focus = await observeP805RenderedFocus(evaluate, contract, interaction.stableControlId, lifecycleResult);
             const productState = await evaluate(`(() => {
                 const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
                 const accessibleName = (item) => {
@@ -2897,11 +2932,6 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     return (item.getAttribute("aria-label") || labelledBy || labels || item.innerText || item.textContent || item.getAttribute("name") || "").trim();
                 };
                 const controls = [...document.querySelectorAll("button,a,input,select,textarea")].filter(visible);
-                // Terminal rendering can replace the activated control. Read
-                // the focus indicator from a currently rendered, operable
-                // public control instead of treating that expected replacement
-                // as an accessibility failure.
-                controls.find((item) => !("disabled" in item && Boolean(item.disabled)))?.focus();
                 // Browser-native number steppers can expose disabled internal
                 // buttons alongside their named input. They are not public
                 // controls a person can discover or operate, so require a
@@ -2917,8 +2947,6 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     });
                 };
                 const explainedDisabledControls = disabled.filter(hasDisabledExplanation).length;
-                const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-                const style = focus ? getComputedStyle(focus) : undefined;
                 return {
                     title: document.title,
                     text: document.body.innerText.slice(0, 1600),
@@ -2930,8 +2958,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     })),
                     overflow: document.documentElement.scrollWidth > window.innerWidth,
                     accessibility: {
-                        namedRegions: [...document.querySelectorAll("main,[role=main],[role=region],nav")].filter(visible).map((item) => item.getAttribute("aria-label") || item.getAttribute("aria-labelledby") || item.id).filter(Boolean),
-                        visibleFocus: Boolean(focus) && document.activeElement === focus && Boolean(style) && (style.outlineStyle !== "none" || style.boxShadow !== "none"),
+                        namedRegions: ${JSON.stringify(focus.namedRegions)},
+                        visibleFocus: ${JSON.stringify(focus.visibleFocus)},
                         disabledControls: disabled.length,
                         explainedDisabledControls,
                         unexplainedDisabledControls: disabled.length - explainedDisabledControls,
@@ -2939,6 +2967,8 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                     },
                 };
             })()`);
+            // Focus is measured before this capture and persisted page state,
+            // so all three describe the same rendered transition.
             // A viewport-specific audit needs the rendered state a person can
             // actually see at that breakpoint.  Full-page captures repeatedly
             // rasterise hidden long-form panels and make the all-persona,
@@ -2963,7 +2993,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             const timingName = {"project-validation":"validationMs", "artifact-build":"buildMs", build:"buildMs", simulation:"simulationMs", replay:"replayMs"}[transaction.operation];
             if (timingName) timings[timingName] = Math.max(timings[timingName] ?? 0, elapsedMs);
             const evidenceId = await saveP805RenderedWorkflowEvidence(save, viewport, observation, liveDomTransaction);
-            return {elapsedMs, evidenceId, screenshotEvidenceId, state:productState, interaction, transaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, contextRevalidation:entered.contextRevalidation, screen, screenNavigationControl:stateMachine.navigationControl, precondition:liveDomTransaction.precondition, visibleTerminal:liveDomTransaction.renderedTerminal};
+            return {elapsedMs, evidenceId, screenshotEvidenceId, state:productState, focus, interaction, transaction, terminal:entry.terminal, browserRequestId:entry.browserRequestId, contextRevalidation:entered.contextRevalidation, screen, screenNavigationControl:stateMachine.navigationControl, precondition:liveDomTransaction.precondition, visibleTerminal:liveDomTransaction.renderedTerminal};
         };
         const creation = Date.now();
         // The final persona action intentionally leaves Studio at its narrow
@@ -3017,34 +3047,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
             const boundedReelEditor = observation === "reels-paytable-modes-mechanics" ? await runBoundedReelEditorWorkflow(viewport, observation) : undefined;
             if (boundedReelEditor) projectBaseRoute = boundedReelEditor.projectBaseRoute;
-            const page = await runScreenControlState(projectBaseRoute, viewport, observation, contract), focus = await evaluate(`(()=>{
-                const visible = (item) => !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length);
-                const control = document.getElementById(${JSON.stringify(page.interaction.stableControlId)});
-                // Selecting a tab in the compact drawer correctly closes that
-                // drawer, so the actual (already recorded) activating control
-                // is no longer visible.  In that case the only valid focus
-                // fallback is this transition's own visible lifecycle result,
-                // never an arbitrary enabled control from the new page.
-                const terminal = [...document.querySelectorAll('[data-pokie-lifecycle-result]')].find((item) => visible(item)
-                    && item.getAttribute('data-pokie-lifecycle-result') === ${JSON.stringify(contract.body || contract.operation ? contract.operation ?? contract.body : "navigation")}
-                    && (${JSON.stringify(Boolean(contract.body || contract.operation))} || item.getAttribute('data-pokie-lifecycle-route') === ${JSON.stringify(contract.route)})
-                    && (${JSON.stringify(page.visibleTerminal.lifecycle.controlId)} === null || item.getAttribute('data-pokie-lifecycle-result-control') === ${JSON.stringify(page.visibleTerminal.lifecycle.controlId)})
-                    && item.getAttribute('data-pokie-lifecycle-terminal') === ${JSON.stringify(page.visibleTerminal.lifecycle.terminal)});
-                const item = control instanceof HTMLElement && visible(control) && !control.disabled
-                    ? control
-                    : terminal instanceof HTMLElement && terminal.tabIndex >= -1 ? terminal : null;
-                if (!item) return {namedRegions:[], visibleFocus:false, target:null};
-                item.focus({preventScroll:true});
-                // Chromium's native focus ring is painted outside computed
-                // CSS, so outlineStyle is not a reliable accessibility
-                // signal for a real CDP focus. The focused DOM identity plus
-                // this tuple's screenshot is the rendered proof instead.
-                return {
-                    namedRegions:[...document.querySelectorAll('main,[role=main],[role=region],nav')].filter(visible).map((item)=>item.id||item.getAttribute('aria-label')||item.tagName),
-                    visibleFocus:document.activeElement===item,
-                    target:item === control ? 'control' : 'terminal-result',
-                };
-            })()`);
+            const page = await runScreenControlState(projectBaseRoute, viewport, observation, contract), focus = page.focus;
             if (options.phase !== "initial" && (!focus.visibleFocus || focus.namedRegions.length === 0)) fail(`${observation} tuple did not retain a visible focused rendered control`);
             const action = {persona, observation, route:`${projectBaseRoute}/${contract.route}`, viewport, elapsedMs:page.elapsedMs, pageTextLength:page.state.text.length, controlCount:page.state.controls.length, inaccessiblePrimaryActions:page.state.controls.filter((control) => !control.disabled && control.accessible === false).length, overflow:page.state.overflow, screenState:page.screen, screenNavigationControl:page.screenNavigationControl, stableControlId:page.interaction.stableControlId, domControlId:page.interaction.stableControlId, identityAttribute:page.interaction.identityAttribute, browserRequestId:page.browserRequestId, contextRevalidation:page.contextRevalidation, precondition:page.precondition, visibleTerminal:page.visibleTerminal, accessibility:{...page.state.accessibility, namedRegions:focus.namedRegions, visibleFocus:focus.visibleFocus}, expectedControl:contract.control, expectedMethod:contract.method, expectedBodyKind:contract.body ?? null, expectedApi:contract.api, expectedArtifact:contract.artifact ?? null, expectedTerminal:contract.terminal, terminal:page.terminal, interaction:page.interaction, transaction:page.transaction, evidenceId:page.evidenceId, screenshotEvidenceId:page.screenshotEvidenceId};
             if (boundedReelEditor) action.boundedReelEditor = boundedReelEditor.receipt;
