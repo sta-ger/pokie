@@ -642,7 +642,9 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
     if (provenance.schemaVersion !== P805_SCHEMA_VERSION || typeof provenance.campaignId !== "string" || !provenance.campaignId || !provenance.cleanRoomAttestation || provenance.cleanRoomAttestation !== "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence." || !provenance.initialCandidate || !commit(provenance.initialCandidate.candidateId) || !sha(provenance.initialCandidate.candidatePackageSha256) || !iso(provenance.startedAt)) fail("provenance lacks a clean-room initial candidate attestation");
     const initialCandidate = provenance.initialCandidate;
     const finalCandidate = {candidateId:expected.candidateId, candidatePackageSha256:expected.candidatePackageSha256};
-    if (initialCandidate.candidateId === finalCandidate.candidateId) fail("blind retests must use a new candidate after the initial audit");
+    // A clean rebaseline may audit the same immutable candidate twice. The
+    // freeze boundary, independent contexts, evidence and anchors still apply.
+    if (initialCandidate.candidateId === finalCandidate.candidateId && initialCandidate.candidatePackageSha256 !== finalCandidate.candidatePackageSha256) fail("same-candidate retests must retain the initial package digest");
     const used = new Map(), contexts = new Set();
     const initial = records["initial-audits.json"];
     if (initial.schemaVersion !== P805_SCHEMA_VERSION || initial.campaignId !== provenance.campaignId) fail("initial audit record is not bound to the campaign");

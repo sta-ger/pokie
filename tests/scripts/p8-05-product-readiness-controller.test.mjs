@@ -71,6 +71,33 @@ test("controller exposes fail-closed audit, freeze, post-fix, and retest phase b
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
 
+test("controller post-fix supports a same-candidate rebaseline without rewriting initial or frozen records", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-rebaseline-"));
+    try {
+        const retained = {
+            "PROVENANCE.json": {campaignId:"p8-05-rebaseline", initialCandidate:initial},
+            "initial-audits.json": {audits:[]},
+            "frozen-findings.json": {findings:[], candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256},
+        };
+        for (const [name, value] of Object.entries(retained)) await writeFile(path.join(directory, name), `${JSON.stringify(value)}\n`);
+        const config = {directory, retestCandidate:initial, findingRegister:{findings:[]}, regressions:{regressions:[]}};
+        await assert.rejects(() => runP805PostFix({...config, retestCandidate:{...initial, candidatePackageSha256:retest.candidatePackageSha256}}), /same-candidate retests must retain the initial package digest/);
+        await assert.rejects(() => readFile(path.join(directory, "finding-register.json")), /ENOENT/);
+        await assert.rejects(() => runP805PostFix({...config, findingRegister:undefined}), /requires finding dispositions and machine regression results/);
+        const configPath = path.join(directory, "post-fix-config.json");
+        await writeFile(configPath, JSON.stringify(config));
+        const stdout = execFileSync(process.execPath, ["scripts/p8-05-product-readiness-controller.mjs", "post-fix", "--config", configPath], {encoding:"utf8"});
+        assert.equal(stdout, `P805_PRODUCT_READINESS_POST_FIX_PASS ${JSON.stringify(initial).slice(0, 200)}\n`);
+        for (const name of ["finding-register.json", "regressions.json"]) {
+            const value = JSON.parse(await readFile(path.join(directory, name), "utf8"));
+            assert.equal(value.campaignId, "p8-05-rebaseline");
+            assert.deepEqual(value.retestCandidate, initial);
+        }
+        await assert.rejects(() => runP805PostFix(config), /finding-register.json is append-only/);
+        for (const [name, value] of Object.entries(retained)) assert.equal(await readFile(path.join(directory, name), "utf8"), `${JSON.stringify(value)}\n`);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
 test("controller publishes distinct phase commands and refuses missing phase payloads", () => {
     const controller = path.join(process.cwd(), "scripts/p8-05-product-readiness-controller.mjs");
     for (const phase of ["initial-audit", "prepare-freeze", "freeze", "post-fix", "retest", "prepare-closeout", "closeout"]) {
