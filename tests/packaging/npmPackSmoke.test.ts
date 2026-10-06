@@ -3,6 +3,7 @@ import {createHash} from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {pathToFileURL} from "url";
 import {BUILT_PACKAGE_FILES} from "pokie";
 import {ensureFixturesCanRequirePokie} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
@@ -118,6 +119,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     jest.setTimeout(300000);
 
     let packDir: string | undefined;
+    let releaseHandoffBinding: {auditedCandidateId: string; releaseHandoffSha256: string} | undefined;
     let tarballPath: string | undefined;
     let installDir: string | undefined;
     let pokieBinPath: string;
@@ -166,6 +168,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const archiveSha256 = createHash("sha256").update(archive).digest("hex");
         const ownPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {name: string; version: string};
         fs.writeFileSync(receiptPath!, `${JSON.stringify({
+            ...releaseHandoffBinding,
             schemaVersion: 1,
             kind: "npm-pack-install-smoke",
             candidateId: process.env.POKIE_PACK_SMOKE_CANDIDATE_ID,
@@ -187,15 +190,35 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // `npm pack --json` includes one record per shipped file; once the package exceeded 8,000
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
-        await buildPackageForSmoke();
-        packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
-        const filename = execFileSync(
-            "npm",
-            ["pack", "--ignore-scripts", "--silent", "--pack-destination", packDir],
-            {cwd: REPO_ROOT, encoding: "utf-8"},
-        ).trim();
-        expect(filename).toBe(path.basename(filename));
-        tarballPath = path.join(packDir, filename);
+        const handoffConfig = process.env.POKIE_P805_RELEASE_HANDOFF;
+        if (handoffConfig) {
+            // Re-authenticate the exact archived product at the real install
+            // boundary. The reviewed tooling commit remains the release SHA;
+            // archive/gitHead retain their original audited identity.
+            const handoffModule = pathToFileURL(path.join(REPO_ROOT, "scripts/p8-05-release-handoff.mjs")).href;
+            const {readP805ReleaseArchive} = await import(handoffModule) as {
+                readP805ReleaseArchive: (config: unknown) => Promise<{archive: Buffer; binding: {auditedCandidateId: string}; sha256: string}>;
+            };
+            const config = JSON.parse(handoffConfig) as {candidateId: string; candidatePackageSha256: string};
+            expect(config.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
+            expect(config.candidatePackageSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+            expect(execFileSync("git", ["rev-parse", "HEAD"], {cwd: REPO_ROOT, encoding: "utf8"}).trim()).toBe(config.candidateId);
+            const result = await readP805ReleaseArchive(config);
+            releaseHandoffBinding = {auditedCandidateId: result.binding.auditedCandidateId, releaseHandoffSha256: result.sha256};
+            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            tarballPath = path.join(packDir, "audited-package.tgz");
+            fs.writeFileSync(tarballPath, result.archive, {flag: "wx"});
+        } else {
+            await buildPackageForSmoke();
+            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            const filename = execFileSync(
+                "npm",
+                ["pack", "--ignore-scripts", "--silent", "--pack-destination", packDir],
+                {cwd: REPO_ROOT, encoding: "utf-8"},
+            ).trim();
+            expect(filename).toBe(path.basename(filename));
+            tarballPath = path.join(packDir, filename);
+        }
         expect(fs.existsSync(tarballPath)).toBe(true);
 
         installDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-smoke-"));

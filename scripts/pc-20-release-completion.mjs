@@ -467,13 +467,34 @@ export async function runReleaseGate(repositoryDirectory, options = {}) {
     await mkdir(paths.root, {recursive:true});
     const result = await runBoundedProcess("npm", ["run", "check:release"], {
         cwd:repositoryDirectory, timeoutMs:options.timeoutMs, signal:options.signal,
-        env:{...process.env, ...options.env, POKIE_PACK_SMOKE_RECEIPT:paths.smoke, POKIE_PACK_SMOKE_ARCHIVE_PATH:paths.archive, POKIE_PACK_SMOKE_CANDIDATE_ID:options.candidateId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:options.candidatePackageSha256},
+        env:{...process.env, ...options.env, POKIE_PACK_SMOKE_RECEIPT:paths.smoke, POKIE_PACK_SMOKE_ARCHIVE_PATH:paths.archive, POKIE_PACK_SMOKE_CANDIDATE_ID:options.candidateId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:options.candidatePackageSha256, POKIE_P805_RELEASE_HANDOFF:options.p805ReleaseHandoff ? JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, p805ReleaseHandoff:options.p805ReleaseHandoff, p805ReleaseHandoffSha256:options.p805ReleaseHandoffSha256}) : ""},
         spawnCommand:options.spawnCommand, resourceRegistryPath:paths.resources,
     });
     return result;
 }
 
+function handoffBinding(config) {
+    return config.p805ReleaseHandoff ? {auditedCandidateId:config.p805ReleaseHandoff.auditedCandidateId, releaseHandoffSha256:config.p805ReleaseHandoffSha256} : {};
+}
+function validateHandoffBinding(record, config) {
+    const binding = handoffBinding(config);
+    if (record?.auditedCandidateId !== binding.auditedCandidateId || record?.releaseHandoffSha256 !== binding.releaseHandoffSha256) fail("retained gate/smoke release handoff binding drifted");
+}
+async function authenticateHandoff(config) {
+    if (config.p805ReleaseHandoff || config.p805ReleaseHandoffSha256) {
+        const {readP805ReleaseArchive} = await import("./p8-05-release-handoff.mjs");
+        await readP805ReleaseArchive(config);
+    }
+}
+
+/** The same preconditions as the gate, with no official command or write. */
+export function validatePc20CandidatePreflight(config) {
+    validateCandidateConfig(config);
+    assertPc20CandidateCheckout(config.repositoryDirectory, config.candidateId, "before the candidate-only release gate", {includeCompletion:false, includeFailed:false});
+}
+
 function validateSmokeReceipt(receipt, config, paths) {
+    validateHandoffBinding(receipt, config);
     if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || receipt.kind !== "npm-pack-install-smoke" || receipt.complete !== true || receipt.suitePassed !== true || receipt.candidateId !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256 || receipt.packageName !== config.packageName || receipt.packageVersion !== config.packageVersion || path.resolve(receipt.archivePath || "") !== paths.archive || !sha(receipt.archiveSha256) || receipt.archiveSha256 !== config.candidatePackageSha256 || !Number.isSafeInteger(receipt.archiveSizeBytes) || receipt.archiveSizeBytes <= 0 || !receipt.installed || receipt.installed.cli !== true || receipt.installed.studioApi !== true || receipt.installed.studioAssets !== true || receipt.installed.libraryWorker !== true || receipt.installed.processesDrained !== true || !receipt.cleanup || receipt.cleanup.temporaryInstallRemoved !== true || receipt.cleanup.temporaryPackDirectoryRemoved !== true || receipt.cleanup.processesDrained !== true) fail("npm-pack/install smoke receipt is incomplete or bound to a different package archive");
 }
 
@@ -498,6 +519,7 @@ async function verifyGateArtifacts(gate, config, paths) {
 }
 
 function validateGate(gate, config) {
+    validateHandoffBinding(gate, config);
     if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.exitCode !== 0 || gate.timedOut || gate.cancelled || gate.processGroupDrained !== true || gate.processTreeDrained !== true || gate.resourcesDrained !== true || !Array.isArray(gate.ownedResources) || !Array.isArray(gate.ownedProcessIdentities) || !gate.ownedProcessIdentities.every((owned) => Number.isInteger(owned?.pid) && owned.pid > 0 && typeof owned.processIdentity === "string" && owned.processIdentity) || gate.stdoutPath !== path.basename(outputPaths(config).stdout) || gate.stderrPath !== path.basename(outputPaths(config).stderr) || gate.packagingSmokePath !== path.basename(outputPaths(config).smoke) || gate.archivePath !== path.basename(outputPaths(config).archive) || !sha(gate.stdoutSha256) || !sha(gate.stderrSha256) || !sha(gate.packagingSmokeSha256) || gate.archiveSha256 !== config.candidatePackageSha256 || !utc(gate.startedAt) || !utc(gate.endedAt) || Date.parse(gate.startedAt) > Date.parse(gate.endedAt)) fail("release gate record is incomplete, failed, or bound to a different candidate");
 }
 
@@ -532,7 +554,7 @@ async function obtainGate(config, dependencies) {
     }
     let result;
     try {
-        result = await dependencies.runReleaseGate(config.repositoryDirectory, {paths, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256});
+        result = await dependencies.runReleaseGate(config.repositoryDirectory, {paths, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, p805ReleaseHandoff:config.p805ReleaseHandoff, p805ReleaseHandoffSha256:config.p805ReleaseHandoffSha256});
     } catch (error) {
         await cleanPartialGateArtifacts(paths);
         await retainFailedGate(config, paths, error);
@@ -543,7 +565,7 @@ async function obtainGate(config, dependencies) {
         const stdout = required(result.stdout ?? "", "release gate stdout"), stderr = typeof result.stderr === "string" ? result.stderr : "";
         await writeFile(paths.stdout, stdout, {flag:"wx"});
         await writeFile(paths.stderr, stderr || "(no stderr)\n", {flag:"wx"});
-        const gate = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, ...result, stdout:undefined, stderr:undefined, stdoutPath:path.basename(paths.stdout), stdoutSha256:digest(stdout), stderrPath:path.basename(paths.stderr), stderrSha256:digest(stderr || "(no stderr)\n"), packagingSmokePath:path.basename(paths.smoke), packagingSmokeSha256:smoke.sha256, archivePath:path.basename(paths.archive), archiveSha256:config.candidatePackageSha256};
+        const gate = {...handoffBinding(config), schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, ...result, stdout:undefined, stderr:undefined, stdoutPath:path.basename(paths.stdout), stdoutSha256:digest(stdout), stderrPath:path.basename(paths.stderr), stderrSha256:digest(stderr || "(no stderr)\n"), packagingSmokePath:path.basename(paths.smoke), packagingSmokeSha256:smoke.sha256, archivePath:path.basename(paths.archive), archiveSha256:config.candidatePackageSha256};
         validateGate(gate, config);
         const contents = `${JSON.stringify(gate, null, 2)}\n`;
         await writeFile(paths.gate, contents, {flag:"wx"});
@@ -557,6 +579,7 @@ async function obtainGate(config, dependencies) {
 }
 
 function validateLifecycleReceipt(receipt, config, gateSha256) {
+    validateHandoffBinding(receipt, config);
     if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || typeof receipt.receiptId !== "string" || !receipt.receiptId || !utc(receipt.issuedAt) || receipt.candidateId !== config.candidateId || receipt.releaseSha !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256) fail("external lifecycle receipt is not bound to the accepted candidate/package");
     const git = receipt.git;
     if (!git || git.mergedToDevelop !== true || git.cleanDevelop !== true || git.developSha !== config.candidateId || git.pushedSha !== config.candidateId || git.remoteDevelopSha !== config.candidateId || typeof git.remote !== "string" || !git.remote || !utc(git.pushedAt)) fail("external lifecycle receipt lacks the clean develop merge/push of the accepted SHA");
@@ -578,11 +601,13 @@ async function readTrustedLifecycleReceipt(config, gateSha256) {
 /** Validate a trusted publication/Drive receipt against a retained gate without rerunning PC-19. */
 export async function validatePc20CandidateLifecycleReceipt(config, gateSha256) {
     validateCandidateConfig(config, {lifecycle:true});
+    await authenticateHandoff(config);
     return readTrustedLifecycleReceipt(config, gateSha256);
 }
 
 export async function validatePc20ReleaseGate(config, dependencies = {}) {
     validateConfig(config);
+    await authenticateHandoff(config);
     const services = {validatePc19:validatePc19IndependentColdStartReview, readRepositoryState, runReleaseGate, ...dependencies};
     const pc19 = await services.validatePc19(config.reviewDirectory, {
         candidateId:config.candidateId,
@@ -604,6 +629,7 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
  */
 export async function validatePc20CandidateReleaseGate(config, dependencies = {}) {
     validateCandidateConfig(config);
+    await authenticateHandoff(config);
     const services = {readRepositoryState, runReleaseGate, ...dependencies};
     const permitted = pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false});
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, permitted), config.candidateId, "before the candidate-only release gate");
@@ -622,6 +648,7 @@ export async function validatePc20CandidateReleaseGate(config, dependencies = {}
  */
 export async function validatePc20RetainedReleaseGate(config, dependencies = {}) {
     validateCandidateConfig(config);
+    await authenticateHandoff(config);
     const services = {readRepositoryState, ...dependencies};
     const paths = outputPaths(config);
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "before the authorized lifecycle");

@@ -35,3 +35,39 @@ the authorized ephemeral harness campaign
 checkout's retained evidence index.  No campaign, browser, Studio, build,
 package, install, test, release, publication, or Drive action ran during this
 evidence-only finalization.
+
+## Reviewed release handoff
+
+A campaign keeps the commit and archive it actually exercised. When a reviewed
+release commit is a descendant containing only P8-05 campaign/release tooling,
+its focused tests and this step's evidence changes, the release configuration
+may supply:
+
+```json
+{
+  "campaignReleaseHandoff": {
+    "auditedCandidateId": "207d0d2b4d83b329b60a062bfb4f9818ff1162d1",
+    "archivePath": "<absolute path to the retained canonical npm archive>"
+  }
+}
+```
+
+The configuration's `candidateId` (and `pc20.candidateId`) remains the exact
+reviewed release checkout. Its `candidatePackageSha256` remains the audited
+archive digest. Campaign and output directories remain external. The consumer
+revalidates both trusted campaign anchors, the original candidate build receipt,
+the complete archive executable manifest and Git ancestry. Every product or
+build input outside the explicit tooling/evidence allowlist must be identical;
+any difference requires new blind retests. It does not relabel retest records.
+
+`node scripts/p8-05-release-completion.mjs --preflight --config <absolute-json>`
+authenticates this binding and checks PC-20's exact clean checkout and package
+identity without running a gate or creating any receipt. Its JSON result joins
+the audited and reviewed commits, campaign manifest/closeout, build receipt and
+archive with a deterministic handoff digest. Gate, completion, retained-receipt
+reuse and the protected lifecycle revalidate and retain that same binding.
+Packaging smoke installs the original canonical archive in handoff mode and
+retains those exact bytes for publication; the existing direct-candidate mode
+continues to build and pack normally. The preflight is not release evidence:
+official gates and the protected publication/Drive lifecycle remain controller
+work after independent review.
