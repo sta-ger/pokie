@@ -359,7 +359,7 @@ test("transaction state classes are accepted only from rendered control or resul
     assert.equal(p805TransactionStateClass("unsupported"), undefined);
 });
 
-async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest, noFindings = false} = {}) {
+async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest, noFindings = false, historicalFreezeAnchor = false} = {}) {
     const retest = retestCandidate;
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
     let sequence = 0;
@@ -915,11 +915,12 @@ async function campaignFixture({initialOverflow = false, throughController = fal
     };
     const anchor = path.join(path.dirname(directory), `${path.basename(directory)}-freeze.json`);
     frozen.externalAnchor = {path: anchor, sha256: "0".repeat(64), anchoredAt: stamp(850)};
+    if (historicalFreezeAnchor) delete frozen.externalAnchor.anchoredAt;
     const {externalAnchor, ...frozenPayload} = frozen;
     const frozenContents = `${JSON.stringify(frozenPayload, null, 2)}\n`;
     const anchorContents = `${JSON.stringify({
         kind: "p8-05-freeze-anchor",
-        receiptId: "freeze-1",
+        ...(historicalFreezeAnchor ? {} : {receiptId: "freeze-1"}),
         campaignId: "p8-05-fixture",
         ...initial,
         initialAuditsSha256: hash(`${JSON.stringify(initialRecord, null, 2)}\n`),
@@ -1059,7 +1060,15 @@ async function campaignFixture({initialOverflow = false, throughController = fal
     })}\n`;
     await writeFile(closeoutAnchor, closeoutAnchorContents);
     closeout.externalAnchor.sha256 = hash(closeoutAnchorContents);
-    if (throughController) await runP805Closeout({directory, retestCandidate:retest, closeoutAnchor:closeout.externalAnchor});
+    if (throughController && noFindings) {
+        const configPath = path.join(directory, "closeout-config.json");
+        await writeFile(configPath, JSON.stringify({directory, retestCandidate:retest, closeoutAnchor:closeout.externalAnchor}));
+        const frozenBytes = await readFile(path.join(directory, "frozen-findings.json"));
+        const stdout = execFileSync(process.execPath, ["scripts/p8-05-product-readiness-controller.mjs", "closeout", "--config", configPath], {encoding:"utf8"});
+        assert.match(stdout, /^P805_PRODUCT_READINESS_CLOSEOUT_PASS /);
+        assert.deepEqual(await readFile(path.join(directory, "frozen-findings.json")), frozenBytes);
+        assert.deepEqual(await readFile(anchor, "utf8"), anchorContents);
+    } else if (throughController) await runP805Closeout({directory, retestCandidate:retest, closeoutAnchor:closeout.externalAnchor});
     else await write("closeout.json", closeout);
     return {
         directory,
@@ -1107,8 +1116,8 @@ test("requires every evidence kind, verifier anchors, live-DOM bindings, final-c
         await fixture.cleanup();
     }
 }, campaignTimeoutMs);
-test("closes an immutable no-finding checks register through post-fix, manifest, anchors and validation", async () => {
-    const fixture = await campaignFixture({throughController:true, retestCandidate:initial, noFindings:true});
+test("public closeout preserves historical path/digest freeze anchors and no-finding checks", async () => {
+    const fixture = await campaignFixture({throughController:true, retestCandidate:initial, noFindings:true, historicalFreezeAnchor:true});
     try {
         const regressionBytes = await readFile(path.join(fixture.directory, "regressions.json"));
         const register = JSON.parse(regressionBytes);
@@ -1122,6 +1131,52 @@ test("closes an immutable no-finding checks register through post-fix, manifest,
         assert.equal(manifest.records["regressions.json"], hash(regressionBytes));
         assert.equal(manifest.cleanupEvidence.length, 150);
         assert.deepEqual(await readFile(path.join(fixture.directory, "regressions.json")), regressionBytes);
+        const frozen = JSON.parse(await readFile(path.join(fixture.directory, "frozen-findings.json")));
+        assert.deepEqual(Object.keys(frozen.externalAnchor), ["path", "sha256"]);
+        const anchor = JSON.parse(await readFile(frozen.externalAnchor.path));
+        assert.equal(Object.hasOwn(anchor, "receiptId"), false);
+        assert.equal(Date.parse(anchor.anchoredAt) >= Date.parse(frozen.frozenAt), true);
+        assert.equal(result.manifestSha256, hash(await readFile(path.join(fixture.directory, "manifest.json"))));
+        const stdout = execFileSync(process.execPath, [
+            "scripts/p8-05-product-readiness-campaign.mjs", "--campaign-dir", fixture.directory,
+            "--expected-candidate", initial.candidateId, "--expected-package-sha256", initial.candidatePackageSha256,
+            "--freeze-anchor-sha256", fixture.anchors.freezeAnchorSha256,
+            "--closeout-anchor-sha256", fixture.anchors.closeoutAnchorSha256,
+        ], {encoding:"utf8"});
+        assert.equal(stdout, `P805_PRODUCT_READINESS_PASS candidate=${initial.candidateId} personas=5\n`);
+    } finally { await fixture.cleanup(); }
+}, campaignTimeoutMs);
+
+test("freeze chronology and payload bindings come from the authenticated anchor", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const frozenPath = path.join(fixture.directory, "frozen-findings.json"), frozenBytes = await readFile(frozenPath), frozen = JSON.parse(frozenBytes);
+        const anchorBytes = await readFile(frozen.externalAnchor.path), anchor = JSON.parse(anchorBytes);
+        // A valid duplicated timestamp cannot hide a missing, invalid, or early
+        // timestamp in the authenticated external record.
+        const mutations = [
+            (value) => { delete value.anchoredAt; },
+            (value) => { value.anchoredAt = "invalid"; },
+            (value) => { value.anchoredAt = stamp(799); },
+            (value) => { value.kind = "p8-05-closeout-anchor"; },
+            (value) => { value.campaignId = "another-campaign"; },
+            (value) => { value.candidateId = retest.candidateId; },
+            (value) => { value.candidatePackageSha256 = retest.candidatePackageSha256; },
+            (value) => { value.frozenFindingsSha256 = "0".repeat(64); },
+            (value) => { value.initialAuditsSha256 = "0".repeat(64); },
+            (value) => { value.receiptId = ""; },
+        ];
+        for (const mutate of mutations) {
+            const changed = structuredClone(anchor); mutate(changed);
+            const contents = `${JSON.stringify(changed)}\n`, sha256 = hash(contents);
+            await writeFile(frozen.externalAnchor.path, contents);
+            await writeFile(frozenPath, JSON.stringify({...frozen, externalAnchor:{...frozen.externalAnchor, sha256}}));
+            await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors, freezeAnchorSha256:sha256}), /external finding-freeze anchor does not bind/);
+        }
+        await writeFile(frozenPath, frozenBytes);
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /external finding-freeze anchor digest differs/);
+        await writeFile(frozen.externalAnchor.path, anchorBytes);
+        assert.deepEqual((await validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors})).personas, P805_PERSONAS);
     } finally { await fixture.cleanup(); }
 }, campaignTimeoutMs);
 
