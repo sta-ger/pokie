@@ -11,6 +11,11 @@ Candidate-bound verifier receipts are retained here only after an independent
 controller has completed them. Historical `docs/evidence/p8-05-runtime/`
 remains untouched.
 
+The current retained-campaign closeout attempt is indexed in
+`closeout-verification-6ae640f1.md`.  It records a public-controller
+compatibility failure without rewriting the historical campaign; official
+release actions remain pending approval.
+
 ## Evidence-only cleanup — 2026-10-05
 
 The verifier removed exactly three superseded, policy-flagged artifacts from
