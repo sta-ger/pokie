@@ -16,6 +16,15 @@ The current retained-campaign closeout attempt is indexed in
 compatibility failure without rewriting the historical campaign; official
 release actions remain pending approval.
 
+## Corrected closeout — 2026-10-06
+
+`closeout-verification-b0a9b66c.md` records the successful corrected public
+closeout and a separately invoked successful campaign validation of the
+retained candidate/package pair.  It links the immutable manifest, both
+external anchors, the append-only closeout, and the pending-approval release
+consumer handoff.  No release, packaging, publication, or Drive operation was
+run.
+
 ## Evidence-only cleanup — 2026-10-05
 
 The verifier removed exactly three superseded, policy-flagged artifacts from
