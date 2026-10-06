@@ -135,6 +135,15 @@ const closeoutDigest = (closeout) => {
     return digest(`${JSON.stringify(payload, null, 2)}\n`);
 };
 const fail = (message) => { throw new Error(`P8-05 product-readiness evidence is invalid: ${message}`); };
+// Older no-finding campaigns retained reusable checks without a finding-specific
+// regression array. Interpret that shape without rewriting the anchored record;
+// checks can never substitute for regressions when either register has findings.
+export function p805RegressionEntries(register, frozenFindings, registeredFindings) {
+    if (!Array.isArray(frozenFindings) || !Array.isArray(registeredFindings)) fail("finding register is incomplete");
+    if (Array.isArray(register?.regressions)) return register.regressions;
+    if (register && !Object.hasOwn(register, "regressions") && Array.isArray(register.checks) && frozenFindings.length === 0 && registeredFindings.length === 0) return [];
+    fail("regression register is incomplete");
+}
 const relative = (value) => typeof value === "string" && value.length > 0 && !path.isAbsolute(value) && !value.split(/[\\/]+/).includes("..");
 const unique = (items, label, property = "id") => {
     const values = items.map((item) => item?.[property]);
@@ -691,14 +700,15 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
         validateFinding(registered, `finding register ${registered.id}`); frozenFields(frozenFinding, registered);
     }
     const regressions = records["regressions.json"];
-    if (regressions.schemaVersion !== P805_SCHEMA_VERSION || regressions.campaignId !== provenance.campaignId || !Array.isArray(regressions.regressions)) fail("regression register is incomplete");
-    unique(regressions.regressions, "regressions", "findingId");
+    if (regressions.schemaVersion !== P805_SCHEMA_VERSION || regressions.campaignId !== provenance.campaignId) fail("regression register is incomplete");
+    const regressionEntries = p805RegressionEntries(regressions, frozen.findings, findingRegister.findings);
+    unique(regressionEntries, "regressions", "findingId");
     const machineReceipts = new Set(), regressionCompletionTimes = new Map();
     for (const finding of findingRegister.findings) {
         validateFinding(finding, `finding register ${finding?.id ?? "unknown"}`);
         if (BLOCKING(finding)) {
             if (finding.status !== "resolved") fail(`release-blocking finding remains ${finding.status}: ${finding.id}`);
-            const regression = regressions.regressions.find((item) => item.findingId === finding.id);
+            const regression = regressionEntries.find((item) => item.findingId === finding.id);
             if (!regression || typeof regression.testPath !== "string" || !regression.testPath.startsWith("tests/") || !existsSync(path.join(repositoryRoot, regression.testPath)) || regression.commitId !== finalCandidate.candidateId || regression.candidatePackageSha256 !== finalCandidate.candidatePackageSha256 || regression.result !== "passed" || !iso(regression.verifiedAt) || Date.parse(regression.verifiedAt) < Date.parse(frozen.frozenAt) || !Array.isArray(regression.assertions) || !regression.assertions.length || !regression.machineResultEvidence) fail(`resolved blocking finding ${finding.id} has no focused final-candidate regression`);
             const output = await boundedEvidence(root, regression.machineResultEvidence, finalCandidate, `regression ${finding.id}`, {after:frozen.frozenAt, used});
             let result;
@@ -722,7 +732,7 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
         if (qualityDefects(audit).length) fail(`clean retest ${audit.persona} retains a browser quality defect`);
         for (const context of audit.cleanContexts ?? [audit.cleanContext]) for (const value of Object.values(context)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
-        for (const regression of regressions.regressions) if (regression.commitId === finalCandidate.candidateId && (Date.parse(regression.verifiedAt) >= Date.parse(audit.startedAt) || Date.parse(regressionCompletionTimes.get(regression.findingId)) >= Date.parse(audit.startedAt))) fail(`retest ${audit.persona} predates regression verification`);
+        for (const regression of regressionEntries) if (regression.commitId === finalCandidate.candidateId && (Date.parse(regression.verifiedAt) >= Date.parse(audit.startedAt) || Date.parse(regressionCompletionTimes.get(regression.findingId)) >= Date.parse(audit.startedAt))) fail(`retest ${audit.persona} predates regression verification`);
         await validateAuditEvidence(root, audit, finalCandidate, `retest ${audit.persona}`, used);
     }
     const manifest = records["manifest.json"];
@@ -732,7 +742,7 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
     const boundEvidence = new Map();
     for (const audit of [...initial.audits, ...retests.audits]) for (const item of audit.evidence) boundEvidence.set(item.evidenceId, item.sha256);
     for (const finding of frozen.findings) boundEvidence.set(finding.evidence.evidenceId, finding.evidence.sha256);
-    for (const regression of regressions.regressions) if (regression.machineResultEvidence) boundEvidence.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
+    for (const regression of regressionEntries) if (regression.machineResultEvidence) boundEvidence.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
     unique(manifest.evidence, "manifest evidence definitions", "evidenceId");
     if (manifest.evidence.length !== boundEvidence.size || manifest.evidence.some((item) => !item || boundEvidence.get(item.evidenceId) !== item.sha256)) fail("immutable campaign manifest does not bind the complete evidence index");
     const cleanupEvidence = [...initial.audits, ...retests.audits].flatMap((audit) => audit.tupleReceipts.map((receipt) => receipt.cleanupEvidenceId));

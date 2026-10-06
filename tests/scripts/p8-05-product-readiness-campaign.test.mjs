@@ -23,7 +23,7 @@ import {
 
 import {P805_MAX_EVIDENCE_BYTES, preserveP805PackedCliOutput} from "../../scripts/p8-05-packed-output-evidence.mjs";
 import {p805OperationPerformance, projectP805PersonaAudit} from "../../scripts/p8-05-persona-projection.mjs";
-import {aggregateP805PersonaAudits, prepareP805Closeout, runP805Closeout} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {aggregateP805PersonaAudits, prepareP805Closeout, runP805Closeout, runP805PostFix} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 const initial = {
         candidateId: "1".repeat(40),
@@ -37,6 +37,9 @@ const initial = {
         candidateExecutableSha256: "d".repeat(64),
         candidateExecutableReceipt: {path: "/tmp/p8-05-retest-executable-receipt.json", sha256: "f".repeat(64)},
     };
+// Full controller round trips repeatedly authenticate both 75-tuple phases.
+// Keep a bounded deadline that lets their filesystem checks finish intact.
+const campaignTimeoutMs = 120000;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const stamp = (offset) => new Date(Date.parse("2026-09-19T20:00:00.000Z") + offset).toISOString();
 // Match the installed runner's per-tuple transcript, independently of the
@@ -356,7 +359,7 @@ test("transaction state classes are accepted only from rendered control or resul
     assert.equal(p805TransactionStateClass("unsupported"), undefined);
 });
 
-async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest} = {}) {
+async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest, noFindings = false} = {}) {
     const retest = retestCandidate;
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
     let sequence = 0;
@@ -908,7 +911,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
         campaignId: "p8-05-fixture",
         ...initial,
         frozenAt: stamp(800),
-        findings: [{...finding, status:"open"}],
+        findings: noFindings ? [] : [{...finding, status:"open"}],
     };
     const anchor = path.join(path.dirname(directory), `${path.basename(directory)}-freeze.json`);
     frozen.externalAnchor = {path: anchor, sha256: "0".repeat(64), anchoredAt: stamp(850)};
@@ -954,27 +957,30 @@ async function campaignFixture({initialOverflow = false, throughController = fal
     const bytes = await readFile(path.join(directory, regressionEvidence.path));
     regressionEvidence.sha256 = hash(bytes);
     regressionEvidence.sizeBytes = bytes.length;
-    await write("finding-register.json", {
-        schemaVersion: P805_SCHEMA_VERSION,
-        campaignId: "p8-05-fixture",
-        findings: [finding],
-    });
-    await write("regressions.json", {
-        schemaVersion: P805_SCHEMA_VERSION,
-        campaignId: "p8-05-fixture",
-        regressions: [
-            {
-                findingId: "F-1",
-                testPath: "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
-                commitId: retest.candidateId,
-                candidatePackageSha256: retest.candidatePackageSha256,
-                result: "passed",
-                verifiedAt: stamp(900),
-                assertions: ["cancelled job has no report"],
-                machineResultEvidence: regressionEvidence,
-            },
-        ],
-    });
+    if (noFindings) await runP805PostFix({directory, retestCandidate:retest, findingRegister:{findings:[]}, regressions:{checks:[{testPath:regressionResult.testPath, result:"passed"}]}});
+    else {
+        await write("finding-register.json", {
+            schemaVersion: P805_SCHEMA_VERSION,
+            campaignId: "p8-05-fixture",
+            findings: [finding],
+        });
+        await write("regressions.json", {
+            schemaVersion: P805_SCHEMA_VERSION,
+            campaignId: "p8-05-fixture",
+            regressions: [
+                {
+                    findingId: "F-1",
+                    testPath: "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+                    commitId: retest.candidateId,
+                    candidatePackageSha256: retest.candidatePackageSha256,
+                    result: "passed",
+                    verifiedAt: stamp(900),
+                    assertions: ["cancelled job has no report"],
+                    machineResultEvidence: regressionEvidence,
+                },
+            ],
+        });
+    }
     await write("retests.json", {
         schemaVersion: P805_SCHEMA_VERSION,
         campaignId: "p8-05-fixture",
@@ -992,8 +998,10 @@ async function campaignFixture({initialOverflow = false, throughController = fal
         manifestEvidence = new Map();
     for (const audit of [...initialAudits, ...retests])
         for (const item of audit.evidence) manifestEvidence.set(item.evidenceId, item.sha256);
-    manifestEvidence.set(finding.evidence.evidenceId, finding.evidence.sha256);
-    manifestEvidence.set(regressionEvidence.evidenceId, regressionEvidence.sha256);
+    if (!noFindings) {
+        manifestEvidence.set(finding.evidence.evidenceId, finding.evidence.sha256);
+        manifestEvidence.set(regressionEvidence.evidenceId, regressionEvidence.sha256);
+    }
     const manifest = {
         schemaVersion: P805_SCHEMA_VERSION,
         kind: "p8-05-immutable-manifest",
@@ -1017,7 +1025,7 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             closedAt: stamp(1700),
             releaseReady: true,
             cleanup: {noOwnedProcessesRemain: true, failedOrCancelledArtifactsRemoved: true},
-            dispositions: [
+            dispositions: noFindings ? [] : [
                 {
                     findingId: "F-1",
                     status: "resolved",
@@ -1027,8 +1035,17 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             ],
         };
     if (throughController) {
-        const prepared = await prepareP805Closeout({directory, retestCandidate:retest, closeout});
-        closeout.manifestSha256 = prepared.manifestSha256;
+        const config = {directory, retestCandidate:retest, closeout};
+        if (noFindings) {
+            const configPath = path.join(directory, "prepare-closeout-config.json");
+            await writeFile(configPath, JSON.stringify(config));
+            const stdout = execFileSync(process.execPath, ["scripts/p8-05-product-readiness-controller.mjs", "prepare-closeout", "--config", configPath], {encoding:"utf8"});
+            assert.match(stdout, /^P805_PRODUCT_READINESS_PREPARE_CLOSEOUT_PASS /);
+            closeout.manifestSha256 = JSON.parse(stdout.slice(stdout.indexOf("{")).trim()).manifestSha256;
+        } else {
+            const prepared = await prepareP805Closeout(config);
+            closeout.manifestSha256 = prepared.manifestSha256;
+        }
     }
     const closeoutAnchor = path.join(path.dirname(directory), `${path.basename(directory)}-closeout.json`);
     closeout.externalAnchor = {path: closeoutAnchor, sha256: "0".repeat(64)};
@@ -1089,7 +1106,36 @@ test("requires every evidence kind, verifier anchors, live-DOM bindings, final-c
     } finally {
         await fixture.cleanup();
     }
+}, campaignTimeoutMs);
+test("closes an immutable no-finding checks register through post-fix, manifest, anchors and validation", async () => {
+    const fixture = await campaignFixture({throughController:true, retestCandidate:initial, noFindings:true});
+    try {
+        const regressionBytes = await readFile(path.join(fixture.directory, "regressions.json"));
+        const register = JSON.parse(regressionBytes);
+        assert.equal(Object.hasOwn(register, "regressions"), false);
+        assert.deepEqual(register.checks, [{testPath:"tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx", result:"passed"}]);
+        const result = await validateP805ProductReadinessCampaign(fixture.directory, {...initial, ...fixture.anchors});
+        assert.equal(result.candidateId, initial.candidateId);
+        assert.equal(result.candidatePackageSha256, initial.candidatePackageSha256);
+        assert.deepEqual(result.personas, P805_PERSONAS);
+        const manifest = JSON.parse(await readFile(path.join(fixture.directory, "manifest.json")));
+        assert.equal(manifest.records["regressions.json"], hash(regressionBytes));
+        assert.equal(manifest.cleanupEvidence.length, 150);
+        assert.deepEqual(await readFile(path.join(fixture.directory, "regressions.json")), regressionBytes);
+    } finally { await fixture.cleanup(); }
+}, campaignTimeoutMs);
+
+test("campaign validation never replaces authenticated finding regressions with generic checks", async () => {
+    const fixture = await campaignFixture();
+    try {
+        const registerPath = path.join(fixture.directory, "regressions.json");
+        const register = JSON.parse(await readFile(registerPath));
+        const {regressions, ...metadata} = register;
+        await writeFile(registerPath, JSON.stringify({...metadata, checks:regressions}));
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...retest, ...fixture.anchors}), /regression register is incomplete/);
+    } finally { await fixture.cleanup(); }
 });
+
 test.each([false, true])("closes a same-candidate rebaseline with independent frozen and retest evidence (controller=%s)", async (throughController) => {
     const fixture = await campaignFixture({retestCandidate:initial, throughController});
     try {
@@ -1112,8 +1158,10 @@ test.each([false, true])("closes a same-candidate rebaseline with independent fr
         assert.equal(stdout, `P805_PRODUCT_READINESS_PASS candidate=${initial.candidateId} personas=5\n`);
         await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...expected, candidatePackageSha256:retest.candidatePackageSha256}), /same-candidate retests must retain the initial package digest/);
     } finally { await fixture.cleanup(); }
-});
+}, campaignTimeoutMs);
 
+// This matrix performs nine complete evidence validations; keep every rejection
+// and the restored success within one bounded test rather than timing out midway.
 test("same-candidate closeout retains chronology, context, disposition, cleanup, and external anchor checks", async () => {
     const fixture = await campaignFixture({retestCandidate:initial});
     try {
@@ -1142,7 +1190,7 @@ test("same-candidate closeout retains chronology, context, disposition, cleanup,
         }
         assert.deepEqual((await validateP805ProductReadinessCampaign(fixture.directory, expected)).personas, P805_PERSONAS);
     } finally { await fixture.cleanup(); }
-});
+}, campaignTimeoutMs);
 
 test("projects large public CLI outputs through bounded immutable leaves from collection to post-cleanup closeout", async () => {
     const fixture = await campaignFixture({throughController:true, largeCompoundOutput:true});
@@ -1195,7 +1243,7 @@ test("projects large public CLI outputs through bounded immutable leaves from co
         reference.auditSha256 = hash(childBytes);
         await assert.rejects(() => validateP805CollectedAudits(fixture.directory, records.audits, "retest", retest), /lacks bounded evidence metadata for artifact .*compound-outcome-library-export/);
     } finally { await fixture.cleanup(); }
-});
+}, campaignTimeoutMs);
 
 test("authenticates each aggregate child before applying every bounded leaf rejection", async () => {
     const fixture = await campaignFixture();
@@ -1264,7 +1312,7 @@ describe("installed programmer transcripts through immutable children at collect
     beforeAll(async () => {
         fixture = await campaignFixture({throughController:true});
         original = JSON.parse(await readFile(path.join(fixture.directory, "retests.json"), "utf8"));
-    });
+    }, campaignTimeoutMs);
     afterAll(async () => { await fixture?.cleanup(); });
 
     test("authenticates the collected projection and installed child transcripts", async () => {
@@ -1936,7 +1984,7 @@ test("freezes an initial measured overflow by reference and accepts its clean pe
         const frozen = JSON.parse(await readFile(path.join(fixture.directory, "frozen-findings.json"), "utf8"));
         assert.deepEqual(frozen.findings[0].evidence, initial.audits[3].evidence.find((item) => item.evidenceId === frozen.findings[0].evidence.evidenceId));
     } finally { await fixture.cleanup(); }
-});
+}, campaignTimeoutMs);
 
 test("authenticates every child log and cleanup before accepting its persona closeout", async () => {
     const fixture = await campaignFixture();

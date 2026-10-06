@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
-import {p805ControllerArtifactPath, p805ControllerOperationRoot, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
+import {p805ControllerArtifactPath, p805ControllerOperationRoot, prepareP805Closeout, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 
@@ -80,7 +80,7 @@ test("controller post-fix supports a same-candidate rebaseline without rewriting
             "frozen-findings.json": {findings:[], candidateId:initial.candidateId, candidatePackageSha256:initial.candidatePackageSha256},
         };
         for (const [name, value] of Object.entries(retained)) await writeFile(path.join(directory, name), `${JSON.stringify(value)}\n`);
-        const config = {directory, retestCandidate:initial, findingRegister:{findings:[]}, regressions:{regressions:[]}};
+        const config = {directory, retestCandidate:initial, findingRegister:{findings:[]}, regressions:{checks:[{testPath:"tests/scripts/p8-05-product-readiness-controller.test.mjs", result:"passed"}]}};
         await assert.rejects(() => runP805PostFix({...config, retestCandidate:{...initial, candidatePackageSha256:retest.candidatePackageSha256}}), /same-candidate retests must retain the initial package digest/);
         await assert.rejects(() => readFile(path.join(directory, "finding-register.json")), /ENOENT/);
         await assert.rejects(() => runP805PostFix({...config, findingRegister:undefined}), /requires finding dispositions and machine regression results/);
@@ -92,9 +92,42 @@ test("controller post-fix supports a same-candidate rebaseline without rewriting
             const value = JSON.parse(await readFile(path.join(directory, name), "utf8"));
             assert.equal(value.campaignId, "p8-05-rebaseline");
             assert.deepEqual(value.retestCandidate, initial);
+            if (name === "regressions.json") {
+                assert.deepEqual(value.checks, config.regressions.checks);
+                assert.equal(Object.hasOwn(value, "regressions"), false);
+            }
         }
         await assert.rejects(() => runP805PostFix(config), /finding-register.json is append-only/);
         for (const [name, value] of Object.entries(retained)) assert.equal(await readFile(path.join(directory, name), "utf8"), `${JSON.stringify(value)}\n`);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test.each([
+    [{}, [], []],
+    [{checks:"passed"}, [], []],
+    [{checks:[], regressions:null}, [], []],
+    [{checks:[], regressions:{}}, [], []],
+    [{checks:[]}, [{id:"F-1"}], []],
+    [{checks:[]}, [], [{id:"F-1"}]],
+    [{checks:[]}, [{id:"F-1"}], [{id:"F-1"}]],
+])("post-fix and preparation reject incomplete or finding-bearing checks registers (%j)", async (regressions, frozenFindings, findings) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-register-"));
+    try {
+        await writeFile(path.join(directory, "PROVENANCE.json"), JSON.stringify({campaignId:"p8-05-register", initialCandidate:initial}));
+        await writeFile(path.join(directory, "frozen-findings.json"), JSON.stringify({findings:frozenFindings}));
+        const config = {directory, retestCandidate:retest, findingRegister:{findings}, regressions};
+        await assert.rejects(() => runP805PostFix(config), /regression register is incomplete/);
+        for (const name of ["finding-register.json", "regressions.json"]) await assert.rejects(() => readFile(path.join(directory, name)), /ENOENT/);
+        // Trace the already-persisted shape as well: repair must fail before
+        // creating append-only closeout artifacts, without rewriting history.
+        const saved = JSON.stringify(regressions);
+        await writeFile(path.join(directory, "regressions.json"), saved);
+        await writeFile(path.join(directory, "finding-register.json"), JSON.stringify({findings}));
+        await writeFile(path.join(directory, "initial-audits.json"), JSON.stringify({audits:[]}));
+        await writeFile(path.join(directory, "retests.json"), JSON.stringify({audits:[]}));
+        await assert.rejects(() => prepareP805Closeout({...config, closeout:{}}), /regression register is incomplete/);
+        for (const name of ["manifest.json", "closeout-payload.json", "closeout.json"]) await assert.rejects(() => readFile(path.join(directory, name)), /ENOENT/);
+        assert.equal(await readFile(path.join(directory, "regressions.json"), "utf8"), saved);
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
 

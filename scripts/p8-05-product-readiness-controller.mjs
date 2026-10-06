@@ -7,7 +7,7 @@ import {lstat, mkdir, readFile, writeFile} from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
-import {P805_PERSONAS, P805_SCHEMA_VERSION, validateP805CollectedAudits, validateP805ProspectiveCloseout, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
+import {P805_PERSONAS, P805_SCHEMA_VERSION, p805RegressionEntries, validateP805CollectedAudits, validateP805ProspectiveCloseout, validateP805ProductReadinessCampaign, validateP805TupleProofLedger} from "./p8-05-product-readiness-campaign.mjs";
 import {runP805ProcessIsolatedPackedProof, hasP805NativeActivation, hasP805TransactionActivations, validateP805RenderedPersonaAudit, validateP805RestartRecoveryTerminalReceipt, validateP805RetryTerminalReceipt} from "./p8-05-valera-browser-audit.mjs";
 
 const sha = (value) => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value);
@@ -372,7 +372,8 @@ export async function runP805Freeze(config) {
 }
 
 export async function runP805PostFix(config) {
-    base(config); candidate(config.retestCandidate, "retest candidate"); const provenance = await record(config.directory, "PROVENANCE.json"); await record(config.directory, "frozen-findings.json"); if (provenance.value.initialCandidate.candidateId === config.retestCandidate.candidateId && provenance.value.initialCandidate.candidatePackageSha256 !== config.retestCandidate.candidatePackageSha256) fail("same-candidate retests must retain the initial package digest"); if (!config.findingRegister || !config.regressions) fail("post-fix phase requires finding dispositions and machine regression results");
+    base(config); candidate(config.retestCandidate, "retest candidate"); const provenance = await record(config.directory, "PROVENANCE.json"); const frozen = await record(config.directory, "frozen-findings.json"); if (provenance.value.initialCandidate.candidateId === config.retestCandidate.candidateId && provenance.value.initialCandidate.candidatePackageSha256 !== config.retestCandidate.candidatePackageSha256) fail("same-candidate retests must retain the initial package digest"); if (!config.findingRegister || !config.regressions) fail("post-fix phase requires finding dispositions and machine regression results");
+    p805RegressionEntries(config.regressions, frozen.value.findings, config.findingRegister.findings);
     for (const name of ["finding-register.json", "regressions.json"]) if (existsSync(recordPath(config.directory, name))) fail(`${name} is append-only`);
     await writeRecord(config.directory, "finding-register.json", {schemaVersion:P805_SCHEMA_VERSION, campaignId:provenance.value.campaignId, ...config.findingRegister, retestCandidate:config.retestCandidate}); await writeRecord(config.directory, "regressions.json", {schemaVersion:P805_SCHEMA_VERSION, campaignId:provenance.value.campaignId, ...config.regressions, retestCandidate:config.retestCandidate}); return config.retestCandidate;
 }
@@ -384,6 +385,7 @@ export async function runP805Retest(config, dependencies = {}) {
 export async function prepareP805Closeout(config) {
     base(config); candidate(config.retestCandidate, "retest candidate"); const provenance = await record(config.directory, "PROVENANCE.json"); await Promise.all([record(config.directory, "frozen-findings.json"), record(config.directory, "finding-register.json"), record(config.directory, "regressions.json"), record(config.directory, "retests.json")]); if (existsSync(recordPath(config.directory, "manifest.json")) || existsSync(recordPath(config.directory, "closeout.json")) || existsSync(recordPath(config.directory, "closeout-payload.json"))) fail("manifest and closeout are append-only"); if (!config.closeout || typeof config.closeout !== "object") fail("closeout preparation requires the completed disposition and cleanup payload");
     const names = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json"], records = await Promise.all(names.map((name) => record(config.directory, name))), bound = new Map();
+    const regressionEntries = p805RegressionEntries(records[4].value, records[2].value.findings, records[3].value.findings);
     // Manifest preparation is another public consumer of the aggregate. It
     // must authenticate the immutable leaves (including output chunks and
     // post-cleanup receipts) before publishing their evidence index.
@@ -391,7 +393,7 @@ export async function prepareP805Closeout(config) {
     await validateP805CollectedAudits(config.directory, records[5].value.audits, "retest", config.retestCandidate);
     for (const audit of [...records[1].value.audits, ...records[5].value.audits]) for (const item of audit.evidence) bound.set(item.evidenceId, item.sha256);
     for (const finding of records[2].value.findings) bound.set(finding.evidence.evidenceId, finding.evidence.sha256);
-    for (const regression of records[4].value.regressions) if (regression.machineResultEvidence) bound.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
+    for (const regression of regressionEntries) if (regression.machineResultEvidence) bound.set(regression.machineResultEvidence.evidenceId, regression.machineResultEvidence.sha256);
     const manifest = {schemaVersion:P805_SCHEMA_VERSION, kind:"p8-05-immutable-manifest", campaignId:provenance.value.campaignId, records:Object.fromEntries(records.map((value, index) => [names[index], digest(value.contents)])), evidence:[...bound].map(([evidenceId, sha256]) => ({evidenceId, sha256})), cleanupEvidence:[...records[1].value.audits, ...records[5].value.audits].flatMap((audit) => audit.tupleReceipts.map((receipt) => receipt.cleanupEvidenceId))};
     await writeRecord(config.directory, "manifest.json", manifest);
     const manifestContents = await readFile(recordPath(config.directory, "manifest.json"));
