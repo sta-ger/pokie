@@ -5,7 +5,7 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from "node:fs/promises
 import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
-import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
+import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS, p805RecoveryProbeFailure} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {p805ControllerArtifactPath, p805ControllerOperationRoot, prepareP805Closeout, prepareP805Freeze, readP805ControllerImmutableArtifact, runP805Freeze, runP805InitialAudit, runP805PostFix, validateP805ControllerMachineProof} from "../../scripts/p8-05-product-readiness-controller.mjs";
 
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
@@ -13,6 +13,49 @@ import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-
 const initial = {candidateId:"1".repeat(40), candidatePackageSha256:"a".repeat(64), candidateExecutableSha256:"c".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-initial-receipt.json", sha256:"e".repeat(64)}};
 const retest = {candidateId:"2".repeat(40), candidatePackageSha256:"b".repeat(64), candidateExecutableSha256:"d".repeat(64), candidateExecutableReceipt:{path:"/tmp/p8-05-retest-receipt.json", sha256:"f".repeat(64)}};
 const attestation = "I recorded each initial persona audit before reading prior findings, source, fixes, or prior campaign evidence.";
+const recoveryProbe = (restart = true) => {
+    const browser = [
+        {method:"Network.requestWillBeSent", params:{requestId:"start", request:{method:"POST", url:"http://localhost/api/project/simulations"}}},
+        {method:"Network.responseReceived", params:{requestId:"start", response:{status:202}}},
+        {method:"Network.requestWillBeSent", params:{requestId:"probe", request:{method:"GET", url:"http://localhost/api/project/jobs"}}},
+        {method:"Network.loadingFailed", params:{requestId:"probe", errorText:restart ? "net::ERR_EMPTY_RESPONSE" : "net::ERR_ABORTED", canceled:!restart}},
+        {method:"Network.requestWillBeSent", params:{requestId:"recovered", request:{method:"GET", url:"http://localhost/api/project/jobs"}}},
+        {method:"Network.responseReceived", params:{requestId:"recovered", response:{status:200}}},
+    ];
+    const runtime = {transactions:{[restart ? "restartSimulation" : "activeReloadStart"]:{request:{browserRequestId:"start"}}},
+        restart:restart ? {activeJobId:"job", receipt:{recoveryResponse:{browserRequestId:"recovered"}}} : {}, reload:{activeJobId:"job"}};
+    const api = restart ? [] : [{browserRequestId:"recovered", path:"/api/project/jobs", status:200, payload:[{id:"job"}], initiator:"rendered-reload", recovery:"reload"}];
+    return {browser, runtime, api, failure:browser[3]};
+};
+test.each([false, true])("classifies the captured recovery probe only inside its request/terminal window (restart=%s)", (restart) => {
+    const fixture = recoveryProbe(restart);
+    assert.equal(p805RecoveryProbeFailure(fixture.failure, fixture.browser, fixture.runtime, fixture.api), true);
+});
+test("keeps the request identity when recovery interrupts an already pending read", () => {
+    const value = recoveryProbe(false);
+    value.browser.unshift(value.browser.splice(2, 1)[0]);
+    assert.equal(p805RecoveryProbeFailure(value.failure, value.browser, value.runtime, value.api), true);
+});
+test.each([
+    ["unrelated request", (value) => { value.failure.params.requestId = "other"; }],
+    ["missing request", (value) => { value.browser.splice(2, 1); }],
+    ["duplicate request", (value) => { value.browser.unshift(value.browser[2]); }],
+    ["write operation", (value) => { value.browser[2].params.request.method = "POST"; }],
+    ["another origin", (value) => { value.browser[2].params.request.url = "http://other/api/project/jobs"; }],
+    ["another API", (value) => { value.browser[2].params.request.url = "http://localhost/api/project/reports"; }],
+    ["another job", (value) => { value.browser[2].params.request.url = "http://localhost/api/project/simulations/other"; }],
+    ["unexpected error", (value) => { value.failure.params.errorText = "net::ERR_FAILED"; }],
+    ["uncancelled abort", (value) => { value.failure.params.errorText = "net::ERR_ABORTED"; value.failure.params.canceled = false; }],
+    ["before submission", (value) => { value.browser.splice(0, 0, value.browser.splice(3, 1)[0]); }],
+    ["after recovery", (value) => { value.browser.push(value.browser.splice(3, 1)[0]); }],
+    ["failed submission", (value) => { value.browser[1].params.response.status = 400; }],
+    ["missing terminal", (value) => { value.browser.pop(); }],
+    ["failed terminal", (value) => { value.browser[5].params.response.status = 500; }],
+    ["unbound recovery", (value) => { value.runtime.restart.receipt.recoveryResponse.browserRequestId = "other"; }],
+])("retains %s as a request defect", (_label, mutate) => {
+    const value = recoveryProbe(); mutate(value);
+    assert.equal(p805RecoveryProbeFailure(value.failure, value.browser, value.runtime, value.api), false);
+});
 const packed = {packedCli:"/tmp/pokie/dist/cli/pokie.js", packedPackage:"/tmp/pokie/pokie.tgz"};
 const tuples = P805_PERSONAS.flatMap((persona) => P805_REQUIRED_OBSERVATIONS[persona].flatMap((observation) => ["wide", "compact", "narrow"].map((viewport) => ({persona, observation, viewport}))));
 const digestAt = (prefix, index) => `${prefix}${index.toString(16).padStart(63, "0")}`;

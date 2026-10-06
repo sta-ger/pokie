@@ -358,6 +358,7 @@ export function validateP805LiveDomTransaction(contents, observation, persona, l
 }
 
 async function validateAuditEvidence(directory, audit, expected, label, used) {
+    const handledRequestEvidence = new Set();
     if (audit.tupleReceipts) {
         const {readP805ControllerImmutableArtifact} = await import("./p8-05-product-readiness-controller.mjs");
         const children = [];
@@ -372,11 +373,11 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
             if ([...(child.evidence ?? []), ...(child.checkpointReceipts ?? [])].some((item) => !item.path?.startsWith(namespace) || item.path.split("/").includes(".."))) fail(`${label} evidence escapes its immutable child namespace`);
             if (child.tupleReceipts !== undefined || child.auditId !== reference.auditId || JSON.stringify(child.tuple) !== JSON.stringify(reference.tuple) || child.persona !== audit.persona || child.phase !== audit.phase || tuple.kind !== "p8-05-packed-tuple-receipt" || tuple.status !== "passed" || tuple.phase !== child.phase || cleanup.phase !== child.phase || tuple.auditId !== child.auditId || JSON.stringify(tuple.tuple) !== JSON.stringify(child.tuple) || tuple.candidateId !== expected.candidateId || tuple.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(tuple.worker) !== JSON.stringify(child.worker) || JSON.stringify(tuple.action) !== JSON.stringify(child.rendered?.actions?.[0]) || JSON.stringify(tuple.checkpointReceipt) !== JSON.stringify(child.checkpointReceipts?.[0]) || JSON.stringify(reference.checkpointReceiptSha256s) !== JSON.stringify(child.checkpointReceipts?.map((item) => item.sha256)) || cleanup.kind !== "p8-05-packed-tuple-cleanup" || cleanup.candidateId !== expected.candidateId || cleanup.candidatePackageSha256 !== expected.candidatePackageSha256 || JSON.stringify(cleanup.tuple) !== JSON.stringify(child.tuple) || JSON.stringify(cleanup.worker) !== JSON.stringify(child.worker) || tuple.cleanupSha256 !== reference.cleanupSha256 || tuple.cleanupEvidenceId !== child.cleanup?.evidenceId || cleanup.cleanupEvidenceId !== child.cleanup?.evidenceId || cleanup.cleanup?.exit !== "success" || cleanup.cleanup?.processTreeDrained !== true || cleanup.cleanup?.resourcesDrained !== true || cleanup.cleanup?.contextRemoved !== true || JSON.stringify(cleanup.cleanup) !== JSON.stringify(Object.fromEntries(Object.entries(child.cleanup ?? {}).filter(([key]) => key !== "evidenceId")))) fail(`${label} immutable child identity, checkpoint, or cleanup differs from its receipt`);
             auditRecord(child, child.phase, expected, expected);
-            await validateAuditEvidence(directory, child, expected, `${label} child ${child.auditId}`, used);
+            for (const evidenceId of await validateAuditEvidence(directory, child, expected, `${label} child ${child.auditId}`, used)) handledRequestEvidence.add(evidenceId);
             children.push(child);
         }
         if (JSON.stringify(audit) !== JSON.stringify(projectP805PersonaAudit(children, audit.tupleReceipts, audit.phase, audit.persona))) fail(`${label} aggregate differs from its authenticated immutable children`);
-        return;
+        return handledRequestEvidence;
     }
 
     const evidenceById = new Map();
@@ -495,7 +496,7 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
     // independently owned child to replay it would make one child execute
     // several workflows and would erase already accepted receipts after a
     // later recovery failure.
-    if (audit.tuple !== undefined && audit.workflowScope?.recoveryRequired !== true) return;
+    if (audit.tuple !== undefined && audit.workflowScope?.recoveryRequired !== true) return handledRequestEvidence;
     // Recovery must be a captured runtime result, not a collection of booleans
     // copied into `rendered`.  In particular reports use their own `id` (not a
     // fictional `simulationId`), so the cancellation assertion is only useful
@@ -509,7 +510,52 @@ async function validateAuditEvidence(directory, audit, expected, label, used) {
         } catch { /* tuple transaction parsing above reports its own error */ }
     }
     validateP805RuntimeRecoveryEvidence(runtime, audit, api, browser, evidenceById, label);
+    // Historical collectors counted every loadingFailed event as unhandled.
+    // Keep those immutable counts and diagnostic references, but distinguish
+    // transport interruption during a proven recovery from a product finding.
+    const failures = browser.filter((event) => event.method === "Network.loadingFailed");
+    if (failures.length && failures.every((event) => p805RecoveryProbeFailure(event, browser, runtime.value, api))) {
+        handledRequestEvidence.add([...evidenceById.values()].find((entry) => entry.item.kind === "browser-log").item.evidenceId);
+    }
+    return handledRequestEvidence;
+}
 
+/** Classify transport diagnostics only after the full recovery receipts have
+ * been authenticated. A recovery boolean or an empty finding register alone
+ * cannot exempt a failed request. */
+export function p805RecoveryProbeFailure(failure, browser, runtime, api) {
+    const failedId = failure?.params?.requestId;
+    const requests = browser.filter((event) => event.method === "Network.requestWillBeSent" && event.params?.requestId === failedId);
+    if (failure?.method !== "Network.loadingFailed" || typeof failedId !== "string" || !failedId || requests.length !== 1) return false;
+    const request = requests[0], failureIndex = browser.indexOf(failure), requestIndex = browser.indexOf(request);
+    if (request.params.request?.method !== "GET" || requestIndex >= failureIndex) return false;
+    let failedUrl;
+    try { failedUrl = new URL(request.params.request.url); } catch { return false; }
+    const reloadApi = api.find((entry) => {
+        const jobs = Array.isArray(entry.payload) ? entry.payload : entry.payload?.jobs;
+        return entry.initiator === "rendered-reload" && entry.recovery === "reload" && entry.path === "/api/project/jobs" && entry.status === 200
+            && Array.isArray(jobs) && jobs.some((job) => job?.id === runtime.reload?.activeJobId);
+    });
+    const windows = [
+        {start:runtime.transactions?.activeReloadStart?.request?.browserRequestId, end:reloadApi?.browserRequestId, jobId:runtime.reload?.activeJobId, restart:false},
+        {start:runtime.transactions?.restartSimulation?.request?.browserRequestId, end:runtime.restart?.receipt?.recoveryResponse?.browserRequestId, jobId:runtime.restart?.activeJobId, restart:true},
+    ];
+    return windows.some((window) => {
+        if (!window.start || !window.end || !window.jobId) return false;
+        const startRequest = browser.findIndex((event) => event.method === "Network.requestWillBeSent" && event.params?.requestId === window.start && event.params.request?.method === "POST");
+        const startResponse = browser.findIndex((event) => event.method === "Network.responseReceived" && event.params?.requestId === window.start && event.params.response?.status === 202);
+        const endRequestIndex = browser.findIndex((event) => event.method === "Network.requestWillBeSent" && event.params?.requestId === window.end && event.params.request?.method === "GET");
+        const endResponse = browser.findIndex((event) => event.method === "Network.responseReceived" && event.params?.requestId === window.end && event.params.response?.status === 200);
+        if (startRequest < 0 || startResponse <= startRequest || failureIndex <= startResponse || endResponse <= failureIndex || endRequestIndex <= startResponse || endResponse <= endRequestIndex) return false;
+        const endRequest = browser[endRequestIndex];
+        let startUrl, endUrl;
+        try { startUrl = new URL(browser[startRequest].params.request.url); endUrl = new URL(endRequest.params.request.url); } catch { return false; }
+        if (startUrl.pathname !== "/api/project/simulations" || endUrl.pathname !== "/api/project/jobs" || startUrl.origin !== endUrl.origin || failedUrl.origin !== endUrl.origin
+            || !["/api/health", "/api/project/context", "/api/project/jobs", `/api/project/simulations/${encodeURIComponent(window.jobId)}`].includes(failedUrl.pathname)) return false;
+        const error = failure.params.errorText;
+        return error === "net::ERR_ABORTED" && failure.params.canceled === true
+            || window.restart && ["net::ERR_EMPTY_RESPONSE", "net::ERR_CONNECTION_REFUSED", "net::ERR_CONNECTION_RESET", "net::ERR_CONNECTION_CLOSED"].includes(error);
+    });
 }
 
 /** The collector and closeout authenticate the same captured recovery sequence. */
@@ -612,7 +658,7 @@ export async function validateP805CollectedAudits(directory, audits, phase, expe
     return audits;
 }
 
-function qualityDefects(audit) {
+function qualityDefects(audit, handledRequestEvidence = new Set()) {
     const measurements = audit.rendered?.measurements ?? {};
     const defects = [
         ["console", measurements.consoleExceptions], ["request", measurements.unhandledRequestFailures],
@@ -623,7 +669,8 @@ function qualityDefects(audit) {
         ["performance", Object.values(audit.performance ?? {}).some((entry) => entry?.classification === "regression") ? 1 : 0],
     ].filter(([, count]) => count > 0).map(([kind]) => kind);
     if (!Array.isArray(audit.rendered?.defects) || defects.some((kind) => !audit.rendered.defects.some((defect) => defect?.kind === kind && typeof defect.evidenceId === "string" && defect.evidenceId))) fail(`${audit.phase} ${audit.persona} does not retain every measured browser defect as evidence`);
-    return [...new Set([...defects, ...audit.rendered.defects.map((item) => item.kind)])];
+    const retained = audit.rendered.defects.filter((item) => item.kind !== "request" || !handledRequestEvidence.has(item.evidenceId));
+    return [...new Set([...defects.filter((kind) => kind !== "request" || retained.some((item) => item.kind === "request")), ...retained.map((item) => item.kind)])];
 }
 
 /**
@@ -654,7 +701,7 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
     // A clean rebaseline may audit the same immutable candidate twice. The
     // freeze boundary, independent contexts, evidence and anchors still apply.
     if (initialCandidate.candidateId === finalCandidate.candidateId && initialCandidate.candidatePackageSha256 !== finalCandidate.candidatePackageSha256) fail("same-candidate retests must retain the initial package digest");
-    const used = new Map(), contexts = new Set();
+    const used = new Map(), contexts = new Set(), initialRequestDiagnostics = new Map();
     const initial = records["initial-audits.json"];
     if (initial.schemaVersion !== P805_SCHEMA_VERSION || initial.campaignId !== provenance.campaignId) fail("initial audit record is not bound to the campaign");
     validateP805AuditMatrix(initial.audits, "initial");
@@ -662,7 +709,7 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
         auditRecord(audit, "initial", initialCandidate, finalCandidate);
         if (Date.parse(audit.startedAt) <= Date.parse(provenance.startedAt)) fail(`initial audit ${audit.persona} predates provenance`);
         for (const context of audit.cleanContexts ?? [audit.cleanContext]) for (const value of Object.values(context)) if (typeof value === "string") { if (contexts.has(value)) fail(`initial audit ${audit.persona} reuses a clean context`); contexts.add(value); }
-        await validateAuditEvidence(root, audit, initialCandidate, `initial ${audit.persona}`, used);
+        initialRequestDiagnostics.set(audit, await validateAuditEvidence(root, audit, initialCandidate, `initial ${audit.persona}`, used));
     }
     const frozen = records["frozen-findings.json"];
     if (frozen.schemaVersion !== P805_SCHEMA_VERSION || frozen.campaignId !== provenance.campaignId || frozen.candidateId !== initialCandidate.candidateId || frozen.candidatePackageSha256 !== initialCandidate.candidatePackageSha256 || !iso(frozen.frozenAt) || !Array.isArray(frozen.findings)) fail("frozen findings are not tied to the initial candidate");
@@ -686,9 +733,11 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
         await boundedEvidence(root, item.evidence, initialCandidate, `frozen finding ${item.id}`, {after:provenance.startedAt, before:frozen.frozenAt, used:definition ? undefined : used});
     }
     for (const audit of initial.audits) {
-        qualityDefects(audit);
+        const handledRequests = initialRequestDiagnostics.get(audit);
+        qualityDefects(audit, handledRequests);
         for (const measured of audit.rendered.defects) {
             const defect = measured.kind;
+            if (defect === "request" && handledRequests.has(measured.evidenceId)) continue;
             const evidence = audit.evidence.find((item) => item.evidenceId === measured?.evidenceId);
             if (!evidence || !["browser-log", "live-dom-transaction", "page-state", "timing"].includes(evidence.kind) || !frozen.findings.some((finding) => finding.persona === audit.persona && finding.evidence?.evidenceId === measured?.evidenceId && finding.evidence?.sha256 === evidence.sha256 && finding.measurement?.kind === defect && finding.measurement?.evidenceId === measured?.evidenceId && finding.measurement?.sha256 === evidence.sha256)) fail(`initial ${audit.persona} ${defect} defect was not frozen against its measured evidence`);
         }
@@ -732,11 +781,11 @@ async function validateCampaignRecords(directory, expected, prospectiveCloseout)
     if (Date.parse(retests.startedAt) <= Date.parse(frozen.frozenAt)) fail("retests started before findings were frozen");
     for (const audit of retests.audits) {
         auditRecord(audit, "retest", initialCandidate, finalCandidate);
-        if (qualityDefects(audit).length) fail(`clean retest ${audit.persona} retains a browser quality defect`);
         for (const context of audit.cleanContexts ?? [audit.cleanContext]) for (const value of Object.values(context)) if (typeof value === "string") { if (contexts.has(value)) fail(`retest audit ${audit.persona} reuses a clean context`); contexts.add(value); }
         if (Date.parse(audit.startedAt) < Date.parse(retests.startedAt) || Date.parse(audit.startedAt) <= Date.parse(frozen.frozenAt)) fail(`retest ${audit.persona} predates its declared clean retest start`);
         for (const regression of regressionEntries) if (regression.commitId === finalCandidate.candidateId && (Date.parse(regression.verifiedAt) >= Date.parse(audit.startedAt) || Date.parse(regressionCompletionTimes.get(regression.findingId)) >= Date.parse(audit.startedAt))) fail(`retest ${audit.persona} predates regression verification`);
-        await validateAuditEvidence(root, audit, finalCandidate, `retest ${audit.persona}`, used);
+        const handledRequests = await validateAuditEvidence(root, audit, finalCandidate, `retest ${audit.persona}`, used);
+        if (qualityDefects(audit, handledRequests).length) fail(`clean retest ${audit.persona} retains a browser quality defect`);
     }
     const manifest = records["manifest.json"];
     const manifestRecords = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json"];

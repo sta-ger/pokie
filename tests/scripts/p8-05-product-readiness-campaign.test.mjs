@@ -359,7 +359,7 @@ test("transaction state classes are accepted only from rendered control or resul
     assert.equal(p805TransactionStateClass("unsupported"), undefined);
 });
 
-async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest, noFindings = false, historicalFreezeAnchor = false} = {}) {
+async function campaignFixture({initialOverflow = false, throughController = false, largeCompoundOutput = false, retestCandidate = retest, noFindings = false, historicalFreezeAnchor = false, recoveryRequestFailures = false, mutateRecoveryFailure} = {}) {
     const retest = retestCandidate;
     const directory = await mkdtemp(path.join(os.tmpdir(), "pokie-p8-05-campaign-"));
     let sequence = 0;
@@ -530,6 +530,18 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             restartRequestId = `restart-${phase}-${persona}-${tuple.observation}-${tuple.viewport}`,
             restartResponse = {method:"Network.responseReceived", params:{requestId:restartRequestId, response:{status:200, url:"http://localhost/api/project/jobs"}}},
             recoveryResponse = captureP805RestartRecoveryResponse({event:restartResponse, payload:[restartTerminal]}, restartTerminal.id);
+        const retainsRecoveryFailures = recoveryRequestFailures && ["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(tuple.observation);
+        if (retainsRecoveryFailures) {
+            const startId = restartTransaction.request.browserRequestId;
+            const request = {method:"Network.requestWillBeSent", params:{requestId:`lost-${restartRequestId}`, request:{method:"GET", url:"http://localhost/api/project/jobs"}}};
+            const failure = {method:"Network.loadingFailed", params:{requestId:request.params.requestId, errorText:"net::ERR_EMPTY_RESPONSE", canceled:false}};
+            mutateRecoveryFailure?.({phase, request, failure, browserEvents});
+            browserEvents.push(
+                {method:"Network.requestWillBeSent", params:{requestId:startId, request:{method:"POST", url:"http://localhost/api/project/simulations"}}},
+                {method:"Network.responseReceived", params:{requestId:startId, response:{status:202}}},
+                request, failure,
+            );
+        }
         browserEvents.push({method:"Network.requestWillBeSent", params:{requestId:restartRequestId, request:{method:"GET", url:"http://localhost/api/project/jobs"}}}, restartResponse);
         apiEntries.push({browserRequestId:restartRequestId, method:"GET", path:"/api/project/jobs", status:200, payload:[restartTerminal], initiator:"rendered-restart"});
         const runtime = await evidence(
@@ -619,6 +631,18 @@ async function campaignFixture({initialOverflow = false, throughController = fal
             }),
         );
         const runtimeValue = JSON.parse(await readFile(path.join(directory, runtime.path), "utf8"));
+        if (retainsRecoveryFailures) {
+            const startId = runtimeValue.transactions.activeReloadStart.request.browserRequestId, reloadId = `reload-${restartRequestId}`, abortedId = `aborted-${reloadId}`;
+            browserEvents.push(
+                {method:"Network.requestWillBeSent", params:{requestId:startId, request:{method:"POST", url:"http://localhost/api/project/simulations"}}},
+                {method:"Network.responseReceived", params:{requestId:startId, response:{status:202}}},
+                {method:"Network.requestWillBeSent", params:{requestId:abortedId, request:{method:"GET", url:"http://localhost/api/project/context"}}},
+                {method:"Network.loadingFailed", params:{requestId:abortedId, errorText:"net::ERR_ABORTED", canceled:true}},
+                {method:"Network.requestWillBeSent", params:{requestId:reloadId, request:{method:"GET", url:"http://localhost/api/project/jobs"}}},
+                {method:"Network.responseReceived", params:{requestId:reloadId, response:{status:200}}},
+            );
+            apiEntries.push({browserRequestId:reloadId, method:"GET", path:"/api/project/jobs", status:200, payload:[{id:runtimeValue.reload.activeJobId, status:"running"}], initiator:"rendered-reload", recovery:"reload"});
+        }
         for (const captured of Object.values(runtimeValue.transactions)) captured.viewport = {width:{wide:1440, compact:960, narrow:390}[tuple.viewport], height:{wide:900, compact:800, narrow:844}[tuple.viewport]};
         Object.assign(retryTransaction, runtimeValue.transactions.simulationRetry);
         Object.assign(restartTransaction, runtimeValue.transactions.restartSimulation);
@@ -743,8 +767,8 @@ async function campaignFixture({initialOverflow = false, throughController = fal
                 ...rendered,
                 viewports:[tuple.viewport],
                 responsive:rendered.responsive.filter((item) => item.viewport === tuple.viewport).map((item) => ({...item, overflow})),
-                measurements:{...rendered.measurements, documentOverflow:overflow},
-                defects: overflow ? [{kind:"overflow", evidenceId:actions[0].evidenceId}] : [],
+                measurements:{...rendered.measurements, documentOverflow:overflow, unhandledRequestFailures:retainsRecoveryFailures ? 2 : 0},
+                defects: [...(overflow ? [{kind:"overflow", evidenceId:actions[0].evidenceId}] : []), ...(retainsRecoveryFailures ? [{kind:"request", evidenceId:browserEvidence.evidenceId}] : [])],
                 actions,
                 recovery: Object.fromEntries(
                     [
@@ -1063,10 +1087,11 @@ async function campaignFixture({initialOverflow = false, throughController = fal
     if (throughController && noFindings) {
         const configPath = path.join(directory, "closeout-config.json");
         await writeFile(configPath, JSON.stringify({directory, retestCandidate:retest, closeoutAnchor:closeout.externalAnchor}));
-        const frozenBytes = await readFile(path.join(directory, "frozen-findings.json"));
+        const retainedNames = ["PROVENANCE.json", "initial-audits.json", "frozen-findings.json", "finding-register.json", "regressions.json", "retests.json"];
+        const retainedBytes = await Promise.all(retainedNames.map((name) => readFile(path.join(directory, name))));
         const stdout = execFileSync(process.execPath, ["scripts/p8-05-product-readiness-controller.mjs", "closeout", "--config", configPath], {encoding:"utf8"});
         assert.match(stdout, /^P805_PRODUCT_READINESS_CLOSEOUT_PASS /);
-        assert.deepEqual(await readFile(path.join(directory, "frozen-findings.json")), frozenBytes);
+        for (const [index, name] of retainedNames.entries()) assert.deepEqual(await readFile(path.join(directory, name)), retainedBytes[index]);
         assert.deepEqual(await readFile(anchor, "utf8"), anchorContents);
     } else if (throughController) await runP805Closeout({directory, retestCandidate:retest, closeoutAnchor:closeout.externalAnchor});
     else await write("closeout.json", closeout);
@@ -1117,7 +1142,7 @@ test("requires every evidence kind, verifier anchors, live-DOM bindings, final-c
     }
 }, campaignTimeoutMs);
 test("public closeout preserves historical path/digest freeze anchors and no-finding checks", async () => {
-    const fixture = await campaignFixture({throughController:true, retestCandidate:initial, noFindings:true, historicalFreezeAnchor:true});
+    const fixture = await campaignFixture({throughController:true, retestCandidate:initial, noFindings:true, historicalFreezeAnchor:true, recoveryRequestFailures:true});
     try {
         const regressionBytes = await readFile(path.join(fixture.directory, "regressions.json"));
         const register = JSON.parse(regressionBytes);
@@ -1136,6 +1161,13 @@ test("public closeout preserves historical path/digest freeze anchors and no-fin
         const anchor = JSON.parse(await readFile(frozen.externalAnchor.path));
         assert.equal(Object.hasOwn(anchor, "receiptId"), false);
         assert.equal(Date.parse(anchor.anchoredAt) >= Date.parse(frozen.frozenAt), true);
+        assert.deepEqual(frozen.findings, []);
+        for (const record of ["initial-audits.json", "retests.json"]) {
+            const audits = JSON.parse(await readFile(path.join(fixture.directory, record))).audits;
+            const measured = audits.find((audit) => audit.persona === "mathematician");
+            assert.equal(measured.rendered.measurements.unhandledRequestFailures, 2);
+            assert.equal(measured.rendered.defects.filter((item) => item.kind === "request").length, 9);
+        }
         assert.equal(result.manifestSha256, hash(await readFile(path.join(fixture.directory, "manifest.json"))));
         const stdout = execFileSync(process.execPath, [
             "scripts/p8-05-product-readiness-campaign.mjs", "--campaign-dir", fixture.directory,
@@ -1144,6 +1176,15 @@ test("public closeout preserves historical path/digest freeze anchors and no-fin
             "--closeout-anchor-sha256", fixture.anchors.closeoutAnchorSha256,
         ], {encoding:"utf8"});
         assert.equal(stdout, `P805_PRODUCT_READINESS_PASS candidate=${initial.candidateId} personas=5\n`);
+    } finally { await fixture.cleanup(); }
+}, campaignTimeoutMs);
+
+test.each(["initial", "retest"])("recovery diagnostics cannot hide an unexpected %s request failure", async (phase) => {
+    const fixture = await campaignFixture({retestCandidate:initial, noFindings:true, historicalFreezeAnchor:true, recoveryRequestFailures:true,
+        mutateRecoveryFailure: (entry) => { if (entry.phase === phase) entry.failure.params.errorText = "net::ERR_FAILED"; }});
+    try {
+        await assert.rejects(() => validateP805ProductReadinessCampaign(fixture.directory, {...initial, ...fixture.anchors}),
+            phase === "initial" ? /initial mathematician request defect was not frozen against its measured evidence/ : /clean retest mathematician retains a browser quality defect/);
     } finally { await fixture.cleanup(); }
 }, campaignTimeoutMs);
 
