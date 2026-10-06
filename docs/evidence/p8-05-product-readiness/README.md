@@ -71,3 +71,11 @@ retains those exact bytes for publication; the existing direct-candidate mode
 continues to build and pack normally. The preflight is not release evidence:
 official gates and the protected publication/Drive lifecycle remain controller
 work after independent review.
+
+## Independent preflight verification — 2026-10-06
+
+`preflight-verification-d15a438b.md` is the bounded verifier-owned index for
+the exact reviewed handoff.  It records the successful public preflight, an
+independent wrong-checkout rejection, unchanged retained-campaign digests, and
+the controller-owned complete-file result without retaining raw logs or
+generated artifacts in this checkout.
