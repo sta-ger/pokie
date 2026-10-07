@@ -20,6 +20,8 @@ import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBl
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createLocalRuntimeIdentity, createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {RuntimePreparationCancelledError} from "../../../cli/materialize/RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "../../../cli/materialize/RuntimePreparationCleanupError.js";
 import {UnsupportedProjectOperationError} from "../../../cli/materialize/UnsupportedProjectOperationError.js";
 import {PackageCommandResult, PackageCommandRunning, runPackageCommand, withLinkedLocalPokieRuntime} from "../../../cli/prepare/PackageCommandRunner.js";
 
@@ -497,6 +499,67 @@ describe("BlueprintProjectMaterializer", () => {
         expect(workingRunner.calls).toHaveLength(1);
     });
 
+    it.each([
+        ["staging", false], ["staging", true], ["lock", false], ["lock", true],
+    ] as const)("rejects unconfirmed %s removal instead of claiming safe cleanup (cancelled=%s)", async (resource, cancelled) => {
+        const controller = new AbortController();
+        const runner = () => {
+            if (cancelled) controller.abort();
+            return Promise.resolve({stdout: "", stderr: ""});
+        };
+        const validator = createStubPackageValidator(resource === "staging" && !cancelled ? invalidReport : validReport);
+        const subject = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, validator, cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "cleanup.json", createStarterGameBlueprint());
+        const failure = new Error(`EACCES: ${resource} removal failed`);
+        const remove = fs.promises.rm;
+        const removeSpy = jest.spyOn(fs.promises, "rm").mockImplementation((target, options) => {
+            const ownedPath = String(target);
+            if (resource === "staging" ? ownedPath.includes(".staging-") : ownedPath.endsWith(".lock")) {
+                return Promise.reject(failure);
+            }
+            return remove(target, options);
+        });
+        try {
+            const pending = subject.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal});
+            await expect(pending).rejects.toBeInstanceOf(RuntimePreparationCleanupError);
+            await expect(pending).rejects.toMatchObject({cause: failure});
+        } finally {
+            removeSpy.mockRestore();
+        }
+    });
+
+    it("preserves an unknown dependency error after an abort instead of manufacturing safe cancellation", async () => {
+        const controller = new AbortController();
+        const failure = new Error("Runtime materialization was cancelled.");
+        const runner = () => {
+            controller.abort();
+            return Promise.reject(failure);
+        };
+        const subject = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, createStubPackageValidator(validReport), cacheRoot);
+        const blueprintPath = writeBlueprint(sourceDir, "unknown-cleanup.json", createStarterGameBlueprint());
+
+        await expect(subject.materialize(blueprintProjectOf(blueprintPath), {signal: controller.signal})).rejects.toBe(failure);
+        expect(fs.readdirSync(cacheRoot)).toEqual([]);
+    });
+
+    it("drains a package command cancelled synchronously during spawn before reporting safe cancellation", async () => {
+        const controller = new AbortController();
+        let childPid: number | undefined;
+        const pending = runPackageCommand(process.execPath, ["-e", "setInterval(() => {}, 1000)"], sourceDir, {
+            signal: controller.signal,
+            spawn: (command, args, options) => {
+                const child = spawn(command, args, {...options, stdio: "pipe"});
+                childPid = child.pid;
+                controller.abort();
+                return child;
+            },
+        });
+
+        await expect(pending).rejects.toBeInstanceOf(RuntimePreparationCancelledError);
+        expect(childPid).toBeDefined();
+        expect(() => process.kill(childPid!, 0)).toThrow();
+    });
+
     it("aborts an active dependency-install process tree without retrying, and removes its staging directory and cache lock", async () => {
         const childPidPath = path.join(sourceDir, "dependency-install-pids.json");
         const calls: RecordedCommand[] = [];
@@ -537,7 +600,7 @@ describe("BlueprintProjectMaterializer", () => {
         const pids = JSON.parse(fs.readFileSync(childPidPath, "utf-8")) as {parent: number; descendant: number};
         controller.abort();
 
-        await expect(materializing).rejects.toThrow(/cancelled/i);
+        await expect(materializing).rejects.toBeInstanceOf(RuntimePreparationCancelledError);
         expect(runner.calls).toHaveLength(1);
         expect(fs.readdirSync(cacheRoot)).toEqual([]);
         expect(() => process.kill(pids.parent, 0)).toThrow();
@@ -1236,7 +1299,7 @@ describe("createMaterializingRuntimePackageResolver", () => {
         const loadGame = jest.fn();
 
         await expect(resolveRuntimePackageRoot("/project", {signal: controller.signal}).then((resolution) => loadGame(resolution.runtimePath)))
-            .rejects.toThrow(/cancelled/i);
+            .rejects.toBeInstanceOf(RuntimePreparationCancelledError);
 
         expect(materializer.calls).toEqual([]);
         expect(loadGame).not.toHaveBeenCalled();
@@ -1259,10 +1322,45 @@ describe("createMaterializingRuntimePackageResolver", () => {
         const loadGame = jest.fn();
 
         await expect(resolveRuntimePackageRoot(blueprintPath, {signal: controller.signal}).then((resolution) => loadGame(resolution.runtimePath)))
-            .rejects.toThrow(/cancelled/i);
+            .rejects.toBeInstanceOf(RuntimePreparationCancelledError);
 
         expect(release).toHaveBeenCalledTimes(1);
         expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("retains a resolver failure when cancellation arrives during inspection", async () => {
+        const controller = new AbortController();
+        const failure = new Error("EACCES: cannot inspect /project/package.json");
+        const materializer = rejectingMaterializer("must not acquire a runtime after failed inspection");
+        const resolver = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject: {resolve: () => {
+                controller.abort();
+                return Promise.reject(failure);
+            }},
+            materializer,
+        });
+
+        await expect(resolver("/project", {signal: controller.signal})).rejects.toBe(failure);
+        expect(materializer.calls).toEqual([]);
+    });
+
+    it("does not turn a release rejection carrying a cancellation error into safe cancellation", async () => {
+        const controller = new AbortController();
+        const failure = new RuntimePreparationCancelledError();
+        const release = jest.fn(() => Promise.reject(failure));
+        const blueprintPath = writeBlueprint(sourceDir, "game.json", createStarterGameBlueprint());
+        const resolver = createMaterializingRuntimePackageResolver("1.3.0", SIM_OPERATION, undefined, {
+            resolveProject: stubProjectResolver(blueprintProjectOf(blueprintPath)),
+            materializer: {materialize: () => {
+                controller.abort();
+                return Promise.resolve({runtimePath: "/runtime", ownsRuntimePath: false, release});
+            }},
+        });
+        const pending = resolver(blueprintPath, {signal: controller.signal});
+
+        await expect(pending).rejects.toBeInstanceOf(RuntimePreparationCleanupError);
+        await expect(pending).rejects.toMatchObject({cause: failure});
+        expect(release).toHaveBeenCalledTimes(1);
     });
 
     it("surfaces a materialization failure as its own BlueprintMaterializationError, with its failing phase intact, and never yields a runtime path the operation could load", async () => {

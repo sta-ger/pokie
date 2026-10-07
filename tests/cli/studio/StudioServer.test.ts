@@ -1410,6 +1410,161 @@ describe("StudioServer", () => {
         }
     });
 
+    it.each(["home", "direct"] as const)("safely cancels %s opening during shared resolution before resource acquisition", async (entry) => {
+        const sourcePath = path.join(studioRoot, "resolving-project");
+        let finishResolution!: (project: PokieProject | undefined) => void;
+        let notifyResolution!: () => void;
+        const started = new Promise<void>((resolve) => {
+            notifyResolution = resolve;
+        });
+        const materializer = {materialize: jest.fn()};
+        const resolver = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {
+            resolveProject: {resolve: () => new Promise<PokieProject | undefined>((resolve) => {
+                finishResolution = resolve;
+                notifyResolution();
+            })},
+            materializer,
+        });
+        const loader = jest.fn();
+        const recents = new InMemoryRecentProjectsRepository();
+        const registry = new InMemoryStudioProjectRegistry();
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "resolving-opening"));
+        const jobs = new StudioJobService(repository);
+        const home = new StudioHomeService("1.0.0", recents, loader, undefined, resolver);
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: home, loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, home),
+            projectRegistrationService: new StudioProjectRegistrationService(registry),
+            initialContext: entry === "direct" ? {mode: "project", projectRoot: sourcePath} : undefined,
+        });
+        try {
+            const address = await lifecycleServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            const opening = entry === "home" ? post(`${url}/api/home/projects/open`, {projectRoot: sourcePath}) : undefined;
+            await started;
+            if (entry === "home") {
+                const [job] = jobs.list();
+                expect(await post(`${url}/api/home/jobs/${job.id}/cancel`)).toMatchObject({status: 202});
+            } else {
+                expect(await post(`${url}/api/projects/close`, {confirmActiveJobs: true})).toMatchObject({status: 200});
+            }
+            finishResolution(undefined);
+            if (opening !== undefined) {
+                expect(await opening).toMatchObject({status: 409});
+                expect(await get(`${url}/api/home/jobs`)).toMatchObject({body: {jobs: [expect.objectContaining({status: "cancelled"})]}});
+            }
+            await flushMacrotask();
+            expect((await get(`${url}/api/context`)).body).toEqual({mode: "home"});
+            expect(await recents.list()).toEqual([]);
+            expect(await registry.list()).toEqual([]);
+            expect(materializer.materialize).not.toHaveBeenCalled();
+            expect(loader).not.toHaveBeenCalled();
+            await expect(lifecycleServer.stop()).resolves.toBeUndefined();
+            expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
+        } finally {
+            finishResolution?.(undefined);
+            await lifecycleServer.stop();
+        }
+    });
+
+    it.each([
+        ["home", "runtime", false], ["direct", "runtime", false],
+        ["home", "game", false], ["direct", "game", false],
+        ["home", "game", true], ["direct", "game", true],
+    ] as const)("retains %s %s release failure as cleanup-unconfirmed (cancelled=%s)", async (entry, resource, cancelled) => {
+        const sourcePath = path.join(studioRoot, "release-failure-game");
+        fs.mkdirSync(sourcePath);
+        fs.writeFileSync(path.join(sourcePath, "package.json"), JSON.stringify({name: "release-failure-game", pokie: {entry: "index.js"}}));
+        fs.writeFileSync(path.join(sourcePath, "index.js"), "// injectable game module");
+        const failureMessage = `fixture ${resource} release failed`;
+        let finishLoad!: (game: PokieGame) => void;
+        let notifyLoad!: () => void;
+        const loadStarted = new Promise<void>((resolve) => {
+            notifyLoad = resolve;
+        });
+        let notifyRelease!: () => void;
+        const releaseStarted = new Promise<void>((resolve) => {
+            notifyRelease = resolve;
+        });
+        let snapshotRoot: string | undefined;
+        const remove = fs.rmSync;
+        const removeSpy = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+            if (resource === "game" && target === snapshotRoot) {
+                notifyRelease();
+                throw new Error(failureMessage);
+            }
+            return remove(target, options);
+        });
+        const runtimeRelease = jest.fn(() => {
+            if (resource === "runtime") {
+                notifyRelease();
+                return Promise.reject(new Error(failureMessage));
+            }
+            return Promise.resolve();
+        });
+        let openingSignal: AbortSignal | undefined;
+        const resolver = (_root: string, options: {signal?: AbortSignal} = {}) => {
+            openingSignal = options.signal;
+            return Promise.resolve({runtimePath: sourcePath, release: runtimeRelease});
+        };
+        const game = createFakeGame({id: "release-failure", name: "Release Failure", version: "1.0.0"});
+        const loader = async () => {
+            const loaded = resource === "game" ? await loadPokieGame(sourcePath, (entryPath) => {
+                snapshotRoot = path.dirname(entryPath);
+                return Promise.resolve({default: game});
+            }) : game;
+            notifyLoad();
+            return new Promise<PokieGame>((resolve) => {
+                finishLoad = () => resolve(loaded);
+            });
+        };
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "failed-release-opening"));
+        const jobs = new StudioJobService(repository);
+        const recents = new InMemoryRecentProjectsRepository();
+        const registry = new InMemoryStudioProjectRegistry();
+        const home = new StudioHomeService("1.0.0", recents, loader, undefined, resolver);
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: home, loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, home),
+            projectRegistrationService: new StudioProjectRegistrationService(registry),
+            initialContext: entry === "direct" ? {mode: "project", projectRoot: sourcePath} : undefined,
+        });
+        let shutdownAttempted = false;
+        try {
+            const address = await lifecycleServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            const opening = entry === "home" ? post(`${url}/api/home/projects/open`, {projectRoot: sourcePath}) : undefined;
+            await loadStarted;
+            if (cancelled) expect(await post(`${url}/api/projects/close`, {confirmActiveJobs: true})).toMatchObject({status: 200});
+            expect(openingSignal?.aborted).toBe(cancelled);
+            finishLoad(game);
+            await releaseStarted;
+            if (opening !== undefined) {
+                expect(await opening).toMatchObject(cancelled ? {status: 409} : {status: 400, body: {error: expect.stringContaining(failureMessage)}});
+                expect(await get(`${url}/api/home/jobs`)).toMatchObject({body: {jobs: [expect.objectContaining({
+                    status: "recovery-required", recovery: {action: "retry", reason: expect.stringContaining(failureMessage)},
+                })]}});
+                expect((await get(`${url}/api/context`)).body).toEqual({mode: "home"});
+            } else if (!cancelled) {
+                await flushMacrotask();
+                expect(await get(`${url}/api/project/context`)).toMatchObject({body: {status: "error", error: expect.stringContaining(`${failureMessage}. Inspect the runtime resources and restart Studio`)}});
+            }
+            expect(await recents.list()).toEqual([]);
+            expect(await registry.list()).toEqual([]);
+            expect(runtimeRelease).toHaveBeenCalledTimes(1);
+            shutdownAttempted = true;
+            await expect(lifecycleServer.stop()).rejects.toThrow(entry === "home" ? "Studio shutdown could not confirm executor cleanup." : "Project opening cleanup failed");
+            expect(repository.getProcessState()?.status).toBe("running");
+        } finally {
+            finishLoad?.(game);
+            removeSpy.mockRestore();
+            if (!shutdownAttempted) await lifecycleServer.stop().catch(() => undefined);
+            if (snapshotRoot !== undefined) remove(snapshotRoot, {recursive: true, force: true});
+        }
+    });
+
     it("returns 400 for a projectRoot that fails to load", async () => {
         loadGame.mockRejectedValue(new Error("not a pokie game package"));
 

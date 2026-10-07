@@ -1621,9 +1621,15 @@ export class StudioServer implements StudioServerHandling {
                     }
                     return {status: "failed", error: dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`, recovery};
                 },
-                (error, cancelled) => (cancelled || (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation)))
-                    ? {status: "cancelled", result: {summary: "Project opening was cancelled before a dashboard was published.", detail: {sourcePath}}, recovery}
-                    : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+                (error, cancelled) => {
+                    if (error instanceof StudioProjectOpeningCleanupError) {
+                        return {status: "recovery-required", recovery: {action: "retry", reason: error.message}};
+                    }
+                    if (cancelled || (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation))) {
+                        return {status: "recovery-required", recovery: {action: "retry", reason: `Project opening cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect the runtime resources and restart Studio before reopening the project.`}};
+                    }
+                    return {status: "failed", error: error instanceof Error ? error.message : String(error), recovery};
+                },
             );
         } catch (error) {
             if (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation)) {

@@ -10,6 +10,8 @@ import {
 } from "pokie";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeArtifactInputBindingHash} from "../../src/project/ArtifactConversionPlanner.js";
+import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
 
 /**
  * The runtime counterpart to the durable artifact registry.  It follows the
@@ -53,9 +55,13 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
             if (released) return;
             released = true;
             try {
-                await result?.release();
-            } finally {
-                await fs.promises.rm(stage, {recursive: true, force: true});
+                try {
+                    await result?.release();
+                } finally {
+                    await fs.promises.rm(stage, {recursive: true, force: true});
+                }
+            } catch (error) {
+                throw new RuntimePreparationCleanupError(error);
             }
         };
         try {
@@ -83,7 +89,7 @@ export class RunnableArtifactMaterializer implements ProjectMaterializing {
     }
 
     private assertNotCancelled(signal: AbortSignal | undefined): void {
-        if (signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+        if (signal?.aborted) throw new RuntimePreparationCancelledError();
     }
 
     private describeUnavailable(plan: ReturnType<ArtifactConversionPlanner["planRuntime"]>): string {

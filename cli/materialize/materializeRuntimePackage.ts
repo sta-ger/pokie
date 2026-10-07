@@ -16,6 +16,8 @@ import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
 import {RunnableArtifactMaterializer} from "./RunnableArtifactMaterializer.js";
 import {RuntimePreparationError} from "./RuntimePreparationError.js";
+import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
 // What every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) gets back once it's
@@ -214,11 +216,18 @@ export function createMaterializingRuntimePackageResolver(
             try {
                 const materialized = await materializer.materialize(project, options);
                 if (options.signal?.aborted) {
-                    await materialized.release();
+                    try {
+                        await materialized.release();
+                    } catch (error) {
+                        // A release rejection is never a safe cancellation,
+                        // even if the collaborator throws a cancellation error.
+                        throw new RuntimePreparationCleanupError(error);
+                    }
                     assertRuntimePreparationNotCancelled(options.signal);
                 }
                 return {runtimePath: materialized.runtimePath, release: materialized.release};
             } catch (error) {
+                if (error instanceof RuntimePreparationCleanupError || error instanceof RuntimePreparationCancelledError) throw error;
                 if (options.signal?.aborted) throw error;
                 // Preserve the dedicated lifecycle error (including phase and
                 // npm detail) for direct consumers while enriching its public
@@ -254,5 +263,5 @@ export function createMaterializingRuntimePackageResolver(
 }
 
 function assertRuntimePreparationNotCancelled(signal: AbortSignal | undefined): void {
-    if (signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+    if (signal?.aborted) throw new RuntimePreparationCancelledError();
 }

@@ -19,6 +19,8 @@ import {
     type ProjectMaterializationOptions,
 } from "pokie";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
+import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
 import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
 
 // Where every BlueprintProjectMaterializer defaults to caching a materialized runtime -- a machine-wide,
@@ -215,7 +217,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 // absent -- nobody else can have repopulated it while the lock is held.
                 await fs.promises.rename(stagingDir, cacheDir);
             } catch (error) {
-                await this.removeBestEffort(stagingDir);
+                await this.removeOwnedResource(stagingDir);
                 throw error;
             }
 
@@ -275,7 +277,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 return;
             } catch (error) {
                 lastError = error;
-                this.assertNotCancelled(signal);
+                if (signal?.aborted || error instanceof RuntimePreparationCancelledError) throw error;
             }
         }
         // The only exit after every bounded install attempt has failed is the materialization boundary --
@@ -363,14 +365,16 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     }
 
     // Reads whatever holder record currently lives at `holderPath`, or null if there isn't one (not yet
-    // written, already removed, or unparseable) -- never throws. Only "pid" is required for a value to come
+    // written, already removed, or unparseable). Owned release uses strict I/O diagnostics; inspection
+    // remains best-effort. Only "pid" is required for a value to come
     // back non-null; "token" is read through verbatim when present (see LockHolder's own doc comment on why
     // an absent token is a valid, distinct value from any real one, never coerced or defaulted).
-    private async readHolder(holderPath: string): Promise<LockHolder | null> {
+    private async readHolder(holderPath: string, strict = false): Promise<LockHolder | null> {
         let raw: string;
         try {
             raw = await fs.promises.readFile(holderPath, "utf-8");
-        } catch {
+        } catch (error) {
+            if (strict && (error as NodeJS.ErrnoException).code !== "ENOENT") throw new RuntimePreparationCleanupError(error);
             return null;
         }
         try {
@@ -486,10 +490,13 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // exists, so an earlier holder's release still leaves no trace behind without ever disturbing whoever
     // holds lockDir now.
     private async releaseLock(lockDir: string, token: string): Promise<void> {
-        const holder = await this.readHolder(path.join(lockDir, LOCK_HOLDER_FILE));
+        const holder = await this.readHolder(path.join(lockDir, LOCK_HOLDER_FILE), true);
         if (holder !== null && holder.token === token) {
-            await this.removeBestEffort(lockDir);
+            await this.removeOwnedResource(lockDir);
             return;
+        }
+        if (holder === null && fs.existsSync(lockDir)) {
+            throw new RuntimePreparationCleanupError(new Error(`Cannot confirm ownership of cache lock "${lockDir}".`));
         }
         await this.cleanupOwnQuarantineCopy(lockDir, token);
     }
@@ -497,10 +504,10 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
     // Finds and removes the one quarantine copy under lockDir's own `.reclaim-` prefix (if any) whose
     // recorded token matches `token` -- i.e. this call's own displaced lock instance, never anyone else's.
     private async cleanupOwnQuarantineCopy(lockDir: string, token: string): Promise<void> {
-        for (const quarantineDir of await this.listQuarantineSiblings(lockDir)) {
-            const holder = await this.readHolder(path.join(quarantineDir, LOCK_HOLDER_FILE));
+        for (const quarantineDir of await this.listQuarantineSiblings(lockDir, true)) {
+            const holder = await this.readHolder(path.join(quarantineDir, LOCK_HOLDER_FILE), true);
             if (holder !== null && holder.token === token) {
-                await this.removeBestEffort(quarantineDir);
+                await this.removeOwnedResource(quarantineDir);
                 return;
             }
         }
@@ -518,19 +525,20 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
         }
     }
 
-    private async listQuarantineSiblings(lockDir: string): Promise<string[]> {
+    private async listQuarantineSiblings(lockDir: string, strict = false): Promise<string[]> {
         const prefix = `${path.basename(lockDir)}.reclaim-`;
         let entries: string[];
         try {
             entries = await fs.promises.readdir(path.dirname(lockDir));
-        } catch {
+        } catch (error) {
+            if (strict && (error as NodeJS.ErrnoException).code !== "ENOENT") throw new RuntimePreparationCleanupError(error);
             return [];
         }
         return entries.filter((entry) => entry.startsWith(prefix)).map((entry) => path.join(path.dirname(lockDir), entry));
     }
 
     private assertNotCancelled(signal: AbortSignal | undefined): void {
-        if (signal?.aborted) throw new Error("Runtime materialization was cancelled.");
+        if (signal?.aborted) throw new RuntimePreparationCancelledError("Runtime materialization was cancelled.");
     }
 
     private delay(ms: number): Promise<void> {
@@ -560,6 +568,14 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
             return marker.cacheKey === cacheKey;
         } catch {
             return false;
+        }
+    }
+
+    private async removeOwnedResource(targetPath: string): Promise<void> {
+        try {
+            await fs.promises.rm(targetPath, {recursive: true, force: true});
+        } catch (error) {
+            throw new RuntimePreparationCleanupError(error);
         }
     }
 
