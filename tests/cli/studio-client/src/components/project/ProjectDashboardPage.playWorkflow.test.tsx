@@ -1,5 +1,5 @@
 import {MantineProvider} from "@mantine/core";
-import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
@@ -198,11 +198,21 @@ describe("ProjectDashboardPage - Play", () => {
 
         expect((await screen.findByText("Spinning…")).closest("[role=status]")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Spin"})).toBeDisabled();
+        expect(screen.getByRole("button", {name: "Reset Play session"})).toBeDisabled();
 
-        resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});
+        await act(async () => {
+            expect(resolveReset).toBeDefined();
+            resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});
+            await Promise.resolve();
+        });
 
-        await screen.findByLabelText("Game player");
-        expect(screen.queryByText(/You won 15\.00/)).toBeNull();
+        // The retained round already contains Game player while Reset is pending. Wait for the
+        // replacement itself rather than a label shared by the old and new session views.
+        await waitFor(() => expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument());
+        expect(screen.queryByText("Spinning…")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Game player")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Spin"})).toBeEnabled();
     }, 30000);
 
     it("stops offering controls for a stale Play session instead of presenting its previous round as current", async () => {
@@ -339,7 +349,8 @@ describe("ProjectDashboardPage - Play", () => {
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        await waitFor(() => expect(screen.getByLabelText("Game player")).toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByText(/Round complete/)).not.toBeInTheDocument());
+        expect(screen.getByLabelText("Game player")).toBeInTheDocument();
         expect(createCalls).toBe(2);
     }, 30000);
 
@@ -389,8 +400,8 @@ describe("ProjectDashboardPage - Play", () => {
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        await screen.findByLabelText("Game player");
-        expect(screen.queryByText(/You won 15\.00/)).toBeNull();
+        await waitFor(() => expect(screen.queryByText(/You won 15\.00/)).not.toBeInTheDocument());
+        expect(screen.getByLabelText("Game player")).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Spin"}));
         await waitFor(() => expect(calls.some((call) => call.url === "/api/project/play/sessions/sess-3/spin")).toBe(true));
         expect(createCalls).toBe(3);
