@@ -27,6 +27,7 @@ function sessionFor(overrides: Partial<StudioRuntimeSessionView> = {}): StudioRu
 async function goToPlayTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await screen.findByRole("heading", {name: "A"});
     await user.click(screen.getByRole("button", {name: "Play"}));
+    await waitFor(() => expect(screen.getByRole("button", {name: "Play"})).toHaveAttribute("aria-current", "page"));
 }
 
 describe("ProjectDashboardPage - Play", () => {
@@ -195,7 +196,7 @@ describe("ProjectDashboardPage - Play", () => {
 
         await user.click(screen.getByRole("button", {name: "Reset Play session"}));
 
-        expect(await screen.findByRole("status")).toHaveTextContent("Spinning…");
+        expect((await screen.findByText("Spinning…")).closest("[role=status]")).toBeInTheDocument();
         expect(screen.getByText(/You won 15\.00/)).toBeInTheDocument();
 
         resolveReset?.({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: sessionFor({sessionId: "sess-2"})})});

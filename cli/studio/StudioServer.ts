@@ -133,6 +133,8 @@ import {canonicalStudioProjectIdentity} from "./jobs/canonicalStudioProjectIdent
 import {StudioJobService, type StudioJobExecutorContext, type StudioJobExecutorTerminal} from "./jobs/StudioJobService.js";
 import type {StudioJobProgressView, StudioJobView} from "./jobs/StudioJobView.js";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
+import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelledError.js";
+import {StudioProjectOpeningCleanupError} from "./StudioProjectOpeningCleanupError.js";
 
 function describeIncompleteOutcomeSourceProvenance(recorded: unknown): string | undefined {
     if (typeof recorded !== "object" || recorded === null) {
@@ -840,12 +842,17 @@ export class StudioServer implements StudioServerHandling {
                     this.projectDashboard = dashboard;
                 }
             })
-            .catch(() => {
-                // loadProjectDashboardContext itself never rejects (it catches internally) — this is
-                // an extra safety net only, so a StudioServer never crashes on a background load.
+            .catch((error: unknown) => {
+                if (error instanceof StudioProjectOpeningCancelledError) return;
+                if (this.isCurrentRuntimePreparation(preparation)) {
+                    this.projectDashboard = {status: "error", projectRoot, error: error instanceof Error ? error.message : String(error)};
+                }
+                // Keep failed cleanup in the drain set so stop cannot publish
+                // a graceful marker for a rejected direct-entry lease release.
+                if (error instanceof StudioProjectOpeningCleanupError) throw error;
             });
         this.dashboardLoads.add(loading);
-        loading.then(() => this.dashboardLoads.delete(loading));
+        loading.then(() => this.dashboardLoads.delete(loading), () => undefined);
     }
 
     private beginRuntimePreparation(): {generation: number; controller: AbortController} {
@@ -1543,7 +1550,7 @@ export class StudioServer implements StudioServerHandling {
         let preparation: ReturnType<StudioServer["beginRuntimePreparation"]> | undefined;
         let execution: {readonly job: StudioJobView; readonly value: ProjectDashboardContext} | undefined;
         try {
-            execution = await this.executeCommonOperation(
+            execution = await this.executeCommonOperation<ProjectDashboardContext>(
                 res,
                 {
                     projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery,
@@ -1563,7 +1570,7 @@ export class StudioServer implements StudioServerHandling {
                             isCurrent: () => this.isCurrentRuntimePreparation(preparation!),
                         });
                         if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
-                            throw new Error("Project opening was superseded by a newer request.");
+                            throw new StudioProjectOpeningCancelledError();
                         }
                         if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
                             return dashboard;
@@ -1579,7 +1586,7 @@ export class StudioServer implements StudioServerHandling {
                             },
                         );
                         if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
-                            throw new Error("Project opening was superseded by a newer request.");
+                            throw new StudioProjectOpeningCancelledError();
                         }
                         progress({stage: "Publishing dashboard", unit: "opening stages", current: 3, total: 3, message: "Switching Studio to the opened project."});
                         this.playService.reset();
@@ -1588,6 +1595,14 @@ export class StudioServer implements StudioServerHandling {
                         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
                         this.projectDashboard = dashboard;
                         return dashboard;
+                    } catch (error) {
+                        // This named guard is raised only after owned resources
+                        // have drained. Return its cancelled result normally;
+                        // unknown executor/cleanup exceptions still fail closed.
+                        if (error instanceof StudioProjectOpeningCancelledError) {
+                            return {status: "error", projectRoot: sourcePath, error: error.message};
+                        }
+                        throw error;
                     } finally {
                         signal.removeEventListener("abort", abortPreparation);
                     }

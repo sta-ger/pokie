@@ -116,7 +116,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
         // capability matrix actually supports, while preserving its project-scoped route.
         await user.click(screen.getByRole("button", {name: "Go to Overview"}));
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`));
-        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
     });
 
     it.each([
@@ -148,7 +148,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(router.state.location.pathname).toBe(expectedPath));
-        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
         expect(screen.getByText(/Outcome Libraries is no longer available in Studio/)).toBeInTheDocument();
         expect(screen.getByText(/has no Build\/Export equivalent/)).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Build/Export"})).toBeInTheDocument();
@@ -196,7 +196,7 @@ describe("Routable Home/Project sections: refresh and direct-link", () => {
 
         await screen.findByRole("heading", {name: "A"});
         await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`));
-        expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page");
+        await waitFor(() => expect(screen.getByRole("button", {name: "Overview"})).toHaveAttribute("aria-current", "page"));
         expect(screen.getByText(/The requested Studio section is no longer available/)).toBeInTheDocument();
     });
 });

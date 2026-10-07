@@ -129,6 +129,7 @@ describe("useOpenProject: guarded side effects", () => {
         const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
 
         dirtyTheDesignDraft();
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
         fireEvent.click(screen.getByRole("button", {name: "Create game"}));
         expect(await screen.findByRole("heading", {name: "Starter Slot"})).toBeInTheDocument();
         expect(screen.queryByText("You have unsaved changes in Design Game. Leave and lose them?")).not.toBeInTheDocument();

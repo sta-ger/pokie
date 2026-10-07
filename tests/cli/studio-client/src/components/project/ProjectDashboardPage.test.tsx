@@ -183,7 +183,7 @@ describe("ProjectDashboardPage", () => {
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await screen.findByRole("heading", {name: "Sample Slot"});
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await user.click(await screen.findByRole("button", {name: "Run Simulation"}));
 
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent(diagnostic);
@@ -269,7 +269,7 @@ describe("ProjectDashboardPage", () => {
         await screen.findByRole("heading", {name: "Sample Slot"});
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await user.click(await screen.findByRole("button", {name: "Run Simulation"}));
 
         // Switch away from the Simulation tab while the job is still "running" -- the poll must keep
         // going in the background (see ProjectDashboardPage's own doc comment on why every tab's hook
@@ -323,11 +323,11 @@ describe("ProjectDashboardPage", () => {
 
         // The Simulate tab itself stays fully usable -- warnings never gate the actual action.
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
+        expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeEnabled();
 
         // Back on Overview, the warnings-only diagnostics are still shown, unchanged.
         await user.click(screen.getByRole("button", {name: "Overview"}));
-        expect(screen.getByText(/Valid, with warnings/)).toBeInTheDocument();
+        expect(await screen.findByText(/Valid, with warnings/)).toBeInTheDocument();
     });
 
     it("a failed re-check clears the stale successful result instead of leaving it displayed", async () => {

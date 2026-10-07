@@ -224,7 +224,7 @@ describe("Studio happy path: recommended model -> create project -> simulate -> 
 
         // 5. Head to Simulation and run it.
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await user.click(await screen.findByRole("button", {name: "Run Simulation"}));
 
         // 6. Let it complete -- Simulation's own Review step auto-advances the instant the run goes
         // terminal (see SimulationTab's own doc comment on its activeStep effect), no separate
