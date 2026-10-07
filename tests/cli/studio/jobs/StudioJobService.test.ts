@@ -86,6 +86,70 @@ describe("StudioJobService", () => {
         expect(service.get("/project-b", second.job.id)).toMatchObject({status: "cancelling"});
     });
 
+    it("keeps shutdown pending until an executor finishes its cancellation cleanup", async () => {
+        const repository = new FileStudioJobRepository(directory);
+        const service = new StudioJobService(repository, () => 100, () => "delayed-cleanup");
+        let release!: () => void;
+        const cleanup = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        const execution = service.execute(
+            {projectId: "/project", operation: "deployment", request: {}, conflictKey: "destination"},
+            async () => {
+                await cleanup;
+                return "cleaned";
+            },
+            () => ({status: "cancelled", result: {summary: "Staging cleaned"}}),
+        );
+        service.cancelAll();
+        let stopped = false;
+        const shutdown = service.completeGracefulShutdown().then(() => {
+            stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        expect(service.get("/project", "delayed-cleanup")).toMatchObject({status: "cancelling"});
+        expect(repository.getProcessState()?.status).toBe("running");
+        release();
+        await execution;
+        await shutdown;
+        expect(service.get("/project", "delayed-cleanup")).toMatchObject({status: "cancelled"});
+        expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
+    });
+
+    it("retains interrupted recovery instead of inventing cancellation for an undrained executor", async () => {
+        const repository = new FileStudioJobRepository(directory);
+        const service = new StudioJobService(repository, () => 100, () => "undrained");
+        service.start({projectId: "/project", operation: "artifact-build", request: {outDir: "output"}, conflictKey: "destination"});
+        service.cancelAll();
+        await expect(service.completeGracefulShutdown()).rejects.toThrow("could not confirm executor cleanup");
+        expect(service.get("/project", "undrained")).toMatchObject({status: "recovery-required", request: {outDir: "output"}, recovery: {action: "retry"}});
+        expect(service.get("/project", "undrained")?.recovery?.reason).toContain("Inspect the captured destination");
+        expect(repository.getProcessState()?.status).toBe("running");
+    });
+
+    it("preserves recovery when a cancelled executor throws without confirming cleanup", async () => {
+        const repository = new FileStudioJobRepository(directory);
+        const service = new StudioJobService(repository, () => 100, () => "cleanup-error");
+        let reject!: (error: Error) => void;
+        const cleanup = new Promise<void>((_resolve, rejectCleanup) => {
+            reject = rejectCleanup;
+        });
+        const execution = service.execute(
+            {projectId: "/project", operation: "deployment", request: {destination: "output"}, conflictKey: "destination"},
+            () => cleanup,
+            () => ({status: "completed", result: {summary: "published"}}),
+            () => ({status: "cancelled", result: {summary: "Compatibility mapper claimed cleanup"}}),
+        );
+        const failedExecution = expect(execution).rejects.toThrow("cleanup failed");
+        service.cancelAll();
+        reject(new Error("cleanup failed"));
+        await failedExecution;
+        await expect(service.completeGracefulShutdown()).rejects.toThrow("could not confirm executor cleanup");
+        expect(service.get("/project", "cleanup-error")).toMatchObject({status: "recovery-required", recovery: {action: "retry"}, request: {destination: "output"}});
+        expect(repository.getProcessState()?.status).toBe("running");
+    });
+
     it("owns queued, running, cancelling, and every executor terminal record", async () => {
         let nextId = 0;
         const service = new StudioJobService(new FileStudioJobRepository(directory), () => 100, () => `job-lifecycle-${++nextId}`);

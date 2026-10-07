@@ -1012,6 +1012,7 @@ describe("BlueprintEditorPage - Reel Strip Modeler", () => {
         await user.click(screen.getByRole("button", {name: "Apply"}));
         expect(screen.getByText(/Use Save game to keep these changes/)).toBeInTheDocument();
 
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
         await user.click(screen.getByRole("button", {name: "Create game"}));
         await waitFor(() => expect(managedSaveBodies).toHaveLength(1));
         const savedReel = managedSaveBodies[0].blueprint.reelStripGeneration[0];

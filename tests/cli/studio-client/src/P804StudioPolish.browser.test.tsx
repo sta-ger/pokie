@@ -33,6 +33,10 @@ describe("P8-04 Studio polish browser audit", () => {
             expect(result.error).toBeUndefined();
             const transcript = readFileSync(resolve(evidence, "AUDIT-TRANSCRIPT.txt"), "utf8");
             if (result.status !== 0) throw new Error(`${result.stdout}\n${result.stderr}\n${transcript}`);
+            const readiness = "LIFECYCLE guided creation: visible enabled Create game action after successful automatic validation";
+            expect(transcript).toContain(readiness);
+            expect(transcript.indexOf(readiness)).toBeLessThan(transcript.indexOf("CLICK Create game"));
+            expect(transcript.match(/CLICK Create game/g)).toHaveLength(1);
             expect(transcript).toContain("WORKFLOW created, registered, and opened a real long-named project");
             expect(transcript).toContain("LIFECYCLE queued/running simulation: visible enabled button action Cancel");
             expect(transcript).toContain("LIFECYCLE simulation cancellation confirmation: visible enabled button action Confirm");

@@ -244,6 +244,11 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                 commitment and live source bundle -- everything shown here is computed by pokie&apos;s own
                 commit-reveal services, never re-derived in this UI.
             </Text>
+            {!diagnosticsReachable && (
+                <Text id="fairness-diagnostics-unavailable" size="xs" c="dimmed" mb={4}>
+                    Review diagnostics becomes available after verification completes.
+                </Text>
+            )}
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
                 <Stepper.Step label="Configure" description="Seeds & mode" aria-current={activeStep === 0 ? "step" : undefined} />
@@ -258,12 +263,14 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                     label="Review diagnostics"
                     description="Issues"
                     disabled={!diagnosticsReachable}
+                    aria-describedby={diagnosticsReachable ? undefined : "fairness-diagnostics-unavailable"}
+                    title={diagnosticsReachable ? undefined : "Review diagnostics becomes available after verification completes."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
             </Stepper>
 
             {activeStep === 0 && (
-                <div>
+                <div data-pokie-lifecycle-form="fairness">
                     {configureOutdated && (
                         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="sm">
                             Outdated -- a seed or mode field changed since the last Compute commitments run.
@@ -312,7 +319,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                         mb="sm"
                     />
                     <QuickActions>
-                        <Button onClick={runConfigure} loading={configureView.status === "loading"} disabled={!isConfigureValid(fields)}>
+                        <Button id="fairness-compute-commitments" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="fairness" onClick={runConfigure} loading={configureView.status === "loading"} disabled={!isConfigureValid(fields)}>
                             Compute commitments
                         </Button>
                     </QuickActions>
@@ -324,7 +331,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                     )}
                     {configureView.status === "invalid" && <ErrorState message={configureView.message} />}
                     {configureView.status === "ok" && (
-                        <div>
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="fairness" data-pokie-lifecycle-result-control="fairness-compute-commitments" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-terminal="completed">
                             <Text size="sm" c="dimmed" mb="sm">
                                 {describeFairnessCommitmentPublishOrder()}
                             </Text>
@@ -356,7 +363,7 @@ export function ProvablyFairTab({projectRoot}: {projectRoot?: string} = {}) {
                                 <CodeBlock>{JSON.stringify({serverSeedCommitment: configureView.serverSeedCommitment, commitment: configureView.commitment}, null, 2)}</CodeBlock>
                             </AdvancedDisclosure>
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(1)}>Continue to Generate/inspect proof</Button>
+                                <Button data-pokie-lifecycle-artifact="fairness-proof" onClick={() => setActiveStep(1)}>Continue to Generate/inspect proof</Button>
                             </QuickActions>
                         </div>
                     )}

@@ -7,6 +7,20 @@ import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 import type {StudioSimulationJobView} from "../api/types";
 
 const POLL_INTERVAL_MS = 500;
+type SimulationOperation = "simulation" | "simulation-retry";
+
+/** The durable terminal record rendered for the public control that created it. */
+export type SimulationTerminalReceipt = Readonly<{
+    operation: SimulationOperation;
+    jobId: string;
+    /** The job id captured from the accepting public simulation request. */
+    capturedJobId: string;
+    /** The durable request identity must remain the job this hook attached to. */
+    requestId: string;
+    status: StudioSimulationJobView["status"];
+    /** The terminal was reconciled from Studio's durable job store after restart. */
+    recoveredAfterRestart?: true;
+}>;
 
 // Ports pollSimulation (500ms, uncapped -- a legitimate simulation is allowed to run as long as it
 // actually takes) -- stops once the job is terminal, or once the Simulation tab's owning page unmounts.
@@ -28,7 +42,19 @@ export function useSimulationPoll() {
     const [job, setJob] = useState<StudioSimulationJobView>();
     const [error, setError] = useState<string>();
     const [cancellationRequested, setCancellationRequested] = useState(false);
+    // The terminal receipt belongs to the public control that created this
+    // durable job. A Retry must not be rendered as a second, anonymous Run.
+    const [operation, setOperation] = useState<SimulationOperation>("simulation");
+    // Progress is deliberately optimistic while a request is being accepted.
+    // This receipt is not: it is written only from a durable terminal job so
+    // a replaced Retry control cannot be mistaken for a status-only result.
+    const [terminalReceipt, setTerminalReceipt] = useState<SimulationTerminalReceipt>();
+    const operationRef = useRef<SimulationOperation>("simulation");
     const currentJobId = useRef<string | undefined>(undefined);
+    // A terminal view can outlive the in-memory job snapshot while a reload
+    // or recovery reconciliation settles. Keep the real request that created
+    // it so Retry remains a public operation, never a visible no-op.
+    const lastRequestRef = useRef<{rounds: number; seed: string | undefined; workers: number; modeName: string | undefined} | undefined>(undefined);
     const cancelledRef = useRef(false);
     const generationRef = useRef(0);
     const runGuardGenerationRef = useRef<number | undefined>(undefined);
@@ -62,10 +88,25 @@ export function useSimulationPoll() {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
+                // A reload/restart can only reconcile the durable job that
+                // was discovered for this workflow.  Never render a generic
+                // simulation response merely because it has a terminal
+                // status: it could belong to a different job and would sever
+                // the captured submission from its recovery-required state.
+                if (polledJob.id !== id) {
+                    setJob(undefined);
+                    setProgress(undefined);
+                    setTerminalReceipt(undefined);
+                    setCancellationRequested(false);
+                    setError(`The simulation response did not match durable job "${id}".`);
+                    return;
+                }
                 setJob(polledJob);
+                lastRequestRef.current = {rounds: polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName};
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, capturedJobId: id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
                 }
                 if (isSimulationActive(polledJob)) {
                     timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
@@ -78,13 +119,17 @@ export function useSimulationPoll() {
             });
     }
 
-    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string): void {
+    function run(rounds: number, seed: string | undefined, workers: number, modeName?: string, startedBy: SimulationOperation = "simulation"): void {
         if (!runGuard.begin()) {
             return;
         }
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         runGuardGenerationRef.current = generation;
+        lastRequestRef.current = {rounds, seed, workers, modeName};
+        operationRef.current = startedBy;
+        setOperation(startedBy);
+        setTerminalReceipt(undefined);
         setError(undefined);
         setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
@@ -103,6 +148,15 @@ export function useSimulationPoll() {
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation)) {
+                    // A rejected start has no durable job to poll. Clear the
+                    // optimistic queued state so Configure is immediately
+                    // usable for the person's corrected, next submission.
+                    // Leaving it queued made the rendered Run button remain
+                    // disabled after an actionable server diagnostic.
+                    currentJobId.current = undefined;
+                    setJob(undefined);
+                    setProgress(undefined);
+                    setTerminalReceipt(undefined);
                     setError(errorMessage(err));
                 }
             })
@@ -112,6 +166,28 @@ export function useSimulationPoll() {
                     runGuard.end();
                 }
             });
+    }
+
+    /**
+     * Reattach a newly mounted dashboard to a server-owned simulation.  The
+     * job id comes from the durable project-job discovery surface, not from
+     * route or session memory. This includes a restart-reconciled terminal:
+     * its original executor is gone, so the first poll must render the
+     * durable recovery-required result rather than inventing completion.
+     */
+    function restore(id: string): void {
+        if (currentJobId.current !== undefined) {
+            return;
+        }
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        currentJobId.current = id;
+        operationRef.current = "simulation";
+        setOperation("simulation");
+        setTerminalReceipt(undefined);
+        setError(undefined);
+        setCancellationRequested(false);
+        poll(id, generation);
     }
 
     // Called from ProjectDashboardPage's own projectKey effect -- a genuinely different project must
@@ -127,6 +203,7 @@ export function useSimulationPoll() {
         runGuard.end();
         cancelGuard.end();
         currentJobId.current = undefined;
+        lastRequestRef.current = undefined;
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = undefined;
@@ -135,6 +212,9 @@ export function useSimulationPoll() {
         setJob(undefined);
         setError(undefined);
         setCancellationRequested(false);
+        setTerminalReceipt(undefined);
+        operationRef.current = "simulation";
+        setOperation("simulation");
     }
 
     function cancel(): void {
@@ -142,7 +222,13 @@ export function useSimulationPoll() {
         if (id === undefined || !cancelGuard.begin()) {
             return;
         }
-        const generation = generationRef.current;
+        // Cancellation supersedes both the scheduled poll and any GET already
+        // in flight. An older running snapshot must never replace its terminal.
+        const generation = ++generationRef.current;
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
         cancelGuardGenerationRef.current = generation;
         // The server can need a short safe-cleanup interval before its next
         // poll reports `cancelling`. Reflect the accepted user intent now so
@@ -153,16 +239,29 @@ export function useSimulationPoll() {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
                 }
+                if (polledJob.id !== id) {
+                    setJob(undefined);
+                    setProgress(undefined);
+                    setTerminalReceipt(undefined);
+                    setCancellationRequested(false);
+                    setError(`The simulation response did not match durable job "${id}".`);
+                    return;
+                }
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
                     setCancellationRequested(false);
+                    setTerminalReceipt({operation: operationRef.current, jobId: polledJob.id, capturedJobId: id, requestId: id, status: polledJob.status, ...(polledJob.status === "recovery-required" ? {recoveredAfterRestart: true} : {})});
+                } else {
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation) && currentJobId.current === id) {
                     setError(errorMessage(err));
                     setCancellationRequested(false);
+                    // A rejected cancellation leaves the durable job active.
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
             })
             .finally(() => {
@@ -173,5 +272,12 @@ export function useSimulationPoll() {
             });
     }
 
-    return {progress, job, error, cancellationRequested, run, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    function retry(): void {
+        const request = lastRequestRef.current;
+        if (request !== undefined) {
+            run(request.rounds, request.seed, request.workers, request.modeName, "simulation-retry");
+        }
+    }
+
+    return {progress, job, error, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

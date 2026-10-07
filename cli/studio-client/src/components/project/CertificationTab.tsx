@@ -437,7 +437,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     round -- a preflight check you can run before committing to a build.
                 </Text>
                 <QuickActions>
-                    <Button onClick={runValidate} loading={validateView.status === "loading"}>
+                    <Button id="certification-validate-source" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="certification" onClick={runValidate} loading={validateView.status === "loading"}>
                         Validate source bundle
                     </Button>
                 </QuickActions>
@@ -448,20 +448,22 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     <ErrorState message={describePathActionError("The certification bundle directory", validateView.error)} />
                 )}
                 {validateOutcome !== undefined && (
-                    <OutcomeBanner
-                        color={OUTCOME_BANNER[validateOutcome].color}
-                        icon={OUTCOME_BANNER[validateOutcome].icon}
-                        title={OUTCOME_BANNER[validateOutcome].title}
-                        errors={validateView.status === "ok" ? validateView.errors : []}
-                        warnings={validateView.status === "ok" ? validateView.warnings : []}
-                    />
-                )}
-                {buildReachable && !hasIncompleteModeRow ? (
-                    <QuickActions>
-                        <Button onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
-                    </QuickActions>
-                ) : (
-                    <IssueList title="Before you can continue" issues={buildContinueBlockers().map((message) => ({message}))} />
+                    <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result="certification" data-pokie-lifecycle-result-control="certification-validate-source" data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-terminal={validateOutcome}>
+                        <OutcomeBanner
+                            color={OUTCOME_BANNER[validateOutcome].color}
+                            icon={OUTCOME_BANNER[validateOutcome].icon}
+                            title={OUTCOME_BANNER[validateOutcome].title}
+                            errors={validateView.status === "ok" ? validateView.errors : []}
+                            warnings={validateView.status === "ok" ? validateView.warnings : []}
+                        />
+                        {buildReachable && !hasIncompleteModeRow ? (
+                            <QuickActions>
+                                <Button data-pokie-lifecycle-artifact="certification-preflight" onClick={() => setActiveStep(2)}>Continue to Build bundle</Button>
+                            </QuickActions>
+                        ) : (
+                            <IssueList title="Before you can continue" issues={buildContinueBlockers().map((message) => ({message}))} />
+                        )}
+                    </div>
                 )}
             </div>
         );
@@ -532,30 +534,34 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                     label="Validate"
                     description="Preflight"
                     disabled={!validateReachable}
+                    title={validateReachable ? undefined : "Configure a valid source bundle before validation."}
                     aria-current={activeStep === 1 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Build bundle"
                     description="Sample & publish"
                     disabled={!buildReachable}
+                    title={buildReachable ? undefined : "Validate the source bundle before building certification evidence."}
                     aria-current={activeStep === 2 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Inspect"
                     description="Manifest & artifacts"
                     disabled={!inspectReachable}
+                    title={inspectReachable ? undefined : "Build a certification bundle before inspecting its manifest and artifacts."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
                 <Stepper.Step
                     label="Export"
                     description="Download manifest"
                     disabled={!inspectReachable}
+                    title={inspectReachable ? undefined : "Build a certification bundle before exporting its manifest."}
                     aria-current={activeStep === 4 ? "step" : undefined}
                 />
             </Stepper>
 
             {activeStep === 0 && (
-                <div>
+                <div data-pokie-lifecycle-form="certification">
                     <Text size="xs" c="dimmed" mb="sm">
                         Select/configure is saved automatically to this browser tab&apos;s session storage as you
                         type -- it survives switching tabs and reloading the page, but is lost once this tab
@@ -678,7 +684,13 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                         <Button variant="default" onClick={handleAddMode}>
                             Add mode
                         </Button>
-                        <Button onClick={() => setActiveStep(1)} disabled={!validateReachable}>
+                        <Button
+                            id="certification-continue-validate"
+                            data-pokie-lifecycle="precondition"
+                            data-pokie-lifecycle-operation="certification-validate"
+                            onClick={() => setActiveStep(1)}
+                            disabled={!validateReachable}
+                        >
                             Continue to Validate
                         </Button>
                     </QuickActions>

@@ -8,7 +8,7 @@
  * tying those operations to the same immutable source and package identities.
  */
 import {createHash, randomBytes, timingSafeEqual} from "node:crypto";
-import {appendFileSync, existsSync, readFileSync} from "node:fs";
+import {closeSync, constants, existsSync, openSync, readFileSync, writeSync} from "node:fs";
 import {mkdir, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {spawn, spawnSync} from "node:child_process";
 import path from "node:path";
@@ -29,6 +29,7 @@ const now = () => new Date().toISOString();
 const resourceKinds = new Set(["provider", "browser", "worker", "container", "process"]);
 const resourceActions = new Set(["acquired", "released"]);
 const registryAction = "registry-ready";
+const operationId = (value) => typeof value === "string" && /^[a-f0-9]{32}$/i.test(value);
 
 function required(value, name) {
     if (typeof value !== "string" || !value) fail(`${name} is required`);
@@ -68,6 +69,24 @@ function validateConfig(config) {
     if (path.resolve(config.lifecycleReceiptPath).startsWith(`${path.resolve(config.outputDirectory)}${path.sep}`)) fail("external lifecycle receipt must be outside mutable PC-20 evidence");
     required(config.packageName, "packageName");
     required(config.packageVersion, "packageVersion");
+    let packageJson;
+    try { packageJson = JSON.parse(commandResult("git", ["show", `${config.candidateId}:package.json`], repositoryRoot)); } catch { fail("the accepted candidate must contain a readable package.json"); }
+    if (packageJson.name !== config.packageName || packageJson.version !== config.packageVersion) fail("config package name/version differs from the accepted candidate package identity");
+}
+
+/** Candidate-only consumers (P8-05 and the protected publisher) must not be
+ * forced to carry unrelated, mutable PC-19 review/freeze inputs. */
+function validateCandidateConfig(config, {lifecycle = false} = {}) {
+    if (!config || typeof config !== "object") fail("config must be an object");
+    if (!gitSha(config.candidateId) || !sha(config.candidatePackageSha256)) fail("a verifier-supplied exact candidate SHA and package digest are required");
+    for (const key of ["outputDirectory", "repositoryDirectory"]) if (!path.isAbsolute(required(config[key], key))) fail(`${key} must be an absolute path`);
+    if (path.resolve(config.outputDirectory) !== PC20_EVIDENCE_DIRECTORY) fail("outputDirectory must be the canonical PC-20 evidence directory");
+    if (path.resolve(config.repositoryDirectory) !== repositoryRoot) fail("repositoryDirectory must be this repository root");
+    if (lifecycle) {
+        if (!path.isAbsolute(required(config.lifecycleReceiptPath, "lifecycleReceiptPath")) || !sha(config.lifecycleReceiptSha256)) fail("candidate lifecycle validation requires a trusted lifecycle receipt and digest");
+        if (path.resolve(config.lifecycleReceiptPath).startsWith(`${path.resolve(config.outputDirectory)}${path.sep}`)) fail("external lifecycle receipt must be outside mutable PC-20 evidence");
+    }
+    required(config.packageName, "packageName"); required(config.packageVersion, "packageVersion");
     let packageJson;
     try { packageJson = JSON.parse(commandResult("git", ["show", `${config.candidateId}:package.json`], repositoryRoot)); } catch { fail("the accepted candidate must contain a readable package.json"); }
     if (packageJson.name !== config.packageName || packageJson.version !== config.packageVersion) fail("config package name/version differs from the accepted candidate package identity");
@@ -162,20 +181,31 @@ const locallyAcquiredResourceIdentities = new Map();
 export function registerPc20OwnedResource({kind, resourceId, pid, processIdentity:declaredIdentity}, action = "acquired", environment = process.env) {
     const registry = environment.POKIE_PC20_RESOURCE_REGISTRY;
     const secret = environment.POKIE_PC20_RESOURCE_REGISTRY_SECRET;
+    const operation = environment.POKIE_PC20_OPERATION_ID;
     if (!registry || !secret) return false;
+    if (!operationId(operation)) throw new Error("PC-20 owned resource requires an authenticated operation namespace");
     if (!resourceKinds.has(kind) || !resourceActions.has(action) || typeof resourceId !== "string" || !resourceId) throw new Error("PC-20 owned resource requires a supported kind, action, and resourceId");
     if (pid !== undefined && (!Number.isInteger(pid) || pid <= 0)) throw new Error("PC-20 owned resource PID must be a positive integer");
     const identityKey = `${kind}:${resourceId}`;
     const identity = pid === undefined ? undefined : (declaredIdentity || locallyAcquiredResourceIdentities.get(identityKey) || processIdentity(pid));
     if (pid !== undefined && (typeof identity !== "string" || !identity)) throw new Error(`PC-20 could not record process identity for PID ${pid}`);
-    const record = {schemaVersion:1, action, kind, resourceId, ...(pid === undefined ? {} : {pid, processIdentity:identity})};
-    appendFileSync(registry, `${JSON.stringify({...record, signature:resourceSignature(secret, record)})}\n`, {encoding:"utf8", mode:0o600});
+    const record = {schemaVersion:1, operationId:operation, action, kind, resourceId, ...(pid === undefined ? {} : {pid, processIdentity:identity})};
+    // Registry readers run concurrently with process exits.  Append one
+    // complete signed record at a time so a final ownership capture cannot
+    // mistake an in-progress writer for an unsigned resource declaration.
+    const contents = Buffer.from(`${JSON.stringify({...record, signature:resourceSignature(secret, record)})}\n`, "utf8");
+    const descriptor = openSync(registry, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND, 0o600);
+    try {
+        if (writeSync(descriptor, contents) !== contents.length) throw new Error("PC-20 could not atomically append an ownership record");
+    } finally {
+        closeSync(descriptor);
+    }
     if (action === "acquired" && identity) locallyAcquiredResourceIdentities.set(identityKey, identity);
     return true;
 }
 
 function signedResourceRecord(value, secret) {
-    if (!value || value.schemaVersion !== 1 || typeof value.resourceId !== "string" || !value.resourceId || typeof value.signature !== "string") return undefined;
+    if (!value || value.schemaVersion !== 1 || !operationId(value.operationId) || typeof value.resourceId !== "string" || !value.resourceId || typeof value.signature !== "string") return undefined;
     if (value.action === registryAction && value.kind !== "registry") return undefined;
     if (value.action !== registryAction && (!resourceActions.has(value.action) || !resourceKinds.has(value.kind))) return undefined;
     if (value.pid !== undefined && (!Number.isInteger(value.pid) || value.pid <= 0)) return undefined;
@@ -188,8 +218,8 @@ function signedResourceRecord(value, secret) {
     return record;
 }
 
-function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
-    if (!resourceRegistryPath || !resourceRegistrySecret) fail("release gate ownership registry credentials are required");
+function readOwnedResources(resourceRegistryPath, resourceRegistrySecret, operation) {
+    if (!resourceRegistryPath || !resourceRegistrySecret || !operationId(operation)) fail("release gate ownership registry credentials and operation namespace are required");
     if (!existsSync(resourceRegistryPath)) fail("release gate ownership registry is missing");
     let contents;
     try { contents = readFileSync(resourceRegistryPath, "utf8"); } catch { fail("release gate ownership registry is unreadable"); }
@@ -200,6 +230,7 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
         try {
             const record = signedResourceRecord(JSON.parse(line), resourceRegistrySecret);
             if (!record) fail("release gate ownership registry contains an invalid or unsigned record");
+            if (record.operationId !== operation) fail("release gate ownership registry record belongs to a different operation namespace");
             if (record.action === registryAction) registryReady = true;
             else records.push(record);
         } catch (error) {
@@ -211,13 +242,52 @@ function readOwnedResources(resourceRegistryPath, resourceRegistrySecret) {
     return records;
 }
 
-function createOwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret) {
+/**
+ * Establish the authenticated registry before a child is allowed to start.
+ *
+ * The preload writes the same sentinel for descendants, but a short timeout
+ * can legitimately drain the root before Node has evaluated that preload.
+ * Creating the parent-owned sentinel synchronously keeps timeout and spawn
+ * failure on the same ownership boundary: a missing registry is still a
+ * failure, never an "empty" registry, while final drainage can report the
+ * real timeout rather than a bootstrap race.
+ */
+function initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret, operation) {
+    if (!resourceRegistryPath || !resourceRegistrySecret || !operationId(operation)) fail("release gate ownership registry credentials and operation namespace are required");
+    const record = {schemaVersion:1, operationId:operation, action:registryAction, kind:"registry", resourceId:`registry:controller:${process.pid}`};
+    const contents = Buffer.from(`${JSON.stringify({...record, signature:resourceSignature(resourceRegistrySecret, record)})}\n`, "utf8");
+    let descriptor;
+    try {
+        descriptor = openSync(resourceRegistryPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+        if (writeSync(descriptor, contents) !== contents.length) fail("could not initialize the release gate ownership registry");
+    } catch (error) {
+        if (error instanceof Error && error.message.startsWith("PC-20 release completion is invalid:")) throw error;
+        fail(`could not initialize the release gate ownership registry: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+        if (descriptor !== undefined) closeSync(descriptor);
+    }
+}
+
+// This is also used by the P8-05 packed-browser runner.  Keeping the tracker
+// here means that a campaign audit uses the same spawn-time, signed ownership
+// protocol as the release gate instead of taking an unverifiable late `ps`
+// snapshot of a browser or Studio server.
+export function createPc20OwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecret, {operationId:operation, captureIntervalMs = 10} = {}) {
+    if (!operationId(operation)) fail("release gate ownership tracker requires an authenticated operation namespace");
+    if (!Number.isSafeInteger(captureIntervalMs) || captureIntervalMs < 10 || captureIntervalMs > 5_000) fail("release gate ownership tracker capture interval is invalid");
     const ownedProcesses = new Map();
     const ownedResources = new Map();
     let captureFailure;
-    const rememberProcess = (processId, identity = processIdentity(processId)) => {
+    const rememberProcess = (processId, identity = processIdentity(processId), snapshotOnly = false) => {
         if (!Number.isInteger(processId) || processId <= 0) return;
         if (typeof identity !== "string" || !identity) {
+            // ps and /proc are not one atomic snapshot. A process reaped in
+            // between is no longer an owned resource; a still-live process
+            // without a verifiable identity must continue to fail closed.
+            if (snapshotOnly) {
+                try { process.kill(processId, 0); }
+                catch (error) { if (error?.code === "ESRCH") return; }
+            }
             captureFailure = new Error(`release gate could not retain an identity for PID ${processId}`);
             return;
         }
@@ -231,18 +301,22 @@ function createOwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecre
     rememberProcess(pid);
     const capture = ({final = false} = {}) => {
         const snapshot = processSnapshot();
+        const discovered = new Set(ownedProcesses.keys());
         let changed = true;
         while (changed) {
             changed = false;
             for (const [childPid, details] of snapshot) {
-                if (ownedProcesses.has(details.parentPid) && !ownedProcesses.has(childPid)) {
-                    rememberProcess(childPid, details.identity);
+                if (discovered.has(details.parentPid) && !discovered.has(childPid)) {
+                    // Topology traversal must advance even when an exiting
+                    // row cannot grant identity-verified signal authority.
+                    discovered.add(childPid);
+                    rememberProcess(childPid, details.identity, true);
                     changed = true;
                 }
             }
         }
         let records;
-        try { records = readOwnedResources(resourceRegistryPath, resourceRegistrySecret); }
+        try { records = readOwnedResources(resourceRegistryPath, resourceRegistrySecret, operation); }
         catch (error) {
             if (final) throw error;
             return;
@@ -267,7 +341,7 @@ function createOwnershipTracker(pid, resourceRegistryPath, resourceRegistrySecre
         }
         if (final && captureFailure) throw captureFailure;
     };
-    const timer = setInterval(() => capture(), 10);
+    const timer = setInterval(() => capture(), captureIntervalMs);
     return {ownedProcesses, ownedResources, capture, rememberProcess, stop:() => clearInterval(timer)};
 }
 
@@ -330,28 +404,32 @@ export async function drainProcessTree(child, graceMs = 1_000, ownedProcesses = 
  * ownership is a release invariant on every exit path, including spawn error,
  * AbortSignal cancellation and timer expiry.
  */
-export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = [], resourceRegistryPath, resourceRegistrySecret = randomBytes(32).toString("hex")} = {}) {
+export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60 * 1000, signal, env = process.env, spawnCommand = spawn, ownedProcessIds = [], resourceRegistryPath, resourceRegistrySecret = randomBytes(32).toString("hex"), operationId:requestedOperationId = randomBytes(16).toString("hex")} = {}) {
     const startedAt = now();
     let child;
     let timedOut = false;
     let cancelled = false;
     let timeout;
     let abort;
-    let output = "", errorOutput = "", exitCode = null, spawnError, tracker, drainage = {processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[], ownedProcessIdentities:[], ownedResources:[]};
+    let output = "", errorOutput = "", exitCode = null, exitSignal = null, spawnError, tracker, drainage = {processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIds:[], ownedProcessIdentities:[], ownedResources:[]};
     let failure;
     try {
         if (signal?.aborted) { cancelled = true; throw new Error("release gate was cancelled before spawn"); }
         const ownershipHook = path.join(repositoryRoot, "scripts", "pc-20-resource-ownership-hook.cjs");
         const nodeOptions = [env.NODE_OPTIONS, resourceRegistryPath ? `--require=${ownershipHook}` : ""].filter(Boolean).join(" ");
         if (!resourceRegistryPath) fail("release gate ownership registry path is required");
-        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, NODE_OPTIONS:nodeOptions}});
-        tracker = createOwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret);
+        // This must happen before spawn: a child that cannot be recorded is
+        // not allowed to begin, including the timeout path where its preload
+        // has not yet had a chance to write its own sentinel.
+        initializeOwnedResourceRegistry(resourceRegistryPath, resourceRegistrySecret, requestedOperationId);
+        child = spawnCommand(command, args, {cwd:path.resolve(cwd), detached:process.platform !== "win32", stdio:["ignore", "pipe", "pipe"], env:{...env, POKIE_PC20_RESOURCE_REGISTRY:resourceRegistryPath, POKIE_PC20_RESOURCE_REGISTRY_SECRET:resourceRegistrySecret, POKIE_PC20_OPERATION_ID:requestedOperationId, NODE_OPTIONS:nodeOptions}});
+        tracker = createPc20OwnershipTracker(child.pid, resourceRegistryPath, resourceRegistrySecret, {operationId:requestedOperationId});
         for (const processId of ownedProcessIds) if (Number.isInteger(processId) && processId > 0) tracker.rememberProcess(processId);
         child.stdout?.on("data", (chunk) => { output += chunk; });
         child.stderr?.on("data", (chunk) => { errorOutput += chunk; });
         const exited = new Promise((resolve) => {
             child.once("error", (error) => { spawnError = error; resolve(); });
-            child.once("exit", (code) => { exitCode = code; resolve(); });
+            child.once("exit", (code, receivedSignal) => { exitCode = code; exitSignal = receivedSignal; resolve(); });
         });
         timeout = setTimeout(() => { timedOut = true; void drainProcessTree(child, 1_000, tracker.ownedProcesses, tracker.ownedResources); }, timeoutMs);
         abort = () => { cancelled = true; void drainProcessTree(child, 1_000, tracker.ownedProcesses, tracker.ownedResources); };
@@ -364,14 +442,16 @@ export async function runBoundedProcess(command, args, {cwd, timeoutMs = 60 * 60
         clearTimeout(timeout);
         if (abort) signal?.removeEventListener("abort", abort);
         try { tracker?.capture({final:true}); }
-        catch (error) { failure = error; }
+        catch (error) { failure ??= error; }
         tracker?.stop();
         drainage = await drainProcessTree(child, 1_000, tracker?.ownedProcesses, tracker?.ownedResources);
-        if (!drainage.processGroupDrained || !drainage.processTreeDrained || !drainage.resourcesDrained) failure = new Error("release gate owned resources could not be drained");
+        if (!drainage.processGroupDrained || !drainage.processTreeDrained || !drainage.resourcesDrained) failure ??= new Error("release gate owned resources could not be drained");
     }
-    const result = {command:`${command} ${args.join(" ")}`, startedAt, endedAt:now(), exitCode, timedOut, cancelled, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, resourcesDrained:drainage.resourcesDrained, ownedProcessIds:drainage.ownedProcessIds, ownedProcessIdentities:drainage.ownedProcessIdentities, ownedResources:drainage.ownedResources, stdout:output, stderr:errorOutput};
+    const terminalCondition = timedOut ? "timeout" : cancelled ? "cancelled" : spawnError ? "spawn-failure" : exitSignal ? "signal-exit" : exitCode === 0 ? "success" : "exit-failure";
+    const result = {command:`${command} ${args.join(" ")}`, operationId:requestedOperationId, startedAt, endedAt:now(), exitCode, signal:exitSignal, timedOut, cancelled, terminalCondition, processGroupDrained:drainage.processGroupDrained, processTreeDrained:drainage.processTreeDrained, resourcesDrained:drainage.resourcesDrained, ownedProcessIds:drainage.ownedProcessIds, ownedProcessIdentities:drainage.ownedProcessIdentities, ownedResources:drainage.ownedResources, stdout:output, stderr:errorOutput};
     if (!failure && timedOut) failure = new Error("release gate timed out after its process tree was drained");
     if (!failure && cancelled) failure = new Error("release gate was cancelled after its process tree was drained");
+    if (!failure && exitSignal) failure = new Error(`release gate was terminated by ${exitSignal}`);
     if (!failure && exitCode !== 0) failure = new Error(`release gate failed with exit code ${exitCode}`);
     if (failure) {
         failure.pc20Result = result;
@@ -387,13 +467,34 @@ export async function runReleaseGate(repositoryDirectory, options = {}) {
     await mkdir(paths.root, {recursive:true});
     const result = await runBoundedProcess("npm", ["run", "check:release"], {
         cwd:repositoryDirectory, timeoutMs:options.timeoutMs, signal:options.signal,
-        env:{...process.env, ...options.env, POKIE_PACK_SMOKE_RECEIPT:paths.smoke, POKIE_PACK_SMOKE_ARCHIVE_PATH:paths.archive, POKIE_PACK_SMOKE_CANDIDATE_ID:options.candidateId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:options.candidatePackageSha256},
+        env:{...process.env, ...options.env, POKIE_PACK_SMOKE_RECEIPT:paths.smoke, POKIE_PACK_SMOKE_ARCHIVE_PATH:paths.archive, POKIE_PACK_SMOKE_CANDIDATE_ID:options.candidateId, POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256:options.candidatePackageSha256, POKIE_P805_RELEASE_HANDOFF:options.p805ReleaseHandoff ? JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, p805ReleaseHandoff:options.p805ReleaseHandoff, p805ReleaseHandoffSha256:options.p805ReleaseHandoffSha256}) : ""},
         spawnCommand:options.spawnCommand, resourceRegistryPath:paths.resources,
     });
     return result;
 }
 
+function handoffBinding(config) {
+    return config.p805ReleaseHandoff ? {auditedCandidateId:config.p805ReleaseHandoff.auditedCandidateId, releaseHandoffSha256:config.p805ReleaseHandoffSha256} : {};
+}
+function validateHandoffBinding(record, config) {
+    const binding = handoffBinding(config);
+    if (record?.auditedCandidateId !== binding.auditedCandidateId || record?.releaseHandoffSha256 !== binding.releaseHandoffSha256) fail("retained gate/smoke release handoff binding drifted");
+}
+async function authenticateHandoff(config) {
+    if (config.p805ReleaseHandoff || config.p805ReleaseHandoffSha256) {
+        const {readP805ReleaseArchive} = await import("./p8-05-release-handoff.mjs");
+        await readP805ReleaseArchive(config);
+    }
+}
+
+/** The same preconditions as the gate, with no official command or write. */
+export function validatePc20CandidatePreflight(config) {
+    validateCandidateConfig(config);
+    assertPc20CandidateCheckout(config.repositoryDirectory, config.candidateId, "before the candidate-only release gate", {includeCompletion:false, includeFailed:false});
+}
+
 function validateSmokeReceipt(receipt, config, paths) {
+    validateHandoffBinding(receipt, config);
     if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || receipt.kind !== "npm-pack-install-smoke" || receipt.complete !== true || receipt.suitePassed !== true || receipt.candidateId !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256 || receipt.packageName !== config.packageName || receipt.packageVersion !== config.packageVersion || path.resolve(receipt.archivePath || "") !== paths.archive || !sha(receipt.archiveSha256) || receipt.archiveSha256 !== config.candidatePackageSha256 || !Number.isSafeInteger(receipt.archiveSizeBytes) || receipt.archiveSizeBytes <= 0 || !receipt.installed || receipt.installed.cli !== true || receipt.installed.studioApi !== true || receipt.installed.studioAssets !== true || receipt.installed.libraryWorker !== true || receipt.installed.processesDrained !== true || !receipt.cleanup || receipt.cleanup.temporaryInstallRemoved !== true || receipt.cleanup.temporaryPackDirectoryRemoved !== true || receipt.cleanup.processesDrained !== true) fail("npm-pack/install smoke receipt is incomplete or bound to a different package archive");
 }
 
@@ -418,6 +519,7 @@ async function verifyGateArtifacts(gate, config, paths) {
 }
 
 function validateGate(gate, config) {
+    validateHandoffBinding(gate, config);
     if (!gate || gate.schemaVersion !== PC20_SCHEMA_VERSION || gate.kind !== "release-gate" || gate.candidateId !== config.candidateId || gate.candidatePackageSha256 !== config.candidatePackageSha256 || gate.command !== "npm run check:release" || gate.exitCode !== 0 || gate.timedOut || gate.cancelled || gate.processGroupDrained !== true || gate.processTreeDrained !== true || gate.resourcesDrained !== true || !Array.isArray(gate.ownedResources) || !Array.isArray(gate.ownedProcessIdentities) || !gate.ownedProcessIdentities.every((owned) => Number.isInteger(owned?.pid) && owned.pid > 0 && typeof owned.processIdentity === "string" && owned.processIdentity) || gate.stdoutPath !== path.basename(outputPaths(config).stdout) || gate.stderrPath !== path.basename(outputPaths(config).stderr) || gate.packagingSmokePath !== path.basename(outputPaths(config).smoke) || gate.archivePath !== path.basename(outputPaths(config).archive) || !sha(gate.stdoutSha256) || !sha(gate.stderrSha256) || !sha(gate.packagingSmokeSha256) || gate.archiveSha256 !== config.candidatePackageSha256 || !utc(gate.startedAt) || !utc(gate.endedAt) || Date.parse(gate.startedAt) > Date.parse(gate.endedAt)) fail("release gate record is incomplete, failed, or bound to a different candidate");
 }
 
@@ -452,7 +554,7 @@ async function obtainGate(config, dependencies) {
     }
     let result;
     try {
-        result = await dependencies.runReleaseGate(config.repositoryDirectory, {paths, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256});
+        result = await dependencies.runReleaseGate(config.repositoryDirectory, {paths, candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, p805ReleaseHandoff:config.p805ReleaseHandoff, p805ReleaseHandoffSha256:config.p805ReleaseHandoffSha256});
     } catch (error) {
         await cleanPartialGateArtifacts(paths);
         await retainFailedGate(config, paths, error);
@@ -463,7 +565,7 @@ async function obtainGate(config, dependencies) {
         const stdout = required(result.stdout ?? "", "release gate stdout"), stderr = typeof result.stderr === "string" ? result.stderr : "";
         await writeFile(paths.stdout, stdout, {flag:"wx"});
         await writeFile(paths.stderr, stderr || "(no stderr)\n", {flag:"wx"});
-        const gate = {schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, ...result, stdout:undefined, stderr:undefined, stdoutPath:path.basename(paths.stdout), stdoutSha256:digest(stdout), stderrPath:path.basename(paths.stderr), stderrSha256:digest(stderr || "(no stderr)\n"), packagingSmokePath:path.basename(paths.smoke), packagingSmokeSha256:smoke.sha256, archivePath:path.basename(paths.archive), archiveSha256:config.candidatePackageSha256};
+        const gate = {...handoffBinding(config), schemaVersion:PC20_SCHEMA_VERSION, kind:"release-gate", candidateId:config.candidateId, candidatePackageSha256:config.candidatePackageSha256, ...result, stdout:undefined, stderr:undefined, stdoutPath:path.basename(paths.stdout), stdoutSha256:digest(stdout), stderrPath:path.basename(paths.stderr), stderrSha256:digest(stderr || "(no stderr)\n"), packagingSmokePath:path.basename(paths.smoke), packagingSmokeSha256:smoke.sha256, archivePath:path.basename(paths.archive), archiveSha256:config.candidatePackageSha256};
         validateGate(gate, config);
         const contents = `${JSON.stringify(gate, null, 2)}\n`;
         await writeFile(paths.gate, contents, {flag:"wx"});
@@ -477,6 +579,7 @@ async function obtainGate(config, dependencies) {
 }
 
 function validateLifecycleReceipt(receipt, config, gateSha256) {
+    validateHandoffBinding(receipt, config);
     if (!receipt || receipt.schemaVersion !== PC20_SCHEMA_VERSION || typeof receipt.receiptId !== "string" || !receipt.receiptId || !utc(receipt.issuedAt) || receipt.candidateId !== config.candidateId || receipt.releaseSha !== config.candidateId || receipt.candidatePackageSha256 !== config.candidatePackageSha256) fail("external lifecycle receipt is not bound to the accepted candidate/package");
     const git = receipt.git;
     if (!git || git.mergedToDevelop !== true || git.cleanDevelop !== true || git.developSha !== config.candidateId || git.pushedSha !== config.candidateId || git.remoteDevelopSha !== config.candidateId || typeof git.remote !== "string" || !git.remote || !utc(git.pushedAt)) fail("external lifecycle receipt lacks the clean develop merge/push of the accepted SHA");
@@ -495,8 +598,16 @@ async function readTrustedLifecycleReceipt(config, gateSha256) {
     return {value:loaded.value, sha256:digest(loaded.contents)};
 }
 
+/** Validate a trusted publication/Drive receipt against a retained gate without rerunning PC-19. */
+export async function validatePc20CandidateLifecycleReceipt(config, gateSha256) {
+    validateCandidateConfig(config, {lifecycle:true});
+    await authenticateHandoff(config);
+    return readTrustedLifecycleReceipt(config, gateSha256);
+}
+
 export async function validatePc20ReleaseGate(config, dependencies = {}) {
     validateConfig(config);
+    await authenticateHandoff(config);
     const services = {validatePc19:validatePc19IndependentColdStartReview, readRepositoryState, runReleaseGate, ...dependencies};
     const pc19 = await services.validatePc19(config.reviewDirectory, {
         candidateId:config.candidateId,
@@ -512,6 +623,22 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
 }
 
 /**
+ * Candidate-only form of the PC-20 gate.  P8-05 reuses PC-20's real
+ * pack/smoke, ownership, retention and cleanup machinery without requiring a
+ * second phase-7 PC-19 campaign.
+ */
+export async function validatePc20CandidateReleaseGate(config, dependencies = {}) {
+    validateCandidateConfig(config);
+    await authenticateHandoff(config);
+    const services = {readRepositoryState, runReleaseGate, ...dependencies};
+    const permitted = pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false});
+    assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, permitted), config.candidateId, "before the candidate-only release gate");
+    const gate = await obtainGate(config, services);
+    assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, permitted), config.candidateId, "after the candidate-only release gate");
+    return {gate};
+}
+
+/**
  * The protected publisher receives a gate that the controller has already
  * validated.  It must never start (or repeat) that official composite; it
  * revalidates the retained, candidate-bound artifacts before advancing
@@ -520,7 +647,8 @@ export async function validatePc20ReleaseGate(config, dependencies = {}) {
  * review inputs.
  */
 export async function validatePc20RetainedReleaseGate(config, dependencies = {}) {
-    validateConfig(config);
+    validateCandidateConfig(config);
+    await authenticateHandoff(config);
     const services = {readRepositoryState, ...dependencies};
     const paths = outputPaths(config);
     assertExactCandidateCheckout(services.readRepositoryState(config.repositoryDirectory, pc20CandidateReceiptPaths(config.candidateId, {includeCompletion:false, includeFailed:false})), config.candidateId, "before the authorized lifecycle");

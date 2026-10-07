@@ -34,6 +34,8 @@ export type StudioOutcomeLibraryGenerateJobResultView = Exclude<StudioOutcomeLib
 /** A bounded, JSON-safe record of one Outcome Library publish. */
 export type StudioOutcomeLibraryGenerateJobView = {
     readonly id: string;
+    /** Opaque identity supplied by the rendered browser transaction that started this job. */
+    readonly browserRequestId?: string;
     readonly status: "queued" | "running" | "cancelling" | "completed" | "failed" | "cancelled" | "recovery-required";
     readonly cancellationRequested: boolean;
     /** The common durable job clock is the authority across polling and restart. */
@@ -55,6 +57,7 @@ export type StudioOutcomeLibraryGenerateJobView = {
 
 type JobRecord = {
     readonly id: string;
+    readonly browserRequestId?: string;
     readonly projectRoot: string;
     readonly request: ValidatedOutcomeLibraryGenerateRequest;
     readonly controller: AbortController;
@@ -106,7 +109,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         this.jobService = jobService;
     }
 
-    public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string): StudioOutcomeLibraryGenerateJobView {
+    public start(projectRoot: string, request: ValidatedOutcomeLibraryGenerateRequest, resumedId?: string, browserRequestId?: string): StudioOutcomeLibraryGenerateJobView {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
@@ -139,7 +142,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         const record: JobRecord = {
             // UUIDs make checkpoints safely discoverable across a server restart without
             // reusing the old process-local 1, 2, … namespace.
-            id, projectRoot, request: {...request, recoveryAuthorityId: id}, controller: new AbortController(), status: "queued", cancellationRequested: false, lifecycleStage: "generation",
+            id, browserRequestId, projectRoot, request: {...request, recoveryAuthorityId: id}, controller: new AbortController(), status: "queued", cancellationRequested: false, lifecycleStage: "generation",
             destinationKey,
             // Assigned below after the record exists for run() to update.
             completion: Promise.resolve(),
@@ -163,7 +166,7 @@ export class StudioOutcomeLibraryGenerateJobService {
             });
             this.jobService?.fail(record.id, failedResult.error, {action: "retry", reason: "Correct the reported generation problem and run it again."}, {
                 summary: "Outcome Library generation failed.",
-                detail: {status: failedResult.status, result: failedResult},
+                detail: terminalDetail(record, failedResult),
             });
         }).finally(() => {
             // Generation owns staging/partial-output cleanup and only resolves once that is
@@ -264,7 +267,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         await Promise.all(active.map((record) => record.completion));
     }
 
-    public async resumeForProject(projectRoot: string, id: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
+    public async resumeForProject(projectRoot: string, id: string, browserRequestId?: string): Promise<StudioOutcomeLibraryGenerateJobView | undefined> {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const wasmDiagnostic = this.generateService.wasmBoundaryDiagnostic?.(projectRoot);
         if (wasmDiagnostic !== undefined) throw new Error(wasmDiagnostic);
@@ -292,7 +295,11 @@ export class StudioOutcomeLibraryGenerateJobService {
         }
         // Reuse the checkpoint identity. A successful resumed publication removes
         // this original file, avoiding an orphan which could be resumed later.
-        return this.start(projectRoot, {...rebound.request, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id);
+        const durableJob = this.jobService?.get(projectRoot, id);
+        const retainedBrowserRequestId = browserRequestId
+            ?? this.jobs.get(id)?.browserRequestId
+            ?? (durableJob === undefined ? undefined : outcomeLibraryBrowserRequestIdFromDurableJob(durableJob));
+        return this.start(projectRoot, {...rebound.request, resumeFrom: fromPersistedCheckpoint(persisted.checkpoint)}, id, retainedBrowserRequestId);
     }
 
     private async run(record: JobRecord): Promise<void> {
@@ -354,7 +361,7 @@ export class StudioOutcomeLibraryGenerateJobService {
                 // durable job as well. A restarted compatibility route can
                 // then render the cursor, plan, and checkpoint reference
                 // without depending on this process-local record.
-                detail: {status: cancelledResult.status, result: cancelledResult},
+                detail: terminalDetail(record, cancelledResult),
             }, {
                 action: cancelledResult.checkpoint === undefined ? "retry" : "resume",
                 reason: cancelledResult.checkpoint === undefined
@@ -393,13 +400,13 @@ export class StudioOutcomeLibraryGenerateJobService {
                 // Preserve the operation-specific result in the single
                 // durable authority.  The old in-process record can then be
                 // discarded without making a retained terminal job opaque.
-                detail: {status: result.status, result},
+                detail: terminalDetail(record, result),
             });
         } else {
             const message = "error" in result ? result.error : "Outcome Library generation failed validation.";
             this.jobService?.fail(record.id, message, {action: "retry", reason: "Correct the reported generation problem and run it again."}, {
                 summary: "Outcome Library generation failed.",
-                detail: {status: result.status, result},
+                detail: terminalDetail(record, result),
             });
         }
         if (result.status === "ok") this.removeCheckpoint(record.projectRoot, record.id);
@@ -413,6 +420,7 @@ export class StudioOutcomeLibraryGenerateJobService {
         );
         return {
             id: record.id,
+            ...(record.browserRequestId === undefined ? {} : {browserRequestId: record.browserRequestId}),
             status: hasDurableProjection ? common.status : record.status,
             cancellationRequested: record.cancellationRequested || common?.status === "cancelling",
             ...(common?.durationMs === undefined ? {} : {durationMs: common.durationMs}),
@@ -439,6 +447,7 @@ export class StudioOutcomeLibraryGenerateJobService {
             : job.recovery;
         return {
             id: job.id,
+            ...(outcomeLibraryBrowserRequestIdFromDurableJob(job) === undefined ? {} : {browserRequestId: outcomeLibraryBrowserRequestIdFromDurableJob(job)}),
             status: job.status,
             cancellationRequested: job.status === "cancelling",
             createdAt: job.createdAt,
@@ -600,6 +609,19 @@ function durableStageLabel(stage: StudioOutcomeLibraryGenerationLifecycleStage):
 function outcomeLibraryResultFromDurableJob(job: StudioJobView): StudioOutcomeLibraryGenerateJobView["result"] | undefined {
     const result = job.result?.detail?.result;
     return typeof result === "object" && result !== null && "status" in result ? result as StudioOutcomeLibraryGenerateJobView["result"] : undefined;
+}
+
+function outcomeLibraryBrowserRequestIdFromDurableJob(job: StudioJobView): string | undefined {
+    const browserRequestId = job.result?.detail?.browserRequestId;
+    return typeof browserRequestId === "string" && browserRequestId.length > 0 ? browserRequestId : undefined;
+}
+
+function terminalDetail(record: JobRecord, result: StudioOutcomeLibraryGenerateJobResultView): Readonly<Record<string, unknown>> {
+    return {
+        status: result.status,
+        result,
+        ...(record.browserRequestId === undefined ? {} : {browserRequestId: record.browserRequestId}),
+    };
 }
 
 function toPersistedRequest(request: ValidatedOutcomeLibraryGenerateRequest): PersistedRequest {

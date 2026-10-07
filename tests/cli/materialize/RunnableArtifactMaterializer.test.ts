@@ -13,6 +13,8 @@ import path from "path";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {RunnableArtifactMaterializer} from "../../../cli/materialize/RunnableArtifactMaterializer.js";
+import {RuntimePreparationCancelledError} from "../../../cli/materialize/RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "../../../cli/materialize/RuntimePreparationCleanupError.js";
 
 function project(type: PokieProject["type"]): PokieProject {
     return {type, rootPath: `/projects/${type}`, provenance: "test", capabilities: PROJECT_TYPE_CAPABILITIES[type]} as PokieProject;
@@ -34,8 +36,28 @@ describe("RunnableArtifactMaterializer", () => {
         controller.abort();
 
         await expect(new RunnableArtifactMaterializer(materializer).materialize(project("blueprint"), {signal: controller.signal}))
-            .rejects.toThrow(/cancelled/i);
+            .rejects.toBeInstanceOf(RuntimePreparationCancelledError);
         expect(materializer.materialize).not.toHaveBeenCalled();
+    });
+
+    it("retains a PAR stage release failure even when it carries a cancellation error", async () => {
+        const failure = new RuntimePreparationCancelledError();
+        const release = jest.fn(() => Promise.reject(failure));
+        const subject = new RunnableArtifactMaterializer({materialize: () => Promise.resolve({
+            runtimePath: "/runtime", ownsRuntimePath: false, release,
+        })});
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-par-release-failure-"));
+        const workbookPath = path.join(workDir, "game.xlsx");
+        fs.copyFileSync(path.join(process.cwd(), "examples", "parsheets", "starter.par.xlsx"), workbookPath);
+        try {
+            const lease = await subject.materialize({...project("parWorkbook"), rootPath: workbookPath});
+            const pending = lease.release();
+            await expect(pending).rejects.toBeInstanceOf(RuntimePreparationCleanupError);
+            await expect(pending).rejects.toMatchObject({cause: failure});
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
     });
 
     it("reuses only a verified matching PAR runtime and invalidates it when the workbook bytes change", async () => {

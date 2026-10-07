@@ -105,24 +105,24 @@ function SectionEditAction({id, edit}: {id: GameModelSectionId; edit: GameModelE
     if (edit.activeSection === id) {
         if (!edit.ready) {
             return (
-                <Button size="xs" variant="default" loading disabled>
+                <Button id={`game-model-${id}-edit`} data-pokie-game-model-action="edit" data-pokie-game-model-section={id} size="xs" variant="default" loading disabled>
                     Edit
                 </Button>
             );
         }
         return (
             <Group gap="xs" wrap="nowrap">
-                <Button size="xs" onClick={edit.onSave} loading={edit.saving}>
+                <Button id={`game-model-${id}-save`} data-pokie-game-model-action="save" data-pokie-game-model-section={id} size="xs" onClick={edit.onSave} loading={edit.saving}>
                     Save
                 </Button>
-                <Button size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>
+                <Button id={`game-model-${id}-cancel`} data-pokie-game-model-action="cancel" data-pokie-game-model-section={id} size="xs" variant="default" onClick={edit.onCancel} disabled={edit.saving}>
                     Cancel
                 </Button>
             </Group>
         );
     }
     return (
-        <Button size="xs" variant="default" onClick={() => edit.onEdit(id)} disabled={edit.activeSection !== undefined}>
+        <Button id={`game-model-${id}-edit`} data-pokie-game-model-action="edit" data-pokie-game-model-section={id} size="xs" variant="default" onClick={() => edit.onEdit(id)} disabled={edit.activeSection !== undefined}>
             Edit
         </Button>
     );

@@ -17,7 +17,7 @@ import {QuickActions} from "../common/QuickActions";
 import {GameModelSections, type GameModelSectionId} from "./GameModelSections";
 
 type GameModelFailure = {message: string; detail?: string};
-type GameModelState = {status: "loading"} | {status: "error"; failure: GameModelFailure} | {status: "loaded"; projection: GameModelProjection};
+type GameModelState = {status: "loading"} | {status: "error"; failure: GameModelFailure} | {status: "loaded"; projection: GameModelProjection; refreshing?: boolean; failure?: GameModelFailure};
 
 function describeGameModelLoadFailure(detail: string): GameModelFailure {
     return {
@@ -105,7 +105,9 @@ export function GameModelTab({
 
     const refresh = useCallback(() => {
         const requestId = ++refreshRequestIdRef.current;
-        setState({status: "loading"});
+        // Keep the owning editor mounted during projection refreshes. Replacing this subtree
+        // discards its selected reel, bounded page and local unapplied draft while the request runs.
+        setState((previous) => previous.status === "loaded" ? {...previous, refreshing: true, failure: undefined} : {status: "loading"});
         getGameModel(fetchImpl, sharedWeightsSampleSeed)
             .then((projection) => {
                 if (requestId === refreshRequestIdRef.current) {
@@ -114,7 +116,8 @@ export function GameModelTab({
             })
             .catch((error: unknown) => {
                 if (requestId === refreshRequestIdRef.current) {
-                    setState({status: "error", failure: describeGameModelLoadFailure(errorMessage(error))});
+                    const failure = describeGameModelLoadFailure(errorMessage(error));
+                    setState((previous) => previous.status === "loaded" ? {...previous, refreshing: false, failure} : {status: "error", failure});
                 }
             });
     }, [fetchImpl, sharedWeightsSampleSeed]);
@@ -128,6 +131,8 @@ export function GameModelTab({
     const handleNewSample = useCallback(() => {
         setSharedWeightsSampleSeed((seed) => (seed ?? 1) + 1);
     }, []);
+
+    const refreshing = state.status === "loading" || (state.status === "loaded" && state.refreshing === true);
 
     const isDirty = editState.status === "editing" && editor.state.revision !== editState.baselineRevision;
 
@@ -147,6 +152,7 @@ export function GameModelTab({
             title: "Unsaved changes",
             children: "You have unsaved changes to this game model section. Leave and lose them?",
             labels: {confirm: "Leave", cancel: "Stay"},
+            controlIds: {confirm: "game-model-unsaved-leave", cancel: "game-model-unsaved-stay"},
         },
         () => setEditState({status: "viewing"}),
     );
@@ -293,6 +299,7 @@ export function GameModelTab({
         <div>
             {editError && <ErrorState message={editError.message} detail={editError.detail} />}
             {state.status === "loading" && <LoadingState label="Loading game model…" />}
+            {state.status === "loaded" && state.failure && <ErrorState message={state.failure.message} detail={state.failure.detail} />}
             {state.status === "error" && <ErrorState message={state.failure.message} detail={state.failure.detail} />}
             {state.status === "loaded" && (
                 <GameModelSections
@@ -317,11 +324,7 @@ export function GameModelTab({
                     }
                     reelsSampleControls={{
                         onNewSample: handleNewSample,
-                        // GameModelSections (and this control) only ever renders while `state.status ===
-                        // "loaded"` -- a New sample re-fetch flips `state` straight to "loading" and
-                        // unmounts this in favor of the page-level `LoadingState` above, so there's no
-                        // in-between render where this button's own spinner would ever show.
-                        loading: false,
+                        loading: refreshing,
                         onConvertToGeneratedReels: editable ? handleConvertToGeneratedReels : undefined,
                         convertDisabled: editState.status !== "viewing",
                         onEditWeights: editable && editState.status === "viewing" ? () => handleEdit("reels") : undefined,
@@ -329,7 +332,7 @@ export function GameModelTab({
                 />
             )}
             <QuickActions>
-                <Button variant="default" size="xs" onClick={refresh} loading={state.status === "loading"} disabled={editState.status !== "viewing"}>
+                <Button variant="default" size="xs" onClick={refresh} loading={refreshing} disabled={editState.status !== "viewing"}>
                     Refresh
                 </Button>
             </QuickActions>

@@ -52,12 +52,12 @@ describe("ProjectDashboardPage - Simulation 409 conflict", () => {
         await screen.findByRole("heading", {name: "A"});
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await user.click(await screen.findByRole("button", {name: "Run Simulation"}));
 
         // No error surfaces -- the 409 with activeJobId is a typed conflict, not a failure -- and
         // polling picks up the *other* job's own progress.
         await waitFor(() => expect(pollCount).toBeGreaterThan(0));
-        expect(await screen.findByText(/^running — 250\/500 rounds/)).toBeInTheDocument();
+        expect(await screen.findByText(/^Simulation running — 250\/500 rounds/)).toBeInTheDocument();
         expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 });

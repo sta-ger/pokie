@@ -16,6 +16,8 @@ import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
 import {RunnableArtifactMaterializer} from "./RunnableArtifactMaterializer.js";
 import {RuntimePreparationError} from "./RuntimePreparationError.js";
+import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
 import {UnsupportedProjectOperationError} from "./UnsupportedProjectOperationError.js";
 
 // What every CLI runtime operation (sim/dev/serve/replay, Studio's Play runtime) gets back once it's
@@ -78,7 +80,26 @@ function appendRuntimePathIdentity(identity: crypto.Hash, targetPath: string, re
     }
     if (stats.isFile()) {
         identity.update(`file:${relativePath}\0`);
-        identity.update(fs.readFileSync(targetPath));
+        // A consumer can start while a sibling build is replacing dist.  The
+        // identity is only a cache discriminator, so retain a deterministic
+        // missing marker instead of making an otherwise valid CLI command
+        // crash on a declaration file that genuinely disappeared between
+        // lstat/read.
+        try {
+            identity.update(fs.readFileSync(targetPath));
+        } catch (error) {
+            // Only a file removed between lstatSync and readFileSync is a
+            // harmless cache-identity race. Permission and other I/O failures
+            // remain actionable runtime preparation errors.
+            // ENOENT alone is not a disappearance proof: mocked, mounted,
+            // or transient filesystem reads can report it while the identity
+            // input remains present.  Tolerate the cache race only after a
+            // second observation confirms that this exact input is gone.
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT" || fs.existsSync(targetPath)) {
+                throw error;
+            }
+            identity.update(`missing-during-read:${relativePath}\0`);
+        }
         identity.update("\0");
         return;
     }
@@ -195,11 +216,18 @@ export function createMaterializingRuntimePackageResolver(
             try {
                 const materialized = await materializer.materialize(project, options);
                 if (options.signal?.aborted) {
-                    await materialized.release();
+                    try {
+                        await materialized.release();
+                    } catch (error) {
+                        // A release rejection is never a safe cancellation,
+                        // even if the collaborator throws a cancellation error.
+                        throw new RuntimePreparationCleanupError(error);
+                    }
                     assertRuntimePreparationNotCancelled(options.signal);
                 }
                 return {runtimePath: materialized.runtimePath, release: materialized.release};
             } catch (error) {
+                if (error instanceof RuntimePreparationCleanupError || error instanceof RuntimePreparationCancelledError) throw error;
                 if (options.signal?.aborted) throw error;
                 // Preserve the dedicated lifecycle error (including phase and
                 // npm detail) for direct consumers while enriching its public
@@ -235,5 +263,5 @@ export function createMaterializingRuntimePackageResolver(
 }
 
 function assertRuntimePreparationNotCancelled(signal: AbortSignal | undefined): void {
-    if (signal?.aborted) throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+    if (signal?.aborted) throw new RuntimePreparationCancelledError();
 }

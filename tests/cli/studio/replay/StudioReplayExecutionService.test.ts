@@ -295,13 +295,97 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 
 describe("StudioReplayExecutionService", () => {
 
-    it("cancels a canonical WASM replay after runtime acquisition and disposes its portable resources", async () => {
+    it.each([[false, false], [true, false], [false, true], [true, true]])("withholds output through release rejection=%s and cancellation=%s", async (rejectRelease, cancelDuringRelease) => {
+        let clock = 1000;
+        let finishRelease!: () => void;
+        let rejectCleanup!: (error: Error) => void;
+        const release = jest.fn(() => new Promise<void>((resolve, reject) => {
+            finishRelease = resolve;
+            rejectCleanup = reject;
+        }));
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-release-boundary-"));
+        const durableRepository = new FileStudioJobRepository(directory);
+        const durableJobs = new StudioJobService(durableRepository, () => clock);
+        const repository = new InMemoryStudioReplayRepository();
+        const onCompleted = jest.fn();
+        const service = new StudioReplayExecutionService(repository, () => Promise.resolve(createSeedAwareFakeGame(manifest)), undefined, () => clock, undefined, undefined, undefined, onCompleted, undefined, undefined, undefined, release);
+        service.attachJobService(durableJobs);
+        const result = service.start("/a", {round: 1, seed: "cleanup"});
+        if (result.status !== "created") throw new Error("expected created job");
+        try {
+            for (let attempt = 0; !release.mock.calls.length && attempt < 100; attempt++) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(release).toHaveBeenCalledTimes(1);
+            expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            expect(service.getStatus("/a", result.job.id)?.descriptor).toBeUndefined();
+            expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
+            expect(onCompleted).not.toHaveBeenCalled();
+            if (cancelDuringRelease) {
+                expect(service.cancel("/a", result.job.id)?.status).toBe("cancelling");
+                expect(durableJobs.get("/a", result.job.id)?.status).toBe("cancelling");
+                expect(onCompleted).not.toHaveBeenCalled();
+            }
+            clock = 1300;
+            if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
+            else finishRelease();
+            for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectRelease) {
+                expect(service.getStatus("/a", result.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("restart Studio before retrying"), recovery: {action: "retry", reason: expect.stringContaining("restart Studio before retrying")}});
+                expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+                expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
+                expect(onCompleted).not.toHaveBeenCalled();
+                await expect(service.cancelAll()).rejects.toThrow("release destination is busy");
+                // A failed drainage must not authorize a graceful shutdown marker.
+                await expect(durableJobs.completeGracefulShutdown(false)).rejects.toThrow("could not confirm executor cleanup");
+                expect(durableRepository.getProcessState()?.status).toBe("running");
+            } else if (cancelDuringRelease) {
+                expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
+                expect(durableJobs.get("/a", result.job.id)).toMatchObject({status: "cancelled", recovery: {action: "retry"}});
+                expect(durableJobs.get("/a", result.job.id)?.result?.outputs).toBeUndefined();
+                expect(repository.get(result.job.id)?.descriptor).toBeUndefined();
+                expect(onCompleted).not.toHaveBeenCalled();
+                expect(service.listJobs("/a")).toMatchObject([{status: "cancelled", totalBet: undefined, totalWin: undefined}]);
+                await service.cancelAll();
+            } else {
+                expect(service.getDownload("/a", result.job.id).status).toBe("ok");
+                expect(service.getDownload("/a", result.job.id)).toMatchObject({descriptor: {durationMs: 300}});
+                expect(service.getStatus("/a", result.job.id)?.durationMs).toBe(300);
+                expect(durableJobs.get("/a", result.job.id)?.result?.detail?.descriptor).toMatchObject({durationMs: 300});
+                expect(onCompleted).toHaveBeenCalledTimes(1);
+                expect(onCompleted.mock.calls[0]?.[0].status).toBe("completed");
+                expect(onCompleted.mock.calls[0]?.[0].descriptor?.durationMs).toBe(300);
+                await service.cancelAll();
+            }
+        } finally {
+            finishRelease();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it.each([false, true])("keeps WASM replay cancellation pending through asynchronous disposal rejection=%s", async (rejectDisposal) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-replay-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmPath, "");
         fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}, capabilities: ["runtime.replay"]}));
         const gate = createControlledYield();
-        const disposeRuntime = jest.fn();
+        let jobId = "";
+        let finishDisposal!: () => void;
+        let failDisposal!: (error: Error) => void;
+        const disposeRuntime = jest.fn(() => {
+            expect(service.getStatus(wasmPath, jobId)?.status).toBe("running");
+            return new Promise<void>((resolve, reject) => {
+                finishDisposal = resolve;
+                failDisposal = reject;
+            });
+        });
         const runtime = {
             manifest: {component: {id: "wasm", version: "1.0.0"}, capabilities: ["runtime.replay"], artifact: {configurationHash: "config"}},
             replay: (state: {sequence: number; credits: number}, commands: readonly Record<string, unknown>[]) => ({
@@ -326,12 +410,21 @@ describe("StudioReplayExecutionService", () => {
         try {
             const started = service.start(wasmPath, {round: 2, seed: "cleanup"});
             if (started.status !== "created") throw new Error("expected WASM replay job");
+            jobId = started.job.id;
             await waitFor(() => gate.pendingCount() === 1, "WASM replay did not acquire its session before yielding.");
             service.cancel(wasmPath, started.job.id);
             gate.release();
-            await expect(waitForTerminal(service, wasmPath, started.job.id)).resolves.toMatchObject({status: "cancelled"});
+            await waitFor(() => disposeRuntime.mock.calls.length === 1, "WASM disposal did not start.");
+            expect(service.getActiveCount()).toBe(1);
+            expect(service.getDownload(wasmPath, started.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            if (rejectDisposal) failDisposal(new Error("WASM release rejected"));
+            else finishDisposal();
+            await expect(waitForTerminal(service, wasmPath, started.job.id)).resolves.toMatchObject({status: rejectDisposal ? "failed" : "cancelled"});
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectDisposal) await expect(service.cancelAll()).rejects.toThrow("WASM release rejected");
             expect(disposeRuntime).toHaveBeenCalledTimes(1);
         } finally {
+            finishDisposal?.();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });

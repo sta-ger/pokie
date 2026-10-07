@@ -5,6 +5,8 @@ import type {SimulationReport, SimulationReportBreakdownComponent, StudioSimulat
 // (being pure) these are unit-testable without a real DOM/jsdom.
 
 export type SimulationProgressView = {
+    /** Undefined only during the local queued state before Studio receives a durable job id. */
+    jobId?: string;
     status: StudioSimulationJobView["status"];
     roundsCompleted: number;
     rounds: number;
@@ -20,6 +22,7 @@ export type SimulationProgressView = {
 export function describeSimulationProgress(job: StudioSimulationJobView): SimulationProgressView {
     const percent = job.rounds > 0 ? Math.min(100, Math.round((job.roundsCompleted / job.rounds) * 100)) : 0;
     return {
+        jobId: job.id,
         status: job.status,
         roundsCompleted: job.roundsCompleted,
         rounds: job.rounds,

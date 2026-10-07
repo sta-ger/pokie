@@ -125,19 +125,19 @@ function LiteralStripEditor({reelIndex, entry, symbols, mutate, issues}: {reelIn
     const [page, setPage] = useState(0);
     const pageSize = 100;
     const lastPage = Math.max(0, Math.ceil(strip.length / pageSize) - 1);
-    // The selected reel and its local draft can both change without unmounting this editor.  Render
-    // from a valid page immediately, then keep the stored pager state in sync, so a shorter reel or
-    // a removal from the final page can never leave the symbols inaccessible behind an empty page.
+    // Clamp both the rendered window and its stored page before committing children. An effect would
+    // commit all 100 row controls again after a final-page removal, and leave the old page in state
+    // until then. A subsequent addition must start from this clamped page, not revive that old page.
     const visiblePage = Math.min(page, lastPage);
-    useEffect(() => {
-        setPage((currentPage) => Math.min(currentPage, lastPage));
-    }, [reelIndex, lastPage]);
+    if (page !== visiblePage) {
+        setPage(visiblePage);
+    }
     const firstVisiblePosition = visiblePage * pageSize;
     const visibleStrip = strip.slice(firstVisiblePosition, firstVisiblePosition + pageSize);
 
     return (
         <div>
-            {strip.length > pageSize && <BoundedListPager itemLabel="symbols" itemCount={strip.length} page={visiblePage} pageSize={pageSize} onPageChange={setPage} />}
+            {strip.length > pageSize && <BoundedListPager idPrefix={`reel-modeler-${reelIndex + 1}-symbols`} itemLabel="symbols" itemCount={strip.length} page={visiblePage} pageSize={pageSize} onPageChange={setPage} />}
             <List listStyleType="none" spacing={4}>
                 {visibleStrip.map((symbolId, visiblePosition) => {
                     const position = firstVisiblePosition + visiblePosition;
@@ -145,12 +145,20 @@ function LiteralStripEditor({reelIndex, entry, symbols, mutate, issues}: {reelIn
                         <List.Item key={position}>
                             <Group gap="xs">
                                 <BufferedTextInput
+                                    id={`reel-modeler-${reelIndex + 1}-symbol-${position + 1}`}
                                     aria-label={`Reel ${reelIndex + 1} symbol ${position + 1}`}
                                     value={symbolId}
-                                    onCommit={(value) => mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value))}
+                                    onCommit={(value) => {
+                                        // Paging blurs the focused row. Merely inspecting it must not
+                                        // clone the draft or invalidate an in-flight Check & Preview.
+                                        if (value !== symbolId) {
+                                            mutate((b) => setReelStripGenerationLiteralSymbolAt(b, reelIndex, position, value));
+                                        }
+                                    }}
                                 />
                                 {issueFor(issues, `strip.${position}`) && <Text c="red" size="xs">{issueFor(issues, `strip.${position}`)}</Text>}
                                 <RowActions
+                                    idPrefix={`reel-modeler-${reelIndex + 1}-symbol-${position + 1}`}
                                     itemLabel={`reel ${reelIndex + 1} symbol ${position + 1}`}
                                     onDuplicate={() => mutate((b) => duplicateReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
                                     onRemove={() => mutate((b) => removeReelStripGenerationLiteralSymbolAt(b, reelIndex, position))}
@@ -1129,10 +1137,10 @@ export function ReelStripGenerationEditor({
             </Text>
 
             <Group gap="xs" mb="md" role="navigation" aria-label="Reel modeler workflow">
-                <Button size="xs" variant={activeStep === 0 ? "filled" : "default"} aria-label="Select reel Which reel" onClick={() => setActiveStep(0)}>Select reel</Button>
+                <Button id="reel-modeler-select" size="xs" variant={activeStep === 0 ? "filled" : "default"} aria-label="Select reel Which reel" onClick={() => setActiveStep(0)}>Select reel</Button>
                 <Button size="xs" variant={activeStep === 1 ? "filled" : "default"} aria-label="Edit or generate Literal or generated" disabled={!editReachable} onClick={() => setActiveStep(1)}>Configure</Button>
                 <Button size="xs" variant={activeStep === 2 || activeStep === 3 ? "filled" : "default"} aria-label="Inspect diagnostics Validation" disabled={!diagnosticsReachable} onClick={() => setActiveStep(2)}>Preview</Button>
-                <Button size="xs" variant={activeStep === 4 ? "filled" : "default"} aria-label="Apply Commit or discard" disabled={!editReachable} onClick={() => setActiveStep(4)}>Done</Button>
+                <Button id="reel-modeler-done" size="xs" variant={activeStep === 4 ? "filled" : "default"} aria-label="Apply Commit or discard" disabled={!editReachable} onClick={() => setActiveStep(4)}>Done</Button>
             </Group>
 
             {activeStep === 0 &&
@@ -1154,6 +1162,7 @@ export function ReelStripGenerationEditor({
                                     )}
                                     <Button
                                         size="xs"
+                                        id={`reel-modeler-select-${reelIndex + 1}`}
                                         aria-label={`Select reel ${reelIndex + 1}`}
                                         variant={reelIndex === selectedReelIndex ? "filled" : "default"}
                                         onClick={() => selectReel(reelIndex)}
@@ -1344,7 +1353,7 @@ export function ReelStripGenerationEditor({
                                 : `Reel ${selectedReelIndex + 1}'s draft matches what's already in the Reels draft — nothing to apply.`}
                         </Text>
                         <QuickActions>
-                            <Button aria-label="Apply" onClick={applyDraft} disabled={!isDirty}>
+                            <Button id="reel-modeler-apply" aria-label="Apply" onClick={applyDraft} disabled={!isDirty}>
                                 Use changes
                             </Button>
                             <Button variant="default" color="red" onClick={discardDraft} disabled={!isDirty}>

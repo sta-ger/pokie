@@ -10,6 +10,7 @@ import type {StudioProjectRegistry} from "./StudioProjectRegistry.js";
 import type {StudioProjectOrigin, StudioProjectRegistryEntry} from "./StudioProjectRegistryEntry.js";
 import type {StudioProjectRegistryView} from "./StudioProjectRegistryView.js";
 import type {StudioProjectImportPreviewResult} from "./StudioProjectImportPreviewResult.js";
+import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelledError.js";
 
 // The file name FileStudioProjectRegistry's persisted registry lives under, inside whatever app-data
 // directory PokiePathResolver.resolveAppDataDirectory() resolves -- shared between
@@ -362,7 +363,7 @@ export class StudioProjectRegistrationService {
 
     private assertRecordOpenedCurrent(options: {readonly isCurrent?: () => boolean; readonly signal?: AbortSignal}): void {
         if (options.signal?.aborted || options.isCurrent?.() === false) {
-            throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+            throw new StudioProjectOpeningCancelledError();
         }
     }
 }

@@ -166,14 +166,14 @@ type ProjectTabDescriptor = NavTabItem<ProjectTab> & {
 // own canonical reader/analysis/draw for an "outcome-source" one) -- see the render tree below, never a
 // second, capability-gated tab of its own.
 const ALL_PROJECT_TABS: ProjectTabDescriptor[] = [
-    {value: "overview", label: "Overview"},
-    {value: "gameModel", label: "Game Model"},
-    {value: "play", label: "Play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "simulation", label: "Simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
-    {value: "replay", label: "Replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
-    {value: "exportDeploy", label: "Build/Export", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
-    {value: "certification", label: "Certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
-    {value: "provablyFair", label: "Provably Fair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
+    {value: "overview", label: "Overview", auditControlId: "project-tab:overview"},
+    {value: "gameModel", label: "Game Model", auditControlId: "project-tab:gameModel"},
+    {value: "play", label: "Play", auditControlId: "project-tab:play", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "simulation", label: "Simulation", auditControlId: "project-tab:simulation", requiredCapabilities: OUTCOME_SOURCE_SAMPLE_CAPABLE_CAPABILITIES},
+    {value: "replay", label: "Replay", auditControlId: "project-tab:replay", requiredCapabilities: OUTCOME_SOURCE_REPLAY_CAPABLE_CAPABILITIES},
+    {value: "exportDeploy", label: "Build/Export", auditControlId: "project-tab:exportDeploy", requiredCapabilities: BUILD_EXPORT_CAPABLE_CAPABILITIES},
+    {value: "certification", label: "Certification", auditControlId: "project-tab:certification", requiredCapabilities: CERTIFICATION_CAPABLE_CAPABILITIES},
+    {value: "provablyFair", label: "Provably Fair", auditControlId: "project-tab:provablyFair", requiredCapabilities: PROVABLY_FAIR_CAPABLE_CAPABILITIES},
 ];
 
 function isProjectTab(value: string | undefined): value is ProjectTab {
@@ -238,8 +238,21 @@ function ProjectOpeningErrorState({message, detail, onReturnToProjects}: {messag
 // A route with a project root must remount the dashboard when browser history changes that root.
 // ProjectDashboardPage owns several long-lived runtime hooks, and retaining an A instance while the
 // server has already switched to B would leave A's session/run identifiers actionable against B.
+function decodeProjectRouteRoot(value: string): string {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
 export function ProjectDashboardRoute() {
-    const {projectRoot} = useParams<{projectRoot: string}>();
+    const {projectRoot: encodedProjectRoot} = useParams<{projectRoot: string}>();
+    // Project locations are encoded into the scoped URL.  Preserve the
+    // server's native path when a rendered tab refreshes its context; passing
+    // the encoded segment back to the opener turns every slash into `%2F`
+    // again and makes a keyboard navigation look like a missing project.
+    const projectRoot = encodedProjectRoot === undefined ? undefined : decodeProjectRouteRoot(encodedProjectRoot);
     return <ProjectDashboardPage key={projectRoot ?? "current-project"} requestedProjectRoot={projectRoot} />;
 }
 
@@ -250,7 +263,7 @@ export function ProjectDashboardRoute() {
 export function LegacyProjectDashboardRoute() {
     const {tab} = useParams<{tab: string}>();
     const navigate = useNavigate();
-    const header = useProjectContext();
+    const {header} = useProjectContext();
     const activeTab = isProjectTab(tab) ? tab : (legacyProjectRouteMigration(tab)?.destination ?? "overview");
     const upgradeStartedRef = useRef(false);
 
@@ -405,16 +418,84 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     const activeTab: ProjectTab = isProjectTab(tab) ? tab : (requestedMigration?.destination ?? "overview");
     const migratedFrom = new URLSearchParams(location.search).get("migrated");
     const migration = legacyProjectRouteMigration(migratedFrom ?? undefined);
+    const navigationRequestIdRef = useRef(0);
+    const [navigationLifecycle, setNavigationLifecycle] = useState<{tab: ProjectTab; status: "loading" | "rendered" | "error"; message?: string}>({tab: activeTab, status: "rendered"});
+    // This generation is deliberately shared by a completed durable operation
+    // and a public tab transition. A capability-changing operation must refresh
+    // the product-owned context before its dependent tab can be selected; the
+    // tab transition repeats that same boundary rather than trusting a cached
+    // page header from before the user's latest action.
+    const [contextRefreshGeneration, setContextRefreshGeneration] = useState(0);
+    const contextRefreshGenerationRef = useRef(0);
+    const [pendingNavigation, setPendingNavigation] = useState<{requestId: number; tab: ProjectTab; refreshGeneration: number} | undefined>();
+    const {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal} = useProjectContext(requestedProjectRoot, contextRefreshGeneration);
     // The active tab lives in the URL (`/project/:tab`, see routes.tsx) so refresh/back-forward/direct
     // links land on the right section; every existing call site below still just calls `setActiveTab(x)`,
     // now implemented as a navigation instead of local state.
     const setActiveTab = useCallback(
         (value: ProjectTab): void => {
-            const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
-            navigate(`${routePrefix}/${value}`);
+            const requestId = ++navigationRequestIdRef.current;
+            // A workflow selection itself is capability-dependent.  Request a
+            // fresh generation even when no durable receipt is already
+            // refreshing the context, then keep the current terminal screen
+            // in place until that exact generation has rendered terminally.
+            // Navigating first exposed a form against the previous context
+            // while its own revalidation was still loading.
+            const refreshGeneration = contextRefreshGenerationRef.current + 1;
+            contextRefreshGenerationRef.current = refreshGeneration;
+            setNavigationLifecycle({tab: value, status: "loading"});
+            // Do not let a dependent workflow mount against the header that
+            // preceded either a durable operation or this tab selection. The
+            // target is held until its exact generation is terminally
+            // rendered; a request receipt alone cannot select a stale form.
+            setPendingNavigation({requestId, tab: value, refreshGeneration});
+            setContextRefreshGeneration(refreshGeneration);
         },
-        [navigate, requestedProjectRoot],
+        [],
     );
+
+    useEffect(() => {
+        if (
+            pendingNavigation !== undefined &&
+            pendingNavigation.requestId === navigationRequestIdRef.current &&
+            failedRefreshGeneration === pendingNavigation.refreshGeneration &&
+            renderedTerminal?.generation === pendingNavigation.refreshGeneration &&
+            renderedTerminal.outcome === "failed" &&
+            renderedTerminal.header === header
+        ) {
+            // Keep the current workflow selected and expose the freshly
+            // rendered context diagnostic when its prerequisite cannot be
+            // revalidated. A failed request must not turn into a stale route.
+            setNavigationLifecycle({tab: activeTab, status: "error", message: header.status === "error" ? header.message : "The project context could not be refreshed."});
+            setPendingNavigation(undefined);
+            return;
+        }
+        // A newer refresh is not evidence for this selection: it may belong
+        // to another terminal job and its header can be committed before the
+        // generation this tab requested.  The target workflow is therefore
+        // released only by its exact post-commit context receipt.
+        // The numerical acknowledgement is intentionally accompanied by the
+        // exact terminal header object committed for it.  A retained number
+        // from an earlier refresh must not release a dependent tab while a
+        // newer generation is loading or while React is rendering another
+        // terminal context.
+        if (
+            pendingNavigation === undefined ||
+            completedRefreshGeneration !== pendingNavigation.refreshGeneration ||
+            renderedTerminal?.generation !== pendingNavigation.refreshGeneration ||
+            renderedTerminal.outcome !== "completed" ||
+            renderedTerminal.header !== header
+        ) {
+            return;
+        }
+        if (pendingNavigation.requestId !== navigationRequestIdRef.current) {
+            return;
+        }
+        const routePrefix = requestedProjectRoot === undefined ? "/project" : `/project/${encodeURIComponent(requestedProjectRoot)}`;
+        navigate(`${routePrefix}/${pendingNavigation.tab}`);
+        setNavigationLifecycle({tab: pendingNavigation.tab, status: "rendered"});
+        setPendingNavigation(undefined);
+    }, [activeTab, completedRefreshGeneration, failedRefreshGeneration, header, navigate, pendingNavigation, renderedTerminal, requestedProjectRoot]);
 
     // Keep the URL as understandable as the view.  Home already replaces unknown sections with its
     // default route; doing the same for a project means a stale bookmark/reload never leaves an
@@ -428,7 +509,6 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         navigate(`${routePrefix}/${destination}${migrationSearch(tab)}`, {replace: true});
     }, [navigate, requestedMigration, requestedProjectRoot, tab]);
 
-    const header = useProjectContext(requestedProjectRoot);
     const projectKey =
         header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact"
             ? header.projectRoot
@@ -438,6 +518,35 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const capabilityRefreshJobsRef = useRef(new Set<string>());
+    useEffect(() => {
+        // A terminal durable record is the only product-owned signal that an
+        // operation may have changed project capabilities, artifacts, or its
+        // dependent workflow's preconditions. Revalidate after *every*
+        // terminal operation (not just Outcome Library generation) so each
+        // rendered receipt and the next enabled public control derive from
+        // the same current server context.
+        const terminalJobs = commonJobs.jobs.filter((job) =>
+            ["completed", "success", "failed", "cancelled", "recovery-required"].includes(job.status) &&
+            !capabilityRefreshJobsRef.current.has(job.id),
+        );
+        if (terminalJobs.length === 0) return;
+        // Job discovery returns retained history as one list. Mark the whole
+        // observed terminal batch before refreshing so an initial list of
+        // receipts produces one coherent context revalidation, rather than a
+        // cascade of unmounting refreshes between dependent controls.
+        terminalJobs.forEach((job) => capabilityRefreshJobsRef.current.add(job.id));
+        const refreshedGeneration = contextRefreshGenerationRef.current + 1;
+        contextRefreshGenerationRef.current = refreshedGeneration;
+        // Refresh generations supersede an in-flight request.  If a durable
+        // terminal record starts the newer refresh while a tab selection is
+        // still held, keep that selection attached to the replacement
+        // generation rather than allowing a stale earlier receipt to release
+        // it (or leaving it permanently held after React cancels that older
+        // request).
+        setPendingNavigation((pending) => pending === undefined ? undefined : {...pending, refreshGeneration: refreshedGeneration});
+        setContextRefreshGeneration(refreshedGeneration);
+    }, [commonJobs.jobs]);
     // Build/Export can provide a richer, operation-specific presentation for
     // one Outcome Library job. Keep that ownership at durable-job granularity:
     // concurrent destinations and retained history must continue through the
@@ -505,6 +614,21 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     }, [fetchImpl]);
 
     const simulation = useSimulationPoll();
+
+    // A reload recreates the hook, but the server-owned project-job list
+    // remains authoritative. Reattach to an active simulation or its
+    // restart-reconciled terminal so the Simulation workflow, rather than
+    // only a generic history card, renders the durable result. A
+    // recovery-required record is deliberately polled once: its vanished
+    // executor must be represented as recovery-required, never as completed.
+    useEffect(() => {
+        if (projectKey === undefined || simulation.currentJobId !== undefined) return;
+        const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation" && (job.status === "queued" || job.status === "running" || job.status === "cancelling" || job.status === "recovery-required"));
+        if (restorableSimulation !== undefined) {
+            if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);
+            simulation.restore(restorableSimulation.id);
+        }
+    }, [commonJobs.jobs, projectKey, simulation]);
 
     const [reportsView, setReportsView] = useState<ReportListView>({status: "empty"});
     const [reportsError, setReportsError] = useState<string>();
@@ -1101,7 +1225,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         <AppShellLayout
             navbar={<NavTabs items={visibleProjectTabs(header)} active={activeTab} onSelect={setActiveTab} />}
             breadcrumbs={[
-                {label: "Your projects", onClick: handleClose},
+                {label: "Your projects", id: "project-breadcrumb-projects", onClick: handleClose},
                 {label: projectName, onClick: () => setActiveTab("overview")},
                 {label: activeTabLabel},
             ]}
@@ -1147,24 +1271,36 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 </div>
             )}
             {(header.status === "loaded" || header.status === "error" || header.status === "outcome-source" || header.status === "artifact") && (
-                <div className="studio-page" ref={panelRef} role="region" aria-labelledby="project-dashboard-heading" tabIndex={-1} style={{marginTop: "1rem"}}>
+                <div
+                    className="studio-page"
+                    ref={panelRef}
+                    role="region"
+                    aria-labelledby="project-dashboard-heading"
+                    tabIndex={-1}
+                    style={{marginTop: "1rem"}}
+                >
                     {migration !== undefined && migration.destination === activeTab && (
                         <Alert color="blue" variant="light" mb="sm">
                             {migration.message}
                         </Alert>
                     )}
-                    {visibleCommonJobs.length > 0 && (
-                        <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
-                            <Title id="studio-operations-heading" order={3}>Studio operations</Title>
-                            <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) =>
-                                job.status === "queued" || job.status === "running" || job.status === "cancelling"
-                                    ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                                    : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
-                            )}
-                        </Stack>
+                    {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "error" && (
+                        <ErrorState message={`Could not refresh this project after navigation: ${navigationLifecycle.message ?? "Unknown error"}`} />
                     )}
-                    {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
+                    <Text
+                        role="status"
+                        aria-live="polite"
+                        tabIndex={-1}
+                        data-pokie-lifecycle-result="navigation"
+                        data-pokie-lifecycle-route={activeTab}
+                        data-pokie-lifecycle-result-control={`project-tab:${activeTab}`}
+                        data-pokie-lifecycle-result-state="navigation"
+                        data-pokie-lifecycle-terminal={navigationLifecycle.tab === activeTab ? navigationLifecycle.status : "loading"}
+                        size="xs"
+                        c="dimmed"
+                    >
+                        {navigationLifecycle.tab === activeTab && navigationLifecycle.status === "loading" ? `Opening ${activeTabLabel}…` : `${activeTabLabel} ready`}
+                    </Text>
                     {!activeTabSupported && activeTabDescriptor !== undefined && (
                         <>
                             <ErrorState message={describeUnsupportedTabMessage(activeTabDescriptor)} />
@@ -1228,6 +1364,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     progress={simulation.progress}
                                     error={simulation.error}
                                     cancellationRequested={simulation.cancellationRequested}
+                                    operation={simulation.operation}
+                                    terminalReceipt={simulation.terminalReceipt}
                                     onRun={startRun}
                                     recoveryRequest={recoveryJob?.operation.includes("simulation") ? recoveryJob.request : undefined}
                                     onCancel={() => {
@@ -1237,9 +1375,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                         setRunAgainNotice(undefined);
                                         simulation.cancel();
                                     }}
-                                    onRetry={() =>
-                                        simulation.job && startRun(simulation.job.rounds, simulation.job.seed, simulation.job.workers, simulation.job.modeName)
-                                    }
+                                    onRetry={simulation.retry}
                                     recentRuns={reportsView}
                                     recentRunsError={reportsError}
                                     onRefreshRecentRuns={refreshReports}
@@ -1323,6 +1459,21 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                             )}
                         </>
                     )}
+                    {/* Polling job details belong after the active workflow so
+                        progress, throughput and retained terminals cannot move
+                        its controls while a user presses them. */}
+                    {visibleCommonJobs.length > 0 && (
+                        <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
+                            <Title id="studio-operations-heading" order={3}>Studio operations</Title>
+                            <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
+                            {visibleCommonJobs.map((job) =>
+                                job.status === "queued" || job.status === "running" || job.status === "cancelling"
+                                    ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
+                                    : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
+                            )}
+                        </Stack>
+                    )}
+                    {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
                 </div>
             )}
         </AppShellLayout>

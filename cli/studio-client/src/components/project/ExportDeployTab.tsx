@@ -17,6 +17,7 @@ import {
     startOutcomeLibraryGeneration,
     startArtifactBuild,
     OutcomeLibraryGenerationStartError,
+    OutcomeLibraryGenerationPollError,
 } from "../../api/apiClient";
 import type {
     StudioArtifactBuildView,
@@ -35,6 +36,7 @@ import {useStudioApi} from "../../context/StudioApiProvider";
 import {
     describeArtifactBuildTargetCards,
     describeExportDeployTargetCards,
+    OUTCOME_LIBRARY_TRANSACTION,
     type ExportDeployTargetCard,
     type ExportDeployTargetKind,
 } from "../../domain/interpret/ExportDeployTargets";
@@ -120,17 +122,88 @@ type OutcomeLibraryGenerationOptions = {
     seed: string;
 };
 
+type OutcomeLibraryProgressSnapshot = {
+    readonly source: "start" | "poll";
+    readonly jobId: string;
+    readonly durableStatus: StudioOutcomeLibraryGenerateJobView["status"];
+    readonly lifecycleStage?: StudioOutcomeLibraryGenerateJobView["lifecycleStage"];
+    readonly durableProgress?: StudioOutcomeLibraryGenerateJobView["durableProgress"];
+};
+
+// Keep the initial identity and the latest observations, including terminals.
+// Polling, cancellation and resume share this bound; durable jobs remain the
+// authority for discovery after reload.
+export const OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT = 64;
+export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLibraryProgressSnapshot[], snapshot: OutcomeLibraryProgressSnapshot): readonly OutcomeLibraryProgressSnapshot[] {
+    // A resumed/reloaded job may have a new durable id. Its history must not
+    // inherit another job's submission or terminal while sharing this bound.
+    const boundHistory = history.filter((item) => item.jobId === snapshot.jobId);
+    const latest = boundHistory.at(-1);
+    // Reconnecting can return the same durable observation many times. Keep
+    // meaningful progress and recovery transitions, rather than letting those
+    // duplicate polls consume the history available to the terminal receipt.
+    if (boundHistory.length <= OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT && latest !== undefined && JSON.stringify(latest) === JSON.stringify(snapshot)) return boundHistory;
+    const observations = [...boundHistory, snapshot];
+    if (observations.length <= OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT) return observations;
+    // A resumed run can poll for hours. Keep its cancellation/recovery
+    // identity as well as the first submission and the current observation.
+    const initial = observations[0]!;
+    // Repeated completed polls must not evict the cancellation/checkpoint
+    // that authorized Resume. Prefer that recovery terminal over success.
+    const terminals = [...boundHistory].reverse().filter((item) => !["queued", "running", "cancelling"].includes(item.durableStatus));
+    const terminal = terminals.find((item) => item.durableStatus !== "completed") ?? terminals[0];
+    const pinned = terminal === undefined || terminal === initial ? [initial] : [initial, terminal];
+    const recent = observations.filter((item) => !pinned.includes(item));
+    return [...pinned, ...recent.slice(-(OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT - pinned.length))];
+}
+
 type OutcomeLibraryRunView =
     | {status: "idle"}
-    | {status: "running"; job: StudioOutcomeLibraryGenerateJobView}
-    | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
-    | {status: "cancelled"; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
-    | {status: "error"; jobId?: string; recovery?: StudioJobView["recovery"]; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
+    | {status: "running"; job: StudioOutcomeLibraryGenerateJobView; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]}
+    | {status: "ok"; jobId: string; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
+    | {status: "cancelled"; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
+    | {status: "error"; jobId?: string; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; durableStatus?: StudioOutcomeLibraryGenerateJobView["status"]; pollHttpStatus?: number; recovery?: StudioJobView["recovery"]; result?: Exclude<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; message: string; diagnostic?: string; plan?: StudioArtifactConversionPlan};
 
 type OutcomeLibraryPreflightView =
     | {status: "loading"}
     | {status: "ok"; result: Extract<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>}
     | {status: "error"; result?: Exclude<StudioOutcomeLibraryGenerateEstimateView, {status: "ok"}>; message?: string};
+
+function createOutcomeLibraryBrowserRequestId(): string {
+    const randomUuid = globalThis.crypto?.randomUUID?.();
+    return randomUuid === undefined ? `outcome-library-${Date.now()}-${Math.random().toString(36).slice(2)}` : `outcome-library-${randomUuid}`;
+}
+
+function outcomeLibraryProgressSnapshot(source: OutcomeLibraryProgressSnapshot["source"], job: StudioOutcomeLibraryGenerateJobView): OutcomeLibraryProgressSnapshot {
+    return {
+        source,
+        jobId: job.id,
+        durableStatus: job.status,
+        ...(job.lifecycleStage === undefined ? {} : {lifecycleStage: job.lifecycleStage}),
+        ...(job.durableProgress === undefined ? {} : {durableProgress: {...job.durableProgress}}),
+    };
+}
+
+/** Preserve the exact first terminal durable record when projecting it into the rendered error state. */
+function outcomeLibraryTerminalErrorRun(job: StudioOutcomeLibraryGenerateJobView, progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]): Extract<OutcomeLibraryRunView, {status: "error"}> {
+    const result = job.result;
+    return {
+        status: "error",
+        jobId: job.id,
+        ...(job.browserRequestId === undefined ? {} : {browserRequestId: job.browserRequestId}),
+        progressSnapshots,
+        durableStatus: job.status,
+        ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
+        ...(result === undefined || result.status === "ok" ? {
+            message: "Outcome library generation ended without a result.",
+        } : {
+            result,
+            message: describeGenerateResultError(result),
+            ...("error" in result ? {diagnostic: result.error} : {}),
+            plan: result.plan,
+        }),
+    };
+}
 
 function describeCompletedOutcomeLibrarySelector(selector: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>["selector"]): string {
     if (selector.kind === "bundle") return `bundle ${selector.bundleDir}, mode ${selector.modeName}`;
@@ -178,7 +251,7 @@ type ArtifactBuildRunView =
     // Keep the server's last in-flight preflight with the successful result. A very small build can
     // complete between React renders; without retaining it, the user never sees the estimate that
     // governed the build they just started.
-    | {status: "ok"; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
+    | {status: "ok"; jobId: string; result: Extract<StudioArtifactBuildView, {status: "ok"}>; progress?: StudioArtifactBuildJobView["progress"]}
     | {status: "cancelled"; plan: StudioArtifactConversionPlan}
     | {status: "error"; message: string; plan?: StudioArtifactConversionPlan};
 
@@ -267,6 +340,18 @@ function TargetCard({
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
+    let artifactBuildDisabledReason = "Fix the displayed build preflight issue before building this artifact.";
+    if (artifactBuildRun.status === "running") artifactBuildDisabledReason = "This artifact is already building. Wait for it to finish or cancel it before starting another build.";
+    else if (artifactPreview.status === "loading") artifactBuildDisabledReason = "Waiting for the build destination preflight to finish.";
+    else if (artifactPreview.status === "conflict") artifactBuildDisabledReason = "Choose a different destination before building; Studio will not overwrite existing files.";
+    else if (artifactPreview.status === "unsupported") artifactBuildDisabledReason = "This project cannot build this artifact until the displayed prerequisite is available.";
+    const outcomeLibraryDisabled = outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
+    const outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
+        ? "Outcome Library generation becomes available after its preflight succeeds."
+        : "Choose sampled or conditional bounded coverage before generating this Outcome Library.";
+    let lifecycleForm: string | undefined;
+    if (card.kind === "outcomeLibrary") lifecycleForm = "outcome-library";
+    else if (card.kind === "buildArtifact") lifecycleForm = "artifact-build";
     const operationalEstimates = outcomeLibraryPreflight.status !== "ok" ? undefined : outcomeLibraryPreflight.result.operationalEstimates ?? {
         recordCount: "unknown",
         outputSize: "unknown",
@@ -276,7 +361,11 @@ function TargetCard({
     } as const;
 
     return (
-        <div style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}>
+        <div
+            data-pokie-lifecycle-card={card.kind === "outcomeLibrary" ? OUTCOME_LIBRARY_TRANSACTION.cardId : undefined}
+            data-pokie-lifecycle-form={lifecycleForm}
+            style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}
+        >
             <Group gap="xs" mb={4}>
                 <Text fw={600}>{card.label}</Text>
                 <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
@@ -321,7 +410,7 @@ function TargetCard({
             )}
 
             {card.kind === "outcomeLibrary" && (
-                <>
+                <div>
                     <TextInput
                         mt="sm"
                         label="Mode"
@@ -335,7 +424,7 @@ function TargetCard({
                     <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
                     <Group gap="xs" mt={4}>
                         {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
-                            <Button key={generation} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
+                            <Button key={generation} id={`outcome-library-generation-${generation}`} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
                                 {generationStrategyLabel(generation)}
                             </Button>
                         ))}
@@ -401,33 +490,44 @@ function TargetCard({
                         )}
                     </AdvancedDisclosure>
                     <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
-                    {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
-                    {outcomeLibraryPreflight.status === "error" && (
-                        <>
-                            <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
-                            {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
-                        </>
-                    )}
-                    {outcomeLibraryPreflight.status === "ok" && (
-                        <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
-                            {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
-                            {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
-                        </Text>
-                    )}
-                    {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
-                        <Text size="xs" c="dimmed">
-                            Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
-                        </Text>
-                    )}
-                    {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
-                        <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
-                    )}
+                    <div
+                        data-pokie-lifecycle-preflight={OUTCOME_LIBRARY_TRANSACTION.formId}
+                        data-pokie-lifecycle-preflight-control={OUTCOME_LIBRARY_TRANSACTION.controlId}
+                        data-pokie-lifecycle-preflight-status={outcomeLibraryPreflight.status}
+                    >
+                        {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
+                        {outcomeLibraryPreflight.status === "error" && (
+                            <>
+                                <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
+                                {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
+                            </>
+                        )}
+                        {outcomeLibraryPreflight.status === "ok" && (
+                            <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
+                                {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
+                                {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
+                            </Text>
+                        )}
+                        {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
+                            <Text size="xs" c="dimmed">
+                                Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
+                            </Text>
+                        )}
+                        {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
+                            <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                        )}
+                    </div>
                     <Button
                         size="xs"
                         mt="sm"
                         onClick={onGenerateOutcomeLibrary}
+                        id={OUTCOME_LIBRARY_TRANSACTION.controlId}
+                        data-pokie-lifecycle="operation"
+                        data-pokie-transaction-state="editable-submission"
+                        data-pokie-lifecycle-operation={OUTCOME_LIBRARY_TRANSACTION.operation}
                         loading={outcomeLibraryRun.status === "running"}
-                        disabled={outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded")}
+                        disabled={outcomeLibraryDisabled}
+                        title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
                     >
                         Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
@@ -441,7 +541,23 @@ function TargetCard({
                             </>
                     )}
                     {outcomeLibraryRun.status === "error" && (
-                        <>
+                        <div
+                            {...(outcomeLibraryRun.jobId === undefined ? {} : {
+                                "data-pokie-lifecycle-result": OUTCOME_LIBRARY_TRANSACTION.formId,
+                                "data-pokie-lifecycle-result-operation": OUTCOME_LIBRARY_TRANSACTION.operation,
+                                "data-pokie-lifecycle-result-control": OUTCOME_LIBRARY_TRANSACTION.controlId,
+                                "data-pokie-lifecycle-result-state": "editable-submission",
+                                "data-pokie-lifecycle-result-job": outcomeLibraryRun.jobId,
+                                "data-pokie-lifecycle-result-durable-job": outcomeLibraryRun.jobId,
+                                "data-pokie-lifecycle-result-durable-status": outcomeLibraryRun.durableStatus ?? "unobserved",
+                                "data-pokie-lifecycle-result-receipt": outcomeLibraryRun.durableStatus === "failed" || outcomeLibraryRun.durableStatus === "cancelled" || outcomeLibraryRun.durableStatus === "recovery-required" ? OUTCOME_LIBRARY_TRANSACTION.terminalReceipt : "poll-failure",
+                                "data-pokie-lifecycle-terminal": outcomeLibraryRun.durableStatus ?? "poll-failure",
+                                ...(outcomeLibraryRun.result === undefined ? {} : {"data-pokie-lifecycle-result-outcome": outcomeLibraryRun.result.status}),
+                                ...(outcomeLibraryRun.browserRequestId === undefined ? {} : {"data-pokie-lifecycle-result-request-id": outcomeLibraryRun.browserRequestId}),
+                                ...(outcomeLibraryRun.progressSnapshots === undefined ? {} : {"data-pokie-lifecycle-result-progress-snapshots": String(outcomeLibraryRun.progressSnapshots.length)}),
+                                ...(outcomeLibraryRun.pollHttpStatus === undefined ? {} : {"data-pokie-lifecycle-poll-http-status": String(outcomeLibraryRun.pollHttpStatus)}),
+                            })}
+                        >
                             <ErrorState message={outcomeLibraryRun.message} />
                             {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
                             {outcomeLibraryRun.jobId !== undefined && outcomeLibraryRun.recovery !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
@@ -450,10 +566,10 @@ function TargetCard({
                                 </Button>
                             )}
                             <PlannerSummary plan={outcomeLibraryRun.plan} />
-                        </>
+                        </div>
                     )}
                     {outcomeLibraryRun.status === "ok" && (
-                        <>
+                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result={OUTCOME_LIBRARY_TRANSACTION.formId} data-pokie-lifecycle-result-operation={OUTCOME_LIBRARY_TRANSACTION.operation} data-pokie-lifecycle-result-control={OUTCOME_LIBRARY_TRANSACTION.controlId} data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-receipt={OUTCOME_LIBRARY_TRANSACTION.terminalReceipt} data-pokie-lifecycle-result-durable-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-durable-status="completed" data-pokie-lifecycle-terminal="completed" data-pokie-lifecycle-result-request-id={outcomeLibraryRun.browserRequestId} data-pokie-lifecycle-result-progress-snapshots={String(outcomeLibraryRun.progressSnapshots.length)}>
                             <Text size="sm" mt={4}>
                                 Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
                                 {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
@@ -466,7 +582,7 @@ function TargetCard({
                             <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
                                 {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
+                                <Button data-pokie-lifecycle-artifact={OUTCOME_LIBRARY_TRANSACTION.artifact} data-pokie-lifecycle-artifact-output={outcomeLibraryRun.result.resolvedBundleDir} size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
                                 {outputActionsUnavailable ? (
                                     <>
                                         <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
@@ -484,7 +600,7 @@ function TargetCard({
                                 </AdvancedDisclosure>
                             </QuickActions>
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
-                        </>
+                        </div>
                     )}
                     {outcomeLibraryRun.status === "cancelled" && (
                         <>
@@ -497,7 +613,7 @@ function TargetCard({
                             <PlannerSummary plan={outcomeLibraryRun.result.plan} />
                         </>
                     )}
-                </>
+                </div>
             )}
 
             {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
@@ -510,6 +626,15 @@ function TargetCard({
                         fileFilters={artifactFileFilters(card.artifactTarget)}
                         browseTitle={artifactDestinationTitle(card.artifactTarget)}
                         browseId={`artifact-${card.artifactTarget}-destination`}
+                        // This belongs to the editable control, not PathInput's
+                        // layout wrapper. The packed browser collector reads the
+                        // rendered input before it can enable Build, so keeping
+                        // the contract on the actual form field prevents a
+                        // route-level adapter from claiming a configured build.
+                        id={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
+                        attributes={card.artifactTarget === "parWorkbook" ? {input: {
+                            "data-pokie-lifecycle-field": "artifact-build-destination",
+                        }} : undefined}
                         value={artifactDestination}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
                         onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
@@ -572,7 +697,22 @@ function TargetCard({
                             )}
                         </>
                     )}
-                    <Button size="xs" mt="sm" onClick={() => onBuildArtifact(card.artifactTarget!)} loading={artifactBuildRun.status === "running"} disabled={!canBuildArtifact}>
+                    {/* The PAR workbook is the public round-trip/build proof.
+                        Other cards retain their own operation identity so a
+                        collector cannot accidentally activate a disabled
+                        sibling card and call it the PAR workflow. */}
+                    <Button
+                        id={`artifact-build-${card.artifactTarget}`}
+                        data-pokie-lifecycle="operation"
+                        data-pokie-transaction-state="editable-submission"
+                        data-pokie-lifecycle-operation={card.artifactTarget === "parWorkbook" ? "artifact-build" : `artifact-build-${card.artifactTarget}`}
+                        size="xs"
+                        mt="sm"
+                        onClick={() => onBuildArtifact(card.artifactTarget!)}
+                        loading={artifactBuildRun.status === "running"}
+                        disabled={!canBuildArtifact}
+                        title={!canBuildArtifact ? artifactBuildDisabledReason : undefined}
+                    >
                         Build
                     </Button>
                     {artifactBuildRun.status === "running" && (
@@ -610,7 +750,23 @@ function TargetCard({
                     )}
                     {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
                     {artifactBuildRun.status === "ok" && (
-                        <>
+                        <div
+                            role="status"
+                            aria-live="polite"
+                            tabIndex={-1}
+                            data-pokie-lifecycle-result="artifact-build"
+                            data-pokie-lifecycle-result-control={`artifact-build-${card.artifactTarget}`}
+                            data-pokie-lifecycle-result-state="editable-submission"
+                            // These values are rendered from the terminal job
+                            // record that this card polled. They keep a visible
+                            // PAR result tied to its own activation, rather
+                            // than merely proving that some artifact card has
+                            // completed on this screen.
+                            data-pokie-lifecycle-result-job={artifactBuildRun.jobId}
+                            data-pokie-lifecycle-result-target={artifactBuildRun.result.target}
+                            data-pokie-lifecycle-result-output={artifactBuildRun.result.outputPath}
+                            data-pokie-lifecycle-terminal="completed"
+                        >
                             <Text size="sm" mt={4}>
                                 Built to {artifactBuildRun.result.outputPath}.
                                 {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
@@ -646,10 +802,23 @@ function TargetCard({
                                 </Text>
                             )}
                             <QuickActions>
-                                <Button size="xs" variant="default" onClick={() => onOpenAsProject(artifactBuildRun.result)}>
+                                <Button
+                                    data-pokie-lifecycle-artifact="artifact-build-output"
+                                    data-pokie-lifecycle-artifact-target={artifactBuildRun.result.target}
+                                    data-pokie-lifecycle-artifact-output={artifactBuildRun.result.outputPath}
+                                    size="xs"
+                                    variant="default"
+                                    onClick={() => onOpenAsProject(artifactBuildRun.result)}
+                                >
                                     Open as Project
                                 </Button>
-                                <Button size="xs" variant="default" onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)} disabled={addedToProjects}>
+                                <Button
+                                    size="xs"
+                                    variant="default"
+                                    onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)}
+                                    disabled={addedToProjects}
+                                    title={addedToProjects ? "This output is already in Your projects." : undefined}
+                                >
                                     {addedToProjects ? "Added to Projects" : "Add to Projects"}
                                 </Button>
                                 {outputActionsUnavailable ? (
@@ -673,7 +842,7 @@ function TargetCard({
                                     </Button>
                                 )}
                             </QuickActions>
-                        </>
+                        </div>
                     )}
                 </>
             )}
@@ -685,6 +854,7 @@ function TargetCard({
                         mt="sm"
                         loading={isActiveTarget && deployment.runLoading}
                         disabled={card.deploymentTarget === undefined}
+                        title={card.deploymentTarget === undefined ? "Register and select a deployment target before checking compatibility." : undefined}
                         onClick={() => {
                             if (card.deploymentTarget !== undefined) {
                                 deployment.run(false, card.deploymentTarget);
@@ -700,6 +870,7 @@ function TargetCard({
                             ml="xs"
                             loading={isActiveTarget && deployment.runLoading}
                             disabled={card.deploymentTarget === undefined}
+                            title={card.deploymentTarget === undefined ? "Register and select a deployment target before publishing." : undefined}
                             onClick={() => deployment.run(true, card.deploymentTarget)}
                         >
                             Publish
@@ -871,6 +1042,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
+    // Keep a failed poll tied to the last durable state rather than flattening
+    // a missing response, server failure, and slow job into one timeout.
+    const lastObservedOutcomeLibraryJob = useRef<StudioOutcomeLibraryGenerateJobView | undefined>(undefined);
     const [featureOwnedOutcomeLibraryJobId, setFeatureOwnedOutcomeLibraryJobId] = useState<string | undefined>();
     const outcomeLibraryGuard = useDoubleSubmitGuard();
     const outcomeLibraryPollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -910,26 +1084,24 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             .then((jobs) => {
                 if (cancelled) return;
                 const newest = newestOutcomeLibraryJob(jobs);
+                lastObservedOutcomeLibraryJob.current = newest;
                 setFeatureOwnedOutcomeLibraryJobId(newest?.id);
                 if (newest === undefined) return;
                 if (newest.status === "queued" || newest.status === "running" || newest.status === "cancelling") {
-                    setOutcomeLibraryRun({status: "running", job: newest});
-                    pollOutcomeLibraryGeneration(newest.id);
+                    const progressSnapshots = [outcomeLibraryProgressSnapshot("start", newest)];
+                    setOutcomeLibraryRun({status: "running", job: newest, ...(newest.browserRequestId === undefined ? {} : {browserRequestId: newest.browserRequestId}), progressSnapshots});
+                    pollOutcomeLibraryGeneration(newest.id, newest.browserRequestId, progressSnapshots);
                     return;
                 }
                 if (newest.status === "completed" && newest.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: newest.result, ...(newest.durationMs === undefined ? {} : {durationMs: newest.durationMs})});
+                    setOutcomeLibraryRun({status: "ok", jobId: newest.id, ...(newest.browserRequestId === undefined ? {} : {browserRequestId: newest.browserRequestId}), progressSnapshots: [outcomeLibraryProgressSnapshot("poll", newest)], result: newest.result, ...(newest.durationMs === undefined ? {} : {durationMs: newest.durationMs})});
                     return;
                 }
                 if (newest.status === "cancelled" && newest.result?.status === "cancelled") {
-                    setOutcomeLibraryRun({status: "cancelled", result: newest.result});
+                    setOutcomeLibraryRun({status: "cancelled", ...(newest.browserRequestId === undefined ? {} : {browserRequestId: newest.browserRequestId}), progressSnapshots: [outcomeLibraryProgressSnapshot("poll", newest)], result: newest.result});
                     return;
                 }
-                if (newest.result !== undefined && newest.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: describeGenerateResultError(newest.result), ...("error" in newest.result ? {diagnostic: newest.result.error} : {}), plan: newest.result.plan});
-                } else {
-                    setOutcomeLibraryRun({status: "error", jobId: newest.id, recovery: newest.recovery, message: "Outcome library generation ended without a result."});
-                }
+                setOutcomeLibraryRun(outcomeLibraryTerminalErrorRun(newest, [outcomeLibraryProgressSnapshot("poll", newest)]));
             })
             .catch(() => {
                 // Older Studio servers do not expose checkpoint discovery; the
@@ -961,17 +1133,21 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         })
             .then((result) => {
                 if (cancelled) return;
-                setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
                 if (result.status === "ok" && result.defaults !== undefined) {
-                    // Never overwrite an explicit choice with a later preflight.
-                    setOutcomeLibraryGenerationOptions((current) => {
-                        const maxOutcomeSpaceSize = current.maxOutcomeSpaceSize || String(result.defaults.maxExactOutcomeSpaceSize);
-                        const sampleSize = current.sampleSize || String(result.defaults.boundedSample.sampleSize);
-                        const seed = current.seed || result.defaults.boundedSample.seed;
-                        if (maxOutcomeSpaceSize === current.maxOutcomeSpaceSize && sampleSize === current.sampleSize && seed === current.seed) return current;
-                        return {...current, maxOutcomeSpaceSize, sampleSize, seed};
-                    });
+                    const maxOutcomeSpaceSize = outcomeLibraryGenerationOptions.maxOutcomeSpaceSize || String(result.defaults.maxExactOutcomeSpaceSize);
+                    const sampleSize = outcomeLibraryGenerationOptions.sampleSize || String(result.defaults.boundedSample.sampleSize);
+                    const seed = outcomeLibraryGenerationOptions.seed || result.defaults.boundedSample.seed;
+                    if (maxOutcomeSpaceSize !== outcomeLibraryGenerationOptions.maxOutcomeSpaceSize || sampleSize !== outcomeLibraryGenerationOptions.sampleSize || seed !== outcomeLibraryGenerationOptions.seed) {
+                        // The token is bound to every request option. Do not
+                        // leave the action enabled for the render that fills
+                        // in server defaults: that frame otherwise combines a
+                        // prior token with the next request body.
+                        setOutcomeLibraryPreflight({status: "loading"});
+                        setOutcomeLibraryGenerationOptions((current) => ({...current, maxOutcomeSpaceSize, sampleSize, seed}));
+                        return;
+                    }
                 }
+                setOutcomeLibraryPreflight(result.status === "ok" ? {status: "ok", result} : {status: "error", result});
             })
             .catch((error: unknown) => {
                 if (!cancelled) setOutcomeLibraryPreflight({status: "error", message: describeProjectActionError("The outcome library preflight", errorMessage(error))});
@@ -1167,6 +1343,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         if (!outcomeLibraryGuard.begin()) {
             return;
         }
+        const browserRequestId = createOutcomeLibraryBrowserRequestId();
         startOutcomeLibraryGeneration(fetchImpl, {
             mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             generation: outcomeLibraryGenerationOptions.generation,
@@ -1179,11 +1356,15 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 ? {sample: {sampleSize: outcomeLibraryGenerationOptions.sampleSize, seed: outcomeLibraryGenerationOptions.seed}}
                 : {}),
             preflightToken: outcomeLibraryPreflight.result.preflightToken,
+            browserRequestId,
         })
             .then((job) => {
+                lastObservedOutcomeLibraryJob.current = job;
                 setFeatureOwnedOutcomeLibraryJobId(job.id);
-                setOutcomeLibraryRun({status: "running", job});
-                pollOutcomeLibraryGeneration(job.id);
+                const progressSnapshots = [outcomeLibraryProgressSnapshot("start", job)];
+                const retainedBrowserRequestId = job.browserRequestId ?? browserRequestId;
+                setOutcomeLibraryRun({status: "running", job, browserRequestId: retainedBrowserRequestId, progressSnapshots});
+                pollOutcomeLibraryGeneration(job.id, retainedBrowserRequestId, progressSnapshots);
             })
             .catch((error: unknown) => {
                 outcomeLibraryGuard.end();
@@ -1194,22 +1375,24 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // has the same recovery as a terminal lifecycle result.
                     ? describeOutcomeLibraryGenerationTerminalOutcome({status: error.outcomeStatus})
                     : describeProjectActionError("The outcome library generation", errorMessage(error)),
-                ...(error instanceof OutcomeLibraryGenerationStartError ? {diagnostic: error.message} : {})});
+                ...(error instanceof OutcomeLibraryGenerationStartError ? {diagnostic: error.message} : {}), browserRequestId});
             });
     }
 
-    function pollOutcomeLibraryGeneration(id: string): void {
+    function pollOutcomeLibraryGeneration(id: string, browserRequestId: string | undefined, progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]): void {
         getOutcomeLibraryGenerationJob(fetchImpl, id)
             .then((job) => {
+                lastObservedOutcomeLibraryJob.current = job;
                 setFeatureOwnedOutcomeLibraryJobId(job.id);
+                const observedSnapshots = retainOutcomeLibraryProgressSnapshot(progressSnapshots, outcomeLibraryProgressSnapshot("poll", job));
                 if (job.status === "queued" || job.status === "running" || job.status === "cancelling") {
-                    setOutcomeLibraryRun({status: "running", job});
-                    outcomeLibraryPollTimer.current = setTimeout(() => pollOutcomeLibraryGeneration(id), 250);
+                    setOutcomeLibraryRun({status: "running", job, browserRequestId, progressSnapshots: observedSnapshots});
+                    outcomeLibraryPollTimer.current = setTimeout(() => pollOutcomeLibraryGeneration(id, browserRequestId, observedSnapshots), 250);
                     return;
                 }
                 outcomeLibraryGuard.end();
                 if (job.status === "completed" && job.result?.status === "ok") {
-                    setOutcomeLibraryRun({status: "ok", result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
+                    setOutcomeLibraryRun({status: "ok", jobId: job.id, browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: observedSnapshots, result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
                     deployment.refreshProjectModes();
                     // The generated bundle is now canonical project state.
                     // Re-preflight every registry-backed artifact card so the
@@ -1217,39 +1400,53 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // that exact bundle and its provenance.
                     setArtifactPreviewRevision((revision) => revision + 1);
                 } else if (job.status === "cancelled" && job.result?.status === "cancelled") {
-                    setOutcomeLibraryRun({status: "cancelled", result: job.result});
+                    setOutcomeLibraryRun({status: "cancelled", browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: observedSnapshots, result: job.result});
                     // The visible retry must bind to a fresh server preflight,
                     // even when no form field changed while cancellation was in
                     // flight. This preserves the source/destination drift
                     // check while making a clean cancellation recoverable.
                     setOutcomeLibraryPreflightRevision((revision) => revision + 1);
-                } else if (job.result !== undefined && job.result.status !== "ok") {
-                    setOutcomeLibraryRun({status: "error", jobId: job.id, recovery: job.recovery, message: describeGenerateResultError(job.result), ...("error" in job.result ? {diagnostic: job.result.error} : {}), plan: job.result.plan});
                 } else {
-                    setOutcomeLibraryRun({status: "error", jobId: job.id, recovery: job.recovery, message: "Outcome library generation ended without a result."});
+                    setOutcomeLibraryRun({...outcomeLibraryTerminalErrorRun(job, observedSnapshots), browserRequestId: job.browserRequestId ?? browserRequestId});
                 }
             })
             .catch((error: unknown) => {
                 outcomeLibraryGuard.end();
-                setOutcomeLibraryRun({status: "error", message: describeProjectActionError("The outcome library generation", errorMessage(error))});
+                const observed = lastObservedOutcomeLibraryJob.current;
+                const jobId = error instanceof OutcomeLibraryGenerationPollError ? error.jobId : id;
+                setOutcomeLibraryRun({status: "error", jobId, browserRequestId, progressSnapshots, ...(observed?.id === jobId ? {durableStatus: observed.status} : {}), ...(error instanceof OutcomeLibraryGenerationPollError ? {pollHttpStatus: error.httpStatus} : {}), message: describeProjectActionError("The outcome library generation poll", errorMessage(error)), diagnostic: errorMessage(error)});
             });
     }
 
     function handleCancelOutcomeLibrary(): void {
         if (outcomeLibraryRun.status !== "running") return;
         cancelOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.job.id)
-            .then((job) => setOutcomeLibraryRun({status: "running", job}))
+            .then((job) => {
+                lastObservedOutcomeLibraryJob.current = job;
+                setOutcomeLibraryRun({
+                    status: "running",
+                    job,
+                    browserRequestId: job.browserRequestId ?? outcomeLibraryRun.browserRequestId,
+                    progressSnapshots: retainOutcomeLibraryProgressSnapshot(outcomeLibraryRun.progressSnapshots, outcomeLibraryProgressSnapshot("poll", job)),
+                });
+            })
             .catch((error: unknown) => setOutcomeLibraryRun({status: "error", message: describeProjectActionError("Cancelling the outcome library generation", errorMessage(error))}));
     }
 
     function handleResumeOutcomeLibrary(): void {
         if (outcomeLibraryRun.status !== "cancelled" || outcomeLibraryRun.result.checkpoint === undefined) return;
         if (!outcomeLibraryGuard.begin()) return;
-        resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id)
+        // Resume is its own rendered pointer transaction. Retaining the
+        // durable job id must not reuse the original browser request id.
+        const browserRequestId = createOutcomeLibraryBrowserRequestId();
+        const progressSnapshots = outcomeLibraryRun.progressSnapshots ?? [];
+        resumeOutcomeLibraryGeneration(fetchImpl, outcomeLibraryRun.result.checkpoint.id, browserRequestId)
             .then((job) => {
+                lastObservedOutcomeLibraryJob.current = job;
                 setFeatureOwnedOutcomeLibraryJobId(job.id);
-                setOutcomeLibraryRun({status: "running", job});
-                pollOutcomeLibraryGeneration(job.id);
+                const resumedSnapshots = retainOutcomeLibraryProgressSnapshot(progressSnapshots, outcomeLibraryProgressSnapshot("start", job));
+                setOutcomeLibraryRun({status: "running", job, browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: resumedSnapshots});
+                pollOutcomeLibraryGeneration(job.id, job.browserRequestId ?? browserRequestId, resumedSnapshots);
             })
             .catch((error: unknown) => {
                 outcomeLibraryGuard.end();
@@ -1333,6 +1530,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                         ...runs,
                         [target]: {
                             status: "ok",
+                            jobId,
                             result,
                             progress: runs[target]?.status === "running" ? runs[target].progress : undefined,
                         },

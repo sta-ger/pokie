@@ -48,6 +48,7 @@ import {
     startSimulation,
     startOutcomeLibraryGeneration,
     resumeOutcomeLibraryGeneration,
+    OutcomeLibraryGenerationPollError,
     OutcomeLibraryGenerationStartError,
     validateBlueprint,
     validateProject,
@@ -110,6 +111,36 @@ describe("studio-client apiClient", () => {
             ]);
         });
 
+        it("keeps a rendered Outcome Library request identity out of the generation body and on its native start request", async () => {
+            const jobWithRequest = {...job, browserRequestId: "outcome-library-rendered-request-805"};
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {job: jobWithRequest}}));
+
+            await expect(startOutcomeLibraryGeneration(fetchImpl, {
+                generation: "exact", preflightToken: "bound-preflight", browserRequestId: "outcome-library-rendered-request-805",
+            })).resolves.toEqual(jobWithRequest);
+
+            expect(calls).toEqual([{
+                url: "/api/project/outcome-libraries/generate/jobs",
+                init: {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "X-Pokie-Outcome-Library-Request-Id": "outcome-library-rendered-request-805"},
+                    body: JSON.stringify({generation: "exact", preflightToken: "bound-preflight"}),
+                },
+            }]);
+        });
+
+        it("binds a rendered retry pointer transaction to the resumed durable job", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 202, body: {job: {...job, status: "queued"}}}));
+
+            await expect(resumeOutcomeLibraryGeneration(fetchImpl, "job/1", "outcome-library-rendered-retry-805"))
+                .resolves.toMatchObject({id: "job/1", status: "queued"});
+
+            expect(calls).toEqual([{
+                url: "/api/project/outcome-libraries/generate/jobs/job%2F1/resume",
+                init: {method: "POST", headers: {"X-Pokie-Outcome-Library-Request-Id": "outcome-library-rendered-retry-805"}},
+            }]);
+        });
+
         it("preserves classified lifecycle failures from every route", async () => {
             const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 409, body: {status: "conflict", error: "The prepared source changed after preflight."}}));
 
@@ -119,6 +150,17 @@ describe("studio-client apiClient", () => {
                 message: "The prepared source changed after preflight.",
             });
             await expect(resumeOutcomeLibraryGeneration(fetchImpl, "checkpoint")).rejects.toBeInstanceOf(OutcomeLibraryGenerationStartError);
+        });
+
+        it("preserves the durable job identity and HTTP boundary when polling fails", async () => {
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {error: "Generation status is temporarily unavailable."}}));
+
+            await expect(getOutcomeLibraryGenerationJob(fetchImpl, "job/1")).rejects.toMatchObject({
+                jobId: "job/1",
+                httpStatus: 503,
+                message: "Generation status is temporarily unavailable.",
+            });
+            await expect(getOutcomeLibraryGenerationJob(fetchImpl, "job/1")).rejects.toBeInstanceOf(OutcomeLibraryGenerationPollError);
         });
 
         it("preserves typed invalid start validation for either retained route", async () => {

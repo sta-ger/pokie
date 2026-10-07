@@ -51,6 +51,29 @@ describe("PathInput", () => {
         localStorage.clear();
     });
 
+    it("places explicit input attributes on the editable field rather than its layout wrapper", () => {
+        const {fetchImpl} = createRoutedFakeFetch({});
+
+        renderWithProviders(
+            <PathInput
+                label="Build destination"
+                value=""
+                onChange={() => undefined}
+                onPathSelected={() => undefined}
+                attributes={{input: {
+                    id: "artifact-build-destination",
+                    "aria-label": "PAR workbook build destination",
+                    "data-pokie-lifecycle-field": "artifact-build-destination",
+                }}}
+            />,
+            {fetchImpl},
+        );
+
+        const input = screen.getByRole("textbox", {name: "PAR workbook build destination"});
+        expect(input).toHaveAttribute("id", "artifact-build-destination");
+        expect(input).toHaveAttribute("data-pokie-lifecycle-field", "artifact-build-destination");
+    });
+
     it("shows a contextual permission-denied status and remediation (never the raw backend message) when focused", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

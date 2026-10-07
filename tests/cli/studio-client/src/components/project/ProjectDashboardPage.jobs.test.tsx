@@ -1,5 +1,6 @@
-import {screen} from "@testing-library/react";
+import {act, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
@@ -9,6 +10,118 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it.each(["held", "loading", "failed"])("holds a dependent workflow selection through its exact %s context refresh in StrictMode", async (refreshState) => {
+        const user = userEvent.setup();
+        const projectContext = {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]};
+        let holdNextContext = false;
+        let loadingPublished = false;
+        let resolveHeldContext: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url) => {
+            const [pathname] = url.split("?");
+            const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
+            if (pathname === "/api/project/context") {
+                if (holdNextContext) {
+                    if (refreshState === "loading" && !loadingPublished) {
+                        loadingPublished = true;
+                        return Promise.resolve(response({status: "loading", projectRoot: projectContext.projectRoot}));
+                    }
+                    holdNextContext = false;
+                    return new Promise((resolve) => {
+                        resolveHeldContext = () => resolve(refreshState === "failed"
+                            ? {ok: false, status: 503, json: () => Promise.resolve({error: "Fresh context unavailable"})}
+                            : response(projectContext));
+                    });
+                }
+                return Promise.resolve(response(projectContext));
+            }
+            if (pathname === "/api/project/jobs") return Promise.resolve(response({jobs: []}));
+            if (pathname === "/api/project/inspect") return Promise.resolve(response({packageRoot: "/games/sample-slot", valid: true, generated: false}));
+            if (pathname === "/api/project/reports" || pathname === "/api/project/replays" || pathname === "/api/project/deployment/targets") return Promise.resolve(response([]));
+            if (pathname === "/api/project/validate") return Promise.resolve(response({packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}));
+            throw new Error(`Unexpected request: ${pathname}`);
+        };
+
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"], strictMode: true});
+        await screen.findByRole("heading", {name: "Sample Slot"});
+        expect(screen.getByRole("button", {name: "Your projects"})).toHaveAttribute("id", "project-breadcrumb-projects");
+        expect(screen.getByText("Overview ready")).toHaveAttribute("tabindex", "-1");
+        const overviewPath = router.state.location.pathname;
+        holdNextContext = true;
+
+        await user.click(screen.getByRole("button", {name: "Simulation"}));
+
+        await waitFor(() => expect(resolveHeldContext).toBeDefined());
+        expect(router.state.location.pathname).toBe(overviewPath);
+        expect(screen.queryByRole("button", {name: "Run Simulation"})).not.toBeInTheDocument();
+
+        await act(() => Promise.resolve(resolveHeldContext?.()));
+
+        if (refreshState === "failed") {
+            expect(await screen.findByText(/Fresh context unavailable/)).toBeInTheDocument();
+            expect(router.state.location.pathname).toBe(overviewPath);
+            expect(screen.queryByRole("button", {name: "Run Simulation"})).not.toBeInTheDocument();
+        } else {
+            expect(await screen.findByRole("button", {name: "Run Simulation"})).toBeInTheDocument();
+            expect(router.state.location.pathname).toMatch(/\/simulation$/);
+        }
+    });
+
+    it("revalidates context for every rendered terminal durable receipt", async () => {
+        let contextRequests = 0;
+        const completedArtifactJob = {
+            id: "artifact-job-completed", projectId: "/games/sample-slot", operation: "artifact-build", request: {}, conflictKey: "artifact-build:/games/sample-slot",
+            status: "completed", createdAt: 1, result: {summary: "Artifact build completed.", outputs: [{label: "PAR workbook", path: "/games/sample-slot/output.xlsx"}]},
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => {
+                contextRequests += 1;
+                return {ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}};
+            },
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [completedArtifactJob]}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        const receipt = await screen.findByRole("status", {name: /artifact-build · completed/i});
+        expect(receipt).toHaveAttribute("data-pokie-lifecycle-result", "artifact-build");
+        expect(receipt).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
+        expect(receipt.querySelector('[data-pokie-lifecycle-artifact="PAR workbook"]')).toBeInTheDocument();
+        await screen.findByText("Artifact build completed.");
+        expect(contextRequests).toBeGreaterThanOrEqual(2);
+    });
+
+    it("revalidates the rendered project context after an Outcome Library terminal receipt enables Certification", async () => {
+        let contextRequests = 0;
+        const completedOutcomeLibraryJob = {
+            id: "outcome-job-completed", projectId: "/games/sample-slot", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/sample-slot/outcomelibrary",
+            status: "completed", createdAt: 1,
+        };
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => {
+                contextRequests += 1;
+                return contextRequests === 1
+                    ? {ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}
+                    : {ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "outcomeLibrary", capabilities: ["outcomeLibrary.read"]}};
+            },
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [completedOutcomeLibraryJob]}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+
+        expect(await screen.findByRole("button", {name: "Certification"})).toBeEnabled();
+        expect(contextRequests).toBeGreaterThanOrEqual(2);
+    });
+
     it("keeps an Outcome Library durable job visible through the common card outside Build/Export", async () => {
         const outcomeJob = {
             id: "outcome-job-1", projectId: "/games/sample-slot", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/sample-slot/outcomelibrary",

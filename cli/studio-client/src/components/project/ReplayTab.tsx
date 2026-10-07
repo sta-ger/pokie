@@ -1,5 +1,6 @@
 import {Alert, Anchor, Badge, Button, Group, List, NumberInput, Progress, SegmentedControl, Select, Table, Text, Textarea, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
+import {useMediaQuery} from "@mantine/hooks";
 import {useEffect, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
@@ -213,6 +214,7 @@ export function ReplayTab({
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
+    const isPhoneWidth = useMediaQuery("(max-width: 48em)");
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
     useEffect(() => {
@@ -341,6 +343,14 @@ export function ReplayTab({
         markLoaded(findMethod, false);
     }
 
+    // The Load control is the explicit public transition from an editable
+    // replay target to its review/run state. Keep the form submit path for
+    // keyboard users, but give its rendered button the same direct owner so
+    // a real pointer activation never has to submit the surrounding form.
+    function loadSeedRound(values: FindFormValues = form.getValues()): void {
+        loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined);
+    }
+
     const isCurrentSourceLoaded = findMethod === loadedForMethod;
     // Recreate from seed / Recent Simulation share one "loaded target" shape: the round/seed the user
     // configured, or -- reached via Recent Replays' "Inspect" shortcut, which loads a result directly
@@ -421,6 +431,11 @@ export function ReplayTab({
             <SegmentedControl
                 value={findMethod}
                 onChange={(value) => switchSource(value as FindMethod)}
+                // Four source labels exceed a phone's width. Mobile Chromium
+                // then enlarges and pans the layout viewport, leaving even the
+                // fixed navigation drawer outside the visible viewport.
+                orientation={isPhoneWidth ? "vertical" : "horizontal"}
+                fullWidth={isPhoneWidth}
                 data={[
                     {label: "Recreate from seed", value: "seedRound"},
                     {label: "Replay Artifact", value: "artifact"},
@@ -432,23 +447,37 @@ export function ReplayTab({
             />
 
             {findMethod === "seedRound" && (
-                <form onSubmit={form.onSubmit((values) => loadTarget(values.round, values.seed.trim() || undefined, selectedMode ?? undefined))}>
+                <form data-pokie-lifecycle-form="replay" onSubmit={form.onSubmit(loadSeedRound)}>
                     <QuickActions>
                         {/* Confirmed against StudioReplayExecutionService.run(): Reproduce below creates a brand-new
                             game session (game.createSession()) and plays it forward through round 1, 2, ... up to
                             this number -- it never seeks into or looks up an existing session's history, so the
                             label/description here say so plainly rather than reading like a round lookup. */}
                         <NumberInput
+                            id="replay-target-round"
                             label="Target round number in a new replay session"
                             description="Reproducing plays a brand-new session forward from round 1 up to this round -- it doesn't look up an existing recorded round."
                             min={1}
                             step={1}
                             required
+                            data-pokie-lifecycle-field="replay-round"
                             {...form.getInputProps("round")}
                             key={form.key("round")}
                         />
                         <TextInput label="Seed (optional)" {...form.getInputProps("seed")} key={form.key("seed")} />
-                        <Button type="submit">Load</Button>
+                        <Button
+                            id="replay-load"
+                            type="button"
+                            // Commit only after the captured pointer has
+                            // completed. Updating on mouse-down can replace
+                            // Load with Run beneath that same pointer, whose
+                            // release would invoke Run and skip review.
+                            onClick={() => loadSeedRound()}
+                            data-pokie-lifecycle="precondition"
+                            data-pokie-lifecycle-operation="replay-target"
+                        >
+                            Load
+                        </Button>
                     </QuickActions>
                     {availableModes !== undefined && availableModes.length > 0 && (
                         <Select
@@ -466,8 +495,10 @@ export function ReplayTab({
             )}
 
             {findMethod === "artifact" && (
-                <div>
+                <div data-pokie-lifecycle-form="replay-artifact">
                     <Textarea
+                        id="replay-artifact-json"
+                        data-pokie-lifecycle-field="replay-artifact-json"
                         label="Paste a replay artifact JSON (downloaded from Export)"
                         minRows={6}
                         autosize
@@ -478,6 +509,10 @@ export function ReplayTab({
                     />
                     <QuickActions>
                         <Button
+                            id="replay-artifact-load"
+                            data-pokie-lifecycle="operation"
+                            data-pokie-lifecycle-operation="replay-artifact"
+                            data-pokie-transaction-state="editable-submission"
                             disabled={artifactText.trim() === ""}
                             onClick={() => {
                                 onLoadExpectedFromPaste(artifactText);
@@ -907,7 +942,9 @@ export function ReplayTab({
                     )}
 
                     {findMethod === "artifact" && (
-                        <div>
+                        <div data-pokie-lifecycle-result="replay-artifact" data-pokie-lifecycle-result-control="replay-artifact-load" data-pokie-lifecycle-terminal={expected.status}
+                            data-pokie-lifecycle-artifact-round={expected.status === "loaded" ? expected.round : undefined}
+                            data-pokie-lifecycle-artifact-seed={expected.status === "loaded" ? expected.seed ?? "" : undefined}>
                             {expected.status === "loading" && <LoadingState label="Validating artifact…" />}
                             {expected.status === "error" && <ErrorState message={expected.message} />}
                             {expected.status === "loaded" && (
@@ -982,6 +1019,10 @@ export function ReplayTab({
                             <QuickActions>
                                 {!jobLoaded && (
                                     <Button
+                                        id="replay-run"
+                                        data-pokie-lifecycle="operation"
+                                        data-pokie-transaction-state="editable-submission"
+                                        data-pokie-lifecycle-operation="replay"
                                         disabled={reproduceDisabled}
                                         onClick={() => {
                                             onRun(
@@ -1037,9 +1078,29 @@ export function ReplayTab({
                                         </Alert>
                                     )}
                                     {error && <ErrorState message={describeReplayActionError("This replay request", error)} />}
-                                    <Text size="sm" mb={4}>
-                                        {progress.status} — {progress.completedRounds}/{progress.round} rounds
-                                    </Text>
+                                    <div
+                                        role="status"
+                                        aria-live="polite"
+                                        tabIndex={-1}
+                                        data-pokie-lifecycle-result="replay"
+                                        data-pokie-lifecycle-result-control="replay-run"
+                                        data-pokie-lifecycle-result-state="editable-submission"
+                                        data-pokie-lifecycle-result-job={progress.jobId}
+                                        data-pokie-lifecycle-terminal={progress.status}
+                                    >
+                                        <Text size="sm" mb={4}>
+                                            {progress.status} — {progress.completedRounds}/{progress.round} rounds
+                                        </Text>
+                                        {/* This is the completed replay's real public artifact, kept with the
+                                            terminal status rather than in the page-wide action footer. A person
+                                            can now reach the result and its JSON through one rendered operation
+                                            receipt, including when a descriptor has no visual game screen. */}
+                                        {!active && result && exportReady && (
+                                            <Anchor data-pokie-lifecycle-artifact="replay-descriptor" href={buildReplayDownloadUrl(result.id)} download>
+                                                Download replay JSON
+                                            </Anchor>
+                                        )}
+                                    </div>
                                     <Progress value={progress.percent} mb="sm" />
                                 </div>
                             )}
@@ -1094,13 +1155,15 @@ export function ReplayTab({
                             )}
 
                             {jobLoaded && !active && result?.artifact && (
-                                <RoundArtifactInspector
-                                    artifact={result.artifact}
-                                    comparison={findMethod === "artifact" ? comparison : undefined}
-                                    stateBefore={result.stateBefore}
-                                    stateAfter={result.stateAfter}
-                                    credits={result.credits}
-                                />
+                                <div data-pokie-lifecycle-artifact="replay-descriptor">
+                                    <RoundArtifactInspector
+                                        artifact={result.artifact}
+                                        comparison={findMethod === "artifact" ? comparison : undefined}
+                                        stateBefore={result.stateBefore}
+                                        stateAfter={result.stateAfter}
+                                        credits={result.credits}
+                                    />
+                                </div>
                             )}
                             {jobLoaded && !active && result && !result.artifact && (
                                 <div>
@@ -1150,11 +1213,6 @@ export function ReplayTab({
                     <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin)}>
                         Download JSON
                     </Button>
-                )}
-                {findMethod !== "spin" && result && exportReady && (
-                    <Anchor href={buildReplayDownloadUrl(result.id)} download>
-                        Download JSON
-                    </Anchor>
                 )}
                 {!exportReady && (
                     <Button variant="default" disabled>

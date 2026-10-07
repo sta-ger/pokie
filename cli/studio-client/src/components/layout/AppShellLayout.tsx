@@ -2,7 +2,7 @@ import {Anchor, AppShell, Breadcrumbs, Burger, Group, Text, Title} from "@mantin
 import {useDisclosure, useMediaQuery} from "@mantine/hooks";
 import {createContext, useContext, useEffect, useRef, type ReactNode} from "react";
 
-export type StudioBreadcrumb = {label: string; onClick?: () => void};
+export type StudioBreadcrumb = {label: string; onClick?: () => void; id?: string};
 
 // Lets NavTabs (rendered as the `navbar` prop, already-constructed JSX from whichever page owns it)
 // close the mobile navbar drawer after a selection, without AppShellLayout needing to know anything
@@ -72,7 +72,7 @@ export function AppShellLayout({
 
     const closeAndFocusBurger = (): void => {
         close();
-        burgerRef.current?.focus();
+        burgerRef.current?.focus({preventScroll: true});
     };
 
     useEffect(() => {
@@ -94,7 +94,17 @@ export function AppShellLayout({
             <AppShell.Header>
                 <Group className="studio-app-header" h="100%" px="md" justify="space-between" wrap="nowrap">
                     <Group className="studio-app-header-primary" wrap="nowrap">
-                        <Burger ref={burgerRef} opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
+                        <Burger
+                            id="studio-navigation-toggle"
+                            ref={burgerRef}
+                            opened={opened}
+                            onClick={toggle}
+                            hiddenFrom="sm"
+                            size="sm"
+                            aria-label="Toggle navigation"
+                            aria-controls="studio-navigation-panel"
+                            aria-expanded={opened}
+                        />
                         {breadcrumbs.length === 0 ? (
                             <BrandLink onHomeClick={onHomeClick} underline="never" c="inherit">
                                 <Title order={3}>POKIE Studio</Title>
@@ -106,7 +116,7 @@ export function AppShellLayout({
                                 </BrandLink>
                                 {breadcrumbs.map((crumb, index) =>
                                     crumb.onClick ? (
-                                        <Anchor className="studio-app-breadcrumb-item" key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
+                                        <Anchor id={crumb.id} className="studio-app-breadcrumb-item" key={index} component="button" type="button" onClick={crumb.onClick} underline="hover" size="sm">
                                             {crumb.label}
                                         </Anchor>
                                     ) : (
@@ -121,7 +131,10 @@ export function AppShellLayout({
                     {headerRight !== undefined && <div className="studio-app-header-actions">{headerRight}</div>}
                 </Group>
             </AppShell.Header>
-            <AppShell.Navbar p="md">
+            {/* Mobile layout can expand its percentage containing block when Home mounts retained
+                editor content. Bound the drawer itself to the viewport, including its border, so
+                opening it never puts its native tab targets beyond the phone's visible edge. */}
+            <AppShell.Navbar id="studio-navigation-panel" aria-labelledby="studio-navigation-toggle" inert={isPhoneWidth && !opened} p="md" style={{maxWidth: isPhoneWidth ? "100vw" : undefined, overflowY: "auto", overscrollBehavior: "contain"}}>
                 <NavbarCloseContext.Provider value={closeAndFocusBurger}>{navbar}</NavbarCloseContext.Provider>
             </AppShell.Navbar>
             <AppShell.Main className="studio-app-main" style={isPhoneWidth ? {paddingInline: "var(--mantine-spacing-md)"} : undefined}>

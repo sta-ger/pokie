@@ -78,14 +78,28 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         await user.clear(screen.getByLabelText(/Target round number in a new replay session/i));
         await user.type(screen.getByLabelText(/Target round number in a new replay session/i), String(job.round));
         await user.type(screen.getByLabelText(/^Seed \(optional\)$/i), job.seed ?? "");
-        await user.click(screen.getByRole("button", {name: "Load"}));
+        const load = screen.getByRole("button", {name: "Load"});
+        expect(load).toHaveAttribute("type", "button");
+        expect(load).toHaveAttribute("data-pokie-lifecycle", "precondition");
+        expect(load).toHaveAttribute("data-pokie-lifecycle-operation", "replay-target");
+        await user.click(load);
 
         // Reproducing plays a brand-new session forward -- this job's own result (the captured completed
         // replay, fed through the real interpret functions above) is what a real onRun's completion would
         // have produced, so clicking through to it renders that already-fetched result for real.
-        await user.click(await screen.findByRole("button", {name: "Run again"}));
+        const run = await screen.findByRole("button", {name: "Run again"});
+        expect(run).toHaveAttribute("id", "replay-run");
+        expect(run).toHaveAttribute("data-pokie-lifecycle", "operation");
+        expect(run).toHaveAttribute("data-pokie-lifecycle-operation", "replay");
+        await user.click(run);
 
         expect(await screen.findByText("line")).toBeInTheDocument();
+        const lifecycleResult = container.querySelector('[data-pokie-lifecycle-result="replay"]');
+        expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-terminal", "completed");
+        expect(lifecycleResult).toHaveAttribute("data-pokie-lifecycle-result-control", "replay-run");
+        const replayArtifact = lifecycleResult?.querySelector('[data-pokie-lifecycle-artifact="replay-descriptor"]');
+        expect(replayArtifact).toHaveAccessibleName("Download replay JSON");
+        expect(replayArtifact).toHaveAttribute("href", expect.stringContaining(`/api/project/replays/${job.id}/download`));
 
         // Orientation: the real 3x3 grid (3 reels x 3 rows), symbols exactly as captured live.
         const cells = Array.from(container.querySelectorAll<HTMLElement>("[data-cell]"));

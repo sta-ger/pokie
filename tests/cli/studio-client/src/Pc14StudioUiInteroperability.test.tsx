@@ -158,7 +158,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await screen.findByText(/Round complete/i);
 
         await user.click(screen.getByRole("button", {name: "Simulation"}));
-        const rounds = screen.getByRole("textbox", {name: "Rounds"});
+        const rounds = await screen.findByRole("textbox", {name: "Rounds"});
         await user.clear(rounds);
         await user.type(rounds, "2");
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
@@ -179,7 +179,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await screen.findByText("Round inspector");
 
         await user.click(screen.getByRole("button", {name: "Provably Fair"}));
-        const fairnessBundleInput = screen.getByRole("textbox", {name: "Source outcome-library bundle directory"});
+        const fairnessBundleInput = await screen.findByRole("textbox", {name: "Source outcome-library bundle directory"});
         await user.type(fairnessBundleInput, "missing-outcome-library");
         await user.type(screen.getByRole("textbox", {name: "Mode name"}), "base");
         await user.type(screen.getByRole("textbox", {name: "Server seed"}), "pc14-server-seed");
@@ -229,6 +229,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await screen.findByText(/Drew outcome/);
 
         await user.click(screen.getByRole("button", {name: "Certification"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Certification"})).toHaveAttribute("aria-current", "page"));
         const certificationBundleInput = screen.getByRole("textbox", {name: "Source outcome-library bundle directory"});
         await user.type(certificationBundleInput, "missing-outcome-library");
         await user.click(screen.getByRole("button", {name: "Continue to Validate"}));

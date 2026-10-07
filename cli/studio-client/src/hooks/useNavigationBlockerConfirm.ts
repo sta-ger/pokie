@@ -1,11 +1,15 @@
 import {modals} from "@mantine/modals";
-import {useEffect} from "react";
+import {useEffect, useRef} from "react";
 import {useBlocker} from "react-router-dom";
 
 export type NavigationBlockerConfirmModal = {
     title: string;
     children: string;
     labels: {confirm: string; cancel: string};
+    /** Stable public identities for a workflow that must survive a blocked route transition. */
+    controlIds?: {confirm: string; cancel: string};
+    /** Product-owned lifecycle name exposed by both rendered confirmation controls. */
+    operation?: string;
 };
 
 // The shared "a pending router transition (browser Back/Forward, or any in-app navigate() call) needs
@@ -25,21 +29,49 @@ export function useNavigationBlockerConfirm(
     onLeave?: () => void,
 ) {
     const blocker = useBlocker(shouldBlock);
+    const openedBlockerRef = useRef<typeof blocker | undefined>(undefined);
 
     useEffect(() => {
         if (blocker.state !== "blocked") {
+            openedBlockerRef.current = undefined;
             return;
         }
+        // A blocked transition can re-render while its modal is open.  Keep
+        // its one visible Leave/Stay pair attached to that exact blocker;
+        // opening another portal would leave a hidden duplicate capable of
+        // consuming a later action.
+        if (openedBlockerRef.current === blocker) return;
+        openedBlockerRef.current = blocker;
+        // These are product-owned metadata for the two rendered controls,
+        // not Mantine modal options.  Passing them through the modal spread
+        // forwards unknown attributes into the portal DOM and makes an
+        // otherwise valid navigation confirmation emit a React diagnostic.
+        const {controlIds, operation: suppliedOperation, ...modalProps} = confirmModal;
+        const operation = suppliedOperation ?? "navigation-blocker";
         modals.openConfirmModal({
-            ...confirmModal,
+            ...modalProps,
             withCloseButton: false,
             closeOnEscape: false,
             closeOnClickOutside: false,
+            confirmProps: {
+                id: controlIds?.confirm ?? `pokie-${operation}-confirm`,
+                "data-pokie-confirmation": "confirm",
+                "data-pokie-confirmation-operation": operation,
+            },
+            cancelProps: {
+                id: controlIds?.cancel ?? `pokie-${operation}-dismiss`,
+                "data-pokie-confirmation": "cancel",
+                "data-pokie-confirmation-operation": operation,
+            },
             onConfirm: () => {
+                openedBlockerRef.current = undefined;
                 onLeave?.();
                 blocker.proceed();
             },
-            onCancel: () => blocker.reset(),
+            onCancel: () => {
+                openedBlockerRef.current = undefined;
+                blocker.reset();
+            },
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [blocker]);

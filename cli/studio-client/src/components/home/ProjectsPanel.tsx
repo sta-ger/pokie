@@ -423,7 +423,7 @@ export function ProjectsPanel({
             <Table.Td className="project-registry-actions" data-label="Actions">
                 <QuickActions>
                     {entry.status === "ok" && isOpenable(entry) && (
-                        <Button variant="default" size="xs" loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
+                        <Button type="button" id={`project-open:${entry.location}`} data-pokie-project-location={entry.location} variant="default" size="xs" disabled={openingLocation !== undefined} loading={openingLocation === entry.location} onClick={() => handleOpen(entry)}>{entry.type === "wasm" && entry.wasmPresentation !== undefined ? entry.wasmPresentation.inspectActionLabel : "Open"}</Button>
                     )}
                     {entry.status === "ok" && entry.type === "parWorkbook" && (
                         <Button variant="default" size="xs" onClick={() => handleGoToDesignGame(entry.location)}>Open in Start a game</Button>
@@ -611,6 +611,7 @@ export function ProjectsPanel({
                 </Text>
                 <QuickActions>
                     <PathInput
+                        id="project-import-location"
                         label="Game location"
                         placeholder="./my-game"
                         kind="any"
@@ -626,6 +627,7 @@ export function ProjectsPanel({
                         onPathSelected={handleLocationChange}
                     />
                     <Button
+                        id="project-import-check"
                         type="button"
                         onClick={handleDetect}
                         loading={importView.status === "detecting"}
@@ -674,7 +676,7 @@ export function ProjectsPanel({
                             description="This is how the game will appear in Your projects."
                         />
                         <QuickActions>
-                            <Button onClick={handleRegister} loading={importView.status === "registering"}>
+                            <Button id="project-import-add" onClick={handleRegister} loading={importView.status === "registering"}>
                                 Add to projects
                             </Button>
                             {importView.result.type === "parWorkbook" && (

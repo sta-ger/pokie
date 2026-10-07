@@ -1,4 +1,4 @@
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import {getProjectContext, ProjectOpenError} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
@@ -21,29 +21,116 @@ function projectContextErrorDetail(error: unknown): string {
 // `requestedProjectRoot` is taken from a project-scoped history route. It must be made current on
 // the server before any dashboard data is read: the server intentionally owns one active project,
 // while browser history may point back to an earlier one.
-export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderView {
+export type ProjectContextRefresh = {
+    header: ProjectHeaderView;
+    /** The latest caller-owned refresh generation whose context is rendered. */
+    completedRefreshGeneration: number;
+    /** The latest caller-owned refresh generation that rendered a diagnostic. */
+    failedRefreshGeneration: number;
+    /**
+     * The exact terminal header committed for the latest refresh. Consumers
+     * which change routes use this identity in addition to the generation so
+     * a historical acknowledgement can never release a newly requested tab.
+     */
+    renderedTerminal?: {generation: number; header: ProjectHeaderView; outcome: "completed" | "failed"};
+};
+
+export function useProjectContext(requestedProjectRoot?: string, refreshGeneration = 0): ProjectContextRefresh {
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
     const [header, setHeader] = useState<ProjectHeaderView>({status: "empty"});
+    const [completedRefreshGeneration, setCompletedRefreshGeneration] = useState(0);
+    const [failedRefreshGeneration, setFailedRefreshGeneration] = useState(0);
+    const [renderedTerminal, setRenderedTerminal] = useState<{generation: number; header: ProjectHeaderView; outcome: "completed" | "failed"} | undefined>(undefined);
+    const headerRef = useRef(header);
+    const contextRequestRef = useRef<{key: string; promise: ReturnType<typeof getProjectContext>} | undefined>(undefined);
+
+    useEffect(() => {
+        headerRef.current = header;
+    }, [header]);
+
+    // Acknowledgement is deliberately post-commit and identity-bound. A
+    // consumer can use this generation to change routes, so setting it from
+    // the fetch callback would let that consumer observe an earlier terminal
+    // header while the exact fresh generation is still loading.
+    useEffect(() => {
+        if (renderedTerminal === undefined || renderedTerminal.generation !== refreshGeneration || header !== renderedTerminal.header || header.status === "loading") {
+            return;
+        }
+        if (renderedTerminal.outcome === "completed") {
+            setCompletedRefreshGeneration(renderedTerminal.generation);
+        } else {
+            setFailedRefreshGeneration(renderedTerminal.generation);
+        }
+    }, [header, refreshGeneration, renderedTerminal]);
 
     useEffect(() => {
         let cancelled = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+        // React's development effect replay must not create a second context
+        // request for the same refresh generation.  Apart from making the
+        // network receipt ambiguous, a second request can complete while the
+        // first is still loading and release a dependent tab too early.  The
+        // replay subscriber still consumes the shared promise, so cancelling
+        // the first effect never strands the current rendered dashboard.
+        const contextRequestKey = `${requestedProjectRoot ?? ""}\u0000${refreshGeneration}`;
+        const requestDashboard = (): ReturnType<typeof getProjectContext> => {
+            if (contextRequestRef.current?.key === contextRequestKey) {
+                return contextRequestRef.current.promise;
+            }
+            const promise = getProjectContext(fetchImpl);
+            contextRequestRef.current = {key: contextRequestKey, promise};
+            promise.finally(() => {
+                if (contextRequestRef.current?.promise === promise) {
+                    contextRequestRef.current = undefined;
+                }
+            }).catch(() => undefined);
+            return promise;
+        };
+
+        const publishDashboard = (dashboard: Parameters<typeof describeProjectHeader>[0]): void => {
+            const nextHeader = describeProjectHeader(dashboard);
+            const retainedHeader = headerRef.current;
+            // Same-project loading is a revalidation placeholder. Keep the
+            // live navigation/form nodes mounted until the fresh capability
+            // receipt is terminal; replacing them here can detach a focused
+            // narrow drawer control before its native activation.
+            if (dashboard.status === "loading" &&
+                (retainedHeader.status === "loaded" || retainedHeader.status === "outcome-source" || retainedHeader.status === "artifact") &&
+                retainedHeader.projectRoot === dashboard.projectRoot) return;
+            setHeader(nextHeader);
+            // Consumers that need a capability refresh before selecting a
+            // dependent workflow wait for this acknowledgement, rather than
+            // treating the request start or an older page header as proof.
+            // A loading context is a polling placeholder, not a rendered
+            // capability boundary.  Dashboard navigation must wait until the
+            // refresh has reached a terminal context.
+            if (dashboard.status !== "loading") {
+                setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: nextHeader.status === "error" ? "failed" : "completed"});
+            }
+        };
+
+        const publishFailure = (projectRoot: string, error: unknown): void => {
+            const nextHeader = describeProjectContextFailure(projectRoot, errorMessage(error));
+            setHeader(nextHeader);
+            setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: "failed"});
+        };
+
         const poll = (attemptsLeft: number): void => {
-            getProjectContext(fetchImpl)
+            requestDashboard()
                 .then((dashboard) => {
                     if (cancelled) {
                         return;
                     }
-                    setHeader(describeProjectHeader(dashboard));
+                    publishDashboard(dashboard);
                     if (dashboard.status === "loading" && attemptsLeft > 0) {
                         timeoutId = setTimeout(() => poll(attemptsLeft - 1), POLL_INTERVAL_MS);
                     }
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
-                        setHeader(describeProjectContextFailure("", errorMessage(error)));
+                        publishFailure("", error);
                     }
                 });
         };
@@ -51,11 +138,19 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
         if (requestedProjectRoot === undefined) {
             poll(POLL_MAX_ATTEMPTS);
         } else {
-            // Do not leave the previous dashboard visible while restoring a historical route. The
-            // caller's keyed route remount already clears local state; this explicit loading header
-            // also prevents project-scoped requests until the server has accepted the requested root.
-            setHeader({status: "loading", projectRoot: requestedProjectRoot});
-            getProjectContext(fetchImpl)
+            const retainedHeader = headerRef.current;
+            const revalidatingCurrentProject =
+                (retainedHeader.status === "loaded" || retainedHeader.status === "outcome-source" || retainedHeader.status === "artifact") &&
+                retainedHeader.projectRoot === requestedProjectRoot;
+            // Do not leave a previous project's dashboard visible while restoring a historical route.
+            // A same-project capability refresh is different: preserve the rendered terminal receipt
+            // and its dependent form while the fresh context arrives. Clearing the header here used
+            // to unmount Replay after an earlier durable receipt, leaving its public Load action with
+            // no corresponding Run control even though the server had accepted the request.
+            if (!revalidatingCurrentProject) {
+                setHeader({status: "loading", projectRoot: requestedProjectRoot});
+            }
+            requestDashboard()
                 .then((dashboard) => {
                     if (cancelled) {
                         return;
@@ -64,7 +159,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
                     // navigating. Reuse that freshly loaded context; only a historical route whose
                     // root differs from the server's current one needs another open request.
                     if (dashboard.status !== "empty" && dashboard.projectRoot === requestedProjectRoot) {
-                        setHeader(describeProjectHeader(dashboard));
+                        publishDashboard(dashboard);
                         if (dashboard.status === "loading") {
                             timeoutId = setTimeout(() => poll(POLL_MAX_ATTEMPTS - 1), POLL_INTERVAL_MS);
                         }
@@ -78,13 +173,15 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
                         })
                         .catch((error: unknown) => {
                             if (!cancelled) {
-                                setHeader(describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error)));
+                                const nextHeader = describeProjectContextFailure(requestedProjectRoot, projectContextErrorDetail(error));
+                                setHeader(nextHeader);
+                                setRenderedTerminal({generation: refreshGeneration, header: nextHeader, outcome: "failed"});
                             }
                         });
                 })
                 .catch((error: unknown) => {
                     if (!cancelled) {
-                        setHeader(describeProjectContextFailure(requestedProjectRoot, errorMessage(error)));
+                        publishFailure(requestedProjectRoot, error);
                     }
                 });
         }
@@ -93,7 +190,7 @@ export function useProjectContext(requestedProjectRoot?: string): ProjectHeaderV
             cancelled = true;
             clearTimeout(timeoutId);
         };
-    }, [fetchImpl, openWithConfirmation, requestedProjectRoot]);
+    }, [fetchImpl, openWithConfirmation, refreshGeneration, requestedProjectRoot]);
 
-    return header;
+    return {header, completedRefreshGeneration, failedRefreshGeneration, renderedTerminal};
 }

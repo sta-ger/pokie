@@ -4,6 +4,7 @@ import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
 import {loadProjectDashboardContext, type ProjectDashboardLoadOptions, type ProjectLocationDescribing} from "../loadProjectDashboardContext.js";
 import type {ProjectDashboardContext} from "../ProjectDashboardContext.js";
+import {StudioProjectOpeningCancelledError} from "../StudioProjectOpeningCancelledError.js";
 import {InMemoryRecentProjectsRepository} from "../InMemoryRecentProjectsRepository.js";
 import type {RecentProjectsRepository} from "../RecentProjectsRepository.js";
 import {IndependentProjectDirectoryResult, PokiePathResolver} from "../../paths/PokiePathResolver.js";
@@ -103,6 +104,9 @@ export class StudioHomeService {
     // transition on a "loaded" result; this only loads and records it as a recent project.
     public async openProject(projectRoot: string, options: StudioHomeOpenProjectOptions = {}): Promise<ProjectDashboardContext> {
         const dashboard = await loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeLocation, undefined, undefined, options);
+        if (dashboard.status === "error" && (options.signal?.aborted || options.isCurrent?.() === false)) {
+            throw new Error(dashboard.error);
+        }
         this.assertOpenProjectCurrent(options);
         if (options.recordRecentProject !== false && dashboard.status === "loaded") {
             await this.rememberRecentProject(dashboard.projectRoot, dashboard.game.name, options);
@@ -135,7 +139,7 @@ export class StudioHomeService {
 
     private assertOpenProjectCurrent(options: StudioHomeOpenProjectOptions): void {
         if (options.signal?.aborted || options.isCurrent?.() === false) {
-            throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+            throw new StudioProjectOpeningCancelledError();
         }
     }
 

@@ -2,9 +2,13 @@ import {isWasmComponentFile, loadPokieGame, OutcomeSourceProjectAnalyzer, Outcom
 import path from "path";
 import {BlueprintMaterializationError} from "../materialize/BlueprintMaterializationError.js";
 import {RuntimePreparationError} from "../materialize/RuntimePreparationError.js";
-import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
+import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
+import {RuntimePreparationCleanupError} from "../materialize/RuntimePreparationCleanupError.js";
+import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import type {ProjectDashboardContext} from "./ProjectDashboardContext.js";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
+import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelledError.js";
+import {StudioProjectOpeningCleanupError} from "./StudioProjectOpeningCleanupError.js";
 
 export type ProjectLocationDescribing = (
     location: string,
@@ -59,7 +63,9 @@ const defaultResolveArtifactProject: ArtifactProjectResolving = async (projectRo
 // "loaded"/"error" result — the one place a failure to load `projectRoot` (missing build output, a
 // package that doesn't satisfy the PokieGame contract, a corrupt/missing package.json, an entry
 // module that throws on import, ...) is turned into a plain-data error message instead of an
-// exception that could otherwise leak a stack trace to an HTTP response. Used both for the
+// exception that could otherwise leak a stack trace to an HTTP response. Intentional cancellation
+// and failed lease releases reject to the lifecycle owner, which distinguishes safe cancellation
+// from cleanup requiring recovery. Used both for the
 // background load StudioServer kicks off when it starts directly into Project mode, and by
 // handleOpenProject (so "does this path actually load" is decided in exactly one place).
 //
@@ -172,10 +178,27 @@ export async function loadProjectDashboardContext(
         };
     }
 
+    const releaseResource = async (release: () => Promise<void>): Promise<void> => {
+        try {
+            await release();
+        } catch (error) {
+            throw new StudioProjectOpeningCleanupError(error);
+        }
+    };
     try {
-        const resolution = options.signal === undefined
-            ? await resolveRuntimePackageRoot(projectRoot)
-            : await resolveRuntimePackageRoot(projectRoot, {signal: options.signal});
+        let resolution: RuntimePackageResolution;
+        try {
+            resolution = options.signal === undefined
+                ? await resolveRuntimePackageRoot(projectRoot)
+                : await resolveRuntimePackageRoot(projectRoot, {signal: options.signal});
+        } catch (error) {
+            // Only the resolver's explicit safe boundary attests to cleanup.
+            // An aborted signal or a cancellation message proves nothing
+            // about resources owned inside a rejecting resolver.
+            if (error instanceof RuntimePreparationCancelledError) throw new StudioProjectOpeningCancelledError();
+            if (error instanceof RuntimePreparationCleanupError) throw new StudioProjectOpeningCleanupError(error);
+            throw error;
+        }
         try {
             assertDashboardLoadCurrent(options);
             const game = await loadGame(resolution.runtimePath);
@@ -192,12 +215,17 @@ export async function loadProjectDashboardContext(
                     origin: identity?.origin,
                 };
             } finally {
-                await releasePokieGame(game).catch(() => undefined);
+                await releaseResource(() => releasePokieGame(game));
             }
         } finally {
-            await resolution.release();
+            await releaseResource(() => resolution.release());
         }
     } catch (error) {
+        // A cancelled guard is safe only after both leases drained. A release
+        // failure must reach the lifecycle owner instead of becoming an ordinary
+        // load diagnostic that a later cancellation guard could hide.
+        if (error instanceof StudioProjectOpeningCleanupError || error instanceof StudioProjectOpeningCancelledError) throw error;
+        if (options.signal?.aborted || options.isCurrent?.() === false) throw new StudioProjectOpeningCleanupError(error);
         return {
             status: "error",
             projectRoot: resolvedRoot,
@@ -209,6 +237,6 @@ export async function loadProjectDashboardContext(
 
 function assertDashboardLoadCurrent(options: ProjectDashboardLoadOptions): void {
     if (options.signal?.aborted || options.isCurrent?.() === false) {
-        throw new Error("Runtime preparation was cancelled before a runnable game was available.");
+        throw new StudioProjectOpeningCancelledError();
     }
 }

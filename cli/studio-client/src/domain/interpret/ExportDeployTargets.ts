@@ -1,6 +1,20 @@
 import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
+// Build/Export, the packed browser proof, and the controller handoff all use
+// this one public transaction identity. Keeping it with the card descriptor
+// prevents an independently named button or result from standing in for the
+// Outcome Library workflow while its real card is unavailable.
+export const OUTCOME_LIBRARY_TRANSACTION = {
+    cardId: "outcome-library",
+    formId: "outcome-library",
+    controlId: "outcome-library-generate",
+    operation: "outcome-library",
+    requestPath: "/api/project/outcome-libraries/generate/jobs",
+    terminalReceipt: "durable-terminal",
+    artifact: "outcome-library",
+} as const;
+
 // Pure view-model for the shared Build/Export shell (see ExportDeployTab) -- the sole Studio surface a
 // project's outputs are built/published from. Stake Engine is one registry-backed
 // `stakeAdapter` goal alongside the other artifact conversions: a Blueprint or
@@ -43,6 +57,8 @@ export type ExportDeployTargetCard = {
     readonly artifactTarget?: StudioArtifactTargetType;
     /** Exact server-selected conversion; browser presentation never infers an edge. */
     readonly artifactPlan?: StudioArtifactConversionPlan;
+    /** Public identity for a product-owned card writer, when it has one. */
+    readonly transaction?: typeof OUTCOME_LIBRARY_TRANSACTION;
 };
 
 // Short, presentation-only prose per ArtifactBuilderRegistry target -- mirrors the exact same
@@ -153,7 +169,7 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
 // card does not require this action first.
 const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     kind: "outcomeLibrary",
-    id: "outcome-library",
+    id: OUTCOME_LIBRARY_TRANSACTION.cardId,
     label: "Outcome library generator",
     adapter: "pokie's own weighted-outcome-library generator",
     version: "--",
@@ -168,6 +184,7 @@ const OUTCOME_LIBRARY_CARD: ExportDeployTargetCard = {
     supported: true,
     locality: "local",
     compatibility: "A generated library is available to compatible advanced delivery workflows; Stake can also generate one as part of its own project goal.",
+    transaction: OUTCOME_LIBRARY_TRANSACTION,
 };
 
 // Every registered target still standing once the SDK's own local-json-example demo has been filtered out

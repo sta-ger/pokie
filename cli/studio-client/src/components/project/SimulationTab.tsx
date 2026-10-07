@@ -7,6 +7,7 @@ import type {ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
 import {useConfirm} from "../../hooks/useConfirm";
+import type {SimulationTerminalReceipt} from "../../hooks/useSimulationPoll";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {BoundedListPager} from "../common/BoundedListPager";
 import {EmptyState} from "../common/EmptyState";
@@ -39,6 +40,8 @@ export function SimulationTab({
     progress,
     error,
     cancellationRequested,
+    operation,
+    terminalReceipt,
     onRun,
     onCancel,
     onRetry,
@@ -61,6 +64,10 @@ export function SimulationTab({
     error: string | undefined;
     /** A cancel request accepted locally before the next durable poll catches up. */
     cancellationRequested: boolean;
+    /** The rendered public control that started the current durable job. */
+    operation: "simulation" | "simulation-retry";
+    /** A terminal durable job receipt, retained across the control's React replacement. */
+    terminalReceipt: SimulationTerminalReceipt | undefined;
     onRun: (rounds: number, seed: string | undefined, workers: number, modeName?: string) => void;
     onCancel: () => void;
     onRetry: () => void;
@@ -129,7 +136,7 @@ export function SimulationTab({
         if (reviewedDetail.status !== "empty") {
             return 2;
         }
-        if (progress !== undefined) {
+        if (progress !== undefined && progress.status !== "recovery-required") {
             return 1;
         }
         return 0;
@@ -139,6 +146,11 @@ export function SimulationTab({
     const cancellationPending = cancellationRequested || progress?.status === "cancelling";
     const isTerminal = progress !== undefined && !active;
     const canRetry = progress !== undefined && (progress.status === "failed" || progress.status === "cancelled");
+    const receiptOperation = terminalReceipt?.operation ?? operation;
+    const resultControlId = receiptOperation === "simulation-retry" ? "simulation-retry" : "simulation-run";
+    const resultState = receiptOperation === "simulation-retry" ? "recovery-operation" : "editable-submission";
+    const resultJobId = terminalReceipt?.jobId ?? progress?.jobId;
+    const resultStatus = terminalReceipt?.status ?? progress?.status;
 
     // Auto-advances to Run the moment a fresh run starts (Configure submit or a Recent Runs "Run
     // again", either way progress.status transitions to "queued"), and to Review the moment a run
@@ -148,7 +160,7 @@ export function SimulationTab({
     const prevStatusRef = useRef<string | undefined>(undefined);
     useEffect(() => {
         const status = progress?.status;
-        if (status === "queued") {
+        if (status === "queued" || status === "running" || status === "cancelling") {
             setActiveStep(1);
         }
         const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running" || prevStatusRef.current === "cancelling";
@@ -197,8 +209,19 @@ export function SimulationTab({
 
     return (
         <div>
+            {!exportReachable && (
+                <Text id="simulation-export-unavailable" size="xs" c="dimmed" mb={4}>
+                    Export becomes available after a completed simulation report is ready.
+                </Text>
+            )}
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
-                <Stepper.Step label="Configure" description="Set rounds" aria-current={activeStep === 0 ? "step" : undefined} />
+                <Stepper.Step
+                    id="simulation-configure"
+                    data-pokie-lifecycle-step="simulation-configure"
+                    label="Configure"
+                    description="Set rounds"
+                    aria-current={activeStep === 0 ? "step" : undefined}
+                />
                 <Stepper.Step
                     label="Run"
                     description="Watch progress"
@@ -215,12 +238,15 @@ export function SimulationTab({
                     label="Export"
                     description="Download report"
                     disabled={!exportReachable}
+                    aria-describedby={exportReachable ? undefined : "simulation-export-unavailable"}
+                    title={exportReachable ? undefined : "Export becomes available after a completed simulation report is ready."}
                     aria-current={activeStep === 3 ? "step" : undefined}
                 />
             </Stepper>
 
             {activeStep === 0 && (
                 <form
+                    data-pokie-lifecycle-form="simulation"
                     onSubmit={form.onSubmit((values) =>
                         onRun(values.rounds, values.seed.trim() || undefined, values.workers, values.modeName || undefined),
                     )}
@@ -230,8 +256,8 @@ export function SimulationTab({
                         When it finishes, review the summary here or export the full report.
                     </Text>
                     <QuickActions>
-                        <NumberInput label="Rounds" min={1} step={1} required {...form.getInputProps("rounds")} key={form.key("rounds")} />
-                        <Button type="submit" loading={progress?.status === "queued"} disabled={active}>
+                        <NumberInput label="Rounds" min={1} step={1} required data-pokie-lifecycle-field="simulation-rounds" {...form.getInputProps("rounds")} key={form.key("rounds")} />
+                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active}>
                             Run Simulation
                         </Button>
                     </QuickActions>
@@ -262,19 +288,16 @@ export function SimulationTab({
                     {error && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
                     {progress !== undefined && (
                         <div>
-                            <Text size="sm" mb={4}>
-                                {cancellationPending ? "cancelling" : progress.status} — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}
-                            </Text>
                             <Progress value={progress.percent} mb="sm" />
                             <QuickActions>
                                 {active && !cancellationPending && (
-                                    <Button color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel)}>
+                                    <Button id="simulation-cancel" data-pokie-lifecycle="recovery" data-pokie-transaction-state="recovery-operation" data-pokie-lifecycle-operation="simulation-cancel" color="red" variant="light" onClick={() => confirm("Cancel the running simulation?", onCancel, undefined, {confirm: "simulation-cancel-confirm", cancel: "simulation-cancel-dismiss", operation: "simulation-cancel"})}>
                                         Cancel
                                     </Button>
                                 )}
-                                {cancellationPending && <Text role="status" size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
+                                {cancellationPending && <Text role="status" aria-live="polite" data-pokie-lifecycle-result="simulation" size="sm">Cancellation requested; waiting for safe cleanup.</Text>}
                                 {canRetry && (
-                                    <Button variant="default" onClick={onRetry}>
+                                    <Button id="simulation-retry" data-pokie-lifecycle="recovery" data-pokie-transaction-state="recovery-operation" data-pokie-lifecycle-operation="simulation-retry" variant="default" onClick={onRetry}>
                                         Retry
                                     </Button>
                                 )}
@@ -303,7 +326,7 @@ export function SimulationTab({
                             <SimulationSummaryCard outcome={outcome} />
                             <QuickActions>
                                 {outcome.kind === "completed" && (
-                                    <Button variant="default" onClick={toggleFullReport}>
+                                    <Button data-pokie-lifecycle-artifact="simulation-report" variant="default" onClick={toggleFullReport}>
                                         {fullReportOpened ? "Hide full report" : "Open full report"}
                                     </Button>
                                 )}
@@ -317,7 +340,14 @@ export function SimulationTab({
                                         Back to configuration
                                     </Button>
                                 )}
-                                <Button variant="default" onClick={onRetry}>
+                                <Button
+                                    id="simulation-retry"
+                                    data-pokie-lifecycle="recovery"
+                                    data-pokie-transaction-state="recovery-operation"
+                                    data-pokie-lifecycle-operation="simulation-retry"
+                                    variant="default"
+                                    onClick={onRetry}
+                                >
                                     Repeat simulation
                                 </Button>
                             </QuickActions>
@@ -398,9 +428,50 @@ export function SimulationTab({
                 </div>
             )}
 
+            {/*
+             * This status stays outside the Run step and below its controls.  A completed
+             * simulation advances straight to Review, but its operation
+             * receipt must remain rendered there so assistive technology (and
+             * users returning to the result) can still tell which request
+             * reached which terminal state.  The stable lifecycle attributes
+             * are product UI, not audit-only data: they bind the visible
+             * progress/result to the Run Simulation control's operation.
+             * Polling counters may wrap on phones; keeping them below the
+             * workflow prevents them from moving Cancel beneath a pointer.
+             */}
+            {(progress !== undefined || terminalReceipt !== undefined) && (
+                <div
+                    tabIndex={-1}
+                    data-pokie-lifecycle-result="simulation"
+                    data-pokie-lifecycle-result-control={resultControlId}
+                    data-pokie-lifecycle-result-operation={receiptOperation}
+                    data-pokie-lifecycle-result-state={resultState}
+                    data-pokie-lifecycle-result-job={resultJobId}
+                    data-pokie-lifecycle-terminal={resultStatus}
+                    data-pokie-lifecycle-result-receipt={terminalReceipt === undefined ? "progress" : "durable-terminal"}
+                    data-pokie-lifecycle-result-durable-job={terminalReceipt?.jobId}
+                    data-pokie-lifecycle-result-captured-job={terminalReceipt?.capturedJobId}
+                    data-pokie-lifecycle-result-durable-status={terminalReceipt?.status}
+                    data-pokie-lifecycle-result-request-id={terminalReceipt?.requestId}
+                    data-pokie-lifecycle-result-recovery={terminalReceipt?.recoveredAfterRestart === true ? "restart-reconciled" : undefined}
+                    data-pokie-lifecycle-result-executor={terminalReceipt?.recoveredAfterRestart === true ? "unavailable-after-restart" : undefined}
+                >
+                    <Text role="status" aria-live="polite" tabIndex={-1} size="sm" mb={4}>
+                        {receiptOperation === "simulation-retry" ? "Simulation retry" : "Simulation"} {cancellationPending ? "cancelling" : resultStatus}
+                        {progress !== undefined && <> — {progress.roundsCompleted}/{progress.rounds} rounds — elapsed {formatElapsedMs(progress.durationMs)}</>}
+                        {terminalReceipt?.recoveredAfterRestart === true && <> — the prior executor is unavailable after restart; submit the captured settings to run a replacement simulation.</>}
+                    </Text>
+                    {resultStatus === "completed" && (
+                        <Button data-pokie-lifecycle-artifact="simulation-report" variant="subtle" size="xs" onClick={() => setActiveStep(2)}>
+                            Open completed simulation report
+                        </Button>
+                    )}
+                </div>
+            )}
+
             <PageSection legend="Recent runs">
                 <QuickActions>
-                    <Button variant="default" size="xs" onClick={onRefreshRecentRuns}>
+                    <Button id="simulation-refresh-reports" data-pokie-lifecycle="operation" data-pokie-transaction-state="read-only-operation" data-pokie-lifecycle-operation="simulation-reports" variant="default" size="xs" onClick={onRefreshRecentRuns}>
                         Refresh
                     </Button>
                 </QuickActions>
@@ -409,6 +480,24 @@ export function SimulationTab({
                 {recentRuns.status === "empty" && <EmptyState message="No completed simulations yet." />}
                 {recentRuns.status === "loaded" && (
                     <>
+                        <div tabIndex={-1} data-pokie-lifecycle-result="simulation-reports" data-pokie-lifecycle-result-control="simulation-refresh-reports" data-pokie-lifecycle-result-state="read-only-operation" data-pokie-lifecycle-terminal="completed">
+                            <Text role="status" aria-live="polite" size="xs" c="dimmed">
+                                Loaded {recentRunEntries.length} simulation report{recentRunEntries.length === 1 ? "" : "s"}.
+                            </Text>
+                            {recentRunEntries.length > 0 && (
+                                <Button
+                                    data-pokie-lifecycle-artifact="simulation-report"
+                                    size="xs"
+                                    variant="subtle"
+                                    onClick={() => {
+                                        onOpenHistoric(recentRunEntries[0]);
+                                        setActiveStep(2);
+                                    }}
+                                >
+                                    Open latest report
+                                </Button>
+                            )}
+                        </div>
                         <BoundedListPager
                             itemLabel="runs"
                             itemCount={recentRunEntries.length}

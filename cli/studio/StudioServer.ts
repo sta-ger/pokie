@@ -133,6 +133,8 @@ import {canonicalStudioProjectIdentity} from "./jobs/canonicalStudioProjectIdent
 import {StudioJobService, type StudioJobExecutorContext, type StudioJobExecutorTerminal} from "./jobs/StudioJobService.js";
 import type {StudioJobProgressView, StudioJobView} from "./jobs/StudioJobView.js";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";
+import {StudioProjectOpeningCancelledError} from "./StudioProjectOpeningCancelledError.js";
+import {StudioProjectOpeningCleanupError} from "./StudioProjectOpeningCleanupError.js";
 
 function describeIncompleteOutcomeSourceProvenance(recorded: unknown): string | undefined {
     if (typeof recorded !== "object" || recorded === null) {
@@ -307,6 +309,7 @@ export class StudioServer implements StudioServerHandling {
     // Every dashboard/Home/Play preparation belongs to one generation.  A new project intent aborts
     // the previous resolver work; the generation check is still required because a loader can finish
     // just as its signal is observed.
+    private readonly dashboardLoads = new Set<Promise<void>>();
     private runtimePreparation: {generation: number; controller: AbortController} | undefined;
     private nextRuntimePreparationGeneration = 0;
     private server: http.Server | undefined;
@@ -493,35 +496,9 @@ export class StudioServer implements StudioServerHandling {
     }
 
     public async stop(): Promise<void> {
-        this.cancelRuntimePreparation();
-        // Certification, deployment, Play, Home materialization, and Design
-        // operations execute directly through StudioJobService rather than a
-        // compatibility service with its own cancelAll(). Request their
-        // aborts before closing HTTP so their executor-specific cleanup can
-        // publish an honest terminal state (or restart reconciliation can
-        // safely mark an interrupted record recovery-required).
-        this.jobService.cancelAll();
-        // Best-effort, synchronous, before anything else: a simulation's/replay's chunked run loop
-        // (see StudioSimulationService.run()/StudioReplayExecutionService.run()) is scheduled
-        // independently of any HTTP connection, so closing the server alone would leave either running
-        // against an event loop nobody is serving requests on anymore.
-        this.simulationService.cancelAll();
-        this.replayService.cancelAll();
-        this.artifactBuildService.cancelAll();
-        // Unlike the older fire-and-forget lifecycle services, an Outcome
-        // Library job owns an atomic publication destination and a persisted
-        // checkpoint.  Do not release Studio's server context until its
-        // cancellation has reached that cleanup-safe terminal state.
-        await this.outcomeLibraryGenerateJobService.cancelAll();
-        // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
-        // session was active.
-        this.playService.reset();
-        // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
-        // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
-        this.roundRecorder.clearAll();
         const server = this.server;
         this.server = undefined;
-        await new Promise<void>((resolve, reject) => {
+        const listenerClosed = new Promise<void>((resolve, reject) => {
             if (!server) {
                 resolve();
                 return;
@@ -534,6 +511,41 @@ export class StudioServer implements StudioServerHandling {
                 resolve();
             });
         });
+
+        this.cancelRuntimePreparation();
+        // Certification, deployment, Play, Home materialization, and Design
+        // operations execute directly through StudioJobService rather than a
+        // compatibility service with its own cancelAll(). Request their
+        // aborts before closing HTTP so their executor-specific cleanup can
+        // publish an honest terminal state (or restart reconciliation can
+        // safely mark an interrupted record recovery-required).
+        this.jobService.beginShutdown();
+        // Request every domain cancellation before waiting for any executor.
+        // Listener closure alone cannot attest to worker or staging cleanup.
+        const drains = await Promise.allSettled([
+            listenerClosed,
+            this.simulationService.cancelAll(),
+            this.replayService.cancelAll(),
+            this.artifactBuildService.cancelAll(),
+            this.outcomeLibraryGenerateJobService.cancelAll(),
+            Promise.all([...this.dashboardLoads]),
+        ]);
+        const failedDrain = drains.find((result) => result.status === "rejected");
+        if (failedDrain?.status === "rejected") {
+            await this.jobService.completeGracefulShutdown(false).catch(() => undefined);
+            this.jobService.reconcileInterruptedJobs();
+            throw failedDrain.reason;
+        }
+        // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
+        // session was active.
+        this.playService.reset();
+        // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
+        // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
+        this.roundRecorder.clearAll();
+        // Record the marker only after the listener and the process-owned
+        // resources above have been drained. A SIGKILL cannot reach this
+        // point, so a following process reconciles only a real abrupt loss.
+        await this.jobService.completeGracefulShutdown();
     }
 
     // Called from both project-switch points (handleHomeOpenProject, /api/projects/close) *before*
@@ -821,7 +833,7 @@ export class StudioServer implements StudioServerHandling {
     private startProjectDashboardLoad(projectRoot: string): void {
         const preparation = this.beginRuntimePreparation();
         this.projectDashboard = {status: "loading", projectRoot};
-        loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
+        const loading = loadProjectDashboardContext(projectRoot, this.loadGame, this.resolveRuntimePackageRoot, this.describeProjectLocation, undefined, undefined, {
             signal: preparation.controller.signal,
             isCurrent: () => this.isCurrentRuntimePreparation(preparation),
         })
@@ -830,10 +842,17 @@ export class StudioServer implements StudioServerHandling {
                     this.projectDashboard = dashboard;
                 }
             })
-            .catch(() => {
-                // loadProjectDashboardContext itself never rejects (it catches internally) — this is
-                // an extra safety net only, so a StudioServer never crashes on a background load.
+            .catch((error: unknown) => {
+                if (error instanceof StudioProjectOpeningCancelledError) return;
+                if (this.isCurrentRuntimePreparation(preparation)) {
+                    this.projectDashboard = {status: "error", projectRoot, error: error instanceof Error ? error.message : String(error)};
+                }
+                // Keep failed cleanup in the drain set so stop cannot publish
+                // a graceful marker for a rejected direct-entry lease release.
+                if (error instanceof StudioProjectOpeningCleanupError) throw error;
             });
+        this.dashboardLoads.add(loading);
+        loading.then(() => this.dashboardLoads.delete(loading), () => undefined);
     }
 
     private beginRuntimePreparation(): {generation: number; controller: AbortController} {
@@ -1215,7 +1234,7 @@ export class StudioServer implements StudioServerHandling {
 
         const outcomeLibraryJobRoute = (/^\/api\/project\/outcome-libraries\/generate\/jobs\/([^/]+)(?:\/(cancel|resume))?$/).exec(url.pathname);
         if (outcomeLibraryJobRoute !== null) {
-            await this.handleOutcomeLibraryGenerationJob(method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
+            await this.handleOutcomeLibraryGenerationJob(req, method, res, outcomeLibraryJobRoute[1], outcomeLibraryJobRoute[2] as "cancel" | "resume" | undefined);
             return;
         }
 
@@ -1531,7 +1550,7 @@ export class StudioServer implements StudioServerHandling {
         let preparation: ReturnType<StudioServer["beginRuntimePreparation"]> | undefined;
         let execution: {readonly job: StudioJobView; readonly value: ProjectDashboardContext} | undefined;
         try {
-            execution = await this.executeCommonOperation(
+            execution = await this.executeCommonOperation<ProjectDashboardContext>(
                 res,
                 {
                     projectId: sourcePath, operation: "project-open-materialization", request: {sourcePath}, conflictKey: `project-open:${sourcePath}`, recoveryOnRestart: recovery,
@@ -1551,7 +1570,7 @@ export class StudioServer implements StudioServerHandling {
                             isCurrent: () => this.isCurrentRuntimePreparation(preparation!),
                         });
                         if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
-                            throw new Error("Project opening was superseded by a newer request.");
+                            throw new StudioProjectOpeningCancelledError();
                         }
                         if (dashboard.status !== "loaded" && dashboard.status !== "outcome-source" && dashboard.status !== "artifact") {
                             return dashboard;
@@ -1567,7 +1586,7 @@ export class StudioServer implements StudioServerHandling {
                             },
                         );
                         if (signal.aborted || !this.isCurrentRuntimePreparation(preparation)) {
-                            throw new Error("Project opening was superseded by a newer request.");
+                            throw new StudioProjectOpeningCancelledError();
                         }
                         progress({stage: "Publishing dashboard", unit: "opening stages", current: 3, total: 3, message: "Switching Studio to the opened project."});
                         this.playService.reset();
@@ -1576,6 +1595,14 @@ export class StudioServer implements StudioServerHandling {
                         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
                         this.projectDashboard = dashboard;
                         return dashboard;
+                    } catch (error) {
+                        // This named guard is raised only after owned resources
+                        // have drained. Return its cancelled result normally;
+                        // unknown executor/cleanup exceptions still fail closed.
+                        if (error instanceof StudioProjectOpeningCancelledError) {
+                            return {status: "error", projectRoot: sourcePath, error: error.message};
+                        }
+                        throw error;
                     } finally {
                         signal.removeEventListener("abort", abortPreparation);
                     }
@@ -1594,9 +1621,15 @@ export class StudioServer implements StudioServerHandling {
                     }
                     return {status: "failed", error: dashboard.status === "error" ? dashboard.error : `Could not load "${validated.projectRoot}".`, recovery};
                 },
-                (error, cancelled) => (cancelled || (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation)))
-                    ? {status: "cancelled", result: {summary: "Project opening was cancelled before a dashboard was published.", detail: {sourcePath}}, recovery}
-                    : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
+                (error, cancelled) => {
+                    if (error instanceof StudioProjectOpeningCleanupError) {
+                        return {status: "recovery-required", recovery: {action: "retry", reason: error.message}};
+                    }
+                    if (cancelled || (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation))) {
+                        return {status: "recovery-required", recovery: {action: "retry", reason: `Project opening cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect the runtime resources and restart Studio before reopening the project.`}};
+                    }
+                    return {status: "failed", error: error instanceof Error ? error.message : String(error), recovery};
+                },
             );
         } catch (error) {
             if (preparation !== undefined && !this.isCurrentRuntimePreparation(preparation)) {
@@ -2744,7 +2777,15 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         try {
-            this.sendJson(res, 202, {status: "created", job: this.outcomeLibraryGenerateJobService.start(this.canonicalPathIdentity(this.currentContext.projectRoot), validated)});
+            this.sendJson(res, 202, {
+                status: "created",
+                job: this.outcomeLibraryGenerateJobService.start(
+                    this.canonicalPathIdentity(this.currentContext.projectRoot),
+                    validated,
+                    undefined,
+                    this.outcomeLibraryBrowserRequestId(req),
+                ),
+            });
         } catch (error) {
             this.sendJson(res, 409, {status: "conflict", error: error instanceof Error ? error.message : String(error)});
         }
@@ -2758,7 +2799,7 @@ export class StudioServer implements StudioServerHandling {
         this.sendJson(res, 200, {jobs: this.outcomeLibraryGenerateJobService.listForProject(this.currentContext.projectRoot)});
     }
 
-    private async handleOutcomeLibraryGenerationJob(method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): Promise<void> {
+    private async handleOutcomeLibraryGenerationJob(req: IncomingMessage, method: string, res: ServerResponse, id: string, action: "cancel" | "resume" | undefined): Promise<void> {
         if (this.currentContext.mode !== "project") {
             this.sendJson(res, 409, {error: "No active project."});
             return;
@@ -2773,7 +2814,7 @@ export class StudioServer implements StudioServerHandling {
             job = this.outcomeLibraryGenerateJobService.cancelForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
         } else if (action === "resume") {
             try {
-                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id);
+                job = await this.outcomeLibraryGenerateJobService.resumeForProject(this.canonicalPathIdentity(this.currentContext.projectRoot), id, this.outcomeLibraryBrowserRequestId(req));
             } catch (error) {
                 // A resume rebind can race another job's destination ownership.
                 // Preserve the Outcome Library recovery DTO rather than letting
@@ -2803,6 +2844,13 @@ export class StudioServer implements StudioServerHandling {
 
         if (await this.rejectCurrentWasmOperation(res, OUTCOME_LIBRARY_GENERATE_OPERATION)) return;
         this.sendJson(res, 200, await this.outcomeLibraryGenerateService.registry(this.currentContext.projectRoot));
+    }
+
+    /** Opaque rendered-transaction identity; durable job identity stays server-owned. */
+    private outcomeLibraryBrowserRequestId(req: IncomingMessage): string | undefined {
+        const header = req.headers["x-pokie-outcome-library-request-id"];
+        const value = Array.isArray(header) ? header[0] : header;
+        return typeof value === "string" && (/^[A-Za-z0-9._:-]{1,128}$/).test(value) ? value : undefined;
     }
 
     // Draws exactly one outcome from the currently open "outcomeLibrary" project through
@@ -3490,8 +3538,11 @@ export class StudioServer implements StudioServerHandling {
         try {
             const outcomeSource = record.outcomeSource;
             const modeName = typeof outcomeSource === "object" && outcomeSource !== null ? (outcomeSource as {modeName?: unknown}).modeName : undefined;
+            // Portable ReplayDescriptor exports use null for an unseeded run.
+            // Inspection must accept those bytes as an absent seed; live run
+            // requests and exact outcome-library provenance remain strict.
             validated = validateReplayRequest(
-                {round: record.round, seed: record.seed, modeName} as ReplayRequestInput,
+                {round: record.round, seed: record.seed === null ? undefined : record.seed, modeName} as ReplayRequestInput,
                 {requireOutcomeSourceProvenance: outcomeSource !== undefined},
             );
         } catch (error) {

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import type {StudioJobRepository} from "./StudioJobRepository.js";
+import type {StudioJobProcessState, StudioJobRepository} from "./StudioJobRepository.js";
 import type {StudioJobView} from "./StudioJobView.js";
 
 /**
@@ -56,6 +56,27 @@ export class FileStudioJobRepository implements StudioJobRepository {
         }
     }
 
+    public getProcessState(): StudioJobProcessState | undefined {
+        try {
+            const value: unknown = JSON.parse(fs.readFileSync(this.processStatePath(), "utf8"));
+            if (typeof value !== "object" || value === null) return undefined;
+            const state = value as Partial<StudioJobProcessState>;
+            return (state.status === "running" || state.status === "gracefully-stopped") && typeof state.updatedAt === "number"
+                ? {status: state.status, updatedAt: state.updatedAt}
+                : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    public saveProcessState(state: StudioJobProcessState): void {
+        fs.mkdirSync(this.directory, {recursive: true});
+        const destination = this.processStatePath();
+        const temporary = `${destination}.${process.pid}.${Date.now()}.tmp`;
+        fs.writeFileSync(temporary, JSON.stringify(state), "utf8");
+        fs.renameSync(temporary, destination);
+    }
+
     private read(filePath: string): StudioJobView | undefined {
         try {
             const value: unknown = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -70,6 +91,10 @@ export class FileStudioJobRepository implements StudioJobRepository {
         // malformed/corrupt route parameter can never escape the store.
         if (!(/^[A-Za-z0-9_-]+$/).test(id)) throw new Error("Invalid Studio job id.");
         return path.join(this.directory, `${id}.json`);
+    }
+
+    private processStatePath(): string {
+        return path.join(this.directory, "_process-state.json");
     }
 
     private trim(): void {

@@ -5,6 +5,9 @@ import os from "os";
 import path from "path";
 import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
+import {StudioProjectOpeningCancelledError} from "../../../cli/studio/StudioProjectOpeningCancelledError.js";
+import {StudioProjectOpeningCleanupError} from "../../../cli/studio/StudioProjectOpeningCleanupError.js";
+import {RuntimePreparationCleanupError} from "../../../cli/materialize/RuntimePreparationCleanupError.js";
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
@@ -84,7 +87,7 @@ describe("loadProjectDashboardContext", () => {
         }
     });
 
-    it("never rejects", async () => {
+    it("keeps ordinary load failures as error dashboards", async () => {
         const loadGame = jest.fn().mockRejectedValue(new Error("boom"));
 
         await expect(loadProjectDashboardContext("./broken-game", loadGame)).resolves.not.toThrow();
@@ -234,7 +237,7 @@ describe("loadProjectDashboardContext", () => {
         controller.abort();
         finishLoad?.(createFakeGame({id: "old", name: "Old", version: "1.0.0"}));
 
-        await expect(pending).resolves.toMatchObject({status: "error", projectRoot: "/old-project"});
+        await expect(pending).rejects.toBeInstanceOf(StudioProjectOpeningCancelledError);
         expect(release).toHaveBeenCalledTimes(1);
     });
 
@@ -262,5 +265,64 @@ describe("loadProjectDashboardContext", () => {
         } finally {
             fs.rmSync(workDir, {recursive: true, force: true});
         }
+    });
+
+    it("rejects safe cancellation during shared project resolution before acquiring a runtime", async () => {
+        const controller = new AbortController();
+        let finishResolution!: (project: PokieProject | undefined) => void;
+        let notifyResolution!: () => void;
+        const started = new Promise<void>((resolve) => {
+            notifyResolution = resolve;
+        });
+        const materializer = {materialize: jest.fn()};
+        const resolver = createMaterializingRuntimePackageResolver("1.3.0", STUDIO_OPERATION, undefined, {
+            resolveProject: {resolve: () => new Promise<PokieProject | undefined>((resolve) => {
+                finishResolution = resolve;
+                notifyResolution();
+            })},
+            materializer,
+        });
+        const loadGame = jest.fn();
+        const pending = loadProjectDashboardContext("/pending-project", loadGame, resolver, undefined,
+            () => Promise.resolve(undefined), () => Promise.resolve(undefined), {signal: controller.signal});
+
+        await started;
+        controller.abort();
+        finishResolution(undefined);
+
+        await expect(pending).rejects.toBeInstanceOf(StudioProjectOpeningCancelledError);
+        expect(materializer.materialize).not.toHaveBeenCalled();
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it("retains resolver-owned cleanup failure even without cancellation", async () => {
+        const failure = new RuntimePreparationCleanupError(new Error("EACCES: cannot release cache lock"));
+        const loadGame = jest.fn();
+        const pending = loadProjectDashboardContext("/locked-project", loadGame, () => Promise.reject(failure), undefined,
+            () => Promise.resolve(undefined), () => Promise.resolve(undefined));
+
+        await expect(pending).rejects.toBeInstanceOf(StudioProjectOpeningCleanupError);
+        await expect(pending).rejects.toMatchObject({cause: failure, message: expect.stringContaining("cannot release cache lock")});
+        expect(loadGame).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])("preserves unknown resolver diagnostics without assuming safe cleanup (aborted=%s)", async (aborted) => {
+        const controller = new AbortController();
+        const failure = new Error("Runtime preparation was cancelled before a runnable game was available.");
+        const resolver = () => {
+            if (aborted) controller.abort();
+            return Promise.reject(failure);
+        };
+        const loadGame = jest.fn();
+        const pending = loadProjectDashboardContext("/unknown-project", loadGame, resolver, undefined,
+            () => Promise.resolve(undefined), () => Promise.resolve(undefined), {signal: controller.signal});
+
+        if (aborted) {
+            await expect(pending).rejects.toBeInstanceOf(StudioProjectOpeningCleanupError);
+            await expect(pending).rejects.toMatchObject({cause: failure, message: expect.stringContaining(failure.message)});
+        } else {
+            await expect(pending).resolves.toMatchObject({status: "error", error: failure.message});
+        }
+        expect(loadGame).not.toHaveBeenCalled();
     });
 });

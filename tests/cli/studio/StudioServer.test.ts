@@ -66,6 +66,7 @@ import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjec
 import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {StudioProjectOpeningCancelledError} from "../../../cli/studio/StudioProjectOpeningCancelledError.js";
 import {WasmArtifactBuilder} from "../../../src/project/WasmArtifactBuilder.js";
 import {StudioOutcomeLibraryGenerateService} from "../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.js";
 import {buildSourceOutcomeLibraryBundle} from "../../certification/CertificationEvidenceBundleTestFixtures.js";
@@ -411,6 +412,13 @@ describe("StudioServer", () => {
         return new StudioJobService(new FileStudioJobRepository(path.join(root, ".test-studio-jobs")));
     }
 
+    const pendingTestLoads: Array<() => void> = [];
+    function deferredGameLoad(game: PokieGame): Promise<PokieGame> {
+        return new Promise((resolve) => {
+            pendingTestLoads.push(() => resolve(game));
+        });
+    }
+
     beforeEach(async () => {
         studioRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-server-test-"));
         writeStudioAssets(studioRoot);
@@ -437,6 +445,7 @@ describe("StudioServer", () => {
     });
 
     afterEach(async () => {
+        pendingTestLoads.splice(0).forEach((release) => release());
         await server.stop();
         fs.rmSync(studioRoot, {recursive: true, force: true});
     });
@@ -710,6 +719,7 @@ describe("StudioServer", () => {
         expect(runtimeSnapshotsForPackage(packageName)).toEqual([]);
         replaceServer(new StudioServer({
             pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            jobService: createIsolatedJobService(studioRoot),
             homeService: new StudioHomeService("1.0.0", undefined, loadPokieGame),
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadPokieGame)),
             loadGame: loadPokieGame,
@@ -1002,6 +1012,7 @@ describe("StudioServer", () => {
             host: "::1",
             port: 0,
             studioRoot,
+            jobService: createIsolatedJobService(studioRoot),
             homeService: new StudioHomeService("1.0.0", undefined, loadGame),
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, new StudioHomeService("1.0.0", undefined, loadGame)),
             loadGame,
@@ -1136,6 +1147,7 @@ describe("StudioServer", () => {
             host: "127.0.0.1",
             port: 0,
             studioRoot,
+            jobService: createIsolatedJobService(studioRoot),
             homeService: overlapHomeService,
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, overlapHomeService),
             loadGame,
@@ -1208,6 +1220,7 @@ describe("StudioServer", () => {
             host: "127.0.0.1",
             port: 0,
             studioRoot,
+            jobService: createIsolatedJobService(studioRoot),
             homeService,
             blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
             loadGame,
@@ -1298,6 +1311,7 @@ describe("StudioServer", () => {
             host: "127.0.0.1",
             port: 0,
             studioRoot: lifecycleStudioRoot,
+            jobService: createIsolatedJobService(lifecycleStudioRoot),
             homeService,
             blueprintService: new StudioBlueprintService("1.0.0", lifecycleStudioRoot, homeService),
             loadGame: packageLoad,
@@ -1328,6 +1342,226 @@ describe("StudioServer", () => {
             await lifecycleServer.stop();
             fs.rmSync(workDir, {recursive: true, force: true});
             fs.rmSync(lifecycleStudioRoot, {recursive: true, force: true});
+        }
+    });
+
+    it.each([
+        ["home", false], ["home", true], ["direct", false], ["direct", true],
+        ["home", "cancelled-guard"], ["direct", "cancelled-guard"],
+    ] as const)("drains a cancelled %s opening while preserving cleanup failure (fails=%s)", async (entry, cleanupFails) => {
+        const sourcePath = path.join(studioRoot, "pending-game");
+        let resolveGame!: (game: PokieGame) => void;
+        const pendingGame = new Promise<PokieGame>((resolve) => {
+            resolveGame = resolve;
+        });
+        let notifyLoad!: () => void;
+        const loadStarted = new Promise<void>((resolve) => {
+            notifyLoad = resolve;
+        });
+        let notifyRelease!: () => void;
+        const releaseStarted = new Promise<void>((resolve) => {
+            notifyRelease = resolve;
+        });
+        const release = jest.fn(() => {
+            notifyRelease();
+            if (cleanupFails === "cancelled-guard") return Promise.reject(new StudioProjectOpeningCancelledError());
+            return cleanupFails ? Promise.reject(new Error("fixture runtime release failed")) : Promise.resolve();
+        });
+        const resolver = () => Promise.resolve({runtimePath: sourcePath, release});
+        const game = createFakeGame({id: "pending-game", name: "Pending", version: "1.0.0"});
+        const loader = () => {
+            notifyLoad();
+            return pendingGame;
+        };
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "cancelled-opening"));
+        const jobs = new StudioJobService(repository);
+        const home = new StudioHomeService("1.0.0", undefined, loader, undefined, resolver);
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: home,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, home),
+            loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+            initialContext: entry === "direct" ? {mode: "project", projectRoot: sourcePath} : undefined,
+        });
+        let shutdownAttempted = false;
+        try {
+            const address = await lifecycleServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            const opening = entry === "home" ? post(`${url}/api/home/projects/open`, {projectRoot: sourcePath}) : undefined;
+            await loadStarted;
+            expect(await post(`${url}/api/projects/close`, {confirmActiveJobs: true})).toMatchObject({status: 200});
+            resolveGame(game);
+            if (opening !== undefined) expect(await opening).toMatchObject({status: 409});
+            await releaseStarted;
+            await flushMacrotask();
+            expect(release).toHaveBeenCalledTimes(1);
+            if (entry === "home") {
+                expect(jobs.list()).toEqual([expect.objectContaining({status: cleanupFails ? "recovery-required" : "cancelled"})]);
+            }
+            expect((await get(`${url}/api/context`)).body).toEqual({mode: "home"});
+            expect((await get(`${url}/api/home/recent-projects`)).body).toEqual([]);
+            shutdownAttempted = true;
+            if (cleanupFails) await expect(lifecycleServer.stop()).rejects.toThrow(entry === "home" ? "Studio shutdown could not confirm executor cleanup." : "Project opening cleanup failed");
+            else await expect(lifecycleServer.stop()).resolves.toBeUndefined();
+            expect(repository.getProcessState()?.status).toBe(cleanupFails ? "running" : "gracefully-stopped");
+        } finally {
+            resolveGame(game);
+            if (!shutdownAttempted) await lifecycleServer.stop();
+        }
+    });
+
+    it.each(["home", "direct"] as const)("safely cancels %s opening during shared resolution before resource acquisition", async (entry) => {
+        const sourcePath = path.join(studioRoot, "resolving-project");
+        let finishResolution!: (project: PokieProject | undefined) => void;
+        let notifyResolution!: () => void;
+        const started = new Promise<void>((resolve) => {
+            notifyResolution = resolve;
+        });
+        const materializer = {materialize: jest.fn()};
+        const resolver = createMaterializingRuntimePackageResolver("1.0.0", STUDIO_OPERATION, undefined, {
+            resolveProject: {resolve: () => new Promise<PokieProject | undefined>((resolve) => {
+                finishResolution = resolve;
+                notifyResolution();
+            })},
+            materializer,
+        });
+        const loader = jest.fn();
+        const recents = new InMemoryRecentProjectsRepository();
+        const registry = new InMemoryStudioProjectRegistry();
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "resolving-opening"));
+        const jobs = new StudioJobService(repository);
+        const home = new StudioHomeService("1.0.0", recents, loader, undefined, resolver);
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: home, loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, home),
+            projectRegistrationService: new StudioProjectRegistrationService(registry),
+            initialContext: entry === "direct" ? {mode: "project", projectRoot: sourcePath} : undefined,
+        });
+        try {
+            const address = await lifecycleServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            const opening = entry === "home" ? post(`${url}/api/home/projects/open`, {projectRoot: sourcePath}) : undefined;
+            await started;
+            if (entry === "home") {
+                const [job] = jobs.list();
+                expect(await post(`${url}/api/home/jobs/${job.id}/cancel`)).toMatchObject({status: 202});
+            } else {
+                expect(await post(`${url}/api/projects/close`, {confirmActiveJobs: true})).toMatchObject({status: 200});
+            }
+            finishResolution(undefined);
+            if (opening !== undefined) {
+                expect(await opening).toMatchObject({status: 409});
+                expect(await get(`${url}/api/home/jobs`)).toMatchObject({body: {jobs: [expect.objectContaining({status: "cancelled"})]}});
+            }
+            await flushMacrotask();
+            expect((await get(`${url}/api/context`)).body).toEqual({mode: "home"});
+            expect(await recents.list()).toEqual([]);
+            expect(await registry.list()).toEqual([]);
+            expect(materializer.materialize).not.toHaveBeenCalled();
+            expect(loader).not.toHaveBeenCalled();
+            await expect(lifecycleServer.stop()).resolves.toBeUndefined();
+            expect(repository.getProcessState()?.status).toBe("gracefully-stopped");
+        } finally {
+            finishResolution?.(undefined);
+            await lifecycleServer.stop();
+        }
+    });
+
+    it.each([
+        ["home", "runtime", false], ["direct", "runtime", false],
+        ["home", "game", false], ["direct", "game", false],
+        ["home", "game", true], ["direct", "game", true],
+    ] as const)("retains %s %s release failure as cleanup-unconfirmed (cancelled=%s)", async (entry, resource, cancelled) => {
+        const sourcePath = path.join(studioRoot, "release-failure-game");
+        fs.mkdirSync(sourcePath);
+        fs.writeFileSync(path.join(sourcePath, "package.json"), JSON.stringify({name: "release-failure-game", pokie: {entry: "index.js"}}));
+        fs.writeFileSync(path.join(sourcePath, "index.js"), "// injectable game module");
+        const failureMessage = `fixture ${resource} release failed`;
+        let finishLoad!: (game: PokieGame) => void;
+        let notifyLoad!: () => void;
+        const loadStarted = new Promise<void>((resolve) => {
+            notifyLoad = resolve;
+        });
+        let notifyRelease!: () => void;
+        const releaseStarted = new Promise<void>((resolve) => {
+            notifyRelease = resolve;
+        });
+        let snapshotRoot: string | undefined;
+        const remove = fs.rmSync;
+        const removeSpy = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+            if (resource === "game" && target === snapshotRoot) {
+                notifyRelease();
+                throw new Error(failureMessage);
+            }
+            return remove(target, options);
+        });
+        const runtimeRelease = jest.fn(() => {
+            if (resource === "runtime") {
+                notifyRelease();
+                return Promise.reject(new Error(failureMessage));
+            }
+            return Promise.resolve();
+        });
+        let openingSignal: AbortSignal | undefined;
+        const resolver = (_root: string, options: {signal?: AbortSignal} = {}) => {
+            openingSignal = options.signal;
+            return Promise.resolve({runtimePath: sourcePath, release: runtimeRelease});
+        };
+        const game = createFakeGame({id: "release-failure", name: "Release Failure", version: "1.0.0"});
+        const loader = async () => {
+            const loaded = resource === "game" ? await loadPokieGame(sourcePath, (entryPath) => {
+                snapshotRoot = path.dirname(entryPath);
+                return Promise.resolve({default: game});
+            }) : game;
+            notifyLoad();
+            return new Promise<PokieGame>((resolve) => {
+                finishLoad = () => resolve(loaded);
+            });
+        };
+        const repository = new FileStudioJobRepository(path.join(studioRoot, "failed-release-opening"));
+        const jobs = new StudioJobService(repository);
+        const recents = new InMemoryRecentProjectsRepository();
+        const registry = new InMemoryStudioProjectRegistry();
+        const home = new StudioHomeService("1.0.0", recents, loader, undefined, resolver);
+        const lifecycleServer = new StudioServer({
+            pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot,
+            homeService: home, loadGame: loader, resolveRuntimePackageRoot: resolver, jobService: jobs,
+            blueprintService: new StudioBlueprintService("1.0.0", studioRoot, home),
+            projectRegistrationService: new StudioProjectRegistrationService(registry),
+            initialContext: entry === "direct" ? {mode: "project", projectRoot: sourcePath} : undefined,
+        });
+        let shutdownAttempted = false;
+        try {
+            const address = await lifecycleServer.start();
+            const url = `http://${address.host}:${address.port}`;
+            const opening = entry === "home" ? post(`${url}/api/home/projects/open`, {projectRoot: sourcePath}) : undefined;
+            await loadStarted;
+            if (cancelled) expect(await post(`${url}/api/projects/close`, {confirmActiveJobs: true})).toMatchObject({status: 200});
+            expect(openingSignal?.aborted).toBe(cancelled);
+            finishLoad(game);
+            await releaseStarted;
+            if (opening !== undefined) {
+                expect(await opening).toMatchObject(cancelled ? {status: 409} : {status: 400, body: {error: expect.stringContaining(failureMessage)}});
+                expect(await get(`${url}/api/home/jobs`)).toMatchObject({body: {jobs: [expect.objectContaining({
+                    status: "recovery-required", recovery: {action: "retry", reason: expect.stringContaining(failureMessage)},
+                })]}});
+                expect((await get(`${url}/api/context`)).body).toEqual({mode: "home"});
+            } else if (!cancelled) {
+                await flushMacrotask();
+                expect(await get(`${url}/api/project/context`)).toMatchObject({body: {status: "error", error: expect.stringContaining(`${failureMessage}. Inspect the runtime resources and restart Studio`)}});
+            }
+            expect(await recents.list()).toEqual([]);
+            expect(await registry.list()).toEqual([]);
+            expect(runtimeRelease).toHaveBeenCalledTimes(1);
+            shutdownAttempted = true;
+            await expect(lifecycleServer.stop()).rejects.toThrow(entry === "home" ? "Studio shutdown could not confirm executor cleanup." : "Project opening cleanup failed");
+            expect(repository.getProcessState()?.status).toBe("running");
+        } finally {
+            finishLoad?.(game);
+            removeSpy.mockRestore();
+            if (!shutdownAttempted) await lifecycleServer.stop().catch(() => undefined);
+            if (snapshotRoot !== undefined) remove(snapshotRoot, {recursive: true, force: true});
         }
     });
 
@@ -1381,6 +1615,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot,
+                jobService: createIsolatedJobService(studioRoot),
                 homeService: diagnosticHomeService,
                 blueprintService: new StudioBlueprintService("1.0.0", studioRoot, diagnosticHomeService),
                 loadGame: diagnosticLoadGame,
@@ -1417,6 +1652,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot,
+                jobService: createIsolatedJobService(studioRoot),
                 homeService: materializingHomeService,
                 blueprintService: new StudioBlueprintService("1.0.0", studioRoot, materializingHomeService),
                 loadGame: materializingLoadGame,
@@ -1460,6 +1696,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot,
+                jobService: createIsolatedJobService(studioRoot),
                 homeService: diagnosticHomeService,
                 blueprintService: new StudioBlueprintService("1.0.0", studioRoot, diagnosticHomeService),
                 loadGame: diagnosticLoadGame,
@@ -1502,7 +1739,8 @@ describe("StudioServer", () => {
     // registry resolution. Slow -- same "pokie-integration" project this whole file already belongs to
     // (see jest.config.mjs).
     describe("Home Open Project runtime package materialization (real BlueprintProjectMaterializer, offline)", () => {
-        jest.setTimeout(300000);
+        beforeAll(() => jest.setTimeout(300000));
+        afterAll(() => jest.setTimeout(60000));
 
         const UNPUBLISHED_POKIE_VERSION = `0.0.0-studio-offline-e2e-unpublished-${crypto.randomBytes(4).toString("hex")}`;
 
@@ -1619,6 +1857,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot,
+                jobService: createIsolatedJobService(studioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
                 loadGame: loadPokieGame,
@@ -1651,6 +1890,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot,
+                jobService: createIsolatedJobService(studioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", studioRoot, homeService),
                 loadGame: loadPokieGame,
@@ -1780,6 +2020,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: locationStudioRoot,
+                jobService: createIsolatedJobService(locationStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", locationStudioRoot, homeService),
             });
@@ -1846,6 +2087,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: nativeStudioRoot,
+                jobService: createIsolatedJobService(nativeStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", nativeStudioRoot, homeService),
                 nativePickerService,
@@ -1972,6 +2214,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: folderStudioRoot,
+                jobService: createIsolatedJobService(folderStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", folderStudioRoot, homeService),
                 openFolder,
@@ -2134,6 +2377,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: registryStudioRoot,
+                jobService: createIsolatedJobService(registryStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", registryStudioRoot, homeService),
                 projectRegistrationService: new StudioProjectRegistrationService(
@@ -2266,6 +2510,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: homeStudioRoot,
+                jobService: createIsolatedJobService(homeStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", homeStudioRoot, homeService),
             });
@@ -2564,6 +2809,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: homeStudioRoot,
+                    jobService: createIsolatedJobService(homeStudioRoot),
                     homeService: managedHomeService,
                     blueprintService: new StudioBlueprintService(
                         "1.0.0",
@@ -3331,6 +3577,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService("1.0.0", undefined, slowLoadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: slowLoadGame,
@@ -3356,6 +3603,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService("1.0.0", undefined, failingLoadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame: failingLoadGame,
@@ -3399,6 +3647,7 @@ describe("StudioServer", () => {
                         host: "127.0.0.1",
                         port: 0,
                         studioRoot: projectStudioRoot,
+                        jobService: createIsolatedJobService(projectStudioRoot),
                         homeService,
                         blueprintService: new StudioBlueprintService("1.0.0", projectStudioRoot, homeService),
                         loadGame: directLoadGame,
@@ -3442,6 +3691,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: fixtureStudioRoot,
+                jobService: createIsolatedJobService(fixtureStudioRoot),
                 homeService: new StudioHomeService("1.0.0", undefined, loadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", fixtureStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame,
@@ -3532,6 +3782,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: blueprintStudioRoot,
+                jobService: createIsolatedJobService(blueprintStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", blueprintStudioRoot, homeService),
                 initialContext: {mode: "project", projectRoot},
@@ -3647,6 +3898,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: libraryStudioRoot,
+                jobService: createIsolatedJobService(libraryStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", libraryStudioRoot, homeService),
                 gamePackageInspector: {inspect: libraryInspect},
@@ -3781,6 +4033,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: gameModelStudioRoot,
+                jobService: createIsolatedJobService(gameModelStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", gameModelStudioRoot, homeService),
                 initialContext: {mode: "project", projectRoot},
@@ -3874,6 +4127,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: packageStudioRoot,
+                    jobService: createIsolatedJobService(packageStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.0.0", packageStudioRoot, homeService),
                     gamePackageInspector: new GamePackageInspector(),
@@ -3938,6 +4192,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: wasmStudioRoot,
+                    jobService: createIsolatedJobService(wasmStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
@@ -3979,6 +4234,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: wasmStudioRoot,
+                    jobService: createIsolatedJobService(wasmStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
@@ -4031,6 +4287,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: wasmStudioRoot,
+                    jobService: createIsolatedJobService(wasmStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
@@ -4091,6 +4348,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: wasmStudioRoot,
+                    jobService: createIsolatedJobService(wasmStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
@@ -4194,6 +4452,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: wasmStudioRoot,
+                    jobService: createIsolatedJobService(wasmStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.3.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
@@ -4243,6 +4502,7 @@ describe("StudioServer", () => {
                     host: "127.0.0.1",
                     port: 0,
                     studioRoot: wasmStudioRoot,
+                    jobService: createIsolatedJobService(wasmStudioRoot),
                     homeService,
                     blueprintService: new StudioBlueprintService("1.0.0", wasmStudioRoot, homeService),
                     initialContext: {mode: "project", projectRoot: wasmFile},
@@ -4442,6 +4702,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: outcomeStudioRoot,
+                jobService: createIsolatedJobService(outcomeStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", outcomeStudioRoot, homeService),
                 initialContext: {mode: "project", projectRoot: bundleDir},
@@ -4610,13 +4871,8 @@ describe("StudioServer", () => {
             const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
             loadGame.mockResolvedValueOnce(createPlayableFakeGame(manifest));
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./sample-slot"});
-            // The simulation's own independent load never resolves — keeps the first job "queued"
-            // forever, so the conflict check below can never race.
-            loadGame.mockReturnValueOnce(
-                new Promise(() => {
-                    // never resolves
-                }),
-            );
+            // Hold the runtime load through the conflict check; teardown releases it before draining.
+            loadGame.mockReturnValueOnce(deferredGameLoad(createPlayableFakeGame(manifest)));
 
             const first = await post(`${baseUrl}/api/project/simulations`, {rounds: 1000});
             const firstBody = first.body as {id: string};
@@ -4676,6 +4932,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -4722,6 +4979,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -4742,12 +5000,17 @@ describe("StudioServer", () => {
 
             const serverToStop = projectServer;
             projectServer = undefined; // already being stopped — afterEach shouldn't stop it again
-            await expect(serverToStop.stop()).resolves.toBeUndefined();
-
-            // stop() only requests cancellation (aborts the controller) — the record transitions to
-            // "cancelled" once the paused chunk loop notices, same as a DELETE-triggered cancel.
-            gate.release();
+            let stopped = false;
+            const stopping = serverToStop.stop().then(() => {
+                stopped = true;
+            });
             await flushMacrotask();
+            expect(stopped).toBe(false);
+
+            // Shutdown must drain the paused executor before resolving or marking a graceful stop.
+            gate.release();
+            await expect(stopping).resolves.toBeUndefined();
+            expect(stopped).toBe(true);
 
             expect(simulationService.getStatus(createdBody.id)?.status).toBe("cancelled");
         });
@@ -4807,6 +5070,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -5091,6 +5355,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: reportsStudioRoot,
+                jobService: createIsolatedJobService(reportsStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -5132,12 +5397,16 @@ describe("StudioServer", () => {
 
             const detail = await get(`${projectBaseUrl}/api/project/reports/${id}`);
             expect(detail.status).toBe(200);
-            expect((detail.body as {report: unknown}).report).toEqual(minimalReport);
+            const persistedReport = (detail.body as {report: SimulationReport}).report;
+            expect(persistedReport).toEqual({...minimalReport, durationMs: expect.any(Number), spinsPerSecond: expect.any(Number)});
+            expect(persistedReport.durationMs).toBeGreaterThanOrEqual(0);
+            expect(persistedReport.spinsPerSecond).toBe(Math.round(persistedReport.rounds / (Math.max(persistedReport.durationMs, 1) / 1000)));
             expect((detail.body as {statistics?: {volatility: number}}).statistics).toBeDefined();
 
             for (const format of ["json", "markdown", "html"]) {
                 const response = await fetch(`${projectBaseUrl}/api/project/reports/${id}/download?format=${format}`);
                 expect(response.status).toBe(200);
+                if (format === "json") expect(await response.json()).toEqual(persistedReport);
             }
         });
 
@@ -5388,13 +5657,8 @@ describe("StudioServer", () => {
         it("rejects a second POST for the same project with 409 while one is already queued/running", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./sample-slot"});
-            // The replay's own independent load never resolves — keeps the first job "queued" forever,
-            // so the conflict check below can never race.
-            loadGame.mockReturnValueOnce(
-                new Promise(() => {
-                    // never resolves
-                }),
-            );
+            // Hold the runtime load through the conflict check; teardown releases it before draining.
+            loadGame.mockReturnValueOnce(deferredGameLoad(createSeedAwareFakeGame(manifest)));
 
             const first = await post(`${baseUrl}/api/project/replays`, {round: 1000});
             const firstBody = first.body as {id: string};
@@ -5466,11 +5730,7 @@ describe("StudioServer", () => {
         it("returns 409 (not-ready) when downloading a replay that hasn't completed yet", async () => {
             loadGame.mockResolvedValueOnce(createSeedAwareFakeGame(manifest));
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: "./sample-slot"});
-            loadGame.mockReturnValueOnce(
-                new Promise(() => {
-                    // never resolves — keeps the job "queued"
-                }),
-            );
+            loadGame.mockReturnValueOnce(deferredGameLoad(createSeedAwareFakeGame(manifest)));
             const created = await post(`${baseUrl}/api/project/replays`, {round: 10});
             const {id} = created.body as {id: string};
 
@@ -5660,6 +5920,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -5706,6 +5967,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -5726,12 +5988,17 @@ describe("StudioServer", () => {
 
             const serverToStop = projectServer;
             projectServer = undefined; // already being stopped — afterEach shouldn't stop it again
-            await expect(serverToStop.stop()).resolves.toBeUndefined();
-
-            // stop() only requests cancellation (aborts the controller) — the record transitions to
-            // "cancelled" once the paused chunk loop notices, same as a DELETE-triggered cancel.
-            gate.release();
+            let stopped = false;
+            const stopping = serverToStop.stop().then(() => {
+                stopped = true;
+            });
             await flushMacrotask();
+            expect(stopped).toBe(false);
+
+            // Shutdown must drain the paused executor before resolving or marking a graceful stop.
+            gate.release();
+            await expect(stopping).resolves.toBeUndefined();
+            expect(stopped).toBe(true);
 
             expect(replayService.getStatus("/tmp/sample-slot", createdBody.id)?.status).toBe("cancelled");
         });
@@ -5758,6 +6025,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: projectStudioRoot,
+                jobService: createIsolatedJobService(projectStudioRoot),
                 homeService: new StudioHomeService(
                     "1.0.0",
                     undefined,
@@ -5788,6 +6056,12 @@ describe("StudioServer", () => {
             const stillRunning = await get(`${projectBaseUrl}/api/project/replays/${(created.body as {id: string}).id}`);
             expect((stillRunning.body as {status: string}).status).toBe("running");
             expect((stillRunning.body as {completedRounds: number}).completedRounds).toBe(10);
+
+            const serverToStop = projectServer;
+            projectServer = undefined;
+            const stopping = serverToStop.stop();
+            gate.release();
+            await stopping;
         });
     });
 
@@ -5812,6 +6086,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: replayStudioRoot,
+                jobService: createIsolatedJobService(replayStudioRoot),
                 homeService: new StudioHomeService("1.0.0"),
                 blueprintService: new StudioBlueprintService("1.0.0", replayStudioRoot, new StudioHomeService("1.0.0")),
                 initialContext: {mode: "project", projectRoot: fixtureRoot},
@@ -5850,6 +6125,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: playStudioRoot,
+                jobService: createIsolatedJobService(playStudioRoot),
                 homeService: new StudioHomeService("1.0.0", undefined, () => Promise.resolve(createPlayableFakeGame(manifest))),
                 blueprintService: new StudioBlueprintService("1.0.0", playStudioRoot, new StudioHomeService("1.0.0")),
                 // Injected as a whole, already-constructed instance (its own fake loadGame) -- same
@@ -6026,6 +6302,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: scenarioStudioRoot,
+                jobService: createIsolatedJobService(scenarioStudioRoot),
                 homeService: new StudioHomeService("1.0.0", undefined, () => Promise.resolve(createWinsOnThirdRoundGame())),
                 blueprintService: new StudioBlueprintService("1.0.0", scenarioStudioRoot, new StudioHomeService("1.0.0")),
                 playService: new StudioPlayService(loadGame, undefined, undefined, undefined, undefined, maxFindScenarioSpins),
@@ -6167,6 +6444,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: scenarioStudioRoot,
+                jobService: createIsolatedJobService(scenarioStudioRoot),
                 homeService: new StudioHomeService("1.0.0", undefined, loadGame),
                 blueprintService: new StudioBlueprintService("1.0.0", scenarioStudioRoot, new StudioHomeService("1.0.0")),
                 loadGame,
@@ -6263,6 +6541,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: outcomeStudioRoot,
+                jobService: createIsolatedJobService(outcomeStudioRoot),
                 homeService: new StudioHomeService("1.3.0", undefined, loadGame),
                 blueprintService: new StudioBlueprintService("1.3.0", outcomeStudioRoot, new StudioHomeService("1.3.0")),
                 loadGame,
@@ -6449,6 +6728,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: deploymentStudioRoot,
+                jobService: createIsolatedJobService(deploymentStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.0.0", deploymentStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
@@ -6767,6 +7047,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: certStudioRoot,
+                jobService: createIsolatedJobService(certStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.3.0", certStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
@@ -6875,6 +7156,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: fairnessStudioRoot,
+                jobService: createIsolatedJobService(fairnessStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.3.0", fairnessStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
@@ -7039,6 +7321,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: stakeStudioRoot,
+                jobService: createIsolatedJobService(stakeStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.3.0", stakeStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
@@ -7225,6 +7508,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: artifactStudioRoot,
+                jobService: createIsolatedJobService(artifactStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
                 initialContext: projectRoot !== undefined ? {mode: "project", projectRoot} : {mode: "home"},
@@ -7359,6 +7643,7 @@ describe("StudioServer", () => {
                 host: "127.0.0.1",
                 port: 0,
                 studioRoot: artifactStudioRoot,
+                jobService: createIsolatedJobService(artifactStudioRoot),
                 homeService,
                 blueprintService: new StudioBlueprintService("1.3.0", artifactStudioRoot, homeService),
                 projectRegistrationService: registrationService,

@@ -17,6 +17,8 @@ const CONFIRM_MODAL = {
     closeOnEscape: false,
     closeOnClickOutside: false,
 };
+const CONFIRM_CONTROL_IDS = {confirm: "design-navigation-guard-leave", cancel: "design-navigation-guard-stay"};
+const CONFIRM_OPERATION = "design-navigation-guard";
 
 // A caller-supplied side effect (e.g. useOpenProject's "call the API, then navigate") that must run
 // after the user has confirmed leaving a dirty Design Game draft -- never before. Resolves without
@@ -75,7 +77,7 @@ export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuar
             return false;
         }
         return true;
-    }, CONFIRM_MODAL);
+    }, {...CONFIRM_MODAL, controlIds: CONFIRM_CONTROL_IDS, operation: CONFIRM_OPERATION});
 
     const guardedAction = useCallback<GuardedAction>(
         (action) => {
@@ -85,6 +87,23 @@ export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuar
             return new Promise<void>((resolve, reject) => {
                 modals.openConfirmModal({
                     ...CONFIRM_MODAL,
+                    // The guarded-action branch opens before a router
+                    // transition exists, so it does not pass through
+                    // useNavigationBlockerConfirm. Give its real Mantine
+                    // controls the same public lifecycle identity; a packed
+                    // browser workflow can then prove the visible Stay action
+                    // that preserved the draft, rather than a label-only
+                    // modal claim.
+                    confirmProps: {
+                        id: CONFIRM_CONTROL_IDS.confirm,
+                        "data-pokie-confirmation": "confirm",
+                        "data-pokie-confirmation-operation": CONFIRM_OPERATION,
+                    },
+                    cancelProps: {
+                        id: CONFIRM_CONTROL_IDS.cancel,
+                        "data-pokie-confirmation": "cancel",
+                        "data-pokie-confirmation-operation": CONFIRM_OPERATION,
+                    },
                     onConfirm: () => {
                         suppressNextBlockRef.current = true;
                         action()
@@ -130,6 +149,16 @@ export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuar
             window.location.hash = oldHash;
             modals.openConfirmModal({
                 ...CONFIRM_MODAL,
+                confirmProps: {
+                    id: CONFIRM_CONTROL_IDS.confirm,
+                    "data-pokie-confirmation": "confirm",
+                    "data-pokie-confirmation-operation": CONFIRM_OPERATION,
+                },
+                cancelProps: {
+                    id: CONFIRM_CONTROL_IDS.cancel,
+                    "data-pokie-confirmation": "cancel",
+                    "data-pokie-confirmation-operation": CONFIRM_OPERATION,
+                },
                 onConfirm: () => {
                     bypassNextRef.current = true;
                     window.location.hash = newHash;

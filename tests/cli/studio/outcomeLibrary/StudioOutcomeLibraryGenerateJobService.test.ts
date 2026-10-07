@@ -273,6 +273,41 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         expect(jobs.getStatusForProject(projectRoot, started.id)).toMatchObject({status: "cancelled", lifecycleStage: "finalization"});
     });
 
+    it("retains the rendered request identity with the first durable terminal result after restart", async () => {
+        const durableDirectory = path.join(projectRoot, ".durable-jobs");
+        const requestId = "outcome-library-rendered-request-805";
+        const jobs = new StudioOutcomeLibraryGenerateJobService({
+            generate: jest.fn((root: string) => ({
+                status: "generation-error" as const,
+                code: "fixture-terminal-error",
+                error: "The writer rejected this generated bundle.",
+                plan: createUnresolvedRuntimePlan(root, "outcomeLibrary"),
+            })),
+        } as unknown as StudioOutcomeLibraryGenerateService);
+        jobs.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+
+        const started = jobs.start(projectRoot, {generation: "sampled"}, undefined, requestId);
+        expect(started).toMatchObject({status: "queued", browserRequestId: requestId});
+        await new Promise<void>((resolve) => {
+            setImmediate(resolve);
+        });
+        expect(jobs.getStatusForProject(projectRoot, started.id)).toMatchObject({
+            id: started.id,
+            browserRequestId: requestId,
+            status: "failed",
+            result: {status: "generation-error", error: "The writer rejected this generated bundle."},
+        });
+
+        const rehydrated = new StudioOutcomeLibraryGenerateJobService({generate: jest.fn()} as unknown as StudioOutcomeLibraryGenerateService);
+        rehydrated.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+        expect(rehydrated.getStatusForProject(projectRoot, started.id)).toMatchObject({
+            id: started.id,
+            browserRequestId: requestId,
+            status: "failed",
+            result: {status: "generation-error", error: "The writer rejected this generated bundle."},
+        });
+    });
+
     it("projects the durable lifecycle identically before and after Studio rehydrates a completed job", async () => {
         const durableDirectory = path.join(projectRoot, ".durable-jobs");
         const repository = new FileStudioJobRepository(durableDirectory);
@@ -411,7 +446,7 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         const rebindCheckpointRequest = jest.fn();
         const binding = {requestKey: "exact-bound-request", gameId: "fixture", gameVersion: "1", destination: path.join(projectRoot, "outcomelibrary"), requiresBounded: false};
         const jobs = new StudioOutcomeLibraryGenerateJobService({generate, rebindCheckpointRequest, getPreflightBinding: jest.fn(() => binding)} as unknown as StudioOutcomeLibraryGenerateService);
-        const job = jobs.start(projectRoot, {generation: "exact", preflightToken: "original-token"});
+        const job = jobs.start(projectRoot, {generation: "exact", preflightToken: "original-token"}, undefined, "outcome-library-original-pointer");
         await new Promise<void>((resolve) => {
             setImmediate(resolve);
         });
@@ -476,12 +511,16 @@ describe("StudioOutcomeLibraryGenerateJobService", () => {
         const checkpointPath = path.join(projectRoot, ".pokie", "outcome-library-checkpoints", `${job.id}.json`);
         expect(fs.existsSync(checkpointPath)).toBe(true);
 
-        await jobs.resumeForProject(projectRoot, job.id);
+        await expect(jobs.resumeForProject(projectRoot, job.id, "outcome-library-retry-pointer")).resolves.toMatchObject({
+            id: job.id,
+            browserRequestId: "outcome-library-retry-pointer",
+            status: "queued",
+        });
         await new Promise<void>((resolve) => {
             setImmediate(resolve);
         });
         expect(service.rebindCheckpointRequest).toHaveBeenCalledWith(projectRoot, expect.objectContaining({generation: "exact", preflightToken: "original-token"}), expect.objectContaining({requestIdentity: expect.any(String)}));
-        expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({status: "completed"});
+        expect(jobs.getStatusForProject(projectRoot, job.id)).toMatchObject({status: "completed", browserRequestId: "outcome-library-retry-pointer"});
         expect(fs.existsSync(checkpointPath)).toBe(false);
     });
 

@@ -20,8 +20,8 @@ import {useOpenProject} from "../../hooks/useOpenProject";
 export type HomeTab = "design" | "projects";
 
 const HOME_TABS: NavTabItem<HomeTab>[] = [
-    {value: "design", label: "Start a game"},
-    {value: "projects", label: "Projects"},
+    {value: "design", label: "Start a game", auditControlId: "home-tab:design", panelId: "home-design-panel"},
+    {value: "projects", label: "Projects", auditControlId: "home-tab:projects", panelId: "home-projects-panel"},
 ];
 
 function isHomeTab(value: string | undefined): value is HomeTab {
@@ -159,12 +159,18 @@ export function HomePage() {
 
     return (
         <AppShellLayout
-            navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => navigate(`/home/${value}`)} />}
+            navbar={<NavTabs items={HOME_TABS} active={activeTab} onSelect={(value) => {
+                // A selected section is already the live rendered state.  Do
+                // not manufacture a second history transition from a repeat
+                // native click; the next distinct tab remains the one public
+                // navigation action that changes Home's route.
+                if (value !== activeTab) navigate(`/home/${value}`);
+            }} />}
             breadcrumbs={[]}
         >
             <DesignNavigationGuardProvider value={navigationGuard}>
                 <Stack className="studio-page" gap="lg">
-                    <div ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
+                    <div id="home-design-panel" ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                         <BlueprintEditorPage
                             guided
                             initialPath={initialBlueprintPath}
@@ -180,7 +186,7 @@ export function HomePage() {
                         />
                     </div>
 
-                    <div ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
+                    <div id="home-projects-panel" ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
                         <Stack gap="md">
                             <Title id="projects-heading" order={2}>Projects</Title>
                             <Text c="dimmed" size="sm">

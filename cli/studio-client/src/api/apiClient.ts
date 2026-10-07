@@ -1084,6 +1084,8 @@ export type OutcomeLibraryGenerateRequestOptions = {
     sampled?: {sampleSize: string; seed: string};
     outDir?: string;
     preflightToken?: string;
+    /** Opaque rendered-control transaction identity, sent separately from the generation request. */
+    browserRequestId?: string;
 };
 
 /** A server-classified start failure, retained so the UI can use the Outcome Library recovery model. */
@@ -1094,6 +1096,18 @@ export class OutcomeLibraryGenerationStartError extends Error {
     ) {
         super(message);
         this.name = "OutcomeLibraryGenerationStartError";
+    }
+}
+
+/** A failed durable-job poll keeps the affected job identity and HTTP boundary. */
+export class OutcomeLibraryGenerationPollError extends Error {
+    public constructor(
+        public readonly jobId: string,
+        public readonly httpStatus: number,
+        message: string,
+    ) {
+        super(message);
+        this.name = "OutcomeLibraryGenerationPollError";
     }
 }
 
@@ -1126,10 +1140,11 @@ async function throwOutcomeLibraryGenerationStartError(response: {status: number
 // cancellable job as /jobs; terminal diagnostics are obtained by polling it.
 /** @deprecated The retained direct URL now returns the same pollable job as /jobs. */
 export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: OutcomeLibraryGenerateRequestOptions): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const {browserRequestId, ...request} = options;
     const response = await fetchImpl("/api/project/outcome-libraries/generate", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(options),
+        headers: {"Content-Type": "application/json", ...(browserRequestId === undefined ? {} : {"X-Pokie-Outcome-Library-Request-Id": browserRequestId})},
+        body: JSON.stringify(request),
     });
     if (!response.ok) {
         return throwOutcomeLibraryGenerationStartError(response, "Failed to generate the outcome library");
@@ -1139,8 +1154,14 @@ export async function generateOutcomeLibrary(fetchImpl: FetchLike, options: Outc
 
 /** Starts the cancellable Outcome Library lifecycle. Poll the returned job until it is terminal. */
 export async function startOutcomeLibraryGeneration(fetchImpl: FetchLike, options: OutcomeLibraryGenerateRequestOptions): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const {browserRequestId, ...request} = options;
     const response = await fetchImpl("/api/project/outcome-libraries/generate/jobs", {
-        method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(options),
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...(browserRequestId === undefined ? {} : {"X-Pokie-Outcome-Library-Request-Id": browserRequestId}),
+        },
+        body: JSON.stringify(request),
     });
     if (!response.ok) return throwOutcomeLibraryGenerationStartError(response, "Failed to start the outcome library generation");
     return ((await response.json()) as {job: StudioOutcomeLibraryGenerateJobView}).job;
@@ -1148,7 +1169,7 @@ export async function startOutcomeLibraryGeneration(fetchImpl: FetchLike, option
 
 export async function getOutcomeLibraryGenerationJob(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
     const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}`);
-    if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to read the outcome library generation"));
+    if (!response.ok) throw new OutcomeLibraryGenerationPollError(id, response.status, await extractErrorMessage(response, "Failed to read the outcome library generation"));
     return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
 }
 
@@ -1165,8 +1186,11 @@ export async function cancelOutcomeLibraryGeneration(fetchImpl: FetchLike, id: s
     return (await response.json()) as StudioOutcomeLibraryGenerateJobView;
 }
 
-export async function resumeOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string): Promise<StudioOutcomeLibraryGenerateJobView> {
-    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/resume`, {method: "POST"});
+export async function resumeOutcomeLibraryGeneration(fetchImpl: FetchLike, id: string, browserRequestId?: string): Promise<StudioOutcomeLibraryGenerateJobView> {
+    const response = await fetchImpl(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}/resume`, {
+        method: "POST",
+        ...(browserRequestId === undefined ? {} : {headers: {"X-Pokie-Outcome-Library-Request-Id": browserRequestId}}),
+    });
     // Resume is a lifecycle start too.  In particular a persisted exact
     // checkpoint can race an active generation which owns its destination.
     // Keep the server's Outcome Library DTO rather than flattening that

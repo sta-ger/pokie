@@ -24,7 +24,7 @@ describe("describeSimulationProgress", () => {
     it("computes a rounded percent from roundsCompleted/rounds", () => {
         const view = describeSimulationProgress(createJob({roundsCompleted: 250, rounds: 1000}));
 
-        expect(view).toEqual({status: "running", roundsCompleted: 250, rounds: 1000, workers: 1, percent: 25, durationMs: 500});
+        expect(view).toEqual({jobId: "job-1", status: "running", roundsCompleted: 250, rounds: 1000, workers: 1, percent: 25, durationMs: 500, error: undefined});
     });
 
     it("carries through the workers count", () => {

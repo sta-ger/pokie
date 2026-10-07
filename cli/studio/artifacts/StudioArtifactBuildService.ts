@@ -99,6 +99,8 @@ function resolveDefaultDestination(rootPath: string, target: ArtifactTargetType)
 // still supports its explicit per-mode Outcome Library input flow, but it must not become a hidden
 // prerequisite for this project-goal action.
 export class StudioArtifactBuildService {
+    private readonly executionFailures: unknown[] = [];
+    private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly registry: ArtifactBuilderRegistry;
     private readonly stakeProjection: StakeProjectionExportService;
     private readonly resolveProject: ProjectResolving;
@@ -469,7 +471,7 @@ export class StudioArtifactBuildService {
         }
     }
 
-    public cancelAll(): void {
+    public async cancelAll(): Promise<void> {
         for (const record of this.jobs.values()) {
             if (record.status === "queued" || record.status === "running") {
                 this.jobService?.cancel(record.projectRoot, record.id);
@@ -477,6 +479,19 @@ export class StudioArtifactBuildService {
                 record.controller.abort();
             }
         }
+        await Promise.allSettled([...this.pendingExecutions]);
+        if (this.executionFailures.length > 0) throw this.executionFailures[0];
+    }
+
+    private trackExecution(execution: Promise<void>): void {
+        this.pendingExecutions.add(execution);
+        execution.then(
+            () => this.pendingExecutions.delete(execution),
+            (error: unknown) => {
+                this.executionFailures.push(error);
+                this.pendingExecutions.delete(execution);
+            },
+        );
     }
 
     private startOperation(
@@ -514,11 +529,8 @@ export class StudioArtifactBuildService {
             preparedStakeOperation,
         };
         this.jobs.set(record.id, record);
-        queueMicrotask(() => {
-            this.run(record, outDir).catch(() => {
-                // run() converts every builder failure into the public terminal result.
-            });
-        });
+        const execution = Promise.resolve().then(() => this.run(record, outDir));
+        this.trackExecution(execution);
         return {status: "created", job: this.toJobView(record)};
     }
 

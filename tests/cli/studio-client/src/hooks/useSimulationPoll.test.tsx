@@ -20,10 +20,166 @@ function strictModeWrapper(fetchImpl: FetchLike) {
 }
 
 describe("useSimulationPoll - StrictMode + cleanup", () => {
-    it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
-        let releaseCancel: (() => void) | undefined;
+    it("clears an optimistic queued state after a rejected start so a corrected rendered Configure submission can run", async () => {
+        let starts = 0;
         const fetchImpl: FetchLike = (url, init) => {
             if (url === "/api/project/simulations" && init?.method === "POST") {
+                starts += 1;
+                return starts === 1
+                    ? Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({message: "Rounds exceed the configured durable-job limit."})})
+                    : Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.run(1_000_001, undefined, 1));
+        await waitFor(() => expect(result.current.error).toContain("HTTP 400"));
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.currentJobId).toBeUndefined();
+
+        act(() => result.current.run(1, undefined, 1));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(starts).toBe(2);
+    });
+
+    it.each([false, true])("retains restored cancellation against an older poll (inFlight=%s)", async (inFlight) => {
+        jest.useFakeTimers();
+        let polls = 0;
+        let releaseOldPoll: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("cancelled", 2))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                polls += 1;
+                if (inFlight && polls === 2) {
+                    return new Promise((resolve) => {
+                        releaseOldPoll = () => resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 2))});
+                    });
+                }
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 2))});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result, unmount} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        try {
+            await act(async () => {
+                result.current.restore("job-1");
+                await Promise.resolve();
+            });
+            expect(result.current.job?.status).toBe("running");
+            expect(result.current.currentJobId).toBe("job-1");
+            if (inFlight) {
+                await act(async () => {
+                    await jest.advanceTimersByTimeAsync(500);
+                });
+                expect(releaseOldPoll).toBeDefined();
+            }
+            await act(async () => {
+                result.current.cancel();
+                await Promise.resolve();
+            });
+            expect(result.current.progress?.status).toBe("cancelled");
+            await act(async () => {
+                releaseOldPoll?.();
+                await Promise.resolve();
+            });
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(1_000);
+            });
+            expect(result.current.progress?.status).toBe("cancelled");
+            expect(result.current.terminalReceipt).toEqual({operation: "simulation", jobId: "job-1", capturedJobId: "job-1", requestId: "job-1", status: "cancelled"});
+            expect(polls).toBe(inFlight ? 2 : 1);
+        } finally {
+            unmount();
+            jest.useRealTimers();
+        }
+    });
+
+    it.each([false, true])("resumes durable polling after nonterminal cancellation or rejection (rejected=%s)", async (rejected) => {
+        jest.useFakeTimers();
+        let polls = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
+                return Promise.resolve({ok: !rejected, status: rejected ? 503 : 200,
+                    json: () => Promise.resolve(rejected ? {message: "Cancellation unavailable"} : job("cancelling", 2))});
+            }
+            if (url === "/api/project/simulations/job-1") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(++polls === 1 ? job("running", 2) : job("completed", 10))});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result, unmount} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        try {
+            await act(async () => {
+                result.current.restore("job-1");
+                await Promise.resolve();
+            });
+            await act(async () => {
+                result.current.cancel();
+                await Promise.resolve();
+            });
+            expect(result.current.terminalReceipt).toBeUndefined();
+            expect(result.current.cancellationRequested).toBe(!rejected);
+            if (rejected) expect(result.current.error).toContain("HTTP 503");
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(500);
+            });
+            expect(result.current.progress?.status).toBe("completed");
+            expect(result.current.cancellationRequested).toBe(false);
+            expect(result.current.terminalReceipt?.status).toBe("completed");
+        } finally {
+            unmount();
+            jest.useRealTimers();
+        }
+    });
+
+    it("refuses an uncorrelated terminal while restoring an interrupted simulation", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/project/simulations/retained-job") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("recovery-required", 2), id: "different-job"})});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.restore("retained-job"));
+
+        await waitFor(() => expect(result.current.error).toContain('did not match durable job "retained-job"'));
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.job).toBeUndefined();
+        expect(result.current.terminalReceipt).toBeUndefined();
+    });
+
+    it("keeps a graceful-stop cancellation distinct from an abrupt restart recovery", async () => {
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/project/simulations/graceful-stop-job") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("cancelled", 2), id: "graceful-stop-job"})});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+
+        act(() => result.current.restore("graceful-stop-job"));
+
+        await waitFor(() => expect(result.current.terminalReceipt).toEqual({
+            operation: "simulation", jobId: "graceful-stop-job", capturedJobId: "graceful-stop-job", requestId: "graceful-stop-job", status: "cancelled",
+        }));
+        expect(result.current.terminalReceipt?.recoveredAfterRestart).toBeUndefined();
+    });
+
+    it("marks an accepted cancellation immediately and keeps it marked until the durable job reaches a terminal state", async () => {
+        let releaseCancel: (() => void) | undefined;
+        let starts = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                starts += 1;
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("running", 2))});
             }
             if (url === "/api/project/simulations/job-1" && init?.method === "DELETE") {
@@ -47,6 +203,11 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
         act(() => releaseCancel?.());
         await waitFor(() => expect(result.current.progress?.status).toBe("cancelled"));
         expect(result.current.cancellationRequested).toBe(false);
+        expect(result.current.terminalReceipt).toEqual({operation: "simulation", jobId: "job-1", capturedJobId: "job-1", requestId: "job-1", status: "cancelled"});
+        act(() => result.current.retry());
+        expect(result.current.operation).toBe("simulation-retry");
+        expect(result.current.terminalReceipt).toBeUndefined();
+        await waitFor(() => expect(starts).toBe(2));
     });
 
     it("keeps polling across StrictMode's dev-only mount -> cleanup -> mount cycle, instead of the second mount silently inheriting a cancelled state from the throwaway first mount", async () => {

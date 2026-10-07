@@ -99,12 +99,18 @@ function flushMacrotask(): Promise<void> {
 }
 
 async function waitForTerminal(service: StudioSimulationService, id: string): Promise<StudioSimulationJobView> {
-    for (let i = 0; i < 2000; i++) {
+    // PAR recognition performs real asynchronous ZIP/filesystem work. A fixed
+    // number of setImmediate ticks can expire before that I/O runs on a busy
+    // gate worker, leaving it to finish after Jest tears down this environment.
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
         const job = service.getStatus(id);
         if (job && job.status !== "queued" && job.status !== "running") {
             return job;
         }
-        await flushMacrotask();
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 5);
+        });
     }
     throw new Error("Timed out waiting for the simulation to reach a terminal state.");
 }
@@ -130,13 +136,95 @@ function createControlledYield(): {yieldToEventLoop: () => Promise<void>; pendin
 describe("StudioSimulationService", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
-    it("cancels a canonical WASM job after session acquisition and disposes its portable resources", async () => {
+    it.each([[false, false], [true, false], [false, true], [true, true]])("withholds output through release rejection=%s and cancellation=%s", async (rejectRelease, cancelDuringRelease) => {
+        let clock = 1000;
+        let finishRelease!: () => void;
+        let rejectCleanup!: (error: Error) => void;
+        const release = jest.fn(() => new Promise<void>((resolve, reject) => {
+            finishRelease = resolve;
+            rejectCleanup = reject;
+        }));
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-simulation-release-boundary-"));
+        const durableRepository = new FileStudioJobRepository(directory);
+        const durableJobs = new StudioJobService(durableRepository, () => clock);
+        const repository = new InMemoryStudioSimulationRepository();
+        const onCompleted = jest.fn();
+        const service = new StudioSimulationService(repository, () => Promise.resolve(createFakeGame(manifest)), undefined, undefined, () => clock, undefined, undefined, undefined, undefined, undefined, () => Promise.resolve({runtimePath: "/a", release}), onCompleted);
+        service.attachJobService(durableJobs);
+        const result = service.start("/a", {rounds: 1, seed: "cleanup"});
+        if (result.status !== "created") throw new Error("expected created job");
+        try {
+            for (let attempt = 0; !release.mock.calls.length && attempt < 100; attempt++) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(release).toHaveBeenCalledTimes(1);
+            expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            expect(service.getStatusForProject("/a", result.job.id)?.report).toBeUndefined();
+            expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
+            expect(onCompleted).not.toHaveBeenCalled();
+            expect(service.listReports("/a")).toEqual([]);
+            if (cancelDuringRelease) {
+                expect(service.cancelForProject("/a", result.job.id)?.status).toBe("cancelling");
+                expect(durableJobs.get("/a", result.job.id)?.status).toBe("cancelling");
+                expect(onCompleted).not.toHaveBeenCalled();
+            }
+            clock = 1300;
+            if (rejectRelease) rejectCleanup(new Error("release destination is busy"));
+            else finishRelease();
+            for (let attempt = 0; service.getActiveCount() && attempt < 100; attempt++) {
+                await new Promise<void>((resolve) => {
+                    setImmediate(resolve);
+                });
+            }
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectRelease) {
+                expect(service.getStatusForProject("/a", result.job.id)).toMatchObject({status: "failed", error: expect.stringContaining("restart Studio before retrying"), recovery: {action: "retry", reason: expect.stringContaining("restart Studio before retrying")}});
+                expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+                expect(durableJobs.get("/a", result.job.id)?.result).toBeUndefined();
+                expect(onCompleted).not.toHaveBeenCalled();
+                await expect(service.cancelAll()).rejects.toThrow("release destination is busy");
+                // A failed drainage must not authorize a graceful shutdown marker.
+                await expect(durableJobs.completeGracefulShutdown(false)).rejects.toThrow("could not confirm executor cleanup");
+                expect(durableRepository.getProcessState()?.status).toBe("running");
+            } else if (cancelDuringRelease) {
+                expect(service.getReport("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
+                expect(durableJobs.get("/a", result.job.id)).toMatchObject({status: "cancelled", recovery: {action: "retry"}});
+                expect(durableJobs.get("/a", result.job.id)?.result?.outputs).toBeUndefined();
+                expect(repository.get(result.job.id)?.report).toBeUndefined();
+                expect(onCompleted).not.toHaveBeenCalled();
+                expect(service.listReports("/a")).toEqual([]);
+                await service.cancelAll();
+            } else {
+                expect(service.getReport("/a", result.job.id).status).toBe("ok");
+                expect(service.getReport("/a", result.job.id)).toMatchObject({report: {durationMs: 300, spinsPerSecond: 3}});
+                expect(service.getStatusForProject("/a", result.job.id)?.durationMs).toBe(300);
+                expect(durableJobs.get("/a", result.job.id)?.result?.detail?.report).toMatchObject({durationMs: 300, spinsPerSecond: 3});
+                expect(onCompleted).toHaveBeenCalledTimes(1);
+                expect(onCompleted.mock.calls[0]?.[0].status).toBe("completed");
+                expect(onCompleted.mock.calls[0]?.[0].report?.durationMs).toBe(300);
+                expect(service.listReports("/a")).toHaveLength(1);
+                await service.cancelAll();
+            }
+        } finally {
+            finishRelease();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it.each([false, true])("keeps WASM cancellation pending through asynchronous disposal rejection=%s", async (rejectDisposal) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-wasm-simulation-cleanup-"));
         const wasmPath = path.join(workDir, "game.wasm");
         fs.writeFileSync(wasmPath, "");
         fs.writeFileSync(`${wasmPath}.pokie-wasm.json`, JSON.stringify({artifact: {}}));
         const gate = createControlledYield();
-        const disposeRuntime = jest.fn();
+        let finishDisposal!: () => void;
+        let failDisposal!: (error: Error) => void;
+        const disposeRuntime = jest.fn(() => new Promise<void>((resolve, reject) => {
+            finishDisposal = resolve;
+            failDisposal = reject;
+        }));
         const disposeSession = jest.fn();
         const runtime = {
             manifest: {component: {id: "wasm", version: "1.0.0"}, artifact: {configurationHash: "config"}},
@@ -170,10 +258,18 @@ describe("StudioSimulationService", () => {
             expect(gate.pendingCount()).toBe(1);
             service.cancel(started.job.id);
             gate.release();
-            await expect(waitForTerminal(service, started.job.id)).resolves.toMatchObject({status: "cancelled"});
+            for (let attempt = 0; attempt < 20 && disposeRuntime.mock.calls.length === 0; attempt++) await flushMacrotask();
+            expect(service.getActiveCount()).toBe(1);
+            expect(service.getReport(wasmPath, started.job.id)).toEqual({status: "not-ready", jobStatus: "running"});
+            if (rejectDisposal) failDisposal(new Error("WASM release rejected"));
+            else finishDisposal();
+            await expect(waitForTerminal(service, started.job.id)).resolves.toMatchObject({status: rejectDisposal ? "failed" : "cancelled"});
+            expect(service.getActiveCount()).toBe(0);
+            if (rejectDisposal) await expect(service.cancelAll()).rejects.toThrow("WASM release rejected");
             expect(disposeSession).toHaveBeenCalledTimes(1);
             expect(disposeRuntime).toHaveBeenCalledTimes(1);
         } finally {
+            finishDisposal?.();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
@@ -279,6 +375,7 @@ describe("StudioSimulationService", () => {
             }
             expect(loadGame).not.toHaveBeenCalled();
         } finally {
+            await service.cancelAll();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
     });
@@ -625,6 +722,10 @@ describe("StudioSimulationService", () => {
 
     it("cancels a queued/running job, stopping further progress", async () => {
         const gate = createControlledYield();
+        let finishRelease!: () => void;
+        const release = jest.fn(() => new Promise<void>((resolve) => {
+            finishRelease = resolve;
+        }));
         const durableDirectory = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-simulation-jobs-")), "jobs");
         const durableJobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
         const repository = new InMemoryStudioSimulationRepository();
@@ -635,6 +736,11 @@ describe("StudioSimulationService", () => {
             10, // chunkSize
             undefined,
             gate.yieldToEventLoop,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            () => Promise.resolve({runtimePath: "/a", ownsRuntimePath: true, release}),
         );
         service.attachJobService(durableJobs);
 
@@ -654,6 +760,18 @@ describe("StudioSimulationService", () => {
 
         gate.release();
         await flushMacrotask();
+
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(service.getStatus(result.job.id)?.status).toBe("cancelling");
+        expect(durableJobs.list("/a")).toEqual([expect.objectContaining({id: result.job.id, status: "cancelling"})]);
+        let drained = false;
+        const drainage = service.cancelAll().then(() => {
+            drained = true;
+        });
+        await flushMacrotask();
+        expect(drained).toBe(false);
+        finishRelease();
+        await drainage;
 
         const job = service.getStatus(result.job.id);
         expect(job?.status).toBe("cancelled");

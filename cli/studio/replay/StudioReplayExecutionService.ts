@@ -71,6 +71,10 @@ export type GetReplayDownloadResult =
 // reimplemented — only the chunk-scheduling glue is new, mirroring StudioSimulationService's own
 // chunked-runner approach for the exact same reason.
 export class StudioReplayExecutionService {
+    private readonly activeExecutions = new Set<string>();
+    private readonly pendingTerminals = new Map<string, StudioReplayJobRecord["status"]>();
+    private readonly executionFailures: unknown[] = [];
+    private readonly pendingExecutions = new Set<Promise<void>>();
     private readonly repository: StudioReplayRepository;
     private readonly loadGame: typeof loadPokieGame;
     private readonly loadRuntimeGame: StudioGameLoading;
@@ -90,6 +94,7 @@ export class StudioReplayExecutionService {
     // own `outcomeSourceProject` parameter for why this service never resolves a project's type itself.
     private readonly outcomeLibraryReader: OutcomeLibraryBundleReading;
     private readonly loadWasmRuntime: typeof loadPokieWasmFileRuntime;
+    private readonly releaseRuntimeGame: typeof releasePokieGame;
     private jobService: StudioJobService | undefined;
 
     constructor(
@@ -107,6 +112,7 @@ export class StudioReplayExecutionService {
         outcomeLibraryReader: OutcomeLibraryBundleReading = new OutcomeLibraryBundleReader(),
         loadRuntimeGame: StudioGameLoading = (projectRoot) => loadGame(projectRoot),
         loadWasmRuntime: typeof loadPokieWasmFileRuntime = loadPokieWasmFileRuntime,
+        releaseRuntimeGame: typeof releasePokieGame = releasePokieGame,
     ) {
         this.repository = repository;
         this.loadGame = loadGame;
@@ -119,6 +125,7 @@ export class StudioReplayExecutionService {
         this.onCompleted = onCompleted;
         this.outcomeLibraryReader = outcomeLibraryReader;
         this.loadWasmRuntime = loadWasmRuntime;
+        this.releaseRuntimeGame = releaseRuntimeGame;
     }
 
     public attachJobService(jobService: StudioJobService): void {
@@ -179,11 +186,10 @@ export class StudioReplayExecutionService {
             modeName: request.modeName,
         };
         this.repository.save(record);
-        this.run(record).catch(() => {
-            // run() already catches every failure into the record's own "failed" status (see below)
-            // — this is an extra safety net only, so a bug there can never surface as an unhandled
-            // promise rejection and crash the process.
-        });
+        this.activeExecutions.add(record.id);
+        this.trackExecution(this.run(record)
+            .catch((error: unknown) => this.failExecution(record, error))
+            .then(() => this.publishPendingTerminal(record)));
 
         return {status: "created", job: this.toJobView(record)};
     }
@@ -218,10 +224,12 @@ export class StudioReplayExecutionService {
     // Best-effort: aborts every currently active replay — called from StudioServer.stop() so a
     // stopped Studio process never leaves a replay's chunk loop scheduled against an event loop nobody
     // is serving HTTP requests on anymore.
-    public cancelAll(): void {
+    public async cancelAll(): Promise<void> {
         for (const record of this.repository.listActive()) {
             this.cancelActiveRecord(record);
         }
+        await Promise.allSettled([...this.pendingExecutions]);
+        if (this.executionFailures.length > 0) throw this.executionFailures[0];
     }
 
     // Same reasoning as cancelAll(), scoped to one project — called from StudioServer whenever Studio
@@ -271,13 +279,13 @@ export class StudioReplayExecutionService {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
         const record = this.repository.get(id);
         if (record?.projectRoot === projectRoot) {
-            if (!record.descriptor) return {status: "not-ready", jobStatus: record.status};
+            if (record.status !== "completed" || this.activeExecutions.has(id) || !record.descriptor) return {status: "not-ready", jobStatus: record.status};
             return {status: "ok", descriptor: record.descriptor};
         }
         const job = this.jobService?.get(projectRoot, id);
         if (job?.operation !== "replay") return {status: "not-found"};
         const descriptor = descriptorFromDurableDetail(job);
-        return descriptor === undefined ? {status: "not-ready", jobStatus: job.status} : {status: "ok", descriptor};
+        return job.status !== "completed" || descriptor === undefined ? {status: "not-ready", jobStatus: job.status} : {status: "ok", descriptor};
     }
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
@@ -290,8 +298,8 @@ export class StudioReplayExecutionService {
             round: record.round,
             seed: record.seed,
             completedRounds: record.completedRounds,
-            totalBet: record.descriptor?.totalBet,
-            totalWin: record.descriptor?.totalWin,
+            totalBet: record.status === "completed" ? record.descriptor?.totalBet : undefined,
+            totalWin: record.status === "completed" ? record.descriptor?.totalWin : undefined,
             startedAt: new Date(record.startedAt).toISOString(),
             completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
             durationMs: record.durationMs,
@@ -440,9 +448,10 @@ export class StudioReplayExecutionService {
             record.status = "completed";
             record.descriptor = descriptor;
             this.markTerminal(record);
-            this.onCompleted(record);
+        } catch (error) {
+            this.fail(record, error);
         } finally {
-            await releasePokieGame(game).catch(() => undefined);
+            await this.releaseRuntimeGame(game);
         }
     }
 
@@ -504,12 +513,11 @@ export class StudioReplayExecutionService {
                 ...(canSerialize ? {stateAfter: state as unknown as Record<string, unknown>} : {}),
             };
             this.markTerminal(record);
-            this.onCompleted(record);
         } catch (error) {
             if (record.abortController.signal.aborted) this.cancelRecord(record);
             else this.fail(record, error);
         } finally {
-            runtime?.dispose();
+            await runtime?.dispose();
         }
     }
 
@@ -656,7 +664,6 @@ export class StudioReplayExecutionService {
         record.status = "completed";
         record.descriptor = descriptor;
         this.markTerminal(record);
-        this.onCompleted(record);
     }
 
     // "useInitialStateDirectly" covers round 1's own "before" snapshot: at that point no play() has
@@ -742,13 +749,35 @@ export class StudioReplayExecutionService {
         return typeof candidate.getSymbolsCombination === "function" && typeof candidate.getWinEvaluationResult === "function";
     }
 
+    // A rejected runtime release is not a successful job, even after the
+    // computation finished. Retain the error for shutdown so no graceful
+    // marker can claim that these resources were drained.
+    private failExecution(record: StudioReplayJobRecord, error: unknown): void {
+        this.executionFailures.push(error);
+        this.fail(record, new Error(`Replay cleanup could not be confirmed: ${error instanceof Error ? error.message : String(error)}. Inspect retained resources and restart Studio before retrying.`));
+    }
+
+    private trackExecution(execution: Promise<void>): void {
+        this.pendingExecutions.add(execution);
+        execution.then(
+            () => this.pendingExecutions.delete(execution),
+            (error: unknown) => {
+                this.executionFailures.push(error);
+                this.pendingExecutions.delete(execution);
+            },
+        );
+    }
+
     private fail(record: StudioReplayJobRecord, error: unknown): void {
+        // Failed computation or cleanup invalidates every staged success output.
+        Reflect.deleteProperty(record, "descriptor");
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
         this.markTerminal(record);
     }
 
     private cancelRecord(record: StudioReplayJobRecord): void {
+        Reflect.deleteProperty(record, "descriptor");
         record.status = "cancelled";
         this.markTerminal(record);
     }
@@ -772,8 +801,20 @@ export class StudioReplayExecutionService {
     // class updates `record` in place without a second save() call, since the repository stores it by
     // reference; this one call is the deliberate exception.
     private markTerminal(record: StudioReplayJobRecord): void {
+        if (this.activeExecutions.has(record.id)) {
+            // The repository retains this object by reference. Keep both its
+            // public status and durable terminal pending through runtime release.
+            this.pendingTerminals.set(record.id, record.status);
+            record.status = "running";
+            return;
+        }
         record.durationMs = this.now() - record.startedAt;
         record.completedAt = record.startedAt + record.durationMs;
+        if (record.status === "completed" && record.descriptor !== undefined) {
+            // Publish the same post-release duration through downloads, durable
+            // results and the round-history completion hook.
+            record.descriptor = {...record.descriptor, durationMs: record.durationMs};
+        }
         this.repository.save(record);
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {
@@ -785,8 +826,25 @@ export class StudioReplayExecutionService {
         } else if (record.status === "cancelled") {
             this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
         } else if (record.status === "failed") {
-            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: "Correct the reported problem and run the replay again."});
+            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the replay again."});
         }
+    }
+
+    private publishPendingTerminal(record: StudioReplayJobRecord): void {
+        this.activeExecutions.delete(record.id);
+        const terminal = this.pendingTerminals.get(record.id);
+        this.pendingTerminals.delete(record.id);
+        if (terminal !== undefined) {
+            // A cancellation accepted during release must withhold the staged
+            // descriptor. A cleanup failure still owns the terminal diagnostic.
+            if (terminal !== "failed" && record.abortController.signal.aborted) this.cancelRecord(record);
+            else {
+                record.status = terminal;
+                this.markTerminal(record);
+            }
+        }
+        // Only a successfully drained terminal can notify output consumers.
+        if (record.status === "completed") this.onCompleted(record);
     }
 
     private markRunning(record: StudioReplayJobRecord): void {
@@ -828,6 +886,7 @@ export class StudioReplayExecutionService {
 }
 
 function descriptorFromDurableDetail(job: StudioJobView): ReplayDescriptor | undefined {
+    if (job.status !== "completed") return undefined;
     const descriptor = job.result?.detail?.descriptor;
     return typeof descriptor === "object" && descriptor !== null && "sessionId" in descriptor && "round" in descriptor
         ? descriptor as ReplayDescriptor

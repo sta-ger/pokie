@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import {PackageJsonLike, withLocalPokieDependency} from "pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
+import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
 
 export type PackageCommandResult = {stdout: string; stderr: string};
 export type PackageCommandSpawning = (
@@ -96,7 +97,7 @@ async function terminateProcessTree(pid: number | undefined): Promise<void> {
 export const runPackageCommand: PackageCommandRunning = (command, args, cwd, options = {}) =>
     new Promise<PackageCommandResult>((resolve, reject) => {
         if (options.signal?.aborted) {
-            reject(new Error("Package command was cancelled."));
+            reject(new RuntimePreparationCancelledError("Package command was cancelled."));
             return;
         }
 
@@ -125,6 +126,9 @@ export const runPackageCommand: PackageCommandRunning = (command, args, cwd, opt
             termination ??= terminateProcessTree(child.pid);
         };
         options.signal?.addEventListener("abort", abort, {once: true});
+        // An injected spawn can abort synchronously before the listener is
+        // installed. That child still belongs to this invocation and must drain.
+        if (options.signal?.aborted) abort();
         child.stdout.on("data", (chunk: Buffer) => {
             stdout += chunk.toString();
         });
@@ -138,7 +142,9 @@ export const runPackageCommand: PackageCommandRunning = (command, args, cwd, opt
             options.signal?.removeEventListener("abort", abort);
             await termination;
             if (options.signal?.aborted) {
-                reject(spawnError ?? new Error("Package command was cancelled."));
+                // The direct child is closed and the owned process group has
+                // drained. A termination rejection above retains its failure.
+                reject(spawnError ?? new RuntimePreparationCancelledError("Package command was cancelled."));
                 return;
             }
             if (spawnError) {
@@ -347,7 +353,7 @@ export function withLinkedLocalPokieRuntime(pokiePackageRoot: string, base: Pack
             return base(command, args, cwd, options);
         }
         if (options?.signal?.aborted) {
-            return Promise.reject(new Error("Runtime materialization was cancelled."));
+            return Promise.reject(new RuntimePreparationCancelledError("Runtime materialization was cancelled."));
         }
         const nodeModules = path.join(cwd, "node_modules");
         fs.mkdirSync(nodeModules, {recursive: true});
