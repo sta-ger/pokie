@@ -412,7 +412,9 @@ export function BlueprintBuildPanel({
             <QuickActions>
                 <PathInput
                     label="Output directory (optional)"
+                    description="Use a new or empty directory. Existing files will not be overwritten."
                     kind="directory"
+                    pathPurpose="destination"
                     browseTitle="Browse for an output directory"
                     browseId="blueprint-build-out-dir"
                     autoDestinationPath={buildOutputAutoDestination(blueprint)}

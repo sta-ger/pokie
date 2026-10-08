@@ -458,8 +458,10 @@ export function ParSheetImportExportPanel({
                         <QuickActions>
                             <PathInput
                                 label="Export to path"
+                                description="Use a new workbook path. Existing files will not be overwritten."
                                 placeholder="./game.par.xlsx"
                                 kind="file"
+                                pathPurpose="destination"
                                 browseTitle="Browse for a PAR sheet destination"
                                 browseId="par-sheet-export-path"
                                 fileFilters={[{name: "PAR sheets", extensions: ["xlsx"]}]}

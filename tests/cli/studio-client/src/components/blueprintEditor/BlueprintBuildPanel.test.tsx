@@ -1,4 +1,4 @@
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {useState} from "react";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -61,6 +61,53 @@ describe("BlueprintBuildPanel", () => {
             ...overrides,
         };
     }
+
+    it("keeps absent-path hints consistent through default refusal and explicit new-output publication", async () => {
+        const user = userEvent.setup();
+        let published = false;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": (call) => {
+                const selected = new URL(call.url, "http://studio").searchParams.get("path");
+                return {ok: true, status: 200, body: {status: "error", reason: "absent", resolvedPath: `/games/${selected}`, error: "ENOENT"}};
+            },
+            "/api/home/blueprints/build-preview": (call) => {
+                const {outDir} = JSON.parse(call.init?.body ?? "{}");
+                return {ok: true, status: 200, body: previewOkBody({projectRoot: `/games/${outDir ?? "sample-slot"}`, destinationHasContent: published, destinationState: published ? "occupied" : "missing"})};
+            },
+            "/api/home/blueprints/build": (call) => {
+                published = true;
+                const {outDir} = JSON.parse(call.init?.body ?? "{}");
+                return {ok: true, status: 200, body: buildOkBody({projectRoot: `/games/${outDir ?? "sample-slot"}`})};
+            },
+        });
+        function Harness() {
+            const [snapshot, setSnapshot] = useState<import("../../../../../../cli/studio-client/src/domain/interpret/Home").BuiltBlueprintSnapshot>();
+            return <BlueprintBuildPanel blueprint={blueprint} builtSnapshot={snapshot} onBuilt={setSnapshot} />;
+        }
+        renderWithProviders(<Harness />, {fetchImpl});
+        const input = screen.getByRole("textbox", {name: "Output directory (optional)"});
+        await user.click(input);
+        expect(await screen.findByText("Auto resolved destination: /games/sample-slot")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build Preview"}));
+        expect(await screen.findByText(/Destination:.*new directory/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/Last built/)).toHaveTextContent("/games/sample-slot");
+        expect(screen.queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
+
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/already has content/)).toBeInTheDocument();
+        expect(screen.getByText(/Last built/)).toHaveTextContent("/games/sample-slot");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1);
+        fireEvent.change(input, {target: {value: "new-output"}});
+        published = false;
+        expect(await screen.findByText("Resolves to: /games/new-output")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build Preview"}));
+        expect(await screen.findByText(/Destination: \/games\/new-output.*new directory/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(screen.getByText(/Last built/)).toHaveTextContent("/games/new-output"));
+        expect(screen.queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(2);
+    });
 
     it("refuses a fresh occupied preview and offers editable destination recovery", async () => {
         const user = userEvent.setup();

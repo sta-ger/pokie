@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {act} from "react";
 import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
@@ -46,6 +46,35 @@ async function goToImportStep(): Promise<void> {
 }
 
 describe("BlueprintEditorPage - PAR Sheet Import/Export", () => {
+    it("keeps missing PAR imports diagnostic while a new export path resolves and publishes without contradictory hints", async () => {
+        const user = userEvent.setup();
+        const exportRequests: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url.startsWith("/api/home/fs/browse?")) {
+                const path = new URL(url, "http://studio").searchParams.get("path");
+                return jsonResponse({status: "error", reason: "absent", resolvedPath: `/games/${path}`, error: "ENOENT"});
+            }
+            if (url === EXPORT_URL) {
+                exportRequests.push(JSON.parse(init?.body ?? "{}"));
+                return jsonResponse({status: "ok", path: "/games/new.par.xlsx", warnings: []});
+            }
+            return Promise.reject(new Error(`unexpected fetch ${url}`));
+        };
+        renderWithProviders(<BlueprintEditorPage />, {fetchImpl});
+        await goToImportStep();
+        fireEvent.change(screen.getByLabelText("PAR sheet path"), {target: {value: "missing.par.xlsx"}});
+        expect(await screen.findByText('"/games/missing.par.xlsx" doesn\'t exist.')).toBeInTheDocument();
+        expect(screen.getByText("Check the path, or use Browse to pick an existing location.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: stepperStep("Apply / Export", "Commit or write out")}));
+        fireEvent.change(screen.getByLabelText("Export to path"), {target: {value: "new.par.xlsx"}});
+        expect(await screen.findByText("Resolves to: /games/new.par.xlsx")).toBeInTheDocument();
+        expect(screen.getByText("Use a new workbook path. Existing files will not be overwritten.")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Export"}));
+        expect(await screen.findByText("Exported successfully")).toBeInTheDocument();
+        expect(exportRequests).toEqual([expect.objectContaining({path: "new.par.xlsx", overwrite: false})]);
+        expect(screen.queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
+    });
+
     it("imports a PAR sheet successfully, previews the canonical model, and reaches Apply/Export", async () => {
         const user = userEvent.setup();
         const fetchImpl: FetchLike = (url) => {

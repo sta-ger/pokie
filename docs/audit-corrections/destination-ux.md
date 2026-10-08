@@ -99,3 +99,50 @@ it remains in the runtime harness, not Git. The runtime receipt is
 timed out after the UI had already rendered the terminal success above; that harness observation is not a
 product error. Its process-state record says `gracefully-stopped`; the Studio and Chromium processes owned
 by the run were stopped.
+
+## Destination-hint review correction
+
+The review of `80131e853d03e59b0611ec8558a8098ac2ac430f` found that the neighboring card's
+rendered recovery and success still carried PathInput's missing-input error and advice to select an
+existing location. The receipt above remains evidence of that **Build/Export card** interaction;
+it does not establish coverage of BlueprintBuildPanel's **Build Preview / Build Package** controls.
+Its transcript, candidate identity, sentinel observations and output path are retained unchanged.
+
+PathInput now defaults to existing-input semantics and accepts an explicit `pathPurpose="destination"`.
+For destinations, a structured filesystem-browse `reason: "absent"` produces only the resolved-path
+hint, without an existence claim or publication authorization. This hint remains truthful after writing.
+Permission, wrong-type, broken-link, symlink-escape, invalid-path and network errors still render;
+the existing request sequence still rejects stale responses. Artifact preview and execution guards
+continue to own availability and safety checks, including occupied files, empty directories and races.
+
+The caller audit covers all PathInput fields: Blueprint package output, every Build/Export artifact
+target, Design PAR export, Blueprint save/save-before-New, and certification output use destination
+semantics. Blueprint load/open, PAR import, Home project import/relocation, certification source bundles,
+and provably-fair source bundles retain existing-input semantics. Blueprint save replacement remains
+its separate confirmed-save contract; destination hints do not change it. Artifact descriptions explicitly
+require new file paths or new/empty package directories and never offer overwrite.
+
+| Accumulated finding | Current correction / retained evidence |
+| --- | --- |
+| Default destination policy | Unchanged reviewed fix: generator resolution is used by preview, direct service and HTTP; path-shaped IDs are rejected before publication. Existing HTTP/service/generator regressions remain in place |
+| WASM reader stop budget | Unchanged reviewed fix: integrity-consistent direct-reader/runtime fixtures exercise exactly 30 and over-30 total bits, independently of builder rejection |
+| Register attribution / product boundaries | Correct P9-01/P9-02/P9-03 attribution and maintained WASM/status boundaries remain intact; completed-step evidence is untouched |
+| P9-DESTINATION-HINT | Four whole-file suites pass with actual absent browse responses: default/explicit Blueprint output, repeat refusal and recovery with prior provenance retained, six Build/Export artifact targets including PAR/WASM, and Design PAR export. Existing PAR-import errors, other resolver diagnostics and stale-response protection are also exercised |
+| P9-DESTINATION-UX | **Pending controller-owned Blueprint panel verification.** The neighboring-card receipt above is retained with its actual scope. Component checks do not substitute for the rendered session |
+
+This correction ran only the four directly affected files (127 tests passed) and the root typecheck
+(passed, including its Studio compiler):
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/common/PathInput.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.parSheetImportExport.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
+npm run typecheck
+```
+
+The controller must exercise the actual BlueprintBuildPanel on the committed correction. If the guided
+Design view needs a recovery entry, Home's retained `design-build` job action restores its captured
+`sourcePath`, `blueprint` and `destinationPath`; the editor renders that same panel after validation.
+Use its **Build Preview** and **Build Package** controls to observe occupied refusal, verify the sentinel
+bytes are unchanged, then choose a new/empty output and observe terminal publication to that actual path.
+Check the resolved-path guidance during preview and after success for contradictory missing-target advice.
+Record the candidate identity, interactions and filesystem results through the controller/verifier;
+this implementation iteration created no browser transcript or replacement receipt.

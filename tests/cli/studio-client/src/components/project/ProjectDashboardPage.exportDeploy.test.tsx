@@ -1,5 +1,5 @@
 import {OUTCOME_LIBRARY_PROGRESS_HISTORY_LIMIT, retainOutcomeLibraryProgressSnapshot} from "../../../../../../cli/studio-client/src/components/project/ExportDeployTab";
-import {act, screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -120,6 +120,53 @@ it("binds a replaced durable job's progress history without retaining a prior jo
 });
 
 describe("ProjectDashboardPage - Export & Deploy shell", () => {
+    it.each([
+        ["tsPackage", "directory", "new-package"],
+        ["outcomeLibrary", "directory", "new-outcomes"],
+        ["stakeAdapter", "directory", "new-stake"],
+        ["parWorkbook", "file", "new.par.xlsx"],
+        ["wasm", "file", "new.wasm"],
+        ["blueprint", "file", "new.blueprint.json"],
+    ] as const)("resolves an absent %s artifact destination and keeps publication free of missing-input errors", async (target, destinationKind, selected) => {
+        const user = userEvent.setup();
+        const buildRequests: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            const [requestPath] = url.split("?");
+            if (requestPath === "/api/home/fs/browse") {
+                const path = new URL(url, "http://studio").searchParams.get("path");
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "error", reason: "absent", resolvedPath: `/games/${path}`, error: "ENOENT"})});
+            }
+            if (requestPath === "/api/project/artifacts/targets") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve([{target, supported: true, state: "supported", unsupportedNotes: []}])});
+            }
+            if (requestPath === "/api/project/artifacts/preview") {
+                const {outDir} = JSON.parse(init?.body ?? "{}");
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", target, destination: `/games/${outDir ?? selected}`, destinationKind, plannedOutputs: [selected], sourceType: "blueprint"})});
+            }
+            if (requestPath === "/api/project/artifacts/build") {
+                buildRequests.push(JSON.parse(init?.body ?? "{}"));
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "new-output-job", target, status: "queued", cancellationRequested: false}})});
+            }
+            if (requestPath === "/api/project/artifacts/build/new-output-job") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "new-output-job", target, status: "completed", cancellationRequested: false, result: {status: "ok", target, outputPath: `/games/${selected}`, outputKind: destinationKind, sourceType: "blueprint"}})});
+            }
+            return fetchImplFrom(BASE_ROUTES)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+        const input = within(section).getByLabelText(destinationKind === "file" ? "Output file (optional)" : "Output directory (optional)");
+        fireEvent.change(input, {target: {value: selected}});
+        expect(await within(section).findByText(`Resolves to: /games/${selected}`)).toBeInTheDocument();
+        expect(await within(section).findByText("Status: Ready to build")).toBeInTheDocument();
+        expect(within(section).queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
+        await user.click(within(section).getByRole("button", {name: "Build"}));
+        expect(await within(section).findByText(`Built to /games/${selected}.`)).toBeInTheDocument();
+        expect(buildRequests).toEqual([{target, outDir: selected}]);
+        expect(within(section).queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
+    });
+
     it("retains the captured Build/Export navigation node while its same-project context refresh is loading", async () => {
         let contexts = 0;
         const fetchImpl: FetchLike = (url, init) => {

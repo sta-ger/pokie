@@ -18,6 +18,7 @@ function Harness({
     relevantDirectory,
     autoDestinationPath,
     filePickerMode,
+    pathPurpose,
 }: {
     kind?: "directory" | "file";
     initial?: string;
@@ -25,6 +26,7 @@ function Harness({
     relevantDirectory?: string;
     autoDestinationPath?: string;
     filePickerMode?: "open" | "save";
+    pathPurpose?: "existing" | "destination";
 }) {
     const [value, setValue] = useState(initial);
     return (
@@ -38,6 +40,7 @@ function Harness({
             relevantDirectory={relevantDirectory}
             autoDestinationPath={autoDestinationPath}
             filePickerMode={filePickerMode}
+            pathPurpose={pathPurpose}
         />
     );
 }
@@ -127,6 +130,70 @@ describe("PathInput", () => {
 
         expect(await screen.findByText("Resolves to: /root/save.json")).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/home/fs/browse?path=.%2Fsave.json&kind=file")).toBe(true);
+    });
+
+    it.each(["directory", "file"] as const)("resolves an absent %s destination without an existing-input error", async (kind) => {
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", reason: "absent", resolvedPath: "/root/new-output", error: "ENOENT"}}),
+        });
+        renderWithProviders(<Harness kind={kind} initial="./new-output" pathPurpose="destination" />, {fetchImpl});
+        await userEvent.click(screen.getByRole("textbox", {name: "Path"}));
+        expect(await screen.findByText("Resolves to: /root/new-output")).toBeInTheDocument();
+        expect(calls[0].url).toBe(`/api/home/fs/browse?path=.%2Fnew-output${kind === "file" ? "&kind=file" : ""}`);
+        expect(screen.queryByText(/doesn't exist|pick an existing location|ENOENT/)).not.toBeInTheDocument();
+    });
+
+    it("resolves an absent default output without asserting that it already exists", async () => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", reason: "absent", resolvedPath: "/root/sample-slot", error: "ENOENT"}}),
+        });
+        renderWithProviders(<Harness initial="" autoDestinationPath="sample-slot" pathPurpose="destination" />, {fetchImpl});
+        await userEvent.click(screen.getByRole("textbox", {name: "Path"}));
+        expect(await screen.findByText("Auto resolved destination: /root/sample-slot")).toBeInTheDocument();
+        expect(screen.queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
+    });
+
+    it.each(["type", "permission", "unresolved", "symlink-escape", "other"] as const)("keeps %s diagnostics for a destination", async (reason) => {
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "error", reason, resolvedPath: "/root/output", error: "raw resolver error"}}),
+        });
+        renderWithProviders(<Harness pathPurpose="destination" />, {fetchImpl});
+        await userEvent.click(screen.getByRole("textbox", {name: "Path"}));
+        const diagnostic = {
+            type: /is a file, not a folder/,
+            permission: /doesn't have permission/,
+            unresolved: /broken link/,
+            "symlink-escape": /leads outside/,
+            other: /can't be used/,
+        }[reason];
+        expect(await screen.findByText(diagnostic)).toBeInTheDocument();
+        expect(screen.queryByText(/Resolves to:/)).not.toBeInTheDocument();
+    });
+
+    it("does not let a late absent destination response replace the current permission error", async () => {
+        const respondTo: Array<(body: unknown) => void> = [];
+        const fetchImpl: FetchLike = () => new Promise((resolve) => {
+            respondTo.push((body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}));
+        });
+        renderWithProviders(<Harness initial="new" pathPurpose="destination" />, {fetchImpl});
+        const input = screen.getByRole("textbox", {name: "Path"});
+        await userEvent.click(input);
+        fireEvent.change(input, {target: {value: "protected"}});
+        await act(async () => {
+            respondTo[1]({status: "error", reason: "permission", resolvedPath: "/root/protected", error: "EACCES"});
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+        });
+        expect(await screen.findByText('POKIE doesn\'t have permission to read "/root/protected".')).toBeInTheDocument();
+        await act(async () => {
+            respondTo[0]({status: "error", reason: "absent", resolvedPath: "/root/new", error: "ENOENT"});
+            await new Promise((resolve) => {
+                setTimeout(resolve, 0);
+            });
+        });
+        expect(screen.getByText('POKIE doesn\'t have permission to read "/root/protected".')).toBeInTheDocument();
+        expect(screen.queryByText("Resolves to: /root/new")).not.toBeInTheDocument();
     });
 
     it("renders a file-appropriate status and remediation when a directory is entered in a file control", async () => {
