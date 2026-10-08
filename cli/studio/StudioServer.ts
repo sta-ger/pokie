@@ -2148,7 +2148,9 @@ export class StudioServer implements StudioServerHandling {
                 // in-flight exact request is still a normal StudioBuildResult.
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Design build is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.blueprintService.build(validated.blueprint, destinationPath, sourcePath, signal),
+            // Keep omitted output omitted: the manifest-id default must pass the generator's
+            // directory-name policy, even though job identity uses the resolved destination.
+            ({signal}) => this.blueprintService.build(validated.blueprint, validated.outDir === undefined ? undefined : destinationPath, sourcePath, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Design build cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery};
                 if (result.status === "ok") return {status: "completed", result: {

@@ -1,4 +1,4 @@
-import {BUILT_PACKAGE_FILES, assertPreparedArtifactDestinationAvailable} from "pokie";
+import {BUILT_PACKAGE_FILES, assertPreparedArtifactDestinationAvailable, resolveGamePackageDestination} from "pokie";
 import fs from "fs";
 import path from "path";
 
@@ -21,10 +21,11 @@ export function previewBuildDestination(
     sourcePath?: string,
     protectedRoot?: string,
 ): BuildDestinationPreview {
-    const projectRoot = path.resolve(cwd, outDir ?? manifestId);
+    let projectRoot = path.resolve(cwd, outDir ?? manifestId);
     let destinationState: BuildDestinationPreview["destinationState"] = "missing";
     let destinationError: string | undefined;
     try {
+        projectRoot = resolveGamePackageDestination(manifestId, cwd, outDir);
         let stat: fs.Stats | undefined;
         try {
             stat = fs.statSync(projectRoot);
@@ -49,7 +50,7 @@ export function previewBuildDestination(
         assertPreparedArtifactDestinationAvailable(sourcePath === undefined ? undefined : path.resolve(cwd, sourcePath), projectRoot, "directory");
     } catch (error) {
         destinationError = error instanceof Error ? error.message : String(error);
-        if ((/source itself|inside source|internal directory/).test(destinationError)) destinationState = "unsafe";
+        if ((/not a valid directory name|source itself|inside source|internal directory/).test(destinationError)) destinationState = "unsafe";
         else if (destinationState !== "file" && destinationState !== "occupied") destinationState = "unreadable";
     }
     return {

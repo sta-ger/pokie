@@ -18,6 +18,7 @@ const blueprint = {
 };
 
 describe("Studio destination HTTP workflow", () => {
+    let workspace: string;
     let directory: string;
     let originalCwd: string;
     let server: StudioServer;
@@ -25,7 +26,9 @@ describe("Studio destination HTTP workflow", () => {
 
     beforeEach(async () => {
         originalCwd = process.cwd();
-        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-destination-workflow-"));
+        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-destination-workflow-"));
+        directory = path.join(workspace, "working");
+        fs.mkdirSync(directory);
         process.chdir(directory);
         const studioRoot = path.join(directory, "studio");
         fs.mkdirSync(studioRoot);
@@ -44,7 +47,7 @@ describe("Studio destination HTTP workflow", () => {
     afterEach(async () => {
         await server.stop();
         process.chdir(originalCwd);
-        fs.rmSync(directory, {recursive: true, force: true});
+        fs.rmSync(workspace, {recursive: true, force: true});
     });
 
     async function post(route: string, body: unknown) {
@@ -80,6 +83,32 @@ describe("Studio destination HTTP workflow", () => {
         expect(fs.readdirSync(raced)).toEqual(["sentinel.bin"]);
         expect(fs.readFileSync(path.join(raced, "sentinel.bin"))).toEqual(bytes);
         expect((await post("/api/home/blueprints/build", {blueprint, outDir: "recovered"})).body).toMatchObject({status: "ok", projectRoot: path.join(directory, "recovered")});
+    });
+
+    it.each(["../escape", "nested/slot", "nested\\slot", ".", "..", "/absolute-slot"])("rejects omitted-output path-shaped ID %s over HTTP without publication and allows explicit recovery", async (id) => {
+        const manifestId = id.startsWith("/") ? path.join(workspace, "absolute-slot") : id;
+        const draft = {...blueprint, manifest: {...blueprint.manifest, id: manifestId}};
+        const entries = fs.readdirSync(directory).sort();
+        const sentinel = path.join(directory, "sentinel.bin");
+        const bytes = Buffer.from([0, 255, 37, 10]);
+        fs.writeFileSync(sentinel, bytes);
+        expect((await post("/api/home/blueprints/build-preview", {blueprint: draft})).body).toMatchObject({
+            status: "ok", destinationState: "unsafe", destinationHasContent: true,
+            destinationError: expect.stringMatching(/not a valid directory name.*plain name.*--out/), createFiles: [],
+        });
+        expect((await post("/api/home/blueprints/build", {blueprint: draft})).body).toMatchObject({
+            status: "error", error: expect.stringMatching(/not a valid directory name.*plain name.*--out/),
+        });
+        expect(fs.readdirSync(workspace)).toEqual(["working"]);
+        expect(fs.readdirSync(directory).sort()).toEqual([...entries, "sentinel.bin"].sort());
+        expect(fs.readFileSync(sentinel)).toEqual(bytes);
+        for (const output of ["chosen-new", "chosen-empty"]) {
+            if (output === "chosen-empty") fs.mkdirSync(path.join(directory, output));
+            expect((await post("/api/home/blueprints/build-preview", {blueprint: draft, outDir: output})).body).toMatchObject({destinationHasContent: false});
+            expect(await post("/api/home/blueprints/build", {blueprint: draft, outDir: output})).toMatchObject({status: 201, body: {status: "ok", projectRoot: path.join(directory, output)}});
+            expect(fs.existsSync(path.join(directory, output, "dist/index.js"))).toBe(true);
+        }
+        expect(fs.readFileSync(sentinel)).toEqual(bytes);
     });
 
     it("uses the manifest-id default in HTTP preview and build, including a repeat with blank output omitted", async () => {

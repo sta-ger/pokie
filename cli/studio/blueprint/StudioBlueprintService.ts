@@ -27,6 +27,7 @@ import {
     ReelStripAnalyzer,
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
+    resolveGamePackageDestination,
     SlotGameNameGenerator,
 } from "pokie";
 import fs from "fs";
@@ -922,7 +923,12 @@ export class StudioBlueprintService {
             return validated;
         }
 
-        const destination = path.resolve(process.cwd(), outDir ?? (blueprint as GameBlueprint).manifest.id);
+        let destination: string;
+        try {
+            destination = resolveGamePackageDestination((blueprint as GameBlueprint).manifest.id, process.cwd(), outDir);
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
+        }
         try {
             assertPreparedArtifactDestinationAvailable(this.studioRoot, destination, "directory");
         } catch (error) {

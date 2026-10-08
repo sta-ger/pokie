@@ -23,6 +23,21 @@ describe("previewBuildDestination", () => {
         expect(preview.projectRoot).toBe(path.join(cwd, "sample-slot"));
     });
 
+    it.each(["../escape", "nested/slot", "nested\\slot", ".", "..", "/absolute-slot"])("rejects path-shaped default %s without planning publication, but permits explicit output", (id) => {
+        const manifestId = id.startsWith("/") ? path.join(cwd, "absolute-slot") : id;
+        expect(previewBuildDestination(manifestId, cwd, undefined)).toMatchObject({
+            destinationHasContent: true, destinationState: "unsafe",
+            destinationError: expect.stringMatching(/not a valid directory name.*plain name.*--out/),
+            createFiles: [], updateFiles: [], deleteFiles: [],
+        });
+        expect(fs.readdirSync(cwd)).toEqual([]);
+        expect(previewBuildDestination(manifestId, cwd, "chosen")).toMatchObject({
+            projectRoot: path.join(cwd, "chosen"), destinationHasContent: false, destinationState: "missing",
+        });
+        fs.mkdirSync(path.join(cwd, "chosen"));
+        expect(previewBuildDestination(manifestId, cwd, "chosen").destinationState).toBe("empty");
+    });
+
     it("resolves outDir (relative to cwd) instead of manifest.id when given", () => {
         const preview = previewBuildDestination("sample-slot", cwd, "./out");
 

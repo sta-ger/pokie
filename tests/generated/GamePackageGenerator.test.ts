@@ -211,12 +211,13 @@ describe("GamePackageGenerator", () => {
         expect(fs.existsSync(path.join(cwd, "sample-slot"))).toBe(false);
     });
 
-    it("rejects a manifest.id that looks like a path when no --out is given", () => {
+    it.each(["../escape", "nested/slot", "nested\\slot", ".", "..", "/absolute-slot"])("rejects path-shaped manifest.id %s when no --out is given without publication", (id) => {
         const generator = new GamePackageGenerator("1.3.0");
 
         expect(() =>
-            generator.generate(buildBlueprint({manifest: {id: "../escape", name: "Escape", version: "0.1.0"}}), cwd),
+            generator.generate(buildBlueprint({manifest: {id: id.startsWith("/") ? path.join(cwd, "absolute-slot") : id, name: "Escape", version: "0.1.0"}}), cwd),
         ).toThrow(/not a valid directory name/);
+        expect(fs.readdirSync(cwd)).toEqual([]);
     });
 
     describe("missing-or-empty destination only -- no rebuild/merge recognition", () => {
