@@ -1,101 +1,58 @@
-# P9-06: bounded Valera Programmer CLI correction
+# P9-06 independent cold developer receipt — finding
 
-## Evidence boundary and candidate
+## Candidate and isolation
 
-This is the implementer's correction and supplementary executable transcript, **not independent cold
-exploration acceptance**. No P9-06 collector finding or receipt was supplied in this clone. Independent
-installation/browser exploration, frozen observations and affected independent retests remain
-controller/verifier work under the bounded implementer policy. Do not send this ledger or the scenario
-test to the collector; supply only the [ordinary task charter](valera-programmer-charter.md), candidate
-metadata, public README/docs/help and the ordinary existing project. No completed prerequisite evidence
-was changed.
+- Candidate: `f8737bcbafa436aea5e0b1f9b93b4514491b3710` (checkout HEAD before and after the run).
+- Launcher: `node ./dist/cli/pokie.js`; Studio launched from this checkout exactly as `node ./dist/cli/pokie.js --no-open`, never through `node_modules/.bin/pokie`.
+- Host: Node `v24.18.0`, npm `11.16.0`. Candidate CLI asset: `dist/cli/pokie.js`, 2,900 bytes, mtime `2026-10-08 23:22:04 +0000`.
+- Fresh state: workspace `/tmp/p9-06-valera-aH1ktU/workspace`, supplied project `/tmp/p9-06-valera-aH1ktU/existing project/sample-slot.blueprint.json`, browser profile `/tmp/p9-06-valera-aH1ktU/profile-fresh`, and child-only `HOME`, `XDG_CONFIG_HOME`, and `XDG_CACHE_HOME` below that temporary root. The supplied Blueprint was copied from public `examples/blueprints/sample-slot.blueprint.json`.
+- Until freezing the observations below, the collector read only the task charter, public README, public `docs/cli.md`, and public CLI help—not source, tests, prior audit records, or the correction ledger.
 
-The initial executable observation used revision `6b953aec22ded21609634b952e53d7edb080e67a`, staged
-candidate SHA-256 `59c9927d622c77c128781570fa3fb29b995e848d5bd4a7ee5829f9db9f5f5783`, Node `v24.18.0`,
-npm `11.16.0`. `compileP906Candidate` compiles ESM/CJS/CLI and the real Vite Studio assets; preparation
-copies these outputs, public docs and the resolved production dependency closure to a fresh
-`node_modules/pokie`, and links `node_modules/.bin/pokie`. The supplied ordinary `Existing Project`
-resolves `pokie` to that candidate's CJS entry in ordinary Node, outside Jest's source mapping. This
-local copy is reproducible test preparation, not an npm archive/install verification claim.
-The worker resolver is explicitly copied into all three consumed compiler outputs (`dist/esm`,
-`dist/cjs`, and CLI's `dist/src`), with candidate byte-readback assertions. Standalone preparation
-therefore supplies the CLI-local copy instead of borrowing it from another test's prior compilation.
-Preparation shares P805/canonical CLI's compiler lock. The standalone producer/readback regression
-passed in 85.25 seconds after this correction.
+## Frozen cold exploration
 
-The launcher was below the owned `node_modules/.cache/pokie-tmp/pokie-p906-*/node_modules/.bin/pokie`.
-All commands ran from its fresh `workspace`, except the explicitly noted project launches. Child-only
-HOME, XDG config/cache/Documents and TMPDIR isolated registry and materialization state. A sandbox
-`xdg-open` exited normally; the test fetched the printed Studio URL and real hashed JavaScript asset
-over HTTP. Browser interaction remains independently verifiable. No global executable, registry version,
-existing user state or repeated npm installation was used.
+Commands ran serially in the stated working directory; successful commands emitted no stderr. The eight-command CLI band took 12.5 s wall time in the host runner. Its per-command shell clock was unusable (`date +%s%3N` printed non-epoch values), so that instrumentation limitation is retained rather than fabricated as a product timing.
 
-The scenario writes its current supplementary stdout/stderr/status/timing and candidate identity to
-`node_modules/.cache/p906-scenario.json`. It is disposable current-step test output, not an independent
-receipt; the concise original observations below are retained when the test reruns.
-
-## Severity / reproduction / closure ledger
-
-| ID | Origin and severity | Frozen reproduction / question | Correction and closure |
-| --- | --- | --- | --- |
-| P906-H1 | Implementer executable observation; material P2 discoverability candidate, independent severity unassigned | `pokie sim --help` (exit 0, 1739 ms) says “Run a simulation against a POKIE game package” and its positional lists package/outcome-library only. `pokie replay --help` (exit 0, 1761 ms) describes outcome-library/package replay and omits WASM. Question: does this supported artifact work with sim/replay, and which seeds/rounds compare? | Both real command descriptions/positionals now include canonical WASM and Blueprint; root help inherits these descriptions. Per-command help names the real WASM seed defaults, explicit-seed comparison, cumulative replay totals and unsupported options. Usage diagnostics include WASM examples. README and CLI docs agree with existing capability-derived inspect actions and build help. Owner help tests, root usage test and P906 real-bin help assertions cover closure. |
-| P906-T1 | Explicit harness obligation; source-grounded, not an independent product finding | The shared compiler helper bounded lock waiting but not compiler execution. A Jest timeout cannot stop synchronous compilation. | Finite subprocess deadline; timeout/nonzero exit fails without retry and releases the lock. On this Linux task host the compiler process group, including owned children, is killed on failure. Focused real-child tests cover failure, timeout, no late child output, lock release and subsequent recovery. |
-
-No independent P0/P1/material P2 closure is claimed without controller findings. The observed product
-gap above is corrected; a source concern or a green supplementary test is not an independent receipt.
-Replay `--out`'s existing JSON-plus-destination stdout is documented, not silently changed. Broader
-P9-05 mechanics and platform boundaries remain as recorded in the [status register](README.md).
-
-The shared helper's callers were traced: fixture runtime setup, real runtime reload, Init workflow,
-PC18 role missions, P805, canonical CLI, GamePackagePreparer, Blueprint materialization (including
-offline), StudioServer and Studio artifact integration. Their command vectors, locks, force/reuse
-policy and output requirements remain in their existing owners. Newly created required outputs are
-removed on compiler failure; pre-existing output is preserved. The helper's default subprocess limit
-is two minutes; P906 additionally bounds each individual compiler/build command.
-Process-group cleanup requires a positive owned child PID: a spawn failure's PID 0 must never target
-the caller's group. The missing-compiler regression retains ENOENT, releases the lock and permits a
-subsequent successful build.
-
-## Supplementary original command transcript
-
-Paths below are relative to the fresh workspace; arguments containing spaces were single, correctly
-quoted argv values. Successes had empty stderr. These are real executable observations, not mocks.
-
-| Commands / context | Observable terminal result | Exit / elapsed |
+| Working directory and command | terminal observation | exit |
 | --- | --- | --- |
-| `pokie --help`; `create --help`; `build --help` | Public Home/project entry points and create/build options; no top-level export/private Studio verb | 0 / 1677, 1827, 1829 ms |
-| Bare `pokie`, cwd `Existing Project` | Printed `http://127.0.0.1:3200`; app and hashed JS served; Home context, empty initial registry/recent list; Home open loaded supplied project and registered it | SIGINT shutdown 0 / 2083 ms |
-| `pokie . --no-open --port 0`, cwd `Existing Project`; `pokie "Existing Project" --no-open --port 0`, cwd workspace; option-only `pokie --no-open --port 0`, cwd project | Three real printed URLs served Studio and loaded the correct project; registration survived restart | SIGINT shutdown 0 / 2020, 1995, 1974 ms |
-| `pokie create "Tiny Game" --random --seed 906 --out "Tiny Game.json"`; `pokie validate "Tiny Game.json"` | Created deterministic supported Blueprint; valid yes | 0 / 1739, 1775 ms |
-| `pokie build "Tiny Game.json" --target parWorkbook --out "Tiny Game.xlsx" --dry-run`; same without dry-run; `pokie inspect "Tiny Game.xlsx"` | Preview named output without publication; published/readable PAR workbook | 0 / 1868, 1809, 1761 ms |
-| `pokie build "Tiny Game.xlsx" --target blueprint --out "Imported Game.json"`; `pokie validate "Imported Game.json"`; `pokie par export --help` | Imported Blueprint readback retains reels/paytable and validates; nested PAR export remains public | 0 / 1798, 1740, 1780 ms |
-| `pokie build "Tiny Game.json" --target wasm --out "Tiny Game.wasm"`; `pokie "Tiny Game.wasm"`; `pokie validate "Tiny Game.wasm"` | WASM and integrity sidecar created; positional inspects canonical component with run/sim/replay next actions; valid yes | 0 / 1783, 1788, 1756 ms |
-| Twice `pokie run "Tiny Game.wasm" --seed p906-valera` | Both print `POKIE WASM round 1: draw=0.834266951540485 seed=p906-valera` | 0 / 1797, 1748 ms |
-| `pokie sim "Tiny Game.wasm" --rounds 6 --workers 1 --seed p906-valera --format json`; twice `pokie replay "Tiny Game.wasm" --round 6 --seed p906-valera` | Simulation and replay both totalBet 6, totalWin 7. Replays equal excluding timestamp/duration: sequence 6, drawCount 35, credits 1001, rngState 1636970151 | 0 / 1838, 1779, 1768 ms |
-| `pokie build "Tiny Game.json" --targte wasm --out "Failed Game.wasm"`; corrected `--target`; validate result | Failure: empty stdout, stderr `Unknown option "--targte". Usage: pokie build ...`; no artifact/sidecar. Correction publishes and validates | 1, 0, 0 / 1788, 1789, 1790 ms |
-| Build again to occupied `"Tiny Game.wasm"`; sim with `--workers 2 --out disabled-report.json` | Failures have empty stdout; occupied artifact/sidecar unchanged; worker diagnostic says `--workers 1`; no disabled report or staging | 1, 1 / recorded per-command timings in test output |
+| candidate root: `node ./dist/cli/pokie.js --help` | Listed Studio Home/project entry points, `create`, `build`, `validate`, `sim`, `replay`, and next workflow choices. | 0 |
+| candidate root: `node ./dist/cli/pokie.js creat` | `Unknown command "creat". Did you mean \`create\`? Run \`pokie create --help\` for usage.` A post-freeze, affected no-write retest measured 3.761 s real time (3.116 s user, 0.741 s sys). | 1 (documented recovery branch) |
+| workspace: `node <candidate>/dist/cli/pokie.js create tiny --random --seed 73 --out 'tiny game.blueprint.json'` | Created `Tiny` (`id: tiny`), generator `1.1.0`, strategy `default-line-pay`; printed its reproducible command. | 0 |
+| workspace: `... validate 'tiny game.blueprint.json'` | `valid yes`; `No issues found.` | 0 |
+| workspace: `... build 'tiny game.blueprint.json' --target wasm --out 'tiny game.wasm'` | `Build running: Staging portable WASM component`; published `tiny game.wasm`. | 0 |
+| workspace: `... 'tiny game.wasm'`; then `... validate 'tiny game.wasm'` | Inspection identified a compatible canonical component with `runtime.play`, `runtime.serialize`, `runtime.replay`, and integrity `sha256:27860667c6b02876b5cb394739870bf999eec7756ea1a9775db01555bf06b4b8`; validation was valid. | 0; 0 |
+| workspace: `... run 'tiny game.wasm' --seed valera-73` | `POKIE WASM round 1: draw=0.8682386232540011 seed=valera-73`. | 0 |
+| workspace: `... sim 'tiny game.wasm' --rounds 6 --workers 1 --seed valera-73 --format json`; then `... replay 'tiny game.wasm' --round 6 --seed valera-73` | Simulation: 6 rounds, total bet 6, total win 4. Replay: round 6, total bet 6, total win 4, sequence 6, draw count 35. The same-seed/round comparison held. | 0; 0 |
 
-## Focused verification and controller handoff
+Frozen question and answer: public help made the tiny create/build/validate and canonical WASM run/sim/replay route discoverable; a spaced output path was accepted end-to-end. The typo route supplied public recovery. The timing weakness above is not a product observation.
 
-`tests/cli/P906ValeraProgrammer.integration.test.ts` executes the complete serial scenario against one
-copied candidate, including real Studio Home/project startup, canonical PAR round trip, explicit-seed
-sim/replay comparison, actual CLI statuses and protected output. It supplements independent discovery.
-Each finite CLI command has a 15-second deadline; each supervised Studio session has a 15-second
-deadline and awaits shutdown, failing after timeout rather than restarting. Candidate preparation is
-bounded to 120 seconds, with individual compiler/build subprocesses bounded to 60 seconds.
+## Rendered Studio receipt
 
-Required verification is the named preflight test set, including P805/WASM/canonical/routing/Studio,
-plus the new help/compiler regressions, and root `npm run typecheck` (which includes Studio typechecking).
-No full/coverage/packaging/release gate is run by this implementation. The controller must retain the
-installed-candidate identity and independent observations before assigning and closing independent
-findings; subsequent retests use that corrected candidate and original small deterministic inputs.
+Studio Home rendered at `http://127.0.0.1:3200/#/home/design` with **Start a game**, **Projects**, **Design Your Game**, and a valid starter model. In **Projects**, the visible supplied path was checked, identified as a Game design, added, and opened. The rendered route was `#/project/%2Ftmp%2Fp9-06-valera-aH1ktU%2Fexisting%20project%2Fsample-slot.blueprint.json/overview`; Overview displayed Sample Slot, its location, and `Valid — no issues found.` This is rendered UI evidence, not an HTTP asset-fetch inference.
 
-The first corrected focused run passed all five suites / 101 tests (99.265 seconds): P906, SimCommand,
-ReplayCommand, usageText and ensureCompiledTestOutput. Corrected candidate SHA-256 was
-`8e41a974f1aa19fcd75e6f63ebc592ca5f2961d9507994c2675d6b4e9dbbc334`; sim/replay help both exited 0
-(1812/1793 ms) and printed WASM defaults and matching-seed/round guidance. The fresh serial CLI commands
-took 55.752 seconds; draws and cumulative totals remained unchanged. The saved baseline failures above
-remain visible; the current cache transcript is refreshed on the committed-tree regression run.
-Root `npm run typecheck` passed, including its Studio client compiler. Node's actual synchronous
-process-group support was checked against the installed Node implementation after correcting the
-TypeScript options declaration mismatch; no runtime fallback or timeout bypass was introduced.
+The same Studio session then rendered these local terminals:
+
+- **Play:** `New Play session` then `Spin` completed one round: `You won 1.00`, total win `1.00`, line 2.
+- **Simulation:** rounds changed from visible default `10000` to `1`; `Run Simulation` completed `1/1` rounds with RTP `0.00%`, correctly warning about no seed and a noisy one-round estimate.
+- **Replay:** `Load` prepared round 1; distinct `Run again` rendered `queued — 0/1 rounds`, then `completed — 1/1 rounds`. Local result recorded replay job `facb547e84d84c09b19a74ab26f2debc`, full inspectability/exportability, and total win `3.00`.
+- **Outcome library:** Build/Export warned that exact enumeration (184,528,125 combinations) exceeded the cap; its visible Outcome library **Build** completed bounded coverage (5,000 estimated items, 5,120,000 estimated bytes) into isolated `outcomeLibrary`.
+
+## Observed finding: P9-VALERA-PROGRAMMER
+
+Immediately after the successful Outcome library build, the enabled **Stake Engine export** Build control showed `Status: Ready to build` and plan `materialize materializeRuntime → materialize generateOutcomeLibrary → publish publish`. One activation was made. No pending/job lifecycle was rendered; its action-local terminal was:
+
+```
+The prepared conversion graph is stale or invalid; prepare a new plan before executing it.
+```
+
+This blocks public Studio Stake export after its stated Outcome-library prerequisite succeeded. No retry was sent. The concrete observed root cause is a stale/invalid prepared conversion graph on the dependent Stake export card after Outcome Library materialization: the UI does not refresh or execute its previously-ready plan.
+
+| action-correlation field | rendered evidence |
+| --- | --- |
+| action | `Build/Export` → `Stake Engine export` → enabled `Build` |
+| ready state | `Status: Ready to build`, with the three-stage plan and bounded-coverage prerequisite |
+| accepted state | enabled Build activation was accepted; no pending/job record was exposed for this operation |
+| terminal state | card-local immediate error quoted above |
+
+## Closure and hygiene
+
+There is no observed closure or clean-state affected retest for this P1: repeating Build would duplicate the unresolved export request and no correction was supplied in this candidate. Independent reachable branches above completed; package/full gates remain deferred. Studio and browser were shut down normally, temporary output trees were not retained in Git, and this receipt is the sole evidence payload.
