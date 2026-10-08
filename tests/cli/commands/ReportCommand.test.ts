@@ -526,7 +526,7 @@ describe("ReportCommand outcome-source project routing", () => {
 });
 
 // Real, non-stubbed end-to-end coverage: "pokie report" pointed straight at a real, on-disk outcome-library
-// bundle (written by "pokie export <config.json> --to outcomes", not mocked) resolves and renders it through the same
+// bundle (written by "pokie build <config.json> --target outcomeLibrary", not mocked) resolves and renders it through the same
 // OutcomeSourceProjectAnalyzer/canonical-reader path the unit tests above stub out.
 describe("ReportCommand (integration, real outcome-library bundle)", () => {
     let bundleDir: string;

@@ -10,10 +10,11 @@ import type {OutcomeLibraryBundleReading} from "../weightedoutcome/bundle/Outcom
 import {assertSafeToReplaceStakeEngineExportDirectory} from "./internal/assertSafeToReplaceStakeEngineExportDirectory.js";
 import {convertRatioToStakeUnits} from "./internal/convertRatioToStakeUnits.js";
 import {parseStakeEngineOutcomeId} from "./internal/parseStakeEngineOutcomeId.js";
-import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
+import {capturePublishDirectoryOwnership, preflightAtomicDirectoryPublication, publishDirectoryAtomically, removePublishedDirectoryIfOwned, withPublishedDirectoryOwnership} from "./internal/publishDirectoryAtomically.js";
 import type {StakeEngineBookLine} from "./StakeEngineBookLine.js";
 import type {StakeEngineBundleModeInput} from "./StakeEngineBundleModeInput.js";
 import type {StakeEngineEvent} from "./StakeEngineEvent.js";
+import {StakeEngineExportCancelledError, type StakeEngineExportOptions} from "./StakeEngineExporting.js";
 import type {StakeEngineExportResult} from "./StakeEngineExportResult.js";
 import type {StakeEngineIndex} from "./StakeEngineIndex.js";
 import {STAKE_ENGINE_MANIFEST_SCHEMA_VERSION, type StakeEngineManifest, type StakeEngineManifestModeEntry} from "./StakeEngineManifest.js";
@@ -27,7 +28,11 @@ const GENERATED_BY = "pokie stakeengine export";
 // used by the Node CLI/runtime. These small event promises deliberately replace imports from
 // `events` and `stream/promises`, so a browser bundler inspecting the root barrel never resolves
 // Node-only stream modules for an exporter the browser does not use.
-function waitForStreamEvent(stream: NodeJS.EventEmitter, eventName: string): Promise<void> {
+function assertNotCancelled(options: StakeEngineExportOptions | undefined): void {
+    if (options?.signal?.aborted) throw new StakeEngineExportCancelledError();
+}
+
+function waitForStreamEvent(stream: NodeJS.EventEmitter, eventName: string, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
         const onEvent = (): void => {
             cleanup();
@@ -37,17 +42,30 @@ function waitForStreamEvent(stream: NodeJS.EventEmitter, eventName: string): Pro
             cleanup();
             reject(error);
         };
+        const onAbort = (): void => {
+            cleanup();
+            reject(new StakeEngineExportCancelledError());
+        };
+        const onClose = (): void => {
+            cleanup();
+            reject(new Error("Books compression stream closed before draining."));
+        };
         const cleanup = (): void => {
             stream.removeListener(eventName, onEvent);
             stream.removeListener("error", onError);
+            stream.removeListener("close", onClose);
+            signal?.removeEventListener("abort", onAbort);
         };
 
         stream.once(eventName, onEvent);
         stream.once("error", onError);
+        stream.once("close", onClose);
+        signal?.addEventListener("abort", onAbort, {once: true});
+        if (signal?.aborted) onAbort();
     });
 }
 
-function waitForWritableStreamFinish(stream: NodeJS.EventEmitter): Promise<void> {
+function waitForWritableStreamFinish(stream: NodeJS.EventEmitter, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
         const onFinish = (): void => {
             cleanup();
@@ -55,7 +73,7 @@ function waitForWritableStreamFinish(stream: NodeJS.EventEmitter): Promise<void>
         };
         const onClose = (): void => {
             cleanup();
-            reject(new Error("Books output stream closed before it finished writing."));
+            reject(signal?.aborted ? new StakeEngineExportCancelledError() : new Error("Books output stream closed before it finished writing."));
         };
         const onError = (error: Error): void => {
             cleanup();
@@ -138,7 +156,8 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         this.beforeCommit = beforeCommit;
     }
 
-    public async exportToDirectory(modes: readonly StakeEngineBundleModeInput[], outDir: string): Promise<StakeEngineExportResult> {
+    public async exportToDirectory(modes: readonly StakeEngineBundleModeInput[], outDir: string, options?: StakeEngineExportOptions): Promise<StakeEngineExportResult> {
+        assertNotCancelled(options);
         // Keep an external destination out of the staging lifecycle entirely.
         assertSafeToReplaceStakeEngineExportDirectory(outDir);
         const destinationOwnership = capturePublishDirectoryOwnership(outDir);
@@ -156,13 +175,16 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
             let reference: ModeProvenanceKey | undefined;
             let gameManifest: StakeEngineManifest["game"] | undefined;
             let configHash: string | undefined;
+            let completed = BigInt(0);
 
             for (const mode of modes) {
-                const built = await this.buildMode(mode, stagingDir, issues);
+                assertNotCancelled(options);
+                const built = await this.buildMode(mode, stagingDir, issues, options, completed);
                 if (built === undefined) {
                     continue;
                 }
                 manifestEntries.push(built.manifestEntry);
+                completed += BigInt(built.manifestEntry.outcomeCount);
 
                 const current: ModeProvenanceKey = {
                     gameId: built.provenance.game.id,
@@ -212,18 +234,32 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
             fs.writeFileSync(path.join(stagingDir, "pokie-manifest.json"), `${JSON.stringify(manifest, null, 4)}\n`);
 
             assertSafeToReplaceStakeEngineExportDirectory(outDir);
+            assertNotCancelled(options);
             const {cleanupWarning, publication} = publishDirectoryAtomically({
                 outDir,
                 ownership: destinationOwnership,
                 renameDirectory: this.renameDirectory,
                 removeDirectory: this.removeDirectory,
-                beforeCommit: this.beforeCommit,
+                beforeCommit: () => {
+                    this.beforeCommit?.();
+                    assertNotCancelled(options);
+                },
                 writeFilesIntoTempDir: (tempDir) => {
                     for (const file of relativeFiles) {
+                        assertNotCancelled(options);
                         this.renameDirectory(path.join(stagingDir, file), path.join(tempDir, file));
+                        options?.onProgress?.({completed, message: `Publishing Stake file ${file}`});
+                        assertNotCancelled(options);
                     }
                 },
             });
+
+            try {
+                assertNotCancelled(options);
+            } catch (error) {
+                removePublishedDirectoryIfOwned(publication);
+                throw error;
+            }
 
             const finalIssues: ValidationIssue[] =
                 cleanupWarning !== undefined
@@ -297,8 +333,10 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
     // directory), one outcome at a time — never holding more than one outcome, or the whole mode's CSV/books
     // content, in memory at once. Returns undefined (having already pushed every problem found onto "issues")
     // if any outcome fails — the same "no partial mode" contract StakeEngineExporter.buildMode has.
-    private async buildMode(mode: StakeEngineBundleModeInput, stagingDir: string, issues: ValidationIssue[]): Promise<BuiltMode | undefined> {
+    private async buildMode(mode: StakeEngineBundleModeInput, stagingDir: string, issues: ValidationIssue[], options: StakeEngineExportOptions | undefined, completedBefore: bigint): Promise<BuiltMode | undefined> {
+        assertNotCancelled(options);
         const index = await this.reader.readModeIndex(mode.bundleDir, mode.bundleModeName);
+        assertNotCancelled(options);
 
         const csvFileName = `lookup_${mode.modeName}.csv`;
         const booksFileName = `books_${mode.modeName}.jsonl.zst`;
@@ -306,13 +344,31 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
         const zstdStream = zlib.createZstdCompress();
         const booksWriteStream = fs.createWriteStream(path.join(stagingDir, booksFileName));
         zstdStream.pipe(booksWriteStream);
-        const booksFinished = waitForWritableStreamFinish(booksWriteStream);
+        const booksFinished = waitForWritableStreamFinish(booksWriteStream, options?.signal);
+        // Observe early stream failure while the reader is still producing outcomes.
+        booksFinished.catch(() => undefined);
+        const onAbort = (): void => {
+            zstdStream.destroy();
+            booksWriteStream.destroy();
+        };
+        options?.signal?.addEventListener("abort", onAbort, {once: true});
 
+        let completed = BigInt(0);
         let sawError = false;
         let firstArtifact: {betMode: string; stake: number; payoutMultiplier: number; provenance: {game: StakeEngineManifest["game"]; configHash?: string; pokieVersion: string}} | undefined;
 
         try {
             for await (const outcome of this.reader.iterateModeOutcomes(mode.bundleDir, mode.bundleModeName)) {
+                assertNotCancelled(options);
+                completed++;
+                options?.onProgress?.({completed: completedBefore + completed, message: `Building Stake mode ${mode.modeName}`});
+                assertNotCancelled(options);
+                if (completed % BigInt(256) === BigInt(0)) {
+                    await new Promise<void>((resolve) => {
+                        setImmediate(resolve);
+                    });
+                    assertNotCancelled(options);
+                }
                 if (firstArtifact === undefined) {
                     firstArtifact = outcome.artifact as never;
                 }
@@ -387,18 +443,25 @@ export class StakeEngineBundleStreamingExporter<T extends string | number = stri
                     continue;
                 }
 
+                assertNotCancelled(options);
                 fs.writeSync(csvFd, `${id},${outcome.weight},${stakePayoutMultiplier}\n`);
                 const bookLine: StakeEngineBookLine = {id, events, payoutMultiplier: stakePayoutMultiplier};
                 const canWriteMore = zstdStream.write(`${JSON.stringify(bookLine)}\n`);
                 if (!canWriteMore) {
-                    await waitForStreamEvent(zstdStream, "drain");
+                    await waitForStreamEvent(zstdStream, "drain", options?.signal);
                 }
             }
         } finally {
             fs.closeSync(csvFd);
-            zstdStream.end();
-            await booksFinished;
+            if (options?.signal?.aborted) onAbort();
+            else zstdStream.end();
+            try {
+                await booksFinished;
+            } finally {
+                options?.signal?.removeEventListener("abort", onAbort);
+            }
         }
+        assertNotCancelled(options);
 
         if (sawError || firstArtifact === undefined) {
             return undefined;

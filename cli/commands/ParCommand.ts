@@ -101,7 +101,7 @@ export class ParCommand implements CliCommandHandling {
     }
 
     // This is deliberately the same source preflight as executeExport, without either its
-    // destination check or exporter call, for `pokie export --to workbook --dry-run`.
+    // destination check or exporter call, for `pokie build --target parWorkbook --dry-run`.
     public validateExportSource(blueprintPath: string): void {
         const blueprint = this.loadBlueprint(blueprintPath);
         const errors = prepareBlueprintForParSheetExport(blueprint).issues.filter((issue) => issue.severity === "error");
@@ -428,7 +428,7 @@ export class ParCommand implements CliCommandHandling {
     }
 
     /** Returns format hooks for one immutable Blueprint-to-PAR operation. */
-    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for BuildCommand
     public prepareDescriptorExportOperation(blueprintPath: string, outPath: string, signal?: AbortSignal) {
         const currentSource = () => this.exportDescriptorSource(blueprintPath);
         return {plan: this.planner.planIdentity(currentSource(), "parWorkbook", {destinationPath: outPath}), validate: () => this.validateExportSource(blueprintPath), execution: {

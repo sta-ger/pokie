@@ -10,10 +10,10 @@ import process from "node:process";
 import {fileURLToPath} from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_COVERAGE = path.join(repositoryRoot, "docs/evidence/p7-01-cli-inventory/coverage-map.json");
+const DEFAULT_COVERAGE = path.join(repositoryRoot, "docs/audit-corrections/cli-coverage-map.json");
 const VALUE_WORDS_TO_IGNORE = new Set(["a", "an", "and", "are", "as", "default", "for", "is", "must", "of", "one", "or", "the", "to", "value", "values"]);
 
-function fail(message) { throw new Error(`P7 CLI inventory: ${message}`); }
+function fail(message) { throw new Error(`Current CLI inventory: ${message}`); }
 
 function parseArguments(argv) {
     const result = {cli: undefined, coverage: DEFAULT_COVERAGE, evidenceDir: undefined};
@@ -379,7 +379,10 @@ function documentedCapabilities(contents, inventory) {
             const invocation = text.slice(start.index, starts[index + 1]?.index);
             const match = invocation.match(/^(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);
             if (!match) continue;
-            const rootCommand = match[2];
+            // Existing artifact-file invocations enter the implicit path surface, not
+            // a root command named after the basename (e.g. `pokie game.wasm`).
+            const artifactPath = /^\.(?:wasm|(?:blueprint\.)?json|xlsx)(?:\s|$)/i.test(match[3] ?? "");
+            const rootCommand = artifactPath ? undefined : match[2];
             // Documentation may intentionally show an invalid command as part of the
             // unknown-command recovery path.  It is not an advertised public command.
             if (rootCommand && !rootCommands.has(rootCommand) && /\b(?:unknown command|close spelling|did you mean|suggest(?:s|ed|ion)?)\b/i.test(context)) continue;
@@ -569,8 +572,9 @@ export function checkCoverage(inventory, coverage, documented) {
     }
     const actualVerbs = inventory.commands.filter((command) => command.path.includes(" ")).map((command) => command.path).sort();
     const differences = [...new Set(missing)].map((id) => id.startsWith("stale documented capability") || id.startsWith("unowned public capability") ? id : `unowned public capability ${id}`);
-    if (JSON.stringify(inventory.rootCommands) !== JSON.stringify(coverage.initialInventory.rootCommands)) differences.push(`root command inventory changed: ${inventory.rootCommands.join(", ")}`);
-    if (JSON.stringify(actualVerbs) !== JSON.stringify(coverage.initialInventory.nestedVerbs)) differences.push(`nested verb inventory changed: ${actualVerbs.join(", ")}`);
+    const expectedInventory = coverage.currentInventory ?? coverage.initialInventory;
+    if (JSON.stringify(inventory.rootCommands) !== JSON.stringify(expectedInventory.rootCommands)) differences.push(`root command inventory changed: ${inventory.rootCommands.join(", ")}`);
+    if (JSON.stringify(actualVerbs) !== JSON.stringify(expectedInventory.nestedVerbs)) differences.push(`nested verb inventory changed: ${actualVerbs.join(", ")}`);
     if (differences.length > 0) fail(differences.join("; "));
 }
 
@@ -593,7 +597,7 @@ export async function main(argv = process.argv) {
     const second = await collect(arguments_.cli);
     checkCoverage(first.inventory, coverage, await documentationCapabilities(coverage, first.inventory, arguments_.coverage));
     if (arguments_.evidenceDir) await writeEvidence(arguments_.evidenceDir, first, second, arguments_.coverage);
-    console.log(`P7_CLI_INVENTORY_PASS roots=${first.inventory.rootCommands.length} nested=${first.inventory.commands.filter((command) => command.path.includes(" ")).length}`);
+    console.log(`CURRENT_CLI_INVENTORY_PASS roots=${first.inventory.rootCommands.length} nested=${first.inventory.commands.filter((command) => command.path.includes(" ")).length}`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

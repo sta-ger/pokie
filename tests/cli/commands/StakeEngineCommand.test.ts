@@ -112,6 +112,15 @@ describe("StakeEngineCommand", () => {
         errorSpy.mockRestore();
     });
 
+    it("removes the export SIGINT listener when descriptor preparation fails", async () => {
+        const listenerCount = process.listenerCount("SIGINT");
+        const command = new StakeEngineCommand("1.3.0", undefined, undefined, () => {
+            throw new Error("descriptor read failed");
+        });
+        await expect(command.run(["export", CONFIG_PATH])).rejects.toThrow(/descriptor read failed/);
+        expect(process.listenerCount("SIGINT")).toBe(listenerCount);
+    });
+
     it("has the expected name and description", () => {
         const command = new StakeEngineCommand("1.3.0", createStubExporter(successResult));
 

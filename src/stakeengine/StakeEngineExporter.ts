@@ -190,7 +190,10 @@ export class StakeEngineExporter<T extends string | number = string> implements 
             ownership: destinationOwnership,
             renameDirectory: this.renameDirectory,
             removeDirectory: this.removeDirectory,
-            beforeCommit: this.beforeCommit,
+            beforeCommit: () => {
+                this.beforeCommit?.();
+                assertNotCancelled(options);
+            },
             writeFilesIntoTempDir: (tempDir) => {
                 for (const builtMode of builtModes) {
                     assertNotCancelled(options);

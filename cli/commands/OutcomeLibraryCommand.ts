@@ -100,7 +100,7 @@ type BuildDescriptor = {modes: BuildDescriptorModeEntry[]};
 
 // The bundle writer derives this from each mode's first accepted outcome before it publishes a
 // bundle. `validateBuildSource` reads complete sources for its read-only preview, so it can enforce
-// the same cross-mode contract before ExportCommand promises a successful outcomes export.
+// the same cross-mode contract before BuildCommand promises a successful outcomes export.
 type BundleModeProvenance = {
     readonly modeName: string;
     readonly gameId: string;
@@ -225,7 +225,7 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
         return this.run(["generate", ...args]);
     }
 
-    // ExportCommand uses this read-only counterpart to `build`: it resolves the exact same descriptor
+    // BuildCommand uses this read-only counterpart to `build`: it resolves the exact same descriptor
     // and source files, then applies the structural checks that can run without staging an artifact.
     // Keeping it here prevents the target-oriented alias from inventing a second config format.
     public async validateBuildSource(configPath: string): Promise<void> {
@@ -1099,11 +1099,11 @@ export class OutcomeLibraryCommand implements CliCommandHandling {
 
     /**
      * Supplies the descriptor reader/writer to a caller-owned prepared operation.
-     * This is deliberately not a command dispatch surface: ExportCommand uses the
+     * This is deliberately not a command dispatch surface: BuildCommand uses the
      * returned plan and execution hooks directly, so it cannot delegate to a
      * second public CLI command after its source was prepared.
      */
-    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for BuildCommand
     public prepareDescriptorBuildOperation(configPath: string, outDir: string, signal?: AbortSignal) {
         const currentSource = () => this.buildDescriptorSource(configPath);
         const assertDestinationAvailable = () => {

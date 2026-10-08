@@ -207,14 +207,14 @@ deliberate failure behavior:
 Every one of these failure branches also guarantees the temp directory itself never lingers past the call that
 created it (removed best-effort, without ever masking whichever error is actually being thrown/returned).
 
-The target-oriented CLI alias, `pokie export <config.json> --to adapter`, deliberately has a stricter public
+The canonical CLI build, `pokie build <config.json> --target stakeAdapter`, deliberately has a stricter public
 contract: it rejects every occupied destination before this writer is invoked. Choose a different unused `--out`
-path (or remove the destination yourself after checking it); the alias never replaces an occupied destination.
+path (or remove the destination yourself after checking it); the build never replaces an occupied destination.
 
 ## CLI usage
 
 ```
-pokie export <config.json> --to adapter [--out <dir>] [--dry-run]
+pokie build <config.json> --target stakeAdapter [--out <dir>] [--dry-run]
 ```
 
 `--dry-run` validates the adapter source and resolved destination without writing anything. It reports an
@@ -232,7 +232,7 @@ incompatible source or occupied destination before a publish is attempted.
 ```
 
 `libraryPath` entries resolve relative to `<config.json>`'s own directory. Default `--out` is `<config.json>`'s
-directory plus `/stakeengine`.
+directory plus `/stakeAdapter`.
 
 A mode entry can load its library from a canonical [Outcome Library Bundle](outcome-library-bundle.md) instead
 of a plain JSON file — replace `libraryPath` with `bundleDir` (and optionally `bundleModeName`, which defaults

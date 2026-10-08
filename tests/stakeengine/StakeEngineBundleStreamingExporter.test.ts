@@ -12,6 +12,7 @@ import {
     StakeEngineBundleStreamingExporter,
     StakeEngineExportModeInput,
     StakeEngineExporter,
+    StakeEngineExportCancelledError,
     StakeEngineIndex,
     StakeEngineManifest,
     WeightedOutcomeLibrary,
@@ -126,6 +127,36 @@ describe("StakeEngineBundleStreamingExporter", () => {
     // The whole point of this class: stream a mode's outcomes directly from the bundle without ever
     // materializing a full WeightedOutcomeLibrary. A reader stub that fails the test the instant readLibrary()
     // is invoked makes this guarantee impossible to accidentally weaken without a test noticing.
+    it.each(["reading", "publishing", "commit"] as const)("cancels during %s and removes owned staging without changing a prior output", async (phase) => {
+        await new StakeEngineBundleStreamingExporter("1.3.0").exportToDirectory(bundleModes, outDir);
+        const priorFiles = new Map(fs.readdirSync(outDir).map((file) => [file, fs.readFileSync(path.join(outDir, file))]));
+        const controller = new AbortController();
+        const exporter = new StakeEngineBundleStreamingExporter("1.3.0", undefined, undefined, undefined, undefined, undefined,
+            () => {
+                if (phase === "commit") controller.abort();
+            });
+        const onProgress = jest.fn((progress: {message: string}) => {
+            if (phase === "reading" && progress.message.startsWith("Building")) controller.abort();
+            if (phase === "publishing" && progress.message.startsWith("Publishing")) controller.abort();
+        });
+        await expect(exporter.exportToDirectory(bundleModes, outDir, {signal: controller.signal, onProgress})).rejects.toThrow(StakeEngineExportCancelledError);
+        for (const [file, bytes] of priorFiles) expect(fs.readFileSync(path.join(outDir, file))).toEqual(bytes);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("cancels cooperatively while books compression is waiting for drain", async () => {
+        const controller = new AbortController();
+        const exporter = new StakeEngineBundleStreamingExporter("1.3.0", {
+            project: () => {
+                setImmediate(() => controller.abort());
+                return [{index: 0, type: "large-event", data: "x".repeat(1024 * 1024)}];
+            },
+        });
+        await expect(exporter.exportToDirectory(bundleModes, outDir, {signal: controller.signal})).rejects.toThrow(StakeEngineExportCancelledError);
+        expect(fs.existsSync(outDir)).toBe(false);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
     it("never calls readLibrary() while exporting", async () => {
         const realReader = new OutcomeLibraryBundleReader<string>();
         const readLibrary = jest.fn(() => {

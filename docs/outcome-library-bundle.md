@@ -17,8 +17,7 @@ ever has to hold a whole mode's outcomes in memory at once:
 
 - **The writer streams from an `Iterable`/`AsyncIterable` source** — one canonical-JSON line per outcome, written
   directly to disk as it arrives, hashed incrementally in the same pass. A caller with millions of outcomes can
-  hand the writer an async generator reading from a database cursor or a JSONL file on disk (see `pokie
-  export <config.json> --to outcomes`'s `outcomesPath` config below) without ever building the equivalent
+  hand the writer an async generator reading from a database cursor or a JSONL file on disk (see `pokie build <config.json> --target outcomeLibrary`'s `outcomesPath` config below) without ever building the equivalent
   `WeightedOutcomeLibrary` in memory first.
 - **The reader supports four genuinely different access patterns**, none of which require loading everything:
   - `iterateModeOutcomes` — full sequential streaming, one outcome in memory at a time.
@@ -310,7 +309,7 @@ mode reports everything it finds rather than stopping at the first kind of corru
   `reader.readLibrary`) then `computeWeightedOutcomeLibraryHash` to build an `InMemoryPreGeneratedOutcomeSource`;
   a caller that wants to avoid materializing a library entirely uses `OutcomeLibraryBundleOutcomeSource` directly
   (see above) — either one plugs straight into `PreGeneratedSpinCommandHandler`'s constructor.
-- **Stake Engine exporter** — `pokie export --to adapter`'s `config.json` mode entries gain an alternative to
+- **Stake Engine exporter** — `pokie build --target stakeAdapter`'s `config.json` mode entries gain an alternative to
   `libraryPath`:
   ```json
   {"modeName": "bonus", "cost": 100, "bundleDir": "./bundle", "bundleModeName": "bonus"}
@@ -325,7 +324,7 @@ mode reports everything it finds rather than stopping at the first kind of corru
 ## CLI usage
 
 ```
-pokie export <source> --to outcomes [--out <dir>] [--dry-run]
+pokie build <source> --target outcomeLibrary [--out <dir>] [--dry-run]
 ```
 
 `--dry-run` validates the outcome-library source and resolved destination without writing anything. It reports an
@@ -340,7 +339,7 @@ object to read it from, and `schemaVersion` is optional). Exactly one of `librar
 per mode. The bundle validator prints every issue and returns a non-zero exit code if any is `error`-severity;
 its deep mode runs the expensive full-content check.
 
-See [CLI](cli.md#pokie-export-configjson---to-outcomes---out-dir---dry-run) for full option details.
+See [CLI](cli.md#pokie-build-project) for full option details.
 
 ## Programmatic usage
 

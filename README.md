@@ -48,10 +48,12 @@ POKIE goes well beyond classic paylines:
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
   `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
   knowing about it in advance.
-- **[CLI](docs/cli.md)** — `npx pokie` opens global **POKIE Studio Home**; `npx pokie .` or `npx pokie <project-path>`
+- **[CLI](docs/cli.md)** — `npx pokie` opens global **POKIE Studio Home**; `npx pokie .` or `npx pokie <projectRoot>`
   opens a project's Studio dashboard. Create a game with `npx pokie init <directory>` or design a Blueprint with
   `npx pokie create <name>`; `npx pokie --help` lists every public
-  workflow. `npx pokie build <project.json> --target tsPackage --out <dir>` generates a working game
+  workflow. Artifacts use one canonical command: `pokie build <project> --target <artifact>`
+  (`blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, or `wasm`), including standalone
+  Outcome Library and Stake descriptors for their matching targets. `npx pokie build <project.json> --target tsPackage --out <dir>` generates a working game
   package straight from a JSON `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted,
   or build-time generated via `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
   [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing

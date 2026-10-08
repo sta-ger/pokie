@@ -54,10 +54,6 @@ export const PACKAGE_ONLY_COMMAND_INPUTS: PackageOnlyCommandInput[] = [
     // reads/loads a runnable package. ---
     {command: "edit", verb: undefined, requiresLoadablePackage: false, primaryInput: "blueprint (an existing Blueprint Project file)"},
 
-    // --- export: reads a source descriptor or Blueprint Project and writes a selected artifact; never
-    // reads a loadable package as its required input. ---
-    {command: "export", verb: undefined, requiresLoadablePackage: false, primaryInput: "source"},
-
     // --- fairness: reads a bundleDir/plain seed-and-proof files, never a package directly. ---
     {command: "fairness", verb: "seed-commit", requiresLoadablePackage: false, primaryInput: "serverSeed.txt"},
     {command: "fairness", verb: "commit", requiresLoadablePackage: false, primaryInput: "serverSeedCommitment.json + --source bundleDir"},
