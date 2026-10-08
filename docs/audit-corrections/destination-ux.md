@@ -56,38 +56,46 @@ npm run test:targeted -- tests/cli/BuildCommand.test.ts tests/cli/WasmWorkflow.i
 npm run typecheck
 ```
 
-## Independent host rerun — incomplete coverage
+## Independent host rerun — destination conflict and recovery
 
-Independent attempt on `83757c4c8968226ee342e332ec7fb5f188629fc0` at 2026-10-08T20:17Z used an
-isolated runtime root at
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-26eaf594439e99cb/p9-destination-GSVDDX`.
-The candidate was built with `npm run build-cli`, then Studio was launched from this checkout as
-`node ./dist/cli/pokie.js --no-open --port 33166` (the isolated port avoids an already-occupied default
-port; it did not use `node_modules/.bin/pokie`). Chromium drove the rendered Studio UI only.
+The candidate is `83757c4c8968226ee342e332ec7fb5f188629fc0`; the checkout used for this evidence was
+its clean evidence-only descendant `fd64d3975d9cc3a5a564743811f3339cef9f970e` (the only descendant
+change is this report). At 2026-10-08T20:21Z, a fresh profile and fixture were created beneath the assigned
+runtime harness. Studio was launched from this source checkout with
+`node ./dist/cli/pokie.js --no-open --port 34968`, not the self-dependency in `node_modules`; Chromium
+drove only the rendered UI.
 
 Bounded transcript:
 
 ```text
-LAUNCH candidate Studio at http://127.0.0.1:33166
+LAUNCH candidate Studio at http://127.0.0.1:34968
 CLICK Create game
 CLICK Build/Export
+INPUT TypeScript Game Package Output directory = occupied-fixture
+OBSERVE TypeScript Game Package: Status: Choose a different destination;
+  Destination unavailable. Choose a different destination; Build will not overwrite it.
+OBSERVE its Build control disabled and no Confirm/overwrite control
+INPUT TypeScript Game Package Output directory = recovered-output
+OBSERVE TypeScript Game Package: Status: Ready to build; Build enabled
+CLICK TypeScript Game Package Build
+OBSERVE its rendered terminal: Built to recovered-output
 ```
 
-The rendered workspace reached the candidate's real `Build/Export` route for `Starter Slot`. Its
-TypeScript Game Package card showed an enabled `Build` control and an editable `Output directory
-(optional)` field, but no rendered `Build Package` / `Build Preview` Blueprint controls. The same page
-contained target-specific `Build` cards for TypeScript Game Package, Outcome library, Stake Engine export,
-PAR sheet, and Portable WASM game. Because the assigned workflow requires the Blueprint control and the
-retry budget was exhausted before any destination activation, no occupied-destination request was sent.
+This is the real Blueprint-derived TypeScript Game Package card in the public `Build/Export` workspace.
+The occupied fixture started with only `sentinel.bin`, bytes `00ff250a`, SHA-256
+`8b3a89a2ae3f00c5ebf4ffefa94b01f8dce8502f547a90d25022772a9be61762`. After the card's rendered conflict
+preflight it still had exactly that one 4-byte file with the same checksum. The card offered its editable
+destination field and Browse recovery, not overwrite; `Confirm` was absent.
 
-The isolated occupied fixture contained `sentinel.bin` with bytes `00ff250a` before the stopped session
-(`sha256:8b3a89a2ae3f00c5ebf4ffefa94b01f8dce8502f547a90d25022772a9be61762`). It was not used by a rendered
-Build action; therefore no before/after preservation or recovery publication is claimed. No screenshots
-were retained. Both Studio and Chromium processes owned by the run were stopped. The authenticated runtime
-receipt is retained outside Git at
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-26eaf594439e99cb/p9-destination-result.json`.
-
-This is an inconclusive driver/workflow-translation observation, not evidence of an overwrite defect or
-of successful destination recovery. A subsequent verifier should bind the occupied/new-destination steps
-to the rendered TypeScript Game Package card's specific field and `Build` action, preserving its
-action-local preflight, job, and terminal states.
+The recovery activation created job `a506aca60f62431da59dcac56cc4d2fb` for target `tsPackage`, with the
+selected `recovered-output` path. Its durable record is `completed` with summary `Artifact build completed.`
+The same card rendered `Built to /home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-26eaf594439e99cb/p9-destination-oBBpf5/recovered-output.`
+The produced `dist/index.js` exists (SHA-256
+`c13283e3916ffd0747b095ed631eddc147887e1475f1bd564663686e65b896f5`). The only retained screenshot is the
+occupied-destination refusal (SHA-256 `907f7c7e4babd15a5e63e5077ce161d654f7bc1d0a4789a5f61900309702d7c1`);
+it remains in the runtime harness, not Git. The runtime receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-26eaf594439e99cb/p9-destination-result.json`
+(SHA-256 `ec79ac468637bf85d3eccb506fc13521f11ec4dbf9f82d9605a202f011656434`). Its card-local wait predicate
+timed out after the UI had already rendered the terminal success above; that harness observation is not a
+product error. Its process-state record says `gracefully-stopped`; the Studio and Chromium processes owned
+by the run were stopped.
