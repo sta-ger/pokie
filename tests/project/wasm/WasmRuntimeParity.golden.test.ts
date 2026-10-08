@@ -1,3 +1,9 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {loadPokieWasmFileRuntime} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import type {VideoSlotSessionHandling} from "../../../src/session/videoslot/VideoSlotSessionHandling.js";
+import {createProductionParityFixture, RNG_PARITY_BLUEPRINT} from "../../fixtures/wasm/createProductionParityFixture.js";
 import {GameSession} from "../../../src/session/GameSession.js";
 import type {RandomNumberGenerating} from "../../../src/session/videoslot/combinations/RandomNumberGenerating.js";
 import {SeededRandomNumberGenerator} from "../../../src/session/videoslot/combinations/SeededRandomNumberGenerator.js";
@@ -14,6 +20,38 @@ import {PORTABLE_RUNTIME_ALL_WILD_GOLDEN, PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTA
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("WASM runtime parity golden", () => {
+    it.each(["0", "wasm-parity-golden", "another-seed"].flatMap((seed) => [2, 3].map((length) => [seed, length] as const)))("matches the actual generated package on first and subsequent rounds for string seed %s and strip length %s", async (seed, length) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-production-parity-"));
+        const fixture = await createProductionParityFixture(directory, {...RNG_PARITY_BLUEPRINT, reelStrips: Array.from({length: 2}, () => Array.from({length}, (_, stop) => stop % 2 === 0 ? "A" : "B"))});
+        const runtime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost(seed));
+        try {
+            const node = fixture.game.createSession({seed}) as VideoSlotSessionHandling;
+            const wasm = runtime.createSession(seed);
+            const initial = wasm.serialize();
+            await expect(wasm.play({bet: 2})).rejects.toThrow(/unavailable/);
+            expect(wasm.serialize()).toEqual(initial);
+            const observed: {screen: readonly (readonly string[])[]; payout: number; credits: number}[] = [];
+            for (let sequence = 1; sequence <= 4; sequence++) {
+                const creditsBefore = node.getCreditsAmount();
+                node.setBet(1);
+                node.play();
+                const round = await wasm.play({bet: 1});
+                expect(round).toMatchObject({sequence, screen: node.getSymbolsCombination().toMatrix(), stake: node.getBet(), payout: node.getWinAmount(), creditsBefore, credits: node.getCreditsAmount()});
+                expect(wasm.serialize().rngState).toEqual((node as unknown as VideoSlotSession).toSessionState().rngState);
+                observed.push({screen: round.screen, payout: round.payout, credits: round.credits});
+            }
+            if (seed === "0" && length === 2) expect(observed).toEqual([
+                {screen: [["A"], ["B"]], payout: 0, credits: 999},
+                {screen: [["B"], ["B"]], payout: 1, credits: 999},
+                {screen: [["B"], ["A"]], payout: 0, credits: 998},
+                {screen: [["A"], ["A"]], payout: 2, credits: 999},
+            ]);
+        } finally {
+            runtime.dispose();
+            await fixture.release();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
     it("runs the reviewed fixture independently through the Node session runtime and canonical WASM runtime", async () => {
         const golden = PORTABLE_RUNTIME_GOLDEN;
         const node = runNodeReference(golden.seed, golden.commands);
@@ -78,7 +116,7 @@ describe("WASM runtime parity golden", () => {
         await expect(session.play()).resolves.toMatchObject({stops: [2]});
         const state = session.serialize();
         expect(state).toMatchObject({sequence: 1, draws: [expect.any(Number)]});
-        expect(() => runtime.restoreSession(state)).not.toThrow();
+        expect(() => runtime.restoreSession(state)).toThrow(/missing.*continuation/);
         runtime.dispose();
     });
 
@@ -202,9 +240,6 @@ class ProductionSeededRandomCapture implements RandomNumberGenerating {
         return this;
     }
 
-    public resetCapture(): void {
-        this.draws.splice(0);
-    }
 }
 
 function createNodeReference(seed: string, state?: PokieWasmSessionState, fixture: FeatureFixture = BASE_FIXTURE): NodeReference {
@@ -225,14 +260,9 @@ function createNodeReference(seed: string, state?: PokieWasmSessionState, fixtur
     const random = new ProductionSeededRandomCapture(seed);
     const generator = new SymbolsCombinationsGenerator(config, random);
     const session = new VideoSlotSession(config, generator, new VideoSlotWinCalculator(config), new GameSession(config));
-    // VideoSlotSession prepares an initial screen in its constructor. A canonical
-    // runtime starts at the first playable round, so rewind the genuine Node
-    // session's injected RNG before the public game/session path begins.
-    session.fromSessionState({rngState: new SeededRandomNumberGenerator(seed).toSessionState()});
-    random.resetCapture();
     if (state !== undefined) {
         session.fromSessionState({rngState: state.rngState});
-        random.draws.push(...state.draws);
+        random.draws.splice(0, random.draws.length, ...state.draws);
         session.setCreditsAmount(state.credits);
     }
     return {session, random, generator};

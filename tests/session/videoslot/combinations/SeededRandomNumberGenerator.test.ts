@@ -29,6 +29,17 @@ describe("SeededRandomNumberGenerator", () => {
         expect(nextRestored).toEqual(nextLive);
     });
 
+    test("restores numeric state zero without treating it as an absent continuation", () => {
+        const restored = new SeededRandomNumberGenerator("0").fromSessionState(0);
+        expect(restored.toSessionState()).toBe(0);
+        const numeric = new SeededRandomNumberGenerator(0);
+        expect(restored.getRandomInt(0, 0x100000000)).toBe(numeric.getRandomInt(0, 0x100000000));
+        expect(new SeededRandomNumberGenerator("0").toSessionState()).not.toBe(0);
+        for (const state of [-1, 0x100000000, NaN, 0.5]) {
+            expect(() => restored.fromSessionState(state)).toThrow(/Invalid seeded RNG state/);
+        }
+    });
+
     test("different seeds produce different sequences across a range of nearby seed values", () => {
         const drawsFrom = (seed: number): number[] => {
             const generator = new SeededRandomNumberGenerator(seed);

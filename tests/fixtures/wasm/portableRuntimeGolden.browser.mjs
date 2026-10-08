@@ -26,15 +26,15 @@ export const PORTABLE_RUNTIME_BROWSER_FIXTURE = {
         continuationCommand: {bet: 1},
         replayRound: 4,
         expected: {
-            draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178],
+            draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178, 0.14641731861047447, 0.8599770043510944],
             rounds: [
-                {sequence: 1, draw: 0.5967806649859995, stops: [1, 1], screen: [["B"], ["B"]], winMultiplier: 1, stake: 1, payout: 1, creditsBefore: 1000, credits: 1000, command: {bet: 1}},
-                {sequence: 2, draw: 0.07866769284009933, stops: [0, 0], screen: [["A"], ["A"]], winMultiplier: 2, stake: 1, payout: 2, creditsBefore: 1000, credits: 1001, command: {bet: 1}},
-                {sequence: 3, draw: 0.5574665090534836, stops: [1, 0], screen: [["B"], ["A"]], winMultiplier: 0, stake: 1, payout: 0, creditsBefore: 1001, credits: 1000, command: {bet: 1}},
+                {sequence: 1, draw: 0.07866769284009933, stops: [0, 0], screen: [["A"], ["A"]], winMultiplier: 2, stake: 1, payout: 2, creditsBefore: 1000, credits: 1001, command: {bet: 1}},
+                {sequence: 2, draw: 0.5574665090534836, stops: [1, 0], screen: [["B"], ["A"]], winMultiplier: 0, stake: 1, payout: 0, creditsBefore: 1001, credits: 1000, command: {bet: 1}},
+                {sequence: 3, draw: 0.14641731861047447, stops: [0, 1], screen: [["A"], ["B"]], winMultiplier: 0, stake: 1, payout: 0, creditsBefore: 1000, credits: 999, command: {bet: 1}},
             ],
-            state: {schemaVersion: "pokie.state.v1", seed: "wasm-parity-golden", draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178], sequence: 3, credits: 1000, rngState: 1365295755},
-            continuation: {sequence: 4, draw: 0.14641731861047447, stops: [0, 1], screen: [["A"], ["B"]], winMultiplier: 0, stake: 1, payout: 0, creditsBefore: 1000, credits: 999, command: {bet: 1}},
-            replay: {round: 4, totalBet: 4, totalWin: 3, screen: [["A"], ["B"]]},
+            state: {schemaVersion: "pokie.state.v1", seed: "wasm-parity-golden", draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178, 0.14641731861047447, 0.8599770043510944], sequence: 3, credits: 999, rngState: 733460085},
+            continuation: {sequence: 4, draw: 0.9136794544756413, stops: [1, 1], screen: [["B"], ["B"]], winMultiplier: 1, stake: 1, payout: 1, creditsBefore: 999, credits: 999, command: {bet: 1}},
+            replay: {round: 4, totalBet: 4, totalWin: 3, screen: [["B"], ["B"]]},
         },
     },
 };

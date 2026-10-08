@@ -1,4 +1,18 @@
-import {screen} from "@testing-library/react";
+import {webcrypto} from "crypto";
+import fs from "fs";
+import http from "http";
+import os from "os";
+import path from "path";
+import {TextEncoder, TextDecoder} from "util";
+import {StudioServer} from "../../../../../../cli/studio/StudioServer.js";
+import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioProjectRegistrationService} from "../../../../../../cli/studio/StudioProjectRegistrationService.js";
+import {StudioJobService} from "../../../../../../cli/studio/jobs/StudioJobService.js";
+import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
+import {createProductionParityFixture} from "../../../../../fixtures/wasm/createProductionParityFixture.js";
+import {screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -68,6 +82,83 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
 
         await user.click(screen.getByRole("button", {name: "Play"}));
         expect(await screen.findByText(/Play prepares this game/)).toBeInTheDocument();
+    });
+
+    it("renders the real built artifact's first and subsequent Node-compatible rounds over Studio HTTP", async () => {
+        // jsdom omits these browser globals; use Node's equivalent implementation.
+        const crypto = Reflect.getOwnPropertyDescriptor(globalThis, "crypto");
+        Reflect.defineProperty(globalThis, "crypto", {value: webcrypto, configurable: true});
+        const encoder = Reflect.getOwnPropertyDescriptor(globalThis, "TextEncoder");
+        const decoder = Reflect.getOwnPropertyDescriptor(globalThis, "TextDecoder");
+        Reflect.defineProperty(globalThis, "TextEncoder", {value: TextEncoder, configurable: true});
+        Reflect.defineProperty(globalThis, "TextDecoder", {value: TextDecoder, configurable: true});
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-wasm-rendered-"));
+        const fixture = await createProductionParityFixture(directory);
+        const home = new StudioHomeService("1.3.0");
+        const server = new StudioServer({
+            pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: directory,
+            homeService: home, blueprintService: new StudioBlueprintService("1.3.0", directory, home),
+            projectRegistrationService: new StudioProjectRegistrationService(),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(directory, "jobs"))),
+            initialContext: {mode: "project", projectRoot: fixture.artifact},
+        });
+        const address = await server.start();
+        const responses: {url: string; body: unknown}[] = [];
+        const fetchImpl: FetchLike = (url, init) => new Promise((resolve, reject) => {
+            const request = http.request(`http://${address.host}:${address.port}${url}`, {method: init?.method, headers: init?.headers}, (response) => {
+                const chunks: Buffer[] = [];
+                response.on("data", (chunk: Buffer) => chunks.push(chunk));
+                response.on("end", () => {
+                    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+                    responses.push({url, body});
+                    resolve({ok: (response.statusCode ?? 500) < 300, status: response.statusCode ?? 500, json: () => Promise.resolve(body)});
+                });
+            });
+            request.on("error", reject);
+            request.end(init?.body);
+        });
+        let unmount: (() => void) | undefined;
+        try {
+            const user = userEvent.setup();
+            await waitFor(async () => {
+                const context = await (await fetchImpl("/api/project/context")).json();
+                if ((context as {status: string}).status === "error") throw new Error(JSON.stringify(context));
+                expect(context).toMatchObject({status: "loaded"});
+            });
+            const rendered = renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(fixture.artifact)}/overview`]});
+            unmount = rendered.unmount;
+            await screen.findByRole("heading", {name: "rng-parity"});
+            await user.click(screen.getByRole("button", {name: "Play"}));
+            await user.click(await screen.findByRole("button", {name: "Show advanced details (seed)"}));
+            await user.type(screen.getByLabelText("Seed (optional)"), "0");
+            await user.click(screen.getByRole("button", {name: "New Play session"}));
+            await user.click(await screen.findByRole("button", {name: "Spin"}));
+            expect(await screen.findByText(/Round complete — no win/)).toBeVisible();
+            await user.click(await screen.findByText("Inspect round artifact"));
+            await user.click(await screen.findByRole("button", {name: "Show advanced details (raw JSON, debug data)"}));
+            expect(await screen.findByText((content) => content.includes('"sequence": 1') && content.includes('"rngState": 3921318019'))).toBeVisible();
+            await user.click(screen.getByRole("button", {name: "Spin"}));
+            expect(await screen.findByText(/You won 1\.00/)).toBeVisible();
+            expect(await screen.findByText((content) => content.includes('"sequence": 2') && content.includes('"rngState"'))).toBeVisible();
+            const initial = responses.find(({url}) => url === "/api/project/play/session");
+            expect(initial?.body).toMatchObject({session: {debug: {stateAfter: {sequence: 0, rngState: 258186393}}}});
+            const spins = responses.filter(({url}) => url.endsWith("/spin"));
+            expect(spins.map(({body}) => body)).toEqual([
+                expect.objectContaining({session: expect.objectContaining({screen: [["A"], ["B"]], win: 0, credits: 999})}),
+                expect.objectContaining({session: expect.objectContaining({screen: [["B"], ["B"]], win: 1, credits: 999})}),
+            ]);
+        } finally {
+            unmount?.();
+            await server.stop();
+            await fixture.release();
+            fs.rmSync(directory, {recursive: true, force: true});
+            if (crypto === undefined) Reflect.deleteProperty(globalThis, "crypto");
+            else Reflect.defineProperty(globalThis, "crypto", crypto);
+            if (encoder === undefined) Reflect.deleteProperty(globalThis, "TextEncoder");
+            else Reflect.defineProperty(globalThis, "TextEncoder", encoder);
+            if (decoder === undefined) Reflect.deleteProperty(globalThis, "TextDecoder");
+            else Reflect.defineProperty(globalThis, "TextDecoder", decoder);
+        }
     });
 
     it.each([

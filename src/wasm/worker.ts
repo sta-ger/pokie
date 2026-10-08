@@ -1,5 +1,5 @@
 import {instantiatePokieWasm, SeededPokieWasmHost} from "./PokieWasmRuntime.js";
-import type {PokieWasmRuntime, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
+import type {PokieWasmHostState, PokieWasmRuntime, PokieWasmSessionState} from "./PokieWasmRuntimeApi.js";
 import type {PokieWasmComponentManifest} from "../project/wasm/PokieWasmComponentManifest.js";
 
 export type PokieWasmWorkerRequest =
@@ -27,18 +27,64 @@ export class PokieWasmWorkerProtocol {
                 const portableBytes = new Uint8Array(request.bytes.byteLength);
                 portableBytes.set(request.bytes);
                 const seededHost = request.seed === undefined ? undefined : new SeededPokieWasmHost(request.seed);
+                let cursor = 0;
+                const tape = JSON.stringify(draws);
                 const runtime = await instantiatePokieWasm(portableBytes, request.manifest, {nextRandom: () => {
-                    const draw = draws.shift();
+                    const draw = draws[cursor];
                     if (draw === undefined) throw new Error("The WASM worker received no host-provided random draw.");
                     if (seededHost !== undefined && seededHost.nextRandom() !== draw) {
                         throw new Error("The WASM worker received draws that do not match its explicit seeded host stream.");
                     }
+                    cursor++;
                     return draw;
                 },
-                ...(seededHost === undefined ? {} : {
-                    serializeState: () => seededHost.serializeState(),
-                    restoreState: (state) => seededHost.restoreState(state),
-                })});
+                ...(seededHost === undefined ? {
+                    resetInitialState: () => {
+                        cursor = 0;
+                    },
+                } : {
+                    resetSeed: (seed: string) => {
+                        if (seed !== request.seed) throw new Error("The WASM worker seed does not match its supplied draw stream.");
+                        seededHost.resetSeed(seed);
+                        cursor = 0;
+                    },
+                }),
+                serializeState: () => ({cursor, tape, seed: request.seed ?? null, rng: seededHost?.serializeState() ?? null}),
+                restoreState: (state: PokieWasmHostState) => {
+                    // Old seeded Workers serialized only the numeric verifier.
+                    // Locate its authoritative position on this complete tape;
+                    // never use the receiving Worker's current cursor.
+                    if (typeof state === "number" && seededHost !== undefined) {
+                        const verifier = new SeededPokieWasmHost(request.seed!);
+                        let position = 0;
+                        while (verifier.serializeState() !== state && position < draws.length) {
+                            if (verifier.nextRandom() !== draws[position]) throw new Error("The WASM worker received draws that do not match its explicit seeded host stream.");
+                            position++;
+                        }
+                        if (verifier.serializeState() !== state) throw new Error("Invalid or incompatible WASM worker seeded continuation.");
+                        seededHost.restoreState(state);
+                        cursor = position;
+                        return;
+                    }
+                    if (state === null || typeof state !== "object" || Array.isArray(state) || !("cursor" in state) ||
+                        typeof state.cursor !== "number" || !Number.isSafeInteger(state.cursor) || state.cursor < 0 || state.cursor > draws.length ||
+                        state.seed !== (request.seed ?? null) || state.tape !== tape) {
+                        throw new Error("Invalid or incompatible WASM worker draw continuation.");
+                    }
+                    if (seededHost !== undefined) {
+                        // Verify both halves before changing either position. A
+                        // fresh worker must receive the same complete draw tape.
+                        const verifier = new SeededPokieWasmHost(request.seed!);
+                        for (let index = 0; index < state.cursor; index++) {
+                            if (verifier.nextRandom() !== draws[index]) throw new Error("The WASM worker received draws that do not match its explicit seeded host stream.");
+                        }
+                        if (verifier.serializeState() !== state.rng) throw new Error("Invalid WASM worker seeded continuation.");
+                        seededHost.restoreState(state.rng);
+                    } else if (state.rng !== null) {
+                        throw new Error("Invalid WASM worker unseeded continuation.");
+                    }
+                    cursor = state.cursor;
+                }});
                 let session: ReturnType<PokieWasmRuntime["createSession"]>;
                 try {
                     session = runtime.createSession(request.seed ?? "worker");

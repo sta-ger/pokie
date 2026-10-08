@@ -1,3 +1,4 @@
+import {VideoSlotSessionSerializer} from "../../../src/net/videoslot/VideoSlotSessionSerializer.js";
 import {loadPokieGame} from "../../../src/gamepackage/loadPokieGame.js";
 import {captureInitialPokieSessionState} from "../../../src/server/session/captureInitialPokieSessionState.js";
 import {FileSessionRepository} from "../../../src/server/session/FileSessionRepository.js";
@@ -36,6 +37,24 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         handler.primeSession(sessionId, session, (await repository.loadVersioned(sessionId))?.version);
         return handler;
     }
+
+    it("reconstructs the constructor continuation before the first spin without exposing RNG in player payloads", async () => {
+        const game = await loadPokieGame(fixtureRoot);
+        const serializer = new VideoSlotSessionSerializer();
+        const session = game.createSession({seed: "save-restore-continuation"});
+        const initial = captureInitialPokieSessionState({seed: "save-restore-continuation"}, session, serializer);
+        expect(initial.featureState).toMatchObject({rngState: expect.any(Number)});
+        expect(JSON.stringify(initial.initialPayload)).not.toContain("rngState");
+        const repository = new FileSessionRepository(directory);
+        await repository.save("initial", initial);
+        const wallet = new InMemoryWallet();
+        await wallet.setBalance("initial", 1000);
+        const reconstructed = new SpinCommandHandler(game, new FileSessionRepository(directory), wallet);
+        const result = await reconstructed.handle("initial");
+        session.setBet(1);
+        session.play();
+        expect(result).toMatchObject({status: "played", state: {screen: (session as unknown as {getSymbolsCombination(): {toMatrix(): string[][]}}).getSymbolsCombination().toMatrix(), win: session.getWinAmount(), featureState: (session as unknown as {toSessionState(): unknown}).toSessionState()}});
+    });
 
     it("has the same deterministic next round after save, destruction, restore, and continuation", async () => {
         const game = await loadPokieGame(fixtureRoot);

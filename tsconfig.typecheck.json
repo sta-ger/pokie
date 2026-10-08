@@ -1,5 +1,12 @@
 {
     "extends": "./tsconfig.prod.json",
+    "compilerOptions": {
+        "paths": {
+            "pokie": ["./src/index.ts"],
+            "pokie/browser": ["./src/browser.ts"],
+            "pokie/wasm": ["./src/wasm/browser.ts"]
+        }
+    },
     "include": ["src", "tests", "cli"],
     "exclude": ["cli/studio-client", "tests/cli/studio-client"]
 }
