@@ -58,7 +58,7 @@ function fakeWasmRuntime(play: PokieWasmRuntimeSession["play"] = () => Promise.r
 })): {runtime: PokieWasmRuntime; session: PokieWasmRuntimeSession; dispose: jest.Mock; disposeSession: jest.Mock} {
     const dispose = jest.fn();
     const disposeSession = jest.fn();
-    const session: PokieWasmRuntimeSession = {play, serialize: () => ({schemaVersion: "pokie.state.v1", seed: "test", draws: [], sequence: 0, credits: 1000}), dispose: disposeSession};
+    const session: PokieWasmRuntimeSession = {play, serialize: () => ({schemaVersion: "pokie.state.v2", seed: "test", drawCount: 0, sequence: 0, credits: 1000}), dispose: disposeSession, setTraceCollector: jest.fn()};
     const runtime = {
         manifest: {component: {id: "wasm-slot", version: "1.0.0"}, capabilities: ["runtime.play", "runtime.serialize", "runtime.replay", "artifact.inspect"], artifact: {sha256: "integrity"}},
         createSession: () => session,

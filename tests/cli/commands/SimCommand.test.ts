@@ -1060,6 +1060,27 @@ describe("SimCommand (integration, real game with an explicit custom category)",
 describe("SimCommand runtime package materialization boundary", () => {
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
+    it("runs ordinary collector-free 10000-round WASM simulation with aggregate-only JSON output", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-compact-sim-"));
+        const artifact = path.join(directory, "game.wasm");
+        const output = path.join(directory, "report.json");
+        const fixture = createCanonicalWasmFixture();
+        fs.writeFileSync(artifact, fixture.bytes);
+        fs.writeFileSync(`${artifact}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await new SimCommand().run([artifact, "--rounds", "10000", "--seed", "compact-measurement", "--format", "json", "--out", output]);
+            const report = JSON.parse(fs.readFileSync(output, "utf8"));
+            expect(report).toMatchObject({rounds: 10000, workers: 1, totalBet: 10000, totalWin: 7425});
+            expect(JSON.parse(log.mock.calls[0][0])).toEqual(report);
+            expect(Buffer.byteLength(JSON.stringify(report))).toBeLessThan(5000);
+            expect(JSON.stringify(report)).not.toMatch(/"draws"|"roundResults"|"trace"/);
+        } finally {
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("simulates a byte-bound canonical WASM artifact without package materialization", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-sim-canonical-wasm-"));
         const wasmPath = path.join(workDir, "component.wasm");

@@ -77,9 +77,11 @@ describe("benchmark: portable WASM runtime", () => {
         const browser = await measureBenchmarkAsync(runRealBrowserWorkerBenchmark);
 
         expect(warm.result.sequence).toBe(benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds);
-        expect(warm.result.draws).toEqual(seededDraws(benchmarkConfiguration.fixtureSeed, warm.result.draws.length));
+        const reference = new SeededPokieWasmHost(benchmarkConfiguration.fixtureSeed);
+        for (let index = 0; index < warm.result.drawCount; index++) reference.nextRandom();
+        expect(warm.result.rngState).toEqual(reference.serializeState());
         expect(replay.result.rounds).toHaveLength(1);
-        expect(replay.result.rounds[0]?.draw).toBe(seededDraws(benchmarkConfiguration.fixtureSeed, warm.result.draws.length + 1).at(-1));
+        expect(replay.result.rounds[0]?.draw).toBe(seededDraws(benchmarkConfiguration.fixtureSeed, warm.result.drawCount + 1).at(-1));
         expect(browser.result.status).toBe("PASS");
         expect(browser.result.fixtureId).toBe(benchmarkConfiguration.fixtureId);
         expect(browser.result.fixtureSeed).toBe(benchmarkConfiguration.fixtureSeed);

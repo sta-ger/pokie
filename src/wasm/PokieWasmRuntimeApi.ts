@@ -5,22 +5,88 @@ export const POKIE_WASM_RUNTIME_VERSION = "1.3.0";
 /** The same initial session ledger used by an ordinary POKIE game session. */
 export const POKIE_WASM_DEFAULT_CREDITS = 1000;
 
-/** Browser-safe, JSON-only public contract for a canonical POKIE component. */
+/** Runtime-owned continuation contains no historical evidence. Artifact ABI remains v1. */
 export type PokieWasmSessionState = {
-    readonly schemaVersion: "pokie.state.v1";
+    readonly schemaVersion: "pokie.state.v2";
     readonly seed: string;
-    /** Every host draw consumed by this session, including seeded initial-screen draws. */
-    readonly draws: readonly number[];
+    /** Total consumed draws, including unpaid seeded initialization. */
+    readonly drawCount: number;
     readonly sequence: number;
-    /** Remaining session ledger after the last completed round. */
     readonly credits: number;
-    /** JSON-safe host RNG continuation, when the host supports restoration. */
     readonly rngState?: PokieWasmHostState;
 };
-/** 1.1 establishes Node-compatible seeded initialization and session-owned continuation.
- * The canonical module ABI and integrity-bound state identifiers remain v1.
+/** v1 draws always means complete consumed history; importing omits that evidence. */
+export type PokieWasmLegacySessionState = {
+    readonly schemaVersion: "pokie.state.v1";
+    readonly seed: string;
+    readonly draws: readonly number[];
+    readonly sequence: number;
+    readonly credits: number;
+    readonly rngState?: PokieWasmHostState;
+};
+export type PokieWasmRestorableState = PokieWasmSessionState | PokieWasmLegacySessionState;
+export const POKIE_WASM_RUNTIME_API_VERSION = "1.2.0";
+
+export type PokieWasmTraceEntry = {
+    readonly kind: "initialization" | "round" | "replay";
+    readonly sequence: number;
+    readonly draws: readonly number[];
+};
+export interface PokieWasmTraceCollecting {
+    readonly capacity: number;
+    readonly dropped: number;
+    readonly status: "open" | "completed" | "disposed";
+    readonly entries: readonly PokieWasmTraceEntry[];
+    record(entry: PokieWasmTraceEntry): void;
+    complete(): void;
+    dispose(): void;
+}
+/** Finite drop-newest evidence, detached on read. No callbacks, queues or sink failures.
+ * One collector belongs to one session/replay. Attachment never backfills history.
  */
-export const POKIE_WASM_RUNTIME_API_VERSION = "1.1.0";
+export class BoundedPokieWasmTraceCollector implements PokieWasmTraceCollecting {
+    public readonly capacity: number;
+    private buffer: PokieWasmTraceEntry[] = [];
+    private droppedCount = 0;
+    private lifecycle: "open" | "completed" | "disposed" = "open";
+
+    public constructor(capacity: number) {
+        if (!Number.isSafeInteger(capacity) || capacity < 1) throw new Error("WASM trace capacity must be a positive safe integer.");
+        this.capacity = capacity;
+        Reflect.defineProperty(this, "capacity", {value: capacity, enumerable: true, writable: false, configurable: false});
+    }
+    public get dropped(): number {
+        return this.droppedCount;
+    }
+    public get status(): "open" | "completed" | "disposed" {
+        return this.lifecycle;
+    }
+    public get entries(): readonly PokieWasmTraceEntry[] {
+        return this.buffer.map(entry => ({...entry, draws: [...entry.draws]}));
+    }
+    public record(entry: PokieWasmTraceEntry): void {
+        if (this.lifecycle !== "open") return;
+        if (this.buffer.length === this.capacity) {
+            this.droppedCount++;
+            return;
+        }
+        this.buffer.push({...entry, draws: [...entry.draws]});
+    }
+    public complete(): void {
+        if (this.lifecycle === "open") this.lifecycle = "completed";
+    }
+    public dispose(): void {
+        this.buffer = [];
+        this.lifecycle = "disposed";
+    }
+}
+export type PokieWasmTraceOptions = {readonly trace?: BoundedPokieWasmTraceCollector};
+export type PokieWasmRuntimeDiagnostics = {
+    readonly generatedDraws: number;
+    readonly hostRestorations: number;
+    readonly hostPayloadBytes: number;
+    readonly snapshotPayloadBytes: number;
+};
 export type PokieWasmHostState = string | number | boolean | null | readonly PokieWasmHostState[] | {readonly [key: string]: PokieWasmHostState};
 export type PokieWasmHost = {
     readonly nextRandom: () => number;
@@ -28,7 +94,8 @@ export type PokieWasmHost = {
     readonly resetSeed?: (seed: string) => void;
     /** Restores a legacy empty initial snapshot for a host with a known origin. */
     readonly resetInitialState?: () => void;
-    /** Optional JSON-safe continuation required to restore this stream in a fresh runtime. */
+    /** Caller-owned continuation must itself be bounded; arbitrary JSON can retain history.
+     * Optional JSON-safe continuation required to restore this stream in a fresh runtime. */
     readonly serializeState?: () => PokieWasmHostState;
     readonly restoreState?: (state: PokieWasmHostState) => void;
 };
@@ -50,6 +117,7 @@ export type PokieWasmRound = {
 export type PokieWasmRuntimeSession = {
     play(command?: Record<string, unknown>): Promise<PokieWasmRound>;
     serialize(): PokieWasmSessionState;
+    setTraceCollector(trace?: BoundedPokieWasmTraceCollector): void;
     dispose(): void;
 };
 /**
@@ -64,8 +132,9 @@ export type PokieWasmReplayResult = {
 };
 export type PokieWasmRuntime = {
     readonly manifest: PokieWasmComponentManifest;
-    createSession(seed: string, options?: {readonly credits?: number}): PokieWasmRuntimeSession;
-    restoreSession(state: PokieWasmSessionState): PokieWasmRuntimeSession;
-    replay(state: PokieWasmSessionState, commands: readonly Record<string, unknown>[]): Promise<PokieWasmReplayResult>;
+    getDiagnostics(): PokieWasmRuntimeDiagnostics;
+    createSession(seed: string, options?: {readonly credits?: number} & PokieWasmTraceOptions): PokieWasmRuntimeSession;
+    restoreSession(state: PokieWasmRestorableState, options?: PokieWasmTraceOptions): PokieWasmRuntimeSession;
+    replay(state: PokieWasmRestorableState, commands: readonly Record<string, unknown>[], options?: PokieWasmTraceOptions): Promise<PokieWasmReplayResult>;
     dispose(): void;
 };

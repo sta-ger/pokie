@@ -119,3 +119,61 @@ WASM, regardless of what this scan finds.**
 
 No package compilation is implied by a `"wasm"` project resolving successfully, or by
 `assessWasmPackagingPreflight` reporting zero blocking API usages.
+
+## Portable continuation and explicit evidence (runtime API 1.2)
+
+Portable session snapshots now use `pokie.state.v2`: `seed`, `sequence`,
+`credits`, total `drawCount` (including unpaid initialization), and optional
+JSON-safe `rngState`. No draw/round/command history is part of this snapshot.
+The integrity-bound artifact declarations remain `pokie.state.v1`,
+`pokie.session.v1`, `pokie.play.v1` and ABI 1.0; existing canonical artifacts
+and sidecars are unchanged. The host snapshot format is independent of those
+module identifiers.
+
+`restoreSession` and `replay` accept `PokieWasmRestorableState`, including
+`PokieWasmLegacySessionState`. In v1, `draws` still means complete history.
+An import validates its values and count, preserves authoritative RNG/ledger
+values, and emits v2 with the historical evidence intentionally omitted;
+keep the input separately if it is needed as audit evidence. A legacy empty
+sequence-zero seed descriptor initializes the seeded stream. Later states
+without RNG continuation and unsupported/malformed versions are rejected.
+Custom nextRandom-only hosts retain live execution; deterministic restoration
+requires appropriate host reset/restore support. Custom `serializeState`
+implementations must themselves return bounded continuation, without growing
+history or queues. The runtime cannot guarantee bounded caller-owned JSON.
+
+`BoundedPokieWasmTraceCollector(capacity)` is exported from the root,
+`pokie/browser`, and `pokie/wasm`. Pass `{trace}` to create/restore/replay or
+call `session.setTraceCollector(trace)` later. It captures ordered RNG evidence:
+`initialization` (unpaid), `round` (settled paid play), or `replay`, plus sequence
+and per-event draws. It retains the first `capacity` events, drops subsequent
+events, and exposes `dropped`, detached `entries`, and lifecycle `status`.
+Attachment never backfills prior evidence; restoring an existing snapshot
+emits no synthetic initialization. An empty seed descriptor does initialize
+and can emit its actual initialization draws. Only the concrete collector is
+accepted; replaced callbacks/sinks are not invoked, and there is no asynchronous
+queue. Each collector belongs to one operation/session at a time. Replay
+completion closes it and transfers bounded evidence to the caller. Failed
+owned initialization/replay, replacement, session/runtime disposal, and traps
+clear owned buffers. Read/copy evidence before disposal if external retention
+is wanted; that storage belongs to the caller.
+
+Worker instantiate accepts either `seed` with no `draws` (ordinary bounded
+seeded continuation), or an explicit finite input tape. Tape input is owned
+once and remains proportional to the supplied input length; it is not a
+bounded-history claim. Compact tape continuation carries a SHA-256 fingerprint,
+length, cursor, seed and RNG word, never the full tape. Compatible receiving
+Workers need the same tape. Old numeric and tape/cursor/seed/rng continuations
+are validated on import; ordinary v2 continuation does not rescan prefixes.
+An exhausted or mismatched tape reports an error and retains the settled
+session snapshot. Worker `traceCapacity` opts into finite collection; `trace`
+reads clone-safe evidence, and replay may return a finite `trace` field.
+Restore replaces the session and ends its collector. Cancel/dispose also
+invalidate pending initialization before it can publish a replacement.
+
+CLI and Studio simulation use collector-free sessions and aggregate results,
+with the existing in-process `workers=1` boundary. Replay `rounds` are explicit
+request-sized output; CLI retains its requested command/result batch, while
+Studio uses chunk-sized batches. Neither is cumulative continuation history.
+See [P9-02 measurements](audit-corrections/compact-wasm-state.md) for bounds,
+accounting and focused regression commands.

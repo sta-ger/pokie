@@ -390,7 +390,7 @@ describe("StudioReplayExecutionService", () => {
             manifest: {component: {id: "wasm", version: "1.0.0"}, capabilities: ["runtime.replay"], artifact: {configurationHash: "config"}},
             replay: (state: {sequence: number; credits: number}, commands: readonly Record<string, unknown>[]) => ({
                 rounds: commands.map((_command, index) => ({stake: 1, payout: 1, credits: state.credits, screen: [["A"]], sequence: state.sequence + index + 1})),
-                stateAfter: {schemaVersion: "pokie.state.v1", seed: "cleanup", draws: [], sequence: state.sequence + commands.length, credits: state.credits},
+                stateAfter: {schemaVersion: "pokie.state.v2", seed: "cleanup", drawCount: 2, sequence: state.sequence + commands.length, credits: state.credits},
             }),
             dispose: disposeRuntime,
         };

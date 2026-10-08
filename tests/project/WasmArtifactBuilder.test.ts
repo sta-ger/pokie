@@ -131,7 +131,7 @@ describe("WasmArtifactBuilder", () => {
         try {
             const session = runtime.createSession("unbiased");
             await expect(session.play()).resolves.toMatchObject({stops: [2, 0, 0]});
-            expect(session.serialize().draws).toHaveLength(3);
+            expect(session.serialize().drawCount).toBe(3);
         } finally {
             runtime.dispose();
         }
