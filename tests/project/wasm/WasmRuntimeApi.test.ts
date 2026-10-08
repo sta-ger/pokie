@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
+import {readCanonicalPokieWasmModule} from "../../../src/wasm/PokieWasmCanonicalModule.js";
 import type {PokieWasmComponentManifest} from "../../../src/project/wasm/PokieWasmComponentManifest.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
@@ -37,7 +38,7 @@ function encodeUnsigned(value: number): number[] {
     } while (value !== 0);
     return bytes;
 }
-function manifestFor(moduleBytes: Uint8Array): PokieWasmComponentManifest {
+function manifestFor(moduleBytes: Uint8Array, modelBytes: Uint8Array = model): PokieWasmComponentManifest {
     return {
         schemaVersion: "1.0.0",
         component: {id: "fixture", version: "1.0.0"},
@@ -50,7 +51,7 @@ function manifestFor(moduleBytes: Uint8Array): PokieWasmComponentManifest {
             bytes: moduleBytes.byteLength,
             abiVersion: "1.0.0",
             adapter: "pokie/wasm",
-            configurationHash: `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`,
+            configurationHash: `sha256:${crypto.createHash("sha256").update(modelBytes).digest("hex")}`,
         },
     };
 }
@@ -58,6 +59,43 @@ function manifestFor(moduleBytes: Uint8Array): PokieWasmComponentManifest {
 const manifest = manifestFor(bytes);
 
 describe("Pokie WASM runtime API", () => {
+    it("rejects integrity-consistent canonical bytes above 30 total stop bits at the direct reader and runtime, while accepting exactly 30", async () => {
+        function fixture(stopWidths: readonly number[]) {
+            // Bypass the builder: each reel width and strip passes individually.
+            // The only model difference between the accepted/rejected bytes is the total budget.
+            const gameModel = {
+                schemaVersion: "pokie.game.v1", reels: 2, rows: 1,
+                reelStrips: [["A", "B"], ["A", "B"]], paylines: [[0, 0]], paytable: {A: {2: 2}}, stopWidths,
+            };
+            expect(stopWidths.every((width, index) => Number.isSafeInteger(width) && width > 0 && width <= 30 && gameModel.reelStrips[index].length <= (1 << width))).toBe(true);
+            const modelBytes = new TextEncoder().encode(JSON.stringify(gameModel));
+            const configurationHash = `sha256:${crypto.createHash("sha256").update(modelBytes).digest("hex")}`;
+            const componentDescriptor = JSON.parse(new TextDecoder().decode(descriptor));
+            componentDescriptor.artifact.configurationHash = configurationHash;
+            const descriptorBytes = new TextEncoder().encode(JSON.stringify(componentDescriptor));
+            const moduleBytes = new Uint8Array([
+                ...abiBytes,
+                0x00, ...encodeUnsigned(modelBytes.length + 14), 0x0d, ...new TextEncoder().encode("pokie.game.v1"), ...modelBytes,
+                0x00, ...encodeUnsigned(descriptorBytes.length + descriptorName.length + 1), descriptorName.length, ...descriptorName, ...descriptorBytes,
+            ]);
+            expect(WebAssembly.validate(moduleBytes)).toBe(true);
+            return {bytes: moduleBytes, manifest: manifestFor(moduleBytes, modelBytes)};
+        }
+        const exact = fixture([15, 15]);
+        expect(readCanonicalPokieWasmModule(exact.bytes).model.stopWidths).toEqual([15, 15]);
+        const runtime = await instantiatePokieWasm(exact.bytes, exact.manifest, {nextRandom: () => 0});
+        try {
+            expect(await runtime.createSession("thirty-bits").play()).toMatchObject({screen: [["A"], ["A"]], payout: 2});
+        } finally {
+            runtime.dispose();
+        }
+        const over = fixture([15, 16]);
+        expect(() => readCanonicalPokieWasmModule(over.bytes)).toThrow(/unsupported game model section/);
+        const nextRandom = jest.fn(() => 0);
+        await expect(instantiatePokieWasm(over.bytes, over.manifest, {nextRandom})).rejects.toThrow(/unsupported game model section/);
+        expect(nextRandom).not.toHaveBeenCalled();
+    });
+
     it("preserves nextRandom-only live execution and diagnoses unavailable deterministic restoration", async () => {
         const draws = [0.125, 0.875];
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => draws.shift()!});

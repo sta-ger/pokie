@@ -1,3 +1,4 @@
+import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeApi";
 import {Alert, Button, Stack, Table, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
@@ -1317,7 +1318,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     {header.type === "wasm" && (
                                         <WasmManifestInspection
                                             projectRoot={header.projectRoot}
-                                            summary="This canonical POKIE WASM artifact is integrity-bound and runnable through Studio's shared workflows."
+                                            summary={`This canonical POKIE WASM artifact is integrity-bound; Studio enables only its declared operations. ${WASM_EXECUTION_BOUNDARY}`}
                                         />
                                     )}
                                 </>

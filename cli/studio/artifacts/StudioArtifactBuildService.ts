@@ -187,6 +187,14 @@ export class StudioArtifactBuildService {
             return {status: "conflict", target, destination, destinationKind, plannedOutputs, message: plan.diagnostic!.message, plan};
         }
 
+        if (target === "wasm") {
+            try {
+                await this.registry.validate(target, project, plan);
+            } catch (error) {
+                return {status: "unsupported", target, message: error instanceof Error ? error.message : String(error), plan};
+            }
+        }
+
         const preparedOperationId = operation === undefined
             ? undefined
             : this.retainPreparedStakeOperation(projectRoot, operation);
@@ -705,7 +713,7 @@ export class StudioArtifactBuildService {
         if (project === undefined) {
             return undefined;
         }
-        return {project, destination: outDir ?? resolveDefaultDestination(project.rootPath, target)};
+        return {project, destination: path.resolve(outDir ?? resolveDefaultDestination(project.rootPath, target))};
     }
 
     private describePlanDiagnostic(plan: ArtifactConversionPlan): string {

@@ -620,8 +620,9 @@ function TargetCard({
                 <>
                     <PathInput
                         label={isFileArtifactTarget(card.artifactTarget) ? "Output file (optional)" : "Output directory (optional)"}
-                        description="Choose a destination with your host picker, or type a server-filesystem path when Studio is headless or remote. Leave blank to use the shown default."
+                        description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file path." : "Use a new or empty directory."} Existing files will not be overwritten. Choose with Browse or type a server-filesystem path. Leave blank to use the shown default.`}
                         kind={isFileArtifactTarget(card.artifactTarget) ? "file" : "directory"}
+                        pathPurpose="destination"
                         filePickerMode={isFileArtifactTarget(card.artifactTarget) ? "save" : "open"}
                         fileFilters={artifactFileFilters(card.artifactTarget)}
                         browseTitle={artifactDestinationTitle(card.artifactTarget)}
@@ -684,7 +685,7 @@ function TargetCard({
                                     )}
                                 </>
                             )}
-                            {artifactPreview.status === "conflict" && <ErrorState message="This destination already contains files. Choose a different destination; Build will not overwrite it." />}
+                            {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
                         </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
@@ -692,7 +693,7 @@ function TargetCard({
                             <ErrorState message={artifactPreview.message} />
                             {artifactPreview.status === "unsupported" && (
                                 <Text size="sm" c="dimmed" mt={4}>
-                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? "No executable conversion steps."}
+                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? (artifactPreview.plan.status === "planned" ? "The conversion route is supported; the concrete source still must pass validation." : "No executable conversion steps.")}
                                 </Text>
                             )}
                         </>

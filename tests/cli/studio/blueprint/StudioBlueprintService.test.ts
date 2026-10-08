@@ -1347,12 +1347,99 @@ describe("StudioBlueprintService", () => {
                 return;
             }
             expect(preview.destinationHasContent).toBe(true);
-            expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
+            expect(preview.createFiles).toEqual([]);
             expect(preview.updateFiles).toEqual([]);
         });
     });
 
     describe("build", () => {
+        it.each(["../escape", "nested/slot", "nested\\slot", ".", "..", "/absolute-slot"])("rejects path-shaped default %s in preview and direct build without publication, then accepts explicit output", async (id) => {
+            const originalCwd = process.cwd();
+            const cwd = path.join(tmpDir, "working");
+            fs.mkdirSync(cwd);
+            process.chdir(cwd);
+            try {
+                const service = createService();
+                const manifestId = id.startsWith("/") ? path.join(tmpDir, "absolute-slot") : id;
+                const blueprint = buildBlueprint({manifest: {id: manifestId, name: "Path-shaped ID", version: "0.1.0"}});
+                expect(service.previewBuild(blueprint)).toMatchObject({
+                    status: "ok", destinationState: "unsafe", destinationHasContent: true,
+                    destinationError: expect.stringMatching(/not a valid directory name.*plain name.*--out/), createFiles: [],
+                });
+                expect(await service.build(blueprint)).toMatchObject({
+                    status: "error", error: expect.stringMatching(/not a valid directory name.*plain name.*--out/),
+                });
+                expect(fs.readdirSync(tmpDir)).toEqual(["working"]);
+                expect(fs.readdirSync(cwd)).toEqual([]);
+                expect(await repository.list()).toEqual([]);
+                for (const output of ["new", "empty"]) {
+                    if (output === "empty") fs.mkdirSync(path.join(cwd, output));
+                    expect(service.previewBuild(blueprint, output)).toMatchObject({destinationHasContent: false});
+                    expect(await service.build(blueprint, output)).toMatchObject({status: "ok", projectRoot: path.join(cwd, output)});
+                    expect(fs.existsSync(path.join(cwd, output, "dist/index.js"))).toBe(true);
+                }
+            } finally {
+                process.chdir(originalCwd);
+            }
+        });
+
+        it("publishes an ordinary manifest-id default and refuses its repeat unchanged", async () => {
+            const originalCwd = process.cwd();
+            process.chdir(tmpDir);
+            try {
+                const service = createService();
+                const blueprint = buildBlueprint();
+                const destination = path.join(tmpDir, blueprint.manifest.id);
+                expect(service.previewBuild(blueprint)).toMatchObject({projectRoot: destination, destinationHasContent: false});
+                expect(await service.build(blueprint)).toMatchObject({status: "ok", projectRoot: destination});
+                const bytes = fs.readFileSync(path.join(destination, "dist/index.js"));
+                expect(await service.build(blueprint)).toMatchObject({status: "error"});
+                expect(fs.readFileSync(path.join(destination, "dist/index.js"))).toEqual(bytes);
+            } finally {
+                process.chdir(originalCwd);
+            }
+        });
+
+        it.each([false, true])("rolls back registration failure and retains caller-owned empty directories (existed=%s)", async (existed) => {
+            const output = path.join(tmpDir, "registration-failed");
+            if (existed) fs.mkdirSync(output);
+            const registration = jest.spyOn(homeService, "rememberRecentProject").mockRejectedValue(new Error("registration failed"));
+            try {
+                expect(await createService().build(buildBlueprint(), output)).toMatchObject({status: "error", error: expect.stringContaining("registration failed")});
+                expect(fs.existsSync(output)).toBe(existed);
+                if (existed) expect(fs.readdirSync(output)).toEqual([]);
+                expect(await repository.list()).toEqual([]);
+            } finally {
+                registration.mockRestore();
+            }
+        });
+
+        it("keeps unrelated user content and reports rollback cleanup failure", async () => {
+            const output = path.join(tmpDir, "cleanup-failed");
+            const registration = jest.spyOn(homeService, "rememberRecentProject").mockImplementation(() => {
+                fs.writeFileSync(path.join(output, "sentinel"), "keep");
+                return Promise.reject(new Error("registration failed"));
+            });
+            try {
+                const result = await createService().build(buildBlueprint(), output);
+                expect(result).toMatchObject({status: "error", error: expect.stringMatching(/cleanup|rollback|ENOTEMPTY/i)});
+                expect(fs.readFileSync(path.join(output, "sentinel"), "utf8")).toBe("keep");
+                expect(fs.readdirSync(output)).toEqual(["sentinel"]);
+            } finally {
+                registration.mockRestore();
+            }
+        });
+
+        it("refuses cancellation before publication and leaves an empty destination intact", async () => {
+            const output = path.join(tmpDir, "cancelled");
+            fs.mkdirSync(output);
+            const controller = new AbortController();
+            controller.abort();
+            expect(await createService().build(buildBlueprint(), output, undefined, controller.signal)).toMatchObject({status: "error", error: expect.stringMatching(/cancelled/i)});
+            expect(fs.readdirSync(output)).toEqual([]);
+            expect(await repository.list()).toEqual([]);
+        });
+
         it("generates the package via the real GamePackageGenerator and records it as a recent project", async () => {
             const service = createService();
             const outDir = path.join(tmpDir, "out");

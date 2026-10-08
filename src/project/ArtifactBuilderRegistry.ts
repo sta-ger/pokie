@@ -38,6 +38,7 @@ import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneratio
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {assertArtifactBuildNotCancelled, ensureArtifactDestinationParent, type ArtifactBuildOptions} from "./ArtifactBuildOptions.js";
 import {ArtifactConversionPlanner, computeArtifactInputBindingHash, computeProjectInputBindingHash, describeArtifactConversionPlanDiagnostic, resolveArtifactIdentity, type ArtifactConfigurationProvenance, type ArtifactConversionPlan, type ArtifactConversionPlanningOptions, type ArtifactIdentity} from "./ArtifactConversionPlanner.js";
+import {WASM_PRODUCT_CONTRACT} from "./WasmProductContract.js";
 import {
     ADVERTISED_ARTIFACT_BUILD_TARGETS,
     BUILD_PRODUCT_MATRIX_SOURCE_TYPES,
@@ -99,6 +100,7 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
     ],
     wasm: [
+        WASM_PRODUCT_CONTRACT.executionBoundary,
         "Builds a portable, integrity-bound POKIE WASM component from a Game Blueprint (or a PAR workbook through its model-preserving Blueprint import). It never compiles an arbitrary Node package into WASM.",
     ],
 };
@@ -390,6 +392,9 @@ export class ArtifactBuilderRegistry {
 
         try {
             assertPreparedArtifactDestinationAvailable(sourcePath, destinationPath, builder.destinationKind);
+            if (target === "wasm") {
+                assertPreparedArtifactDestinationAvailable(sourcePath, wasmComponentManifestSidecarPath(destinationPath), "file");
+            }
             return {available: true};
         } catch (error) {
             if (error instanceof ArtifactBuildConflictError) {
@@ -1041,7 +1046,10 @@ export class ArtifactBuilderRegistry {
         // generation lifecycle has always published there. Keep every other
         // descendant blocked (including aliases), while retaining normal
         // occupied-destination checks for this one canonical managed output.
-        const destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source, options));
+        let destination = this.checkDestination(target, options.destinationPath, this.destinationSafetySource(plan, source, options));
+        if (destination.available && target === "wasm" && source.type === "parWorkbook" && fs.existsSync(`${options.destinationPath}.pokie`)) {
+            destination = {available: false, message: `WASM conversion evidence companion "${options.destinationPath}.pokie" already exists. Choose a new output path.`};
+        }
         // A Studio mode update atomically replaces the complete directory, but only after its
         // service has reopened every retained mode.  Admit that one precise case here so the
         // planner does not mistake a verified managed bundle for arbitrary non-empty output.

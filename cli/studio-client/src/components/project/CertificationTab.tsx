@@ -478,6 +478,7 @@ export function CertificationTab({projectRoot, recoveryRequest}: {projectRoot?: 
                 <PathInput
                     label="Output directory"
                     kind="directory"
+                    pathPurpose="destination"
                     browseTitle="Browse for a certification output directory"
                     browseId="certification-out-dir"
                     relevantDirectory={projectRoot}

@@ -169,7 +169,7 @@ describe("describeArtifactBuildTargetCards", () => {
             artifactTarget: "wasm",
             label: "Portable WASM game",
             supported: true,
-            purpose: "Build a portable POKIE WASM game from this project.",
+            purpose: expect.stringContaining("separate JavaScript evaluateWinMultiplier"),
             destination: "Choose where to save the WASM game, or use the default destination.",
             technicalDestination: "A game.wasm module with an integrity-bound POKIE manifest sidecar.",
         });
@@ -227,5 +227,20 @@ describe("describeArtifactBuildTargetCards", () => {
         expect(stakeCard?.writePublishBehavior).toMatch(/preview reports the resolved destination/);
         expect(remoteCard?.destination).not.toMatch(/runtime adapter/);
         expect(remoteCard?.technicalDestination).toMatch(/runtime adapter/);
+    });
+});
+
+
+describe("WASM Build/Export product boundary", () => {
+    it("shows model limits even when the structural route is supported", () => {
+        const plan = planned("wasm");
+        const cards = describeArtifactBuildTargetCards([{target: "wasm", supported: true, state: "supported", unsupportedNotes: ["Model acceptance is checked before publication."], plan}]);
+        const wasm = cards.find((card) => card.artifactTarget === "wasm");
+        expect(wasm?.purpose).toContain("separate JavaScript evaluateWinMultiplier");
+        expect(wasm?.purpose).toContain("30 total stop bits across all reels");
+        expect(wasm?.purpose).toContain("Rejects ways, clusters, mechanics.freeGames, and nonempty betModes");
+        expect(wasm?.purpose).toContain("Arbitrary TypeScript/Node packages are not converted");
+        expect(wasm?.limits).toEqual(["Model acceptance is checked before publication."]);
+        expect(wasm?.writePublishBehavior).toContain("even zero-byte files");
     });
 });

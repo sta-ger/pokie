@@ -19,6 +19,24 @@ not define a second product route.
 and explicit package portability advisory. A legacy compatible sidecar remains readable for migration but is
 not runnable until rebuilt as a canonical artifact.
 
+## Current execution and mechanics
+
+Current WASM execution is **hybrid**: the module produces packed reel stops using host randomness;
+[`PokieWasmRuntime.ts`](../src/wasm/PokieWasmRuntime.ts) calculates wins in a separate JavaScript
+`evaluateWinMultiplier` implementation. The supported subset is left-to-right line wins on materialized strips,
+wild substitution, scatter payouts counted over the visible screen, and `availableBets` stake selection
+(defaulting to its first entry, or 1 when absent). All-wild lines without a regular symbol do not pay through
+that evaluator. Ways, clusters, `mechanics.freeGames`, and nonempty `betModes` are rejected before publication.
+ABI 1.0 permits **30 total stop bits across all reels**, summing `max(1, ceil(log2(strip.length)))` per reel;
+this is not 30 bits per reel. Shorten strips or reduce reels to fit, or build a TypeScript package.
+
+Blueprint remains canonical; PAR reaches WASM through model-preserving import. Arbitrary TypeScript/Node
+packages are not converted to WASM. An empty packaging advisory proves neither portability nor compilation
+support. A supported conversion route still requires validation of its concrete model. Golden parity tests
+cover the supported subset; they do not establish full mechanics support or one shared calculation path.
+Canonical integrity and individually declared runtime operations remain prerequisites; legacy sidecar-only
+components remain inspection-only.
+
 ## The contract — `PokieWasmComponentManifest`
 
 A WASM component built against POKIE declares itself via a sidecar JSON manifest (see "Resolution" below for

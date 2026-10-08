@@ -242,6 +242,18 @@ resolution is protected by a max-step guard for deterministic runtime safety.
 - **Math** — configure a session and run Monte Carlo simulations to balance RTP, hit frequency, and volatility
   before a game ships.
 
+POKIE's WASM target uses a hybrid execution path: the module generates packed reel stops with host randomness,
+and `PokieWasmRuntime.ts` evaluates wins separately in JavaScript. It supports line wins, wild substitution,
+scatter payouts, and `availableBets`; ways, clusters, free games, and nonempty bet modes are rejected. ABI 1.0
+allows at most 30 total stop bits across reels. Blueprint is canonical; PAR uses model-preserving import.
+Arbitrary TypeScript/Node packages are not converted, and narrow parity does not prove full mechanics or one
+calculation path. See the [shipped WASM boundary](docs/wasm-compatibility-boundary.md).
+
+Math Targeting/Optimization is agreed but not implemented; its release scope is unconfirmed. Authored YAML and
+PDF reports are absent from the reviewed formats. Overscan, partial analytics/certification/authoring/diff/
+reachability, existing v2 deferrals, and Cloud/private RGS hypotheses are distinguished in the
+[reviewed status register](docs/audit-corrections/README.md). Documenting a gap does not complete it.
+
 ## Examples
 
 See the [examples](https://github.com/sta-ger/pokie-examples) of various video slot game mechanics implemented with

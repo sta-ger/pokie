@@ -395,3 +395,6 @@ stay true. If Stake Engine's own math-sdk format ever changes to admit a single 
 the outcome data itself (rather than a per-mode value), this boundary would be worth revisiting; short of
 that, treat any future "just make Stake Engine a target" request as reopening a question that's already been
 answered here.
+
+Cloud and private RGS remain product hypotheses. Local `serve`/`dev` and this SDK are implemented primitives;
+they do not establish either product. See the [reviewed status register](audit-corrections/README.md).

@@ -97,9 +97,9 @@ type SourceDrift = {kind: "changed"} | {kind: "unavailable"; message: string};
 
 // `guided`/`initialPath`/`initialParSheetPath` are purely additive -- omitted (the removed "Advanced
 // Tools" raw editor's own usage), this component renders exactly as it always has. `guided` adds a step
-// indicator + next-step hint and tucks JSON mode/Load-by-path/Save/PAR Sheet Import-Export behind an
-// "advanced options" disclosure, since Build works directly off the in-memory blueprint and doesn't
-// strictly need any of them in the guided happy path. `initialPath`, when set, auto-loads that blueprint
+// indicator + next-step hint and tucks JSON mode/Load-by-path/Save/PAR Sheet Import-Export/package builds
+// behind an "advanced options" disclosure. Create game saves the draft and opens its workspace;
+// exporting a package works directly off the draft without requiring a saved source. `initialPath`, when set, auto-loads that blueprint
 // on mount, reusing the exact same handleLoad a manual Load click would use. `initialParSheetPath` (set
 // when Home's own Projects "Import Project" action detects a PAR sheet -- see HomePage's own doc
 // comment) opens the advanced disclosure and hands the path to ParSheetImportExportPanel, which
@@ -1017,6 +1017,15 @@ export function BlueprintEditorPage({
     } else if (validationView.status === "error") {
         validationGuidance = "Studio couldn't check this design. Review the validation error below and edit the design to check it again.";
     }
+    let buildBlockedMessage: string | undefined;
+    if (guided) {
+        buildBlockedMessage = "Studio must finish validating this design before building.";
+        if (sourceDrift !== undefined) {
+            buildBlockedMessage = "Reload or save the changed source before building.";
+        } else if (jsonDraftDirty) {
+            buildBlockedMessage = "Apply or discard the JSON edit before building.";
+        }
+    }
 
     return (
         <div>
@@ -1240,34 +1249,29 @@ export function BlueprintEditorPage({
 
             <BlueprintValidationPanel view={validationView} onValidate={handleValidate} automatic={guided} />
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} />
-            {!guided && <BlueprintBuildPanel
-                // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current
-                // build-attempt status are this panel's own local, transient state and would otherwise
-                // survive a wholesale replace, showing a stale in-flight/error status for a blueprint
-                // that's no longer current. `builtSnapshot` itself (the *persistent* last-successful-build
-                // record) deliberately lives up here instead, precisely so it survives this remount --
-                // see its own doc comment above.
-                key={`build-${editor.formGeneration}`}
-                blueprint={blueprint}
-                sourcePath={blueprintPath}
-                builtSnapshot={builtSnapshot}
-                onBuilt={handleBuilt}
-                onRestoreBuilt={handleRestoreBuilt}
-                blocked={validationView.status === "invalid"}
-            />}
-            {guided && recoveryRequest?.blueprint !== undefined && typeof recoveryRequest.destinationPath === "string" && (
+            <Collapse expanded={!guided || advancedOpened}>
+                {guided && <Text size="sm" c="dimmed" mb="sm">
+                    Build Preview checks the destination without writing. Build Package exports this design
+                    without saving it; Create game saves the design and opens its workspace.
+                </Text>}
                 <BlueprintBuildPanel
-                    key={`recovery-build-${editor.formGeneration}`}
+                    // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current
+                    // build-attempt status are this panel's own local, transient state and would otherwise
+                    // survive a wholesale replace, showing a stale in-flight/error status for a blueprint
+                    // that's no longer current. `builtSnapshot` itself (the *persistent* last-successful-build
+                    // record) deliberately lives up here instead, precisely so it survives this remount --
+                    // see its own doc comment above.
+                    key={`build-${editor.formGeneration}`}
                     blueprint={blueprint}
-                    sourcePath={typeof recoveryRequest.sourcePath === "string" ? recoveryRequest.sourcePath : blueprintPath}
-                    initialOutDir={recoveryRequest.destinationPath}
+                    sourcePath={blueprintPath}
+                    initialOutDir={recoveryRequest?.blueprint !== undefined && typeof recoveryRequest.destinationPath === "string" ? recoveryRequest.destinationPath : undefined}
                     builtSnapshot={builtSnapshot}
                     onBuilt={handleBuilt}
                     onRestoreBuilt={handleRestoreBuilt}
-                    blocked={validationView.status !== "ok"}
-                    blockedMessage="Studio is validating the reconstructed Design request before rebuilding."
+                    blocked={guided ? validationView.status !== "ok" || sourceDrift !== undefined || jsonDraftDirty : validationView.status === "invalid"}
+                    blockedMessage={buildBlockedMessage}
                 />
-            )}
+            </Collapse>
         </div>
     );
 }

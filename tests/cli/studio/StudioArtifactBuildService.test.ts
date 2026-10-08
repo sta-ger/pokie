@@ -39,6 +39,34 @@ describe("StudioArtifactBuildService", () => {
         return filePath;
     }
 
+    it("exposes the shared hybrid WASM boundary on target discovery", async () => {
+        const targets = await service.listTargets(writeBlueprintFile());
+        const target = targets.find((candidate) => candidate.target === "wasm");
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/separate JavaScript evaluateWinMultiplier/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/30 total stop bits across all reels/);
+        expect(target?.unsupportedNotes.join(" ")).toMatch(/Rejects ways, clusters, mechanics.freeGames, and nonempty betModes/);
+    });
+
+    it.each([
+        {winModel: {type: "ways"}},
+        {winModel: {type: "clusters", minClusterSize: 3}},
+        {scatters: ["B"], mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 5}}}},
+        {symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
+    ])("diagnoses unsupported WASM models before publication and permits supported retry: %j", async (model) => {
+        const source = writeBlueprintFile(buildBlueprint(model));
+        const destination = path.join(workDir, "unsupported.wasm");
+        const preview = await service.preview(source, "wasm", destination);
+        expect(preview).toMatchObject({status: "unsupported", message: expect.stringMatching(/does not implement|stop bits/)});
+        const result = await service.build(source, "wasm", destination);
+        expect(result.status).not.toBe("ok");
+        expect(fs.existsSync(destination)).toBe(false);
+        expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+        writeBlueprintFile();
+        const recovered = path.join(workDir, "supported.wasm");
+        expect(await service.preview(source, "wasm", recovered)).toMatchObject({status: "ok"});
+        expect(await service.build(source, "wasm", recovered)).toMatchObject({status: "ok", outputPath: recovered});
+    });
+
     it("waits for all staging cleanup even when another executor has already failed", async () => {
         let release!: () => void;
         const cleanup = new Promise<void>((resolve) => {

@@ -1,34 +1,64 @@
-import {BUILT_PACKAGE_FILES} from "pokie";
+import {BUILT_PACKAGE_FILES, assertPreparedArtifactDestinationAvailable, resolveGamePackageDestination} from "pokie";
 import fs from "fs";
 import path from "path";
 
-// What a build preview needs to say about *where* a build would land and what's already there —
-// computed read-only (never creates/modifies anything), mirroring the exact destination-resolution
-// rules GamePackageGenerator itself applies, so a preview's answer never disagrees with what an
-// actual build would do.
+// Advisory only: execution rechecks the same shared publication guard.
 export type BuildDestinationPreview = {
     readonly projectRoot: string;
-    // True once the destination directory exists and already has at least one entry in it -- the
-    // signal an editor should surface before building, since GamePackageGenerator only ever writes
-    // into a missing or empty directory (see its own doc comment) -- a destination with content
-    // already in it means the real build will refuse to run at all, not merge/overwrite in place.
+    // Legacy clients conservatively block any unavailable destination; state explains why.
     readonly destinationHasContent: boolean;
+    readonly destinationState: "missing" | "empty" | "occupied" | "file" | "unsafe" | "unreadable";
+    readonly destinationError?: string;
     readonly createFiles: string[];
-    // Always empty: a build only ever creates a brand-new set of files into an empty/missing
-    // directory, never updates an existing one in place -- kept as an explicit field (rather than
-    // omitted) so a preview never has to be read as silently assuming otherwise.
     readonly updateFiles: string[];
     readonly deleteFiles: string[];
 };
 
-export function previewBuildDestination(manifestId: string, cwd: string, outDir: string | undefined): BuildDestinationPreview {
-    const projectRoot = outDir !== undefined ? path.resolve(cwd, outDir) : path.join(cwd, manifestId);
-    const destinationHasContent = fs.existsSync(projectRoot) && fs.statSync(projectRoot).isDirectory() && fs.readdirSync(projectRoot).length > 0;
-
+export function previewBuildDestination(
+    manifestId: string,
+    cwd: string,
+    outDir: string | undefined,
+    sourcePath?: string,
+    protectedRoot?: string,
+): BuildDestinationPreview {
+    let projectRoot = path.resolve(cwd, outDir ?? manifestId);
+    let destinationState: BuildDestinationPreview["destinationState"] = "missing";
+    let destinationError: string | undefined;
+    try {
+        projectRoot = resolveGamePackageDestination(manifestId, cwd, outDir);
+        let stat: fs.Stats | undefined;
+        try {
+            stat = fs.statSync(projectRoot);
+        } catch (error) {
+            // existsSync hides EACCES/ENOTDIR, which must not look like a new path.
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+        if (stat !== undefined) {
+            if (!stat.isDirectory()) destinationState = "file";
+            else destinationState = fs.readdirSync(projectRoot).length > 0 ? "occupied" : "empty";
+        }
+        if (protectedRoot !== undefined) {
+            try {
+                assertPreparedArtifactDestinationAvailable(protectedRoot, projectRoot, "directory");
+            } catch (error) {
+                if (error instanceof Error && (/source itself|inside source/).test(error.message)) {
+                    throw new Error(`"${projectRoot}" resolves inside POKIE Studio's own internal directory. Choose a separate output directory.`);
+                }
+                throw error;
+            }
+        }
+        assertPreparedArtifactDestinationAvailable(sourcePath === undefined ? undefined : path.resolve(cwd, sourcePath), projectRoot, "directory");
+    } catch (error) {
+        destinationError = error instanceof Error ? error.message : String(error);
+        if ((/not a valid directory name|source itself|inside source|internal directory/).test(destinationError)) destinationState = "unsafe";
+        else if (destinationState !== "file" && destinationState !== "occupied") destinationState = "unreadable";
+    }
     return {
         projectRoot,
-        destinationHasContent,
-        createFiles: [...BUILT_PACKAGE_FILES].sort(),
+        destinationHasContent: destinationError !== undefined,
+        destinationState,
+        ...(destinationError === undefined ? {} : {destinationError}),
+        createFiles: destinationError === undefined ? [...BUILT_PACKAGE_FILES].sort() : [],
         updateFiles: [],
         deleteFiles: [],
     };

@@ -2,6 +2,12 @@
 
 # Simulation
 
+Feature analytics remain partial: aggregate/report statistics, mode/feature breakdowns, and outcome-event
+analysis exist, but do not constitute complete feature analytics. Reports support JSON, Markdown, and HTML;
+PAR workbook exchange is a separate model format. YAML authoring and PDF report output are absent from the
+reviewed capabilities. Report and Outcome Library/Stake comparisons are partial coverage for math-definition
+diff, not arbitrary mathematical model comparison. See the [status register](audit-corrections/README.md).
+
 `Simulation` drives any `GameSessionHandling` (e.g. `VideoSlotSession`) through repeated rounds and aggregates
 statistics — the tool for RTP/volatility/hit-frequency work. See
 [Modeling Slot Math with POKIE](math-modeling.md) for a full worked example.

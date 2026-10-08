@@ -35,6 +35,20 @@ Canonical WASM artifacts also support deterministic `pokie sim game.wasm --round
 
 `npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
 
+Build creates a **new artifact**: package directories must be new or empty; file targets, including zero-byte
+PAR/WASM files, must not exist. WASM also refuses occupied integrity sidecars and PAR import companions.
+Design Game and Build/Export expose editable/browsable destinations and refuse conflicts without an overwrite
+action. Previews are advisory: execution checks again, so an occupied-after-preview destination is refused
+unchanged. After a conflict, choose another destination and retry; the prior artifact and unsaved source remain.
+
+WASM supports line wins with wild substitution, visible-screen scatter payouts, and `availableBets` selection.
+It rejects ways, clusters, `mechanics.freeGames`, and nonempty `betModes`. ABI 1.0 allows **30 total stop bits
+across all reels**. Its module generates packed reel stops with host randomness; a separate JavaScript
+`evaluateWinMultiplier` in `PokieWasmRuntime.ts` calculates wins. Blueprint is canonical and PAR uses
+model-preserving import. Arbitrary TypeScript/Node packages are not converted; an empty packaging advisory is
+not proof of portability or compilation. Narrow parity is not full mechanics or one shared calculation path.
+See [WASM boundary](wasm-compatibility-boundary.md) and the [reviewed status register](audit-corrections/README.md).
+
 ## `pokie run <artifact.wasm>`
 
 Runs one deterministic round from a canonical POKIE WASM artifact using the portable host. It needs no package installation, compiler, local server, or browser-only setup:
@@ -3099,14 +3113,17 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
   the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-good state untouched
   rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
   unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without touching disk.
-  Load/Save-by-path and the raw JSON view are tucked behind a "Show advanced options" disclosure — the guided
-  flow itself never requires them. **Build** runs the exact same `tsPackage` conversion
-  [`pokie build <project> --target tsPackage`](#pokie-build-project) runs through `ArtifactBuilderRegistry` —
-  not a separate Studio-only pipeline — including the same safe-rebuild/conflict check (building into a
-  directory that already contains files a prior build didn't generate is refused with the same descriptive
-  error `pokie build` itself gives; re-building against a directory a build already succeeded against earlier
-  in the session asks for confirmation first), followed by an **Open in Studio** button on success — the bridge into the
-  Project Dashboard. A **Reel Strip Modeler** mode (alongside Default/Reel strips/Symbol weights) edits a
+  Load/Save-by-path, the raw JSON view, and package builds are tucked behind **Show advanced options (file
+  and JSON tools)**. From fresh `/home/design`, open that disclosure to reach **Build Preview**, **Build
+  Package**, and the editable/browsable **Output directory (optional)**; no prior job or saved project is
+  required. Build Preview writes nothing. Build Package exports the in-memory design through the shared
+  package generator without saving its source or clearing unsaved edits. The guided editor requires current
+  successful validation, an applied JSON draft, and no unresolved source drift before publication.
+  Packages require a **new or empty directory**; every occupied destination, including a previous successful
+  build, is refused without overwrite confirmation. Choose another output and retry. A successful build
+  retains its provenance and offers **Open in Studio** to open the package's Project Dashboard. **Create
+  game** remains the primary action to save the design and open its workspace. A **Reel Strip Modeler** mode
+  (alongside Default/Reel strips/Symbol weights) edits a
   `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
   array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
   strips mode) and **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights
@@ -3652,8 +3669,8 @@ Each step builds on the same `<packageRoot>`:
 
 ## What's next
 
-All 22 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
-`edit`/`export`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
+All 21 public top-level commands this file documents (`build`/`certification`/`client`/`create`/`dev`/`diff`/
+`edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
 the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `pokie/wasm`
@@ -3671,8 +3688,11 @@ stand up an HTTP server. The generic `StudioToolHandling` extension seam
 bespoke route on `StudioServer`, not through that seam — kept only as a documented possible future refactor, not
 a gap in coverage.
 
-Genuinely not yet covered, tracked as post-v1.3 candidates rather than gaps in this CLI: a named
-expanding/sticky-wilds session decorator (the generic `SymbolOverlayTransformer` primitive already supports
-building one), property-based/golden-snapshot testing, a docs site/playground, and any FromStan org/npm
-migration work. Performance benchmarks are covered (`npm run bench` — see
-[`docs/testing.md`](testing.md#benchmarks)), not part of this CLI's own surface.
+Property-based and golden-output testing are implemented, as recorded in the
+[historical v1.3 closeout](v1.3-closeout-report.md#below-priority-infrastructure-gaps--resolved), alongside
+[performance benchmarks](testing.md#benchmarks). The closeout explicitly defers the docs site/playground and
+true cross-store atomicity to v2. Compensation and reconciliation do not provide a cross-store transaction.
+A named expanding/sticky-wilds decorator and organization/npm migration remain future directions; this
+summary assigns no new release commitment. Math Targeting/Optimization is agreed but not implemented, with
+release scope unconfirmed. See the [reviewed status register](audit-corrections/README.md) for partial and
+not-found directions, including authoring, analytics, certification, diff, reachability, overscan, and formats.

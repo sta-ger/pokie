@@ -2130,7 +2130,14 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
-        const destinationPath = this.canonicalPathIdentity(validated.outDir);
+        // Resolve the omitted destination through the same preview as the editor.
+        // Passing undefined to the canonical identity helper loses the manifest-id default.
+        const preview = this.blueprintService.previewBuild(validated.blueprint, validated.outDir, validated.sourcePath);
+        if (preview.status !== "ok") {
+            this.sendJson(res, 200, preview);
+            return;
+        }
+        const destinationPath = this.canonicalPathIdentity(preview.projectRoot);
         const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
         const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
         const execution = await this.executeCommonOperation(
@@ -2141,7 +2148,9 @@ export class StudioServer implements StudioServerHandling {
                 // in-flight exact request is still a normal StudioBuildResult.
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Design build is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
-            ({signal}) => this.blueprintService.build(validated.blueprint, destinationPath, sourcePath, signal),
+            // Keep omitted output omitted: the manifest-id default must pass the generator's
+            // directory-name policy, even though job identity uses the resolved destination.
+            ({signal}) => this.blueprintService.build(validated.blueprint, validated.outDir === undefined ? undefined : destinationPath, sourcePath, signal),
             (result, cancelled) => {
                 if (cancelled) return {status: "cancelled", result: {summary: "Design build cancelled after its safe publication boundary.", detail: {sourcePath, destinationPath}}, recovery};
                 if (result.status === "ok") return {status: "completed", result: {

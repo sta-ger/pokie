@@ -1,3 +1,4 @@
+import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {SimCommand} from "../../cli/commands/SimCommand.js";
 import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 import {createProductionParityFixture} from "../fixtures/wasm/createProductionParityFixture.js";
@@ -34,6 +35,33 @@ describe("canonical WASM CLI workflow", () => {
     });
 
     afterEach(() => fs.rmSync(directory, {recursive: true, force: true}));
+
+    it("rejects unsupported authored mechanics and stop budgets through build, then accepts a corrected source", async () => {
+        const source = path.join(directory, "recovery.blueprint.json");
+        const destination = path.join(directory, "recovery.wasm");
+        const errors: string[] = [];
+        const error = jest.spyOn(console, "error").mockImplementation((line: string) => errors.push(line));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            for (const model of [
+                {...blueprint, winModel: {type: "ways"}},
+                {...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]},
+            ]) {
+                fs.writeFileSync(source, JSON.stringify(model));
+                const diagnostic = "winModel" in model ? /winModel.type "ways".*Next:/ : /30 total stop bits across all reels.*Next:/;
+                await expect(new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination, "--dry-run"])).rejects.toThrow(diagnostic);
+                await expect(new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination])).rejects.toThrow(diagnostic);
+                expect(fs.existsSync(destination)).toBe(false);
+                expect(fs.existsSync(`${destination}.pokie-wasm.json`)).toBe(false);
+            }
+            fs.writeFileSync(source, JSON.stringify(blueprint));
+            expect(await new BuildCommand("1.3.0").run([source, "--target", "wasm", "--out", destination])).toBe(0);
+            expect(fs.existsSync(destination)).toBe(true);
+        } finally {
+            error.mockRestore();
+            log.mockRestore();
+        }
+    });
 
     it("starts a canonical artifact from its bytes with no package-local runtime", async () => {
         const output: string[] = [];
@@ -103,6 +131,8 @@ describe("canonical WASM CLI workflow", () => {
         try {
             await expect(new InspectCommand().run([artifact])).resolves.toBe(0);
             expect(output.join("\n")).toContain("canonical ABI");
+            expect(output.join("\n")).toContain("separate JavaScript evaluateWinMultiplier");
+            expect(output.join("\n")).toContain("30 total stop bits across all reels");
             expect(output.join("\n")).toContain("compatibility    compatible");
             expect(output.join("\n")).toContain("host bindings");
             expect(output.join("\n")).toContain("capabilities");

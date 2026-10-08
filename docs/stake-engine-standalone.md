@@ -123,7 +123,7 @@ Use the exact bucket weights and total for arbitrary-precision fraction reconstr
 provides an approximation to the bounded display string. See [the rare probability correction](audit-corrections/stake-probabilities.md).
 
 Standalone weights accept positive UInt64 integers, and aggregate totals may exceed UInt64. IDs and raw
-`payoutMultiplier` values remain **nonnegative safe-integer numbers**, up to `Number.MAX_SAFE_INTEGER`, in both
+`payoutMultiplier` values remain **nonnegative safe-integer numbers**, up to `Number.MAX_SAFE_INTEGER` (**9007199254740991**), in both
 CSV and books. This correction does not provide complete UInt64 payout/ID support or widen import/export/native
 bundle schemas. Native persisted bundles require safe-integer weights and totals; native in-memory libraries
 accept finite positive numeric weights.

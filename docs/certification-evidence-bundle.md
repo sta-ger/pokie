@@ -2,6 +2,10 @@
 
 # Certification/Evidence Bundle
 
+Certification dossier coverage is **partial**. The bundle builder, validator, verifier, CLI, and Studio
+workflow are implemented engineering evidence primitives; they do not constitute a complete certification
+dossier. This status is tracked in the [reviewed register](audit-corrections/README.md).
+
 `certification/` builds a canonical, portable **engineering evidence/certification bundle** *on top of* an
 already-built [Outcome Library Bundle](outcome-library-bundle.md): a deterministic manifest carrying
 game/library provenance and exact weighted metrics, the source bundle's own deep-validation diagnostics, and one

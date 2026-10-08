@@ -9,6 +9,9 @@ import {PathBrowseModal, type PathBrowseKind} from "./PathBrowseModal";
 
 type PathInputProps = TextInputProps & {
     kind?: PathBrowseKind;
+    // Destination resolution does not require an existing target. This is only a path hint;
+    // the submitting action still checks availability, permissions and publication safety.
+    pathPurpose?: "existing" | "destination";
     browseTitle?: string;
     // Distinct from the ordinary Mantine form `onChange` this is spread alongside: Browse picks a value
     // programmatically (not by typing), which an *uncontrolled* Mantine form field (every Home form
@@ -115,6 +118,7 @@ function describePathIssue(reason: StudioFsBrowseErrorReason | "network", path: 
 // falling back never loses that precedence.
 export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
     kind = "directory",
+    pathPurpose = "existing",
     browseTitle,
     onPathSelected,
     browseId,
@@ -179,7 +183,8 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
                 if (requestId !== resolveRequestIdRef.current) {
                     return;
                 }
-                setHint(result.status === "ok" ? {status: "ok", text: result.resolvedPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
+                const resolved = result.status === "ok" || (pathPurpose === "destination" && result.reason === "absent");
+                setHint(resolved ? {status: "ok", text: result.resolvedPath, auto} : {status: "error", reason: result.reason, path: result.resolvedPath});
             })
             .catch(() => {
                 if (requestId !== resolveRequestIdRef.current) {

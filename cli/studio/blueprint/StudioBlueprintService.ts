@@ -27,6 +27,7 @@ import {
     ReelStripAnalyzer,
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
+    resolveGamePackageDestination,
     SlotGameNameGenerator,
 } from "pokie";
 import fs from "fs";
@@ -806,7 +807,7 @@ export class StudioBlueprintService {
             symbolsCount: b.symbols.length,
             blueprintHash: buildInfo.blueprintHash,
             expectedFiles: buildInfo.files ?? [],
-            ...previewBuildDestination(b.manifest.id, process.cwd(), outDir),
+            ...previewBuildDestination(b.manifest.id, process.cwd(), outDir, sourcePath, this.studioRoot),
         };
     }
 
@@ -922,14 +923,20 @@ export class StudioBlueprintService {
             return validated;
         }
 
-        if (outDir !== undefined) {
-            const resolvedOutDir = path.resolve(process.cwd(), outDir);
-            if (isPathWithin(this.studioRoot, resolvedOutDir)) {
-                return {status: "error", error: outsideStudioRootMessage(outDir)};
-            }
+        let destination: string;
+        try {
+            destination = resolveGamePackageDestination((blueprint as GameBlueprint).manifest.id, process.cwd(), outDir);
+        } catch (error) {
+            return {status: "error", error: error instanceof Error ? error.message : String(error)};
         }
-
-        const destination = path.resolve(process.cwd(), outDir ?? (blueprint as GameBlueprint).manifest.id);
+        try {
+            assertPreparedArtifactDestinationAvailable(this.studioRoot, destination, "directory");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return {status: "error", error: (/source itself|inside source/).test(message)
+                ? `"${destination}" resolves inside POKIE Studio's own internal directory. Choose a separate output directory.` : message};
+        }
+        const destinationExisted = fs.existsSync(destination);
         const source = this.blueprintSourceIdentity(blueprint, sourcePath);
         const plan = this.planner.planIdentity(source, "tsPackage", {destinationPath: destination});
         if (plan.status !== "planned") {
@@ -955,12 +962,26 @@ export class StudioBlueprintService {
                 canPublish: () => true,
                 publish: () => this.gamePackageGenerator.generate(blueprint as GameBlueprint, process.cwd(), outDir, undefined, {signal}),
                 register: (generated) => this.homeService.rememberRecentProject(generated.projectRoot, generated.manifest.name),
-                // GamePackageGenerator owns a newly-created destination only
-                // after it has returned successfully.  If registration or a
-                // cancellation fails, release that publication and never a
-                // borrowed existing directory (which destination policy has
-                // already rejected).
-                rollback: (generated) => fs.promises.rm(generated.projectRoot, {recursive: true, force: true}),
+                // Ownership starts after generation returns. Rollback releases
+                // that publication while retaining caller-owned directories.
+                rollback: async (generated) => {
+                    // Remove only published files. A borrowed empty directory stays;
+                    // unrelated content introduced after publication makes cleanup
+                    // fail observably rather than being recursively deleted.
+                    const directories = new Set<string>();
+                    for (const file of generated.createdFiles) {
+                        await fs.promises.rm(path.join(generated.projectRoot, file), {force: true});
+                        let directory = path.dirname(file);
+                        while (directory !== ".") {
+                            directories.add(directory);
+                            directory = path.dirname(directory);
+                        }
+                    }
+                    for (const directory of [...directories].sort((left, right) => right.length - left.length)) {
+                        await fs.promises.rmdir(path.join(generated.projectRoot, directory));
+                    }
+                    if (!destinationExisted) await fs.promises.rmdir(generated.projectRoot);
+                },
                 cleanup: () => undefined,
                 signal,
                 onTerminalFailure: (error) => {
@@ -978,8 +999,10 @@ export class StudioBlueprintService {
                 warnings: validated.warnings,
             };
         } catch (error) {
-            const message = terminalFailure ?? error;
-            return {status: "error", error: message instanceof Error ? message.message : String(message)};
+            const message = error instanceof Error ? error.message : String(error);
+            const cause = terminalFailure instanceof Error ? terminalFailure.message : String(terminalFailure);
+            return {status: "error", error: terminalFailure !== undefined && terminalFailure !== error
+                ? `${cause} Cleanup/rollback failed: ${message}` : message};
         }
     }
 

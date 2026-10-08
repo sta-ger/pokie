@@ -56,6 +56,34 @@ describe("WasmArtifactBuilder", () => {
         if (read.supported) expect(read.manifest.artifact?.sha256).toBe(`sha256:${crypto.createHash("sha256").update(fs.readFileSync(outputPath)).digest("hex")}`);
     });
 
+    it("accepts exactly 30 total stop bits across reels and executes through the runtime consumer", async () => {
+        const sourcePath = path.join(workDir, "thirty.blueprint.json");
+        const outputPath = path.join(workDir, "thirty.wasm");
+        fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: Array.from({length: 3}, () => Array<string>(1024).fill("A"))}));
+        await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"}, outputPath);
+        const module = readCanonicalPokieWasmModule(new Uint8Array(fs.readFileSync(outputPath)));
+        expect(module.model.stopWidths).toEqual([10, 10, 10]);
+        const runtime = await loadPokieWasmFileRuntime(outputPath, {nextRandom: () => 0.5});
+        try {
+            expect(await runtime.createSession("boundary").play()).toMatchObject({screen: [["A"], ["A"], ["A"]], payout: 2});
+        } finally {
+            runtime.dispose();
+        }
+    });
+
+    it("rejects 31 total stop bits before allocating a module or sidecar", async () => {
+        const sourcePath = path.join(workDir, "thirty-one.blueprint.json");
+        const outputPath = path.join(workDir, "thirty-one.wasm");
+        fs.writeFileSync(sourcePath, JSON.stringify({...blueprint, symbols: ["A"], paytable: {A: {3: 2}}, reelStrips: [Array<string>(1025).fill("A"), Array<string>(1024).fill("A"), Array<string>(1024).fill("A")]}));
+        const source = {type: "blueprint" as const, rootPath: sourcePath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "test"};
+        const builder = new WasmArtifactBuilder("1.3.0");
+        await expect(builder.validate(source)).rejects.toThrow(/30 total stop bits across all reels.*Next:/);
+        await expect(builder.build(source, outputPath)).rejects.toThrow(/30 total stop bits across all reels/);
+        expect(fs.existsSync(outputPath)).toBe(false);
+        expect(fs.existsSync(`${outputPath}.pokie-wasm.json`)).toBe(false);
+        expect(fs.readdirSync(workDir)).toEqual(["thirty-one.blueprint.json"]);
+    });
+
     it("rejects a swapped module during resolution", async () => {
         const sourcePath = path.join(workDir, "fixture.blueprint.json");
         const outputPath = path.join(workDir, "game.wasm");

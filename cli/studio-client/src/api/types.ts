@@ -394,6 +394,8 @@ export type StudioRevealPathView = StudioOpenFolderView;
 export type BuildDestinationPreview = {
     projectRoot: string;
     destinationHasContent: boolean;
+    destinationState?: "missing" | "empty" | "occupied" | "file" | "unsafe" | "unreadable";
+    destinationError?: string;
     createFiles: string[];
     updateFiles: string[];
     deleteFiles: string[];

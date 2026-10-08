@@ -56,6 +56,7 @@ export function BlueprintLoadSaveControls({
             <PathInput
                 label="Save to path"
                 kind="file"
+                pathPurpose="destination"
                 browseTitle="Browse for a blueprint JSON file"
                 browseId="blueprint-save-path"
                 fileFilters={[{name: "JSON files", extensions: ["json"]}]}

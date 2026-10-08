@@ -113,7 +113,7 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
     const strips = materialized.reelStrips ?? [];
     if (strips.length !== blueprint.reels || strips.some((strip) => strip === undefined || strip.length === 0)) throw new Error(`Blueprint "${blueprint.manifest.id}" cannot materialize one executable strip per reel for the canonical WASM model.`);
     const stopWidths = strips.map((strip) => Math.max(1, Math.ceil(Math.log2(strip.length))));
-    if (stopWidths.reduce((total, width) => total + width, 0) > 30) throw new Error(`Blueprint "${blueprint.manifest.id}" requires more than 30 stop bits and cannot use POKIE WASM ABI 1.0.0.`);
+    if (stopWidths.reduce((total, width) => total + width, 0) > 30) throw new Error(`Blueprint "${blueprint.manifest.id}" requires more than 30 total stop bits across all reels and cannot use POKIE WASM ABI 1.0.0. Next: shorten reel strips or reduce the reel count to fit the total budget, or build a TypeScript package.`);
     return {
         schemaVersion: "pokie.game.v1",
         reels: blueprint.reels,

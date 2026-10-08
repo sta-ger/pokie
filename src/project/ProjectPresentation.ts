@@ -73,7 +73,7 @@ const PROJECT_PRESENTATIONS: Readonly<Record<ProjectType, ProjectPresentation>> 
     },
     wasm: {
         kind: WASM_PRODUCT_CONTRACT.kind,
-        purpose: "A self-describing POKIE WASM component. Canonical components are integrity checked before POKIE uses each declared operation.",
+        purpose: `A self-describing POKIE WASM component. Canonical components are integrity checked before POKIE uses each declared operation. ${WASM_PRODUCT_CONTRACT.executionBoundary}`,
         nextActions: [],
         prerequisites: ["Legacy sidecar-only components remain inspectable but must be rebuilt as canonical POKIE WASM artifacts before they can run."],
     },
@@ -122,7 +122,7 @@ function describeWasmProjectPresentation(project: Extract<PokieProject, {type: "
     return {
         ...PROJECT_PRESENTATIONS.wasm,
         purpose: canPlay
-            ? "A portable, self-describing POKIE game artifact. Its declared portable operations are integrity checked before POKIE uses them."
+            ? `A portable, self-describing POKIE game artifact. Its declared portable operations are integrity checked before POKIE uses them. ${WASM_PRODUCT_CONTRACT.executionBoundary}`
             : "A self-describing POKIE WASM artifact with no declared portable play operation. Its metadata can be validated, but POKIE cannot start a round.",
         nextActions,
         prerequisites: canPlay

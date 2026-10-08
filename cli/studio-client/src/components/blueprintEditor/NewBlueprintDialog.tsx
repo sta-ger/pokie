@@ -174,6 +174,7 @@ export function NewBlueprintDialog({
                             <PathInput
                                 label="Save this game design"
                                 kind="file"
+                                pathPurpose="destination"
                                 browseTitle="Choose a game design file"
                                 browseId="new-blueprint-dialog-save-path"
                                 fileFilters={[{name: "Game design files", extensions: ["json"]}]}
