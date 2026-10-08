@@ -1242,6 +1242,12 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     // prepared operation before enabling the follow-on Build action; retaining
     // the pre-publication preview would make Stake re-decide from stale input.
     const [artifactPreviewRevision, setArtifactPreviewRevision] = useState(0);
+    function refreshArtifactPreviews(): void {
+        // Invalidate the visible handles in the same update as publication's
+        // terminal receipt. Build must wait for the replacement server plan.
+        setArtifactPreviews((previews) => Object.fromEntries(Object.keys(previews).map((target) => [target, {status: "loading"}])));
+        setArtifactPreviewRevision((revision) => revision + 1);
+    }
     useEffect(() => {
         let cancelled = false;
         const supportedTargets = artifactTargets.filter((entry) => entry.supported).map((entry) => entry.target);
@@ -1399,7 +1405,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                     // Re-preflight every registry-backed artifact card so the
                     // visible Stake handoff owns an operation prepared from
                     // that exact bundle and its provenance.
-                    setArtifactPreviewRevision((revision) => revision + 1);
+                    refreshArtifactPreviews();
                 } else if (job.status === "cancelled" && job.result?.status === "cancelled") {
                     setOutcomeLibraryRun({status: "cancelled", browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: observedSnapshots, result: job.result});
                     // The visible retry must bind to a fresh server preflight,
@@ -1536,6 +1542,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                             progress: runs[target]?.status === "running" ? runs[target].progress : undefined,
                         },
                     }));
+                    if (target === "outcomeLibrary") refreshArtifactPreviews();
                 } else {
                     const result = job.result;
                     setArtifactBuildRuns((runs) => ({
