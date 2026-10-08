@@ -1,7 +1,9 @@
+import {markRecognizedStakeProject, withRareStakeDirectory, writeRareStakeDirectory, expectRareMetrics, expectRelative, RARE_PROBABILITY} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    diffOutcomeSourceProjects,
     OutcomeLibraryBundleWriter,
     OutcomeSourceProjectAnalyzer,
     PokieProject,
@@ -139,5 +141,28 @@ describe("OutcomeSourceProjectAnalyzer", () => {
         };
 
         await expect(analyzer.analyze(project)).rejects.toThrow(/"blueprint" project -- outcome-source analysis only supports/);
+    });
+});
+
+it("carries rare Stake values into canonical project reports and nonzero project diff deltas", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        markRecognizedStakeProject(dir);
+        const resolver = new ProjectTargetResolver();
+        const left = (await resolver.resolve(dir))!;
+        const report = await new OutcomeSourceProjectAnalyzer().analyze(left);
+        expectRareMetrics(report.modes[0].analysis);
+        expect(report.modes[0].analysis.totalWeight).toBe("18446744073709551616");
+        const rightDir = path.join(dir, "right");
+        writeRareStakeDirectory(rightDir);
+        markRecognizedStakeProject(rightDir);
+        fs.writeFileSync(path.join(rightDir, "lookup.csv"), "0,18446744073709551615,0\n1,2,200\n");
+        const result = await diffOutcomeSourceProjects(left, (await resolver.resolve(rightDir))!);
+        expect(result.supported).toBe(true);
+        if (!result.supported) throw new Error("Expected a supported diff");
+        expect(result.diff.changed).toBe(true);
+        expectRelative(result.diff.perMode.base.hitFrequency.delta, RARE_PROBABILITY);
+        expectRelative(result.diff.perMode.base.rtp.delta, 2 * RARE_PROBABILITY);
+        expectRelative(result.diff.perMode.base.variance.delta, 4 * RARE_PROBABILITY);
+        expect(JSON.parse(JSON.stringify(result))).toEqual(result);
     });
 });

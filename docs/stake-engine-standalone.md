@@ -110,19 +110,23 @@ from a uint64 weight total that can exceed what a JS `number` represents exactly
 `StakeEngineStandaloneExactDecimal = number | string`, and the analyzer chooses between the two arms itself, never
 leaving it to the caller:
 
-- **`number`** whenever the exact value is representable without loss (small totals, and fractions whose numerator
-  and denominator both fit under `Number.MAX_SAFE_INTEGER`).
-- **canonical fixed-point decimal `string`** otherwise — a plain base-10 string (`"12345678901234567890"`,
-  `"0.1234..."` up to 40 fractional digits), never scientific notation, never rounded, never a `bigint` (JSON has
-  no `bigint`, so a value that must cross a JSON boundary — CLI `--format json`, `--out <file>` — is a string, not
-  a type that would fail to serialize).
+- **`number`** for safe integer totals/weights, or approximate binary64 fractions when numerator and denominator
+  are both safe integers. Even a small repeating fraction such as 1/3 is approximate.
+- **decimal `string`** otherwise. Integer totals and bucket weights remain exact. Fraction strings use long
+  division capped at **40 fractional digits**, truncating even terminating fractions that need more digits.
+  They never contain BigInt and can be serialized through CLI JSON stdout and persisted reports.
 
-A caller that only needs an approximate value can `Number(...)` either arm directly; a caller that needs the exact
-value must branch on `typeof` and parse the string arm as an arbitrary-precision decimal itself (POKIE deliberately
-never gives you back a `bigint` here — see above). This mirrors, at the standalone DTO layer, the same
-never-silently-lossy discipline `convertRatioToStakeUnits` uses on the export side (see
-[Stake Engine Export](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded)): a value that can't be
-trusted at `number` precision is never returned as one.
+Numeric RTP, frequencies and centered moments are binary64 approximations. Ratio conversion retains significant
+rather than a fixed number of fractional digits, preserving positive representable probabilities below 1e-18.
+Common weight scaling preserves the same ratios; it does not prove universally lossless floating-point analytics.
+Use the exact bucket weights and total for arbitrary-precision fraction reconstruction. `Number(probability)`
+provides an approximation to the bounded display string. See [the rare probability correction](audit-corrections/stake-probabilities.md).
+
+Standalone weights accept positive UInt64 integers, and aggregate totals may exceed UInt64. IDs and raw
+`payoutMultiplier` values remain **nonnegative safe-integer numbers**, up to `Number.MAX_SAFE_INTEGER`, in both
+CSV and books. This correction does not provide complete UInt64 payout/ID support or widen import/export/native
+bundle schemas. Native persisted bundles require safe-integer weights and totals; native in-memory libraries
+accept finite positive numeric weights.
 
 `hitFrequency` is computed straight off the raw integer `payoutMultiplier > 0` (always exact, no reversal
 involved). `rtp`/`variance` fall back to an unchecked `payoutMultiplier / cost / 100` for the rare outcome whose

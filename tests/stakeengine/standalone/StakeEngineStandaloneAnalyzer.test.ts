@@ -1,3 +1,4 @@
+import {rareStakeSource, expectRareMetrics, expectRelative, RARE_PROBABILITY, UINT64_MAX} from "./StakeProbabilityTestFixtures.js";
 import {StakeEngineEventClassification, StakeEngineEventClassifying, StakeEngineEvent, StakeEngineOutcomeSourceReadResult, StakeEngineStandaloneAnalyzer} from "pokie";
 
 // A small, hand-computable mode: a loss (weight 970), a plain win (weight 25, ratio 2), and a win with a
@@ -154,7 +155,7 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         // The same 970/25/5 loss/win/win distribution as handComputableReadResult, but each weight scaled by 1e16
         // so the total (1e19) sits well above Number.MAX_SAFE_INTEGER and every weight stays inside uint64. Because
         // the ratios are identical, every exact statistic must be byte-for-byte the same as the small-integer case
-        // -- proving the bigint fixed-point path never drops precision on genuine uint64-scale inputs.
+        // -- checking this particular common weight scaling preserves the numeric results.
         const analysis = new StakeEngineStandaloneAnalyzer().analyze({
             stakeDir: "/fake/stake-dir",
             issues: [],
@@ -194,9 +195,9 @@ describe("StakeEngineStandaloneAnalyzer", () => {
 
     it("produces numerically identical -- not merely close -- weighted metrics whether the weights are small integers or scaled to uint64 magnitude", () => {
         // The uint64-scale test above asserts each metric with toBeCloseTo, which would still pass if the bigint
-        // fixed-point path drifted by an ulp. This proves the stronger claim its comment makes: scaling every weight
+        // ratio conversion drifted by an ulp. This proves the stronger claim its comment makes: scaling every weight
         // by 1e16 (total 1e19, above Number.MAX_SAFE_INTEGER, every weight inside uint64) reproduces the small-integer
-        // doubles *exactly*, so there is provably zero precision loss on the uint64 path -- not just an acceptable one.
+        // doubles *exactly*, for this fixture; this does not imply universally lossless numeric moments.
         const smallInteger = handComputableReadResult();
         const [smallMode] = smallInteger.modes;
         const scaled: StakeEngineOutcomeSourceReadResult = {
@@ -343,8 +344,85 @@ describe("StakeEngineStandaloneAnalyzer", () => {
         expect(mode.payoutDistribution.every((bucket) => typeof bucket.probability === "string")).toBe(true);
         expect(mode.eventClassificationBreakdown.every((category) => typeof category.occurrenceFrequency === "string")).toBe(true);
         // Number(winWeight) / Number(totalWeight) is 0.09999999999999998 because each bigint is rounded
-        // independently. The fixed-point normalization preserves this exactly representable one-tenth result.
+        // independently. Magnitude-aware ratio conversion preserves the existing binary64 one-tenth result.
         expect(mode.rtp).toBe(0.1);
         expect(mode.hitFrequency).toBe(0.1);
     });
+});
+
+it("preserves the 2^64-total rare win and agrees with its bounded decimal distribution", () => {
+    const mode = new StakeEngineStandaloneAnalyzer().analyze(rareStakeSource()).modes[0];
+    expectRareMetrics(mode);
+    expect(mode.hitFrequency).toBe(5.421010862427522e-20);
+    expect(mode.rtp).toBe(1.0842021724855044e-19);
+    expect(mode.variance).toBe(2.168404344971009e-19);
+    expect(mode.standardDeviation).toBe(4.656612873077393e-10);
+    expect(mode.totalWeight).toBe("18446744073709551616");
+    expect(mode.payoutDistribution.map((bucket) => bucket.weight)).toEqual(["18446744073709551615", 1]);
+    expectRelative(Number(mode.payoutDistribution[1].probability), mode.hitFrequency);
+    const mean = mode.payoutDistribution.reduce((sum, bucket) => sum + Number(bucket.probability) * (bucket.ratio ?? 0), 0);
+    const variance = mode.payoutDistribution.reduce((sum, bucket) => sum + Number(bucket.probability) * ((bucket.ratio ?? 0) - mean) ** 2, 0);
+    expectRelative(mean, mode.rtp);
+    expectRelative(variance, mode.variance);
+    const feature = mode.eventClassificationBreakdown.find((entry) => entry.category === "feature")!;
+    expectRelative(Number(feature.occurrenceFrequency), RARE_PROBABILITY);
+    expectRelative(Number(feature.averageOccurrencesPerOutcome), 2 * RARE_PROBABILITY);
+    expect(JSON.parse(JSON.stringify(mode))).toEqual(mode);
+});
+
+it("keeps duplicate bucket and repeated event sums exact beyond UInt64", () => {
+    const source = rareStakeSource();
+    const outcomes = source.modes[0].outcomes;
+    const duplicated = {...source, modes: [{...source.modes[0], outcomes: [outcomes[0], {...outcomes[0], id: 2}, outcomes[1]]}]};
+    const mode = new StakeEngineStandaloneAnalyzer().analyze(duplicated).modes[0];
+    expect(mode.totalWeight).toBe((BigInt(2) * UINT64_MAX + BigInt(1)).toString());
+    expect(mode.payoutDistribution[0].weight).toBe((BigInt(2) * UINT64_MAX).toString());
+    expectRelative(mode.hitFrequency, 1 / Number(BigInt(2) * UINT64_MAX + BigInt(1)));
+});
+
+it("preserves rare losses, a rare neighboring payout's centered variance, and constant payout zero variance", () => {
+    const source = rareStakeSource();
+    const analyze = (payouts: number[]) => new StakeEngineStandaloneAnalyzer().analyze({...source, modes: [{...source.modes[0], outcomes: source.modes[0].outcomes.map((outcome, i) => ({...outcome, payoutMultiplier: payouts[i] * 100, ratio: payouts[i]}))}]}).modes[0];
+    const loss = analyze([2, 0]);
+    expectRelative(loss.zeroWinFrequency, RARE_PROBABILITY);
+    expectRelative(loss.variance, 4 * RARE_PROBABILITY);
+    const neighbor = analyze([2, 3]);
+    expectRelative(neighbor.variance, RARE_PROBABILITY);
+    expectRelative(neighbor.maxWinProbability, RARE_PROBABILITY);
+    expect(analyze([2, 2]).variance).toBe(0);
+});
+
+it("rejects an empty direct-call mode and numerical failures while allowing no modes", () => {
+    const source = rareStakeSource();
+    expect(() => new StakeEngineStandaloneAnalyzer().analyze({...source, modes: [{...source.modes[0], outcomes: []}]})).toThrow(/positive total weight/);
+    expect(new StakeEngineStandaloneAnalyzer().analyze({...source, modes: []}).modes).toEqual([]);
+    expect(() => new StakeEngineStandaloneAnalyzer().analyze({...source, modes: [{...source.modes[0], outcomes: [{...source.modes[0].outcomes[0], ratio: Infinity}]}]})).toThrow(/not finite/);
+});
+
+it.each([-1, 0.5, NaN, Infinity, -Infinity])("rejects invalid numeric weight %s", (weight) => {
+    const source = rareStakeSource();
+    expect(() => new StakeEngineStandaloneAnalyzer().analyze({...source, modes: [{...source.modes[0], outcomes: [{...source.modes[0].outcomes[0], weight}]}]})).toThrow(/weight/);
+});
+
+it.each([1, Number.MAX_SAFE_INTEGER, UINT64_MAX])("accepts weight boundary %s", (weight) => {
+    const source = rareStakeSource();
+    const mode = new StakeEngineStandaloneAnalyzer().analyze({...source, modes: [{...source.modes[0], outcomes: [{...source.modes[0].outcomes[0], weight}]}]}).modes[0];
+    expect(BigInt(mode.totalWeight)).toBe(BigInt(weight));
+    expect(mode.hitFrequency).toBe(0);
+    expect(mode.variance).toBe(0);
+});
+
+it("keeps dominant repeated-event count sums above UInt64 and caps terminating decimals at 40 places", () => {
+    const source = rareStakeSource();
+    const repeated = {...source, modes: [{...source.modes[0], outcomes: source.modes[0].outcomes.map((outcome) => ({...outcome, events: [{index: 0, type: "bonus"}, {index: 1, type: "bonus"}]}))}]};
+    const mode = new StakeEngineStandaloneAnalyzer().analyze(repeated).modes[0];
+    expect(mode.eventClassificationBreakdown).toEqual([{category: "feature", occurrenceFrequency: "1", averageOccurrencesPerOutcome: "2"}]);
+    // 2^-64 terminates after 64 decimal places; the display contract deliberately caps it at 40.
+    expect(mode.payoutDistribution[1].probability).toBe("0.0000000000000000000542101086242752217003");
+});
+
+it("retains rare wins when the winning outcome precedes the dominant loss", () => {
+    const source = rareStakeSource();
+    const reversed = {...source, modes: [{...source.modes[0], outcomes: [...source.modes[0].outcomes].reverse()}]};
+    expectRareMetrics(new StakeEngineStandaloneAnalyzer().analyze(reversed).modes[0]);
 });

@@ -1,21 +1,22 @@
+import {formatAnalysisNumber} from "../../../src/internal/formatAnalysisNumber.js";
 import {OutcomeSourceProjectDiff, OutcomeSourceProjectMetricDiff} from "pokie";
 
 function formatSigned(value: number, decimals: number): string {
-    const rounded = value.toFixed(decimals);
+    const rounded = formatAnalysisNumber(value, decimals);
     return value > 0 ? `+${rounded}` : rounded;
 }
 
 function formatPercentMetric(metric: OutcomeSourceProjectMetricDiff): string {
-    const left = (metric.left * 100).toFixed(2);
-    const right = (metric.right * 100).toFixed(2);
+    const left = formatAnalysisNumber(metric.left * 100, 2);
+    const right = formatAnalysisNumber(metric.right * 100, 2);
     const deltaPp = formatSigned(metric.delta * 100, 2);
     const percent = metric.percentDelta === null ? "n/a" : `${formatSigned(metric.percentDelta, 2)}%`;
     return `${left}% -> ${right}% (${deltaPp} pp, ${percent})`;
 }
 
 function formatMetric(metric: OutcomeSourceProjectMetricDiff, decimals: number): string {
-    const left = metric.left.toFixed(decimals);
-    const right = metric.right.toFixed(decimals);
+    const left = formatAnalysisNumber(metric.left, decimals);
+    const right = formatAnalysisNumber(metric.right, decimals);
     const delta = formatSigned(metric.delta, decimals);
     const percent = metric.percentDelta === null ? "n/a" : `${formatSigned(metric.percentDelta, 2)}%`;
     return `${left} -> ${right} (${delta}, ${percent})`;

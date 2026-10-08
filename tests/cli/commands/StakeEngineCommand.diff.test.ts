@@ -1,3 +1,4 @@
+import {withRareStakeDirectory, writeRareStakeDirectory, expectRelative, RARE_PROBABILITY} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -370,6 +371,51 @@ describe("StakeEngineCommand diff", () => {
         } finally {
             fs.rmSync(leftRoot, {recursive: true, force: true});
             fs.rmSync(rightRoot, {recursive: true, force: true});
+        }
+    });
+});
+
+it("retains tiny standalone diff metrics/deltas in summary, JSON and --out without changing materiality policy", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        const right = path.join(dir, "right");
+        writeRareStakeDirectory(right);
+        fs.writeFileSync(path.join(right, "lookup.csv"), "0,18446744073709551615,0\n1,2,200\n");
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new StakeEngineCommand("1.3.0");
+            expect(await command.run(["diff", dir, right])).toBe(0);
+            const summary = log.mock.calls.map((call) => call[0]).join("\n");
+            expect(summary).toContain("+5.421011e-20");
+            expect(summary).toContain("No material differences detected");
+            log.mockClear();
+            const out = path.join(path.dirname(dir), "diff.json");
+            expect(await command.run(["diff", dir, right, "--format", "json", "--out", out])).toBe(0);
+            const result = JSON.parse(log.mock.calls.map((call) => call[0]).join("\n"));
+            expectRelative(result.diff.perMode.base.hitFrequency.left, RARE_PROBABILITY);
+            expectRelative(result.diff.perMode.base.hitFrequency.delta, RARE_PROBABILITY);
+            expectRelative(result.diff.perMode.base.variance.delta, 4 * RARE_PROBABILITY);
+            expect(result.diff.perMode.base.warnings).toEqual([]);
+            expect(JSON.parse(fs.readFileSync(out, "utf8"))).toEqual(result);
+        } finally {
+            log.mockRestore();
+        }
+    });
+});
+
+it("keeps tiny max-ratio warning values visible while preserving the material exit code", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        writeRareStakeDirectory(dir, 100);
+        const right = path.join(dir, "right");
+        writeRareStakeDirectory(right, 200);
+        for (const source of [dir, right]) {
+            fs.writeFileSync(path.join(source, "index.json"), JSON.stringify({modes: [{name: "base", cost: 1e20, events: "books.jsonl.zst", weights: "lookup.csv"}]}));
+        }
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            expect(await new StakeEngineCommand("1.3.0").run(["diff", dir, right])).toBe(1);
+            expect(log.mock.calls.map((call) => call[0]).join("\n")).toContain("Max ratio changed by +100.00% (1.00e-20 -> 2.00e-20)");
+        } finally {
+            log.mockRestore();
         }
     });
 });

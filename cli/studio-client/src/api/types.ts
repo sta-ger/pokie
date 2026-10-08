@@ -48,13 +48,14 @@ export type PokieGameManifest = {
 export type OutcomeSourceProjectModeAnalysisView = {
     modeName: string;
     analysis: {
-        totalWeight: number;
+        totalWeight: number | string;
         rtp: number;
         hitFrequency: number;
         zeroWinFrequency: number;
         variance: number;
         standardDeviation: number;
-        maxWin: number;
+        maxWin?: number;
+        maxRatio?: number;
         maxWinProbability: number;
     };
 };

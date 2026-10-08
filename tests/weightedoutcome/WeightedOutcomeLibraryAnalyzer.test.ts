@@ -1,3 +1,4 @@
+import {expectRelative} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryBuildError, buildWeightedOutcomeLibrary} from "pokie";
 import {artifactWithTotalWin} from "./WeightedOutcomeTestFixtures.js";
 
@@ -169,4 +170,18 @@ describe("WeightedOutcomeLibraryAnalyzer", () => {
             (analysis as {rtp: number}).rtp = 999;
         }).toThrow(TypeError);
     });
+});
+
+it("keeps rare positive native numeric weights below 1e-18 without importing Stake's UInt64 contract", () => {
+    const library = buildWeightedOutcomeLibrary({libraryId: "rare", outcomes: [
+        {id: "loss", weight: 1e20, artifact: artifactWithTotalWin("loss", 0)},
+        {id: "win", weight: 1, artifact: artifactWithTotalWin("win", 2)},
+    ]});
+    const result = new WeightedOutcomeLibraryAnalyzer().analyze(library);
+    expectRelative(result.hitFrequency, 1e-20);
+    expectRelative(result.rtp, 2e-20);
+    expectRelative(result.maxWinProbability, 1e-20);
+    expectRelative(result.variance, 4e-20);
+    expectRelative(result.standardDeviation ** 2, result.variance);
+    expectRelative(result.payoutDistribution[1].probability, result.hitFrequency);
 });

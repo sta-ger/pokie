@@ -1,3 +1,4 @@
+import {markRecognizedStakeProject, withRareStakeDirectory, writeRareStakeDirectory, expectRelative, RARE_PROBABILITY} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -469,5 +470,39 @@ describe("OutcomeSourceCommand (integration, real outcome-library bundle)", () =
         expect(printed).toContain('Mode "base":');
 
         logSpy.mockRestore();
+    });
+});
+
+it("shows rare Stake inspect metrics and tiny diff deltas through the real canonical commands", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        markRecognizedStakeProject(dir);
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new OutcomeSourceCommand();
+            expect(await command.run(["inspect", dir])).toBe(0);
+            expect(log.mock.calls.map((call) => call[0]).join("\n")).toContain("rtp 1.08e-17%, hit frequency 5.42e-18%, standard deviation 4.6566e-10");
+            const right = path.join(dir, "right");
+            writeRareStakeDirectory(right);
+            markRecognizedStakeProject(right);
+            fs.writeFileSync(path.join(right, "lookup.csv"), "0,18446744073709551615,0\n1,2,200\n");
+            log.mockClear();
+            expect(await command.run(["diff", dir, right])).toBe(0);
+            const summary = log.mock.calls.map((call) => call[0]).join("\n");
+            expect(summary).toContain("+5.42e-18 pp");
+            expect(summary).toContain("+2.168404e-19");
+            expect(summary).not.toContain("No changes detected");
+            log.mockClear();
+            expect(await command.run(["diff", dir, right, "--format", "json"])).toBe(0);
+            const result = JSON.parse(log.mock.calls.map((call) => call[0]).join("\n"));
+            expect(result.changed).toBe(true);
+            expectRelative(result.perMode.base.hitFrequency.delta, RARE_PROBABILITY);
+            log.mockClear();
+            expect(await command.run(["diff", right, dir])).toBe(0);
+            const reverse = log.mock.calls.map((call) => call[0]).join("\n");
+            expect(reverse).toContain("-5.42e-18 pp");
+            expect(reverse).toContain("-2.168404e-19");
+        } finally {
+            log.mockRestore();
+        }
     });
 });

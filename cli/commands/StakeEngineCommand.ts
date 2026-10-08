@@ -1,3 +1,4 @@
+import {formatAnalysisNumber} from "../../src/internal/formatAnalysisNumber.js";
 import {Command} from "commander";
 import fs from "fs";
 import path from "path";
@@ -848,7 +849,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     }
 
     private formatSigned(value: number, decimals: number): string {
-        const rounded = value.toFixed(decimals);
+        const rounded = formatAnalysisNumber(value, decimals);
         return value > 0 ? `+${rounded}` : rounded;
     }
 

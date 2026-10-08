@@ -1,3 +1,4 @@
+import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {
     OutcomeLibraryBundleWriter,
     OutcomeSourceProjectAnalyzing,
@@ -760,5 +761,35 @@ describe("ReportCommand (integration, base vs. freeGames breakdown from a real f
         expect(markdown).toContain("## Breakdown");
         expect(markdown).toContain("| base |");
         expect(markdown).toContain("| freeGames |");
+    });
+});
+
+it("exposes rare Stake metrics in canonical JSON and truthful Markdown/HTML stdout and files", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new ReportCommand();
+            await command.run([dir, "--format", "json"]);
+            const report = JSON.parse(log.mock.calls.map((call) => call[0]).join("\n"));
+            expectRareMetrics(report.modes[0].analysis);
+            log.mockClear();
+            const jsonOut = path.join(dir, "report.json");
+            await command.run([dir, "--format", "json", "--out", jsonOut]);
+            expect(JSON.parse(fs.readFileSync(jsonOut, "utf8"))).toEqual(report);
+            expect(JSON.parse(log.mock.calls.map((call) => call[0]).join("\n"))).toEqual(report);
+            for (const format of ["markdown", "html"]) {
+                log.mockClear();
+                await command.run([dir, "--format", format]);
+                const printed = log.mock.calls.map((call) => call[0]).join("\n");
+                expect(printed).toContain("1.08e-17%");
+                expect(printed).toContain("5.42e-18%");
+                expect(printed).toContain("4.6566e-10");
+                const out = path.join(dir, `report.${format}`);
+                await command.run([dir, "--format", format, "--out", out]);
+                expect(fs.readFileSync(out, "utf8").trim()).toBe(printed.trim());
+            }
+        } finally {
+            log.mockRestore();
+        }
     });
 });

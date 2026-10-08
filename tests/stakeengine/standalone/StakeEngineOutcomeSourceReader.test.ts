@@ -1,3 +1,4 @@
+import {withRareStakeDirectory, expectRareMetrics, UINT64_MAX} from "./StakeProbabilityTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -269,5 +270,55 @@ describe("StakeEngineOutcomeSourceReader", () => {
             expect(result.issues.some((issue) => issue.code === "stakeengine-standalone-mode-outcomes-empty")).toBe(true);
             expect(result.modes).toEqual([]);
         });
+    });
+});
+
+it("reads the manifest-less 2^64 fixture through validation and preserves its corrected metrics", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        const source = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+        expect(source.issues).toEqual([]);
+        expect(source.modes[0].outcomes.map((outcome) => outcome.weight)).toEqual([UINT64_MAX, BigInt(1)]);
+        expectRareMetrics(new StakeEngineStandaloneAnalyzer().analyze(source).modes[0]);
+    });
+});
+
+it.each(["id", "payoutMultiplier"])("accepts safe-integer maximum %s through CSV and books", async (field) => {
+    await withRareStakeDirectory(async (dir) => {
+        const id = field === "id" ? Number.MAX_SAFE_INTEGER : 0;
+        const payout = field === "payoutMultiplier" ? Number.MAX_SAFE_INTEGER : 0;
+        fs.writeFileSync(path.join(dir, "lookup.csv"), `${id},1,${payout}\n`);
+        fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(JSON.stringify({id, payoutMultiplier: payout, events: []}) + "\n")));
+        const source = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+        expect(source.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        expect(source.modes[0].outcomes[0]).toMatchObject({id, payoutMultiplier: payout, weight: BigInt(1)});
+        const mode = new StakeEngineStandaloneAnalyzer().analyze(source).modes[0];
+        expect(mode.nonInvertibleRatioCount).toBe(source.modes[0].outcomes[0].ratio === undefined ? 1 : 0);
+        expect(source.issues.filter((issue) => issue.code === "stakeengine-standalone-outcome-ratio-not-representable")).toHaveLength(mode.nonInvertibleRatioCount);
+    });
+});
+
+it.each(["csv", "books"].flatMap((surface) => ["id", "payoutMultiplier"].flatMap((field) => ["9007199254740992", "18446744073709551615"].map((value) => [surface, field, value]))))(
+    "rejects exact textual unsafe %s %s %s independently", async (surface, field, value) => {
+        await withRareStakeDirectory(async (dir) => {
+            const id = field === "id" ? value : "1";
+            const payout = field === "payoutMultiplier" ? value : "200";
+            if (surface === "csv") {
+                fs.writeFileSync(path.join(dir, "lookup.csv"), `0,18446744073709551615,0\n${id},1,${payout}\n`);
+            } else {
+                fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(`{"id":0,"payoutMultiplier":0,"events":[]}\n{"id":${id},"payoutMultiplier":${payout},"events":[]}\n`)));
+            }
+            const source = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+            expect(source.modes).toEqual([]);
+            expect(source.issues).toContainEqual(expect.objectContaining({severity: "error", code: field === "id" ? "stakeengine-standalone-outcome-id-not-integer" : "stakeengine-standalone-outcome-payout-multiplier-not-safe-integer"}));
+        });
+    },
+);
+
+it.each(["0", "-1", "0.5", "Infinity", "NaN", "18446744073709551616"])("rejects invalid CSV weight %s without exposing a mode", async (weight) => {
+    await withRareStakeDirectory(async (dir) => {
+        fs.writeFileSync(path.join(dir, "lookup.csv"), `0,${weight},0\n1,1,200\n`);
+        const source = await new StakeEngineOutcomeSourceReader().readFromDirectory(dir);
+        expect(source.modes).toEqual([]);
+        expect(source.issues).toContainEqual(expect.objectContaining({code: ["0.5", "Infinity", "NaN"].includes(weight) ? "stakeengine-standalone-csv-malformed-row" : "stakeengine-standalone-outcome-weight-not-positive-integer", severity: "error"}));
     });
 });

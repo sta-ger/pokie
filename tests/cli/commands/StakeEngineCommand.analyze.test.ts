@@ -1,3 +1,4 @@
+import {withRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -420,3 +421,41 @@ function collectUnsafeNumbers(value: unknown, path = "<root>"): string[] {
     }
     return [];
 }
+
+it("analyzes the real manifest-less 2^64 directory in summary, JSON stdout, and replaced --out reports", async () => {
+    await withRareStakeDirectory(async (dir) => {
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new StakeEngineCommand("1.3.0");
+            expect(await command.run(["analyze", dir])).toBe(0);
+            const summary = log.mock.calls.map((call) => call[0]).join("\n");
+            expect(summary).toContain("5.421010862427522e-20");
+            expect(summary).toContain("1.0842021724855044e-19");
+            log.mockClear();
+            const out = path.join(dir, "analysis.json");
+            fs.writeFileSync(out, "old report");
+            expect(await command.run(["analyze", dir, "--format", "json", "--out", out])).toBe(0);
+            const report = JSON.parse(log.mock.calls.map((call) => call[0]).join("\n"));
+            expectRareMetrics(report.analysis.modes[0]);
+            expect(report.analysis.modes[0].totalWeight).toBe("18446744073709551616");
+            expect(JSON.parse(fs.readFileSync(out, "utf8"))).toEqual(report);
+        } finally {
+            log.mockRestore();
+        }
+    });
+});
+
+it.each(["id", "payoutMultiplier"])("exits 1 with no analysis for an unsafe books %s", async (field) => {
+    await withRareStakeDirectory(async (dir) => {
+        fs.writeFileSync(path.join(dir, "books.jsonl.zst"), zlib.zstdCompressSync(Buffer.from(`{"id":0,"payoutMultiplier":0,"events":[]}\n{"id":${field === "id" ? "9007199254740992" : "1"},"payoutMultiplier":${field === "payoutMultiplier" ? "9007199254740992" : "200"},"events":[]}\n`)));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            expect(await new StakeEngineCommand("1.3.0").run(["analyze", dir, "--format", "json"])).toBe(1);
+            const report = JSON.parse(log.mock.calls.map((call) => call[0]).join("\n"));
+            expect(report.analysis === null || report.analysis === undefined).toBe(true);
+            expect(report.issues.some((issue: ValidationIssue) => issue.severity === "error")).toBe(true);
+        } finally {
+            log.mockRestore();
+        }
+    });
+});
