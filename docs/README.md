@@ -74,8 +74,8 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     hit frequency, and volatility.
 17. **[Game Packages](game-packages.md)** — the `PokieGame` contract, `pokie.entry` package.json convention, and
     `loadPokieGame`/`isPokieGame` for loading an external game as a standalone npm package.
-18. **[CLI](cli.md)** — `pokie` is the first-contact guide: it tells a new user to start a ready-to-run package with
-    `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
+18. **[CLI](cli.md)** — `pokie` opens global Studio Home; `pokie .` or `pokie <project-path>` opens a project in Studio.
+    Start a ready-to-run package with `pokie init <directory>`, design an editable Blueprint with `pokie create <name>`, or discover each workflow
     through `pokie <command> --help`; `pokie --version` prints the installed public version. `pokie build <project>
     --target <artifact> --out <path>`, POKIE's universal build pipeline:
     the matrix supports `GameBlueprint` -> `tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `PAR workbook` -> `blueprint`/`tsPackage`/`outcomeLibrary`/`stakeAdapter`/`parWorkbook`/`wasm`, `tsPackage` ->

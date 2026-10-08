@@ -126,8 +126,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, wasm: false, processesDrained: false};
     const completedSmokeTests = new Set<string>();
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
-    const spawnSmokeChild = (args: string[], cwd: string): ChildProcessWithoutNullStreams => {
-        const child = spawn(pokieBinPath, args, {cwd}) as ChildProcessWithoutNullStreams;
+    const spawnSmokeChild = (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): ChildProcessWithoutNullStreams => {
+        const child = spawn(pokieBinPath, args, {cwd, env}) as ChildProcessWithoutNullStreams;
         spawnedSmokeChildren.add(child);
         return child;
     };
@@ -448,7 +448,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         async function contextOf(args: string[], cwd: string): Promise<unknown> {
-            const child = spawnSmokeChild([...args, "--no-open", "--port", "0"], cwd);
+            // Keep argv literal: adding --no-open here would exercise option-only
+            // project discovery, not the no-argument global Home contract. The
+            // browser launch is best-effort; suppress Linux's desktop opener only.
+            const child = spawnSmokeChild(args, cwd, {...process.env, BROWSER: "true"});
             try {
                 const port = await waitForListeningPort(child);
                 return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
@@ -457,15 +460,17 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             }
         }
 
-        smokeIt("`pokie` inside a project opens that project", async () => {
-            expect(await contextOf([], projectRoot)).toEqual({mode: "project", projectRoot});
+        const headlessFlags = ["--no-open", "--port", "0"];
+
+        smokeIt("bare `pokie` inside a project opens global Home", async () => {
+            expect(await contextOf([], projectRoot)).toEqual({mode: "home"});
         });
 
-        smokeIt("`pokie` from a nested directory inside a project still opens that project", async () => {
+        smokeIt("bare `pokie` from a nested project directory still opens global Home", async () => {
             const nested = path.join(projectRoot, "dist");
             expect(fs.existsSync(nested)).toBe(true);
 
-            expect(await contextOf([], nested)).toEqual({mode: "project", projectRoot});
+            expect(await contextOf([], nested)).toEqual({mode: "home"});
         });
 
         smokeIt("`pokie` outside any project opens Home", async () => {
@@ -474,22 +479,16 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
 
         smokeIt("`pokie .` opens the project it was pointed at", async () => {
-            expect(await contextOf(["."], projectRoot)).toEqual({mode: "project", projectRoot});
+            expect(await contextOf([".", ...headlessFlags], projectRoot)).toEqual({mode: "project", projectRoot});
         });
-    });
 
-    // spawnSync (rather than execFileSync) so a non-zero exit is asserted on directly instead of
-    // surfacing as a thrown error, and so a root invocation that wrongly reaches the implicit Studio
-    // entry — which would sit there serving instead of exiting — fails on the timeout rather than
-    // hanging the suite.
-    smokeIt("prints actionable first-contact guidance for bare `pokie`, exiting 0 without starting Studio", () => {
-        const result = spawnSync(pokieBinPath, [], {cwd: installDir, encoding: "utf-8", timeout: 60000});
+        smokeIt("`pokie <path>` opens the supplied project from elsewhere", async () => {
+            expect(await contextOf([projectRoot, ...headlessFlags], installDir!)).toEqual({mode: "project", projectRoot});
+        });
 
-        expect(result.status).toBe(0);
-        expect(result.stdout).toContain("pokie init <directory>");
-        expect(result.stdout).toContain("pokie create <name>");
-        expect(result.stdout).toContain("pokie <command> --help");
-        expect(result.stderr).toBe("");
+        smokeIt("option-only Studio startup retains current-project discovery", async () => {
+            expect(await contextOf(headlessFlags, projectRoot)).toEqual({mode: "project", projectRoot});
+        });
     });
 
     for (const [flag] of [["--help"], ["-h"]]) smokeIt(`prints the general usage and the full command list for \`pokie ${flag}\`, exiting 0`, () => {

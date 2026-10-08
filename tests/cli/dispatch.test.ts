@@ -1,5 +1,6 @@
 import {Command} from "commander";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
+import {INTERNAL_STUDIO_COMMAND_NAME} from "../../cli/commands/InternalStudioCommand.js";
 import {dispatch} from "../../cli/dispatch.js";
 import {BlueprintMaterializationError} from "../../cli/materialize/BlueprintMaterializationError.js";
 import {GamePackagePreparationError} from "../../cli/prepare/GamePackagePreparationError.js";
@@ -51,7 +52,8 @@ describe("dispatch (the real top-level CLI dispatcher cli/pokie.ts's run() deleg
     });
 
     it.each([["--help"], ["-h"]])('"pokie %s" prints the command list to stdout only and exits 0', async (flag) => {
-        const commands = [new FakeCommand("build"), new FakeCommand("sim")];
+        const studio = new FakeCommand(INTERNAL_STUDIO_COMMAND_NAME);
+        const commands = [new FakeCommand("build"), new FakeCommand("sim"), studio];
 
         const exitCode = await dispatch(commands, ["node", "pokie", flag]);
 
@@ -61,6 +63,7 @@ describe("dispatch (the real top-level CLI dispatcher cli/pokie.ts's run() deleg
         expect(logSpy.mock.calls[0][0]).toContain("build");
         expect(logSpy.mock.calls[0][0]).toContain("sim");
         expect(errorSpy).not.toHaveBeenCalled();
+        expect(studio.receivedArgs).toBeUndefined();
     });
 
     it('an unknown command that is not an existing path explains the recovery path and exits 1', async () => {
@@ -83,27 +86,38 @@ describe("dispatch (the real top-level CLI dispatcher cli/pokie.ts's run() deleg
         expect(errorSpy).toHaveBeenCalledWith('Unknown command "creat". Did you mean `create`? Run `pokie create --help` for usage.');
     });
 
-    it("makes a bare invocation a successful, actionable first contact", async () => {
-        const commands = [new FakeCommand("create"), new FakeCommand("init")];
+    it("launches the implicit Studio Home entry for a bare invocation", async () => {
+        const studio = new FakeCommand(INTERNAL_STUDIO_COMMAND_NAME);
+        const commands = [new FakeCommand("create"), new FakeCommand("init"), studio];
 
         const exitCode = await dispatch(commands, ["node", "pokie"]);
 
         expect(exitCode).toBe(0);
-        expect(logSpy).toHaveBeenCalledTimes(2);
-        expect(logSpy.mock.calls[0][0]).toContain("pokie init <directory>");
-        expect(logSpy.mock.calls[0][0]).toContain("pokie create <name>");
-        expect(logSpy.mock.calls[1][0]).toContain("pokie <command> --help");
+        expect(studio.receivedArgs).toEqual([]);
+        expect(commands.slice(0, 2).every((command) => command.receivedArgs === undefined)).toBe(true);
+        expect(logSpy).not.toHaveBeenCalled();
         expect(errorSpy).not.toHaveBeenCalled();
     });
 
-    it("prints the supplied installed version without invoking a command", async () => {
-        const commands = [new FakeCommand("sim")];
+    it("reports a bare Studio startup failure through the normal error contract", async () => {
+        const studio = new FakeCommand(INTERNAL_STUDIO_COMMAND_NAME, () => Promise.reject(new Error("Studio listener failed")));
 
-        const exitCode = await dispatch(commands, ["node", "pokie", "--version"], "1.3.0");
+        expect(await dispatch([studio], ["node", "pokie"])).toBe(1);
+        expect(studio.receivedArgs).toEqual([]);
+        expect(errorSpy).toHaveBeenCalledWith("Studio listener failed");
+        expect(logSpy).not.toHaveBeenCalled();
+    });
+
+    it.each(["--version", "-V"])("prints the supplied installed version for %s without invoking a command", async (flag) => {
+        const studio = new FakeCommand(INTERNAL_STUDIO_COMMAND_NAME);
+        const commands = [new FakeCommand("sim"), studio];
+
+        const exitCode = await dispatch(commands, ["node", "pokie", flag], "1.3.0");
 
         expect(exitCode).toBe(0);
         expect(logSpy).toHaveBeenCalledWith("1.3.0");
         expect(errorSpy).not.toHaveBeenCalled();
+        expect(studio.receivedArgs).toBeUndefined();
     });
 
     it("dispatches a known command name, forwarding the remaining argv as its args", async () => {

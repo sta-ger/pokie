@@ -59,6 +59,8 @@ describe("buildUsageText", () => {
         expect(usage).toContain("-V, --version");
         expect(usage).toContain("pokie init <directory>");
         expect(usage).toContain("pokie <command> --help");
+        expect(usage).toContain("Open Studio Home:              pokie\n");
+        expect(usage).toContain("pokie . / pokie <project-path>");
     });
 
     it("aligns descriptions past the longest command name", () => {

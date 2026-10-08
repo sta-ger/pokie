@@ -8,17 +8,6 @@ function printUsage(commands: CliCommandHandling[]): void {
     console.log(buildUsageText(commands));
 }
 
-function printFirstContact(commands: CliCommandHandling[]): void {
-    console.log(
-        "POKIE builds server-side video-slot games for Node.js and TypeScript.\n\n" +
-            "Start a new ready-to-run game:\n" +
-            "  pokie init <directory>\n\n" +
-            "Or design an editable Blueprint Project first:\n" +
-            "  pokie create <name>\n",
-    );
-    printUsage(commands);
-}
-
 function distance(left: string, right: string): number {
     const previous = Array.from({length: right.length + 1}, (_, index) => index);
     for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
@@ -66,7 +55,7 @@ function printUnknownCommand(input: string, commands: CliCommandHandling[]): voi
 // comments on why it can't be imported directly in a test).
 //
 // This is deliberately Commander-free: resolveCliInvocation() already resolves which registered
-// command owns a given argv (including "studio"'s own implicit-project-root precedence), so all
+// command owns a given argv (including the implicit Studio entry), so all
 // that's left here is a plain lookup by name. The actual CLI argument/option adapter — declaring
 // each public command's own positionals/options/aliases via Commander and validating them — lives on
 // each CliCommandHandling itself (see e.g. cli/commands/BuildCommand.ts's own run()), not here; a
@@ -87,12 +76,7 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[], v
         return 0;
     }
 
-    if (argv.length === 2) {
-        printFirstContact(commands);
-        return 0;
-    }
-
-    // "pokie ." / "pokie <existing path>", and every explicit command name are all resolved here
+    // "pokie" / "pokie ." / "pokie <existing path>", and every explicit command name are all resolved here
     // rather than inline — see
     // resolveCliInvocation's own doc comment for the full precedence. An unrecognized token that
     // isn't an existing path either falls through to the usage printout below, same as before.
@@ -105,7 +89,7 @@ export async function dispatch(commands: CliCommandHandling[], argv: string[], v
         return 1;
     }
 
-    // Always found in practice: resolveCliInvocation only ever names "studio" or a name it
+    // Always found in practice: resolveCliInvocation only ever names the implicit Studio entry or a name it
     // confirmed is one of the knownCommandNames it was given. The check stays explicit rather than
     // a non-null assertion so this file makes no assumption about that invariant.
     const command = commands.find((candidate) => candidate.getName() === invocation.commandName);

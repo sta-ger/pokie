@@ -19,7 +19,7 @@ describe("implicit Studio command registration", () => {
         expect(names).toContain(INTERNAL_STUDIO_COMMAND_NAME);
         expect(names).not.toContain("studio");
         expect(names).toContain("par");
-        expect(buildUsageText(commands)).not.toMatch(/\bstudio\b/i);
+        expect(buildUsageText(commands)).not.toMatch(/^ {2}(?:studio|__studio)\b/m);
     });
 });
 
@@ -75,12 +75,12 @@ describe("resolveCliInvocation: Studio startup target", () => {
     const insideProject = (): string | undefined => PROJECT_ROOT;
     const outsideProject = (): undefined => undefined;
 
-    it("reserves bare pokie for dispatcher-level first-contact guidance", () => {
+    it("opens global Studio Home even inside a nested project directory", () => {
         const findProjectRoot = jest.fn(insideProject);
 
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, findProjectRoot, () => "/games/my-slot/src/generated");
 
-        expect(invocation).toBeUndefined();
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
         expect(findProjectRoot).not.toHaveBeenCalled();
     });
 
@@ -124,10 +124,10 @@ describe("resolveCliInvocation: Studio startup target", () => {
 });
 
 describe("resolveCliInvocation", () => {
-    it('leaves bare "pokie" for the dispatcher-level first-contact guide', () => {
+    it('resolves bare "pokie" outside a project to Studio Home', () => {
         const invocation = resolveCliInvocation(["node", "pokie"], KNOWN_COMMANDS, () => false, () => undefined);
 
-        expect(invocation).toBeUndefined();
+        expect(invocation).toEqual({commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []});
     });
 
     it('resolves "." to a studio project invocation ("pokie .")', () => {

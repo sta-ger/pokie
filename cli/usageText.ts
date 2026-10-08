@@ -29,6 +29,8 @@ export function buildUsageText(commands: CliCommandHandling[]): string {
     return (
         program.helpInformation() +
         "\nNext steps:\n" +
+        "  Open Studio Home:              pokie\n" +
+        "  Open a project in Studio:      pokie . / pokie <project-path>\n" +
         "  Create a ready-to-run game:  pokie init <directory>\n" +
         "  Design a Blueprint Project:   pokie create <name>\n" +
         "  Learn a workflow:              pokie <command> --help\n"

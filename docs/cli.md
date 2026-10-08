@@ -2,14 +2,17 @@
 
 # CLI
 
-`pokie` ships a CLI alongside the library for creating and operating on [game packages](game-packages.md). A fresh
-install has one safe first contact: `npx pokie` prints the next actions without starting a server or writing files.
+`pokie` ships a CLI alongside the library for creating and operating on [game packages](game-packages.md).
+`npx pokie` starts the local Studio server and opens **global Studio Home** in your browser, even when launched
+inside a game project. Choose a project explicitly to open its dashboard instead. For command-line help without
+starting a server, use `npx pokie --help`.
 
 ```
-npx pokie
-# Start a ready-to-run package: npx pokie init <directory>
-# Or design a Blueprint Project:   npx pokie create <name>
-# Learn any workflow:              npx pokie <command> --help
+npx pokie                       # Studio Home
+npx pokie .                     # Studio for the current project
+npx pokie ./my-game              # Studio for a specified project
+npx pokie --help                 # CLI help; no server
+npx pokie --version              # Installed version; no server
 ```
 
 Use `npx pokie init <directory>` when you want a prepared game package immediately. Use `npx pokie create <name>`
@@ -3036,12 +3039,14 @@ behavior is exactly what's documented below, unchanged from the sections that fo
 
 Several invocations launch it, resolved by `resolveCliInvocation` (`cli/resolveCliInvocation.ts`):
 
+- `pokie` — global Home, independent of the working directory.
 - `pokie .` — Project mode for the current directory.
-- `pokie [projectRoot]` — Project mode for the supplied project root, as long as that path isn't itself one of the command
+- `pokie <projectRoot>` — Project mode for the supplied project root, as long as that path isn't itself one of the command
   names below and actually exists (a typo'd command name is never silently treated as a path — see below).
 
 Bare Studio flags discover a project from the working directory, so `pokie --no-open` inside a project opens that
-project rather than Home. `pokie` with no arguments is reserved for the first-contact command guide above.
+project rather than Home. This existing option-only discovery behavior is preserved; `pokie` with no arguments
+always opens global Home. Help/version flags never start Studio.
 
 "Is this a game package" is decided by the same `"pokie": {"entry": ...}` field in `package.json` that
 [`loadPokieGame`](game-packages.md) itself reads — the discovery walk reuses that one definition instead of a

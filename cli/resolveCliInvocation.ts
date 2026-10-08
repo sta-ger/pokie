@@ -40,6 +40,7 @@ export function isTopLevelVersionRequest(argv: string[]): boolean {
 // "print usage, exit 1" fallback is unaffected.
 //
 // Resolution order, first match wins:
+//   0. No arguments                 -> {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []} (global Home)
 //   1. First token is a known command name
 //                                    -> {commandName: <that name>, args: <the rest>}       (unchanged dispatch)
 //   2. First token looks like an option ("-"-prefixed, e.g. "--no-open")
@@ -52,8 +53,8 @@ export function isTopLevelVersionRequest(argv: string[]): boolean {
 // Step 2 is the bare Studio launch — the user named no target at all — so it discovers one:
 // findProjectRoot walks up from the working directory, and a hit is handed to Studio as its projectRoot.
 // Discovery is deliberately confined to that step: `studio` is not a public command, and an explicit
-// path (step 3) is already a target. The dispatcher reserves truly bare `pokie` for its first-contact
-// guidance before it calls this resolver.
+// path (step 3) is already a target. Truly bare `pokie` always opens global Home, even inside a
+// project: only an explicit path or the existing option-only discovery workflow selects a project.
 // Nothing is remembered between runs — the answer is always rediscovered from the current working
 // directory, never a "last opened project".
 //
@@ -72,7 +73,7 @@ export function resolveCliInvocation(
     const rawArgs = argv.slice(2);
 
     if (rawArgs.length === 0) {
-        return undefined;
+        return {commandName: INTERNAL_STUDIO_COMMAND_NAME, args: []};
     }
 
     const [first, ...rest] = rawArgs;
