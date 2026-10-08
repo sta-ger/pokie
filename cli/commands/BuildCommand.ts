@@ -2,6 +2,8 @@ import {
     ArtifactBuilderRegistry,
     ArtifactConversionPlanner,
     type ArtifactConversionExecution,
+    type ArtifactConversionExecutionResult,
+    type ValidationIssue,
     ArtifactBuildConflictError,
     type ArtifactBuildOptions,
     type ArtifactConversionPlan,
@@ -220,17 +222,22 @@ export class BuildCommand implements CliCommandHandling {
     // Descriptor readers remain format adapters. Build owns the prepared planner operation,
     // including dry-run source/destination validation and the same SIGINT lifecycle as projects.
     private async buildDescriptor(source: string, target: ArtifactTargetType, destination: string, dryRun: boolean): Promise<number> {
+        let result: {readonly published: boolean; readonly issues: readonly ValidationIssue[]};
         try {
-            await this.runWithArtifactLifecycle(async ({signal}) => {
-                let prepared;
+            result = await this.runWithArtifactLifecycle(async ({signal}) => {
                 if (target === "outcomeLibrary") {
-                    prepared = new OutcomeLibraryCommand(this.pokieVersion).prepareDescriptorBuildOperation(source, destination, signal);
+                    const prepared = new OutcomeLibraryCommand(this.pokieVersion).prepareDescriptorBuildOperation(source, destination, signal);
+                    const execution = await this.executeDescriptorOperation(prepared, dryRun);
+                    return {published: execution?.published === true && execution.publication?.manifest !== undefined, issues: execution?.publication?.issues ?? []};
                 } else if (target === "stakeAdapter") {
-                    prepared = new StakeEngineCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal);
+                    const prepared = new StakeEngineCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal);
+                    const execution = await this.executeDescriptorOperation(prepared, dryRun);
+                    return {published: execution?.published === true && execution.publication?.manifest !== undefined, issues: execution?.publication?.issues ?? []};
                 } else {
-                    prepared = new ParCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal);
+                    const prepared = new ParCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal);
+                    const execution = await this.executeDescriptorOperation(prepared, dryRun);
+                    return {published: execution?.published === true, issues: execution?.publication ?? execution?.read.issues ?? []};
                 }
-                await this.executeDescriptorOperation(prepared, dryRun);
             });
         } catch (error) {
             if (error instanceof Error && (/already exists|source itself|destination|occupied/i).test(error.message)) {
@@ -239,28 +246,40 @@ export class BuildCommand implements CliCommandHandling {
             // Keep detailed descriptor drift, provenance and reader failures intact.
             throw error;
         }
+        const errors = result.issues.filter((issue) => issue.severity === "error");
+        for (const issue of result.issues) {
+            const print = issue.severity === "error" ? console.error : console.log;
+            print(`  ${issue.severity}  ${issue.code}: ${issue.message}`);
+            if (issue.suggestion !== undefined) print(`    suggestion: ${issue.suggestion}`);
+        }
+        if (errors.length > 0 || (!dryRun && !result.published)) {
+            console.error(`Could not build "${target}" from "${source}" to "${destination}": ${errors.length > 0 ? `${errors.length} validation error(s).` : "publication was declined."}`);
+            return 1;
+        }
         console.log(dryRun
             ? `Dry run -- would build "${target}" from "${source}" to "${destination}". No files written.`
             : `Artifact "${target}" built in "${destination}".`);
         return 0;
     }
 
-    private async executeDescriptorOperation(
-        prepared: {readonly plan: ArtifactConversionPlan; readonly validate: () => Promise<void> | void; readonly execution: ArtifactConversionExecution<unknown, unknown>},
+    private async executeDescriptorOperation<ReadResult, PublishedResult>(
+        prepared: {readonly plan: ArtifactConversionPlan; readonly validate: () => Promise<void> | void; readonly execution: ArtifactConversionExecution<ReadResult, PublishedResult>},
         dryRun: boolean,
-    ): Promise<void> {
+    ): Promise<ArtifactConversionExecutionResult<ReadResult, PublishedResult> | undefined> {
         const planner = new ArtifactConversionPlanner();
         if (!dryRun) {
-            await planner.executeConversionPlan(prepared.plan, prepared.execution);
-            return;
+            return planner.executeConversionPlan(prepared.plan, prepared.execution);
         }
         await prepared.validate();
-        await planner.executeConversionPlan(prepared.plan, {
+        await planner.executeConversionPlan<ReadResult, undefined>(prepared.plan, {
             ...prepared.execution,
             publish: () => Promise.resolve(undefined),
             rollback: () => Promise.resolve(undefined),
+            register: undefined,
+            cleanup: ({read, error}) => prepared.execution.cleanup?.({read, error}),
         });
         this.printPlanSummary(prepared.plan);
+        return undefined;
     }
 
     // The default --out when it's omitted: a `target`-named sibling of the resolved project's own rootPath --

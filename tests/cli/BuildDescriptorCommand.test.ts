@@ -1,10 +1,11 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleReader, StakeEngineImporter, WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "pokie";
+import {OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, StakeEngineImporter, StakeEngineRoundEventsProjector, WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";
+import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ValidateCommand} from "../../cli/commands/ValidateCommand.js";
 
 const blueprint = {
@@ -356,7 +357,7 @@ describe("BuildCommand", () => {
         ["game version", {gameVersion: "2.0.0"}],
         ["config hash", {configHash: "other-config"}],
         ["POKIE version", {pokieVersion: "2.0.0"}],
-    ])("rejects an outcomes dry-run whose individually valid libraries disagree on %s", async (_provenanceField, incompatibleProvenance) => {
+    ])("rejects outcomes preview and publication when individually valid libraries disagree on %s", async (_provenanceField, incompatibleProvenance) => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-export-command-provenance-test-"));
         const baseLibraryPath = path.join(workDir, "base.json");
         const bonusLibraryPath = path.join(workDir, "bonus.json");
@@ -365,6 +366,7 @@ describe("BuildCommand", () => {
         const buildDestination = path.join(workDir, "outcomes-build");
         const buildCommand = new BuildCommand("1.3.0");
         const outcomeLibraryCommand = new OutcomeLibraryCommand("1.3.0");
+        const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
 
         try {
@@ -372,8 +374,8 @@ describe("BuildCommand", () => {
             fs.writeFileSync(bonusLibraryPath, JSON.stringify(validOutcomeLibrary({...incompatibleProvenance, configHash: incompatibleProvenance.configHash ?? "base-config"})));
             fs.writeFileSync(sourcePath, JSON.stringify({
                 modes: [
-                    {modeName: "base", libraryPath: "./base.json"},
-                    {modeName: "bonus", libraryPath: "./bonus.json"},
+                    {modeName: "base", cost: 1, libraryPath: "./base.json"},
+                    {modeName: "bonus", cost: 2, libraryPath: "./bonus.json"},
                 ],
             }));
 
@@ -385,10 +387,18 @@ describe("BuildCommand", () => {
             expect(fs.existsSync(dryRunDestination)).toBe(false);
             expect(fs.readdirSync(workDir)).not.toEqual(expect.arrayContaining([expect.stringMatching(/outcomes-dry-run\.staging-/)]));
 
+            await expect(buildCommand.run([sourcePath, "--target", "outcomeLibrary", "--out", buildDestination])).resolves.toBe(1);
+            expect(errorSpy.mock.calls.flat().join("\n")).toMatch(/provenance|configHash|game|pokieVersion/);
+            expect(logSpy.mock.calls.flat().join("\n")).not.toMatch(/Artifact .* built in/);
             await expect(outcomeLibraryCommand.run(["build", sourcePath, "--out", buildDestination])).resolves.toBe(1);
+            const stakeDestination = path.join(workDir, "stake-build");
+            await expect(buildCommand.run([sourcePath, "--target", "stakeAdapter", "--out", stakeDestination])).resolves.toBe(1);
+            expect(fs.existsSync(stakeDestination)).toBe(false);
+            expect(logSpy.mock.calls.flat().join("\n")).not.toMatch(/Artifact .* built in/);
             expect(fs.existsSync(buildDestination)).toBe(false);
             expect(fs.readdirSync(workDir)).not.toEqual(expect.arrayContaining([expect.stringMatching(/outcomes-build\.staging-/)]));
         } finally {
+            logSpy.mockRestore();
             errorSpy.mockRestore();
             fs.rmSync(workDir, {recursive: true, force: true});
         }
@@ -448,6 +458,24 @@ describe("BuildCommand", () => {
             expect(manifest.sourceProvenance).toEqual(config.sourceProvenance);
             expect(manifest.modes[0].cost).toBe(2);
             expect(manifest.modes[0].generator).toEqual(config.modes[0].generator);
+            const mode = config.modes[0];
+            expect(mode.generator).toBeDefined();
+            expect(config.sourceProvenance).toBeDefined();
+            const library = await new OutcomeLibraryBundleReader().readLibrary(path.resolve(imported, mode.bundleDir), mode.bundleModeName ?? mode.modeName);
+            fs.writeFileSync(path.join(imported, "library.json"), JSON.stringify(library));
+            for (const layout of ["library", "mixed"]) {
+                const libraryMode = {modeName: mode.modeName, cost: mode.cost, libraryPath: "./library.json", generator: mode.generator};
+                const modes = layout === "library" ? [libraryMode] : [libraryMode, {...mode, modeName: "second", cost: 3}];
+                const descriptor = path.join(imported, `${layout}-descriptor.json`);
+                fs.writeFileSync(descriptor, JSON.stringify({modes, sourceProvenance: config.sourceProvenance}));
+                const destination = path.join(directory, layout);
+                expect(await command.run([descriptor, "--target", "stakeAdapter", "--out", destination])).toBe(0);
+                const readback = await new StakeEngineImporter().importFromDirectory(destination);
+                expect(readback.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+                expect(readback.manifest?.sourceProvenance).toEqual(config.sourceProvenance);
+                expect(readback.modes.map((entry) => entry.generator)).toEqual(modes.map((entry) => entry.generator));
+                expect(readback.modes.map((entry) => entry.cost)).toEqual(modes.map((entry) => entry.cost));
+            }
         } finally {
             log.mockRestore();
             fs.rmSync(directory, {recursive: true, force: true});
@@ -483,6 +511,163 @@ describe("BuildCommand", () => {
             expect(fs.readdirSync(directory).filter((entry) => (/staging-|tmp-/).test(entry))).toEqual([]);
         } finally {
             prepare.mockRestore();
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+
+    it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects real invalid %s publication with actionable writer errors", async (target) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-invalid-descriptor-"));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            const source = writeValidSources(directory)[target];
+            const library = validOutcomeLibrary();
+            fs.writeFileSync(path.join(directory, "library.json"), JSON.stringify({...library, outcomes: library.outcomes.map((outcome) => ({...outcome, weight: 0}))}));
+            const destination = path.join(directory, "invalid-output");
+            expect(await new BuildCommand("1.3.0").run([source, "--target", target, "--out", destination])).toBe(1);
+            expect(error.mock.calls.flat().join("\n")).toMatch(/weight[\s\S]*positive|weight[\s\S]*> 0/i);
+            expect(log.mock.calls.flat().join("\n")).not.toMatch(/Artifact .* built in/);
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.readdirSync(directory).filter((entry) => (/staging-|tmp-/).test(entry))).toEqual([]);
+        } finally {
+            log.mockRestore();
+            error.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("reports declined PAR publication and retains its source validation details", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-declined-par-"));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        const prepare = jest.spyOn(ParCommand.prototype, "prepareDescriptorExportOperation");
+        try {
+            const source = path.join(directory, "source.par-descriptor");
+            fs.writeFileSync(source, JSON.stringify({...blueprint, reels: 0}));
+            const destination = path.join(directory, "invalid.xlsx");
+            // Non-project file extensions still reach the real prepared PAR descriptor adapter.
+            const command = new BuildCommand("1.3.0");
+            expect(await command.run([source, "--target", "parWorkbook", "--out", destination])).toBe(1);
+            expect(prepare).toHaveBeenCalled();
+            expect(error.mock.calls.flat().join("\n")).toMatch(/reels/i);
+            expect(log.mock.calls.flat().join("\n")).not.toMatch(/Artifact .* built in/);
+            expect(fs.existsSync(destination)).toBe(false);
+        } finally {
+            prepare.mockRestore();
+            log.mockRestore();
+            error.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("reports a declined PAR operation even when its reader has no validation errors", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-declined-operation-"));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        const original = ParCommand.prototype.prepareDescriptorExportOperation;
+        const prepare = jest.spyOn(ParCommand.prototype, "prepareDescriptorExportOperation").mockImplementation(function (this: ParCommand, ...args) {
+            const prepared = Reflect.apply(original, this, args);
+            return {...prepared, execution: {...prepared.execution, canPublish: () => false}};
+        });
+        try {
+            const source = path.join(directory, "source.par-descriptor");
+            fs.writeFileSync(source, JSON.stringify(blueprint));
+            const destination = path.join(directory, "declined.xlsx");
+            const command = new BuildCommand("1.3.0");
+            expect(await command.run([source, "--target", "parWorkbook", "--out", destination])).toBe(1);
+            expect(error.mock.calls.flat().join("\n")).toContain("publication was declined");
+            expect(log.mock.calls.flat().join("\n")).not.toMatch(/Artifact .* built in/);
+            expect(fs.existsSync(destination)).toBe(false);
+        } finally {
+            prepare.mockRestore();
+            log.mockRestore();
+            error.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("retains writer warnings and recovery suggestions after real descriptor publication", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-writer-warnings-"));
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const original = OutcomeLibraryBundleWriter.prototype.writeToDirectory;
+        const writer = jest.spyOn(OutcomeLibraryBundleWriter.prototype, "writeToDirectory").mockImplementation(async function (this: OutcomeLibraryBundleWriter, ...args) {
+            const result = await Reflect.apply(original, this, args);
+            return {...result, issues: [...result.issues, {severity: "warning" as const, code: "writer-cleanup-warning", message: "Old scratch could not be removed.", suggestion: "Remove the old scratch directory."}]};
+        });
+        try {
+            const source = writeValidSources(directory).outcomeLibrary;
+            const destination = path.join(directory, "result");
+            expect(await new BuildCommand("1.3.0").run([source, "--target", "outcomeLibrary", "--out", destination])).toBe(0);
+            expect(await new OutcomeLibraryBundleReader().readManifest(destination)).toBeDefined();
+            expect(log.mock.calls.flat().join("\n")).toContain("warning  writer-cleanup-warning: Old scratch could not be removed.");
+            expect(log.mock.calls.flat().join("\n")).toContain("suggestion: Remove the old scratch directory.");
+        } finally {
+            writer.mockRestore();
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it.each(["library", "bundle"] as const)("removes Stake %s listeners on successful and failed writer results", async (branch) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-stake-terminal-"));
+        const listenerCount = process.listenerCount("SIGINT");
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const error = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            const sources = writeValidSources(directory);
+            const command = new BuildCommand("1.3.0");
+            expect(await command.run([sources.outcomeLibrary, "--target", "outcomeLibrary"])).toBe(0);
+            for (const cost of [1, 0]) {
+                const mode = {modeName: "base", cost, ...(branch === "library" ? {libraryPath: "./library.json"} : {bundleDir: "./outcomeLibrary"})};
+                fs.writeFileSync(sources.stakeAdapter, JSON.stringify({modes: [mode]}));
+                const destination = path.join(directory, `result-${cost}`);
+                expect(await command.run([sources.stakeAdapter, "--target", "stakeAdapter", "--out", destination])).toBe(cost === 1 ? 0 : 1);
+                expect(process.listenerCount("SIGINT")).toBe(listenerCount);
+                expect(fs.existsSync(destination)).toBe(cost === 1);
+            }
+        } finally {
+            log.mockRestore();
+            error.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it.each([
+        ["library", false], ["library", true], ["bundle", false], ["bundle", true],
+    ] as const)("stops the real Stake %s writer on SIGINT (late claimant: %s)", async (branch, claimed) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-stake-cancel-"));
+        const destination = path.join(directory, "result");
+        const initialListeners = process.listenerCount("SIGINT");
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        const original = StakeEngineRoundEventsProjector.prototype.project;
+        const project = jest.spyOn(StakeEngineRoundEventsProjector.prototype, "project").mockImplementation(function (this: StakeEngineRoundEventsProjector, ...args) {
+            if (claimed) {
+                fs.mkdirSync(destination);
+                fs.writeFileSync(path.join(destination, "caller.txt"), "caller-owned");
+            }
+            process.emit("SIGINT");
+            return Reflect.apply(original, this, args);
+        });
+        try {
+            const sources = writeValidSources(directory);
+            const command = new BuildCommand("1.3.0");
+            if (branch === "bundle") {
+                expect(await command.run([sources.outcomeLibrary, "--target", "outcomeLibrary"])).toBe(0);
+                fs.writeFileSync(sources.stakeAdapter, JSON.stringify({modes: [{modeName: "base", cost: 1, bundleDir: "./outcomeLibrary"}]}));
+            }
+            await expect(command.run([sources.stakeAdapter, "--target", "stakeAdapter", "--out", destination])).rejects.toThrow(/cancelled/);
+            expect(project).toHaveBeenCalledTimes(1);
+            expect(process.listenerCount("SIGINT")).toBe(initialListeners);
+            if (claimed) {
+                expect(fs.readdirSync(destination)).toEqual(["caller.txt"]);
+                expect(fs.readFileSync(path.join(destination, "caller.txt"), "utf8")).toBe("caller-owned");
+            } else expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.readdirSync(directory).filter((entry) => (/staging-|tmp-/).test(entry))).toEqual([]);
+            expect(log.mock.calls.flat().join("\n")).not.toMatch(/Artifact "stakeAdapter" .*built in/);
+        } finally {
+            project.mockRestore();
             log.mockRestore();
             fs.rmSync(directory, {recursive: true, force: true});
         }

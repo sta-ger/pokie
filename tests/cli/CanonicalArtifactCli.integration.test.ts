@@ -100,6 +100,35 @@ describe("canonical artifact CLI through real registration and fresh executable"
         for (const flag of ["--version", "-V"]) expect(run([flag], directory).stdout.trim()).toBe("1.3.0");
     });
 
+    it.each(["outcomeLibrary", "stakeAdapter"] as const)("rejects invalid %s descriptor publication through registration and the fresh binary", async (target) => {
+        const blueprintPath = path.join(directory, "source.blueprint.json");
+        const bundle = path.join(directory, "valid-bundle");
+        fs.writeFileSync(blueprintPath, JSON.stringify(blueprint));
+        expect(run(["build", blueprintPath, "--target", "outcomeLibrary", "--out", bundle], directory).status).toBe(0);
+        const reader = new OutcomeLibraryBundleReader();
+        const manifest = await reader.readManifest(bundle);
+        const library = await reader.readLibrary(bundle, manifest.modes[0].modeName);
+        fs.writeFileSync(path.join(directory, "invalid-library.json"), JSON.stringify({...library, outcomes: library.outcomes.map((outcome) => ({...outcome, weight: 0}))}));
+        const descriptor = path.join(directory, "descriptor.json");
+        fs.writeFileSync(descriptor, JSON.stringify({modes: [{modeName: "base", cost: 1, libraryPath: "./invalid-library.json"}]}));
+        for (const surface of ["dispatcher", "binary"]) {
+            const destination = path.join(directory, `invalid-${surface}`);
+            const args = ["build", descriptor, "--target", target, "--out", destination];
+            if (surface === "dispatcher") {
+                expect(await dispatch(commands, ["node", "pokie", ...args])).toBe(1);
+                expect(error.mock.calls.flat().join("\n")).toMatch(/weight/i);
+                expect(log.mock.calls.flat().join("\n")).not.toMatch(/Artifact .* built in/);
+            } else {
+                const result = run(args, directory);
+                expect(result.status).toBe(1);
+                expect(result.stderr).toMatch(/weight/i);
+                expect(result.stdout).not.toMatch(/Artifact .* built in/);
+            }
+            expect(fs.existsSync(destination)).toBe(false);
+            expect(fs.readdirSync(directory).filter((entry) => (/staging-|tmp-/).test(entry))).toEqual([]);
+        }
+    });
+
     it.each(["outcomeLibrary", "stakeAdapter", "parWorkbook"] as const)("publishes and reads back %s through both public boundaries with truthful previews and failures", async (target) => {
         const source = path.join(directory, "source.blueprint.json");
         fs.writeFileSync(source, JSON.stringify(blueprint));

@@ -37,7 +37,8 @@ describe("P8-05 Valera Programmer public path", () => {
         const run = (...args: string[]) => execFileSync(process.execPath, [launcher, ...args], {encoding: "utf8"});
         try {
             expect(existsSync(launcher)).toBe(true);
-            const publicCommands = ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"];
+            const publicCommands = ["build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"];
+            expect(run("--help")).not.toMatch(/^ {2}export\s{2,}|\bpokie export\b/m);
             for (const args of [["--help"], ...publicCommands.map((command) => [command, "--help"]), ["certification", "build", "--help"], ["certification", "verify", "--help"], ["fairness", "seed-commit", "--help"], ["fairness", "commit", "--help"], ["fairness", "reveal", "--help"], ["fairness", "verify", "--help"], ["par", "import", "--help"], ["par", "export", "--help"], ["reel", "generate", "--help"]]) {
                 expect(run(...args)).toContain("Usage:");
             }

@@ -215,7 +215,7 @@ describe("StakeEngineExporter", () => {
         expect(fs.existsSync(outDir)).toBe(false);
     });
 
-    it("removes only its newly published directory when cancellation arrives after the final commit", async () => {
+    it("cancels before committing when the final publication hook aborts", async () => {
         const controller = new AbortController();
         const exporter = new StakeEngineExporter<string>(
             "1.3.0",
@@ -231,6 +231,16 @@ describe("StakeEngineExporter", () => {
         await expect(exporter.exportToDirectory(modes, outDir, {signal: controller.signal})).rejects.toThrow(StakeEngineExportCancelledError);
 
         expect(fs.existsSync(outDir)).toBe(false);
+        expect(siblingLeftovers(outDir)).toEqual([]);
+    });
+
+    it("preserves a prior export when cancellation arrives before a replacement commit", async () => {
+        await new StakeEngineExporter("1.3.0").exportToDirectory(modes, outDir);
+        const priorFiles = new Map(fs.readdirSync(outDir).map((file) => [file, fs.readFileSync(path.join(outDir, file))]));
+        const controller = new AbortController();
+        const exporter = new StakeEngineExporter("1.3.0", undefined, undefined, undefined, undefined, undefined, undefined, () => controller.abort());
+        await expect(exporter.exportToDirectory(modes, outDir, {signal: controller.signal})).rejects.toThrow(StakeEngineExportCancelledError);
+        for (const [file, bytes] of priorFiles) expect(fs.readFileSync(path.join(outDir, file))).toEqual(bytes);
         expect(siblingLeftovers(outDir)).toEqual([]);
     });
 

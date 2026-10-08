@@ -68,3 +68,39 @@ alongside its existing WASM and startup checks. **Installed-package execution is
 deferred to the controller's final packaging lifecycle**, as required by the
 immutable brief and bounded implementation policy. No installed-package pass is
 claimed by this implementation record.
+
+## Independent review repair
+
+Canonical descriptor builds now consume the prepared execution result. Outcome
+and Stake writer errors retain their codes and messages; warnings and recovery
+suggestions are printed. A missing manifest, validation errors, or a declined
+PAR publication returns 1 and never prints a built-success message. The existing
+cross-mode provenance fixture now exercises real publication as well as preview.
+PAR rejection also exercises the real descriptor fallback for a non-project file
+extension, rather than substituting a reader result.
+
+Stake adapters forward the shared cancellation signal into both writers. The
+streaming writer checks cancellation between outcomes, during compression
+backpressure, and before atomic commit; it closes its streams and removes owned
+staging. Both writers check cancellation at the final commit hook, preserving a
+prior export and late caller-owned destinations. Two-argument direct exporter
+calls remain supported. Descriptor generator metadata survives library-backed,
+all-bundle, and mixed publication and importer readback, alongside cost and
+imported source provenance. The internal Stake command also cleans its SIGINT
+listener if descriptor preparation fails.
+
+The current P805 executable help walk excludes top-level `export`, retains
+`par export` and every other route, and reaches its WASM
+create/build/inspect/validate/run workflow. Completed campaign evidence and
+receipts are unchanged.
+
+Repair verification uses the directly affected BuildCommand, BuildDescriptorCommand,
+StakeEngineCommand, StakeEngineExporter, and StakeEngineBundleStreamingExporter
+suites, plus bounded CanonicalArtifactCli and P805 executable cases, and root
+`npm run typecheck`. The bounded executable selection excludes P805 packaging.
+Controller-owned whole-file evidence and installed packaging remain at their
+existing lifecycle boundary; this repair does not claim a new packaging pass.
+
+Repair results: the five directly affected suites passed 147 tests. The bounded
+CanonicalArtifactCli/P805 selection passed nine executable cases (four unrelated
+cases skipped, including packaging). Root typecheck passed, including Studio.

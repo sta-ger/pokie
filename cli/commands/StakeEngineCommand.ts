@@ -237,6 +237,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                     entry.libraryPath !== undefined
                         ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
                         : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                 ...(descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: descriptor.sourceProvenance}),
             })),
         );
@@ -432,28 +433,32 @@ export class StakeEngineCommand implements CliCommandHandling {
 
     private async runExport(options: ExportOptions): Promise<number> {
         const cancellation = createCliImportCancellation();
-        const prepared = this.prepareDescriptorExportOperation(options.configPath, options.outDir, cancellation.signal);
-        const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution).finally(cancellation.cleanup);
-        const result = execution.publication!;
+        try {
+            const prepared = this.prepareDescriptorExportOperation(options.configPath, options.outDir, cancellation.signal);
+            const execution = await this.planner.executeConversionPlan(prepared.plan, prepared.execution);
+            const result = execution.publication!;
 
-        const errors = result.issues.filter((issue) => issue.severity === "error");
-        const warnings = result.issues.filter((issue) => issue.severity !== "error");
+            const errors = result.issues.filter((issue) => issue.severity === "error");
+            const warnings = result.issues.filter((issue) => issue.severity !== "error");
 
-        if (errors.length > 0) {
-            console.error(`Could not export "${options.configPath}" to "${options.outDir}" (${errors.length} error(s)):`);
-            this.printIssues(errors);
-            return 1;
+            if (errors.length > 0) {
+                console.error(`Could not export "${options.configPath}" to "${options.outDir}" (${errors.length} error(s)):`);
+                this.printIssues(errors);
+                return 1;
+            }
+
+            console.log(`Exported "${options.configPath}" to "${options.outDir}":`);
+            for (const file of result.files) {
+                console.log(`  wrote  ${file}`);
+            }
+            for (const issue of warnings) {
+                console.log(`  warning  ${issue.code}: ${issue.message}`);
+            }
+
+            return 0;
+        } finally {
+            cancellation.cleanup();
         }
-
-        console.log(`Exported "${options.configPath}" to "${options.outDir}":`);
-        for (const file of result.files) {
-            console.log(`  wrote  ${file}`);
-        }
-        for (const issue of warnings) {
-            console.log(`  warning  ${issue.code}: ${issue.message}`);
-        }
-
-        return 0;
     }
 
     /** Returns format hooks for one immutable descriptor export operation. */
@@ -473,6 +478,7 @@ export class StakeEngineCommand implements CliCommandHandling {
                         library: entry.libraryPath !== undefined
                             ? (this.loadJsonChecked(path.resolve(configDir, entry.libraryPath), `mode "${entry.modeName}"'s outcome library`) as WeightedOutcomeLibrary)
                             : await this.loadLibraryFromBundle(path.resolve(configDir, entry.bundleDir as string), entry.bundleModeName ?? entry.modeName),
+                        ...(entry.generator === undefined ? {} : {generator: entry.generator}),
                         ...(descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: descriptor.sourceProvenance}),
                     })),
                 );
@@ -494,8 +500,9 @@ export class StakeEngineCommand implements CliCommandHandling {
                         ...(read.descriptor.sourceProvenance === undefined ? {} : {sourceProvenance: read.descriptor.sourceProvenance}),
                     })),
                     outDir,
+                    {signal},
                 )
-                : this.exporter.exportToDirectory(read.modes!, outDir),
+                : this.exporter.exportToDirectory(read.modes!, outDir, {signal}),
             rollback: (result) => {
                 if (result.publication !== undefined) removePublishedDirectoryIfOwned(result.publication);
             },
@@ -949,8 +956,8 @@ export class StakeEngineCommand implements CliCommandHandling {
                     : {
                         bundleDir: e.bundleDir as string,
                         bundleModeName: e.bundleModeName as string | undefined,
-                        ...(e.generator === undefined ? {} : {generator: e.generator}),
                     }),
+                ...(e.generator === undefined ? {} : {generator: e.generator}),
             };
         });
 
