@@ -146,3 +146,39 @@ bytes are unchanged, then choose a new/empty output and observe terminal publica
 Check the resolved-path guidance during preview and after success for contradictory missing-target advice.
 Record the candidate identity, interactions and filesystem results through the controller/verifier;
 this implementation iteration created no browser transcript or replacement receipt.
+
+## Independent host recovery verification — workflow unreachable
+
+At 2026-10-08T21:31Z, the verifier ran a new isolated browser profile against exact clean candidate
+`15ced3d769aa65bb4dab612eabe9670c18ca72c5`, launching the candidate build as
+`node ./dist/cli/pokie.js --no-open --port 36568`. The bounded runtime receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-65775708a0e92433/p9-destination-result.json`
+(SHA-256 `85eaaec8d633e331ef38504a1f1937744e977e33dd74ae275624ba8176c22c78`); it is runtime evidence, not
+committed payload. Its concise rendered transcript is:
+
+```text
+LAUNCH http://127.0.0.1:36568
+READY Design exact-panel={Build Preview:false, Build Package:false, Output directory:false}
+BOUNDARY BlueprintBuildPanel unreachable: guided public Design has no panel; Home has no design-build recovery job
+```
+
+The public Design page rendered enabled `Create game`, but neither required BlueprintBuildPanel control
+nor its output-directory field. Its same fresh Home entry rendered `home_jobs: []`, so no authentic
+`design-build` recovery action existed. The immediately preceding fresh profile did activate `Create game`
+once and reached a Workspace; it likewise did not produce a design-build record. No job record or router
+state was fabricated, so the occupied-output and successful-publication portions could not be activated.
+
+This is candidate-owned, not a browser readiness conclusion: [HomePage](../../cli/studio-client/src/components/home/HomePage.tsx)
+has the only production `<BlueprintEditorPage guided />` mount. In
+[BlueprintEditorPage](../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.tsx),
+the ordinary panel is guarded by `!guided`; the guided exception requires `recoveryRequest.blueprint`,
+which Home supplies only from an already-retained `design-build` job. Thus no public entry can create the
+first prerequisite job needed to expose these controls. Studio and Chromium owned by both launches stopped;
+no screenshots or generated artifacts were retained.
+
+The controller-owned complete-file receipt at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/43cc08726523a6edee4bdd4e/result.json`
+is candidate-bound and clean before/after. Its full stdout/stderr logs have SHA-256
+`b5c89e1d946f2900369cc5f557c30a6724a007e69c373ce862e301749a8ff609` and
+`a5cb5e9c23a0c82d69ed90acc224e316f243335b25ab8b3c32e65cc9b15f0083`; the terminal summary is
+3 suites passed, 40 tests passed. The test receipt does not substitute for the missing rendered panel path.
