@@ -50,9 +50,9 @@ const integrationTestPathIgnorePatterns = [
     "/tests/cli/commands/SimCommand\\.realWorkers\\.test\\.ts$",
 ];
 
-// The one genuinely standalone lane: a real `npm pack` + `npm install` + real child-process smoke
-// test, 5-minute budget. Never mixed into the same jest invocation as everything else.
-const packagingTestMatch = ["<rootDir>/tests/packaging/npmPackSmoke.test.ts"];
+// Standalone packaging lane: real npm archives, installs, candidate verification, and
+// child-process smoke tests. Never mixed into the ordinary CLI/integration lane.
+const packagingTestMatch = ["<rootDir>/tests/packaging/**/*.test.ts"];
 
 // studio-client-components' own dominant cost isn't the small explicit setTimeout delays visible in
 // most of these files -- it's real per-file wall time from exercising production real-timer polling
@@ -233,7 +233,7 @@ export default {
             testPathIgnorePatterns: [
                 "/node_modules/",
                 "\\.test\\.tsx$",
-                "/tests/packaging/npmPackSmoke\\.test\\.ts$",
+                "/tests/packaging/",
                 // Frozen file snapshots embedded as phase 4 audit evidence, not this project's own
                 // test suite -- they mirror pokie-examples' own tests/ui.test.ts (already exercised
                 // for real by the "pokie-examples" project above) and don't resolve against this

@@ -104,3 +104,26 @@ existing lifecycle boundary; this repair does not claim a new packaging pass.
 Repair results: the five directly affected suites passed 147 tests. The bounded
 CanonicalArtifactCli/P805 selection passed nine executable cases (four unrelated
 cases skipped, including packaging). Root typecheck passed, including Studio.
+
+## Packaging boundary gate repair
+
+The complete P805 candidate archive/install case and its npm setup now live in
+`tests/packaging/P805ValeraProgrammer.test.ts`. Its archive authentication,
+production-build receipt, installed launcher, npx, WASM, and semantic failure
+assertions are preserved verbatim. The packaging project's discovery includes
+all `tests/packaging/**/*.test.ts` suites; the ordinary source project excludes
+that directory. Packaging execution remains controller-owned.
+
+`tests/cli/P805ValeraProgrammer.integration.test.ts` keeps its complete current
+help inventory and create/build/inspect/validate/run workflow. It compiles the
+production ESM and CLI TypeScript directly through the existing foreground
+helper, so whole-file execution does not borrow packaging setup or npm lifecycle
+variables. Top-level `export` remains absent and nested `par export` is exercised.
+
+Gate repair verification: `npm run test:targeted --
+tests/cli/P805ValeraProgrammer.integration.test.ts` passed both tests without
+skips. Root `npm run typecheck` passed, including Studio. Static comparison
+confirmed the moved case and setup are byte-for-byte intact and discovered at
+the packaging boundary. The broader reviewer matrix remains controller-owned;
+this gate repair ran no additional test suites or packaging commands and changed
+no completed campaign evidence or receipts.
