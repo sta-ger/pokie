@@ -1,6 +1,8 @@
 import {Command} from "commander";
 import {CliCommandHandling} from "../../cli/CliCommandHandling.js";
 import {buildUsageText} from "../../cli/usageText.js";
+import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
 
 // A minimal stand-in for a registered command: buildUsageText only ever reads a command's name and
 // description, never runs it, so the real command classes (and their constructor dependencies) stay
@@ -70,6 +72,12 @@ describe("buildUsageText", () => {
             .map((line) => (/^ {2}\S+ +/).exec(line)![0].length);
 
         expect(new Set(descriptionColumns).size).toBe(1);
+    });
+
+    it("exposes the WASM sim/replay workflows through the real public command descriptions", () => {
+        const usage = buildUsageText([new SimCommand(), new ReplayCommand()]);
+        expect(usage).toMatch(/sim\s+.*canonical WASM artifact/);
+        expect(usage).toMatch(/replay\s+.*deterministic canonical WASM replay/);
     });
 
     it("does not lose a command when one name is far longer than the others", () => {

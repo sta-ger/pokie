@@ -119,6 +119,15 @@ describe("SimCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("advertises canonical WASM and Blueprint inputs and the actual WASM seed default", () => {
+        const command = new SimCommand();
+        const help = command.getCommanderCommand().helpInformation();
+        expect(command.getDescription()).toContain("canonical WASM artifact");
+        expect(help).toContain("Blueprint");
+        expect(help).toContain("WASM");
+        expect(help).toContain("pokie-wasm-simulation");
+    });
+
     it("throws when run without a packageRoot", async () => {
         const command = new SimCommand();
 

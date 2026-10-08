@@ -1,9 +1,10 @@
-import {execFileSync} from "child_process";
+import {spawnSync} from "child_process";
 import fs from "fs";
 import path from "path";
 
 const WAIT_FOR_BUILD_MS = 100;
 const BUILD_WAIT_TIMEOUT_MS = 5 * 60 * 1000;
+const BUILD_EXECUTION_TIMEOUT_MS = 2 * 60 * 1000;
 const ABANDONED_LOCK_GRACE_MS = 30 * 1000;
 
 function wait(milliseconds: number): void {
@@ -50,8 +51,12 @@ export function ensureCompiledTestOutput(options: {
     // surface rebuilt from the current checkout, rather than borrowing a
     // previously generated dist artifact.
     forceRebuild?: boolean;
+    executionTimeoutMs?: number;
 }): void {
-    const {repositoryRoot, outputPaths, lockName, command, forceRebuild = false} = options;
+    const {repositoryRoot, outputPaths, lockName, command, forceRebuild = false, executionTimeoutMs = BUILD_EXECUTION_TIMEOUT_MS} = options;
+    if (!Number.isInteger(executionTimeoutMs) || executionTimeoutMs <= 0) {
+        throw new Error("The test build execution timeout must be a positive integer.");
+    }
     const outputsExist = () => outputPaths.every((outputPath) => fs.existsSync(outputPath));
     if (!forceRebuild && outputsExist()) {
         return;
@@ -74,7 +79,35 @@ export function ensureCompiledTestOutput(options: {
                 fs.writeFileSync(path.join(lockDirectory, "owner.json"), JSON.stringify({pid: process.pid}));
                 // A previous owner can finish between our initial exists check and lock acquisition.
                 if (forceRebuild || !outputsExist()) {
-                    execFileSync(command[0], [...command.slice(1)], {cwd: repositoryRoot, stdio: "inherit"});
+                    const newOutputs = outputPaths.filter((outputPath) => !fs.existsSync(outputPath));
+                    // Node's spawnSync normalizes the same detached/process-group option as
+                    // spawn. @types/node exposes it only on SpawnOptions, so keep this object
+                    // structurally typed instead of narrowing away the group option.
+                    const buildOptions = {
+                        cwd: repositoryRoot,
+                        stdio: "inherit" as const,
+                        timeout: executionTimeoutMs,
+                        killSignal: "SIGKILL" as const,
+                        // A compiler wrapper can own compiler children. Give it a process group so
+                        // a timeout releases the whole owned tree, not just the wrapper's lock.
+                        detached: process.platform !== "win32",
+                    };
+                    const result = spawnSync(command[0], [...command.slice(1)], buildOptions);
+                    if (result.error !== undefined || result.status !== 0) {
+                        if (process.platform !== "win32" && result.pid > 0) {
+                            try {
+                                process.kill(-result.pid, "SIGKILL");
+                            } catch (error) {
+                                if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+                            }
+                        }
+                        // A compiler can publish an entry before failing. Do not let the next
+                        // caller's exists-only fast path mistake that partial output for success.
+                        // Pre-existing outputs belong to an earlier build and are preserved.
+                        for (const outputPath of newOutputs) fs.rmSync(outputPath, {recursive: true, force: true});
+                        if (result.error !== undefined) throw result.error;
+                        throw new Error(`The test build command failed (exit ${result.status}, signal ${result.signal}): ${command.join(" ")}.`);
+                    }
                 }
             } finally {
                 fs.rmSync(lockDirectory, {recursive: true, force: true});

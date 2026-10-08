@@ -104,6 +104,15 @@ describe("ReplayCommand", () => {
         expect(command.getDescription().length).toBeGreaterThan(0);
     });
 
+    it("advertises deterministic WASM replay and Blueprint inputs with the WASM seed default", () => {
+        const command = new ReplayCommand();
+        const help = command.getCommanderCommand().helpInformation();
+        expect(command.getDescription()).toContain("deterministic canonical WASM replay");
+        expect(help).toContain("Blueprint");
+        expect(help).toContain("WASM");
+        expect(help).toContain("pokie-wasm-replay");
+    });
+
     it("throws when run without a packageRoot", async () => {
         const command = new ReplayCommand();
 

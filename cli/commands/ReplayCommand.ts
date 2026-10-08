@@ -38,7 +38,8 @@ type ReplayOutcomeSourceFn = (project: PokieProject, modeName: string, seed: str
 
 const USAGE =
     "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-    "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]";
+    "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+    "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]";
 
 export class ReplayCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
@@ -80,7 +81,7 @@ export class ReplayCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Replay one round: exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package replay.";
+        return "Replay one round: deterministic canonical WASM replay, exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package/Blueprint replay.";
     }
 
     public getCommanderCommand(): Command {
@@ -209,9 +210,9 @@ export class ReplayCommand implements CliCommandHandling {
     private buildCommand(resultRef: {value?: ReplayOptions} = {}): Command {
         return createCommanderCliCommand("replay")
             .description(this.getDescription())
-            .argument("<packageRoot>", "an existing POKIE game package, or a native outcome-library bundle (with --mode)")
+            .argument("<packageRoot>", "a POKIE game package, Blueprint, canonical WASM artifact, or native outcome-library bundle (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
-            .option("--seed <string>", "seed to replay against (required for a native outcome-library bundle)")
+            .option("--seed <string>", "seed to replay against (WASM default: pokie-wasm-replay; required for a native outcome-library bundle)")
             .option("--round <number>", "round index to replay (required)", (value: string) => {
                 const parsed = Number(value);
                 if (!Number.isInteger(parsed) || parsed < 1) {
@@ -230,6 +231,7 @@ export class ReplayCommand implements CliCommandHandling {
             // runOutcomeSourceReplay -- but declared/validated here alongside every other option rather
             // than a bespoke second parse, same as OutcomeSourceCommand's own "sample" verb.
             .option("--mode <modeName>", "outcome-library mode to replay (required when <packageRoot> is a native outcome-library bundle)")
+            .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; --mode is unavailable.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(
                 (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string}) => {
                     if (excess.length > 0) {
