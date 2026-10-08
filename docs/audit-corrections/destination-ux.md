@@ -56,17 +56,38 @@ npm run test:targeted -- tests/cli/BuildCommand.test.ts tests/cli/WasmWorkflow.i
 npm run typecheck
 ```
 
-## Controller-owned rendered verification — pending
+## Independent host rerun — incomplete coverage
 
-No real browser session, interaction transcript, or screenshot is claimed in this implementer record.
-The instruction explicitly assigns independent browser/CLI reruns and forbidden builds to the controller,
-and permits submission of the committed product correction with missing machine-owned evidence. Component
-rendering and HTTP tests above do not substitute for that proof.
+Independent attempt on `83757c4c8968226ee342e332ec7fb5f188629fc0` at 2026-10-08T20:17Z used an
+isolated runtime root at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-26eaf594439e99cb/p9-destination-GSVDDX`.
+The candidate was built with `npm run build-cli`, then Studio was launched from this checkout as
+`node ./dist/cli/pokie.js --no-open --port 33166` (the isolated port avoids an already-occupied default
+port; it did not use `node_modules/.bin/pokie`). Chromium drove the rendered Studio UI only.
 
-The controller must run one bounded Studio session on the reported commit: enter an occupied fixture
-path, invoke Build Preview/Build Package and observe the conflict with editable/Browse recovery and no overwrite
-action; compare sentinel bytes before/after; choose a new or empty directory; invoke Build Package and observe
-the successful terminal publication at that actual path, retaining the previous artifact. Record the exact
-candidate SHA, foreground launch commands, interactions, response/terminal observations, and filesystem
-checks here with at most two screenshots. No project/viewport/state matrix is requested. This record is
-an explicit pending verification handoff, not a fabricated action, finding, or completed browser receipt.
+Bounded transcript:
+
+```text
+LAUNCH candidate Studio at http://127.0.0.1:33166
+CLICK Create game
+CLICK Build/Export
+```
+
+The rendered workspace reached the candidate's real `Build/Export` route for `Starter Slot`. Its
+TypeScript Game Package card showed an enabled `Build` control and an editable `Output directory
+(optional)` field, but no rendered `Build Package` / `Build Preview` Blueprint controls. The same page
+contained target-specific `Build` cards for TypeScript Game Package, Outcome library, Stake Engine export,
+PAR sheet, and Portable WASM game. Because the assigned workflow requires the Blueprint control and the
+retry budget was exhausted before any destination activation, no occupied-destination request was sent.
+
+The isolated occupied fixture contained `sentinel.bin` with bytes `00ff250a` before the stopped session
+(`sha256:8b3a89a2ae3f00c5ebf4ffefa94b01f8dce8502f547a90d25022772a9be61762`). It was not used by a rendered
+Build action; therefore no before/after preservation or recovery publication is claimed. No screenshots
+were retained. Both Studio and Chromium processes owned by the run were stopped. The authenticated runtime
+receipt is retained outside Git at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-26eaf594439e99cb/p9-destination-result.json`.
+
+This is an inconclusive driver/workflow-translation observation, not evidence of an overwrite defect or
+of successful destination recovery. A subsequent verifier should bind the occupied/new-destination steps
+to the rendered TypeScript Game Package card's specific field and `Build` action, preserving its
+action-local preflight, job, and terminal states.
