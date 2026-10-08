@@ -5,7 +5,7 @@ import {registerCliCommands} from "../../cli/registerCliCommands.js";
 
 const ROOT = path.join(__dirname, "..", "..");
 const PUBLIC_COMMANDS = [
-    "build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate",
+    "build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate",
 ];
 // P7-01's completed inventory is immutable campaign evidence from before the
 // canonical WASM `run` command existed. Keep asserting that historical record
@@ -34,9 +34,13 @@ describe("PC-15 public CLI sweep contract", () => {
             .map((file) => fs.readFileSync(path.join(ROOT, file), "utf-8"))
             .join("\n");
 
+        const current = JSON.parse(fs.readFileSync(path.join(ROOT, "docs/audit-corrections/cli-coverage-map.json"), "utf8")) as {
+            currentInventory: {rootCommands: string[]; nestedVerbs: string[]};
+        };
         expect(publicNames).toEqual(PUBLIC_COMMANDS);
+        expect(current.currentInventory).toEqual({rootCommands: [...PUBLIC_COMMANDS].sort(), nestedVerbs: NESTED_VERBS});
         expect(inventory.initialInventory).toEqual({rootCommands: INITIAL_INVENTORY_COMMANDS, nestedVerbs: NESTED_VERBS});
-        expect(maintainedDocumentation).not.toMatch(/\bpokie (?:studio|__studio|outcomelibrary|outcomesource|stakeengine|name)\b/);
+        expect(maintainedDocumentation).not.toMatch(/\bpokie (?:export|studio|__studio|outcomelibrary|outcomesource|stakeengine|name)\b/);
     });
 
     it("renders help for every public command, nested verb, and implicit Studio entry without legacy names", () => {

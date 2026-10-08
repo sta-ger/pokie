@@ -7,7 +7,6 @@ import {CreateCommand} from "./commands/CreateCommand.js";
 import {DevCommand} from "./commands/DevCommand.js";
 import {DiffCommand} from "./commands/DiffCommand.js";
 import {EditCommand} from "./commands/EditCommand.js";
-import {ExportCommand} from "./commands/ExportCommand.js";
 import {FairnessCommand} from "./commands/FairnessCommand.js";
 import {GenerateCommand} from "./commands/GenerateCommand.js";
 import {InitCommand} from "./commands/InitCommand.js";
@@ -60,7 +59,6 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         ),
         new DiffCommand(),
         new EditCommand(),
-        new ExportCommand(version),
         new FairnessCommand(),
         new GenerateCommand(version),
         // withLocalPokieInstall(pokiePackageRoot): the same mechanism createMaterializingRuntimePackageResolver

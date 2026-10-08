@@ -16,9 +16,10 @@ describe("public command tree", () => {
         const names = commands.map((command) => command.getName());
         const help = buildUsageText(commands);
 
-        expect(names).toEqual(expect.arrayContaining(["export", "generate", "import", "par", "report", "sample"]));
+        expect(names).toEqual(expect.arrayContaining(["build", "generate", "import", "par", "report", "sample"]));
         expect(names).not.toEqual(expect.arrayContaining(["name", "outcomelibrary", "outcomesource", "stakeengine", "studio"]));
-        expect(help).toContain("export");
+        expect(names).not.toContain("export");
+        expect(help).not.toMatch(/^\s+export\b/m);
         expect(commands.find((command) => command.getName() === "generate")?.getCommanderCommand().helpInformation()).toMatch(/Usage: generate .*<packageRoot>/);
         expect(commands.find((command) => command.getName() === "sample")?.getCommanderCommand().helpInformation()).toMatch(/Usage: sample .*<path>/);
         expect(help).toContain("pokie par import");

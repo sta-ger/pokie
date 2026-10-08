@@ -85,7 +85,7 @@ describe("CertificationCommand", () => {
 
         const help = command.getCommanderCommand().commands.find((candidate) => candidate.name() === "build")!.helpInformation();
 
-        expect(help).toContain("pokie export <config.json> --to outcomes --out <bundleDir>");
+        expect(help.replace(/\s+/g, " ")).toContain("pokie build <config.json> --target outcomeLibrary --out <bundleDir>");
         expect(help).not.toMatch(/pokie outcomelibrary\b/);
     });
 

@@ -542,8 +542,8 @@ it's valid (warnings included).
 
 `--target outcomeLibrary`/`stakeAdapter`/`parWorkbook`, given a `<project>` that already resolves to that same
 artifact type, atomically copies it to `--out <path>` — the same "read it back with the exporter's own importer,
-re-export unchanged" round trip each format's own import/export commands already exercise (see `pokie export
-<config.json> --to adapter`/`pokie import <stakeDir>` and `pokie par export <config.json>` below).
+re-export unchanged" round trip each format's own import/export commands already exercise (see `pokie build
+<config.json> --target stakeAdapter`/`pokie import <stakeDir>` and `pokie par export <config.json>` below).
 `--dry-run` here only prints a one-line
 "would build \<target\> from \<project\> to \<out\>" preview — there is no blueprint to validate or summarize for
 these targets, since nothing is generated, only copied.
@@ -855,8 +855,7 @@ pokie par export examples/parsheets/starter.blueprint.json --out starter.par.xls
 pokie par import starter.par.xlsx --out starter.blueprint.json
 ```
 
-The target-oriented aliases use these same physical PAR paths: `pokie export <config.json>
---to workbook` exports the identical workbook, and `pokie import <input.xlsx>` imports it. The
+The canonical builds use these same physical PAR paths: `pokie build <config.json> --target parWorkbook` exports the identical workbook, and `pokie import <input.xlsx>` imports it. The
 workbook suffix is case-insensitive (`.xlsx` and `.XLSX` both select the PAR importer); the
 generic import command only routes a directory to Stake Engine reconstruction when it is a
 POKIE-produced export with `pokie-manifest.json`. For a compatible foreign Stake directory,
@@ -1056,26 +1055,35 @@ pokie reel generate game.blueprint.json --materialize --out game.materialized.js
 See [`examples/blueprints/generated-reels.blueprint.json`](../examples/blueprints/generated-reels.blueprint.json)
 for a `reelStripGeneration` blueprint to try this against.
 
-## Target-oriented export aliases
+## Canonical artifact builds and standalone descriptors
 
-`pokie export` names the artifact a project receives. Every target-oriented alias accepts the same preview flag:
+`pokie build` names the artifact a project receives. Every canonical build accepts the same preview flag:
 
 ```
-pokie export outcomelibrary-config.json --to outcomes --out bundle --dry-run
-pokie export stake-config.json --to adapter --out stakeengine --dry-run
-pokie export game.blueprint.json --to workbook --out game.par.xlsx --dry-run
+pokie build outcomelibrary-config.json --target outcomeLibrary --out bundle --dry-run
+pokie build stake-config.json --target stakeAdapter --out stakeengine --dry-run
+pokie build game.blueprint.json --target parWorkbook --out game.par.xlsx --dry-run
 ```
 
-For `outcomes`, `adapter`, and `workbook`, `--dry-run` validates both the selected target's source and resolved
+For `outcomeLibrary`, `stakeAdapter`, and `parWorkbook`, `--dry-run` validates both the selected target's source and resolved
 destination without writing anything. It fails if either is incompatible or unavailable; remove the problem or use
 a different `--out` path, then run the command again without `--dry-run` to publish the artifact.
 
-When `<source>` is a Blueprint or runnable game package, `outcomes` and `adapter` share the managed Outcome
+When `<source>` is a Blueprint or runnable game package, `outcomeLibrary` and `stakeAdapter` share the managed Outcome
 Library lifecycle described in [`pokie build`](#pokie-build-project). Large reel-stop spaces automatically use its
 deterministic bounded-coverage library, so a random Blueprint can then use either artifact conversion on the
 standard Node heap; inspect `manifest.json` to see the recorded strategy and seed.
 
-## `pokie export <config.json> --to adapter [--out <dir>] [--dry-run]`
+Standalone descriptors use the same canonical command and prepared planner operation. Outcome descriptors
+support `libraryPath` or streamed `outcomesPath` with `libraryId`; Stake descriptors support `libraryPath` or
+`bundleDir`/`bundleModeName`, including imported `config.json` with generator metadata and source provenance.
+Relative paths resolve against the descriptor directory. Project recognition errors propagate before descriptor
+fallback; generation flags (`--exact`, seeded `--sample`) require a recognized generation source.
+Defaults follow `build`: a sibling `outcomeLibrary` or `stakeAdapter` directory, or `parWorkbook.xlsx` file.
+These differ from historical artifact-command defaults (`outcomelibrary`, `stakeengine`, and a source-named
+`.par.xlsx` file). Use `--out` when a workflow requires one of those physical paths.
+
+## `pokie build <config.json> --target stakeAdapter [--out <dir>] [--dry-run]`
 
 Exports one or more canonical [`WeightedOutcomeLibrary`](weighted-outcome-library.md) JSON files (one per bet
 mode) to the real [Stake Engine math-sdk static file format](https://stakeengine.github.io/math-sdk/rgs_docs/data_format/)
@@ -1083,7 +1091,7 @@ mode) to the real [Stake Engine math-sdk static file format](https://stakeengine
 `RoundArtifact` → Stake "events" mapping.
 
 ```
-pokie export stake-config.json --to adapter --out stakeengine [--dry-run]
+pokie build stake-config.json --target stakeAdapter --out stakeengine [--dry-run]
 ```
 
 `<config.json>` lists one `WeightedOutcomeLibrary` JSON file per mode:
@@ -1113,7 +1121,7 @@ falls back to the existing (non-streaming) path; both produce byte-identical out
 
 Options:
 
-- `--out <dir>` — where to write the export (default: `<config.json>`'s directory plus `/stakeengine`).
+- `--out <dir>` — where to write the export (default: `<config.json>`'s directory plus `/stakeAdapter`).
 - `--dry-run` — validate the adapter source and destination without writing anything.
 
 Preflights the entire export before writing anything — on any error-level `ValidationIssue` (see
@@ -1122,7 +1130,7 @@ Every `payoutMultiplier`/amount is converted into Stake's own integer unit conve
 never rounded — see [Stake unit conversion](stake-engine-export.md#stake-unit-conversion--explicit-never-rounded))
 before it's written.
 
-The target-oriented adapter alias rejects an occupied destination, including a prior adapter export, without
+The canonical adapter build rejects an occupied destination, including a prior adapter export, without
 touching it. Choose a different unused `--out` path (or remove the destination yourself after checking it) and
 retry. A failed export never leaves a partial artifact — see [Rebuild safety](stake-engine-export.md#rebuild-safety--the-programmatic-writer-replaces-the-whole-directory-atomically)
 for the writer's publish discipline.
@@ -1136,14 +1144,14 @@ without writing. A Stake Engine export directory continues to import as an Outco
 Imports a Stake Engine export directory (`index.json`, per-mode lookup CSV/books, and its own sibling
 `pokie-manifest.json`) back into one `WeightedOutcomeLibrary` per mode — see
 [Stake Engine Import](stake-engine-import.md) for the full lossy/lossless boundary, the events reconstruction,
-and the validation-code table. Only ever round-trips a directory `pokie export <config.json> --to adapter` itself produced —
+and the validation-code table. Only ever round-trips a directory `pokie build <config.json> --target stakeAdapter` itself produced —
 `pokie-manifest.json` is required, not optional.
 
 ```
 pokie import stakeengine --out imported
 ```
 
-Writes exactly the shape `pokie export <config.json> --to adapter` reads back in:
+Writes exactly the shape `pokie build <config.json> --target stakeAdapter` reads back in:
 
 ```json
 {
@@ -1167,7 +1175,7 @@ the source no longer leaves a stale `libraries/<name>.json` file.
 
 On any error-level `ValidationIssue` (see [Stake Engine Import](stake-engine-import.md#validation)), nothing is
 written and the exit code is non-zero. The result's `modes` can be fed straight back into
-`pokie export <outDir>/config.json --to adapter` — importing and re-exporting the same directory reproduces
+`pokie build <outDir>/config.json --target stakeAdapter` — importing and re-exporting the same directory reproduces
 byte-identical `index.json`/CSVs/books (see
 [The real round-trip property](stake-engine-import.md#the-real-round-trip-property)), even though the
 reconstructed `roundId`/win breakdown/`provenance.pokieVersion` don't match the original pre-export library (see
@@ -1217,16 +1225,16 @@ convention rather than the usual plain 0/1:
 | `1` | Both sides read cleanly but a material difference was found (an added/removed mode, or a per-mode metric drift past the differ's own warning threshold). |
 | `2` | Either directory reported an error-level issue while reading, so no diff was computed. |
 
-## `pokie export <config.json> --to outcomes [--out <dir>] [--dry-run]`
+## `pokie build <config.json> --target outcomeLibrary [--out <dir>] [--dry-run]`
 
 Builds a canonical [Outcome Library Bundle](outcome-library-bundle.md) — a directory with a small manifest, a
 small per-mode index, and one streaming JSONL outcomes file per mode — streaming each mode's outcomes straight to
 disk one at a time, never materializing a full `WeightedOutcomeLibrary` in memory to do it. This is the one
-canonical bundle format both the pre-generated runtime and `pokie export <config.json> --to adapter` (via a mode's
+canonical bundle format both the pre-generated runtime and `pokie build <config.json> --target stakeAdapter` (via a mode's
 `bundleDir`/`bundleModeName`) load from.
 
 ```
-pokie export outcomelibrary-config.json --to outcomes --out bundle [--dry-run]
+pokie build outcomelibrary-config.json --target outcomeLibrary --out bundle [--dry-run]
 ```
 
 `<config.json>` lists one outcome source per mode, either a plain `WeightedOutcomeLibrary` JSON file (fully
@@ -1250,10 +1258,10 @@ Exactly one of `libraryPath`/`outcomesPath` is required per mode.
 
 Options:
 
-- `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomelibrary`).
+- `--out <dir>` — where to write the bundle (default: `<config.json>`'s directory plus `/outcomeLibrary`).
 - `--dry-run` — validate the outcome-library source and destination without writing anything.
 
-Published atomically as a whole directory (temp-dir-then-swap, the same discipline as `pokie export <config.json> --to adapter`): a write
+Published atomically as a whole directory (temp-dir-then-swap, the same discipline as `pokie build <config.json> --target stakeAdapter`): a write
 failure never leaves partial files behind and never alters an existing `--out` in place, and a mode dropped from
 the source no longer leaves a stale `index_<name>.json`/`outcomes_<name>.jsonl` behind. On any error-level
 `ValidationIssue` (an invalid outcome, a duplicate/case-colliding mode name), nothing is written and the exit
@@ -1263,8 +1271,8 @@ code is non-zero.
 
 Use `pokie report <path>`, `pokie sample <path> --mode <modeName>`, or `pokie diff <leftPath> <rightPath>`.
 
-Operates directly on a resolved outcome-source project — an Outcome Library Bundle written by `pokie export
-<config.json> --to outcomes` or a Stake adapter directory written by `pokie export <config.json> --to adapter`
+Operates directly on a resolved outcome-source project — an Outcome Library Bundle written by `pokie build
+<config.json> --target outcomeLibrary` or a Stake adapter directory written by `pokie build <config.json> --target stakeAdapter`
 — through its own canonical reader/selector, never `loadPokieGame` and never a re-derived
 game-model calculation.
 
@@ -1326,7 +1334,7 @@ Options:
 
 Refuses to write anything (the source bundle's own deep validation is run first) if the source bundle doesn't
 validate cleanly, or if a requested mode isn't present in it — the same "no partial bundle" guarantee
-`pokie export <config.json> --to outcomes` gives, published atomically the same way. On any error, the exit code is non-zero and
+`pokie build <config.json> --target outcomeLibrary` gives, published atomically the same way. On any error, the exit code is non-zero and
 nothing is written.
 
 ## `pokie certification verify <certDir> --source <bundleDir>`
@@ -3367,7 +3375,7 @@ grouped by kind (`ExportDeployTargets.ts`):
 
 - **Outcome libraries** — generates or selects the canonical `WeightedOutcomeLibrary` every other card below reads
   from (a build step in its own right, not a delivery target), the same underlying operation as
-  `pokie export <config.json> --to outcomes`.
+  `pokie build <config.json> --target outcomeLibrary`.
 - **Static export** — writes a standalone, self-contained bundle to disk (e.g. a Stake Engine export via
   [`StakeEngineExporter`](stake-engine-export.md)) — nothing is registered, nothing runs a delivery step.
 - **Build artifact** — runs the project through `pokie`'s own `ArtifactBuilderRegistry`, the exact same

@@ -63,9 +63,9 @@ async function buildPackageForSmoke(): Promise<void> {
 // The installed-binary sweep must keep a workflow row for every public parser surface.  These ids
 // deliberately mirror the public command tree rather than the private implementation commands.
 const PACKAGED_PUBLIC_WORKFLOW_SCENARIOS = [
-    "build", "certification", "certification build", "certification verify", "client", "create", "dev", "diff", "edit", "export",
+    "build", "certification", "certification build", "certification verify", "client", "create", "dev", "diff", "edit",
     "fairness", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify", "generate", "import", "init",
-    "inspect", "par", "par export", "par import", "reel", "reel generate", "replay", "report", "sample", "serve", "sim", "validate",
+    "inspect", "par", "par export", "par import", "reel", "reel generate", "run", "replay", "report", "sample", "serve", "sim", "validate",
 ] as const;
 
 // One of two places in the suite where a CLI command is legitimately spawned as a real subprocess (see
@@ -501,16 +501,54 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // artifact-producing workflow runs every command and nested verb with real inputs; spawning
         // another process for every individual help page only duplicates that coverage and makes this
         // release-boundary smoke test exceed the changed-tests gate's bounded runtime.
-        for (const commandName of ["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "replay", "report", "sample", "serve", "sim", "validate"]) {
+        for (const commandName of ["build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"]) {
             expect(result.stdout).toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
         // Storage-format namespaces stay private implementation details: their public lifecycle
         // verbs are build/generate/sample/validate/inspect/diff. Name and Studio are likewise
         // unavailable as public command names.
-        for (const commandName of ["outcomelibrary", "outcomesource", "stakeengine"]) {
+        for (const commandName of ["export", "outcomelibrary", "outcomesource", "stakeengine"]) {
             expect(result.stdout).not.toMatch(new RegExp(`^ {2}${commandName} `, "m"));
         }
         expect(result.stdout).not.toMatch(/^ {2}(name|studio)\b/m);
+    });
+
+    smokeIt("rejects the removed artifact command through the installed binary without output or startup", () => {
+        for (const args of [["export"], ["export", "--help"], ["export", "missing.json", "--to", "outcomes", "--out", "removed-artifact"]]) {
+            const result = spawnSync(pokieBinPath, args, {cwd: installDir, encoding: "utf-8", timeout: 60000});
+            expect(result.status).toBe(1);
+            expect(result.stdout).toBe("");
+            expect(result.stderr.trim()).toBe('Unknown command "export". Did you mean `import`? Run `pokie import --help` for usage.');
+            expect(fs.existsSync(path.join(installDir!, "removed-artifact"))).toBe(false);
+        }
+    });
+
+    smokeIt("publishes canonical Outcome, Stake and PAR targets and reads them through installed commands", () => {
+        const directory = fs.mkdtempSync(path.join(installDir!, "canonical-artifacts-"));
+        const blueprintPath = path.join(directory, "source.blueprint.json");
+        fs.writeFileSync(blueprintPath, JSON.stringify({
+            manifest: {id: "canonical-smoke", name: "Canonical Smoke", version: "1.0.0"},
+            reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 1}}, reelStrips: [["A", "B"], ["B", "A"]],
+        }));
+        try {
+            for (const target of ["outcomeLibrary", "stakeAdapter", "parWorkbook"]) {
+                const destination = path.join(directory, target === "parWorkbook" ? "parWorkbook.xlsx" : target);
+                const preview = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", target, "--out", destination, "--dry-run"], {cwd: directory, encoding: "utf-8"});
+                expect(preview.status).toBe(0);
+                expect(preview.stderr).toBe("");
+                expect(fs.existsSync(destination)).toBe(false);
+                const built = spawnSync(pokieBinPath, ["build", blueprintPath, "--target", target, "--out", destination], {cwd: directory, encoding: "utf-8"});
+                expect(built.status).toBe(0);
+                expect(built.stderr).toBe("");
+                for (const command of ["inspect", "validate"]) {
+                    const readback = spawnSync(pokieBinPath, [command, destination, ...(command === "validate" ? ["--format", "json"] : [])], {cwd: directory, encoding: "utf-8"});
+                    expect(readback.status).toBe(0);
+                    expect(readback.stderr).toBe("");
+                }
+            }
+        } finally {
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     for (const [flag] of [["--version"], ["-V"]]) smokeIt(`prints the installed version for \`pokie ${flag}\`, exiting 0`, () => {
@@ -846,6 +884,16 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             run("replay", ["replay", packageRoot, "--round", "1", "--seed", "workflow-seed", "--out", replayPath]);
             expectFile(replayPath);
 
+            const wasmSourcePath = path.join(workflowRoot, "wasm-source.blueprint.json");
+            const wasmPath = path.join(workflowRoot, "workflow.wasm");
+            fs.writeFileSync(wasmSourcePath, JSON.stringify({
+                manifest: {id: "workflow-wasm", name: "Workflow WASM", version: "1.0.0"},
+                reels: 2, rows: 1, symbols: ["A", "B"], paytable: {A: {2: 1}}, reelStrips: [["A", "B"], ["B", "A"]],
+            }));
+            run("build-wasm", ["build", wasmSourcePath, "--target", "wasm", "--out", wasmPath]);
+            expectFile(wasmPath);
+            expect(run("run", ["run", wasmPath, "--seed", "workflow-wasm"]).stdout).toContain("POKIE WASM round 1");
+
             const workbookPath = path.join(workflowRoot, "workflow.par.xlsx");
             run("par export", ["par", "export", blueprintPath, "--out", workbookPath]);
             expectFile(workbookPath);
@@ -853,7 +901,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             run("par import", ["par", "import", workbookPath, "--out", parImportedPath, "--format", "json"]);
             expectFile(parImportedPath);
             const exportedWorkbookPath = path.join(workflowRoot, "exported.par.xlsx");
-            run("export", ["export", blueprintPath, "--to", "workbook", "--out", exportedWorkbookPath]);
+            run("build-par-workbook", ["build", blueprintPath, "--target", "parWorkbook", "--out", exportedWorkbookPath]);
             expectFile(exportedWorkbookPath);
             const importedBlueprintPath = path.join(workflowRoot, "imported.blueprint.json");
             run("import", ["import", exportedWorkbookPath, "--out", importedBlueprintPath, "--format", "json"]);
@@ -919,8 +967,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             });
 
             expect(workflowIds).toEqual([
-                "create", "validate", "build", "generate", "build-outcome-library", "inspect", "sample", "sim", "sim-comparison", "report", "diff", "replay",
-                "par export", "par import", "export", "import", "reel generate", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify",
+                "create", "validate", "build", "generate", "build-outcome-library", "inspect", "sample", "sim", "sim-comparison", "report", "diff", "replay", "build-wasm", "run",
+                "par export", "par import", "build-par-workbook", "import", "reel generate", "fairness seed-commit", "fairness commit", "fairness reveal", "fairness verify",
                 "certification build", "certification verify", "init", "edit-noninteractive-recovery", "certification-missing-verb-recovery", "fairness-missing-verb-recovery",
                 "par-missing-verb-recovery", "reel-missing-verb-recovery", "client", "serve", "dev",
             ]);

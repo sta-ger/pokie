@@ -57,21 +57,21 @@ describe("residual public CLI surface", () => {
         // This coverage map is immutable P7 evidence.  P8 adds the public
         // portable-artifact runner, so compare the historical command tree to
         // its historical portion rather than rewriting the completed audit.
-        expect(coverage.initialInventory.rootCommands).toEqual(commandNames.filter((name) => name !== "run"));
+        expect(coverage.initialInventory.rootCommands).toEqual([...commandNames.filter((name) => name !== "run"), "export"].sort());
         expect(commandNames).toContain("run");
         expect(coverage.initialInventory.nestedVerbs).toEqual(nestedVerbs);
         for (const command of publicCommands) {
             const help = command.getCommanderCommand().helpInformation();
             expect(help).toContain(`Usage: ${command.getName()}`);
-            expect(help).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+            expect(help).not.toMatch(/\bpokie (?:export|outcomelibrary|outcomesource|stakeengine)\b/);
             expect(docs).toContain(`pokie ${command.getName()}`);
         }
         for (const maintainedDocsPath of MAINTAINED_DOCS_PATHS) {
-            expect(fs.readFileSync(maintainedDocsPath, "utf8")).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+            expect(fs.readFileSync(maintainedDocsPath, "utf8")).not.toMatch(/\bpokie (?:export|outcomelibrary|outcomesource|stakeengine)\b/);
         }
         expect(docs).toContain("## `pokie run <artifact.wasm>`");
         expect(docs).toContain("pokie run game.wasm --seed demo");
-        expect(fs.readFileSync(MAINTAINED_DOCS_PATHS[1], "utf8")).toContain("cli.md#pokie-export-configjson---to-outcomes---out-dir---dry-run");
+        expect(fs.readFileSync(MAINTAINED_DOCS_PATHS[1], "utf8")).toContain("cli.md#pokie-build-project");
     });
 
     it("documents every build target and the portable WASM boundary without collapsing them into package loading", () => {
@@ -101,7 +101,7 @@ describe("residual public CLI surface", () => {
 
         expect(message).toMatch(expected);
         expectActionable(message);
-        expect(message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+        expect(message).not.toMatch(/\bpokie (?:export|outcomelibrary|outcomesource|stakeengine)\b/);
     });
 
     it("keeps Report's outcome-source recovery on public project identification rather than retrying report", async () => {
@@ -126,6 +126,6 @@ describe("residual public CLI surface", () => {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain('Run "pokie inspect broken-outcomes" to identify the project and its repair path.');
         expect((error as Error).message).not.toContain("pokie report");
-        expect((error as Error).message).not.toMatch(/\bpokie (?:outcomelibrary|outcomesource|stakeengine)\b/);
+        expect((error as Error).message).not.toMatch(/\bpokie (?:export|outcomelibrary|outcomesource|stakeengine)\b/);
     });
 });

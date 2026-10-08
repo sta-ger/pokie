@@ -82,29 +82,31 @@ test("collects root aliases and executable values across independent help walks"
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
-test("checks root flags, positional contracts, and export --to values against owners", async () => {
-    const {directory, cli, coverage} = await fixture("  export  export an artifact\\n", "`pokie --help`, `pokie -h`, and `pokie --no-open` are public. `pokie build <project> --target supported`. `pokie export <source> --to outcomes|adapter|workbook`.\n");
+test("checks canonical target values, root flags, and dry-run ownership against the current boundary", async () => {
+    const {directory, cli, coverage} = await fixture("", "`pokie --help`, `pokie -h`, and `pokie --no-open` are public. `pokie build <project> --target outcomeLibrary|stakeAdapter|parWorkbook --dry-run`. `pokie game.wasm` inspects an existing artifact.\n");
     try {
         await writeFile(cli, `
 const key = process.argv.slice(2).join(" ");
-const root = "Usage: pokie\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  build  build\\n  export  export\\n";
+const root = "Usage: pokie\\n\\nOptions:\\n  -h, --help  help\\n\\nCommands:\\n  build  build\\n";
 const studio = "Usage: pokie [projectRoot]\\n\\nOptions:\\n  -h, --help  help\\n  --no-open  do not open\\n";
-const build = "Usage: pokie build <project>\\n\\nOptions:\\n  -h, --help  help\\n  --target <target> one of: supported\\n  --source-type <type> one of: blueprint\\n  --format <format> one of: json\\n  --mode <mode> one of: base\\n";
-const exportHelp = "Usage: pokie export <source> [excess...]\\n\\nOptions:\\n  -h, --help help\\n  --to <artifact> outcomes, adapter, or workbook\\n  --dry-run validate without writing\\n";
-process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : key === "export --help" ? exportHelp : build);
+const build = "Usage: pokie build <project>\\n\\nOptions:\\n  -h, --help  help\\n  --target <target> one of: outcomeLibrary, stakeAdapter, or parWorkbook\\n  --dry-run validate without writing\\n";
+process.stdout.write(key === "--help" ? root : key === "--no-open --help" ? studio : build);
 `);
         const map = JSON.parse(await readFile(coverage, "utf8"));
-        map.initialInventory.rootCommands = ["build", "export"];
-        map.owners.push({id: "command:export", owner: "test"}, {id: "option:export:--help", owner: "test"}, {id: "alias:export:-h", owner: "test"}, {id: "option:export:--to", owner: "test"}, {id: "option:export:--dry-run", owner: "test"}, {id: "argument:export:<source>", owner: "test"}, {id: "argument:export:[excess...]", owner: "test"}, {id: "value:export:--to:outcomes", owner: "test"}, {id: "value:export:--to:adapter", owner: "test"}, {id: "value:export:--to:workbook", owner: "test"}, {id: "output:outcomes", owner: "test"}, {id: "output:adapter", owner: "test"}, {id: "output:workbook", owner: "test"});
+        map.currentInventory = map.initialInventory;
+        delete map.initialInventory;
+        map.owners = map.owners.filter((entry) => !/^(?:value:|target:|source-type:|output-format:|mode:)/.test(entry.id));
+        map.owners.push({id: "option:build:--dry-run", owner: "test"}, ...["outcomeLibrary", "stakeAdapter", "parWorkbook"].flatMap((target) => [
+            {id: `value:build:--target:${target}`, owner: "test"}, {id: `target:${target}`, owner: "test"},
+        ]));
         await writeFile(coverage, JSON.stringify(map));
         const result = run(cli, coverage, path.join(directory, "evidence"));
         assert.equal(result.status, 0, result.stderr);
-        const mapWithoutOutputOwner = JSON.parse(await readFile(coverage, "utf8"));
-        mapWithoutOutputOwner.owners = mapWithoutOutputOwner.owners.filter((entry) => entry.id !== "option:export:--dry-run");
-        await writeFile(coverage, JSON.stringify(mapWithoutOutputOwner));
+        map.owners = map.owners.filter((entry) => entry.id !== "option:build:--dry-run");
+        await writeFile(coverage, JSON.stringify(map));
         const rejected = run(cli, coverage, path.join(directory, "rejected"));
         assert.equal(rejected.status, 1);
-        assert.match(rejected.stderr, /option:export:--dry-run/);
+        assert.match(rejected.stderr, /option:build:--dry-run/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -421,7 +423,7 @@ test("checks the freshly built production CLI against the complete public docume
             const result = spawnSync(process.execPath, [
                 checker,
                 "--cli", path.join(buildRoot, "dist/cli/pokie.js"),
-                "--coverage", path.join(root, "docs/evidence/p7-01-cli-inventory/coverage-map.json"),
+                "--coverage", path.join(root, "docs/audit-corrections/cli-coverage-map.json"),
                 "--evidence-dir", evidenceDirectory,
             ], {cwd: buildRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024});
             assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);

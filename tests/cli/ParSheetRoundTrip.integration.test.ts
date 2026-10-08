@@ -1,7 +1,6 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ExportCommand} from "../../cli/commands/ExportCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
@@ -96,7 +95,7 @@ describe("CLI workflow (integration): pokie par export -> pokie par import round
         const genericWorkbookPath = path.join(workDir, "starter.PAR.XLSX");
         const genericBlueprintPath = path.join(workDir, "starter.generic-import.blueprint.json");
 
-        expect(await new ExportCommand("1.3.0").run([blueprintPath, "--to", "workbook", "--out", genericWorkbookPath])).toBe(0);
+        expect(await new BuildCommand("1.3.0").run([blueprintPath, "--target", "parWorkbook", "--out", genericWorkbookPath])).toBe(0);
         expect(fs.existsSync(genericWorkbookPath)).toBe(true);
 
         expect(await new ImportCommand("1.3.0").run([genericWorkbookPath, "--out", genericBlueprintPath])).toBe(0);

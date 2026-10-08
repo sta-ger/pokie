@@ -46,11 +46,11 @@ rounding — see below); the reconstructed events, when re-projected by `StakeEn
 the exact same event sequence that was read from the books; and `betMode`/`stake`/`cost`/provenance/`libraryId`
 come back exactly from the manifest. `StakeEngineImportResult.modes` is typed as `StakeEngineExportModeInput<T>[]`
 — the exporter's own input type — specifically so this round trip is a one-line operation, both in code and from
-the CLI (`pokie import <stakeDir>` writes exactly what `pokie export --to adapter` reads back in).
+the CLI (`pokie import <stakeDir>` writes exactly what `pokie build --target stakeAdapter` reads back in).
 
 ## `pokie-manifest.json` is required
 
-Import only ever round-trips a directory produced by `pokie export --to adapter` — there is no path for
+Import only ever round-trips a directory produced by `pokie build --target stakeAdapter` — there is no path for
 importing a hand-crafted or foreign Stake package with caller-supplied fallback fields. Without a recognized
 manifest (`generatedBy` identifies POKIE's adapter export), `betMode`/`stake`/`provenance`/`libraryId` are genuinely
 unrecoverable, and reporting `stakeengine-import-manifest-missing`/`stakeengine-import-manifest-unrecognized`
@@ -227,7 +227,7 @@ per-outcome error still means the whole import reports nothing built — the sam
 pokie import <stakeDir> [--out <dir>]
 ```
 
-Writes exactly the shape `pokie export --to adapter` reads back in — `<outDir>/libraries/<modeName>.json` per
+Writes exactly the shape `pokie build --target stakeAdapter` reads back in — `<outDir>/libraries/<modeName>.json` per
 mode, `<outDir>/config.json` naming them, and (whenever `sourceProvenance` is present) `<outDir>/source-provenance.json`:
 
 ```json
@@ -241,7 +241,7 @@ mode, `<outDir>/config.json` naming them, and (whenever `sourceProvenance` is pr
 
 Default `--out` is `<stakeDir>` plus `-imported`. On any error-level issue from the import itself, nothing is
 written and the exit code is non-zero. Feed the result straight back into
-`pokie export <outDir>/config.json --to adapter` to exercise the round-trip property above.
+`pokie build <outDir>/config.json --target stakeAdapter` to exercise the round-trip property above.
 
 `StakeEngineImportWriter` publishes the whole `--out` directory atomically — the same temp-dir-then-swap
 discipline `StakeEngineExporter` uses for `export` (build into a sibling temp directory, then rename-swap it

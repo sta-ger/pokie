@@ -457,7 +457,7 @@ export class StakeEngineCommand implements CliCommandHandling {
     }
 
     /** Returns format hooks for one immutable descriptor export operation. */
-    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for ExportCommand
+    // eslint-disable-next-line @typescript-eslint/member-ordering -- exposed as a format adapter for BuildCommand
     public prepareDescriptorExportOperation(configPath: string, outDir: string, signal?: AbortSignal) {
         const currentSource = () => this.exportDescriptorSource(configPath);
         return {plan: this.planner.planIdentity(currentSource(), "stakeAdapter", {destinationPath: outDir}), validate: () => this.validateExportSource(configPath), execution: {

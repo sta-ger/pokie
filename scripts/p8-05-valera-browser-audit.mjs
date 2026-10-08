@@ -183,7 +183,7 @@ export const tupleBootstrapContract = (tuple) => [
     ] : []),
     ...(tuple.persona === "mathematician" && tuple.observation === "outcome-library-report-diff-replay" ? P805_OUTCOME_LIBRARY_COMPOUND_OUTPUTS.map(({output, command}) => ({kind:"packed-cli-output", purpose:"compound-mathematician-output", publicWorkflow:tuple.observation, output, command})) : []),
 ];
-export const P805_PUBLIC_HELP_ARGUMENTS = [["--help"], ...["build", "certification", "client", "create", "dev", "diff", "edit", "export", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"].map((command) => [command, "--help"]), ...[["certification", "build"], ["certification", "verify"], ["fairness", "seed-commit"], ["fairness", "commit"], ["fairness", "reveal"], ["fairness", "verify"], ["par", "import"], ["par", "export"], ["reel", "generate"]].map((command) => [...command, "--help"])];
+export const P805_PUBLIC_HELP_ARGUMENTS = [["--help"], ...["build", "certification", "client", "create", "dev", "diff", "edit", "fairness", "generate", "import", "init", "inspect", "par", "reel", "run", "replay", "report", "sample", "serve", "sim", "validate"].map((command) => [command, "--help"]), ...[["certification", "build"], ["certification", "verify"], ["fairness", "seed-commit"], ["fairness", "commit"], ["fairness", "reveal"], ["fairness", "verify"], ["par", "import"], ["par", "export"], ["reel", "generate"]].map((command) => [...command, "--help"])];
 function measureP805PressFeedback(item) {
     // Mantine's native :active feedback translates by 0.0625rem * scale.
     // Capture that expected offset before pressing, without changing styles
@@ -1846,7 +1846,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 if (observation === "reels-paytable-modes-mechanics") { await runPackedCli("packed CLI validate", ["validate", blueprint]); await runPackedCli("packed CLI reels", ["reel", "generate", blueprint, "--format", "json"]); }
                 if (observation === "outcome-library-report-diff-replay") {
                     await runPackedCli("packed CLI package build for report/diff/replay", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build for report/diff/replay", packageRoot);
-                    await runPackedCli("packed CLI Outcome Library export", ["export", blueprint, "--to", "outcomes", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
+                    await runPackedCli("packed CLI Outcome Library export", ["build", blueprint, "--target", "outcomeLibrary", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
                     await runPackedCli("packed CLI simulation report source", ["sim", packageRoot, "--rounds", "10", "--seed", "p8-05-mathematician", "--out", simulationReport]); await requireOutput("packed CLI simulation report source", simulationReport);
                     await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
                     await runPackedCli("packed CLI diff", ["diff", simulationReport, simulationReport, "--out", diffReport]); await requireOutput("packed CLI diff", diffReport);
@@ -1860,7 +1860,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
             }
             if (requiresOutcomeBootstrap) {
-                await runPackedCli(`packed CLI Outcome Library export for ${options.tuple.observation}`, ["export", blueprint, "--to", "outcomes", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
+                await runPackedCli(`packed CLI Outcome Library export for ${options.tuple.observation}`, ["build", blueprint, "--target", "outcomeLibrary", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
             }
             await runTupleCliWorkflow();
         } else if (!fullCliMatrix) {
@@ -1868,7 +1868,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 await runPackedCli("packed CLI package build", ["build", blueprint, "--target", "tsPackage", "--out", packageRoot]); await requireOutput("packed CLI package build", packageRoot);
             }
             if (!options.tuple || requiresOutcomeBootstrap) {
-                await runPackedCli("packed CLI Outcome Library export", ["export", blueprint, "--to", "outcomes", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
+                await runPackedCli("packed CLI Outcome Library export", ["build", blueprint, "--target", "outcomeLibrary", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
             }
             if (options.tuple) await runTupleCliWorkflow();
         } else {
@@ -1887,7 +1887,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         await runPackedCli("packed CLI report", ["report", simulationReport, "--format", "markdown", "--out", renderedReport]); await requireOutput("packed CLI report", renderedReport);
         await runPackedCli("packed CLI diff", ["diff", simulationReport, simulationReport, "--out", diffReport]); await requireOutput("packed CLI diff", diffReport);
         await runPackedCli("packed CLI replay", ["replay", packageRoot, "--seed", "p8-05", "--round", "1", "--out", replayArtifact]); await requireOutput("packed CLI replay", replayArtifact);
-        await runPackedCli("packed CLI Outcome Library export", ["export", blueprint, "--to", "outcomes", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
+        await runPackedCli("packed CLI Outcome Library export", ["build", blueprint, "--target", "outcomeLibrary", "--out", outcomeBundle]); await requireOutput("packed CLI Outcome Library export", outcomeBundle);
         await services.writeFile(certificationConfig, JSON.stringify({modes:[{modeName:"base", seed:"p8-05-certification", sampleCount:1}]}));
         await runPackedCli("packed CLI certification build", ["certification", "build", outcomeBundle, certificationConfig, "--out", certificationBundle]); await requireOutput("packed CLI certification build", certificationBundle);
         await runPackedCli("packed CLI certification verify", ["certification", "verify", certificationBundle, "--source", outcomeBundle]);

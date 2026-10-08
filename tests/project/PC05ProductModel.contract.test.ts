@@ -386,7 +386,7 @@ describe("PC-05 product-model contract", () => {
         const productModel = fs.readFileSync(PRODUCT_MODEL_PATH, "utf-8");
         const outcomeLibraryCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "OutcomeLibraryCommand.ts"), "utf-8");
         const stakeEngineCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "StakeEngineCommand.ts"), "utf-8");
-        const exportCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "ExportCommand.ts"), "utf-8");
+        const buildCommand = fs.readFileSync(path.join(__dirname, "..", "..", "cli", "commands", "BuildCommand.ts"), "utf-8");
 
         expect(outcomeLibraryCommand).toContain("private loadDescriptor(configPath: string): BuildDescriptor");
         expect(outcomeLibraryCommand).toContain('must specify exactly one of "libraryPath" or "outcomesPath"');
@@ -396,11 +396,11 @@ describe("PC-05 product-model contract", () => {
         expect(stakeEngineCommand).toContain('must have a string "modeName" and a number "cost"');
         expect(outcomeLibraryCommand).toContain("computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])");
         expect(stakeEngineCommand).toContain("computeArtifactInputBindingHash([canonicalLocation, ...referencedInputs])");
-        expect(exportCommand).toContain("this.outcomeLibrary.prepareDescriptorBuildOperation(args.source, destination, controller.signal)");
-        expect(exportCommand).toContain("this.stake.prepareDescriptorExportOperation(args.source, destination, controller.signal)");
-        expect(exportCommand).toContain("this.par.prepareDescriptorExportOperation(args.source, destination, controller.signal)");
-        expect(exportCommand).not.toContain('this.outcomeLibrary.run(["build", ...forwarded])');
-        expect(exportCommand).not.toContain('this.stake.run(["export", ...forwarded])');
+        expect(buildCommand).toContain("new OutcomeLibraryCommand(this.pokieVersion).prepareDescriptorBuildOperation(source, destination, signal)");
+        expect(buildCommand).toContain("new StakeEngineCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal)");
+        expect(buildCommand).toContain("new ParCommand(this.pokieVersion).prepareDescriptorExportOperation(source, destination, signal)");
+        expect(buildCommand).not.toContain('this.outcomeLibrary.run(["build", ...forwarded])');
+        expect(buildCommand).not.toContain('this.stake.run(["export", ...forwarded])');
 
         const outcomeDescriptor = registry.artifact_kinds.find((item) => item.id === "outcomeLibraryBundleDescriptor");
         const stakeDescriptor = registry.artifact_kinds.find((item) => item.id === "stakeEngineExportDescriptor");
@@ -765,7 +765,7 @@ describe("PC-05 product-model contract", () => {
             "sim",
             "validate",
         ].sort();
-        expect(publicRoutes.sort()).toEqual([...historicalPublicRoutes, "run"].sort());
+        expect(publicRoutes.sort()).toEqual([...historicalPublicRoutes.filter((route) => route !== "export"), "run"].sort());
 
         // CAPABILITY-MATRIX.md is completed PC-05 evidence, not a mutable
         // current-route registry. P8's canonical WASM runner is documented
@@ -864,7 +864,7 @@ describe("PC-05 product-model contract", () => {
 
             // Check the actual command implementation advertises its write
             // surface. This keeps registry coverage independent of prose.
-            const source = fs.readFileSync(path.join(__dirname, "..", "..", contract.command_file), "utf-8");
+            const source = fs.readFileSync(path.join(__dirname, "..", "..", contract.command_file === "cli/commands/ExportCommand.ts" ? "cli/commands/BuildCommand.ts" : contract.command_file), "utf-8");
             if (!contract.producer.includes("without --out") && contract.producer !== "cli:init") {
                 expect(source).toContain("--out");
             }
@@ -874,7 +874,7 @@ describe("PC-05 product-model contract", () => {
         }
     });
 
-    it("directly audits default public write branches, including their conditional no-write paths", () => {
+    it("checks frozen PC-05 producer records against current canonical owners and default public write branches, including their conditional no-write paths", () => {
         const registry = readRegistry();
         const contracts = registry.persisted_public_output_contracts;
         const expectedDefaults: Array<{id: string; artifactId: string; commandFile: string; sourceAssertions: string[]}> = [
@@ -889,9 +889,9 @@ describe("PC-05 product-model contract", () => {
             {id: "build-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.executePlan(plan, project, out,"]},
             {id: "build-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.executePlan(plan, project, out,"]},
             {id: "build-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(project.rootPath, options.target)", "this.registry.executePlan(plan, project, out,"]},
-            {id: "export-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", "return path.join(path.dirname(args.source), \"outcomelibrary\")", "if (args.dryRun)", "this.registry.executePlan(plan, project, destination,", "prepareDescriptorBuildOperation(args.source, destination, controller.signal)"]},
-            {id: "export-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", "return path.join(path.dirname(args.source), \"stakeengine\")", "if (args.dryRun)", "this.registry.executePlan(plan, project, destination,", "prepareDescriptorExportOperation(args.source, destination, controller.signal)"]},
-            {id: "export-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/ExportCommand.ts", sourceAssertions: ["if (args.out !== undefined) return args.out", ".par.xlsx", "if (args.dryRun)", "this.registry.executePlan(plan, project, destination,", "prepareDescriptorExportOperation(args.source, destination, controller.signal)"]},
+            {id: "export-outcome-bundle-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorBuildOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
+            {id: "export-stake-default", artifactId: "stakeAdapter", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorExportOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
+            {id: "export-par-default", artifactId: "parWorkbook", commandFile: "cli/commands/BuildCommand.ts", sourceAssertions: ["options.out ?? this.resolveDestination(projectPath, options.target)", "prepareDescriptorExportOperation(source, destination, signal)", "executeDescriptorOperation(prepared, dryRun)"]},
             {id: "stake-import-library-default", artifactId: "outcomeLibrary", commandFile: "cli/commands/ImportCommand.ts", sourceAssertions: ["const outputKind = source.type === \"parWorkbook\" ? \"blueprint\" : \"outcomeLibrary\"", "this.planner.planImportOutput(source, outputKind, destination)"]},
             {id: "certification-bundle-default", artifactId: "certificationEvidenceBundle", commandFile: "cli/commands/CertificationCommand.ts", sourceAssertions: ["options.out ?? path.join(path.dirname(configPath), \"certification\")", "await this.builder.buildFromBundle(bundleDir, modes, outDir, {signal})"]},
             {id: "init-ts-package-default", artifactId: "tsPackage", commandFile: "cli/commands/InitCommand.ts", sourceAssertions: ["directory: directory ?? \".\"", "const scaffold = this.merger.merge(projectRoot, overrides)"]},
@@ -902,7 +902,7 @@ describe("PC-05 product-model contract", () => {
             const contract = contracts.find((candidate) => candidate.id === expected.id);
             expect(contract).toEqual(expect.objectContaining({
                 "artifact_id": expected.artifactId,
-                "command_file": expected.commandFile,
+                "command_file": expected.id.startsWith("export-") ? "cli/commands/ExportCommand.ts" : expected.commandFile,
                 "persistence_trigger": expect.any(String),
             }));
             const source = fs.readFileSync(path.join(__dirname, "..", "..", expected.commandFile), "utf-8");

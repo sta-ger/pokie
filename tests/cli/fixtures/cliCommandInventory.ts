@@ -293,20 +293,6 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
         ],
     },
     {
-        name: "export",
-        description: "Export a source descriptor to a selected POKIE artifact type.",
-        // The public target-oriented entrypoint's detailed option/routing behavior is covered by
-        // ExportCommand.test.ts; this inventory pins its public name, help description, and usage.
-        verbs: [
-            {
-                verb: undefined,
-                usage: "Usage: pokie export <source> --to outcomes|adapter|workbook [--out <path>] [--dry-run]",
-                positionals: ["source"],
-                options: [],
-            },
-        ],
-    },
-    {
         name: "fairness",
         description:
             "Provably Fair commit-reveal workflow: publish a server-seed commitment, publish a round commitment " +
@@ -791,7 +777,7 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "Usage: pokie build <project> --target <artifact> [--exact | --sample <n> --seed <string>] [--out <path>] [--dry-run]\n" +
             "<project> is a path pokie resolves to a blueprint/tsPackage/outcomeLibrary/stakeAdapter/wasm/parWorkbook " +
-            "project (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
+            "project, or a standalone Outcome Library/Stake descriptor (see docs/cli.md#pokie-build-project). Supported workflows: GameBlueprint -> tsPackage, outcomeLibrary, " +
             "stakeAdapter, PAR workbook, or wasm; PAR workbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, PAR workbook, or wasm; " +
             "tsPackage -> outcomeLibrary or stakeAdapter; outcomeLibrary -> outcomeLibrary or stakeAdapter; stakeAdapter -> stakeAdapter; " +
             "parWorkbook -> Blueprint, tsPackage, outcomeLibrary, stakeAdapter, parWorkbook, or wasm; Blueprint -> wasm is the canonical portable-runtime source.",
@@ -1226,24 +1212,6 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         kind: "valid",
         label: "<blueprint> --out <file> (accepted --out value, interactive terminal)",
         args: ["edit-fixture.blueprint.json", "--out", "custom-edit-out.blueprint.json"],
-        expectedExitCode: 0,
-        expectStdout: "text",
-    },
-
-    // --- export ---
-    {
-        command: "export",
-        kind: "invalid",
-        label: "missing <source>",
-        args: [],
-        expectedExitCode: 1,
-        expectedError: "error: required option '--to <artifact>' not specified",
-    },
-    {
-        command: "export",
-        kind: "valid",
-        label: "--help (public target-oriented entrypoint)",
-        args: ["--help"],
         expectedExitCode: 0,
         expectStdout: "text",
     },
