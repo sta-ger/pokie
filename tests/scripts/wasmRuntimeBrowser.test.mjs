@@ -34,7 +34,7 @@ const workerModule = `import {PokieWasmWorkerProtocol} from "/runtime/wasm/worke
 const protocol = new PokieWasmWorkerProtocol();
 self.onmessage = async ({data}) => self.postMessage(await protocol.handle(data));`;
 const page = `<!doctype html><script type="module">
-    import {instantiatePokieWasm, SeededPokieWasmHost} from "/runtime/wasm/browser.js";
+    import {instantiatePokieWasm, BoundedPokieWasmTraceCollector, SeededPokieWasmHost} from "/runtime/wasm/browser.js";
     const fixture = ${JSON.stringify(canonicalFixture)};
     const benchmarkConfiguration = ${JSON.stringify(benchmarkConfiguration)};
     const decode = (value) => Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
@@ -63,7 +63,8 @@ const page = `<!doctype html><script type="module">
         const bytes = decode(fixture.bytes);
         const golden = fixture.golden;
         const mainRuntime = await instantiatePokieWasm(bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
-        const mainSession = mainRuntime.createSession(golden.seed);
+        const trace = new BoundedPokieWasmTraceCollector(4);
+        const mainSession = mainRuntime.createSession(golden.seed, {trace});
         const mainRounds = [];
         for (const command of golden.commands) mainRounds.push(await mainSession.play(command));
         const mainState = mainSession.serialize();
@@ -80,7 +81,9 @@ const page = `<!doctype html><script type="module">
             totalWin: [...mainRounds, ...replayRounds].reduce((total, round) => total + round.payout, 0),
             screen: replayRounds[0].screen,
         };
-        assertFieldForField({draws: mainState.draws, rounds: mainRounds, state: mainState, continuation, replay}, golden.expected, "browser main-thread golden");
+        const {draws: legacyDraws, ...legacyState} = golden.expected.state;
+        const compactExpected = {...golden.expected, state: {...legacyState, schemaVersion: "pokie.state.v2", drawCount: legacyDraws.length}};
+        assertFieldForField({draws: trace.entries.flatMap(entry => entry.draws), rounds: mainRounds, state: mainState, continuation, replay}, compactExpected, "browser main-thread golden");
         assertFieldForField(replayResult, {rounds: [golden.expected.continuation], stateBeforeFinal: mainState, stateAfter: continuationState}, "browser replay result");
         mainSession.dispose();
         mainRuntime.dispose();
@@ -92,8 +95,8 @@ const page = `<!doctype html><script type="module">
         const correctnessSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
         const round = await correctnessSession.play({bet: 1});
         const correctnessState = correctnessSession.serialize();
-        const expectedCorrectnessDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.draws.length);
-        if (JSON.stringify(correctnessState.draws) !== JSON.stringify(expectedCorrectnessDraws) || round.draw !== expectedCorrectnessDraws[2]) throw new Error("browser benchmark did not consume the configured seeded host stream");
+        const expectedCorrectnessDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.drawCount);
+        if (correctnessState.drawCount !== 4 || round.draw !== expectedCorrectnessDraws[2]) throw new Error("browser benchmark did not consume the configured seeded host stream");
         correctnessSession.dispose();
         const warmSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
         for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await warmSession.play({bet: 1});
@@ -103,8 +106,9 @@ const page = `<!doctype html><script type="module">
         const serialized = warmSession.serialize();
         const serializationBytes = JSON.stringify(serialized).length;
         if (serialized.sequence !== benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds) throw new Error("browser benchmark warmup and measured loops did not complete");
-        const expectedWarmDraws = seededDraws(benchmarkConfiguration.fixtureSeed, serialized.draws.length);
-        if (JSON.stringify(serialized.draws) !== JSON.stringify(expectedWarmDraws)) throw new Error("browser benchmark warmup and measured operations did not consume the configured seeded host stream");
+        const reference = new SeededPokieWasmHost(benchmarkConfiguration.fixtureSeed);
+        for (let index = 0; index < serialized.drawCount; index++) reference.nextRandom();
+        if (serialized.drawCount !== 2 * (serialized.sequence + 1) || serialized.rngState !== reference.serializeState()) throw new Error("browser benchmark warmup and measured operations did not consume the configured seeded host stream");
         warmSession.dispose();
         const worker = new Worker("/worker.mjs", {type: "module"});
         try {
@@ -138,7 +142,9 @@ const page = `<!doctype html><script type="module">
             const workerState = replies.at(-1).result;
             assertFieldForField(workerRounds, mainRounds, "worker rounds compared with browser main thread");
             assertFieldForField({...workerState, rngState: workerState.rngState.rng}, mainState, "worker seeded position compared with browser main thread");
-            assertFieldForField(workerState.rngState, {cursor: mainState.draws.length, tape: JSON.stringify(workerDraws), seed: golden.seed, rng: mainState.rngState}, "worker complete draw continuation");
+            const tapeDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(workerDraws)));
+            const tapeHash = "sha256:" + Array.from(new Uint8Array(tapeDigest), byte => byte.toString(16).padStart(2, "0")).join("");
+            assertFieldForField(workerState.rngState, {version: "pokie.worker.v2", cursor: mainState.drawCount, tapeHash, tapeLength: workerDraws.length, seed: golden.seed, rng: mainState.rngState}, "worker compact draw continuation");
             response = receive();
             worker.postMessage({id: "replay", type: "replay", state: workerState, commands: [golden.continuationCommand]});
             const workerReplay = await response;

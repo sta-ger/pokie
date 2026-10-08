@@ -1,5 +1,6 @@
 import {PokieWasmWorkerProtocol} from "../../../src/wasm/worker.js";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "../../../src/wasm/PokieWasmRuntime.js";
+import {sha256CanonicalWasmBytes} from "../../../src/wasm/PokieWasmCanonicalModule.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("PokieWasmWorkerProtocol", () => {
@@ -10,7 +11,7 @@ describe("PokieWasmWorkerProtocol", () => {
         expect(await protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25, 0.75, 0.5, 0.125]})).toMatchObject({ok: true});
         expect(await protocol.handle({id: "one", type: "play", command: {bet: 1}})).toMatchObject({ok: true, result: {sequence: 1, draw: 0.25}});
         const state = await protocol.handle({id: "state", type: "serialize"});
-        expect(state).toMatchObject({ok: true, result: {draws: [0.25, 0.75], sequence: 1}});
+        expect(state).toMatchObject({ok: true, result: {drawCount: 2, sequence: 1}});
         if (!state.ok) throw new Error(state.error);
         expect(await protocol.handle({id: "restore", type: "restore", state: state.result as never})).toMatchObject({ok: true});
         expect(await protocol.handle({id: "two", type: "play"})).toMatchObject({ok: true, result: {sequence: 2, draw: 0.5}});
@@ -31,7 +32,7 @@ describe("PokieWasmWorkerProtocol", () => {
         const mainSession = mainRuntime.createSession(seed);
         const mainRound = await mainSession.play({bet: 1});
         expect(workerRound).toEqual({id: "play", ok: true, result: mainRound});
-        expect(workerState).toEqual({id: "state", ok: true, result: {...mainSession.serialize(), rngState: {cursor: 4, tape: JSON.stringify(draws), seed, rng: mainSession.serialize().rngState}}});
+        expect(workerState).toEqual({id: "state", ok: true, result: {...mainSession.serialize(), rngState: {version: "pokie.worker.v2", cursor: 4, tapeHash: await sha256CanonicalWasmBytes(new TextEncoder().encode(JSON.stringify(draws))), tapeLength: draws.length, seed, rng: mainSession.serialize().rngState}}});
         mainSession.dispose();
         mainRuntime.dispose();
     });
@@ -117,6 +118,66 @@ describe("PokieWasmWorkerProtocol", () => {
         await worker.handle({id: "dispose", type: "dispose"});
     });
 
+    it("rejects invalid compact cursors/versions and later mismatched draws without losing the settled state", async () => {
+        const fixture = createCanonicalWasmFixture();
+        const seed = "0";
+        const host = new SeededPokieWasmHost(seed);
+        const draws = Array.from({length: 8}, () => host.nextRandom());
+        draws[5] = 0.9;
+        const worker = new PokieWasmWorkerProtocol();
+        expect(await worker.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws, seed})).toMatchObject({ok: true});
+        const initial = await worker.handle({id: "state", type: "serialize"});
+        if (!initial.ok) throw new Error(initial.error);
+        const state = initial.result as {rngState: Record<string, unknown>};
+        for (const patch of [{cursor: -1}, {cursor: 1.5}, {cursor: 99}, {cursor: 3}, {version: "pokie.worker.v3"}, {tapeHash: "other"}, {rng: null}]) {
+            expect(await worker.handle({id: "bad", type: "restore", state: {...state, rngState: {...state.rngState, ...patch}}})).toMatchObject({ok: false});
+            expect(await worker.handle({id: "state", type: "serialize"})).toEqual(initial);
+        }
+        const first = await worker.handle({id: "play", type: "play"});
+        const settled = await worker.handle({id: "settled", type: "serialize"});
+        expect(await worker.handle({id: "mismatch", type: "play"})).toMatchObject({ok: false, error: expect.stringMatching(/do not match/)});
+        expect(await worker.handle({id: "settled", type: "serialize"})).toEqual(settled);
+        expect(await worker.handle({id: "restore", type: "restore", state: initial.result})).toMatchObject({ok: true});
+        expect(await worker.handle({id: "play", type: "play"})).toEqual(first);
+        await worker.handle({id: "dispose", type: "dispose"});
+    });
+
+    it("cancels an in-flight initialization without publishing a runnable replacement", async () => {
+        const fixture = createCanonicalWasmFixture();
+        const worker = new PokieWasmWorkerProtocol();
+        const pending = worker.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, seed: "0", traceCapacity: 2});
+        expect(await worker.handle({id: "cancel", type: "cancel"})).toMatchObject({ok: true});
+        // No runtime yet, but cancellation must invalidate pending acquisition too.
+        expect(await pending).toMatchObject({ok: false, error: expect.stringMatching(/cancelled/)});
+        expect(await worker.handle({id: "after", type: "play"})).toMatchObject({ok: false});
+    });
+
+    it("migrates P9-01 tape objects once and preserves finite Worker trace and cancellation", async () => {
+        const fixture = createCanonicalWasmFixture();
+        const seed = "0";
+        const host = new SeededPokieWasmHost(seed);
+        const draws = Array.from({length: 8}, () => host.nextRandom());
+        const worker = new PokieWasmWorkerProtocol();
+        expect(await worker.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws, seed, traceCapacity: 2})).toMatchObject({ok: true});
+        const verifier = new SeededPokieWasmHost(seed);
+        verifier.nextRandom();
+        verifier.nextRandom();
+        const legacy = {schemaVersion: "pokie.state.v1", seed, draws: draws.slice(0, 2), sequence: 0, credits: 1000, rngState: {cursor: 2, tape: JSON.stringify(draws), seed, rng: verifier.serializeState()}};
+        expect(await worker.handle({id: "restore", type: "restore", state: legacy})).toMatchObject({ok: true, result: {schemaVersion: "pokie.state.v2", rngState: {version: "pokie.worker.v2"}}});
+        expect(worker.getDiagnostics()).toMatchObject({legacyPrefixDraws: 2});
+        await worker.handle({id: "play", type: "play"});
+        await worker.handle({id: "play", type: "play"});
+        expect(worker.getDiagnostics()).toMatchObject({legacyPrefixDraws: 2});
+        const replay = await worker.handle({id: "replay", type: "replay", state: legacy, commands: [{}], traceCapacity: 1});
+        expect(replay).toMatchObject({ok: true, result: {trace: {entries: [{kind: "replay", sequence: 1}], dropped: 0, status: "completed"}}});
+        expect(structuredClone(replay)).toEqual(replay);
+        await worker.handle({id: "cancel", type: "cancel"});
+        expect(await worker.handle({id: "trace", type: "trace"})).toMatchObject({ok: false});
+        expect(await worker.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, seed})).toMatchObject({ok: true});
+        expect(await worker.handle({id: "trace", type: "trace"})).toMatchObject({ok: true, result: null});
+        await worker.handle({id: "dispose", type: "dispose"});
+    });
+
     it("cancels acquired resources and rejects malformed protocol state", async () => {
         const fixture = createCanonicalWasmFixture({id: "worker-cancel"});
         const protocol = new PokieWasmWorkerProtocol();
@@ -141,7 +202,7 @@ describe("PokieWasmWorkerProtocol", () => {
         const initial = {schemaVersion: "pokie.state.v1" as const, seed: "worker-replay-wire", draws: [], sequence: 0, credits: 1000};
         await expect(protocol.handle({id: "start", type: "instantiate", bytes: fixture.bytes, manifest: fixture.manifest, draws: [0.25, 0.75, 0.5, 0.125]})).resolves.toMatchObject({ok: true});
         const first = await protocol.handle({id: "replay", type: "replay", state: initial, commands: [{bet: 1}]});
-        expect(first).toMatchObject({ok: true, result: {rounds: [{sequence: 1}], stateBeforeFinal: initial, stateAfter: {sequence: 1}}});
+        expect(first).toMatchObject({ok: true, result: {rounds: [{sequence: 1}], stateBeforeFinal: {schemaVersion: "pokie.state.v2", sequence: 0, drawCount: 0}, stateAfter: {sequence: 1}}});
         if (!first.ok) throw new Error(first.error);
         const cloned = structuredClone(first.result) as {stateAfter: typeof initial; rounds: readonly {sequence: number}[]};
         expect(JSON.parse(JSON.stringify(cloned))).toEqual(cloned);

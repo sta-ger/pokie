@@ -136,12 +136,12 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
             expect(await screen.findByText(/Round complete — no win/)).toBeVisible();
             await user.click(await screen.findByText("Inspect round artifact"));
             await user.click(await screen.findByRole("button", {name: "Show advanced details (raw JSON, debug data)"}));
-            expect(await screen.findByText((content) => content.includes('"sequence": 1') && content.includes('"rngState": 3921318019'))).toBeVisible();
+            expect(await screen.findByText((content) => content.includes('"schemaVersion": "pokie.state.v2"') && content.includes('"drawCount": 4') && content.includes('"sequence": 1') && content.includes('"rngState": 3921318019'))).toBeVisible();
             await user.click(screen.getByRole("button", {name: "Spin"}));
             expect(await screen.findByText(/You won 1\.00/)).toBeVisible();
             expect(await screen.findByText((content) => content.includes('"sequence": 2') && content.includes('"rngState"'))).toBeVisible();
             const initial = responses.find(({url}) => url === "/api/project/play/session");
-            expect(initial?.body).toMatchObject({session: {debug: {stateAfter: {sequence: 0, rngState: 258186393}}}});
+            expect(initial?.body).toMatchObject({session: {debug: {stateAfter: {schemaVersion: "pokie.state.v2", drawCount: 2, sequence: 0, rngState: 258186393}}}});
             const spins = responses.filter(({url}) => url.endsWith("/spin"));
             expect(spins.map(({body}) => body)).toEqual([
                 expect.objectContaining({session: expect.objectContaining({screen: [["A"], ["B"]], win: 0, credits: 999})}),

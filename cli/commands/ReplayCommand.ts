@@ -162,7 +162,7 @@ export class ReplayCommand implements CliCommandHandling {
         const runtime = await loadPokieWasmFileRuntime(project.rootPath, new SeededPokieWasmHost(seed));
         try {
             const replay = await runtime.replay(
-                {schemaVersion: "pokie.state.v1", seed, draws: [], sequence: 0, credits: 1000},
+                {schemaVersion: "pokie.state.v2", seed, drawCount: 0, sequence: 0, credits: 1000},
                 Array.from({length: options.round}, () => ({})),
             );
             const finalRound = replay.rounds[replay.rounds.length - 1];

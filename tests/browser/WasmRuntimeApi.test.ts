@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {POKIE_WASM_RUNTIME_API_VERSION} from "pokie";
+import {POKIE_WASM_RUNTIME_API_VERSION, BoundedPokieWasmTraceCollector} from "pokie";
 import * as browser from "pokie/browser";
 import {instantiatePokieWasm, SeededPokieWasmHost} from "pokie/wasm";
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
@@ -9,7 +9,8 @@ describe("browser-safe WASM runtime API", () => {
     it("uses the browser entry point without Node adapters and preserves JSON-safe state", async () => {
         const fixture = createCanonicalWasmFixture({id: "browser-api"});
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("browser-seed"));
-        const session = runtime.createSession("browser-seed");
+        const trace = new browser.BoundedPokieWasmTraceCollector(2);
+        const session = runtime.createSession("browser-seed", {trace});
         expect(await session.play()).toMatchObject({sequence: 1});
         const state = JSON.parse(JSON.stringify(session.serialize()));
         expect(await runtime.replay(state, [{}])).toMatchObject({
@@ -17,8 +18,10 @@ describe("browser-safe WASM runtime API", () => {
             stateBeforeFinal: {sequence: 1},
             stateAfter: {sequence: 2},
         });
-        expect(state).toMatchObject({schemaVersion: "pokie.state.v1", seed: "browser-seed", sequence: 1, draws: expect.any(Array), rngState: expect.any(Number)});
+        expect(state).toMatchObject({schemaVersion: "pokie.state.v2", seed: "browser-seed", sequence: 1, drawCount: 4, rngState: expect.any(Number)});
+        expect(trace.entries).toHaveLength(2);
         runtime.dispose();
+        expect(trace.entries).toHaveLength(0);
     });
 
     it("replays the string-zero initial round through both portable public exports", async () => {
@@ -29,8 +32,9 @@ describe("browser-safe WASM runtime API", () => {
         expect(pkg.exports["./browser"].default).toBe("./dist/esm/browser.js");
         expect(pkg.exports["./wasm"].default).toBe("./dist/esm/wasm/browser.js");
         expect(browser.instantiatePokieWasm).toBe(instantiatePokieWasm);
+        expect(browser.BoundedPokieWasmTraceCollector).toBe(BoundedPokieWasmTraceCollector);
         expect(browser.POKIE_WASM_RUNTIME_API_VERSION).toBe(POKIE_WASM_RUNTIME_API_VERSION);
-        expect(POKIE_WASM_RUNTIME_API_VERSION).toBe("1.1.0");
+        expect(POKIE_WASM_RUNTIME_API_VERSION).toBe("1.2.0");
         const fixture = createCanonicalWasmFixture();
         const runtime = await browser.instantiatePokieWasm(fixture.bytes, fixture.manifest, new browser.SeededPokieWasmHost("0"));
         try {

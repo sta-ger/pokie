@@ -6,7 +6,7 @@ import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBluepr
 import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
 import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
 import type {StudioRuntimeSessionView} from "../../../cli/studio/runtime/StudioRuntimeSessionView.js";
-import type {PokieWasmSessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
+import type {PokieWasmSessionState, PokieWasmRuntime} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -17,6 +17,7 @@ import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.j
 import {StudioSimulationService} from "../../../cli/studio/simulation/StudioSimulationService.js";
 import {StudioReplayExecutionService} from "../../../cli/studio/replay/StudioReplayExecutionService.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";
+import {loadPokieWasmFileRuntime} from "../../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 const blueprint = {
@@ -124,7 +125,7 @@ describe("canonical WASM Studio workflow", () => {
             const opened = await post("/api/project/play/session", {seed: "0"});
             expect(opened.status).toBe(201);
             const initial = await opened.json() as {session: StudioRuntimeSessionView};
-            expect(initial.session.debug?.stateAfter).toMatchObject({sequence: 0, credits: 1000, rngState: expect.any(Number)});
+            expect(initial.session.debug?.stateAfter).toMatchObject({schemaVersion: "pokie.state.v2", drawCount: 2, sequence: 0, credits: 1000, rngState: expect.any(Number)});
             const node = fixture.game.createSession({seed: "0"});
             expect((initial.session.debug?.stateAfter as PokieWasmSessionState).rngState).toEqual((node as unknown as {toSessionState(): {rngState: number}}).toSessionState().rngState);
             const states: unknown[] = [initial.session.debug?.stateAfter];
@@ -137,6 +138,8 @@ describe("canonical WASM Studio workflow", () => {
                 expect(body.session).toMatchObject({win: node.getWinAmount(), credits: node.getCreditsAmount(), screen: (node as unknown as {getSymbolsCombination(): {toMatrix(): string[][]}}).getSymbolsCombination().toMatrix()});
                 expect(body.session.debug?.stateBefore).toEqual(states[round - 1]);
                 states.push(body.session.debug?.stateAfter);
+                expect(Buffer.byteLength(JSON.stringify(body.session.debug?.stateAfter))).toBeLessThanOrEqual(192);
+                expect(body.session.debug?.stateAfter).not.toHaveProperty("draws");
             }
             for (const round of [1, 4]) {
                 const started = await post("/api/project/replays", {seed: "0", round});
@@ -162,6 +165,114 @@ describe("canonical WASM Studio workflow", () => {
         } finally {
             await server.stop();
             await fixture.release();
+        }
+    });
+
+    it("keeps 10000-round Studio simulation and chunked durable replay compact", async () => {
+        const fixture = createCanonicalWasmFixture({reelStrips: [["A"], ["A"]]});
+        fs.writeFileSync(artifactPath, fixture.bytes);
+        fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        const jobsDirectory = path.join(workDir, "compact-jobs");
+        const jobs = new StudioJobService(new FileStudioJobRepository(jobsDirectory));
+        const simulation = new StudioSimulationService(undefined, undefined, undefined, 1000);
+        simulation.attachJobService(jobs);
+        const started = simulation.start(artifactPath, {rounds: 10000, seed: "compact-measurement"});
+        if (started.status !== "created") throw new Error("expected simulation");
+        await expect(waitForTerminal(() => simulation.getStatus(started.job.id))).resolves.toMatchObject({status: "completed"});
+        expect(simulation.getReport(artifactPath, started.job.id)).toMatchObject({status: "ok", report: {rounds: 10000, totalBet: 10000, totalWin: 20000, workers: 1}});
+        const replay = new StudioReplayExecutionService(undefined, undefined, 1000);
+        replay.attachJobService(jobs);
+        const replayStart = replay.start(artifactPath, {round: 10000, seed: "compact-measurement"});
+        if (replayStart.status !== "created") throw new Error("expected replay");
+        await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "completed"});
+        const download = replay.getDownload(artifactPath, replayStart.job.id);
+        if (download.status !== "ok") throw new Error("expected descriptor");
+        expect(download.descriptor).toMatchObject({round: 10000, totalBet: 10000, totalWin: 20000, stateBefore: {schemaVersion: "pokie.state.v2", sequence: 9999}, stateAfter: {schemaVersion: "pokie.state.v2", sequence: 10000}});
+        for (const state of [download.descriptor.stateBefore, download.descriptor.stateAfter]) {
+            expect(Buffer.byteLength(JSON.stringify(state))).toBeLessThanOrEqual(192);
+            expect(state).not.toHaveProperty("draws");
+        }
+        const persisted = new FileStudioJobRepository(jobsDirectory).get(replayStart.job.id);
+        expect(persisted?.result).toMatchObject({detail: {descriptor: download.descriptor}});
+        expect(Buffer.byteLength(JSON.stringify(persisted))).toBeLessThan(5000);
+        expect(replay.getActiveCount()).toBe(0);
+        expect(simulation.getActiveCount()).toBe(0);
+        await replay.cancelAll();
+        await simulation.cancelAll();
+    });
+
+    it.each(["cancel", "runtime-failure", "disposal-failure"] as const)("drains real compact simulation/replay continuation on %s and starts a clean next job", async (failure) => {
+        const fixture = createCanonicalWasmFixture({reelStrips: [["A"], ["A"]]});
+        fs.writeFileSync(artifactPath, fixture.bytes);
+        fs.writeFileSync(`${artifactPath}.pokie-wasm.json`, JSON.stringify(fixture.manifest));
+        for (const surface of ["simulation", "replay"] as const) {
+            let fail = true;
+            let captured: PokieWasmSessionState | undefined;
+            let actual: PokieWasmRuntime | undefined;
+            const loader: typeof loadPokieWasmFileRuntime = async (file, host) => {
+                const runtime = await loadPokieWasmFileRuntime(file, host);
+                actual = runtime;
+                return {
+                    ...runtime,
+                    createSession: (seed, options) => {
+                        expect(options?.trace).toBeUndefined();
+                        const session = runtime.createSession(seed, options);
+                        return {...session, play: async (command) => {
+                            if (fail && failure === "runtime-failure") throw new Error("injected round failure");
+                            const round = await session.play(command);
+                            captured = session.serialize();
+                            return round;
+                        }};
+                    },
+                    replay: async (state, commands, options) => {
+                        expect(options?.trace).toBeUndefined();
+                        if (fail && failure === "runtime-failure") throw new Error("injected replay failure");
+                        const result = await runtime.replay(state, commands, options);
+                        captured = result.stateAfter;
+                        return result;
+                    },
+                    dispose: () => {
+                        runtime.dispose();
+                        if (fail && failure === "disposal-failure") throw new Error("injected release failure");
+                    },
+                };
+            };
+            let cancel = (): void => undefined;
+            const yieldToEventLoop = (): Promise<void> => {
+                if (fail && failure === "cancel") cancel();
+                return Promise.resolve();
+            };
+            const completed = jest.fn();
+            const simulation = new StudioSimulationService(undefined, undefined, undefined, 1, undefined, yieldToEventLoop, undefined, undefined, undefined, undefined, undefined, completed, undefined, loader);
+            const replay = new StudioReplayExecutionService(undefined, undefined, 1, undefined, yieldToEventLoop, undefined, undefined, completed, undefined, undefined, loader);
+            const service = surface === "simulation" ? simulation : replay;
+            const started = surface === "simulation" ? simulation.start(artifactPath, {rounds: 3, seed: "0"}) : replay.start(artifactPath, {round: 3, seed: "0"});
+            if (started.status !== "created") throw new Error("expected job");
+            cancel = () => {
+                if (surface === "simulation") simulation.cancel(started.job.id);
+                else replay.cancel(artifactPath, started.job.id);
+            };
+            const status = () => surface === "simulation" ? simulation.getStatus(started.job.id) : replay.getStatus(artifactPath, started.job.id);
+            await expect(waitForTerminal(status)).resolves.toMatchObject({status: failure === "cancel" ? "cancelled" : "failed"});
+            expect(service.getActiveCount()).toBe(0);
+            expect(completed).not.toHaveBeenCalled();
+            expect(surface === "simulation" ? simulation.getReport(artifactPath, started.job.id) : replay.getDownload(artifactPath, started.job.id)).toMatchObject({status: "not-ready"});
+            if (captured !== undefined) {
+                expect(captured.schemaVersion).toBe("pokie.state.v2");
+                expect(Buffer.byteLength(JSON.stringify(captured))).toBeLessThanOrEqual(192);
+            }
+            expect(() => actual!.createSession("0")).toThrow(/disposed/);
+            // Cleanup failure remains observable to server shutdown; retry must still start cleanly.
+            if (failure === "disposal-failure") await expect(service.cancelAll()).rejects.toThrow(/release failure/);
+            else await service.cancelAll();
+            fail = false;
+            const next = surface === "simulation" ? simulation.start(artifactPath, {rounds: 2, seed: "0"}) : replay.start(artifactPath, {round: 2, seed: "0"});
+            if (next.status !== "created") throw new Error("expected clean retry");
+            await expect(waitForTerminal(() => surface === "simulation" ? simulation.getStatus(next.job.id) : replay.getStatus(artifactPath, next.job.id))).resolves.toMatchObject({status: "completed"});
+            expect(completed).toHaveBeenCalledTimes(1);
+            expect(service.getActiveCount()).toBe(0);
+            if (failure === "disposal-failure") await expect(service.cancelAll()).rejects.toThrow(/release failure/);
+            else await service.cancelAll();
         }
     });
 

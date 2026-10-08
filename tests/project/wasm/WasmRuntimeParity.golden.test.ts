@@ -15,7 +15,7 @@ import {Paytable} from "../../../src/session/videoslot/paytable/Paytable.js";
 import {VideoSlotWinCalculator} from "../../../src/session/videoslot/wincalculator/VideoSlotWinCalculator.js";
 import {ReplayRecorder} from "../../../src/replay/ReplayRecorder.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
-import type {PokieWasmRound, PokieWasmSessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
+import {BoundedPokieWasmTraceCollector, type PokieWasmRound, type PokieWasmLegacySessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import {PORTABLE_RUNTIME_ALL_WILD_GOLDEN, PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTABLE_RUNTIME_GOLDEN} from "../../fixtures/wasm/portableRuntimeGolden.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
@@ -57,7 +57,8 @@ describe("WASM runtime parity golden", () => {
         const node = runNodeReference(golden.seed, golden.commands);
         const fixture = createCanonicalWasmFixture({id: golden.id});
         const wasmRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
-        const wasmSession = wasmRuntime.createSession(golden.seed);
+        const trace = new BoundedPokieWasmTraceCollector(4);
+        const wasmSession = wasmRuntime.createSession(golden.seed, {trace});
         const wasmRounds: PokieWasmRound[] = [];
         for (const command of golden.commands) wasmRounds.push(await wasmSession.play(command));
         const wasmState = wasmSession.serialize();
@@ -85,10 +86,10 @@ describe("WASM runtime parity golden", () => {
         // This checked-in record is the review authority. The Node reference is
         // evaluated before the WASM runtime and never consumes WASM-produced draws.
         expect(observed).toEqual(golden.expected);
-        expect({draws: wasmState.draws, rounds: wasmRounds.map(canonicalRound), state: wasmState, continuation: canonicalRound(continuation)}).toEqual({
+        expect({draws: trace.entries.flatMap(entry => entry.draws), rounds: wasmRounds.map(canonicalRound), state: wasmState, continuation: canonicalRound(continuation)}).toEqual({
             draws: golden.expected.draws,
             rounds: golden.expected.rounds,
-            state: golden.expected.state,
+            state: compact(golden.expected.state),
             continuation: golden.expected.continuation,
         });
         expect(replay.rounds.map(canonicalRound)).toEqual([golden.expected.continuation]);
@@ -115,7 +116,7 @@ describe("WASM runtime parity golden", () => {
         const session = runtime.createSession("rejection");
         await expect(session.play()).resolves.toMatchObject({stops: [2]});
         const state = session.serialize();
-        expect(state).toMatchObject({sequence: 1, draws: [expect.any(Number)]});
+        expect(state).toMatchObject({sequence: 1, drawCount: 1});
         expect(() => runtime.restoreSession(state)).toThrow(/missing.*continuation/);
         runtime.dispose();
     });
@@ -125,7 +126,8 @@ describe("WASM runtime parity golden", () => {
         const node = runNodeReference(golden.seed, golden.commands, golden.fixture);
         const fixture = createCanonicalWasmFixture({id: golden.id, ...golden.fixture});
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
-        const session = runtime.createSession(golden.seed);
+        const trace = new BoundedPokieWasmTraceCollector(4);
+        const session = runtime.createSession(golden.seed, {trace});
         const rounds: PokieWasmRound[] = [];
         for (const command of golden.commands) rounds.push(await session.play(command));
         const state = session.serialize();
@@ -143,10 +145,10 @@ describe("WASM runtime parity golden", () => {
             replay: nodeReplay,
         };
         expect(observed).toEqual(golden.expected);
-        expect({draws: state.draws, rounds: rounds.map(canonicalRound), state, continuation: canonicalRound(continuation)}).toEqual({
+        expect({draws: trace.entries.flatMap(entry => entry.draws), rounds: rounds.map(canonicalRound), state, continuation: canonicalRound(continuation)}).toEqual({
             draws: golden.expected.draws,
             rounds: golden.expected.rounds,
-            state: golden.expected.state,
+            state: compact(golden.expected.state),
             continuation: golden.expected.continuation,
         });
         expect(replay.rounds.map(canonicalRound)).toEqual([golden.expected.continuation]);
@@ -166,7 +168,8 @@ describe("WASM runtime parity golden", () => {
         const node = runNodeReference(golden.seed, golden.commands, golden.fixture);
         const fixture = createCanonicalWasmFixture({id: golden.id, ...golden.fixture});
         const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
-        const session = runtime.createSession(golden.seed);
+        const trace = new BoundedPokieWasmTraceCollector(4);
+        const session = runtime.createSession(golden.seed, {trace});
         const round = await session.play(golden.commands[0]);
         const serialized = session.serialize();
         const continuationRuntime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost(golden.seed));
@@ -178,7 +181,8 @@ describe("WASM runtime parity golden", () => {
 
         expect(round).toMatchObject({screen: golden.expected.screen, payout: golden.expected.payout, credits: golden.expected.credits});
         expect(canonicalRound(round)).toEqual(node.rounds[0]);
-        expect(serialized).toEqual(node.state);
+        expect(serialized).toEqual(compact(node.state));
+        expect(trace.entries.flatMap(entry => entry.draws)).toEqual(node.state.draws);
         expect(canonicalRound(continuation)).toEqual(nodeContinuation);
         expect(canonicalRound(replay.rounds[0])).toEqual(nodeContinuation);
         expect({round: replay.rounds[0].sequence, totalBet: 2, totalWin: replay.rounds[0].payout, screen: replay.rounds[0].screen}).toEqual(nodeReplay);
@@ -242,7 +246,7 @@ class ProductionSeededRandomCapture implements RandomNumberGenerating {
 
 }
 
-function createNodeReference(seed: string, state?: PokieWasmSessionState, fixture: FeatureFixture = BASE_FIXTURE): NodeReference {
+function createNodeReference(seed: string, state?: PokieWasmLegacySessionState, fixture: FeatureFixture = BASE_FIXTURE): NodeReference {
     const config = new VideoSlotConfig<string>();
     config.setReelsNumber(fixture.reelStrips.length);
     config.setReelsSymbolsNumber(1);
@@ -271,11 +275,11 @@ function createNodeReference(seed: string, state?: PokieWasmSessionState, fixtur
 function runNodeReference(seed: string, commands: readonly Record<string, unknown>[], fixture: FeatureFixture = BASE_FIXTURE) {
     const reference = createNodeReference(seed, undefined, fixture);
     const rounds = commands.map((command, index) => playNodeReference(reference, command, index + 1));
-    const state: PokieWasmSessionState = {schemaVersion: "pokie.state.v1", seed, draws: [...reference.random.draws], sequence: rounds.length, credits: reference.session.getCreditsAmount(), rngState: reference.session.toSessionState().rngState as number};
+    const state: PokieWasmLegacySessionState = {schemaVersion: "pokie.state.v1", seed, draws: [...reference.random.draws], sequence: rounds.length, credits: reference.session.getCreditsAmount(), rngState: reference.session.toSessionState().rngState as number};
     return {rounds, state};
 }
 
-function resumeNodeReference(seed: string, state: PokieWasmSessionState, command: Record<string, unknown>, fixture: FeatureFixture = BASE_FIXTURE) {
+function resumeNodeReference(seed: string, state: PokieWasmLegacySessionState, command: Record<string, unknown>, fixture: FeatureFixture = BASE_FIXTURE) {
     return playNodeReference(createNodeReference(seed, state, fixture), command, state.sequence + 1);
 }
 
@@ -301,4 +305,8 @@ function recordNodeReplay(seed: string, round: number, fixture: FeatureFixture =
 
 function canonicalRound(round: Pick<PokieWasmRound, "sequence" | "draw" | "stops" | "screen" | "winMultiplier" | "stake" | "payout" | "creditsBefore" | "credits" | "command">) {
     return {sequence: round.sequence, draw: round.draw, stops: round.stops, screen: round.screen, winMultiplier: round.winMultiplier, stake: round.stake, payout: round.payout, creditsBefore: round.creditsBefore, credits: round.credits, command: round.command};
+}
+
+function compact(state: {seed: string; draws: readonly number[]; sequence: number; credits: number; rngState?: unknown}) {
+    return {schemaVersion: "pokie.state.v2", seed: state.seed, drawCount: state.draws.length, sequence: state.sequence, credits: state.credits, rngState: state.rngState};
 }
