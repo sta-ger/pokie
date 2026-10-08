@@ -1,3 +1,4 @@
+import {markRecognizedStakeProject, writeRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {OutcomeLibraryBundleWriter, PokieGame, PokieGameManifest, StakeEngineExporter, StakeEngineExportModeInput} from "pokie";
 import fs from "fs";
 import os from "os";
@@ -93,6 +94,26 @@ describe("StudioServer outcome-source project routes", () => {
         await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([buildOutcomeLibraryBundleModeInput("base", "base-lib")], bundleDir);
         return bundleDir;
     }
+
+    it("carries rare Stake analytics in context while inspect/validate remain diagnostic endpoints", async () => {
+        const dir = path.join(studioRoot, "rare-stake");
+        writeRareStakeDirectory(dir);
+        markRecognizedStakeProject(dir);
+        expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: dir})).status).toBe(200);
+        const context = await get(`${baseUrl}/api/project/context`);
+        expect(context.status).toBe(200);
+        const dashboard = context.body as {report: import("pokie").OutcomeSourceProjectReport};
+        expectRareMetrics(dashboard.report.modes[0].analysis);
+        expect(dashboard.report.modes[0].analysis.totalWeight).toBe("18446744073709551616");
+        for (const endpoint of ["inspect", "validate"]) {
+            const response = await get(`${baseUrl}/api/project/${endpoint}`);
+            expect(response.status).toBe(200);
+            expect(response.body).toMatchObject({valid: true});
+            expect(response.body).not.toHaveProperty("analysis");
+            expect(response.body).not.toHaveProperty("modes");
+        }
+        expect(loadGame).not.toHaveBeenCalled();
+    });
 
     async function buildStakeExportDir(): Promise<string> {
         const stakeDir = path.join(studioRoot, "stake-export");

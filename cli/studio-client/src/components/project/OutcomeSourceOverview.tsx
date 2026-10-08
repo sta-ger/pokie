@@ -1,3 +1,4 @@
+import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
 import {Alert, Badge, Button, Group, Table, Text, TextInput, Title} from "@mantine/core";
 import {IconAlertTriangle} from "@tabler/icons-react";
 import {useState} from "react";
@@ -94,9 +95,9 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                         {report.modes.map((mode) => (
                             <Table.Tr key={mode.modeName}>
                                 <Table.Td>{mode.modeName}</Table.Td>
-                                <Table.Td>{(mode.analysis.rtp * 100).toFixed(2)}%</Table.Td>
-                                <Table.Td>{(mode.analysis.hitFrequency * 100).toFixed(2)}%</Table.Td>
-                                <Table.Td>{mode.analysis.maxWin}</Table.Td>
+                                <Table.Td>{formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%</Table.Td>
+                                <Table.Td>{formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}%</Table.Td>
+                                <Table.Td>{mode.analysis.maxWin ?? mode.analysis.maxRatio}</Table.Td>
                                 {canSample && (
                                     <Table.Td>
                                         <Button size="xs" loading={drawing} onClick={() => onDraw(mode.modeName)}>

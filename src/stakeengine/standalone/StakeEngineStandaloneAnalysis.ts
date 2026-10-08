@@ -1,8 +1,9 @@
 // Small values remain numbers for source compatibility. Values derived from a uint64 total are emitted as a
-// canonical fixed-point decimal string when converting their denominator to number would lose precision.
+// decimal string capped at 40 fractional digits for large totals. Integer weights/sums are exact;
+// decimal fractions and binary64 moments are bounded approximations.
 export type StakeEngineStandaloneExactDecimal = number | string;
 
-// One event category's own exact weighted frequency across a mode's outcomes -- "occurrenceFrequency" is the
+// One event category's weighted frequency (bounded decimal rendering) across a mode's outcomes -- "occurrenceFrequency" is the
 // weighted probability of drawing an outcome that carries at least one event of this category;
 // "averageOccurrencesPerOutcome" is the weighted mean count of that category's events per outcome (so a category
 // that always fires exactly once per outcome has occurrenceFrequency === averageOccurrencesPerOutcome, while one
@@ -26,7 +27,7 @@ export type StakeEngineOutcomePayoutBucket = {
     readonly probability: StakeEngineStandaloneExactDecimal;
 };
 
-// The exact -- not sampled -- statistics StakeEngineStandaloneAnalyzer computes over one mode's own normalized
+// The enumerated -- not sampled -- statistics (approximate numeric moments) StakeEngineStandaloneAnalyzer computes over one mode's own normalized
 // outcomes. Mirrors WeightedOutcomeLibraryAnalysis's own shape/semantics where the underlying data supports it
 // (rtp/hitFrequency/variance/standardDeviation are all defined over each outcome's own stake-normalized "ratio",
 // the same way WeightedOutcomeLibraryAnalysis.rtp is defined over artifact.payoutMultiplier), but is computed

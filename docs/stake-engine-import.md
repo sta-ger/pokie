@@ -23,7 +23,7 @@ this importer. Rather than invent plausible-looking stand-ins, the importer uses
 | `wins` | one synthetic win component per step with `totalWin > 0`, flagged via `metadata.stakeEngineImportSynthetic: true` — see below |
 | `provenance.pokieVersion` | substituted with `pokie-manifest.json`'s own `pokieVersion` |
 
-Everything else round-trips **exactly**: outcome `id`/`weight`/`payoutMultiplier`, mode `cost`, `betMode`/
+Within the supported safe-integer numeric format, everything else round-trips **exactly**: outcome `id`/`weight`/`payoutMultiplier`, mode `cost`, `betMode`/
 `stake`, `libraryId`, and `provenance.game`/`configHash` — all recovered from `pokie-manifest.json`, the one
 place they survive (Stake's own files never carry them at all).
 
@@ -266,3 +266,11 @@ if (importResult.issues.some((issue) => issue.severity === "error")) {
     await new StakeEngineExporter(pokieVersion).exportToDirectory(importResult.modes, "./stakeengine-reexported");
 }
 ```
+
+### Numeric format boundaries
+
+POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at most
+`Number.MAX_SAFE_INTEGER`); it does not support the complete UInt64 ID/payout range.
+Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
+while native persisted bundles and import/export retain their existing numeric weight restrictions.
+Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.

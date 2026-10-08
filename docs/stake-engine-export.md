@@ -298,3 +298,11 @@ It reuses the same low-level pieces as `StakeEngineExporter` (`convertRatioToSta
 mode-name/cost validation rules, but is a deliberately separate class rather than a variant grafted onto
 `StakeEngineExporter` — that class's own array-based "every mode's library fully in memory" contract is already
 stabilized and untouched by this streaming path.
+
+### Numeric format boundaries
+
+POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at most
+`Number.MAX_SAFE_INTEGER`); it does not support the complete UInt64 ID/payout range.
+Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
+while native persisted bundles and import/export retain their existing numeric weight restrictions.
+Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.

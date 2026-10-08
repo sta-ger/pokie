@@ -1,3 +1,4 @@
+import {expectRareMetrics, expectRelative, rareStakeSource, RARE_PROBABILITY} from "./StakeProbabilityTestFixtures.js";
 import {SeededRandomNumberGenerator, StakeEngineEvent, StakeEngineOutcomeSourceReadResult, StakeEngineStandaloneAnalyzer, toCanonicalJson} from "pokie";
 
 // StakeEngineStandaloneAnalyzer.test.ts hand-verifies exact statistics for a handful of hand-picked fixtures,
@@ -8,7 +9,7 @@ import {SeededRandomNumberGenerator, StakeEngineEvent, StakeEngineOutcomeSourceR
 // distribution's probabilities summing to exactly 1, the analyzer's own bigint weight total exactly matching an
 // independently computed sum (not merely close -- byte-for-byte, since JS number addition alone would silently
 // lose precision at this scale), and a lossless canonical-JSON round trip (proving no bigint or other
-// non-JSON-safe value ever leaks out of the bigint fixed-point math). The seed set is a fixed-size, literal
+// non-JSON-safe value ever leaks out of the BigInt integer accounting). The seed set is a fixed-size, literal
 // range -- bounded case count, stable across runs and release lanes.
 function buildRandomOutcomeSet(seed: number): StakeEngineOutcomeSourceReadResult {
     const rng = new SeededRandomNumberGenerator(seed);
@@ -69,8 +70,8 @@ describe("StakeEngineStandaloneAnalyzer bounded property invariants", () => {
             // independently computed bigint sum of the same weights.
             expect(BigInt(mode.totalWeight)).toBe(expectedTotalWeight);
 
-            // non-negative payout statistics, each within its own natural bound -- the fixed-point-scaled
-            // probabilities (see scaledProbabilityAsNumber's own 1e18 scale) can round a hair past their exact
+            // non-negative payout statistics, each within its own natural bound -- the approximate numeric
+            // probabilities can round a hair past their exact
             // bound, so bounds allow a tiny epsilon rather than asserting a false, over-tight exactness.
             const epsilon = 1e-9;
             expect(mode.rtp).toBeGreaterThanOrEqual(0);
@@ -116,4 +117,15 @@ describe("StakeEngineStandaloneAnalyzer bounded property invariants", () => {
             expect(JSON.parse(JSON.stringify(canonical))).toEqual(canonical);
         },
     );
+});
+
+// Deliberately rare unit weights cover the region ordinary generated distributions never reach.
+test.each([1, 2, 3, 5, 8, 13, 21])("rare property scale %i preserves positive masses and centered moments", (scale) => {
+    const source = rareStakeSource();
+    const mode = new StakeEngineStandaloneAnalyzer().analyze({...source, modes: [{...source.modes[0], outcomes: [
+        source.modes[0].outcomes[0],
+        {...source.modes[0].outcomes[1], payoutMultiplier: 200 * scale, ratio: 2 * scale},
+    ]}]}).modes[0];
+    expectRareMetrics({...mode, rtp: mode.rtp / scale, variance: mode.variance / scale ** 2, standardDeviation: mode.standardDeviation / scale});
+    expectRelative(Number(mode.payoutDistribution[1].probability), RARE_PROBABILITY);
 });

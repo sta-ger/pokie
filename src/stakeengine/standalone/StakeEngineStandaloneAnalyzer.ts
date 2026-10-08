@@ -16,7 +16,7 @@ import type {StakeEngineStandaloneMode} from "./StakeEngineStandaloneMode.js";
 // StakeEngineOutcomeRecord's own doc comment for why that's a deliberate non-goal here). Assumes its input is
 // StakeEngineOutcomeSourceReader's own output with no error-level issues (that reader guarantees a non-empty,
 // structurally consistent set of outcomes per mode whenever it returns any modes at all) -- this class does not
-// re-validate.
+// re-validate the external format. Direct-call weights, positive totals, and finite moments are guarded.
 //
 // Every weighted sum here normalizes each outcome's weight (divides by totalWeight) *before* multiplying by
 // whatever quantity it's being weighted by, rather than summing raw weight*value products and dividing once at
@@ -26,8 +26,6 @@ export class StakeEngineStandaloneAnalyzer {
     private static readonly ZERO = BigInt(0);
     private static readonly UINT64_MAX = BigInt("18446744073709551615");
     private static readonly TEN = BigInt(10);
-    private static readonly WEIGHTED_AVERAGE_SCALE = BigInt("1000000000000000000");
-    private static readonly WEIGHTED_AVERAGE_SCALE_AS_NUMBER = 1e18;
 
     private readonly classifier: StakeEngineEventClassifying;
 
@@ -42,13 +40,19 @@ export class StakeEngineStandaloneAnalyzer {
     private analyzeMode(mode: StakeEngineStandaloneMode): StakeEngineStandaloneModeAnalysis {
         const outcomes = mode.outcomes;
         const totalWeight = outcomes.reduce((sum, outcome) => sum + this.weightAsBigInt(outcome.weight), StakeEngineStandaloneAnalyzer.ZERO);
+        if (totalWeight === StakeEngineStandaloneAnalyzer.ZERO) {
+            throw new Error(`Standalone mode "${mode.modeName}" must have a positive total weight.`);
+        }
         const nonInvertibleRatioCount = outcomes.filter((outcome) => outcome.ratio === undefined).length;
 
         const effectiveRatio = (outcome: StakeEngineOutcomeRecord): number => outcome.ratio ?? outcome.payoutMultiplier / mode.cost / 100;
 
-        const rtp = this.weightedAverage(outcomes, totalWeight, effectiveRatio);
+        // The minimum anchors constant/neighboring payouts without subtracting a dominant mean
+        // from a positive rare-win contribution (which would cancel if the rare win came first).
+        const anchor = outcomes.reduce((min, outcome) => Math.min(min, effectiveRatio(outcome)), effectiveRatio(outcomes[0]));
+        const rtp = anchor + this.weightedAverage(outcomes, totalWeight, (outcome) => effectiveRatio(outcome) - anchor);
         const hitFrequency = this.weightedAverage(outcomes, totalWeight, (outcome) => (outcome.payoutMultiplier > 0 ? 1 : 0));
-        const zeroWinFrequency = 1 - hitFrequency;
+        const zeroWinFrequency = this.weightedAverage(outcomes, totalWeight, (outcome) => (outcome.payoutMultiplier === 0 ? 1 : 0));
         const variance = this.weightedAverage(outcomes, totalWeight, (outcome) => (effectiveRatio(outcome) - rtp) ** 2);
         const standardDeviation = Math.sqrt(variance);
 
@@ -79,13 +83,16 @@ export class StakeEngineStandaloneAnalyzer {
     // (ratios originate in the Stake JSON format), so conversion happens only after the exact bigint fraction has
     // been formed. uint64 values are far below Number's finite range.
     private weightedAverage(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: bigint, select: (outcome: StakeEngineOutcomeRecord) => number): number {
-        const average = outcomes.reduce((sum, outcome) => sum + this.scaledProbabilityAsNumber(this.weightAsBigInt(outcome.weight), totalWeight) * select(outcome), 0);
-        return Number.isFinite(average) ? average : 0;
+        const average = outcomes.reduce((sum, outcome) => sum + this.probabilityAsNumber(this.weightAsBigInt(outcome.weight), totalWeight) * select(outcome), 0);
+        if (!Number.isFinite(average)) {
+            throw new Error("Standalone weighted average is not finite.");
+        }
+        return average;
     }
 
-    // An exact probability mass function: one entry per exactly distinct payoutMultiplier value actually present
+    // A probability mass function with exact integer bucket weights: one entry per exactly distinct payoutMultiplier value actually present
     // (grouped by strict numeric equality on Stake's own raw integer -- never on the reversed "ratio", so no
-    // float-comparison ambiguity can ever merge or split a bucket), sorted ascending, probabilities summing to 1.
+    // float-comparison ambiguity can ever merge or split a bucket), sorted ascending, with bounded decimal probabilities.
     private buildPayoutDistribution(outcomes: readonly StakeEngineOutcomeRecord[], totalWeight: bigint, cost: number): StakeEngineOutcomePayoutBucket[] {
         const bucketsByMultiplier = new Map<number, {weight: bigint; ratio: number | undefined; ratioAgrees: boolean}>();
         for (const outcome of outcomes) {
@@ -161,17 +168,22 @@ export class StakeEngineStandaloneAnalyzer {
         return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
     }
 
+    // Form at least 21 significant decimal digits with exact integer division, then round once into binary64.
+    // Scaling follows the fraction's magnitude: there is no fixed absolute probability cutoff, and
+    // common weight scaling produces identical doubles (including terminating decimals such as 0.1).
     private probabilityAsNumber(numerator: bigint, denominator: bigint): number {
-        return Number(numerator) / Number(denominator);
-    }
-
-    private scaledProbabilityAsNumber(numerator: bigint, denominator: bigint): number {
-        const scaledProbability = numerator * StakeEngineStandaloneAnalyzer.WEIGHTED_AVERAGE_SCALE / denominator;
-        return Number(scaledProbability) / StakeEngineStandaloneAnalyzer.WEIGHTED_AVERAGE_SCALE_AS_NUMBER;
+        if (denominator <= StakeEngineStandaloneAnalyzer.ZERO) {
+            throw new Error("Standalone probability requires a positive total weight.");
+        }
+        if (numerator === StakeEngineStandaloneAnalyzer.ZERO) return 0;
+        const scale = 21 + denominator.toString().length - numerator.toString().length;
+        const significand = numerator * BigInt("1" + "0".repeat(scale)) / denominator;
+        return Number(`${significand}e-${scale}`);
     }
 
     // A decimal result can be represented exactly only when its reduced denominator factors into 2s and 5s. For
-    // other fractions, expose a deterministic 40-place decimal rather than silently losing precision in a number.
+    // large totals, expose a deterministic decimal capped at 40 fractional digits, including terminating
+    // fractions needing more digits. Integer accounting is exact; numeric moments are approximate.
     private displayFraction(numerator: bigint, denominator: bigint): StakeEngineStandaloneExactDecimal {
         if (numerator <= BigInt(Number.MAX_SAFE_INTEGER) && denominator <= BigInt(Number.MAX_SAFE_INTEGER)) {
             return this.probabilityAsNumber(numerator, denominator);

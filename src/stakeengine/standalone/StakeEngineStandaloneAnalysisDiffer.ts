@@ -1,3 +1,4 @@
+import {formatAnalysisNumber} from "../../internal/formatAnalysisNumber.js";
 import type {
     StakeEngineStandaloneAnalysis,
     StakeEngineStandaloneExactDecimal,
@@ -141,28 +142,28 @@ export class StakeEngineStandaloneAnalysisDiffer implements StakeEngineStandalon
         if (Math.abs(rtp.delta) >= this.rtpDeltaWarningThreshold) {
             warnings.push(
                 `RTP changed by ${this.formatSigned(rtp.delta * 100, 2)} percentage points ` +
-                    `(${(rtp.left * 100).toFixed(2)}% -> ${(rtp.right * 100).toFixed(2)}%)`,
+                    `(${formatAnalysisNumber(rtp.left * 100, 2)}% -> ${formatAnalysisNumber(rtp.right * 100, 2)}%)`,
             );
         }
 
         if (Math.abs(hitFrequency.delta) >= this.hitFrequencyDeltaWarningThreshold) {
             warnings.push(
                 `Hit frequency changed by ${this.formatSigned(hitFrequency.delta * 100, 2)} percentage points ` +
-                    `(${(hitFrequency.left * 100).toFixed(2)}% -> ${(hitFrequency.right * 100).toFixed(2)}%)`,
+                    `(${formatAnalysisNumber(hitFrequency.left * 100, 2)}% -> ${formatAnalysisNumber(hitFrequency.right * 100, 2)}%)`,
             );
         }
 
         if (maxRatio.left === 0 && maxRatio.right !== 0) {
-            warnings.push(`Max ratio went from 0 to ${maxRatio.right.toFixed(2)}`);
+            warnings.push(`Max ratio went from 0 to ${formatAnalysisNumber(maxRatio.right, 2)}`);
         } else if (maxRatio.percentDelta !== null && Math.abs(maxRatio.percentDelta) >= this.maxRatioPercentDeltaWarningThreshold) {
-            warnings.push(`Max ratio changed by ${this.formatSigned(maxRatio.percentDelta, 2)}% (${maxRatio.left.toFixed(2)} -> ${maxRatio.right.toFixed(2)})`);
+            warnings.push(`Max ratio changed by ${this.formatSigned(maxRatio.percentDelta, 2)}% (${formatAnalysisNumber(maxRatio.left, 2)} -> ${formatAnalysisNumber(maxRatio.right, 2)})`);
         }
 
         return warnings;
     }
 
     private formatSigned(value: number, decimals: number): string {
-        const rounded = value.toFixed(decimals);
+        const rounded = formatAnalysisNumber(value, decimals);
         return value > 0 ? `+${rounded}` : rounded;
     }
 }

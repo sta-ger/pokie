@@ -1,3 +1,4 @@
+import {expectRelative} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
 import {WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryFeatureBreakdown} from "pokie";
 import {testProvenance} from "./WeightedOutcomeTestFixtures.js";
 
@@ -106,4 +107,15 @@ describe("computeWeightedOutcomeLibraryFeatureBreakdown", () => {
         expect(breakdown.featureEvents).toEqual([]);
         expect(breakdown.betModes).toEqual([{key: "base", weightedFrequency: 1, outcomeCount: 1}]);
     });
+});
+
+it("preserves native rare numeric-weight feature frequencies below 1e-18", () => {
+    const library = buildWeightedOutcomeLibrary({libraryId: "rare-feature", outcomes: [
+        {id: "common", weight: 1e20, artifact: buildRoundArtifact({roundId: "common", provenance: testProvenance, stake: 1, betMode: "base", steps: [{screen: [["A"]], winEvaluationResult: NO_WIN}]})},
+        {id: "rare", weight: 1, artifact: buildRoundArtifact({roundId: "rare", provenance: testProvenance, stake: 1, betMode: "base", steps: [{screen: [["A"]], winEvaluationResult: NO_WIN, featureEvents: [{type: "rare"}, {type: "rare"}]}]})},
+    ]});
+    const result = computeWeightedOutcomeLibraryFeatureBreakdown(library);
+    expectRelative(result.featureEvents[0].weightedFrequency, 1e-20);
+    expect(result.betModes).toEqual([{key: "base", weightedFrequency: 1, outcomeCount: 2}]);
+    expect(result.featureEvents[0].outcomeCount).toBe(1);
 });

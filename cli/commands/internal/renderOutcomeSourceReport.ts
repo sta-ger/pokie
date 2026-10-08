@@ -1,3 +1,4 @@
+import {formatAnalysisNumber} from "../../../src/internal/formatAnalysisNumber.js";
 import {OutcomeSourceProjectReport} from "pokie";
 
 // The one place a resolved "outcomeLibrary"/"stakeAdapter" project's own OutcomeSourceProjectReport (see
@@ -28,9 +29,9 @@ export function renderOutcomeSourceReport(targetPath: string, report: OutcomeSou
     lines.push("", "Exact analysis (no simulation -- every outcome's own weight, enumerated exactly):");
     for (const mode of report.modes) {
         lines.push(
-            `  mode "${mode.modeName}": rtp ${(mode.analysis.rtp * 100).toFixed(2)}%, ` +
-                `hit frequency ${(mode.analysis.hitFrequency * 100).toFixed(2)}%, ` +
-                `standard deviation ${mode.analysis.standardDeviation.toFixed(4)}`,
+            `  mode "${mode.modeName}": rtp ${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%, ` +
+                `hit frequency ${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}%, ` +
+                `standard deviation ${formatAnalysisNumber(mode.analysis.standardDeviation, 4)}`,
         );
     }
 
@@ -63,7 +64,7 @@ export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeS
     if (report.modes.length > 0) {
         lines.push("", "## Exact analysis", "", "| Mode | RTP | Hit frequency | Standard deviation |", "| --- | --- | --- | --- |");
         report.modes.forEach((mode) => {
-            lines.push(`| ${mode.modeName} | ${(mode.analysis.rtp * 100).toFixed(2)}% | ${(mode.analysis.hitFrequency * 100).toFixed(2)}% | ${mode.analysis.standardDeviation.toFixed(4)} |`);
+            lines.push(`| ${mode.modeName} | ${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}% | ${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}% | ${formatAnalysisNumber(mode.analysis.standardDeviation, 4)} |`);
         });
     }
     return lines.join("\n") + "\n";
@@ -72,7 +73,7 @@ export function renderOutcomeSourceMarkdown(targetPath: string, report: OutcomeS
 export function renderOutcomeSourceHtml(targetPath: string, report: OutcomeSourceProjectReport): string {
     const escapeHtml = (value: string): string => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     const list = (items: readonly string[]): string[] => ["        <ul>", ...items.map((item) => `            <li>${escapeHtml(item)}</li>`), "        </ul>"];
-    const rows = report.modes.map((mode) => `            <tr><td>${escapeHtml(mode.modeName)}</td><td>${(mode.analysis.rtp * 100).toFixed(2)}%</td><td>${(mode.analysis.hitFrequency * 100).toFixed(2)}%</td><td>${mode.analysis.standardDeviation.toFixed(4)}</td></tr>`);
+    const rows = report.modes.map((mode) => `            <tr><td>${escapeHtml(mode.modeName)}</td><td>${formatAnalysisNumber(mode.analysis.rtp * 100, 2)}%</td><td>${formatAnalysisNumber(mode.analysis.hitFrequency * 100, 2)}%</td><td>${formatAnalysisNumber(mode.analysis.standardDeviation, 4)}</td></tr>`);
 
     return [
         "<!DOCTYPE html>",
