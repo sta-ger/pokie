@@ -221,3 +221,42 @@ controls; follow occupied refusal through selected new/empty output success and 
 The routed tests above use the fetch seam; the HTTP checks use the real service/filesystem. Neither is
 represented as a new independent browser receipt, and the historical neighboring-card receipt keeps
 its actual scope. No new screenshots or browser transcript were collected by this repair.
+
+## Independent P9-05 verifier — exact candidate `d04a6ddc`
+
+At 2026-10-08T22:29Z, an independent fresh-profile Studio session verified clean candidate
+`d04a6ddc41578cc1f900d257e01225ca5f1e6db5` before and after the run. Studio was launched from this
+checkout as `node ./dist/cli/pokie.js --no-open`; the run did not use the installed self-dependency,
+create a job, or inject route state. The runtime-only, candidate-bound receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-05-b61bbfaa4bfc2f2b/p9-destination-result.json`.
+It records the following concise rendered transcript:
+
+```text
+READY fresh Home Design; ACTION Show advanced options (file and JSON tools)
+TERMINAL BlueprintBuildPanel Output directory, Build Preview, and Build Package controls rendered
+INPUT Output directory = occupied-fixture; ACTION Build Preview
+TERMINAL occupied-destination recovery; POST /api/home/blueprints/build-preview -> 200
+INPUT Output directory = recovered-output; ACTION Build Preview
+TERMINAL selected new destination preview; POST /api/home/blueprints/build-preview -> 200
+ACTION Build Package; POST /api/home/blueprints/build -> 201
+TERMINAL Last built rendered recovered-output
+```
+
+The occupied fixture began with only `sentinel.bin` containing bytes `[0,255,37,10]`; after the
+rendered recovery it still contained only that file, with SHA-256
+`8b3a89a2ae3f00c5ebf4ffefa94b01f8dce8502f547a90d25022772a9be61762`. No overwrite/confirm control
+was rendered. The fresh preview offered no contradictory existing-target advice; the package appeared
+at the exact rendered `recovered-output` path, including `dist/index.js`, and its terminal presentation
+also offered no contradictory missing-target guidance. The two permitted runtime screenshots are retained
+only by checksum: occupied recovery `3be14aea99f915a6d730cdc8c29bebaa135d819885995041c73ecc8001005014`
+and recovered publication `b2f87ec81b26973ef0eac7a90906c50fa2210bb71526fb562e163138671880d9`.
+Owned Studio and Chromium processes stopped; no runtime profile, fixture, screenshot, harness, or raw log
+is committed.
+
+The controller-owned whole-file receipt
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/16d8ec4aacfff016a29e9683/result.json`
+is also bound to this exact clean candidate before and after execution. Its terminal Jest summary is
+**7 passed suites / 117 passed tests** for the seven requested files. Full runtime logs remain external;
+their SHA-256 values are stdout
+`23c43827e39befebd1ee5123b323f46eb4e2fb669d3cccf102bb8a8da99f9a51` and stderr
+`3f515c20e4df2b6eb5f0fc71c114b639f6f341243e80c18a14054a09a1dc5563`.
