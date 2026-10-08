@@ -62,6 +62,31 @@ describe("BlueprintBuildPanel", () => {
         };
     }
 
+    it("does not publish if the editor becomes blocked during the destination preflight", async () => {
+        let finishPreview: ((body: unknown) => void) | undefined;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: {}}),
+        });
+        function Harness() {
+            const [blocked, setBlocked] = useState(false);
+            return <>
+                <button onClick={() => setBlocked(true)}>Invalidate design</button>
+                <BlueprintBuildPanel blueprint={blueprint} blocked={blocked} />
+            </>;
+        }
+        renderWithProviders(<Harness />, {fetchImpl: (url, init) => fetchImpl(url, init).then((response) => ({
+            ...response, json: () => new Promise((resolve) => {
+                finishPreview = resolve;
+            }),
+        }))});
+        fireEvent.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(finishPreview).toBeDefined());
+        fireEvent.click(screen.getByRole("button", {name: "Invalidate design"}));
+        await act(() => finishPreview?.(previewOkBody({destinationHasContent: false})));
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
+    });
+
     it("keeps absent-path hints consistent through default refusal and explicit new-output publication", async () => {
         const user = userEvent.setup();
         let published = false;

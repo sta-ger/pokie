@@ -3113,14 +3113,17 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
   the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-good state untouched
   rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
   unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without touching disk.
-  Load/Save-by-path and the raw JSON view are tucked behind a "Show advanced options" disclosure — the guided
-  flow itself never requires them. **Build** runs the exact same `tsPackage` conversion
-  [`pokie build <project> --target tsPackage`](#pokie-build-project) runs through `ArtifactBuilderRegistry` —
-  not a separate Studio-only pipeline — including the same safe-rebuild/conflict check (building into a
-  directory that already contains files a prior build didn't generate is refused with the same descriptive
-  error `pokie build` itself gives; re-building against a directory a build already succeeded against earlier
-  in the session asks for confirmation first), followed by an **Open in Studio** button on success — the bridge into the
-  Project Dashboard. A **Reel Strip Modeler** mode (alongside Default/Reel strips/Symbol weights) edits a
+  Load/Save-by-path, the raw JSON view, and package builds are tucked behind **Show advanced options (file
+  and JSON tools)**. From fresh `/home/design`, open that disclosure to reach **Build Preview**, **Build
+  Package**, and the editable/browsable **Output directory (optional)**; no prior job or saved project is
+  required. Build Preview writes nothing. Build Package exports the in-memory design through the shared
+  package generator without saving its source or clearing unsaved edits. The guided editor requires current
+  successful validation, an applied JSON draft, and no unresolved source drift before publication.
+  Packages require a **new or empty directory**; every occupied destination, including a previous successful
+  build, is refused without overwrite confirmation. Choose another output and retry. A successful build
+  retains its provenance and offers **Open in Studio** to open the package's Project Dashboard. **Create
+  game** remains the primary action to save the design and open its workspace. A **Reel Strip Modeler** mode
+  (alongside Default/Reel strips/Symbol weights) edits a
   `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
   array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
   strips mode) and **Generated** (that reel's own length, seed, max attempts, an exclusive counts-or-weights

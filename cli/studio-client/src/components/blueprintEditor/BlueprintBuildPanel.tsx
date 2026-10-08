@@ -260,6 +260,12 @@ export function BlueprintBuildPanel({
     }, [blueprint, sourcePath, outDir]);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
+    // Validation or source drift can block the editor while an advisory preview is in flight,
+    // even without changing the request's blueprint/path identity.
+    const currentBlockedRef = useRef(blocked);
+    useEffect(() => {
+        currentBlockedRef.current = blocked;
+    }, [blocked]);
 
     const isCurrentIdentity = (identity: {blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined}): boolean => {
         const current = currentIdentityRef.current;
@@ -332,7 +338,7 @@ export function BlueprintBuildPanel({
         };
 
         const buildIfAvailable = (view: BuildPreviewView): void => {
-            if (view.status === "ok" && !view.destinationHasContent && view.destinationError === undefined) {
+            if (!currentBlockedRef.current && view.status === "ok" && !view.destinationHasContent && view.destinationError === undefined) {
                 doBuild();
             }
         };

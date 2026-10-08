@@ -182,3 +182,42 @@ is candidate-bound and clean before/after. Its full stdout/stderr logs have SHA-
 `b5c89e1d946f2900369cc5f557c30a6724a007e69c373ce862e301749a8ff609` and
 `a5cb5e9c23a0c82d69ed90acc224e316f243335b25ab8b3c32e65cc9b15f0083`; the terminal summary is
 3 suites passed, 40 tests passed. The test receipt does not substitute for the missing rendered panel path.
+
+## Public Design build entry correction
+
+The implementer traced the same failure at repair base `36d5a883`: Home still mounted only the guided
+editor; its ordinary Build panel required `!guided`, and its recovery-only panel required a retained
+request. Opening advanced options could not expose either control in a fresh session. The independent
+receipts and transcripts above remain unchanged, with their original candidates and observed scope.
+
+Fresh `/home/design` now exposes the existing BlueprintBuildPanel through **Show advanced options (file
+and JSON tools)**. This same panel handles retained build requests, whose destination is restored by
+the existing recovery flow. No job injection, extra route, alternate builder or automatic publication
+is introduced. Guided builds require current successful validation, no unresolved source drift, and no
+unapplied JSON edit. A validation block arriving during destination preflight also prevents publication.
+Build Preview remains read-only. Build Package retains the last successful artifact and leaves source
+dirty tracking intact; Create game continues to save and open the design's workspace.
+
+| Accumulated criterion | Repair closure / current source evidence |
+| --- | --- |
+| P9-DESTINATION-UX public panel entry | Routed Home tests start with an empty job list and no recovery state, reveal exactly one Build Package and Build Preview, refuse occupied output without a build call, then publish the chosen new/empty output. Existing retained-build and PAR recovery tests exercise the same Home entry |
+| Original F destination safety and provenance | Complete BlueprintBuildPanel suite retains invalid/stale/concurrent/conflict checks. HTTP workflow tests invoke the real service, retain occupied/raced sentinel bytes, publish new/empty destinations, and refuse repeat builds unchanged. Fresh guided tests keep successful provenance across disclosure toggles and preserve an unsaved pre-build edit through publication |
+| P9-DESTINATION-HINT | Fresh guided tests use a structured absent-path browse error for new output and observe no missing-input advice beside successful publication. Explicit destination semantics in Build/Export, Design PAR, save and certification remain intact; source/open/import controls retain existing-input semantics |
+| Default destination policy | Preview and direct service still call resolveGamePackageDestination; HTTP keeps omitted output omitted at publication. The complete HTTP suite rejects all six saved path-shaped ID forms without publication and accepts explicitly chosen new/empty output |
+| WASM reader and capability truth | Existing WasmRuntimeApi direct-reader/runtime fixture still tests integrity-consistent [15, 16] stop widths against the accepted [15, 15] boundary. WASM_EXECUTION_BOUNDARY still feeds product descriptors, Build/Export and dashboard; README/CLI retain the separate evaluator, supported subset, rejected mechanics, 30-bit budget and conversion limits. These unchanged WASM suites were not rerun in this bounded repair |
+| Status register and history | Register retains P9-01 RNG/replay, P9-02 compact state and P9-03 Stake attribution, all partial/not-found/agreed/deferred/hypothesis distinctions, safe-number limits and unconfirmed Math Optimization release scope. Completed-step evidence is untouched |
+
+Permitted foreground regression command (3 suites, 43 tests passed):
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/home/HomePage.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx tests/cli/studio/StudioDestinationWorkflow.integration.test.ts
+npm run typecheck
+```
+
+Root typecheck passed and includes typecheck-studio-client. The production browser build, complete reviewer matrix
+and independent bounded browser rerun are controller-owned. For that rerun, use fresh Home Design ->
+Show advanced options -> the actual BlueprintBuildPanel Output directory / Build Preview / Build Package
+controls; follow occupied refusal through selected new/empty output success and inspect the sentinel.
+The routed tests above use the fetch seam; the HTTP checks use the real service/filesystem. Neither is
+represented as a new independent browser receipt, and the historical neighboring-card receipt keeps
+its actual scope. No new screenshots or browser transcript were collected by this repair.
