@@ -1,4 +1,5 @@
 import fs from "fs";
+import {WASM_EXECUTION_BOUNDARY} from "../wasm/PokieWasmRuntimeApi.js";
 import {WASM_MANIFEST_READ_CAPABILITY, type ProjectCapability} from "./ProjectCapability.js";
 import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompatibility.js";
 
@@ -6,6 +7,7 @@ import {assessWasmComponentCompatibility} from "./wasm/assessWasmComponentCompat
 // legacy sidecar makes a component inspectable; an integrity-bound canonical artifact additionally runs through
 // the portable host. Neither artifact form is source input to package-only export or server flows.
 export const WASM_PRODUCT_CONTRACT = {
+    executionBoundary: WASM_EXECUTION_BOUNDARY,
     kind: "POKIE WASM component",
     studioLabel: "POKIE WASM component",
     capabilities: [WASM_MANIFEST_READ_CAPABILITY] as readonly ProjectCapability[],
@@ -156,7 +158,7 @@ export function wasmProductContractView(): WasmProductContractView {
         manifestCapability: WASM_MANIFEST_READ_CAPABILITY,
         manifestCapabilityLabel: "Inspect declared WASM component metadata",
         inspectActionLabel: WASM_PRODUCT_CONTRACT.manifestActionLabel,
-        inspectionSummary: `${WASM_PRODUCT_CONTRACT.inspectionPurpose} ${WASM_PRODUCT_CONTRACT.inspectionBoundary} ${WASM_PRODUCT_CONTRACT.originalSourceRecovery}`,
+        inspectionSummary: `${WASM_PRODUCT_CONTRACT.inspectionPurpose} ${WASM_PRODUCT_CONTRACT.inspectionBoundary} ${WASM_PRODUCT_CONTRACT.executionBoundary} ${WASM_PRODUCT_CONTRACT.originalSourceRecovery}`,
     };
 }
 
@@ -169,7 +171,7 @@ export function describeWasmGameModelBoundary(): string {
 }
 
 export function describeWasmPackagingPreflightNote(): string {
-    return `This direct-library advisory scan does not compile arbitrary packages to WASM. POKIE builds canonical components from Blueprint or PAR workbook sources through \`pokie build <path> --target wasm\`. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
+    return `This direct-library advisory scan does not compile arbitrary packages to WASM. An empty advisory result proves neither portability nor compilation support. ${WASM_PRODUCT_CONTRACT.executionBoundary} POKIE builds canonical components from Blueprint or PAR workbook sources through \`pokie build <path> --target wasm\`. ${WASM_PRODUCT_CONTRACT.inspectionBoundary}`;
 }
 
 export function describeWasmUnsupportedOperation(operation: string): string {

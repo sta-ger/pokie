@@ -2130,7 +2130,14 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
-        const destinationPath = this.canonicalPathIdentity(validated.outDir);
+        // Resolve the omitted destination through the same preview as the editor.
+        // Passing undefined to the canonical identity helper loses the manifest-id default.
+        const preview = this.blueprintService.previewBuild(validated.blueprint, validated.outDir, validated.sourcePath);
+        if (preview.status !== "ok") {
+            this.sendJson(res, 200, preview);
+            return;
+        }
+        const destinationPath = this.canonicalPathIdentity(preview.projectRoot);
         const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
         const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
         const execution = await this.executeCommonOperation(

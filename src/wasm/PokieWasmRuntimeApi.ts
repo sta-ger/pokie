@@ -138,3 +138,7 @@ export type PokieWasmRuntime = {
     replay(state: PokieWasmRestorableState, commands: readonly Record<string, unknown>[], options?: PokieWasmTraceOptions): Promise<PokieWasmReplayResult>;
     dispose(): void;
 };
+
+// Browser-safe prose shared by the product contract and Studio. This describes
+// current mechanics, not a capability grant or a compiler acceptance test.
+export const WASM_EXECUTION_BOUNDARY = "Hybrid execution: the WASM module produces packed reel stops using host randomness; PokieWasmRuntime.ts evaluates wins in a separate JavaScript evaluateWinMultiplier implementation. Supports line wins, wild substitution, scatter payouts, and availableBets stake selection. Rejects ways, clusters, mechanics.freeGames, and nonempty betModes. ABI 1.0 allows at most 30 total stop bits across all reels. Blueprint is canonical; PAR uses model-preserving import. Arbitrary TypeScript/Node packages are not converted to WASM. A supported source route still requires model validation; narrow parity does not prove full mechanics or one shared calculation path.";

@@ -1347,12 +1347,52 @@ describe("StudioBlueprintService", () => {
                 return;
             }
             expect(preview.destinationHasContent).toBe(true);
-            expect(preview.createFiles.sort()).toEqual([...BUILT_PACKAGE_FILES].sort());
+            expect(preview.createFiles).toEqual([]);
             expect(preview.updateFiles).toEqual([]);
         });
     });
 
     describe("build", () => {
+        it.each([false, true])("rolls back registration failure and retains caller-owned empty directories (existed=%s)", async (existed) => {
+            const output = path.join(tmpDir, "registration-failed");
+            if (existed) fs.mkdirSync(output);
+            const registration = jest.spyOn(homeService, "rememberRecentProject").mockRejectedValue(new Error("registration failed"));
+            try {
+                expect(await createService().build(buildBlueprint(), output)).toMatchObject({status: "error", error: expect.stringContaining("registration failed")});
+                expect(fs.existsSync(output)).toBe(existed);
+                if (existed) expect(fs.readdirSync(output)).toEqual([]);
+                expect(await repository.list()).toEqual([]);
+            } finally {
+                registration.mockRestore();
+            }
+        });
+
+        it("keeps unrelated user content and reports rollback cleanup failure", async () => {
+            const output = path.join(tmpDir, "cleanup-failed");
+            const registration = jest.spyOn(homeService, "rememberRecentProject").mockImplementation(() => {
+                fs.writeFileSync(path.join(output, "sentinel"), "keep");
+                return Promise.reject(new Error("registration failed"));
+            });
+            try {
+                const result = await createService().build(buildBlueprint(), output);
+                expect(result).toMatchObject({status: "error", error: expect.stringMatching(/cleanup|rollback|ENOTEMPTY/i)});
+                expect(fs.readFileSync(path.join(output, "sentinel"), "utf8")).toBe("keep");
+                expect(fs.readdirSync(output)).toEqual(["sentinel"]);
+            } finally {
+                registration.mockRestore();
+            }
+        });
+
+        it("refuses cancellation before publication and leaves an empty destination intact", async () => {
+            const output = path.join(tmpDir, "cancelled");
+            fs.mkdirSync(output);
+            const controller = new AbortController();
+            controller.abort();
+            expect(await createService().build(buildBlueprint(), output, undefined, controller.signal)).toMatchObject({status: "error", error: expect.stringMatching(/cancelled/i)});
+            expect(fs.readdirSync(output)).toEqual([]);
+            expect(await repository.list()).toEqual([]);
+        });
+
         it("generates the package via the real GamePackageGenerator and records it as a recent project", async () => {
             const service = createService();
             const outDir = path.join(tmpDir, "out");

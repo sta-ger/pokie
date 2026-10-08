@@ -203,7 +203,10 @@ export function BlueprintBuildPanel({
     // model -- the only user-typed path involved anywhere in this panel's own preview/build request is
     // Output directory, so every error-carrying status below is safely describable with that one fixed
     // subject.
-    const describeOutDirFailure = (message: string): string => describePathActionError("The output directory", message);
+    const describeOutDirFailure = (message: string): string =>
+        (/already exists|source itself|inside source|internal directory|cleanup|rollback|cancelled/i).test(message)
+            ? message
+            : describePathActionError("The output directory", message);
     const withOutDirPreviewError = (view: BuildPreviewView): BuildPreviewView =>
         view.status === "error" || view.status === "load-error" ? {...view, message: describeOutDirFailure(view.message)} : view;
     const withOutDirResultError = (view: BuildProjectView): BuildProjectView =>
@@ -220,9 +223,6 @@ export function BlueprintBuildPanel({
     }, [initialOutDir]);
     const [preview, setPreview] = useState<BuildPreviewView>({status: "idle"});
     const [result, setResult] = useState<BuildProjectView>({status: "idle"});
-    // State (not a ref) because it drives rendered output below (the "new destination" hint) as well as
-    // runBuild's own confirm check -- a ref would be legal for the latter alone, but not for the former.
-    const [lastBuiltOutDir, setLastBuiltOutDir] = useState<string | undefined>(undefined);
     // The exact request (blueprint content, sourcePath, and outDir) a Build Preview's own "ok" result
     // (above) actually describes -- used only to decide whether that result's `destinationHasContent` is
     // still trustworthy for the *current* request before a build (see runBuild below); a stale preview
@@ -250,8 +250,14 @@ export function BlueprintBuildPanel({
         outDir: outDir.trim() || undefined,
     });
     useEffect(() => {
-        currentIdentityRef.current = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: outDir.trim() || undefined};
-    });
+        const identity = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: outDir.trim() || undefined};
+        const current = currentIdentityRef.current;
+        if (current.blueprintJson !== identity.blueprintJson || current.sourcePath !== identity.sourcePath || current.outDir !== identity.outDir) {
+            previewedRequest.current = undefined;
+            setPreview({status: "idle"});
+        }
+        currentIdentityRef.current = identity;
+    }, [blueprint, sourcePath, outDir]);
     const previewGuard = useDoubleSubmitGuard();
     const buildGuard = useDoubleSubmitGuard();
 
@@ -260,7 +266,7 @@ export function BlueprintBuildPanel({
         return current.blueprintJson === identity.blueprintJson && current.sourcePath === identity.sourcePath && current.outDir === identity.outDir;
     };
 
-    // A response is only trustworthy for rendering, confirmation, or authorizing a build if BOTH: no
+    // A response is only trustworthy for rendering or authorizing a build if BOTH: no
     // later request (of either kind) has since been issued (`seq`, see requestSeq's own doc comment),
     // AND the editor/form still holds the exact values this response describes (isCurrentIdentity) --
     // either one alone misses a real staleness case the other catches.
@@ -293,6 +299,7 @@ export function BlueprintBuildPanel({
     };
 
     const runBuild = (): void => {
+        if (blocked || buildGuard.isBlocked()) return;
         const resolvedOutDir = outDir.trim() || undefined;
         const identity = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: resolvedOutDir};
         const doBuild = (): void => {
@@ -304,7 +311,8 @@ export function BlueprintBuildPanel({
                 .then((view) => {
                     setResult(withOutDirResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
-                        setLastBuiltOutDir(resolvedOutDir);
+                        previewedRequest.current = undefined;
+                        setPreview({status: "idle"});
                         // `blueprint` here is the exact value this closure was built with (this render's
                         // own prop, fixed for the lifetime of this specific request) -- a further edit
                         // made while the build is in flight changes a *later* render's `blueprint`, never
@@ -323,16 +331,8 @@ export function BlueprintBuildPanel({
                 .finally(() => buildGuard.end());
         };
 
-        if (lastBuiltOutDir !== undefined && lastBuiltOutDir === resolvedOutDir) {
-            const target = resolvedOutDir ?? "the default output directory";
-            confirm(`A package was already built at "${target}" this session. Rebuild and overwrite it?`, doBuild);
-            return;
-        }
-
-        const confirmIfDestinationHasContent = (view: BuildPreviewView): void => {
-            if (view.status === "ok" && view.destinationHasContent) {
-                confirm(`"${view.projectRoot}" already has content. Building will create/update files there. Continue?`, doBuild);
-            } else {
+        const buildIfAvailable = (view: BuildPreviewView): void => {
+            if (view.status === "ok" && !view.destinationHasContent && view.destinationError === undefined) {
                 doBuild();
             }
         };
@@ -348,23 +348,13 @@ export function BlueprintBuildPanel({
             previewedRequest.current.sourcePath === identity.sourcePath &&
             previewedRequest.current.outDir === identity.outDir
         ) {
-            confirmIfDestinationHasContent(preview);
+            buildIfAvailable(preview);
             return;
         }
 
-        // No Preview has ever been run against this exact request -- Build must still know whether it's
-        // about to write into existing content, so it runs the same read-only destination check Build
-        // Preview does before deciding, rather than silently trusting an empty destination. Setting
-        // `preview`/`previewedRequest` from the result makes this fresh answer the trustworthy one for any
-        // further Build click against this same request, same as if the user had clicked Build Preview
-        // themselves -- but only if this response is still fresh (see isFreshResponse's own doc comment);
-        // a stale response -- whether out-of-order against a since-abandoned request, or simply
-        // superseded by a later request or edit before it settled -- must never overwrite a newer result,
-        // open a confirmation, or authorize doBuild() with its own (possibly obsolete) answer. A failed
-        // check (invalid blueprint, network error, etc.) must NOT fall through to doBuild() either --
-        // whether the destination already has content is unknown, so authorizing a write here could
-        // silently overwrite it without ever asking. It's reported the same way runPreview's own rejection
-        // is, and the build is left un-started (buildGuard.end() with no doBuild() call).
+        // A fresh read-only check must succeed before publication. Both request
+        // sequence and current identity are checked before rendering or building;
+        // invalid/error/conflict results leave publication unstarted.
         if (!buildGuard.begin()) {
             return;
         }
@@ -378,7 +368,7 @@ export function BlueprintBuildPanel({
                 }
                 setPreview(described);
                 previewedRequest.current = identity;
-                confirmIfDestinationHasContent(described);
+                buildIfAvailable(described);
             })
             .catch((error: unknown) => {
                 buildGuard.end();
@@ -417,15 +407,6 @@ export function BlueprintBuildPanel({
     // "failed" status here never hides that still-valid prior success.
     const transientResult: BuildProjectView = result.status === "ok" ? {status: "idle"} : result;
 
-    // Set once there's a real prior build (builtSnapshot) *and* the outDir text has since changed away
-    // from what that build actually used -- never set before any build has happened, and unset again once
-    // a build against the new outDir lands (lastBuiltOutDir catches up to it). Backs the explicit "the old
-    // package is untouched, here's where this one is going" hint below -- nothing here ever deletes
-    // builtSnapshot.projectRoot; a new outDir only ever adds a second, separate package.
-    const resolvedOutDirForDisplay = outDir.trim() || undefined;
-    const priorBuildProjectRootIfDestinationChanged =
-        builtSnapshot !== undefined && lastBuiltOutDir !== resolvedOutDirForDisplay ? builtSnapshot.projectRoot : undefined;
-
     return (
         <PageSection legend="Build">
             <QuickActions>
@@ -451,12 +432,9 @@ export function BlueprintBuildPanel({
                     {blockedMessage}
                 </Text>
             )}
-            {priorBuildProjectRootIfDestinationChanged !== undefined && (
-                <Text size="xs" c="dimmed" mb="sm">
-                    This will build to a new destination — the package already built at &quot;{priorBuildProjectRootIfDestinationChanged}&quot; is
-                    untouched and stays right where it is.
-                </Text>
-            )}
+            <Text size="xs" c="dimmed" mb="sm">
+                Build creates a new package in a new or empty directory. Choose another output directory to rebuild; previous artifacts stay unchanged.
+            </Text>
 
             <BuildPreviewDisplay view={preview} />
             {/* onOpen is never actually invoked here -- "ok" is suppressed out of `transientResult` above,

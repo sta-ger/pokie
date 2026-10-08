@@ -600,6 +600,47 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeEnabled();
     });
 
+    it("shows a specific unsupported WASM model diagnostic, blocks publication, and permits a supported-source retry", async () => {
+        const user = userEvent.setup();
+        let supportedSource = false;
+        let buildRequest: unknown;
+        const plan = {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "wasm", capabilities: []}, steps: [], preflight: {destinationKind: "file", estimatedWork: "publish", losses: [], oneWay: false}};
+        const diagnostic = 'Blueprint "a" uses winModel.type "ways", which canonical POKIE WASM does not implement. Next: use line wins before building.';
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/artifacts/preview") {
+                const {outDir} = JSON.parse(init?.body ?? "{}") as {outDir?: string};
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(supportedSource
+                    ? {status: "ok", target: "wasm", destination: outDir ?? "/games/game.wasm", destinationKind: "file", plannedOutputs: ["game.wasm"], sourceType: "blueprint", plan}
+                    : {status: "unsupported", target: "wasm", message: diagnostic, plan})});
+            }
+            if (url === "/api/project/artifacts/build") {
+                buildRequest = JSON.parse(init?.body ?? "{}");
+                return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "supported-wasm", target: "wasm", status: "queued", cancellationRequested: false}})});
+            }
+            if (url === "/api/project/artifacts/build/supported-wasm") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({id: "supported-wasm", target: "wasm", status: "completed", cancellationRequested: false, result: {status: "ok", target: "wasm", outputPath: "/games/recovered.wasm", outputKind: "file", sourceType: "blueprint"}})});
+            }
+            return fetchImplFrom({...BASE_ROUTES, "/api/project/artifacts/targets": () => ({ok: true, status: 200, body: [{target: "wasm", supported: true, state: "supported", unsupportedNotes: []}]})})(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await screen.findByRole("heading", {name: "A"});
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        expect(await screen.findByText(diagnostic)).toBeInTheDocument();
+        expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("30 total stop bits across all reels");
+        const section = screen.getByText("Build artifact").closest("fieldset") as HTMLElement;
+        expect(within(section).getByRole("button", {name: "Build"})).toBeDisabled();
+        expect(buildRequest).toBeUndefined();
+        expect(screen.queryByText(/No executable conversion steps/)).not.toBeInTheDocument();
+        // The service test covers saving the repaired source. Here the next server
+        // response represents that source and the user's new publication destination.
+        supportedSource = true;
+        await user.type(within(section).getByLabelText("Output file (optional)"), "/games/recovered.wasm");
+        await waitFor(() => expect(within(section).getByRole("button", {name: "Build"})).toBeEnabled());
+        await user.click(within(section).getByRole("button", {name: "Build"}));
+        expect(await within(section).findByText("Built to /games/recovered.wasm.")).toBeInTheDocument();
+        expect(buildRequest).toEqual({target: "wasm", outDir: "/games/recovered.wasm"});
+    });
+
     it("builds a canonical WASM file through the shared card, native Save picker, and ordinary project follow-ups", async () => {
         const user = userEvent.setup();
         let nativePickerRequest: unknown;

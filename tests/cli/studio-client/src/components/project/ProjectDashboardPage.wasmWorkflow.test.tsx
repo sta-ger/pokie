@@ -74,6 +74,8 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(screen.getByText("round.play, round.replay")).toBeInTheDocument();
         expect(screen.getByText("1.2.3")).toBeInTheDocument();
         expect(screen.getAllByText("1.0.0").length).toBeGreaterThan(1);
+        expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("30 total stop bits across all reels");
+        expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("Rejects ways, clusters, mechanics.freeGames, and nonempty betModes");
         expect(screen.getByText("Artifact ABI")).toBeInTheDocument();
         expect(screen.getByText("pokie/wasm")).toBeInTheDocument();
         expect(screen.getByText("4096")).toBeInTheDocument();

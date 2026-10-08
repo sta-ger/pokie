@@ -2,6 +2,13 @@
 
 # Modeling Slot Math with POKIE
 
+This is manual modeling, measurement, and iteration. Math Targeting/Optimization is an agreed direction
+without an implementation in the reviewed repository; release scope remains unconfirmed. Reel strips,
+visible rows, and resizable grids do not supply an explicit overscan model. Blueprint schema/editor mechanics
+authoring covers win models, free games, and bet modes, but remains partial relative to composable runtime
+mechanics. Blueprint symbol/reel/paytable reachability checks are limited checks, not generic mechanics/state
+reachability. See the [status register](audit-corrections/README.md).
+
 A worked walkthrough of using POKIE to balance RTP, hit frequency, and volatility for a video slot's math model.
 
 ## The vocabulary

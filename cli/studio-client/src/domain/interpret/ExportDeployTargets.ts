@@ -1,3 +1,4 @@
+import {WASM_EXECUTION_BOUNDARY} from "../../../../../src/wasm/PokieWasmRuntimeApi";
 import type {StudioArtifactConversionPlan, StudioArtifactTargetType, StudioArtifactTargetView, StudioDeploymentTargetSummary} from "../../api/types";
 import {describeTargetCapability, describeTargetRequirements, LOCAL_JSON_EXAMPLE_TARGET_ID} from "./Deployment";
 
@@ -108,7 +109,7 @@ const ARTIFACT_TARGET_CARD_INFO: Readonly<
     },
     wasm: {
         label: "Portable WASM game",
-        purpose: "Build a portable POKIE WASM game from this project.",
+        purpose: `Build a portable POKIE WASM game from a supported Blueprint/PAR model. ${WASM_EXECUTION_BOUNDARY}`,
         destination: "Choose where to save the WASM game, or use the default destination.",
         technicalDestination: "A game.wasm module with an integrity-bound POKIE manifest sidecar.",
         unavailableReason: "This project cannot build a portable WASM game. Open a Game Blueprint or PAR sheet workbook project to continue.",
@@ -145,9 +146,9 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
                 destination: info.destination,
                 technicalDestination: info.technicalDestination,
                 writePublishBehavior:
-                    "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and a destination that already exists and isn't empty is refused untouched.",
+                    "A registry-backed preview reports the resolved destination (and any conflict) before Build is ever clicked; Build itself still writes the artifact to disk in one step, and directory destinations must be new or empty, and file destinations (even zero-byte files) must be new; conflicts are refused untouched.",
                 capabilities: [],
-                limits: [],
+                limits: entry.target === "wasm" ? entry.unsupportedNotes : [],
                 prerequisites: entry.plan?.status === "planned"
                     ? entry.plan.steps.map((step) => `${step.choice} ${step.kind}`)
                     : [],

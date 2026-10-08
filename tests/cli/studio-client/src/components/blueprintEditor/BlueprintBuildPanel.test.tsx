@@ -36,7 +36,7 @@ describe("BlueprintBuildPanel", () => {
             projectRoot: "/games/sample-slot",
             destinationHasContent: true,
             createFiles: [],
-            updateFiles: ["package.json"],
+            updateFiles: [],
             deleteFiles: [],
             ...overrides,
         };
@@ -62,7 +62,7 @@ describe("BlueprintBuildPanel", () => {
         };
     }
 
-    it("confirms before building into a destination a fresh Build Preview reported as already having content", async () => {
+    it("refuses a fresh occupied preview and offers editable destination recovery", async () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];
         const {fetchImpl} = createRoutedFakeFetch({
@@ -80,17 +80,14 @@ describe("BlueprintBuildPanel", () => {
 
         await user.click(screen.getByRole("button", {name: "Build Package"}));
 
-        expect(await screen.findByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(await screen.findByText('"/games/sample-slot" already has content. Choose a new or empty output directory using the editable path or Browse, then retry. Existing files will stay unchanged.')).toBeInTheDocument();
         expect(buildCalls).toEqual([]);
 
-        await user.click(screen.getByRole("button", {name: "Confirm"}));
-
-        await waitFor(() => {
-            expect(buildCalls).toEqual([{blueprint, outDir: undefined, sourcePath: undefined}]);
-        });
+        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toBeEnabled();
     });
 
-    it("confirms before building into a known non-empty destination even when Build Preview was never run", async () => {
+    it("checks and refuses an occupied destination even without a prior preview", async () => {
         const user = userEvent.setup();
         const buildCalls: unknown[] = [];
         const previewCalls: unknown[] = [];
@@ -109,15 +106,12 @@ describe("BlueprintBuildPanel", () => {
 
         await user.click(screen.getByRole("button", {name: "Build Package"}));
 
-        expect(await screen.findByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(await screen.findByText('"/games/sample-slot" already has content. Choose a new or empty output directory using the editable path or Browse, then retry. Existing files will stay unchanged.')).toBeInTheDocument();
         expect(buildCalls).toEqual([]);
         expect(previewCalls).toEqual([{blueprint, outDir: undefined, sourcePath: undefined}]);
 
-        await user.click(screen.getByRole("button", {name: "Confirm"}));
-
-        await waitFor(() => {
-            expect(buildCalls).toEqual([{blueprint, outDir: undefined, sourcePath: undefined}]);
-        });
+        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toBeEnabled();
     });
 
     it("does not build, and shows an error instead, when the destination check fails and Build Preview was never run", async () => {
@@ -211,7 +205,7 @@ describe("BlueprintBuildPanel", () => {
                 previewCalls.push(body);
                 // Only the original blueprint's destination is empty; if Build wrongly reused that
                 // preview after the blueprint changed (same default outDir), it would skip the
-                // confirmation the new blueprint's own non-empty destination actually requires.
+                // conflict recovery the new blueprint's occupied destination requires.
                 const isSample = body.blueprint.manifest.id === "sample-slot";
                 return {
                     ok: true,
@@ -236,18 +230,15 @@ describe("BlueprintBuildPanel", () => {
         await user.click(screen.getByRole("button", {name: "Swap blueprint"}));
         await user.click(screen.getByRole("button", {name: "Build Package"}));
 
-        expect(await screen.findByText('"/games/other-out" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(await screen.findByText('"/games/other-out" already has content. Choose a new or empty output directory using the editable path or Browse, then retry. Existing files will stay unchanged.')).toBeInTheDocument();
         expect(buildCalls).toEqual([]);
         expect(previewCalls).toEqual([
             {blueprint, outDir: undefined, sourcePath: undefined},
             {blueprint: otherBlueprint, outDir: undefined, sourcePath: undefined},
         ]);
 
-        await user.click(screen.getByRole("button", {name: "Confirm"}));
-
-        await waitFor(() => {
-            expect(buildCalls).toEqual([{blueprint: otherBlueprint, outDir: undefined, sourcePath: undefined}]);
-        });
+        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toBeEnabled();
     });
 
     it("never lets an out-of-order Build Preview response for an abandoned blueprint overwrite the result of a newer, still-current one", async () => {
@@ -282,7 +273,7 @@ describe("BlueprintBuildPanel", () => {
         // The newer ("other-slot") request settles first, then the stale ("sample-slot") request settles
         // late -- the stale response must not overwrite the result the newer request already produced.
         respondTo[1].respond(previewOkBody({projectRoot: "/games/other-out", destinationHasContent: true}));
-        expect(await screen.findByText('"/games/other-out" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(await screen.findByText('"/games/other-out" already has content. Choose a new or empty output directory using the editable path or Browse, then retry. Existing files will stay unchanged.')).toBeInTheDocument();
         expect(await screen.findByText(/Destination: \/games\/other-out/)).toBeInTheDocument();
 
         respondTo[0].respond(previewOkBody({projectRoot: "/games/sample-out", destinationHasContent: false}));
@@ -366,7 +357,7 @@ describe("BlueprintBuildPanel", () => {
         // The second (Build Package's own) request is the one issued last -- it settles first with "has
         // content", which must be what confirmation and the eventual build go by.
         respondTo[1](previewOkBody({projectRoot: "/games/sample-slot", destinationHasContent: true}));
-        expect(await screen.findByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(await screen.findByText('"/games/sample-slot" already has content. Choose a new or empty output directory using the editable path or Browse, then retry. Existing files will stay unchanged.')).toBeInTheDocument();
 
         // The first (Build Preview's own) request settles late, reporting the opposite answer -- being the
         // older of the two, it must never overwrite the confirmation or preview the newer one already set up.
@@ -376,12 +367,182 @@ describe("BlueprintBuildPanel", () => {
                 setTimeout(resolve, 0);
             });
         });
-        expect(screen.getByText('"/games/sample-slot" already has content. Building will create/update files there. Continue?')).toBeInTheDocument();
+        expect(screen.getByText('"/games/sample-slot" already has content. Choose a new or empty output directory using the editable path or Browse, then retry. Existing files will stay unchanged.')).toBeInTheDocument();
         expect(buildCalls).toEqual([]);
 
-        await user.click(screen.getByRole("button", {name: "Confirm"}));
-        await waitFor(() => {
-            expect(buildCalls).toEqual([{blueprint, outDir: undefined, sourcePath: undefined}]);
+        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toBeEnabled();
+    });
+
+    it.each(["invalid", "load-error"])("does not start a build after a %s preview response", async (status) => {
+        const user = userEvent.setup();
+        const diagnostic = "Repair the source model before building.";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: status === "invalid"
+                ? {status, warnings: [], errors: [{code: "invalid", message: diagnostic, severity: "error"}]}
+                : {status, error: diagnostic}}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: buildOkBody()}),
         });
+        renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        if (status === "invalid") expect(await screen.findByText(/Repair the source model/)).toBeInTheDocument();
+        else expect(await screen.findByText(/The output directory could not be completed/)).toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
+    });
+
+    it.each(["", "/games/explicit"])("rechecks a successful destination (%s), retains provenance on conflict, and publishes recovery to the actual path", async (initialOutDir) => {
+        const user = userEvent.setup();
+        const published = new Set<string>();
+        const built: string[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": (call) => {
+                const {outDir} = JSON.parse(call.init?.body ?? "{}") as {outDir?: string};
+                const destination = outDir ?? "/games/sample-slot";
+                return {ok: true, status: 200, body: previewOkBody({projectRoot: destination, destinationHasContent: published.has(destination), destinationState: published.has(destination) ? "occupied" : "empty"})};
+            },
+            "/api/home/blueprints/build": (call) => {
+                const {outDir} = JSON.parse(call.init?.body ?? "{}") as {outDir?: string};
+                const destination = outDir ?? "/games/sample-slot";
+                published.add(destination);
+                built.push(destination);
+                return {ok: true, status: 200, body: buildOkBody({projectRoot: destination})};
+            },
+        });
+        function Harness() {
+            const [snapshot, setSnapshot] = useState<import("../../../../../../cli/studio-client/src/domain/interpret/Home").BuiltBlueprintSnapshot>();
+            return <BlueprintBuildPanel blueprint={blueprint} initialOutDir={initialOutDir} builtSnapshot={snapshot} onBuilt={setSnapshot} />;
+        }
+        renderWithProviders(<Harness />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/Last built/)).toHaveTextContent(initialOutDir || "/games/sample-slot");
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/Choose a new or empty output directory/)).toBeInTheDocument();
+        expect(built).toEqual([initialOutDir || "/games/sample-slot"]);
+        expect(screen.getByText(/Last built/)).toHaveTextContent(initialOutDir || "/games/sample-slot");
+        const field = screen.getByRole("textbox", {name: "Output directory (optional)"});
+        await user.clear(field);
+        await user.type(field, "/games/recovered");
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(screen.getByText(/Last built/)).toHaveTextContent("/games/recovered"));
+        expect(built).toEqual([initialOutDir || "/games/sample-slot", "/games/recovered"]);
+        expect(published.has(initialOutDir || "/games/sample-slot")).toBe(true);
+        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+    });
+
+    it.each([
+        '"/games/retained" already exists and is not empty. Choose a different output directory.',
+        "Artifact build was cancelled.",
+        "Injected publication failure.",
+    ])("retains prior provenance, dirty source and Home recovery destination after: %s", async (failure) => {
+        const user = userEvent.setup();
+        const prior = {...buildOkBody(), blueprint} as import("../../../../../../cli/studio-client/src/domain/interpret/Home").BuiltBlueprintSnapshot;
+        const onBuilt = jest.fn();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": (call) => {
+                expect(JSON.parse(call.init?.body ?? "{}")).toMatchObject({outDir: "/games/retained"});
+                return {ok: true, status: 200, body: previewOkBody({destinationHasContent: false, projectRoot: "/games/retained", destinationState: "empty"})};
+            },
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: failure}}),
+        });
+        renderWithProviders(<BlueprintBuildPanel blueprint={otherBlueprint} builtSnapshot={prior} initialOutDir="/games/retained" onBuilt={onBuilt} />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(failure === "Injected publication failure."
+            ? /The output directory could not be completed/ : failure)).toBeInTheDocument();
+        expect(screen.getByText(/Last built/)).toHaveTextContent("/games/sample-slot");
+        expect(screen.getByText(/Unbuilt changes/)).toBeInTheDocument();
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toHaveValue("/games/retained");
+        expect(onBuilt).not.toHaveBeenCalled();
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1);
+    });
+
+    it("refuses an occupied default destination after a matching built snapshot is restored", async () => {
+        const user = userEvent.setup();
+        const prior = {...buildOkBody(), blueprint} as import("../../../../../../cli/studio-client/src/domain/interpret/Home").BuiltBlueprintSnapshot;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: previewOkBody()}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: buildOkBody()}),
+        });
+        renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} builtSnapshot={prior} />, {fetchImpl});
+        expect(screen.getByText(/Matches the last build/)).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/Choose a new or empty output directory/)).toBeInTheDocument();
+        expect(screen.getByText(/Last built/)).toHaveTextContent("/games/sample-slot");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
+        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
+    });
+
+    it("uses the host picker destination for the next current preview and build", async () => {
+        const user = userEvent.setup();
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/fs/default-location": () => ({ok: true, status: 200, body: {status: "valid", directory: "/games", source: "home"}}),
+            "/api/home/fs/browse": () => ({ok: true, status: 200, body: {status: "ok", resolvedPath: "/games", entries: []}}),
+            "/api/home/fs/native-browse/availability": () => ({ok: true, status: 200, body: {status: "available"}}),
+            "/api/home/fs/native-browse": () => ({ok: true, status: 200, body: {status: "selected", path: "/games/picked-empty"}}),
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: previewOkBody({destinationHasContent: false, destinationState: "empty", projectRoot: "/games/picked-empty"})}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: buildOkBody({projectRoot: "/games/picked-empty"})}),
+        });
+        renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Browse…"}));
+        await waitFor(() => expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toHaveValue("/games/picked-empty"));
+        await user.click(screen.getByRole("button", {name: "Build Preview"}));
+        expect(await screen.findByText(/Destination:.*existing empty directory/)).toBeInTheDocument();
+        expect(screen.queryByText(/does not exist yet/)).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1));
+        for (const call of calls.filter((call) => call.url.startsWith("/api/home/blueprints/"))) {
+            expect(JSON.parse(call.init?.body ?? "{}")).toMatchObject({outDir: "/games/picked-empty"});
+        }
+    });
+
+    it("discards a pending preview after sourcePath changes without replacing current recovery", async () => {
+        const user = userEvent.setup();
+        let finish!: (body: unknown) => void;
+        const builds: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/blueprints/build") {
+                builds.push(init);
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(buildOkBody())});
+            }
+            return new Promise((resolve) => {
+                finish = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}); 
+            });
+        };
+        function SourceHarness() {
+            const [source, setSource] = useState("/games/first.blueprint.json");
+            return <><button onClick={() => setSource("/games/second.blueprint.json")}>Change source</button><BlueprintBuildPanel blueprint={blueprint} sourcePath={source} /></>;
+        }
+        renderWithProviders(<SourceHarness />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await user.click(screen.getByRole("button", {name: "Change source"}));
+        await act(() => {
+            finish(previewOkBody({destinationHasContent: false})); 
+        });
+        expect(builds).toEqual([]);
+        expect(screen.queryByText(/Destination:/)).not.toBeInTheDocument();
+    });
+
+    it("coalesces duplicate Build clicks while the preview is pending", async () => {
+        const user = userEvent.setup();
+        let finish!: (body: unknown) => void;
+        let previews = 0;
+        let builds = 0;
+        const fetchImpl: FetchLike = (url) => {
+            if (url === "/api/home/blueprints/build-preview") {
+                previews++;
+                return new Promise((resolve) => {
+                    finish = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}); 
+                });
+            }
+            if (url === "/api/home/blueprints/build") {
+                builds++;
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(buildOkBody())});
+            }
+            throw new Error(`unexpected fetch ${url}`);
+        };
+        renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} />, {fetchImpl});
+        await user.dblClick(screen.getByRole("button", {name: "Build Package"}));
+        expect(previews).toBe(1);
+        finish(previewOkBody({destinationHasContent: false}));
+        await waitFor(() => expect(builds).toBe(1));
     });
 });

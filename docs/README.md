@@ -211,6 +211,16 @@ previewing a game, but neither a substitute for a real backend nor RGS-grade in 
     simulate, and replay; legacy sidecar-only components remain inspection-only. POKIE has no arbitrary
     package-to-WASM compiler or generic WASM server backend.
 
+WASM's current portable execution is hybrid: packed reel stops come from the module using host randomness;
+a separate JavaScript evaluator calculates line wins, wild substitution, scatter payouts, and `availableBets`
+selection. Ways, clusters, free games, and nonempty bet modes are rejected; ABI 1.0 has a 30-bit **total** reel-stop
+budget. Blueprint is canonical and PAR preserves that model; arbitrary TypeScript/Node package conversion and
+full-mechanics parity are not provided. See [the maintained boundary](wasm-compatibility-boundary.md).
+
+The [P9 finding/status register](audit-corrections/README.md) separates implemented primitives, partial
+coverage, not-found directions, historical v2 deferrals, and unconfirmed release scope. In particular,
+Math Targeting/Optimization is agreed but not implemented; no release commitment is inferred.
+
 ## Core concepts at a glance
 
 | Concept | Where |

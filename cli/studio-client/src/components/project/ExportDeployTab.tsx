@@ -684,7 +684,7 @@ function TargetCard({
                                     )}
                                 </>
                             )}
-                            {artifactPreview.status === "conflict" && <ErrorState message="This destination already contains files. Choose a different destination; Build will not overwrite it." />}
+                            {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
                         </div>
                     )}
                     {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
@@ -692,7 +692,7 @@ function TargetCard({
                             <ErrorState message={artifactPreview.message} />
                             {artifactPreview.status === "unsupported" && (
                                 <Text size="sm" c="dimmed" mt={4}>
-                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? "No executable conversion steps."}
+                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? (artifactPreview.plan.status === "planned" ? "The conversion route is supported; the concrete source still must pass validation." : "No executable conversion steps.")}
                                 </Text>
                             )}
                         </>

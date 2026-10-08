@@ -302,7 +302,7 @@ stabilized and untouched by this streaming path.
 ### Numeric format boundaries
 
 POKIE accepts nonnegative safe-integer numeric Stake IDs and raw payouts (at most
-`Number.MAX_SAFE_INTEGER`); it does not support the complete UInt64 ID/payout range.
+`Number.MAX_SAFE_INTEGER`, **9007199254740991**); it does not support the complete UInt64 ID/payout range.
 Standalone reading supports positive UInt64 weights with exact BigInt weight accounting,
 while native persisted bundles and import/export retain their existing numeric weight restrictions.
 Numeric analytics are approximate; standalone decimal fractions are capped at 40 fractional digits.

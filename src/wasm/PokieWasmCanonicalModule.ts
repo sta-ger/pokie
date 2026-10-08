@@ -136,6 +136,7 @@ function isGameModel(value: unknown): value is PokieWasmGameModel {
         !Array.isArray(model.stopWidths) || model.stopWidths.length !== model.reels) return false;
     if (!model.reelStrips.every((strip) => Array.isArray(strip) && strip.length > 0 && strip.every((symbol) => typeof symbol === "string" && symbol.length > 0))) return false;
     if (!model.stopWidths.every((width, index) => isPositiveSafeInteger(width) && width <= 30 && model.reelStrips![index].length <= (1 << width))) return false;
+    if (model.stopWidths.reduce((total, width) => total + width, 0) > 30) return false;
     if (!model.paylines.every((line) => Array.isArray(line) && line.length === model.reels && line.every((row) => Number.isSafeInteger(row) && row >= 0 && row < model.rows!))) return false;
     if (typeof model.paytable !== "object" || model.paytable === null) return false;
     if (!Object.values(model.paytable).every((wins) => typeof wins === "object" && wins !== null && Object.values(wins).every((multiplier) => typeof multiplier === "number" && Number.isFinite(multiplier)))) return false;
