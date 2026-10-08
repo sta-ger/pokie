@@ -58,14 +58,14 @@ function manifestFor(moduleBytes: Uint8Array): PokieWasmComponentManifest {
 const manifest = manifestFor(bytes);
 
 describe("Pokie WASM runtime API", () => {
-    it("uses only host RNG and resumes the JSON-safe serialized continuation", async () => {
+    it("preserves nextRandom-only live execution and diagnoses unavailable deterministic restoration", async () => {
         const draws = [0.125, 0.875];
         const runtime = await instantiatePokieWasm(bytes, manifest, {nextRandom: () => draws.shift()!});
         const session = runtime.createSession("seed");
         expect(await session.play({bet: 1})).toMatchObject({sequence: 1, draw: 0.125, creditsBefore: 1000, credits: 999, command: {bet: 1}});
-        const resumed = runtime.restoreSession(session.serialize());
-        expect(await resumed.play()).toMatchObject({sequence: 2, draw: 0.875});
-        expect(resumed.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "seed", draws: [0.125, 0.875], sequence: 2, credits: 998});
+        expect(() => runtime.restoreSession(session.serialize())).toThrow(/missing.*continuation/);
+        expect(await session.play()).toMatchObject({sequence: 2, draw: 0.875});
+        expect(session.serialize()).toEqual({schemaVersion: "pokie.state.v1", seed: "seed", draws: [0.125, 0.875], sequence: 2, credits: 998});
         runtime.dispose();
         await expect(session.play()).rejects.toThrow(/disposed/);
     });
@@ -81,6 +81,98 @@ describe("Pokie WASM runtime API", () => {
         await expect(restored.play()).resolves.toEqual(expected);
         first.dispose();
         fresh.dispose();
+    });
+
+    it.each(["0", "wasm-parity-golden", "third-seed"])("owns initial and later continuation across fresh/advanced hosts for %s", async (seed) => {
+        const fixture = createCanonicalWasmFixture({id: "owned-continuation"});
+        const host = new SeededPokieWasmHost("different-host-label");
+        host.nextRandom();
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        const session = runtime.createSession(seed);
+        const initial = session.serialize();
+        expect(initial).toMatchObject({sequence: 0, credits: 1000, draws: [expect.any(Number), expect.any(Number)], rngState: expect.any(Number)});
+        const hostState = host.serializeState();
+        expect(session.serialize()).toEqual(initial);
+        expect(host.serializeState()).toBe(hostState);
+        for (let sequence = 0; sequence < 3; sequence++) {
+            const snapshot = JSON.parse(JSON.stringify(session.serialize()));
+            const expected = await session.play({bet: 1});
+            const after = session.serialize();
+            for (const advance of [false, true]) {
+                const receivingHost = new SeededPokieWasmHost("different-receiving-seed");
+                if (advance) for (let draw = 0; draw < 11; draw++) receivingHost.nextRandom();
+                const receiving = await instantiatePokieWasm(fixture.bytes, fixture.manifest, receivingHost);
+                try {
+                    expect(await receiving.restoreSession(snapshot).play({bet: 1})).toEqual(expected);
+                    for (let repeat = 0; repeat < 2; repeat++) {
+                        const replay = await receiving.replay(snapshot, [{bet: 1}]);
+                        expect(replay).toEqual({rounds: [expected], stateBeforeFinal: snapshot, stateAfter: after});
+                    }
+                    expect(await receiving.replay(snapshot, [])).toEqual({rounds: [], stateAfter: snapshot});
+                    const next = await receiving.replay(after, [{bet: 1}]);
+                    expect(next.rounds).toEqual([await receiving.restoreSession(after).play({bet: 1})]);
+                } finally {
+                    receiving.dispose();
+                }
+            }
+            // Replaying and creating a sibling must not move this live session.
+            expect((await runtime.replay(snapshot, [{bet: 1}])).rounds).toEqual([expected]);
+            const sibling = runtime.createSession("sibling-seed");
+            await sibling.play({bet: 1});
+            sibling.dispose();
+            expect(session.serialize()).toEqual(after);
+            const detached = session.serialize();
+            (detached.draws as number[]).push(0);
+            expect(session.serialize()).toEqual(after);
+            expect(await session.play({bet: 1})).toEqual((await runtime.replay(after, [{bet: 1}])).rounds[0]);
+        }
+        expect((await runtime.replay(initial, [{bet: 1}])).stateBeforeFinal).toEqual(initial);
+        runtime.dispose();
+        expect(() => runtime.createSession(seed)).toThrow(/disposed/);
+    });
+
+    it("preserves authoritative old later-state values and migrates only empty seeded initial states", async () => {
+        const fixture = createCanonicalWasmFixture();
+        const host = new SeededPokieWasmHost("wasm-parity-golden");
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, host);
+        // Actual pre-correction serialized values, with no constructor draws.
+        const old = {schemaVersion: "pokie.state.v1" as const, seed: "wasm-parity-golden",
+            draws: [0.5967806649859995, 0.5375500756781548, 0.07866769284009933, 0.3642472343053669, 0.5574665090534836, 0.0013346921186894178],
+            sequence: 3, credits: 1000, rngState: 1365295755};
+        expect(await runtime.restoreSession(old).play({bet: 1})).toMatchObject({sequence: 4, draw: 0.14641731861047447, screen: [["A"], ["B"]], payout: 0, credits: 999});
+        const legacyInitial = {schemaVersion: "pokie.state.v1" as const, seed: "0", draws: [], sequence: 0, credits: 1000};
+        const migrated = await runtime.replay(legacyInitial, []);
+        expect(migrated.stateAfter).toEqual(runtime.createSession("0").serialize());
+        expect(() => runtime.restoreSession({...old, rngState: undefined})).toThrow(/missing.*continuation/);
+        runtime.dispose();
+    });
+
+    it("restores numeric RNG zero and rejects malformed or incompatible continuations without moving a session", async () => {
+        const fixture = createCanonicalWasmFixture();
+        const runtime = await instantiatePokieWasm(fixture.bytes, fixture.manifest, new SeededPokieWasmHost("0"));
+        const session = runtime.createSession("0");
+        const initial = session.serialize();
+        const zero = {...initial, rngState: 0};
+        const expectedHost = new SeededPokieWasmHost(0);
+        const draw = expectedHost.nextRandom();
+        expect(await runtime.restoreSession(zero).play({bet: 1})).toMatchObject({sequence: 1, draw});
+        for (const invalid of [-1, 0x100000000, 0.5, NaN, "0", null, {}, [undefined], {nested: undefined}]) {
+            expect(() => runtime.restoreSession({...initial, rngState: invalid as never})).toThrow(/malformed|Invalid seeded/);
+        }
+        expect(() => runtime.restoreSession(null as never)).toThrow(/malformed/);
+        await expect(runtime.replay(initial, [null] as never)).rejects.toThrow(/Malformed.*commands/);
+        expect(session.serialize()).toEqual(initial);
+        await expect(session.play({bet: -1})).rejects.toThrow(/positive/);
+        expect(session.serialize()).toEqual(initial);
+        const poor = runtime.createSession("0", {credits: 0});
+        const before = poor.serialize();
+        await expect(poor.play({bet: 1})).rejects.toThrow(/insufficient/);
+        expect(poor.serialize()).toEqual(before);
+        const custom = await instantiatePokieWasm(fixture.bytes, fixture.manifest, {nextRandom: () => 0.5});
+        expect(() => custom.restoreSession(initial)).toThrow(/cannot restore.*continuation/);
+        await expect(custom.replay({...initial, rngState: undefined, draws: []}, [])).rejects.toThrow(/cannot restore deterministic/);
+        runtime.dispose();
+        custom.dispose();
     });
 
     it("hashes exactly the supplied byte view instead of its larger backing buffer", async () => {
@@ -159,7 +251,7 @@ describe("Pokie WASM runtime API", () => {
         const state = {schemaVersion: "pokie.state.v1" as const, seed: "serialize-only", draws: [], sequence: 0, credits: 1000};
         const session = runtime.createSession("serialize-only");
         expect(session.serialize()).toEqual(state);
-        expect(runtime.restoreSession(state).serialize()).toEqual(state);
+        expect(() => runtime.restoreSession(state)).toThrow(/cannot restore deterministic/);
         await expect(session.play()).rejects.toThrow(/does not declare runtime\.play/i);
         await expect(runtime.replay(state, [])).rejects.toThrow(/does not declare runtime\.replay/i);
         expect(nextRandom).not.toHaveBeenCalled();

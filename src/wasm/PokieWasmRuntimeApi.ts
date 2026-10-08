@@ -9,7 +9,7 @@ export const POKIE_WASM_DEFAULT_CREDITS = 1000;
 export type PokieWasmSessionState = {
     readonly schemaVersion: "pokie.state.v1";
     readonly seed: string;
-    /** Every seeded host draw consumed to select canonical reel stops. */
+    /** Every host draw consumed by this session, including seeded initial-screen draws. */
     readonly draws: readonly number[];
     readonly sequence: number;
     /** Remaining session ledger after the last completed round. */
@@ -17,10 +17,17 @@ export type PokieWasmSessionState = {
     /** JSON-safe host RNG continuation, when the host supports restoration. */
     readonly rngState?: PokieWasmHostState;
 };
-export const POKIE_WASM_RUNTIME_API_VERSION = "1.0.0";
+/** 1.1 establishes Node-compatible seeded initialization and session-owned continuation.
+ * The canonical module ABI and integrity-bound state identifiers remain v1.
+ */
+export const POKIE_WASM_RUNTIME_API_VERSION = "1.1.0";
 export type PokieWasmHostState = string | number | boolean | null | readonly PokieWasmHostState[] | {readonly [key: string]: PokieWasmHostState};
 export type PokieWasmHost = {
     readonly nextRandom: () => number;
+    /** Starts a public seeded session. Hosts without this keep their live stream. */
+    readonly resetSeed?: (seed: string) => void;
+    /** Restores a legacy empty initial snapshot for a host with a known origin. */
+    readonly resetInitialState?: () => void;
     /** Optional JSON-safe continuation required to restore this stream in a fresh runtime. */
     readonly serializeState?: () => PokieWasmHostState;
     readonly restoreState?: (state: PokieWasmHostState) => void;

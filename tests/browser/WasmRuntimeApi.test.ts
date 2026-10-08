@@ -1,4 +1,8 @@
-import {instantiatePokieWasm, SeededPokieWasmHost} from "../../src/wasm/browser.js";
+import fs from "fs";
+import path from "path";
+import {POKIE_WASM_RUNTIME_API_VERSION} from "pokie";
+import * as browser from "pokie/browser";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "pokie/wasm";
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("browser-safe WASM runtime API", () => {
@@ -15,6 +19,32 @@ describe("browser-safe WASM runtime API", () => {
         });
         expect(state).toMatchObject({schemaVersion: "pokie.state.v1", seed: "browser-seed", sequence: 1, draws: expect.any(Array), rngState: expect.any(Number)});
         runtime.dispose();
+    });
+
+    it("replays the string-zero initial round through both portable public exports", async () => {
+        const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "../../package.json"), "utf8"));
+        expect(pkg.exports["."].import.default).toBe("./dist/esm/index.js");
+        expect(pkg.exports["."].require.default).toBe("./dist/cjs/index.js");
+        expect(pkg.main).toBe(pkg.exports["."].require.default);
+        expect(pkg.exports["./browser"].default).toBe("./dist/esm/browser.js");
+        expect(pkg.exports["./wasm"].default).toBe("./dist/esm/wasm/browser.js");
+        expect(browser.instantiatePokieWasm).toBe(instantiatePokieWasm);
+        expect(browser.POKIE_WASM_RUNTIME_API_VERSION).toBe(POKIE_WASM_RUNTIME_API_VERSION);
+        expect(POKIE_WASM_RUNTIME_API_VERSION).toBe("1.1.0");
+        const fixture = createCanonicalWasmFixture();
+        const runtime = await browser.instantiatePokieWasm(fixture.bytes, fixture.manifest, new browser.SeededPokieWasmHost("0"));
+        try {
+            const session = runtime.createSession("0");
+            const initial = structuredClone(session.serialize());
+            const first = await session.play({bet: 1});
+            expect(first).toMatchObject({sequence: 1, screen: [["A"], ["B"]], payout: 0, credits: 999});
+            const after = session.serialize();
+            await session.play({bet: 1});
+            expect(await runtime.replay(initial, [{bet: 1}])).toEqual({rounds: [first], stateBeforeFinal: initial, stateAfter: after});
+            expect(await runtime.restoreSession(initial).play({bet: 1})).toEqual(first);
+        } finally {
+            runtime.dispose();
+        }
     });
 
     it("rejects a component requiring a newer POKIE runtime before browser instantiation", async () => {

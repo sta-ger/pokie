@@ -1,3 +1,9 @@
+import {SimCommand} from "../../cli/commands/SimCommand.js";
+import {ReplayCommand} from "../../cli/commands/ReplayCommand.js";
+import {createProductionParityFixture} from "../fixtures/wasm/createProductionParityFixture.js";
+import {ReplayRecorder} from "../../src/replay/ReplayRecorder.js";
+import {loadPokieWasmFileRuntime} from "../../src/wasm/node/PokieWasmFileRuntimeAdapter.js";
+import {SeededPokieWasmHost} from "../../src/wasm/PokieWasmRuntime.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -38,6 +44,52 @@ describe("canonical WASM CLI workflow", () => {
             log.mockRestore();
         }
         expect(output).toEqual([expect.stringMatching(/^POKIE WASM round 1: draw=0\.\d+ seed=first-run$/)]);
+    });
+
+    it("runs, simulates, and downloads first/later replay continuations for the generated Node string-zero sequence", async () => {
+        const fixture = await createProductionParityFixture(directory);
+        const expected = new ReplayRecorder().record({game: fixture.game, seed: "0", round: 4});
+        const output: string[] = [];
+        const log = jest.spyOn(console, "log").mockImplementation((line: string) => output.push(line));
+        try {
+            const runtime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
+            const session = runtime.createSession("0");
+            const initial = session.serialize();
+            const first = await session.play({bet: 1});
+            const nodeFirst = new ReplayRecorder().record({game: fixture.game, seed: "0", round: 1});
+            expect(first).toMatchObject({draw: 0.0144703749101609, screen: nodeFirst.screen, stake: nodeFirst.totalBet, payout: nodeFirst.totalWin});
+            runtime.dispose();
+            expect(await new RunWasmCommand().run([fixture.artifact, "--seed", "0"])).toBe(0);
+            expect(output.join("\n")).toBe(`POKIE WASM round 1: draw=${first.draw} seed=0`);
+            output.length = 0;
+            const reportPath = path.join(directory, "simulation.json");
+            await new SimCommand().run([fixture.artifact, "--rounds", "4", "--seed", "0", "--format", "json", "--out", reportPath]);
+            const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+            expect(report).toMatchObject({totalBet: expected.totalBet, totalWin: expected.totalWin});
+            expect(JSON.parse(output.join("\n"))).toEqual(report);
+            for (const round of [1, 4]) {
+                output.length = 0;
+                const descriptorPath = path.join(directory, `round-${round}.json`);
+                await new ReplayCommand().run([fixture.artifact, "--round", String(round), "--seed", "0", "--format", "json", "--out", descriptorPath]);
+                const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8"));
+                const node = new ReplayRecorder().record({game: fixture.game, seed: "0", round});
+                expect(JSON.parse(output[0])).toEqual(descriptor);
+                expect(descriptor).toMatchObject({round, totalBet: node.totalBet, totalWin: node.totalWin, screen: node.screen});
+                expect(descriptor.stateBefore).toMatchObject({sequence: round - 1, rngState: expect.any(Number)});
+                expect(descriptor.stateAfter).toMatchObject({sequence: round, rngState: expect.any(Number)});
+                if (round === 1) expect(descriptor.stateBefore).toEqual(initial);
+                const fresh = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("advanced"));
+                try {
+                    await fresh.createSession("advanced").play();
+                    expect((await fresh.replay(descriptor.stateBefore, [{}])).stateAfter).toEqual(descriptor.stateAfter);
+                } finally {
+                    fresh.dispose();
+                }
+            }
+        } finally {
+            log.mockRestore();
+            await fixture.release();
+        }
     });
 
     it("fails before running a swapped artifact", async () => {

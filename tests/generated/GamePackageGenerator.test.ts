@@ -1,3 +1,5 @@
+import ts from "typescript";
+import {RNG_PARITY_BLUEPRINT} from "../fixtures/wasm/createProductionParityFixture.js";
 import {
     BetMode,
     BetModeRuntimeSemanticsInvalidError,
@@ -342,6 +344,40 @@ describe("GamePackageGenerator", () => {
         // Every reel strip is a single "A" repeated, so every spin lands an all-"A" screen and every
         // one of the default horizontal lines wins the "A": 3 payout (5x bet) configured above.
         expect(session.getWinAmount()).toBeGreaterThan(0);
+    });
+
+    it("preserves constructor consumption, initial continuation, and numeric/string seed distinction in generated CJS and TypeScript", () => {
+        const result = new GamePackageGenerator("1.3.0").generate(RNG_PARITY_BLUEPRINT, cwd);
+        const cjs = require(result.projectRoot) as PokieGame;
+        const source = fs.readFileSync(path.join(result.projectRoot, "src/index.ts"), "utf8");
+        const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}}).outputText;
+        const compiledPath = path.join(result.projectRoot, "dist", "typed-parity.js");
+        fs.writeFileSync(compiledPath, compiled);
+        const typed = require(compiledPath) as PokieGame;
+        for (const seed of ["0", 0]) {
+            const left = cjs.createSession({seed}) as VideoSlotSessionHandling & {toSessionState(): {rngState: number}; fromSessionState(state: {rngState: number}): unknown};
+            const right = typed.createSession({seed}) as typeof left;
+            const initial = JSON.parse(JSON.stringify(left.toSessionState()));
+            expect(right.toSessionState()).toEqual(initial);
+            left.setBet(1);
+            left.play();
+            const screen = left.getSymbolsCombination().toMatrix();
+            const after = left.toSessionState();
+            right.setBet(1);
+            right.play();
+            expect(right.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(right.toSessionState()).toEqual(after);
+            const restored = cjs.createSession({seed}) as typeof left;
+            restored.fromSessionState(initial);
+            restored.setBet(1);
+            restored.play();
+            expect(restored.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(restored.toSessionState()).toEqual(after);
+            if (seed === "0") expect({screen, win: left.getWinAmount(), rngState: after.rngState}).toEqual({screen: [["A"], ["B"]], win: 0, rngState: 3921318019});
+        }
+        const numeric = cjs.createSession({seed: 0}) as unknown as {toSessionState(): unknown};
+        const text = cjs.createSession({seed: "0"}) as unknown as typeof numeric;
+        expect(numeric.toSessionState()).not.toEqual(text.toSessionState());
     });
 
     it("wires a ways winModel into a playable generated package", () => {

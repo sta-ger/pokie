@@ -142,6 +142,8 @@ const sourceTestTransform = {
 
 const sourceTestModuleNameMapper = {
     "^pokie$": "<rootDir>/src/index.ts",
+    "^pokie/browser$": "<rootDir>/src/browser.ts",
+    "^pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };
 

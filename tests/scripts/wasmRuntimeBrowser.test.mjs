@@ -93,7 +93,7 @@ const page = `<!doctype html><script type="module">
         const round = await correctnessSession.play({bet: 1});
         const correctnessState = correctnessSession.serialize();
         const expectedCorrectnessDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.draws.length);
-        if (JSON.stringify(correctnessState.draws) !== JSON.stringify(expectedCorrectnessDraws) || round.draw !== expectedCorrectnessDraws[0]) throw new Error("browser benchmark did not consume the configured seeded host stream");
+        if (JSON.stringify(correctnessState.draws) !== JSON.stringify(expectedCorrectnessDraws) || round.draw !== expectedCorrectnessDraws[2]) throw new Error("browser benchmark did not consume the configured seeded host stream");
         correctnessSession.dispose();
         const warmSession = runtime.createSession(benchmarkConfiguration.fixtureSeed);
         for (let index = 0; index < benchmarkConfiguration.warmupRounds; index++) await warmSession.play({bet: 1});
@@ -103,7 +103,7 @@ const page = `<!doctype html><script type="module">
         const serialized = warmSession.serialize();
         const serializationBytes = JSON.stringify(serialized).length;
         if (serialized.sequence !== benchmarkConfiguration.warmupRounds + benchmarkConfiguration.measuredRounds) throw new Error("browser benchmark warmup and measured loops did not complete");
-        const expectedWarmDraws = seededDraws(benchmarkConfiguration.fixtureSeed, correctnessState.draws.length + serialized.draws.length).slice(correctnessState.draws.length);
+        const expectedWarmDraws = seededDraws(benchmarkConfiguration.fixtureSeed, serialized.draws.length);
         if (JSON.stringify(serialized.draws) !== JSON.stringify(expectedWarmDraws)) throw new Error("browser benchmark warmup and measured operations did not consume the configured seeded host stream");
         warmSession.dispose();
         const worker = new Worker("/worker.mjs", {type: "module"});
@@ -115,7 +115,7 @@ const page = `<!doctype html><script type="module">
             worker.postMessage({id: "before", type: "play"});
             replies.push(await response);
             const transferred = decode(fixture.bytes);
-            const workerDraws = seededDraws(golden.seed, 10);
+            const workerDraws = seededDraws(golden.seed, 12);
             response = receive();
             worker.postMessage({id: "instantiate", type: "instantiate", bytes: transferred, manifest: fixture.manifest, draws: workerDraws, seed: golden.seed}, [transferred.buffer]);
             replies.push(await response);
@@ -137,13 +137,17 @@ const page = `<!doctype html><script type="module">
             replies.push(await response);
             const workerState = replies.at(-1).result;
             assertFieldForField(workerRounds, mainRounds, "worker rounds compared with browser main thread");
-            assertFieldForField(workerState, mainState, "worker serialized state compared with browser main thread");
+            assertFieldForField({...workerState, rngState: workerState.rngState.rng}, mainState, "worker seeded position compared with browser main thread");
+            assertFieldForField(workerState.rngState, {cursor: mainState.draws.length, tape: JSON.stringify(workerDraws), seed: golden.seed, rng: mainState.rngState}, "worker complete draw continuation");
             response = receive();
             worker.postMessage({id: "replay", type: "replay", state: workerState, commands: [golden.continuationCommand]});
             const workerReplay = await response;
             replies.push(workerReplay);
             if (!workerReplay.ok) throw new Error("worker golden replay failed: " + workerReplay.error);
-            assertFieldForField(workerReplay.result, replayResult, "worker replay result compared with browser main thread");
+            assertFieldForField({...workerReplay.result,
+                stateBeforeFinal: {...workerReplay.result.stateBeforeFinal, rngState: workerReplay.result.stateBeforeFinal.rngState.rng},
+                stateAfter: {...workerReplay.result.stateAfter, rngState: workerReplay.result.stateAfter.rngState.rng},
+            }, replayResult, "worker replay seeded result compared with browser main thread");
             response = receive();
             worker.postMessage({id: "replay-continuation", type: "replay", state: workerReplay.result.stateAfter, commands: [golden.continuationCommand]});
             const workerContinuation = await response;

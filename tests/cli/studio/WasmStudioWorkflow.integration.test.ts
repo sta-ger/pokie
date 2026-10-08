@@ -1,3 +1,12 @@
+import {createProductionParityFixture} from "../../fixtures/wasm/createProductionParityFixture.js";
+import {ReplayRecorder} from "../../../src/replay/ReplayRecorder.js";
+import {StudioServer} from "../../../cli/studio/StudioServer.js";
+import {StudioHomeService} from "../../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioJobService} from "../../../cli/studio/jobs/StudioJobService.js";
+import {FileStudioJobRepository} from "../../../cli/studio/jobs/FileStudioJobRepository.js";
+import type {StudioRuntimeSessionView} from "../../../cli/studio/runtime/StudioRuntimeSessionView.js";
+import type {PokieWasmSessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -20,11 +29,12 @@ const blueprint = {
 };
 
 async function waitForTerminal(getStatus: () => {status: string} | undefined): Promise<{status: string}> {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
         const job = getStatus();
         if (job !== undefined && ["completed", "failed", "cancelled"].includes(job.status)) return job;
         await new Promise<void>((resolve) => {
-            setImmediate(resolve);
+            setTimeout(resolve, 10);
         });
     }
     throw new Error("Studio WASM job did not reach a terminal state.");
@@ -95,6 +105,66 @@ describe("canonical WASM Studio workflow", () => {
         expect(replayDownload.descriptor.stateAfter).toEqual(secondPlayRound.session.debug?.stateAfter);
     });
 
+    it("transports Node-compatible initial state, Play, chunked Replay, and Simulation through the real Studio routes", async () => {
+        const fixture = await createProductionParityFixture(workDir);
+        const home = new StudioHomeService("1.3.0");
+        const replayService = new StudioReplayExecutionService(undefined, undefined, 1);
+        const simulationService = new StudioSimulationService(undefined, undefined, undefined, 1);
+        const server = new StudioServer({
+            pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: workDir,
+            homeService: home, blueprintService: new StudioBlueprintService("1.3.0", workDir, home),
+            projectRegistrationService: new StudioProjectRegistrationService(),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workDir, "jobs"))),
+            replayService, simulationService, initialContext: {mode: "project", projectRoot: fixture.artifact},
+        });
+        const address = await server.start();
+        const base = `http://${address.host}:${address.port}`;
+        const post = (route: string, body: unknown) => fetch(`${base}${route}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+        try {
+            const opened = await post("/api/project/play/session", {seed: "0"});
+            expect(opened.status).toBe(201);
+            const initial = await opened.json() as {session: StudioRuntimeSessionView};
+            expect(initial.session.debug?.stateAfter).toMatchObject({sequence: 0, credits: 1000, rngState: expect.any(Number)});
+            const node = fixture.game.createSession({seed: "0"});
+            expect((initial.session.debug?.stateAfter as PokieWasmSessionState).rngState).toEqual((node as unknown as {toSessionState(): {rngState: number}}).toSessionState().rngState);
+            const states: unknown[] = [initial.session.debug?.stateAfter];
+            for (let round = 1; round <= 4; round++) {
+                node.setBet(1);
+                node.play();
+                const response = await post(`/api/project/play/sessions/${initial.session.sessionId}/spin`, {bet: 1});
+                expect(response.status).toBe(200);
+                const body = await response.json() as {session: StudioRuntimeSessionView};
+                expect(body.session).toMatchObject({win: node.getWinAmount(), credits: node.getCreditsAmount(), screen: (node as unknown as {getSymbolsCombination(): {toMatrix(): string[][]}}).getSymbolsCombination().toMatrix()});
+                expect(body.session.debug?.stateBefore).toEqual(states[round - 1]);
+                states.push(body.session.debug?.stateAfter);
+            }
+            for (const round of [1, 4]) {
+                const started = await post("/api/project/replays", {seed: "0", round});
+                expect(started.status).toBe(202);
+                const job = await started.json() as {id: string};
+                await expect(waitForTerminal(() => replayService.getStatus(fixture.artifact, job.id))).resolves.toMatchObject({status: "completed"});
+                const downloaded = await fetch(`${base}/api/project/replays/${job.id}/download`);
+                expect(downloaded.status).toBe(200);
+                const descriptor = await downloaded.json();
+                const expected = new ReplayRecorder().record({game: fixture.game, seed: "0", round});
+                expect(descriptor).toMatchObject({round, totalBet: expected.totalBet, totalWin: expected.totalWin, screen: expected.screen, stateBefore: states[round - 1], stateAfter: states[round]});
+            }
+            const started = await post("/api/project/simulations", {seed: "0", rounds: 4});
+            expect(started.status).toBe(202);
+            const job = await started.json() as {id: string};
+            await expect(waitForTerminal(() => simulationService.getStatus(job.id))).resolves.toMatchObject({status: "completed"});
+            const downloaded = await fetch(`${base}/api/project/reports/${job.id}`);
+            expect(downloaded.status).toBe(200);
+            const expected = new ReplayRecorder().record({game: fixture.game, seed: "0", round: 4});
+            expect(await downloaded.json()).toMatchObject({report: {totalBet: expected.totalBet, totalWin: expected.totalWin}});
+            expect(replayService.getActiveCount()).toBe(0);
+            expect(simulationService.getActiveCount()).toBe(0);
+        } finally {
+            await server.stop();
+            await fixture.release();
+        }
+    });
+
     it("cancels queued canonical WASM simulation and replay jobs without retaining a runnable operation", async () => {
         const simulation = new StudioSimulationService(undefined, undefined, undefined, 1);
         const simulationStart = simulation.start(artifactPath, {rounds: 1_000, seed: "cancelled-wasm"});
@@ -161,5 +231,8 @@ describe("canonical WASM Studio workflow", () => {
         expect(replayStart.status).toBe("created");
         if (replayStart.status !== "created") throw new Error("expected Studio replay job");
         await expect(waitForTerminal(() => replay.getStatus(artifactPath, replayStart.job.id))).resolves.toMatchObject({status: "failed", error: expect.stringMatching(/integrity|canonical|descriptor|module/i)});
+        expect(replay.getActiveCount()).toBe(0);
+        expect(simulation.getActiveCount()).toBe(0);
+        expect(replay.getDownload(artifactPath, replayStart.job.id).status).not.toBe("ok");
     });
 });
