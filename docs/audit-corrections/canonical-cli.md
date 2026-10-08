@@ -127,3 +127,26 @@ confirmed the moved case and setup are byte-for-byte intact and discovered at
 the packaging boundary. The broader reviewer matrix remains controller-owned;
 this gate repair ran no additional test suites or packaging commands and changed
 no completed campaign evidence or receipts.
+
+## Interoperability gate repair
+
+The retained interoperability failure reproduced at the descriptor Stake build:
+the fixture supplied generated content-addressed outcome IDs, which the descriptor
+writer correctly rejects because Stake requires decimal IDs. The former discarded
+writer result had allowed that case to claim successful publication. This failure
+also reproduces through `npm run test:targeted`; it does not depend on inherited
+npm lifecycle variables.
+
+The current runner now asserts exit 1, the canonical-ID diagnostic, no success
+message, and no publication or staging for that input. Its successful descriptor
+coverage uses the actual Stake import's config, publishes through canonical build,
+and reads back generator metadata, costs, game/config identity, and source hashes
+before recording the existing successful coverage ID. Project conversion and
+internal import/re-export coverage remain intact. Completed receipts are unchanged.
+
+Verification is limited to `npm run test:targeted --
+tests/cli/ArtifactInteroperabilityTorture.integration.test.ts` and root
+`npm run typecheck`. The complete reviewer matrix, direct-Jest rerun, packaging,
+and official gates remain controller-owned.
+The final targeted run passed both tests (37.039 seconds); root typecheck passed,
+including the Studio compiler.

@@ -759,12 +759,17 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
             modeName: "base", cost: 1, bundleDir: path.basename(generatedBundlePath), bundleModeName: "base",
         }]}));
         const delegatedStakePath = path.join(workDir, "matrix-delegated-stake");
-        expect(await descriptorBuildCommand.run([delegatedStakeDescriptorPath, "--target", "stakeAdapter", "--out", delegatedStakePath])).toBe(0);
-        evidence.record({
-            id: "export-stake-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "build:stakeAdapter-delegation", sourcePath: delegatedStakeDescriptorPath,
-            owner: "BuildCommand --target stakeAdapter prepared StakeEngineCommand operation", result: "the exercised build owner consumed a descriptor bound to the runner-produced Outcome Library",
-            observations: [{surface: "cli", owner: "BuildCommand", result: "build stakeAdapter executed the prepared Stake descriptor operation"}],
-        });
+        // Generated IDs are content-addressed. Only the project integration
+        // boundary assigns Stake's decimal IDs; a descriptor must not silently
+        // relabel them or report success without publishing an artifact.
+        const descriptorErrorOffset = (console.error as jest.Mock).mock.calls.length;
+        const descriptorLogOffset = (console.log as jest.Mock).mock.calls.length;
+        const delegatedStakeExitCode = await descriptorBuildCommand.run([delegatedStakeDescriptorPath, "--target", "stakeAdapter", "--out", delegatedStakePath]);
+        expect(delegatedStakeExitCode).toBe(1);
+        expect((console.error as jest.Mock).mock.calls.slice(descriptorErrorOffset).flat().join("\n")).toMatch(/stakeengine-outcome-id-not-integer.*canonical non-negative integer/);
+        expect((console.log as jest.Mock).mock.calls.slice(descriptorLogOffset).flat().join("\n")).not.toMatch(/Artifact .* built in/);
+        expect(fs.existsSync(delegatedStakePath)).toBe(false);
+        expect(fs.readdirSync(workDir).filter((entry) => entry.startsWith("matrix-delegated-stake.") && (/staging-|tmp-/).test(entry))).toEqual([]);
         expect(await build.run([generatedBundlePath, "--target", "stakeAdapter", "--out", stakePath])).toBe(0);
         evidence.record({
             id: "outcome-library-export-stake", artifactKind: "outcomeLibrary", operation: "export", sourcePath: generatedBundlePath,
@@ -831,6 +836,26 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const importProvenancePath = path.join(importedStakeLibraryPath, "source-provenance.json");
         expect(fs.existsSync(importConfigPath)).toBe(true);
         expect(fs.existsSync(importProvenancePath)).toBe(true);
+        // The real import emits a descriptor with decimal IDs, generator
+        // metadata and source hashes. Exercise that supported publication
+        // path and read back its result before recording successful evidence.
+        expect(await descriptorBuildCommand.run([importConfigPath, "--target", "stakeAdapter", "--out", delegatedStakePath])).toBe(0);
+        const delegatedStakeReadback = await new StakeEngineImporter().importFromDirectory(delegatedStakePath);
+        expect(delegatedStakeReadback.issues.filter((issue) => issue.severity === "error")).toEqual([]);
+        const importedConfig = JSON.parse(fs.readFileSync(importConfigPath, "utf-8"));
+        expect(delegatedStakeReadback.manifest).toMatchObject({
+            game: stakeManifest.game,
+            configHash: stakeManifest.configHash,
+            sourceProvenance: importedConfig.sourceProvenance,
+        });
+        expect(delegatedStakeReadback.modes.map((mode) => ({modeName: mode.modeName, cost: mode.cost, generator: mode.generator}))).toEqual(
+            importedConfig.modes.map((mode: {modeName: string; cost: number; generator: unknown}) => ({modeName: mode.modeName, cost: mode.cost, generator: mode.generator})),
+        );
+        evidence.record({
+            id: "export-stake-descriptor", artifactKind: "stakeEngineExportDescriptor", operation: "build:stakeAdapter-delegation", sourcePath: importConfigPath,
+            producedPath: delegatedStakePath, owner: "BuildCommand --target stakeAdapter prepared StakeEngineCommand operation", result: "canonical build published and read back the imported descriptor with matching metadata and source provenance",
+            observations: [{surface: "cli", owner: "BuildCommand", result: "build stakeAdapter exit 0 published the prepared Stake descriptor operation"}],
+        });
         evidence.record({
             id: "stake-import-reexport-config", artifactKind: "stakeImportReExportConfig", operation: "export", registryOperation: "created_by", sourcePath: importConfigPath,
             owner: "cli:stakeengine import", result: "public import emitted a re-exportable Stake configuration",
