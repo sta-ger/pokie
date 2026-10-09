@@ -6,13 +6,48 @@ automated regression evidence. It does **not** establish cold-user success.
 
 ## Independent collection status
 
-No P9-07 frozen cold observations, collector identity, elapsed exploration
-times, screenshots, or independent `browser_ui_rerun` receipt with finding ID
-`P9-VALERA-MATHEMATICIAN` were supplied or collected in this task clone.
-Consequently severity classification, finding-driven product corrections, and
-fresh-profile affected browser retests remain unverified. No claim of “no
-findings” or completed independent verification is made. Previous steps' evidence
-is untouched. Screenshot count for this step: **0**.
+An isolated machine-owned initial browser collection was completed on
+2026-10-09 from candidate `aa5652b1ad676f486757ee52b61433815b6178c0`.
+It used a new Studio registry/documents directory and Chromium profile at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-04ffcc258783a889/run-2026-10-09T01-50-58-803Z`.
+The final rendered observation ended at `2026-10-09T01:51:12.291Z`; this
+assessment was frozen afterward, before a retest.
+
+The initial flow created the tiny starter Blueprint, inspected the visible reel,
+symbol, and paytable views, changed and saved its name to “Valera Starter Slot”,
+started Play, ran 100 rounds with seed `valera-audit-seed`, and displayed RTP
+52.00%, volatility 1.85, a 95% RTP interval of 15.81%–88.19%, and the explicit
+low-round warning. It generated and reopened the PAR workbook as a read-only
+PAR project, generated a 1,024-outcome exact library (RTP 100.78%), drew an
+exact outcome, and completed a seed replay with an available inspectable
+artifact. The supplied rare weighted directory was checked and added through
+the public Projects workflow; Studio rendered it as a “Game export”.
+
+No action-local P0/P1/material-P2 product failure, terminology/defaults
+blocker, or rendered error was observed in that initial route. Three bounded
+screenshots are retained only in the harness run directory (`initial.png`,
+`create_or_import_tiny_workbook-ready.png`, and
+`create_or_import_tiny_workbook-after.png`); none are committed. This new
+machine collection does not reconstruct any earlier missing historical audit.
+The clean fresh-profile affected retest is recorded below.
+
+## Clean affected retest
+
+After the frozen assessment, a second isolated Studio registry/documents
+directory and Chromium profile completed the same public route at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-04ffcc258783a889/run-2026-10-09T01-54-51-610Z`,
+from `2026-10-09T01:54:51.611Z` through `2026-10-09T01:55:05.979Z`.
+The saved edit, Play, seeded 100-round simulation, PAR export/reopen with
+`parsheet-provenance-present` and matching recorded hash, exact Outcome Library
+generation/draw, and completed replay all rendered again without an action-local
+error.
+
+The rare source was then opened rather than merely added. Its rendered native
+Stake Engine view stated `READS SOURCE FULLY` and displayed base RTP
+`1.08e-17%`, hit frequency `5.42e-18%`, and max win `2`; this verifies that the
+rare weighted event remained nonzero in the public surface. No P0, P1, or
+material P2 remains observed by this bounded retest. Retest screenshots remain
+only in that runtime directory and are not committed.
 
 Independent collection and production asset preparation belong to the controller
 under the implementer command policy. Use candidate-consistent assets, one new
