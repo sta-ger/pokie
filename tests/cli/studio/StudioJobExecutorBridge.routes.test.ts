@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {buildGameBuildInfo} from "pokie";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";
@@ -336,19 +337,21 @@ describe("StudioJobService executor bridge routes", () => {
             symbols: ["A", "B"],
             paytable: {A: {3: 5}, B: {3: 2}},
         };
-        let release: ((value: unknown) => void) | undefined;
+        let release: ((value: Awaited<ReturnType<StudioBlueprintService["build"]>>) => void) | undefined;
         let started: (() => void) | undefined;
         const running = new Promise<void>((resolve) => {
             started = resolve;
         });
-        const build = jest.fn(() => new Promise<unknown>((resolve) => {
+        // Preserve the real preview/validation boundary; control only the executor's settlement.
+        const blueprintService = new StudioBlueprintService("1.3.0", path.join(directory, "studio"), new StudioHomeService("1.3.0"));
+        const build = jest.spyOn(blueprintService, "build").mockImplementation(() => new Promise((resolve) => {
             release = resolve;
             started?.();
         }));
         const baseUrl = await start(
             {} as StudioCertificationService,
             jobs,
-            {blueprintService: {build} as unknown as StudioBlueprintService},
+            {blueprintService},
         );
         const physicalRequest = {
             blueprint,
@@ -361,7 +364,8 @@ describe("StudioJobService executor bridge routes", () => {
             outDir: path.join(aliasRoot, "nested", "out"),
         };
         const first = post(`${baseUrl}/api/home/blueprints/build`, physicalRequest);
-        await running;
+        // If preflight rejects or throws, surface the HTTP result instead of waiting for a timeout.
+        await expect(Promise.race([running.then(() => ({status: "running"})), first])).resolves.toEqual({status: "running"});
         await expect(post(`${baseUrl}/api/home/blueprints/build`, aliasRequest)).resolves.toMatchObject({
             status: 200,
             body: {status: "error", activeJobId: "bridge-job", reattached: true},
@@ -381,8 +385,18 @@ describe("StudioJobService executor bridge routes", () => {
             body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
         });
         expect(build).toHaveBeenCalledTimes(1);
+        expect(build).toHaveBeenCalledWith(blueprint, physicalRequest.outDir, physicalRequest.sourcePath, expect.any(AbortSignal));
+        expect(jobs.list()).toMatchObject([{
+            projectId: `design:${physicalRequest.sourcePath}`,
+            conflictKey: `design-destination:${physicalRequest.outDir}`,
+            status: "running",
+        }]);
 
-        release?.({status: "ok", projectRoot: physicalRequest.outDir, manifest: blueprint.manifest, createdFiles: [], buildInfo: {}, warnings: []});
+        release?.({status: "ok", projectRoot: physicalRequest.outDir, manifest: blueprint.manifest, createdFiles: [], buildInfo: buildGameBuildInfo(blueprint, "1.3.0", physicalRequest.sourcePath), warnings: []});
         await expect(first).resolves.toMatchObject({status: 201, body: {status: "ok", projectRoot: physicalRequest.outDir}});
+        expect(jobs.get(`design:${physicalRequest.sourcePath}`, "bridge-job")).toMatchObject({
+            status: "completed",
+            result: {outputs: [{path: physicalRequest.outDir}], provenance: {sourcePath: physicalRequest.sourcePath}},
+        });
     });
 });
