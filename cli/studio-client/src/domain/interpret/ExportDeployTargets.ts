@@ -134,6 +134,9 @@ export function describeArtifactBuildTargetCards(targets: readonly StudioArtifac
         // matrix-authoritative, but this defensive filter makes the hidden/unadvertised contract hold while
         // a browser has an older response cached.
         .filter((entry) => entry.target in ARTIFACT_TARGET_CARD_INFO)
+        // Runnable designs/packages have one configurable generator. Outcome-based projects
+        // instead keep the registry card for republishing their existing bundle.
+        .filter((entry) => entry.target !== "outcomeLibrary" || !isOutcomeGenerationSource(entry))
         .map((entry) => {
             const info = ARTIFACT_TARGET_CARD_INFO[entry.target];
             return {
@@ -246,12 +249,18 @@ export function describeExportDeployTargetCards(
     deploymentTargets: readonly StudioDeploymentTargetSummary[],
     artifactTargets: readonly StudioArtifactTargetView[],
 ): ExportDeployTargetCard[] {
-    const cards: ExportDeployTargetCard[] = [
-        plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets),
-    ];
+    const outcomeTarget = artifactTargets.find((entry) => entry.target === "outcomeLibrary");
+    const cards: ExportDeployTargetCard[] = outcomeTarget !== undefined && !isOutcomeGenerationSource(outcomeTarget)
+        ? []
+        : [plannerBackedCard(OUTCOME_LIBRARY_CARD, "outcomeLibrary", artifactTargets)];
     const adapterCards = deploymentTargets.filter((target) => target.id !== LOCAL_JSON_EXAMPLE_TARGET_ID).map(describeExternalAdapterTargetCard);
     cards.push(...adapterCards, ...(adapterCards.length > 0 ? [] : [REMOTE_DEPLOYMENT_PLACEHOLDER_CARD]));
     return cards;
+}
+
+function isOutcomeGenerationSource(entry: StudioArtifactTargetView): boolean {
+    // Only a current plan identifies this as a configurable runtime generation source.
+    return entry.plan?.source.kind === "blueprint" || entry.plan?.source.kind === "tsPackage";
 }
 
 // Outcome generation and Stake export keep their distinct Studio writers, but
@@ -265,11 +274,9 @@ function plannerBackedCard(
 ): ExportDeployTargetCard {
     const entry = artifactTargets.find((candidate) => candidate.target === target);
     const plan = entry?.plan;
-    // Older Studio servers did not serialize plans for this independent
-    // writer. Keep their established card usable during a rolling upgrade;
-    // current servers always send a plan and take the branch below.
+    // An absent current server plan cannot authorize generation.
     if (entry === undefined || plan === undefined) {
-        return card;
+        return {...card, supported: false, prerequisites: [], unavailableReasons: ["Waiting for a current server plan. Refresh Build/Export to check availability."]};
     }
     return {
         ...card,

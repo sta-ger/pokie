@@ -94,7 +94,7 @@ export function OverviewTab({
             {playable && (
                 <NextStepCallout
                     title="Start by playing a round"
-                    description="Open Play to spin a real round and find a win or free-games feature. Use Game Model to edit the saved layout, symbols, reels, paytable, and bets; then use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, generate an outcome library before exporting it for Stake Engine."
+                    description={`Open Play to spin a real round. ${editable ? "Use Game Model to edit the saved layout, symbols, reels, paytable, and bets." : "Game Model is read-only for this package; open the original Blueprint to change its design and build a new package."} Use Simulation to estimate RTP and Replay to inspect a selected round. In Build/Export, Stake Engine export automatically plans outcome-library reuse or generation; separate generation is optional.`}
                     actionLabel="Open Play"
                     onAction={onOpenPlay}
                 />
@@ -129,6 +129,7 @@ export function OverviewTab({
             </Table>
 
             <PageSection legend="Validation">
+                <Text size="sm" c="dimmed" mb="sm">Structural validation checks the project contract. It does not establish mathematical balance or certification.</Text>
                 <ValidationDiagnostics view={validation} onRevalidate={onRevalidate} />
             </PageSection>
         </div>

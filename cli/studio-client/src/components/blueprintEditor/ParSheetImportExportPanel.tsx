@@ -86,8 +86,11 @@ export function ParSheetImportExportPanel({
     initialImportPath,
     initialImportFieldPath,
     initialExportPath,
+    allowExport = true,
 }: {
     blueprint: Record<string, unknown>;
+    /** Home imports designs; saved-project Build/Export owns public artifact publication. */
+    allowExport?: boolean;
     // The path the current blueprint was last loaded/imported from (BlueprintEditorPage's own
     // `blueprintPath`), if any -- used only to derive Export to path's own real initial value, below.
     blueprintPath?: string;
@@ -324,11 +327,11 @@ export function ParSheetImportExportPanel({
     }
 
     return (
-        <PageSection legend="PAR Sheet Import / Export">
+        <PageSection legend={allowExport ? "PAR Sheet Import / Export" : "PAR Sheet Import"}>
             <Text size="sm" c="dimmed" mb="sm">
-                Import an existing PAR sheet (.xlsx) into a canonical POKIE blueprint, or export the blueprint
-                currently open in this editor back out to one — both always run through the pokie package&apos;s
-                own PAR sheet import/export services, purely in memory until you explicitly Apply or Export.
+                {allowExport
+                    ? "Import an existing PAR sheet (.xlsx) into a canonical POKIE blueprint, or export the current blueprint through POKIE’s PAR sheet services."
+                    : "Import an existing PAR sheet (.xlsx) through POKIE’s PAR sheet services. Import and preview read the workbook; Apply updates this draft. Save the design before building artifacts in its workspace."}
             </Text>
 
             <Stepper active={activeStep} onStepClick={setActiveStep} mb="md" size="sm">
@@ -345,7 +348,7 @@ export function ParSheetImportExportPanel({
                     disabled={!previewReachable}
                     aria-current={activeStep === 2 ? "step" : undefined}
                 />
-                <Stepper.Step label="Apply / Export" description="Commit or write out" aria-current={activeStep === 3 ? "step" : undefined} />
+                <Stepper.Step label={allowExport ? "Apply / Export" : "Apply"} description={allowExport ? "Commit or write out" : "Update the draft"} aria-current={activeStep === 3 ? "step" : undefined} />
             </Stepper>
 
             {activeStep === 0 && (
@@ -423,7 +426,7 @@ export function ParSheetImportExportPanel({
                         <BuildPreviewDisplay view={buildPreview} />
                         {buildPreview.status === "ok" && (
                             <QuickActions>
-                                <Button onClick={() => setActiveStep(3)}>Continue to Apply / Export</Button>
+                                <Button onClick={() => setActiveStep(3)}>{allowExport ? "Continue to Apply / Export" : "Continue to Apply"}</Button>
                             </QuickActions>
                         )}
                     </div>
@@ -454,7 +457,7 @@ export function ParSheetImportExportPanel({
                         )}
                     </PageSection>
 
-                    <PageSection legend="Export current blueprint">
+                    {allowExport && <PageSection legend="Export current blueprint">
                         <QuickActions>
                             <PathInput
                                 label="Export to path"
@@ -493,7 +496,7 @@ export function ParSheetImportExportPanel({
                                 warnings={exportView.warnings}
                             />
                         )}
-                    </PageSection>
+                    </PageSection>}
                 </div>
             )}
         </PageSection>

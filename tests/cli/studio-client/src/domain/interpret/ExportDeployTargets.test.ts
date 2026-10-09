@@ -46,6 +46,28 @@ describe("describeExportDeployTargetCards", () => {
         expect(outcomeLibraryCard?.locality).toBe("local");
     });
 
+    it.each(["blueprint", "tsPackage"] as const)("offers one configurable outcome writer for %s", (kind) => {
+        const entries = artifactTargets();
+        entries[0] = {...entries[0], plan: {...planned("outcomeLibrary"), source: {kind, capabilities: []}}};
+        const cards = [...describeExportDeployTargetCards([], entries), ...describeArtifactBuildTargetCards(entries)];
+        expect(cards.filter((card) => card.kind === "outcomeLibrary" || card.artifactTarget === "outcomeLibrary")).toHaveLength(1);
+        expect(cards.find((card) => card.kind === "outcomeLibrary")?.supported).toBe(true);
+    });
+
+    it("republishes an existing outcome artifact without advertising runtime generation", () => {
+        const entries = artifactTargets();
+        entries[0] = {...entries[0], plan: {...planned("outcomeLibrary"), source: {kind: "outcomeLibrary", capabilities: []}}};
+        const cards = [...describeExportDeployTargetCards([], entries), ...describeArtifactBuildTargetCards(entries)];
+        expect(cards.filter((card) => card.artifactTarget === "outcomeLibrary")).toHaveLength(1);
+        expect(cards.some((card) => card.kind === "outcomeLibrary")).toBe(false);
+    });
+
+    it("does not authorize generation while the current server plan is absent", () => {
+        const card = describeExportDeployTargetCards([], []).find((entry) => entry.kind === "outcomeLibrary");
+        expect(card?.supported).toBe(false);
+        expect(card?.unavailableReasons.join(" ")).toMatch(/current server plan/);
+    });
+
     it("does not duplicate the registry-backed Stake artifact card as a static-export card", () => {
         const cards = describeExportDeployTargetCards([], artifactTargets());
         const stakeCard = cards.find((card) => card.kind === "staticExport");

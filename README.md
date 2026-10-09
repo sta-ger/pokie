@@ -6,6 +6,10 @@
 _In Australia, they call slot machines "pokies"._
 
 Introducing **POKIE**, a server-side video slot game logic framework for JavaScript and TypeScript.
+For developers and game-math authors, with **Studio** for producers to design and test games locally.
+Start with `npx pokie`: edit a starter, **Create game** to save and open its workspace, check **Overview**,
+then **Play** a round. Use the workspace’s **Build/Export** for a playable package or another local artifact.
+Structural validation and simulation do not establish certification; operator integration remains developer work.
 
 `npm install pokie`
 
@@ -59,7 +63,7 @@ POKIE goes well beyond classic paylines:
   [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing
   anything; `npx pokie create [name] --random` generates a structurally-valid `GameBlueprint` with no config file at
   all — seeded/reproducible — ready to feed straight into `pokie build`; `npx pokie inspect
-  <packageRoot>` prints a package's provenance (game, blueprint hash, source, `pokie` version) without running it;
+  <packageRoot>` identifies the project kind and available next actions without running it; it does not attest to a package's original Blueprint or build provenance;
   `npx pokie create [name]` designs an editable Blueprint Project (a `GameBlueprint` JSON file) through an
   interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead); `npx pokie
   init [directory]` prepares an immediately valid game package in place, entirely non-interactively; `npx pokie

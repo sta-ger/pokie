@@ -1050,6 +1050,14 @@ export function BlueprintEditorPage({
                 />
             )}
 
+            {guided && recoveryRequest?.blueprint !== undefined && typeof recoveryRequest.destinationPath === "string" && (
+                <Text size="sm" mb="sm" style={{overflowWrap: "anywhere"}}>
+                    Recovered the draft for the previous artifact destination: {recoveryRequest.destinationPath}.
+                    Save this design and open its workspace to build or export again in Build/Export.
+                    No artifact was published by this recovery.
+                </Text>
+            )}
+
             {guided && importedFromParSheetPath && (
                 <Group gap="xs" mb="xs">
                     <Badge color="grape">Imported from PAR</Badge>
@@ -1219,6 +1227,7 @@ export function BlueprintEditorPage({
                     key={editor.formGeneration}
                     blueprint={blueprint}
                     blueprintPath={blueprintPath}
+                    allowExport={!guided}
                     revision={revision}
                     onApplyImportedBlueprint={handleApplyImportedBlueprint}
                     initialImportPath={recoverParImport ? undefined : initialParSheetPath}
@@ -1251,10 +1260,10 @@ export function BlueprintEditorPage({
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">
-                    Build Preview checks the destination without writing. Build Package exports this design
-                    without saving it; Create game saves the design and opens its workspace.
+                    Create game saves this design and opens its workspace. Build packages and export PAR sheets
+                    from the workspace’s Build/Export section after saving. Saving does not mean an artifact was built.
                 </Text>}
-                <BlueprintBuildPanel
+                {!guided && <BlueprintBuildPanel
                     // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current
                     // build-attempt status are this panel's own local, transient state and would otherwise
                     // survive a wholesale replace, showing a stale in-flight/error status for a blueprint
@@ -1270,7 +1279,7 @@ export function BlueprintEditorPage({
                     onRestoreBuilt={handleRestoreBuilt}
                     blocked={guided ? validationView.status !== "ok" || sourceDrift !== undefined || jsonDraftDirty : validationView.status === "invalid"}
                     blockedMessage={buildBlockedMessage}
-                />
+                />}
             </Collapse>
         </div>
     );

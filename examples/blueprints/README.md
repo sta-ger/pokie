@@ -26,9 +26,10 @@ Try it from the repository root:
 
 ```
 npx pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out /tmp/sample-slot
-cd /tmp/sample-slot && npm install
-npx pokie inspect .
-npx pokie validate .
+# Optional when moving the package or developing independently:
+# cd /tmp/sample-slot && npm install
+npx pokie inspect /tmp/sample-slot
+npx pokie validate /tmp/sample-slot
 ```
 
 Or the `reelStripGeneration` example — each *generated* reel's resolved strip is baked straight into the built

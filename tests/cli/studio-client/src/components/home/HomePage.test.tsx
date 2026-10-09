@@ -1,4 +1,4 @@
-import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
+import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -61,108 +61,25 @@ async function expectActiveSection(name: string): Promise<void> {
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
-    it.each(["missing", "empty"])("exposes the Blueprint build controls from fresh Design and recovers occupied output to %s output", async (destinationState) => {
+    it("keeps advanced Home tools on design import/save and hands artifact publication to the workspace", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
-            "/api/home/fs/browse": (call) => {
-                const selected = new URL(call.url, "http://studio").searchParams.get("path");
-                return {ok: true, status: 200, body: selected === "recovered" && destinationState === "missing"
-                    ? {status: "error", reason: "absent", resolvedPath: "/games/recovered", error: "ENOENT"}
-                    : {status: "ok", currentPath: `/games/${selected}`, parentPath: "/games", entries: []}};
-            },
-            "/api/home/blueprints/build-preview": (call) => {
-                const {blueprint, outDir} = JSON.parse(call.init?.body ?? "{}");
-                const occupied = outDir === "occupied";
-                return {ok: true, status: 200, body: {
-                    status: "ok", projectRoot: `/games/${outDir}`, destinationHasContent: occupied,
-                    destinationState: occupied ? "occupied" : destinationState, warnings: [], manifest: blueprint.manifest,
-                    reels: blueprint.reels, rows: blueprint.rows, symbolsCount: blueprint.symbols.length,
-                    blueprintHash: "sha256:fresh-design", expectedFiles: ["package.json"],
-                    createFiles: occupied ? [] : ["package.json"], updateFiles: [], deleteFiles: [],
-                }};
-            },
-            "/api/home/blueprints/build": (call) => {
-                const {blueprint, outDir} = JSON.parse(call.init?.body ?? "{}");
-                return {ok: true, status: 201, body: {
-                    status: "ok", projectRoot: `/games/${outDir}`, manifest: blueprint.manifest, createdFiles: ["package.json"], warnings: [],
-                    buildInfo: {generatedAt: "2026-10-08T00:00:00.000Z", blueprintHash: "sha256:fresh-design"},
-                }};
-            },
         });
         renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
         await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        expect(await screen.findByText("PAR Sheet Import")).toBeVisible();
+        expect(screen.getByRole("button", {name: "Import", exact: true})).toBeVisible();
         expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
-        // No job, project creation or injected recovery/router state is needed for the first build.
-        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
-        const output = await screen.findByRole("textbox", {name: "Output directory (optional)"});
-        expect(screen.getAllByRole("button", {name: "Build Package"})).toHaveLength(1);
-        fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Unsaved export"}});
-        fireEvent.blur(screen.getByLabelText("Game name"));
-        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
-        fireEvent.change(output, {target: {value: "occupied"}});
-        await user.click(screen.getByRole("button", {name: "Build Preview"}));
-        expect(await screen.findByText(/already has content.*Choose a new or empty output directory/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Build Package"}));
-        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
-        expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
-
-        fireEvent.change(output, {target: {value: "recovered"}});
-        await user.click(screen.getByRole("button", {name: "Build Preview"}));
-        expect(await screen.findByText(/Destination: \/games\/recovered.*(?:new directory|existing empty directory)/)).toBeInTheDocument();
-        await user.click(screen.getByRole("button", {name: "Build Package"}));
-        expect(await screen.findByText(/Last built/)).toHaveTextContent("/games/recovered");
-        expect(screen.queryByText(/doesn't exist|pick an existing location/)).not.toBeInTheDocument();
-        const request = JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/build")?.init?.body ?? "{}");
-        expect(request).toMatchObject({outDir: "recovered", blueprint: {manifest: {id: "unsaved-export", name: "Unsaved export"}}});
-        expect(request.sourcePath).toBeUndefined();
-        expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed" || call.url === "/api/home/projects/open")).toHaveLength(0);
-
-        await user.click(screen.getByRole("button", {name: "Hide advanced options (file and JSON tools)"}));
-        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
-        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toHaveValue("recovered");
-        expect(screen.getByText(/Last built/)).toHaveTextContent("/games/recovered");
-        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
-        expect(await screen.findByRole("dialog")).toHaveTextContent("You have unsaved changes to this game design.");
-        await user.click(screen.getByRole("button", {name: "Cancel", exact: true}));
-        fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Edited after build"}});
-        fireEvent.blur(screen.getByLabelText("Game name"));
-        expect(await screen.findByText(/unbuilt changes/)).toBeInTheDocument();
-    });
-
-    it("blocks fresh advanced package builds until the current guided validation succeeds", async () => {
-        const user = userEvent.setup();
-        let completeValidation: ((body: unknown) => void) | undefined;
-        const {fetchImpl, calls} = createRoutedFakeFetch({
-            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
-            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
-            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
-        });
-        renderRoutedApp({initialEntries: ["/home/design"], fetchImpl: (url, init) => fetchImpl(url, init).then((response) =>
-            url === "/api/home/blueprints/validate" ? {...response, json: () => new Promise((resolve) => {
-                completeValidation = resolve;
-            })} : response,
-        )});
-        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
-        const build = await screen.findByRole("button", {name: "Build Package"});
-        expect(build).toBeDisabled();
-        await waitFor(() => expect(completeValidation).toBeDefined());
-        await act(() => completeValidation?.({status: "invalid", errors: [], warnings: []}));
-        expect(build).toBeDisabled();
-        await user.click(build);
-        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
-        fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Corrected"}});
-        fireEvent.blur(screen.getByLabelText("Game name"));
-        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(2));
-        expect(build).toBeDisabled();
-        await act(() => completeValidation?.({status: "ok", warnings: []}));
-        await waitFor(() => expect(build).toBeEnabled());
-        await user.click(screen.getByRole("radio", {name: "JSON", exact: true}));
-        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: "unapplied JSON edit"}});
-        expect(build).toBeDisabled();
-        expect(screen.getByText("Apply or discard the JSON edit before building.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build Preview"})).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Export to path")).not.toBeInTheDocument();
+        expect(screen.getByText(/Build packages and export PAR sheets/)).toBeVisible();
+        expect(screen.getByText(/POKIE is a slot-game logic framework/)).toBeVisible();
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build" || call.url === "/api/home/blueprints/par-export")).toEqual([]);
     });
 
     it("keeps retained project-opening recovery visible on Projects and invokes its captured open action", async () => {
@@ -220,7 +137,7 @@ describe("HomePage", () => {
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/par-import")?.init?.body ?? "{}")).toEqual({path: "/games/retained.par.xlsx"});
     });
 
-    it("reconstructs a retained Design build destination and waits for an explicit rebuild", async () => {
+    it("recovers the retained Design build draft and hands publication to its saved workspace", async () => {
         const user = userEvent.setup();
         const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -247,18 +164,14 @@ describe("HomePage", () => {
         await screen.findByText("design-build · Recovery required");
         await user.click(screen.getByRole("button", {name: "Rebuild"}));
 
-        expect(await screen.findByLabelText("Output directory (optional)")).toHaveValue("/games/recovered-package");
+        expect(await screen.findByText(/Recovered the draft for the previous artifact destination/)).toHaveTextContent("/games/recovered-package");
+        expect(screen.getByLabelText("Game name")).toHaveValue("Recovered");
+        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
-        const buildButton = screen.getByRole("button", {name: "Build Package"});
-        await waitFor(() => expect(buildButton).not.toBeDisabled());
-        await user.click(buildButton);
-        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1));
-        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/build")?.init?.body ?? "{}")).toMatchObject({
-            sourcePath: "/games/recovered.blueprint.json", outDir: "/games/recovered-package", blueprint,
-        });
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
     });
 
-    it("reconstructs a retained PAR export destination and waits for an explicit export", async () => {
+    it("recovers the retained PAR export draft without publishing through Home", async () => {
         const user = userEvent.setup();
         const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -277,13 +190,10 @@ describe("HomePage", () => {
         await screen.findByText("design-par-export · Recovery required");
         await user.click(screen.getByRole("button", {name: "Rebuild"}));
 
-        expect(await screen.findByLabelText("Export to path")).toHaveValue("/games/recovered.par.xlsx");
+        expect(await screen.findByText(/Recovered the draft for the previous artifact destination/)).toHaveTextContent("/games/recovered.par.xlsx");
+        expect(screen.getByLabelText("Game name")).toHaveValue("Recovered");
+        expect(screen.queryByLabelText("Export to path")).not.toBeInTheDocument();
         expect(calls.filter((call) => call.url === "/api/home/blueprints/par-export")).toHaveLength(0);
-        await user.click(screen.getByRole("button", {name: "Export"}));
-        await waitFor(() => expect(calls.filter((call) => call.url === "/api/home/blueprints/par-export")).toHaveLength(1));
-        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/par-export")?.init?.body ?? "{}")).toMatchObject({
-            path: "/games/recovered.par.xlsx", sourcePath: "/games/recovered.blueprint.json", blueprint,
-        });
     });
 
     it("defaults to Design Game and switches between tabs, keeping aria-current on the active one", async () => {

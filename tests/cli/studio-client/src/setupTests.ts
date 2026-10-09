@@ -29,5 +29,6 @@ configure({asyncUtilTimeout: 15000});
 // that later test's own initial field values, corrupting an assertion that never touched persistence at
 // all.
 afterEach(() => {
-    window.sessionStorage.clear();
+    // Node-environment browser tests own their storage in the real Chromium profile.
+    if (typeof window !== "undefined") window.sessionStorage.clear();
 });

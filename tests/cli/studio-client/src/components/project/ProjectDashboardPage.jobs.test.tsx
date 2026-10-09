@@ -122,6 +122,33 @@ describe("ProjectDashboardPage durable jobs", () => {
         expect(contextRequests).toBeGreaterThanOrEqual(2);
     });
 
+    it("keeps retained generation receipts discoverable when an outcome artifact only offers republishing", async () => {
+        const user = userEvent.setup();
+        const job = {id: "previous-generation", projectId: "/games/sample-slot", operation: "outcome-library-generation",
+            request: {}, conflictKey: "outcomes", status: "completed", createdAt: 1, result: {summary: "Published the retained outcomes."}};
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot",
+                game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "outcomeLibrary", capabilities: ["outcomeLibrary.read"]}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [job]}}),
+            "/api/project/outcome-libraries/generate/jobs": () => ({ok: true, status: 200, body: {status: "ok", jobs: [{id: job.id, status: "completed"}]}}),
+            "/api/project/artifacts/targets": () => ({ok: true, status: 200, body: [{target: "outcomeLibrary", supported: true,
+                state: "supported", unsupportedNotes: [], plan: {status: "planned", source: {kind: "outcomeLibrary", capabilities: []},
+                    target: {kind: "outcomeLibrary", capabilities: []}, steps: [],
+                    preflight: {destinationKind: "directory", estimatedWork: "copy", losses: [], oneWay: false}}}]}),
+            "/api/project/artifacts/preview": () => ({ok: true, status: 200, body: {status: "ok", target: "outcomeLibrary",
+                destination: "/games/copied-outcomes", destinationKind: "directory", plannedOutputs: [], sourceType: "outcomeLibrary"}}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Build/Export"}));
+        await screen.findByText("Outcome library");
+        await screen.findByText("outcome-library-generation · Completed");
+        expect(screen.queryByText("Outcome library generator")).not.toBeInTheDocument();
+        expect(screen.getAllByText("Published the retained outcomes.")).toHaveLength(1);
+    });
+
     it("keeps an Outcome Library durable job visible through the common card outside Build/Export", async () => {
         const outcomeJob = {
             id: "outcome-job-1", projectId: "/games/sample-slot", operation: "outcome-library-generation", request: {}, conflictKey: "outcome-library:/games/sample-slot/outcomelibrary",

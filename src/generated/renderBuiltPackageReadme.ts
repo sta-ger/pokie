@@ -29,12 +29,16 @@ than trust the \`dist/index.js\` already sitting in this package.
   \`npm install\`/\`npm run build\` step; \`src/index.ts\` exists so a real \`npm run build\` (if you ever
   run one) reproduces an equivalent \`dist/index.js\`, rather than nothing at all.
 
-**Do not hand-edit \`src/index.ts\` or \`dist/index.js\`** — re-run \`pokie build <config.json> --target .\`
+**Do not hand-edit \`src/index.ts\` or \`dist/index.js\`** — re-run \`pokie build <config.json> --target tsPackage --out <new-directory>\`
 to regenerate this package after changing the blueprint. \`pokie build\` only ever writes into a
-missing or empty directory — there is no in-place merge/rebuild, so overwriting this package means
-removing it (or its contents) first, or building into a different \`--target\` directory.
+missing or empty directory — there is no in-place merge/rebuild, so choose a new \`--out\` directory
+for the next build. Keep the original Blueprint for design changes.
 
-## Workflow
+## Portable developer workflow
+
+The local runtime link allows immediate play through the POKIE CLI that built this package.
+Install dependencies when moving the package or preparing an independent developer environment;
+the local link is not portable. This workflow installs them explicitly:
 
 \`\`\`
 npm install

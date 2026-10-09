@@ -515,7 +515,8 @@ Generates a working [game package](game-packages.md) from a `GameBlueprint` — 
 paytable, and reel strips/weights for a standard line-pay video slot. It writes the exact same canonical package
 file set `pokie init` does (`package.json`, `package-lock.json`, `tsconfig.json`, `README.md`, `src/index.ts`,
 `dist/index.js`) — `dist/index.js` is written directly rather than requiring a real `npm install`/`npm run build`
-first: it's immediately loadable by every other command below, with `src/index.ts` there so a real `npm run build`
+first. CLI/Studio builds link the running POKIE installation into the package for immediate local play;
+`src/index.ts` is there so a real `npm run build`
 (if you ever run one) still reproduces an equivalent `dist/index.js`. (`pokie create`, unlike `pokie build`/`pokie
 init`, never writes a package at all — see [`pokie create [name]`](#pokie-create-name) above.)
 
@@ -546,7 +547,7 @@ handling](#conflict-handling-an-existing---out-destination) below) — and write
   exports) with a short header comment naming the game and the `pokie` version that built it — no blueprint-
   hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
   byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
-  immediately loadable with no `npm install`/`npm run build` step; `src/index.ts` is typed (`GameBlueprint`
+  locally loadable through the CLI/Studio runtime link without a compile step; `src/index.ts` is typed (`GameBlueprint`
   imported from `pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
 
 The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
@@ -829,11 +830,14 @@ real build would produce, with no `--out` destination created or touched.
 
 The minimal loop from a blueprint to a running local server, chaining every command this file documents. Unlike
 the [`init` workflow](#workflow) below, there's no `npm run build` step in the middle — `pokie build`
-output is loadable immediately after `npm install`:
+output is locally loadable immediately through a link to the running POKIE installation. Run `npm install`
+inside the output when moving it to another machine or preparing an independent developer package; the local
+runtime link is not portable. Direct `GamePackageGenerator` library callers must supply/install runtime
+dependencies themselves. No TypeScript compile step is required for the generated entry:
 
 ```
 pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out sample-slot
-cd sample-slot && npm install && cd ..
+# Optional for a portable developer package: cd sample-slot && npm install && cd ..
 
 pokie inspect ./sample-slot
 
@@ -2320,24 +2324,21 @@ an unknown option, `--out`/`--format` without a value) throw the usual `Usage: p
 
 ## `pokie inspect <packageRoot>`
 
-Prints a package's `package.json` identity — name, version, description — without loading or running the game at
-all. Where `pokie validate` answers "does this package satisfy the `PokieGame` contract", `pokie inspect` answers
-"what package is this":
+Identifies a supported POKIE project (Blueprint, game package, Outcome Library, Stake export, PAR workbook,
+or compatible WASM component), its purpose, prerequisites, and available next actions without running its game.
 
 ```
 pokie inspect ./sample-slot
 ```
 
-```
-Inspecting package at "./sample-slot"
+Inspection reads project descriptors; it does not attest to a package’s original Blueprint, hash, or build
+source. Generated package source headers name the game and builder version, while the build receipt prints
+Blueprint hash/source; the package does not persist that receipt. Retain the saved Blueprint and build output
+if you need to track this relationship.
 
-  package.json     name: "sample-slot", version: "0.1.0"
-```
-
-`pokie inspect` never writes or modifies anything. Exit code is `0` for a valid, readable package and `1` when
-`<packageRoot>` itself doesn't exist/isn't a directory, or its `package.json` is missing or fails to parse; the
-error is printed to stderr in that case. Only usage mistakes (missing `<packageRoot>`, an unexpected extra
-argument) throw the usual `Usage: pokie inspect ...` error.
+`pokie inspect` never writes or modifies anything. It exits `0` for a recognized readable project and `1` for
+missing, unsupported, ambiguous, or malformed project metadata, with actionable diagnostics on stderr.
+Missing arguments and unexpected arguments/options are usage errors.
 
 ## `pokie serve <packageRoot>`
 
@@ -3116,12 +3117,12 @@ same `--no-open` escape hatch) showing the opened package's Project Dashboard. H
 2 tabs —
 **Design Game** (`/home/design`, the default) and **Projects** (`/home/projects`) — see
 [`studio-frontend.md`](studio-frontend.md#ux--information-architecture) for the full layout/navigation detail.
-There is no separate scaffolding/init/build-from-existing-blueprint-file surface any more: those flows now live
-only in the CLI (`pokie init [directory]` for a prepared, immediately valid package; `pokie create [name]` for an
-editable Blueprint Project) — Home never shells out to them, it simply doesn't duplicate them.
+Home offers one editable design path, including loading an existing Blueprint. Package scaffolding with
+`pokie init` remains a CLI developer workflow. Save/Create game opens the design’s workspace; its
+**Build/Export** section owns package builds and PAR exports.
 
-- **Design Game** is the guided happy path: a **New Blueprint** dialog (Blank / Random / from an existing
-  blueprint file) starts a draft, then the same Blueprint Editor used to configure, validate, and build it —
+- **Design Game** is the guided happy path: start with a recommended starter, a blank design, a generated idea,
+  or an existing Blueprint file. Configure and save the draft, then build from its workspace —
   editing the exact same DTO [`pokie build <project> --target tsPackage`](#pokie-build-project) accepts (no
   separate Studio-only blueprint schema).
   A **Form**/**JSON** toggle switches between the field-by-field editor (with add/remove/duplicate/reorder
@@ -3130,17 +3131,13 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
   sync with it — a Form edit always re-derives the JSON text, a syntactically valid JSON edit always re-derives
   the Form, and invalid JSON (or JSON that parses but isn't an object) leaves the last-known-good state untouched
   rather than clearing the editor; any top-level field the Form doesn't know about survives every round trip
-  unchanged. **Validate** runs the same `GameBlueprintValidator` used everywhere else, without touching disk.
-  Load/Save-by-path, the raw JSON view, and package builds are tucked behind **Show advanced options (file
-  and JSON tools)**. From fresh `/home/design`, open that disclosure to reach **Build Preview**, **Build
-  Package**, and the editable/browsable **Output directory (optional)**; no prior job or saved project is
-  required. Build Preview writes nothing. Build Package exports the in-memory design through the shared
-  package generator without saving its source or clearing unsaved edits. The guided editor requires current
-  successful validation, an applied JSON draft, and no unresolved source drift before publication.
-  Packages require a **new or empty directory**; every occupied destination, including a previous successful
-  build, is refused without overwrite confirmation. Choose another output and retry. A successful build
-  retains its provenance and offers **Open in Studio** to open the package's Project Dashboard. **Create
-  game** remains the primary action to save the design and open its workspace. A **Reel Strip Modeler** mode
+  unchanged. Studio automatically validates the current revision with the same `GameBlueprintValidator`
+  used everywhere else, without touching disk.
+  Load/Save-by-path, the raw JSON view, and PAR import are tucked behind **Show advanced options (file
+  and JSON tools)**. PAR Apply updates the draft; it does not publish an artifact. **Create game** validates
+  the current revision, saves the design and opens its workspace. Build packages and export PAR workbooks
+  from that workspace’s **Build/Export**, which previews the actual destination and refuses occupied outputs.
+  Saving alone does not imply runtime preparation, project validation, or an artifact build succeeded. A **Reel Strip Modeler** mode
   (alongside Default/Reel strips/Symbol weights) edits a
   `GameBlueprint`'s per-reel [`reelStripGeneration`](#reelstripgeneration-build-time-reel-strip-generation)
   array: each reel independently toggles between **Literal** (the same per-symbol strip editor as the Reel
@@ -3159,15 +3156,14 @@ editable Blueprint Project) — Home never shells out to them, it simply doesn't
   (for a generated reel whose constraints can't be satisfied) every generation attempt's own diagnostics/
   violations, without writing anything. **Save** always writes the *authored* `reelStripGeneration` array
   (counts/weights/seed/constraints), never a resolved/materialized strip.
-- **Projects** lists every already-known project — managed (created/opened this Studio session, in-memory only,
-  reset on restart) and registered (persisted across restarts via `StudioProjectRegistrationService`) — each
-  showing its name, path, and last-opened time; a project whose directory/`package.json` can no longer be found
-  is flagged **missing** rather than silently dropped. **Open** resolves it through the shared project contract:
+- **Projects** lists managed designs created in Studio and external projects added from the computer,
+  persisted across restarts via `StudioProjectRegistrationService`, with name, path, and last-opened time.
+  Missing project locations remain visible with recovery guidance. **Open** resolves it through the shared project contract:
   game packages use `loadPokieGame`, canonical WASM uses the portable integrity-checked runtime, and legacy
   sidecar-only components retain their inspection view. **Import Project**
-  previews/validates a target path before ever registering it — a detected PAR sheet routes into Design Game's
-  own PAR Sheet Import/Export panel instead of being registered as a package, since there's no "open" story for
-  a PAR sheet the way there is for a runnable one.
+  previews/validates a target path before registration. A PAR workbook can open its artifact workspace for
+  supported conversions, or import/apply its model into Design Game for editing. PAR export belongs in the
+  saved workspace’s Build/Export.
 
 None of these ever shell out to `pokie create`/`init`/`build` as a subprocess, or duplicate their logic — see
 `StudioBlueprintService` (`cli/studio/blueprint/StudioBlueprintService.ts`) for the Blueprint Editor and
@@ -3408,14 +3404,16 @@ Engine Export workspaces have moved to their corresponding cards here; Outcome L
 select-existing/inspect/compare workspace is not a builder and has no equivalent card. Every retained builder is
 grouped by kind (`ExportDeployTargets.ts`):
 
-- **Outcome libraries** — generates or selects the canonical `WeightedOutcomeLibrary` every other card below reads
-  from (a build step in its own right, not a delivery target), the same underlying operation as
-  `pokie build <config.json> --target outcomeLibrary`.
-- **Static export** — writes a standalone, self-contained bundle to disk (e.g. a Stake Engine export via
-  [`StakeEngineExporter`](stake-engine-export.md)) — nothing is registered, nothing runs a delivery step.
+- **Outcome libraries** — one configurable generator for runnable designs/packages, with exact, sampled, or
+  bounded coverage where supported. This advanced action is optional: the Stake Engine export card plans
+  compatible outcome-library reuse or generation automatically. Existing outcome artifacts instead offer
+  republishing through their Build artifact card; they do not promise reconstruction of a game model.
 - **Build artifact** — runs the project through `pokie`'s own `ArtifactBuilderRegistry`, the exact same
-  `pokie build <project> --target <target>` conversions the CLI itself offers, only ever listing a target the
-  project's own resolved type actually supports.
+  `pokie build <project> --target <target>` conversions the CLI itself offers, including Stake Engine export
+  and PAR workbook export. Current server plans determine availability; unsupported targets remain visible
+  with their reasons and recovery guidance. Preview checks the actual destination before publication.
+  Success identifies output type/location and offers applicable open, reveal, and registration follow-ups.
+  These artifacts are local outputs; building a Stake bundle is not remote delivery.
 - **Remote deployment** — a GUI over the `pokie` package's own [External Adapter SDK](external-adapter-sdk.md):
   `StudioDeploymentService` (`cli/studio/deployment/StudioDeploymentService.ts`) never projects a `RoundArtifact`,
   generates an artifact, or validates compatibility/output itself; every one of those steps is delegated straight
@@ -3443,10 +3441,9 @@ grouped by kind (`ExportDeployTargets.ts`):
   clicking one shows its own textual content (already returned as part of the run's own response — no second
   request) — so a preview's own output can be read in full *before* anything is ever published.
 
-Build/Export is deliberately a single-mode, zero-configuration surface run against the project's own first
-current build mode (or `"base"` when none is known) — a project that genuinely needs a multi-mode bundle has no
-separate dedicated workflow to fall back to yet. Outcome Libraries' select-an-existing-library/inspect/compare
-tooling has no Build/Export equivalent — only generating a fresh library does. Accordingly, legacy Deployment and
+Outcome generation defaults to the project’s current mode (or `"base"`) and exposes advanced generation
+options, coverage limits, and recovery. The retired Outcome Libraries select/compare workspace has no
+Build/Export equivalent; a generated bundle can be opened for inspection as its own project. Accordingly, legacy Deployment and
 Stake Engine Export links (`/project/deployment`, `/project/stakeEngineExport`) redirect to Build/Export and explain
 the retained card; legacy Outcome Libraries links (`/project/outcomeLibraries`) land on Overview with an explicit
 unavailable explanation and CLI comparison recovery. Obsolete Validate routes land on Overview diagnostics with
@@ -3672,8 +3669,8 @@ pokie dev ./sample-slot
 
 Each step builds on the same `<packageRoot>`:
 
-- [`validate`](#pokie-validate-project) needs a prepared package (`pokie init`, or `pokie build` + the
-  same-shaped output) — it checks the contract before anything else runs.
+- [`validate`](#pokie-validate-project) accepts Blueprint JSON directly for structural design checks, as well as
+  prepared packages and supported artifacts. The runtime commands in this package walkthrough use the built package.
 - [`sim --out`](#pokie-sim-packageroot) produces the JSON report that
   [`report`](#pokie-report-simulationreportjson) renders and [`diff`](#pokie-diff-leftprojectorreportjson-rightprojectorreportjson)
   compares — run `sim` twice (before/after a config change, same `--seed`) to get two reports worth diffing.
@@ -3695,9 +3692,9 @@ the portable `run` command and WASM inspect/validate/sim/replay paths use the in
 runtime instead, while artifact/source workflows use the resolver and `ArtifactBuilderRegistry` contracts appropriate
 to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game
-tab, including PAR Sheet import/export and reel strip generation), and, once a project is open, inspection/
+tab, including PAR Sheet import and reel strip generation), and, once a project is open, inspection/
 validation (Overview), the Game Model view, Play, Simulation, Replay, Build/Export (outcome library generation,
-static export, build artifacts, and remote deployment via the External Adapter SDK), Certification/Evidence
+local build artifacts, and remote deployment via the External Adapter SDK), Certification/Evidence
 Bundle, and Fairness all have a working Studio surface — see [`HomePage`/`ProjectDashboardPage`](studio-frontend.md)
 for each tab. `pokie serve`/`pokie dev`/`pokie client` have no Studio GUI
 counterpart — Studio's own Play tab drives a real session entirely in-process instead; use the CLI directly to

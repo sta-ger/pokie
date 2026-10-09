@@ -59,7 +59,7 @@ async function applyParImport(user: ReturnType<typeof userEvent.setup>): Promise
     await user.click(screen.getByRole("button", {name: "Import"}));
     await screen.findByText("Imported successfully");
 
-    await user.click(screen.getByRole("button", {name: stepperStep("Apply / Export", "Commit or write out")}));
+    await user.click(screen.getByRole("button", {name: stepperStep("Apply", "Update the draft")}));
     await user.click(screen.getByRole("button", {name: "Apply"}));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", {name: "Confirm"}));

@@ -27,7 +27,10 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         status: 200,
         body: [
             {target: "tsPackage", supported: true, state: "supported", unsupportedNotes: []},
-            {target: "outcomeLibrary", supported: false, state: "diagnostic-required", diagnostic: "This target only copies an existing outcome library.", unsupportedNotes: []},
+            {target: "outcomeLibrary", supported: true, state: "supported", unsupportedNotes: [], plan: {
+                status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: "outcomeLibrary", capabilities: []},
+                steps: [{kind: "publish", choice: "publish", estimatedWork: "publish"}], preflight: {destinationKind: "directory", estimatedWork: "generate", losses: [], oneWay: false},
+            }},
             {target: "stakeAdapter", supported: false, state: "diagnostic-required", diagnostic: "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.", unsupportedNotes: []},
             {target: "parWorkbook", supported: false, state: "diagnostic-required", diagnostic: "PAR workbook export is unavailable for this project.", unsupportedNotes: []},
         ],
@@ -844,7 +847,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
 
         const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
-        expect(await within(buildArtifactSection).findByText("This target only copies an existing outcome library.")).toBeVisible();
+        expect(await within(buildArtifactSection).findByText("PAR workbook export is unavailable for this project.")).toBeVisible();
         expect(
             within(buildArtifactSection).getByText(
                 "This project cannot create or republish a Stake Engine export. Open a Game Blueprint, runnable game package, or outcome library project to continue.",
@@ -1759,10 +1762,11 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
             const buildArtifactSection = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
             expect(within(buildArtifactSection).getByText("TypeScript Game Package")).toBeInTheDocument();
-            expect(within(buildArtifactSection).getByText("Outcome library")).toBeInTheDocument();
+            expect(within(buildArtifactSection).queryByText("Outcome library")).not.toBeInTheDocument();
+            expect(screen.getAllByText("Outcome library generator")).toHaveLength(1);
             expect(within(buildArtifactSection).getByText("PAR sheet (.xlsx)")).toBeInTheDocument();
             expect(within(buildArtifactSection).getByText("Stake Engine export")).toBeInTheDocument();
-            expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).toHaveLength(3);
+            expect(within(buildArtifactSection).getAllByText("Unavailable for this project")).toHaveLength(2);
 
             await user.click(within(buildArtifactSection).getByRole("button", {name: "Build"}));
 
