@@ -46,6 +46,7 @@ adds none and does not prune any sibling-step evidence.
 | `P9-07-LIBRARY-COMPARE` / P1: frontend imposed runtime snapshot requirements on native library draws and omitted source provenance from comparison | ReplayTab carries the inspected/stored outcomeSource through the availability gate; pasted bytes cannot substitute for the server's validated source. ProjectDashboardPage carries both sources and selection inputs into comparison. Replay interpretation verifies actual library identity/hash, game, mode, seed, round, algorithm, selected outcome/weight and recorded stake/payout/screen alongside the full round result. Native draws have no live session snapshots; those dimensions are explicitly inapplicable. Ordinary runtime seed/build/state/trace safeguards remain. Regressions: `ProjectDashboardPage.replayWorkflow.test.tsx` (paste and Recent, exact comparison, differing library hash, missing validated source), `domain/interpret/Replay.test.ts` (missing/mismatched provenance and consistent but different selections). |
 | `P9-07-LIBRARY-COMPARE` / residual P1/P2 on `b6e9b933`: supported description/author metadata contradicted Studio’s reduced game identity; unchanged CLI output stored its artifact only under outcomeSource | Studio now retains the complete manifest in its native descriptor. Inspection validates against the opened library, rejects conflicting outer results/artifacts and returns the canonical projected artifact from the validated nested record. Pasted loading consumes that server response; Recent and comparison resolve the real outer/nested artifact without inventing hashes or session snapshots. Full game metadata remains compared, so reduced or altered identities do not bypass validation. Producer-backed `ProjectDashboardPage.replayWorkflow.test.tsx` generates an exact metadata-bearing library, invokes public `ReplayCommand`, uses real HTTP inspection and renders Studio paste, CLI paste and Studio Recent through terminal exact comparison. It rejects wrong identities/author/hash, absent game/artifact, altered outcome/payout and conflicting duplicate artifacts. `domain/interpret/Replay.test.ts` also covers nested-only normalization, missing provenance and metadata contradictions. These checks supersede the prior fixture-only native closure claim; independent browser closure remains open. |
 | `P9-07-SAVE-REVISION` / P2: pending validation/write accepted edits that were discarded or diagnosed against an older draft, and dropped unsaved-work protection | Game Model disables the entire section form throughout validation/write and synchronously rejects queued mutations/late preview callbacks while Save is in flight. Dirty/navigation/beforeunload protection includes saving. Deferred invalid-validation and successful-write regressions in `ProjectDashboardPage.gameModelWorkflow.test.tsx` exercise attempted edits, all section controls, navigation Stay, retained values, diagnostic recovery and saved/reopened truth. |
+| `P9-07-LIBRARY-DURABILITY` / P1 (`cfe36515300a4fa0`): exact publication was followed by an occupied-destination error that replaced inspection | ExportDeployTab now shows submission pending before job allocation and disables generation throughout submission/execution. Successful publication invalidates the old empty-destination preflight before re-enabling generation, while retaining the completed result and inspection action. A fresh server preflight validates the actual published bundle for safe mode updates. `ProjectDashboardPage.libraryDurability.test.tsx` uses real Studio HTTP/services and a candidate-generated tiny Node game: delayed acceptance, disabled duplicate submission, delayed post-publication preflight, repeat generation with a different token, persisted four-outcome contents, remount recovery, occupied-directory rejection and public Inspect library navigation. |
 
 ## Acceptance closure ledger
 
@@ -133,15 +134,15 @@ settled one Play spin, and ran a 100-round, one-worker simulation with seed
 volatility 1.00, max win 2.00 and 95% RTP interval 80.40%--119.60%; Studio
 also expressly marked that short run as noisy.
 
-The exact Outcome Library preflight showed four combinations. Its only
-accepted generation reported success: four exact base outcomes, RTP 100.00%,
+The exact Outcome Library preflight showed four combinations. Generation
+reported success: four exact base outcomes, RTP 100.00%,
 5,860 bytes and 67 ms, and exposed an **Inspect library** action. On the
 following rendered recovery state, that action was absent and the same
 generator reported it could not load the project. Its expanded diagnostic said
 the successful action's `outcomelibrary` output already existed and was not
 empty, while `pokie build` required a new or empty output directory. Thus the
-visible success claim did not leave an inspectable result; no generation retry
-was sent. This is the current independent P1 finding
+visible success claim did not leave an inspectable result; no further generation
+retry was sent after the error. This is the current independent P1 finding
 `P9-VALERA-MATHEMATICIAN`, blocking the exact-library inspection/report
 portion of the required workflow.
 
@@ -155,3 +156,66 @@ in this run because the material library finding blocked the required clean
 path. Retained evidence is the frozen initial record, transcript and three
 screenshots in that runtime run directory; no generated project/output tree is
 committed.
+
+## Durability correction trace and closure
+
+The retained transcript contradicts the earlier interpretation that no second
+generation activation occurred: at 15:25:48.532Z the collector activated
+Generate, then at 15:25:57.446Z activated it once more because the first
+activation had shown no acceptance or disabled state. That second activation's
+snapshot still displayed the completed first result. At 15:26:05.203Z it had
+been replaced by the load-error message; the expanded diagnostic at
+15:26:25.749Z named the occupied `outcomelibrary` directory. The frozen finding
+and its three original screenshots remain untouched.
+
+On preparation HEAD `03d7f281`, the source trace confirms the cause:
+`handleGenerateOutcomeLibrary` did not set pending state until POST returned;
+`pollOutcomeLibraryGeneration` released its guard after completion without
+refreshing the immutable preflight. The same button therefore submitted the
+old token after publication. Studio's managed-Blueprint snapshot retained
+`allowsExistingBundleUpdate: false`, so its final destination guard correctly
+rejected the newly non-empty directory, but the frontend replaced its success
+with that second job's error. The correction refreshes the token rather than
+weakening destination ownership, source-drift checks, deep bundle validation,
+atomic publication or retained-mode preservation.
+
+| Accumulated failed criterion | Correction authority and bounded closure |
+| --- | --- |
+| Payout validation recovery and pending Save revisions | Existing GameModelTab/section protection retained; whole Game Model workflow includes payout recovery and deferred validation/write cases. |
+| Native library comparison, complete manifest metadata, canonical CLI nested artifact, pasted and Recent paths | Existing ReplayTab/dashboard normalization, Studio producer and inspection validation retained; producer-backed whole replay workflow and domain interpretation cover exact comparisons and rejection of altered identities/hash/selection/results. |
+| Exact generation survives its own follow-up/recovery and exposes inspection | Submission and terminal preflight correction above; real HTTP rendered regression follows both generation requests to successful publication and opens the real result, then checks remount and a failed new destination without losing inspection. |
+| PAR preservation, short seeded simulation/report parity, nonzero rare source | Existing composed P9-07 HTTP/Node/public CLI workflow retained and rerun; no math, RNG, workbook or runtime implementation changes. |
+| Independent clean-profile retest, remaining metric understanding and terminal cancellation | Controller/verifier obligations remain open. This implementation supplies no new independent receipt, screenshot, human timing or coverage classification. |
+
+The affected call graph is the existing generator form -> API start/estimate/job
+poll -> StudioServer binding validation -> Studio generation/prepared planner ->
+canonical bundle writer/registry -> durable job projection -> Inspect library
+project opening. Direct generation, exact/sampled/bounded policy, cancellation
+retry/resume, package mode updates and artifact/Stake handoff retain their own
+contracts. No shared constructor, injected callback, writer or CLI default was
+changed. The production browser bundle consumes ExportDeployTab; its exact
+build and independent execution remain controller-owned under this repair's
+bounded command policy. Root typecheck includes the Studio compiler, so a
+second standalone Studio compiler run is redundant.
+
+Foreground durability-correction checks:
+
+- `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeStakeHandoff.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts tests/cli/P907ValeraMathematician.integration.test.ts`
+  ran all eight whole files. Seven files passed (232 tests); Build/Export had
+  one stale assertion comparing the retry token with the token refreshed after
+  that retry's successful publication. The combined run exited 1 (284 passed,
+  one failed, 250.028 s). The assertion now captures the pre-submit retry token.
+- `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx`
+  exited 0: 53/53 tests, 50.438 s. Together these runs pass all 285 distinct
+  tests across the eight files on the final product source. No test-name filter
+  was used. The real HTTP rendered tests emitted React `act` warnings; no test
+  failure or product error remains in their passing run. Initial harness
+  development corrected the route, Home-service recognition wiring and actual
+  library/context response shapes before the successful whole-file run.
+- `npm run typecheck` exited 0, including `npm run typecheck-studio-client`.
+  An earlier concurrent attempt was rejected by the command policy before
+  execution; the successful run began after the test process finished.
+- Changed-file ESLint and `git diff --check` passed. The required TypeScript
+  pre-commit hook is retained. `npm run build-studio-client`, independent
+  browser/CLI collection, packaging and official gates are controller-owned
+  and were not run here.

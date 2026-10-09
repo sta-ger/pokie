@@ -159,6 +159,7 @@ export function retainOutcomeLibraryProgressSnapshot(history: readonly OutcomeLi
 
 type OutcomeLibraryRunView =
     | {status: "idle"}
+    | {status: "starting"; browserRequestId: string}
     | {status: "running"; job: StudioOutcomeLibraryGenerateJobView; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]}
     | {status: "ok"; jobId: string; browserRequestId?: string; progressSnapshots: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "ok"}>; durationMs?: number}
     | {status: "cancelled"; browserRequestId?: string; progressSnapshots?: readonly OutcomeLibraryProgressSnapshot[]; result: Extract<StudioOutcomeLibraryGenerateResultView, {status: "cancelled"}>}
@@ -345,10 +346,12 @@ function TargetCard({
     else if (artifactPreview.status === "loading") artifactBuildDisabledReason = "Waiting for the build destination preflight to finish.";
     else if (artifactPreview.status === "conflict") artifactBuildDisabledReason = "Choose a different destination before building; Studio will not overwrite existing files.";
     else if (artifactPreview.status === "unsupported") artifactBuildDisabledReason = "This project cannot build this artifact until the displayed prerequisite is available.";
-    const outcomeLibraryDisabled = outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
-    const outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
+    const outcomeLibraryPending = outcomeLibraryRun.status === "starting" || outcomeLibraryRun.status === "running";
+    const outcomeLibraryDisabled = outcomeLibraryPending || outcomeLibraryPreflight.status !== "ok" || (outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded");
+    let outcomeLibraryDisabledReason = outcomeLibraryPreflight.status !== "ok"
         ? "Outcome Library generation becomes available after its preflight succeeds."
         : "Choose sampled or conditional bounded coverage before generating this Outcome Library.";
+    if (outcomeLibraryPending) outcomeLibraryDisabledReason = "Wait for the current generation request to finish.";
     let lifecycleForm: string | undefined;
     if (card.kind === "outcomeLibrary") lifecycleForm = "outcome-library";
     else if (card.kind === "buildArtifact") lifecycleForm = "artifact-build";
@@ -525,12 +528,13 @@ function TargetCard({
                         data-pokie-lifecycle="operation"
                         data-pokie-transaction-state="editable-submission"
                         data-pokie-lifecycle-operation={OUTCOME_LIBRARY_TRANSACTION.operation}
-                        loading={outcomeLibraryRun.status === "running"}
+                        loading={outcomeLibraryPending}
                         disabled={outcomeLibraryDisabled}
                         title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
                     >
                         Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
                     </Button>
+                    {outcomeLibraryRun.status === "starting" && <LoadingState label="Submitting Outcome Library generation…" />}
                     {outcomeLibraryRun.status === "running" && (
                         outcomeLibraryRun.job.durableProgress !== undefined
                             ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
@@ -1071,10 +1075,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         seed: "",
     });
     const [outcomeLibraryPreflight, setOutcomeLibraryPreflight] = useState<OutcomeLibraryPreflightView>({status: "loading"});
-    // A terminal cancellation deliberately invalidates the browser's execution
-    // binding. The server owns the immutable snapshot, but cancellation can
-    // finish after that snapshot's source/destination reservation has been
-    // released; retry only from a newly observed preflight.
+    // Publication changes destination ownership; cancellation releases its
+    // reservation. Neither terminal may reuse the prior immutable preflight.
     const [outcomeLibraryPreflightRevision, setOutcomeLibraryPreflightRevision] = useState(0);
     // A cancellation checkpoint is server-persisted. Rehydrate it after a browser
     // reload so recovery never depends on an in-memory React state or a job id
@@ -1351,6 +1353,9 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
             return;
         }
         const browserRequestId = createOutcomeLibraryBrowserRequestId();
+        // Make request acceptance visible before the server allocates a job.
+        // A slow response must not leave an apparently idle, enabled action.
+        setOutcomeLibraryRun({status: "starting", browserRequestId});
         startOutcomeLibraryGeneration(fetchImpl, {
             mode: outcomeLibraryGenerationOptions.mode.trim() || defaultModeName,
             generation: outcomeLibraryGenerationOptions.generation,
@@ -1400,6 +1405,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                 outcomeLibraryGuard.end();
                 if (job.status === "completed" && job.result?.status === "ok") {
                     setOutcomeLibraryRun({status: "ok", jobId: job.id, browserRequestId: job.browserRequestId ?? browserRequestId, progressSnapshots: observedSnapshots, result: job.result, ...(job.durationMs === undefined ? {} : {durationMs: job.durationMs})});
+                    // The old token authorized a missing/empty destination.
+                    // Retain this result and its inspection action while a new
+                    // preflight validates the published bundle for mode updates.
+                    setOutcomeLibraryPreflight({status: "loading"});
+                    setOutcomeLibraryPreflightRevision((revision) => revision + 1);
                     deployment.refreshProjectModes();
                     // The generated bundle is now canonical project state.
                     // Re-preflight every registry-backed artifact card so the
