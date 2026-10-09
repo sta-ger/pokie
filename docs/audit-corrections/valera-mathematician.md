@@ -650,3 +650,29 @@ finding: no cancellation request was accepted and no cancelled terminal,
 withheld output, or recovery proof was rendered.  The persisted criterion
 therefore remains **not reached** and the report remains **inconclusive /
 driver**.
+
+## Cancellation/recovery closure — 2026-10-09 (candidate `46d02af`)
+
+This final supplementary continuation reused the retained neutral profile and
+the candidate-built Studio receipt; it did not replay the previously completed
+model, PAR, play, library, replay, or rare-source tasks.  The public launch was
+again this checkout's `node ./dist/cli/pokie.js --no-open`, backed by the
+candidate `46d02af` build receipt (output SHA-256
+`52320362b5fe51f4835d6224cbf82064b25e3bb8d4595e221dd40744e6d2e33c`).
+
+In `P9-07-dfc74a68844b16dd/run-2026-10-09T19-04-17-230Z`, the retained
+starter workspace's Simulation page accepted one bounded 100,000-round run.
+The action-local progression was `Simulation queued — 0/100000`, then the
+same enabled Cancel control and its rendered confirmation, then `Simulation
+cancelling — 2000/100000`.  Its local terminal was `Cancelled after 0.2s —
+7000/100000 rounds completed.`  Recent runs still stated `No completed
+simulations yet`, Export remained disabled, and no active operation or Cancel
+control remained.  Thus cancellation withheld a completed output and the
+owned work drained.  No duplicate submission, screenshot, generated payload,
+or new test run was made; the closed transcript has 22 rendered observations.
+
+This closes the prior driver-timing gap.  Together with the retained frozen
+observations, fresh affected retest, candidate-consistent build receipt and
+supplementary native-draw evidence above, the single persisted P9-07 criterion
+is now passed.  The earlier **not reached / inconclusive** statements describe
+their historical receipts only and are superseded by this terminal transition.
