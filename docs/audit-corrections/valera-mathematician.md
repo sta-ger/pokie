@@ -533,3 +533,33 @@ Permitted foreground checks on this correction:
 - `git diff --check` passed; staged TypeScript must also pass the installed
   ESLint pre-commit hook before submission. Only this P9-07 document is updated;
   all prior-step evidence and external runtime receipts are preserved.
+
+## Supplementary recovery continuation — 2026-10-09 (candidate `46d02af`)
+
+This continuation reused the immutable frozen initial profile and never
+relabelled it as a cold pass.  The public launch used this checkout's
+`node ./dist/cli/pokie.js --no-open`; the retained candidate-build receipt
+records `npm run build-cli` success for candidate `46d02af`, output checksum
+`52320362b5fe51f4835d6224cbf82064b25e3bb8d4595e221dd40744e6d2e33c`.
+`ff8415c9` remains an evidence-only descendant, not a different product
+identity.
+
+In `P9-07-dfc74a68844b16dd/run-2026-10-09T18-27-12-983Z`, public Overview
+draws with `p907-recovery-a` and `p907-recovery-b` created distinct records
+`978afa3b27c8437e86d06f1fc63a8978` and
+`73f76708f3d04998863282fbd3f8cdbf`.  Replay Recent visibly named their
+library/hash, seed, mode, outcome, timestamp and record ID.  Selecting the
+second record and using its one visible Reproduce action completed as job
+`f120fceba3fa4f1e849eaf2a43849de3`; its local terminal rendered “Verified --
+matches the recorded result,” including matching library source, selection
+inputs and selected outcome.  No screenshot was retained.
+
+The single bounded cancellation attempt is incomplete rather than a defect:
+the deterministic 1,000-round replay `p907-cancel-recovery` rendered queued
+and running at `0/1000`, then its local Cancel confirmation.  Before Confirm
+could be processed, the same job `3f73924d416240adb0e3a629bab7e095` reached
+the action-local completed terminal `1000/1000` with an available replay
+artifact.  The verifier did not resubmit it.  Thus this transcript adds
+durable-record/replay evidence but does not prove a cancelled terminal,
+withheld completed output, fresh-profile affected retest, or the reviewer’s
+remaining full closure matrix.
