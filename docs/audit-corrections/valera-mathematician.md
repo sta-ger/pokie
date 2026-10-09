@@ -24,9 +24,11 @@ trace are the evidence used for this repair; no external receipt was rewritten.
 All harness directories above are below
 `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/`.
 Independent finding identity: `P9-VALERA-MATHEMATICIAN`, supplementary fingerprint
-`sha256:37c55a69483d92f4`. The latest review assessed
+`sha256:37c55a69483d92f4`. The prior review assessed
 `c15a396cf49f8ca0dbe65919fe9fd79d7567c435` with fingerprint
-`sha256:531ab3175e1484eb`.
+`sha256:531ab3175e1484eb`. The current producer-contract finding assessed
+`b6e9b933366d1f4b127ee017248507899bd720e9`, fingerprint
+`sha256:123dc20c2bd95fe7` (`ffab42b88d6e703e`).
 
 The earlier statements that a native seeded draw and completed replay proved
 recorded-library comparison, that a clean affected retest closed the campaign,
@@ -42,6 +44,7 @@ adds none and does not prune any sibling-step evidence.
 | --- | --- |
 | Payout recovery / material P2: at 13:22:06.371Z the payout was restored; at 13:22:55.230Z prior failed-Save diagnostics remained | Previous correction `c15a396c` makes payout edits commit on change and retires old diagnostics on mutation. Retained whole-file evidence: composed integration 2/2, payout recovery 2/2 and Game Model workflow 29/29. The supplementary discard note does not prove terminal discard: its final snapshot still contains the dialog. |
 | `P9-07-LIBRARY-COMPARE` / P1: frontend imposed runtime snapshot requirements on native library draws and omitted source provenance from comparison | ReplayTab carries the inspected/stored outcomeSource through the availability gate; pasted bytes cannot substitute for the server's validated source. ProjectDashboardPage carries both sources and selection inputs into comparison. Replay interpretation verifies actual library identity/hash, game, mode, seed, round, algorithm, selected outcome/weight and recorded stake/payout/screen alongside the full round result. Native draws have no live session snapshots; those dimensions are explicitly inapplicable. Ordinary runtime seed/build/state/trace safeguards remain. Regressions: `ProjectDashboardPage.replayWorkflow.test.tsx` (paste and Recent, exact comparison, differing library hash, missing validated source), `domain/interpret/Replay.test.ts` (missing/mismatched provenance and consistent but different selections). |
+| `P9-07-LIBRARY-COMPARE` / residual P1/P2 on `b6e9b933`: supported description/author metadata contradicted Studio’s reduced game identity; unchanged CLI output stored its artifact only under outcomeSource | Studio now retains the complete manifest in its native descriptor. Inspection validates against the opened library, rejects conflicting outer results/artifacts and returns the canonical projected artifact from the validated nested record. Pasted loading consumes that server response; Recent and comparison resolve the real outer/nested artifact without inventing hashes or session snapshots. Full game metadata remains compared, so reduced or altered identities do not bypass validation. Producer-backed `ProjectDashboardPage.replayWorkflow.test.tsx` generates an exact metadata-bearing library, invokes public `ReplayCommand`, uses real HTTP inspection and renders Studio paste, CLI paste and Studio Recent through terminal exact comparison. It rejects wrong identities/author/hash, absent game/artifact, altered outcome/payout and conflicting duplicate artifacts. `domain/interpret/Replay.test.ts` also covers nested-only normalization, missing provenance and metadata contradictions. These checks supersede the prior fixture-only native closure claim; independent browser closure remains open. |
 | `P9-07-SAVE-REVISION` / P2: pending validation/write accepted edits that were discarded or diagnosed against an older draft, and dropped unsaved-work protection | Game Model disables the entire section form throughout validation/write and synchronously rejects queued mutations/late preview callbacks while Save is in flight. Dirty/navigation/beforeunload protection includes saving. Deferred invalid-validation and successful-write regressions in `ProjectDashboardPage.gameModelWorkflow.test.tsx` exercise attempted edits, all section controls, navigation Stay, retained values, diagnostic recovery and saved/reopened truth. |
 
 ## Acceptance closure ledger
@@ -55,7 +58,7 @@ adds none and does not prune any sibling-step evidence.
 | Tiny exact generation/publication/output/analysis/report, recorded draw/replay/comparison | Retained exact generation and supplementary draw; confirmed P1 corrected with rendered-workflow regressions. Successful current-candidate public comparison and full terminal inspection/report path still need an independent receipt. |
 | Job failure/cancellation/resource cleanup, switching/shutdown/polling/durable recovery | Existing service/repository coverage retained and production contracts unchanged. Terminal public cancellation/recovery remains independently outstanding. |
 | Positive rare metrics, BigInt boundary, public parity and truthful source restrictions | Retained reader/Studio/report regressions and independent visibly nonzero Stake labels. No math, RNG, formatting or capability change. |
-| Node/WASM constructor/first-result/continuation/restore parity; exports/CLI/package/browser boundaries | Existing focused parity tests and public contracts retained. This repair changes only Studio frontend code; candidate-consistent production browser assets and their independent execution belong to the controller. |
+| Node/WASM constructor/first-result/continuation/restore parity; exports/CLI/package/browser boundaries | Existing focused parity tests and public contracts retained. The previous repair changed Studio frontend code; this correction also aligns the native Studio producer and inspection response. Candidate-consistent production browser assets and their independent execution belong to the controller. |
 | All material defects corrected and affected tasks rerun cleanly | Product regressions cover accumulated payout/library/save defects. Independent clean browser/application/workspace retest remains open; implementation tests cannot close it. |
 
 ## Fixture and check provenance
@@ -85,7 +88,7 @@ Current repair check results are recorded after foreground execution below.
 Production browser build, independent reruns, packaging and official gates are
 controller-owned and were not launched by this repair.
 
-Final foreground correction checks:
+Prior foreground correction checks (on the previous repair):
 
 - `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts`
   exited 0: three whole files, 178/178 tests, 156.379 s; no test-name filtering.
@@ -96,3 +99,25 @@ Final foreground correction checks:
   successful Studio compiler run or production bundle build is claimed.
 - `git diff --check` passed. The controller retains the broader independent
   reviewer matrix; this repair does not claim that matrix passed.
+
+
+Current producer-contract correction checks:
+
+- `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/cli/studio/OutcomeSourceProjectRoutes.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts`
+  exited 0: four whole files, 221/221 tests, 58.114 s, no test-name filtering.
+  Initial attempts exposed the new HTTP fixture’s export-condition and required
+  Home-service wiring errors; both were corrected before this successful run.
+  The final pass also covers explicitly malformed outer artifacts, and
+  changed-file ESLint passed after formatting the new mutation cases.
+- `npm run typecheck` exited 0, including the Studio client compiler. No separate
+  production build, browser receipt, packaging or official gate is claimed.
+- Payout recovery and pending-save protection retain their prior independent
+  whole-file evidence on `b6e9b933`; neither implementation was changed here.
+  The complete controller-owned reviewer matrix was not rerun by this repair.
+- Remaining independent obligations are unchanged: fresh affected browser and
+  workspace retests, terminal public library comparison/inspection/report,
+  remaining RTP/volatility interpretation, and bounded cancellation/recovery.
+  These automated HTTP/rendered tests are product regressions, not cold-user
+  observations or clean-profile closure receipts.
+- `git diff --check` and explicit changed-file ESLint passed. The installed
+  pre-commit hook checks the staged TypeScript separately.

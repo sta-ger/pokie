@@ -3605,7 +3605,11 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
                 return;
             }
-            this.sendJson(res, 200, {round: validated.round, seed: validated.seed, modeName: recorded.modeName, outcomeSource: recorded, artifactWarnings});
+            // Normalize the real nested artifact only after verification against the opened library.
+            this.sendJson(res, 200, {
+                round: validated.round, seed: validated.seed, modeName: recorded.modeName, outcomeSource: recorded,
+                artifact: new PokieJsonRoundArtifactProjector<string | number>().project(recorded.artifact!), artifactWarnings,
+            });
             return;
         }
 

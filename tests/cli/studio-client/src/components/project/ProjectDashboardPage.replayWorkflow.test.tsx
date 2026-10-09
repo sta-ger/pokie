@@ -1,3 +1,17 @@
+/** @jest-environment-options {"customExportConditions": ["node", "node-addons"]} */
+import fs from "fs";
+import http from "http";
+import os from "os";
+import path from "path";
+import {generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter} from "pokie";
+import {ReplayCommand} from "../../../../../../cli/commands/ReplayCommand.js";
+import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioProjectRegistrationService} from "../../../../../../cli/studio/StudioProjectRegistrationService.js";
+import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../../../cli/studio/jobs/StudioJobService.js";
+import {StudioServer} from "../../../../../../cli/studio/StudioServer.js";
+import {buildFixtureGame} from "../../../../../weightedoutcome/generate/GenerateTestFixtures.js";
 import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -140,7 +154,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
                 report: {rootPath: "/games/a", descriptor: {kind: "native", streaming: true, limitations: []}, issues: [],
                     modes: [{modeName: "base", analysis: {totalWeight: 4, rtp: 1, hitFrequency: 0.5, zeroWinFrequency: 0.5, variance: 1, standardDeviation: 1, maxRatio: 2, maxWinProbability: 0.5}}]},
             }}),
-            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", modeName: "base", outcomeSource: validatedSource, artifactWarnings: []}}),
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", modeName: "base", outcomeSource: validatedSource, artifact: validatedSource ? recorded.artifact : undefined, artifactWarnings: []}}),
             "/api/project/replays/stored-library": () => ({ok: true, status: 200, body: jobFor("stored-library", {descriptor: omitStoredSource ? {...recorded, outcomeSource: undefined} : recorded, modeName: "base"})}),
             "/api/project/replays": (call) => {
                 if (call.init?.method === "POST") {
@@ -1636,5 +1650,152 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         expect(await screen.findByText(/This replay request couldn't reach the Studio server\./)).toBeInTheDocument();
         expect(screen.queryByText(/ECONNREFUSED talking to the game sandbox/)).not.toBeInTheDocument();
+    }, 60000);
+});
+
+
+// Actual exact generator, CLI/Studio producers, HTTP inspection and rendered comparison.
+// This exercises the product contract; it is not an independent browser receipt.
+describe("P9-07 production native descriptors", () => {
+    let workspace: string;
+    let server: StudioServer;
+    let fetchImpl: FetchLike;
+    let cliDescriptor: ReplayDescriptor;
+    let studioJob: StudioReplayJobView;
+
+    async function request<T>(url: string, body?: unknown): Promise<T> {
+        const response = await fetchImpl(url, body === undefined ? undefined : {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(`${url}: ${response.status}: ${JSON.stringify(result)}`);
+        return result as T;
+    }
+
+    beforeEach(async () => {
+        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "p907-native-descriptors-"));
+        fs.writeFileSync(path.join(workspace, "index.html"), "<html>studio</html>");
+        const manifest = {...GAME, description: "Tiny exact math model", author: "Mathematician"};
+        const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({
+            game: {...buildFixtureGame(), getManifest: () => manifest}, libraryId: "native-library", pokieVersion: "1.3.0", betMode: "base", stake: 1,
+        });
+        expect(diagnostics.strategy).toBe("exact");
+        const bundle = path.join(workspace, "library");
+        const publication = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([
+            {modeName: "base", libraryId: library.libraryId, outcomes: library.outcomes, generator: diagnostics},
+        ], bundle);
+        expect(publication.manifest?.game).toEqual(manifest);
+        const homeService = new StudioHomeService("1.3.0");
+        server = new StudioServer({
+            pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: workspace, homeService,
+            blueprintService: new StudioBlueprintService("1.3.0", workspace, homeService),
+            projectRegistrationService: new StudioProjectRegistrationService(),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workspace, "jobs"))),
+        });
+        const address = await server.start();
+        fetchImpl = (url, init) => new Promise((resolve, reject) => {
+            const req = http.request(`http://${address.host}:${address.port}${url}`, {method: init?.method, headers: init?.headers}, (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("end", () => resolve({ok: res.statusCode! >= 200 && res.statusCode! < 300, status: res.statusCode!,
+                    json: () => Promise.resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")))}));
+            });
+            req.on("error", reject);
+            req.end(init?.body);
+        });
+        await request("/api/home/projects/open", {projectRoot: bundle});
+        const started = await request<{id: string}>("/api/project/replays", {round: 1, seed: "demo-seed", modeName: "base"});
+        await waitFor(async () => {
+            studioJob = await request<StudioReplayJobView>(`/api/project/replays/${started.id}`);
+            expect(studioJob.status).toBe("completed");
+        });
+        expect(studioJob.descriptor!.outcomeSource!.game).toEqual(manifest);
+        expect(studioJob.descriptor!.artifact!.provenance.game).toEqual(manifest);
+        const out = path.join(workspace, "cli-replay.json");
+        // Invoke the public command unchanged; only suppress its console echo.
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await new ReplayCommand().run([bundle, "--mode", "base", "--seed", "demo-seed", "--round", "1", "--out", out]);
+        } finally {
+            log.mockRestore();
+        }
+        cliDescriptor = JSON.parse(fs.readFileSync(out, "utf8")) as ReplayDescriptor;
+        expect(cliDescriptor.artifact).toBeUndefined();
+        expect(cliDescriptor.outcomeSource!.artifact!.provenance.game).toEqual(manifest);
+    });
+
+    afterEach(async () => {
+        await server?.stop();
+        fs.rmSync(workspace, {recursive: true, force: true});
+    });
+
+    it.each(["studio-paste", "cli-paste", "studio-recent"])("compares %s from real producers and rejects contradictory records", async (source) => {
+        const recorded = source === "cli-paste" ? cliDescriptor : studioJob.descriptor!;
+        const inspected = await request<{artifact: RoundArtifactJson; outcomeSource: ReplayDescriptor["outcomeSource"]; artifactWarnings: string[]}>(
+            "/api/project/replays/inspect-artifact", recorded,
+        );
+        expect(inspected.artifact).toEqual(studioJob.descriptor!.artifact);
+        expect(inspected.outcomeSource).toEqual(recorded.outcomeSource);
+        expect(inspected.artifactWarnings).toEqual([]);
+        expect(recorded.stateBefore).toBeUndefined();
+        expect(recorded.stateAfter).toBeUndefined();
+        const user = userEvent.setup();
+        const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        try {
+            await user.click(await screen.findByRole("button", {name: "Replay"}));
+            await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+            if (source.endsWith("paste")) {
+                fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+                await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            } else {
+                const picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+                await user.click(within(picker).getByRole("button", {name: /round 1/}));
+            }
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            await waitFor(() => expect(reproduce).toBeEnabled());
+            await user.click(reproduce);
+            await screen.findByText("Match -- recorded and recreated results agree", {}, {timeout: 15000});
+            expect(dimensionRow("Library source:")).toHaveTextContent("match");
+            expect(dimensionRow("Selected outcome:")).toHaveTextContent("match");
+            expect(dimensionRow("State transition:")).toHaveTextContent("not applicable");
+        } finally {
+            rendered.unmount();
+        }
+        // Inspection checks the opened library, not just internally consistent duplicates.
+        const mutations: Array<(descriptor: ReplayDescriptor) => void> = [
+            (d) => {
+                d.game.id = "wrong-game";
+            },
+            (d) => {
+                d.outcomeSource!.game!.author = "wrong-author";
+            },
+            (d) => {
+                d.outcomeSource!.libraryHash = "wrong-hash";
+            },
+            (d) => {
+                Reflect.deleteProperty(d.outcomeSource!, "game");
+            },
+            (d) => {
+                Reflect.deleteProperty(d.outcomeSource!, "artifact");
+            },
+            (d) => {
+                d.outcomeSource!.outcomeId = "wrong-outcome";
+            },
+            (d) => {
+                d.outcomeSource!.totalWin += 1;
+                d.totalWin += 1;
+            },
+            (d) => {
+                d.artifact = {...inspected.artifact, totalWin: inspected.artifact.totalWin + 1};
+            },
+        ];
+        for (const mutate of mutations) {
+            const altered = JSON.parse(JSON.stringify(recorded)) as ReplayDescriptor;
+            mutate(altered);
+            const response = await fetchImpl("/api/project/replays/inspect-artifact", {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(altered),
+            });
+            expect(response.status).toBe(400);
+        }
     }, 60000);
 });

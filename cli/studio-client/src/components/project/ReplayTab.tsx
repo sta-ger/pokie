@@ -3,7 +3,7 @@ import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
 import {useEffect, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
-import type {OutcomeSourceReplayDescriptorView, RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
+import type {OutcomeSourceReplayDescriptorView, RoundArtifact, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
     describeLoadedReplay,
     describeReplayEntryStatus,
@@ -45,7 +45,7 @@ export type ExpectedReplayState =
           seed?: string;
           modeName?: string;
           outcomeSource?: OutcomeSourceReplayDescriptorView;
-          artifact?: RoundArtifactJson;
+          artifact?: RoundArtifact & {readonly hash?: string};
           artifactWarnings: string[];
           // A stored/pasted Studio replay descriptor can carry the player-facing post-round balance.
           // It stays optional for portable artifacts produced by older/other replay tools.

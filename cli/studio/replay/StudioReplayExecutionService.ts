@@ -580,7 +580,7 @@ export class StudioReplayExecutionService {
             return;
         }
         this.markRunning(record);
-        const gameIdentity = {id: manifestGame.id, name: manifestGame.name, version: manifestGame.version};
+        const gameIdentity = manifestGame;
         record.game = gameIdentity;
 
         const sessionId = this.createId();

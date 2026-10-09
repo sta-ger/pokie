@@ -37,7 +37,7 @@ import {
     type ProjectHeaderView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
-import {describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
+import {resolveReplayArtifact, describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
 import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
@@ -841,7 +841,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: job.descriptor.seed ?? undefined,
                         modeName: job.descriptor.outcomeSource?.modeName,
                         outcomeSource: job.descriptor.outcomeSource,
-                        artifact: job.descriptor.artifact,
+                        artifact: resolveReplayArtifact(job.descriptor),
                         artifactWarnings: [],
                         credits: job.descriptor.credits,
                         stateBefore: job.descriptor.stateBefore,
@@ -896,7 +896,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: response.seed,
                         modeName: response.modeName,
                         outcomeSource: response.outcomeSource,
-                        artifact: parsedDescriptor?.artifact,
+                        artifact: response.outcomeSource ? response.artifact : parsedDescriptor?.artifact,
                         artifactWarnings: response.artifactWarnings,
                         credits: parsedDescriptor?.credits,
                         stateBefore: parsedDescriptor?.stateBefore,

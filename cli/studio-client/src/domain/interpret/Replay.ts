@@ -2,7 +2,6 @@ import type {
     OutcomeSourceReplayDescriptorView,
     ReplayDescriptor,
     RoundArtifact,
-    RoundArtifactJson,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioReplayStatus,
@@ -206,7 +205,7 @@ export type ComparableReplayResult = {
     seed?: string;
     round?: number;
     modeName?: string;
-    artifact?: RoundArtifactJson;
+    artifact?: RoundArtifact & {readonly hash?: string};
     // Non-empty when the server's RoundArtifactValidator flagged the "expected" side's nested artifact
     // as structurally malformed (see StudioServer.handleInspectReplayArtifact) — round/seed alone can
     // still be valid enough to attempt a replay even when this is non-empty (the two-tier split
@@ -276,7 +275,16 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
     };
 }
 
+// Public native CLI descriptors store the authoritative round under outcomeSource.artifact.
+// Preserve an outer artifact when present so contradictory duplicates still fail validation.
+// A nested artifact has no projector hash; do not manufacture one on the client.
+export function resolveReplayArtifact(record: Pick<ComparableReplayResult, "artifact" | "outcomeSource">): ComparableReplayResult["artifact"] {
+    return record.artifact === undefined ? record.outcomeSource?.artifact : record.artifact;
+}
+
 export function describeReplayComparison(expected: ComparableReplayResult, reproduced: ComparableReplayResult): ReplayComparisonView {
+    expected = {...expected, artifact: resolveReplayArtifact(expected)};
+    reproduced = {...reproduced, artifact: resolveReplayArtifact(reproduced)};
     const recorded = describeComparisonSide("recorded", expected);
     const recreated = describeComparisonSide("recreated", reproduced);
 
@@ -284,7 +292,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
         const unavailableReason = `Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
-    if (expected.artifact === undefined || reproduced.artifact === undefined) {
+    if (!isDebugObject(expected.artifact) || !isDebugObject(reproduced.artifact)) {
         const unavailableReason = "No round artifact is available on one or both sides to compare.";
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
@@ -506,10 +514,10 @@ function describeLibraryRecordIssue(record: ComparableReplayResult): string | un
         !Number.isSafeInteger(source.weight) || source.weight <= 0 ||
         !isFiniteNumber(source.totalWin) || !isFiniteNumber(source.payoutMultiplier) ||
         !isFiniteNumber(source.stake) || source.stake <= 0 || !Array.isArray(source.screen) ||
-        !source.game?.id || !source.game.version || !record.artifact) {
+        !source.game?.id || !source.game.name || !source.game.version || !source.artifact || !resolveReplayArtifact(record)) {
         return "Incomplete library source, selection provenance or recorded result. Restore the original downloaded descriptor and open its original library.";
     }
-    const artifact = record.artifact;
+    const artifact = resolveReplayArtifact(record)!;
     if (source.seed !== record.seed || source.round !== record.round || source.modeName !== record.modeName ||
         !deepEqualJson(source.game, artifact.provenance?.game) ||
         source.stake !== artifact.stake || source.totalWin !== artifact.totalWin || source.payoutMultiplier !== artifact.payoutMultiplier ||
@@ -517,7 +525,8 @@ function describeLibraryRecordIssue(record: ComparableReplayResult): string | un
         return "Library provenance does not agree with the loaded seed, round, mode or recorded artifact. Restore the original downloaded descriptor.";
     }
     if (source.artifact !== undefined) {
-        if (!deepEqualJson({...source.artifact, hash: artifact.hash}, artifact)) {
+        const {hash: _hash, ...outerArtifact} = artifact;
+        if (!deepEqualJson(source.artifact, outerArtifact)) {
             return "Library recorded artifact does not agree with its selection provenance. Restore the original downloaded descriptor.";
         }
     }

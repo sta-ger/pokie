@@ -1002,7 +1002,7 @@ describe("P9-07 recorded native-library contract", () => {
         expect(comparison.recorded.completeness).not.toContain("Partial");
     });
 
-    it.each(["libraryId", "libraryHash", "modeName", "selectionAlgorithm", "seed", "round", "outcomeId", "weight", "totalWin", "payoutMultiplier", "stake", "screen", "game"])(
+    it.each(["libraryId", "libraryHash", "modeName", "selectionAlgorithm", "seed", "round", "outcomeId", "weight", "totalWin", "payoutMultiplier", "stake", "screen", "game", "artifact"])(
         "missing %s blocks library availability and prevents an exact comparison", (field) => {
             const recorded = libraryRecord();
             Reflect.deleteProperty(recorded.outcomeSource!, field);
@@ -1042,6 +1042,29 @@ describe("P9-07 recorded native-library contract", () => {
             expect(describeReplayReproducibility({...recorded, ...patch}, undefined).status).toBe("blocked");
         }
         expect(describeReplayReproducibility({...recorded, outcomeSource: undefined}, undefined).status).toBe("blocked");
+    });
+
+    it("accepts nested-only CLI artifacts and rejects reduced or contradictory game metadata", () => {
+        const recorded = libraryRecord();
+        const game = {...recorded.outcomeSource!.game!, description: "Exact model", author: "Mathematician"};
+        recorded.artifact = {...recorded.artifact!, provenance: {...recorded.artifact!.provenance, game}};
+        recorded.outcomeSource!.game = game;
+        recorded.outcomeSource!.artifact = {...recorded.outcomeSource!.artifact!, provenance: {...recorded.outcomeSource!.artifact!.provenance, game}};
+        const cli = {...recorded, artifact: undefined};
+        expect(describeReplayReproducibility(cli, game).status).toBe("ready");
+        expect(describeReplayComparison(cli, recorded).status).toBe("match");
+        for (const field of ["description", "author", "id", "name", "version"]) {
+            const reduced = JSON.parse(JSON.stringify(cli)) as ComparableReplayResult;
+            Reflect.deleteProperty(reduced.outcomeSource!.game!, field);
+            expect(describeReplayReproducibility(reduced, game).status).toBe("blocked");
+            expect(describeReplayComparison(reduced, recorded).status).not.toBe("match");
+        }
+    });
+
+    it("does not replace an explicitly malformed outer artifact with a valid nested artifact", () => {
+        const recorded = {...libraryRecord(), artifact: null} as unknown as ComparableReplayResult;
+        expect(describeReplayReproducibility(recorded, undefined).status).toBe("blocked");
+        expect(describeReplayComparison(recorded, libraryRecord()).status).toBe("unavailable");
     });
 
     it("rejects a provenance artifact that differs from the loaded result", () => {
