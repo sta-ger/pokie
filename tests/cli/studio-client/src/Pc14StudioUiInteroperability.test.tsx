@@ -1,15 +1,19 @@
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {createLocalJsonExternalDeploymentTarget} from "pokie";
+import {createLocalJsonExternalDeploymentTarget, STUDIO_OPERATION} from "pokie";
 import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {passthroughRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
+import {BlueprintProjectMaterializer} from "../../../../cli/materialize/BlueprintProjectMaterializer.js";
+import {createMaterializingRuntimePackageResolver, passthroughRuntimePackageResolver} from "../../../../cli/materialize/materializeRuntimePackage.js";
+import {withLinkedLocalPokieRuntime} from "../../../../cli/prepare/PackageCommandRunner.js";
 import {StudioBlueprintService} from "../../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {BuildCommand} from "../../../../cli/commands/BuildCommand.js";
 import {StudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import {StudioHomeService} from "../../../../cli/studio/home/StudioHomeService.js";
+import {FileStudioProjectRegistry} from "../../../../cli/studio/FileStudioProjectRegistry.js";
+import {StudioProjectRegistrationService} from "../../../../cli/studio/StudioProjectRegistrationService.js";
 import {createStudioGameLoader} from "../../../../cli/studio/loadStudioGame.js";
 import {StudioServer} from "../../../../cli/studio/StudioServer.js";
 import type {FetchLike} from "../../../../cli/studio-client/src/api/apiClient.js";
@@ -270,7 +274,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         fs.writeFileSync(path.join(occupiedStakePath, "borrowed.txt"), "caller-owned");
         await user.clear(stakeDestination);
         await user.type(stakeDestination, occupiedStakePath);
-        await screen.findByText("This destination already contains files. Choose a different destination; Build will not overwrite it.");
+        await stake.findByText("Destination unavailable. Choose a different destination; Build will not overwrite it.");
         expect(stake.getByRole("button", {name: "Build"})).toBeDisabled();
         expect(fs.readFileSync(path.join(occupiedStakePath, "borrowed.txt"), "utf8")).toBe("caller-owned");
         const stakePath = path.join(workDir, "studio-ui-stake");
@@ -441,20 +445,30 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             ],
         });
 
-        // The project dashboard cannot exercise the creator's persisted
-        // Blueprint/PAR flow: it deliberately opens an already materialized
-        // project.  Reopen the rendered Home designer against the same real
-        // Studio server implementation and drive the actual edit -> save ->
-        // PAR export conflict/recovery -> PAR import sequence.  This keeps
-        // UI observations separate from the project-dashboard API records.
+        // Start a design through Home, open its saved workspace to publish
+        // PAR through Build/Export, then return to Home to import the workbook.
+        // Every operation uses rendered controls against the real server.
         outcomeLibraryApp.unmount();
-        const designHome = new StudioHomeService(POKIE_VERSION);
+        const designLoader = createStudioGameLoader(process.cwd());
+        const designRuntimeResolver = createMaterializingRuntimePackageResolver(POKIE_VERSION, STUDIO_OPERATION, process.cwd(), {
+            materializer: new BlueprintProjectMaterializer(
+                POKIE_VERSION, undefined, undefined, undefined,
+                withLinkedLocalPokieRuntime(process.cwd()), undefined, path.join(workDir, "design-runtime-cache"),
+            ),
+        });
+        const designRegistryPath = path.join(workDir, "design-project-registry.json");
+        const designRegistration = new StudioProjectRegistrationService(new FileStudioProjectRegistry(designRegistryPath));
+        const designHome = new StudioHomeService(
+            POKIE_VERSION, undefined, designLoader, undefined, designRuntimeResolver,
+            (location) => designRegistration.describeLocation(location),
+        );
         const designServer = new StudioServer({
             pokieVersion: POKIE_VERSION, host: "127.0.0.1", port: 0, studioRoot,
             homeService: designHome,
+            projectRegistrationService: designRegistration,
             blueprintService: new StudioBlueprintService(POKIE_VERSION, studioRoot, designHome),
-            loadGame: createStudioGameLoader(process.cwd()),
-            resolveRuntimePackageRoot: passthroughRuntimePackageResolver,
+            loadGame: designLoader,
+            resolveRuntimePackageRoot: designRuntimeResolver,
             initialContext: {mode: "home"},
         });
         additionalServers.push(designServer);
@@ -475,55 +489,74 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.type(saveBlueprintInput, savedBlueprintPath);
         await user.click(screen.getByRole("button", {name: "Save"}));
         await screen.findByText(`Saved to "${savedBlueprintPath}".`);
-        expect(JSON.parse(fs.readFileSync(savedBlueprintPath, "utf8"))).toMatchObject({manifest: {name: "PC-14 Edited Studio Blueprint"}});
+        const savedBlueprintBytes = fs.readFileSync(savedBlueprintPath);
+        expect(JSON.parse(savedBlueprintBytes.toString("utf8"))).toMatchObject({manifest: {name: "PC-14 Edited Studio Blueprint"}});
 
-        // PAR's export surface is the final step of the same guided panel;
-        // selecting it before an import is intentional and validates that a
-        // freshly saved Blueprint has a real export-only route.
-        await user.click(screen.getAllByText("Apply / Export")[0]!);
-        const parExportInput = screen.getByRole("textbox", {name: "Export to path"});
+        // Save game validates the current draft and opens that exact saved
+        // identity; artifact publication belongs to its workspace.
+        await waitFor(() => expect(screen.getByRole("button", {name: "Save game"})).toBeEnabled());
+        await user.click(screen.getByRole("button", {name: "Save game"}));
+        await screen.findByRole("heading", {name: "PC-14 Edited Studio Blueprint"}, {timeout: 30000});
+        expect(designApp.router.state.location.pathname).toBe(`/project/${encodeURIComponent(savedBlueprintPath)}/overview`);
+        expect(JSON.parse(fs.readFileSync(designRegistryPath, "utf8"))).toEqual(expect.arrayContaining([
+            expect.objectContaining({location: savedBlueprintPath, type: "blueprint"}),
+        ]));
+        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        const parHeading = await screen.findByText("PAR sheet (.xlsx)");
+        const parCard = parHeading.closest("[data-pokie-lifecycle-form=artifact-build]") as HTMLElement;
+        expect(parCard).not.toBeNull();
+        const par = within(parCard);
+        const parExportInput = par.getByRole("textbox", {name: "Output file (optional)"});
         const occupiedParPath = path.join(workDir, "occupied.par.xlsx");
         fs.writeFileSync(occupiedParPath, "caller-owned PAR destination");
         await user.clear(parExportInput);
         await user.type(parExportInput, occupiedParPath);
-        await user.click(screen.getByRole("button", {name: "Export"}));
-        // The interoperability journey mounts more than one routed Studio
-        // application. Scope this assertion to the current designer so an
-        // earlier app's retained portal cannot satisfy (or make ambiguous)
-        // the current export conflict.
-        await within(designApp.container).findByText((content) =>
-            content.includes(occupiedParPath) && (/already exists|never overwritten/i).test(content),
-        );
+        await par.findByText("Destination unavailable. Choose a different destination; Build will not overwrite it.");
+        expect(par.getByText(`Resolved absolute path: ${occupiedParPath}`)).toBeInTheDocument();
+        expect(par.getByRole("button", {name: "Build"})).toBeDisabled();
         expect(fs.readFileSync(occupiedParPath, "utf8")).toBe("caller-owned PAR destination");
         const exportedParPath = path.join(workDir, "studio-ui-edited.par.xlsx");
         await user.clear(parExportInput);
         await user.type(parExportInput, exportedParPath);
-        await user.click(screen.getByRole("button", {name: "Export"}));
-        await screen.findByText("Exported successfully");
+        await waitFor(() => expect(par.getByRole("button", {name: "Build"})).toBeEnabled());
+        await user.click(par.getByRole("button", {name: "Build"}));
+        await par.findByText(`Built to ${exportedParPath}.`, {}, {timeout: 30000});
         expect(fs.existsSync(exportedParPath)).toBe(true);
+        expect(fs.readFileSync(exportedParPath).subarray(0, 2).toString()).toBe("PK");
+        expect(fs.readFileSync(occupiedParPath, "utf8")).toBe("caller-owned PAR destination");
+        expect(fs.readFileSync(savedBlueprintPath)).toEqual(savedBlueprintBytes);
 
-        await user.click(screen.getAllByText("Import")[0]!);
-        const parImportInput = screen.getByRole("textbox", {name: "PAR sheet path"});
+        await user.click(screen.getByRole("button", {name: "Close project"}));
+        await waitFor(() => expect(designApp.router.state.location.pathname).toBe("/home/projects"));
+        await user.click(await screen.findByRole("button", {name: "Start a game"}));
+        await screen.findByRole("heading", {name: "Design Your Game"});
+        await user.click(screen.getByRole("button", {name: /Show advanced options/}));
+        const parImportInput = await screen.findByRole("textbox", {name: "PAR sheet path"});
         await user.type(parImportInput, exportedParPath);
         await user.click(screen.getByRole("button", {name: "Import"}));
+        await screen.findByText(/^parsheet-provenance-present: .*its recorded hash matches the imported data\.$/);
+        expect(screen.getByText((content) => content.startsWith(`Exported by pokie v${POKIE_VERSION}`) && content.includes(`from "${savedBlueprintPath}"`))).toBeInTheDocument();
         await user.click(await screen.findByRole("button", {name: "Continue to Preview canonical model"}));
         await user.click(screen.getByRole("button", {name: "Preview canonical model"}));
-        await screen.findByRole("button", {name: "Continue to Apply / Export"});
+        await screen.findByRole("button", {name: "Continue to Apply"});
+        expect(screen.getByText(/Game: PC-14 Edited Studio Blueprint/)).toBeInTheDocument();
 
         evidence.recordScenario({
             id: "studio-ui-blueprint-runtime-workflows",
             sourcePath: savedBlueprintPath,
             producedPath: savedBlueprintPath,
-            result: "the rendered Design Game editor saved the edited Blueprint through Studio's home workflow",
+            result: "the rendered Design Game editor saved the edited Blueprint and opened that saved design's workspace through Studio's home workflow",
             surface: "studio-ui",
             owner: "BlueprintEditorPage",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "editing the rendered Blueprint changed the persisted game name before save",
+                "the workspace opened the same saved Blueprint identity recorded in the project registry",
             ],
             observations: [
                 {route: "UI /home/design (Blueprint editor)", result: "edited and saved a real Blueprint through Studio's home API"},
                 {route: "POST /api/home/blueprints/save", result: "persisted the edited Blueprint at the selected path"},
+                {route: "POST /api/home/projects/open", result: "prepared and opened the registered saved Blueprint workspace"},
             ],
         });
 
@@ -531,17 +564,19 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             id: "studio-ui-blueprint-par-output-error-recovery",
             sourcePath: savedBlueprintPath,
             producedPath: exportedParPath,
-            result: "the rendered PAR panel preserved an occupied caller-owned destination, recovered to publish a workbook, then imported and previewed that workbook through the canonical PAR flow",
+            result: "the saved design's Build/Export workspace preserved an occupied destination and published a new PAR workbook, then Home imported and previewed that workbook",
             surface: "studio-ui",
-            owner: "ParSheetImportExportPanel",
+            owner: "ExportDeployTab",
             systemicClasses: ["provenance-and-freshness-binding", "durable-publication-ownership"],
             assertions: [
                 "PAR export rejected an occupied caller-owned file without altering its bytes",
                 "correcting the destination published a real workbook which the rendered PAR importer diagnosed and previewed",
             ],
             observations: [
-                {route: "UI /home/design (PAR Sheet Import / Export)", result: "rendered occupied-destination recovery, workbook publication, and import/preview"},
-                {route: "POST /api/home/blueprints/par-export", result: "returned the occupied-file error then wrote the recovered workbook"},
+                {route: "UI /project/:projectRoot/exportDeploy (Build/Export)", result: "rejected an occupied PAR destination in preflight and built the recovered workbook"},
+                {route: "POST /api/project/artifacts/preview", result: "reported the occupied file and accepted the new workbook destination"},
+                {route: "POST /api/project/artifacts/build", result: "published a PAR workbook from the saved Blueprint"},
+                {route: "UI /home/design (PAR Sheet Import)", result: "imported and previewed the workspace-produced workbook through ParSheetImportExportPanel"},
                 {route: "POST /api/home/blueprints/par-import", result: "read the UI-produced workbook into the canonical Blueprint model"},
             ],
         });
@@ -571,9 +606,10 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
                 };
             }[];
         };
+        expect(emittedResult.scenario_results).toHaveLength(11);
         for (const [id, owner] of [
             ["studio-ui-blueprint-runtime-workflows", "BlueprintEditorPage"],
-            ["studio-ui-blueprint-par-output-error-recovery", "ParSheetImportExportPanel"],
+            ["studio-ui-blueprint-par-output-error-recovery", "ExportDeployTab"],
             ["studio-ui-build-export-output", "ExportDeployTab"],
             ["studio-ui-build-export-deployment-output", "useDeploymentManager"],
             ["studio-ui-outcome-source-output", "OutcomeSourceOverview"],
@@ -588,6 +624,14 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
             expect(scenario).toMatchObject({execution: {surface: "studio-ui", owner}});
             expect(scenario?.execution.observations.some((observation) => observation.route.startsWith("UI "))).toBe(true);
         }
+        const parScenario = emittedResult.scenario_results.find((scenario) => scenario.id === "studio-ui-blueprint-par-output-error-recovery");
+        expect(parScenario?.execution.observations.map((observation) => observation.route)).toEqual([
+            "UI /project/:projectRoot/exportDeploy (Build/Export)",
+            "POST /api/project/artifacts/preview",
+            "POST /api/project/artifacts/build",
+            "UI /home/design (PAR Sheet Import)",
+            "POST /api/home/blueprints/par-import",
+        ]);
         expect(emittedText).toContain('"produced_path": "run-artifacts/studio-ui-edited.par.xlsx"');
         expect(emittedText).toContain('"produced_path": "run-artifacts/studio-ui-stake"');
         const persistedResultPath = process.env.PC14_INTEROPERABILITY_PERSISTED_RESULT;

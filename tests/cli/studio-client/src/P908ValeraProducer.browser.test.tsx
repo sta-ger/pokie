@@ -135,7 +135,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
             if (response.exceptionDetails !== undefined) throw new Error(JSON.stringify(response.exceptionDetails));
             return (response.result as {value: T}).value;
         };
-        const button = (label: string, scope = "document") => `Array.from(${scope}.querySelectorAll('button')).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
+        const button = (label: string, scope = "document") => `Array.from((${scope})?.querySelectorAll('button') ?? []).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
         const click = async (expression: string) => {
             await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`);
             const point = await evaluate<{x: number; y: number}>(`(() => {const e = ${expression}; e.scrollIntoView({block:'center'}); const r=e.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
@@ -200,7 +200,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         await playRound(designPath);
         await click(button("Build/Export"));
         await until(() => evaluate<boolean>("document.querySelectorAll('[data-pokie-lifecycle-card=outcome-library]').length === 1"), "single outcome generator");
-        const packageScope = "Array.from(document.querySelectorAll('div')).find(e => e.style.marginBottom && Array.from(e.querySelectorAll('p')).some(p => p.textContent === 'TypeScript Game Package'))";
+        const packageScope = "document.getElementById('artifact-build-tsPackage')?.closest('[data-pokie-lifecycle-form=artifact-build]')";
         await click(button("Build", packageScope));
         await click(button("Open as Project", packageScope));
         await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Game Model is read-only for this package') && document.body.innerText.includes('Valid — no issues found.')"), "built package validation and truthful editability");
