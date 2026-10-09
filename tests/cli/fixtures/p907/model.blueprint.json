@@ -1,0 +1,10 @@
+{
+    "manifest": {"id": "small-model", "name": "Small Model", "version": "1.0.0"},
+    "reels": 2,
+    "rows": 1,
+    "symbols": ["A", "B"],
+    "reelStrips": [["A", "B"], ["A", "B"]],
+    "paylines": [[0, 0]],
+    "paytable": {"A": {"2": 2}, "B": {"2": 1}},
+    "availableBets": [1]
+}
