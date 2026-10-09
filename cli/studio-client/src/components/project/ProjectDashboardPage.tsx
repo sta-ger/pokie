@@ -895,7 +895,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         round: response.round,
                         seed: response.seed,
                         modeName: response.modeName,
-                        outcomeSource: response.outcomeSource ?? parsedDescriptor?.outcomeSource,
+                        outcomeSource: response.outcomeSource,
                         artifact: parsedDescriptor?.artifact,
                         artifactWarnings: response.artifactWarnings,
                         credits: parsedDescriptor?.credits,
@@ -963,6 +963,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         expectedReplay.status === "loaded" && replay.job?.status === "completed"
             ? describeReplayComparison(
                 {
+                    outcomeSource: expectedReplay.outcomeSource,
+                    seed: expectedReplay.seed,
+                    round: expectedReplay.round,
+                    modeName: expectedReplay.modeName,
                     artifact: expectedReplay.artifact,
                     artifactWarnings: expectedReplay.artifactWarnings,
                     stateBefore: expectedReplay.stateBefore,
@@ -970,6 +974,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     identity: expectedReplay.identity,
                 },
                 {
+                    outcomeSource: replay.job.descriptor?.outcomeSource,
+                    seed: replay.job.descriptor?.seed ?? undefined,
+                    round: replay.job.descriptor?.round,
+                    modeName: replay.job.descriptor?.outcomeSource?.modeName,
                     artifact: replay.job.descriptor?.artifact,
                     stateBefore: replay.job.descriptor?.stateBefore,
                     stateAfter: replay.job.descriptor?.stateAfter,

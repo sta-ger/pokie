@@ -779,10 +779,10 @@ export function GameModelSections({
         <div>
             <PageSection legend="Game basics" action={edit && <SectionEditAction id="basics" edit={edit} />}>
                 {editingBasics && edit ? (
-                    <>
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="basics" edit={edit} />
                         <MetadataFieldset blueprint={edit.blueprint} mutate={edit.mutate} legend="Game basics" />
-                    </>
+                    </fieldset>
                 ) : (
                     <BasicsSection section={projection.basics} />
                 )}
@@ -790,11 +790,11 @@ export function GameModelSections({
 
             <PageSection legend="Layout" action={edit && <SectionEditAction id="layout" edit={edit} />}>
                 {editingLayout && edit ? (
-                    <>
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="layout" edit={edit} />
                         <LayoutFieldset blueprint={edit.blueprint} mutate={edit.mutate} />
                         <PaylinesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
-                    </>
+                    </fieldset>
                 ) : (
                     <LayoutSection section={projection.layout} />
                 )}
@@ -802,10 +802,10 @@ export function GameModelSections({
 
             <PageSection legend="Symbols" action={edit && <SectionEditAction id="symbols" edit={edit} />}>
                 {editingSymbols && edit ? (
-                    <>
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="symbols" edit={edit} />
                         <SymbolsTable blueprint={edit.blueprint} mutate={edit.mutate} />
-                    </>
+                    </fieldset>
                 ) : (
                     <SymbolsSection section={projection.symbols} />
                 )}
@@ -813,10 +813,10 @@ export function GameModelSections({
 
             <PageSection legend="Reels" action={edit && <SectionEditAction id="reels" edit={edit} />}>
                 {editingReels && edit ? (
-                    <>
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="reels" edit={edit} />
                         <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} />
-                    </>
+                    </fieldset>
                 ) : (
                     <ReelsSection section={projection.reels} sampleControls={reelsSampleControls} />
                 )}
@@ -824,10 +824,10 @@ export function GameModelSections({
 
             <PageSection legend="Paytable" action={edit && <SectionEditAction id="paytable" edit={edit} />}>
                 {editingPaytable && edit ? (
-                    <>
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="paytable" edit={edit} />
                         <PaytableEditor blueprint={edit.blueprint} mutate={edit.mutate} />
-                    </>
+                    </fieldset>
                 ) : (
                     <PaytableSection section={projection.paytable} />
                 )}
@@ -835,11 +835,11 @@ export function GameModelSections({
 
             <PageSection legend="Bets & Modes" action={edit && <SectionEditAction id="bets" edit={edit} />}>
                 {editingBets && edit ? (
-                    <>
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="bets" edit={edit} />
                         <BetsList blueprint={edit.blueprint} mutate={edit.mutate} />
                         <BetModesEditor blueprint={edit.blueprint} mutate={edit.mutate} />
-                    </>
+                    </fieldset>
                 ) : (
                     <BetsAndModesSection section={projection.betsAndModes} />
                 )}
@@ -847,7 +847,9 @@ export function GameModelSections({
 
             <PageSection legend="Mechanics" action={edit && <SectionEditAction id="mechanics" edit={edit} />}>
                 {editingMechanics && edit ? (
-                    <FreeGamesFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={mechanicsIssues(edit)} />
+                    <fieldset disabled={edit.saving} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
+                        <FreeGamesFieldset blueprint={edit.blueprint} mutate={edit.mutate} issues={mechanicsIssues(edit)} />
+                    </fieldset>
                 ) : (
                     <MechanicsSection section={projection.mechanics} />
                 )}

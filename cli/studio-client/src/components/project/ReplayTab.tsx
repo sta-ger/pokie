@@ -362,7 +362,7 @@ export function ReplayTab({
     // claim to reproduce one *specific* prior result, and Session Spin has nothing to reproduce at all.
     const artifactReproducibility =
         expected.status === "loaded"
-            ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact, stateBefore: expected.stateBefore, stateAfter: expected.stateAfter}, currentGame)
+            ? describeReplayReproducibility(expected, currentGame)
             : undefined;
 
     // The round/seed/mode to reproduce, shared across every non-spin source once its own load step has
@@ -405,7 +405,7 @@ export function ReplayTab({
         } else if (findMethod === "artifact") {
             loadedReplayCard = describeLoadedReplay({
                 source: "artifact",
-                expected: expected.status === "loaded" ? {seed: expected.seed, artifact: expected.artifact} : {},
+                expected: expected.status === "loaded" ? expected : {},
                 reproducibility: artifactReproducibility,
                 result: finishedResult,
                 comparison,

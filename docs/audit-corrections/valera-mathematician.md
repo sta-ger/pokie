@@ -1,236 +1,98 @@
 # P9-07 — Valera mathematician
 
 Immutable brief: `a80b3554d7f660bf6826f3b0ebeaae5a0bb7e847e436322ff40fb08b992b23d5`.
-Preparation base: `c86ac680`. This record contains implementer preparation and
-automated regression evidence. It does **not** establish cold-user success.
+Preparation base: `c86ac680`. Product corrections and implementation tests do
+**not** establish independent campaign completion. All runtime receipts and
+completed-step evidence remain unchanged; this reconciliation changes only
+this current-step document. No new browser receipt, screenshot or human timing
+is supplied by this repair.
 
-## Independent collection status
+## Retained observations and superseded claims
 
-An isolated machine-owned initial browser collection was completed on
-2026-10-09 from candidate `aa5652b1ad676f486757ee52b61433815b6178c0`.
-It used a new Studio registry/documents directory and Chromium profile at
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-04ffcc258783a889/run-2026-10-09T01-50-58-803Z`.
-The final rendered observation ended at `2026-10-09T01:51:12.291Z`; this
-assessment was frozen afterward, before a retest.
+The controller owns the independent collector and production assets. Historical
+P9-07 receipt locations are retained below; they concern their own candidates,
+not the corrected candidate. The saved reviewer assessment and local contract
+trace are the evidence used for this repair; no external receipt was rewritten.
 
-The initial flow created the tiny starter Blueprint, inspected the visible reel,
-symbol, and paytable views, changed and saved its name to “Valera Starter Slot”,
-started Play, ran 100 rounds with seed `valera-audit-seed`, and displayed RTP
-52.00%, volatility 1.85, a 95% RTP interval of 15.81%–88.19%, and the explicit
-low-round warning. It generated and reopened the PAR workbook as a read-only
-PAR project, generated a 1,024-outcome exact library (RTP 100.78%), drew an
-exact outcome, and completed a seed replay with an available inspectable
-artifact. The supplied rare weighted directory was checked and added through
-the public Projects workflow; Studio rendered it as a “Game export”.
-
-No action-local P0/P1/material-P2 product failure, terminology/defaults
-blocker, or rendered error was observed in that initial route. Three bounded
-screenshots are retained only in the harness run directory (`initial.png`,
-`create_or_import_tiny_workbook-ready.png`, and
-`create_or_import_tiny_workbook-after.png`); none are committed. This new
-machine collection does not reconstruct any earlier missing historical audit.
-The clean fresh-profile affected retest is recorded below.
-
-## Clean affected retest
-
-After the frozen assessment, a second isolated Studio registry/documents
-directory and Chromium profile completed the same public route at
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-04ffcc258783a889/run-2026-10-09T01-54-51-610Z`,
-from `2026-10-09T01:54:51.611Z` through `2026-10-09T01:55:05.979Z`.
-The saved edit, Play, seeded 100-round simulation, PAR export/reopen with
-`parsheet-provenance-present` and matching recorded hash, exact Outcome Library
-generation/draw, and completed replay all rendered again without an action-local
-error.
-
-The rare source was then opened rather than merely added. Its rendered native
-Stake Engine view stated `READS SOURCE FULLY` and displayed base RTP
-`1.08e-17%`, hit frequency `5.42e-18%`, and max win `2`; this verifies that the
-rare weighted event remained nonzero in the public surface. No P0, P1, or
-material P2 remains observed by this bounded retest. Retest screenshots remain
-only in that runtime directory and are not committed.
-
-Independent collection and production asset preparation belong to the controller
-under the implementer command policy. Use candidate-consistent assets, one new
-browser profile and an isolated Studio/application profile and workspace. Copy
-the two fixture inputs there; do not let the collector read this evidence record,
-source, tests, scope preflight, roadmap, prior reports, or the maintainer notes
-below until observations are frozen. Record actual actions, terminology,
-confusion, defaults, failures and wall-clock elapsed times in one initial pass
-targeting 20 minutes. Freeze before source investigation. Classify every actual
-finding; fix P0/P1/material P2 with named regressions, then rerun only affected
-tasks using another fresh browser/application profile and clean fixture copies.
-Follow dialogs/recovery to terminal results; a reachable control is not closed by
-an “unreached” label. Keep at most three screenshots and append the independent
-collector identity, candidate, timings and machine-owned receipt here.
-
-## Collector handoff text (only this text and neutral copied locations)
-
-> You are a slot mathematician using POKIE for the first time. You know slot math
-> but have no prior knowledge of POKIE's architecture or workflows. Use the normal
-> public Studio product and its ordinary help. Start from the supplied small model
-> or create an equivalent small model. Inspect and edit symbols, reels and paytable;
-> validate, save, reopen and play it. Run eight rounds with one worker, one
-> supported mode and the explicit seed `math-session`. Explain the RTP and
-> volatility you observe, what the defaults meant, and whether this short run proves
-> anything about the model. Export/import a PAR workbook, inspect the preview,
-> apply it, save and reopen it; explain its provenance. Inspect and publish a tiny
-> exact Outcome Library, open its output, inspect its analysis/report, draw or play
-> an outcome, inspect the recorded round and replay it. Try bounded invalid edits
-> and cancellation/recovery where available. As a second short task, inspect the
-> supplied `source-2` data and explain its displayed statistics and available
-> operations. Record what you actually do and any confusion, rather than assuming
-> what the product intended. Spend roughly 20 minutes on this initial exploration.
->
-> Inputs: `<isolated-workspace>/model.blueprint.json` and
-> `<isolated-workspace>/source-2/`. Outputs belong in that isolated workspace.
-
-## Fixture and regression provenance (maintainer only)
-
-- Neutral inputs are under `tests/cli/fixtures/p907/`. The Blueprint has two
-  literal reels of two stops, one row, one payline and stake 1. No random/recommended
-  preset or large generation is needed. The regression renames B to C, reverses
-  the first reel and changes C's payout to 2; the four paid outcomes are 0, 0, 2, 2.
-  Exact RTP is 1, hit frequency 0.5, variance 1 and standard deviation 1. Those
-  reference answers must not be given to the cold collector.
-- `source-2` retains the existing `StakeProbabilityTestFixtures` data byte for
-  byte: UInt64-maximum loss weight, unit win weight, safe IDs/payouts and repeated
-  bonus events. Its extra `pokie-manifest.json` is an explicitly disclosed,
-  fixture-side Studio recognition marker, **not** a real export/conversion
-  receipt. Its `fixturePreparation` field records this. Standalone reading is
-  separately tested without that marker; arbitrary manifest-less Studio import
-  is not claimed. The regression verifies the supplied compressed books with
-  the current Node zstd reader before any timed browser collection.
-- The existing relative-error helper checks positive finite hit/max-win probability
-  `2^-64`, RTP `2p`, variance `4p(1-p)` and deviation `2^-31`. Exact integer total
-  is `18446744073709551616`. Numeric moments are floating-point values;
-  large-total displayed fractions have a 40-fractional-digit boundary. These
-  UInt64 weights are not pushed through native safe-integer library conversion.
-- `P907ValeraMathematician.integration.test.ts` composes real Studio HTTP/services,
-  ExcelJS workbook publication/import, managed Blueprint and registry persistence,
-  generated Node game logic, seeded Play/CLI/Studio simulation, persisted report
-  downloads/reopening, four-combination exact generation, source report, recorded
-  draw and replay. Only runtime package preparation/loading is adapted to bind
-  generated `require("pokie")` to candidate source under Jest without npm/compiler
-  subprocesses. This does not verify compiled browser delivery or replace an
-  independent browser session. Replay comparison excludes clocks while retaining
-  source hash, mode, seed, round, selection algorithm, payout, screen and artifact.
-
-## Acceptance and closure ledger
-
-| Obligation | Implementer evidence / remaining independent obligation |
+| Candidate / retained harness receipt | Timing and supported scope |
 | --- | --- |
-| Cold task, isolation, frozen confusion/defaults/terminology, real timings and independent identity | Handoff and tiny inputs prepared; initial independent observation **pending**. No severity or correction inferred from source inspection. |
-| Symbols/reels/paytable edit, validation, save/reopen, saved runtime | New composed integration plus `ProjectDashboardPage.gameModelWorkflow` (“Save runs validateBlueprint first — an invalid draft is never written”) and Blueprint reel-modeler/Play workflows. Actual discoverability and user understanding require the cold receipt. |
-| Draft/saved state, cancellation/navigation/late preview, runtime invalidation | Existing Game Model, reel-modeler, PAR panel and Play component workflows are retained; independent interaction **pending**. No constructor defaults or shared dependencies changed. |
-| PAR preview/Apply/managed Save/reopen, preservation and truthful provenance | Composed test saves server-prepared evidence across restart, verifies untouched lossless eligibility, rejects the edited import's lossless claim and preserves workbook bytes. Existing PAR round-trip/importer/exporter, Blueprint service and managed-save/panel tests cover malformed/missing Meta, stale preparation, hash/byte binding and occupied destinations. |
-| Simulation defaults, seed, requested/completed rounds, worker/mode, short-run interpretation | Existing simulation workflow tests retain 10000-round defaults, one worker/no explicit seed, warnings, retry and live/reopened equivalence. Composed eight-round seeded test compares real Play, CLI and Studio totals/RTP/volatility and checks warnings/CI/reproducibility/downloads. Human understanding **pending**. |
-| Exact generation, supported publication, output/report/draw/record/replay | Composed test requires exact preflight/work 4, coverage 1, actual native analysis and persisted source-specific replay. Existing generation, export/deploy and outcome-source route tests retain conflict/capability guards. Independent terminal browser path **pending**. |
-| Failure/cancellation and cleanup; switching, shutdown, polling and durable recovery | Existing simulation/replay services include failed/cancelled no-report/no-descriptor and real PAR preparation cleanup; Blueprint service preserves occupied outputs. Existing client workflows cover stale/project-switch responses, retries and download gating; durable repository tests cover restart. Composed test stops every server/runtime, restores reports after restart and removes only its own temporary workspace. |
-| Rare positive metrics, BigInt boundary, format/entry parity, truthful restrictions | Composed supplied-fixture/manifest-less reader/recognized Studio/persisted report test plus existing standalone, CLI analyze/diff/outcome-source/report, project analyzer, source-label and online-weighted-analysis tests. Source remains inspection-only; no fabricated native sample. Independent second task **pending**. |
-| Node/WASM seeded constructor/first result/continuation/restore/compact state | Existing production golden/API, CLI WASM and Studio WASM cases in the supplied bounded test set; no RNG/math implementation or public export/bin contract changed. Candidate compiled artifact/browser verification remains controller-owned. |
-| All actual P0/P1/material P2 fixed with named regressions; clean affected retest | No independent observations supplied yet. This row stays **open** until frozen findings and affected-task receipts exist; automation cannot close it. |
+| `aa5652b1ad676f486757ee52b61433815b6178c0`, `P9-07-04ffcc258783a889/run-2026-10-09T01-50-58-803Z` and `run-2026-10-09T01-54-51-610Z` | Historical record ends the first rendered observation at 01:51:12.291Z and describes the second run as 01:54:51.611Z–01:55:05.979Z. These short runs cannot establish the requested roughly 20-minute exploration or complete library comparison. |
+| `67e61f40478946b0fb9db358705c5d60f7ffa309`, `P9-07-0fd604ea14fa3e6b/run-2026-10-09T10-53-51-402Z` and `run-2026-10-09T10-59-17-603Z` | Historical timings: 10:53:51Z–10:54:27Z and 10:59:17Z–10:59:46Z. Retained observations include saved model edits, play, seeded short simulation, exact generation, read-only PAR reopen and positive rare-source labels. The initial high-cardinality mode exceeded the exact-generation cap; that itinerary limitation is not a publication defect. |
+| `32415dc5176aaae7eb237d7ead47adc6237a9710`, `P9-07-c86efe33e5b6c4e6/run-2026-10-09T13-05-34-467Z/frozen-initial.json` and `transcript.json` | Frozen initial actions establish creation/model inspection, play, 100-round `valera-42` simulation and exact generation. They do not establish PAR conversion, terminal library inspection/report/comparison or Stake inspection. An uncorrelated later generation error does not establish a product failure. |
+| Same harness, supplementary `run-2026-10-09T13-34-31-500Z/transcript.json` | Independent review confirms editable PAR conversion/reopen and visibly nonzero Stake metrics. The native library draw used `library-verification-seed`, base mode, round 1 and displayed 13.00 win. Its Reproduce & compare action reported missing `stateBefore`/`stateAfter` and failed to reproduce/compare. This is a confirmed P1 product defect, not an unreached action. |
 
-## Permitted check results
+All harness directories above are below
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/`.
+Independent finding identity: `P9-VALERA-MATHEMATICIAN`, supplementary fingerprint
+`sha256:37c55a69483d92f4`. The latest review assessed
+`c15a396cf49f8ca0dbe65919fe9fd79d7567c435` with fingerprint
+`sha256:531ab3175e1484eb`.
 
-Initial composed regression: 2/2 tests passed, 2.181 s Jest wall time; actual
-workflow bodies 838 ms (tiny math) and 23 ms (Stake). These are automation timings,
-not cold-user timings.
+The earlier statements that a native seeded draw and completed replay proved
+recorded-library comparison, that a clean affected retest closed the campaign,
+and that no material finding remained are **superseded**. A rendered artifact
+or HTTP replay is insufficient evidence of the frontend comparison. Earlier
+initial-pass claims do not override the supplementary confirmed failure.
+Historical screenshots stay in their retained harness directories; this repair
+adds none and does not prune any sibling-step evidence.
 
-- `npm run test:targeted -- <all 34 explicit scope_preflight.targeted_tests paths>`
-  exited **0**: 34 suites, **837 tests**, 446.044 s, across four Jest projects.
-  The implementer JSON report retains every required path as machine-readable
-  passing evidence. Existing React/Mantine transition `act(...)` warnings and
-  expected negative-case CLI diagnostics occurred; no assertions failed.
-- After removing an unnecessary `async` from the test-only preparation adapter,
-  `npm run test:targeted -- tests/cli/P907ValeraMathematician.integration.test.ts`
-  exited **0** again: 2 tests, 2.207 s; workflow bodies 829 ms and 23 ms.
-- Final `npm run typecheck` exited **0**, including `typecheck-studio-client`.
-  It consumes the changed TypeScript test; no production TypeScript, export,
-  package contract or browser asset was changed, so no production build boundary
-  was introduced. Candidate browser delivery remains independently unverified.
+## Findings and product corrections
 
-No packaging, coverage, project-wide or official gate, browser/CLI collector,
-or background work was launched. The complete campaign remains unproven until
-the controller-owned cold receipt, severity/correction ledger and clean affected
-retest close the open acceptance rows above.
-
-## Independent host-verifier supplement — 2026-10-09
-
-Candidate `67e61f40478946b0fb9db358705c5d60f7ffa309` was assessed through a
-new Studio registry/documents directory and Chromium profile, not through the
-historical record above. The first isolated initial pass ran from 10:53:51Z to
-10:54:27Z in
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-0fd604ea14fa3e6b/run-2026-10-09T10-53-51-402Z`.
-It reached creation, saved model edits, play, seeded simulation, replay, PAR
-export/reopen, and the rare source. Its exact-library control was correctly
-disabled after the collector itself had selected the displayed default
-high-cardinality reel mode (2,373,046,875 combinations against a 20,000,000
-cap). This was frozen as a collector-itinerary limitation, not a product
-failure; no rendered terminology, default, validation, or action-local error
-was observed.
-
-The clean fresh-profile affected rerun, from 10:59:17Z to 10:59:46Z in
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-0fd604ea14fa3e6b/run-2026-10-09T10-59-17-603Z`,
-kept the starter's literal strips small. It renamed a symbol, changed one reel
-stop and a paytable payout, then saved and reopened the Blueprint. It played a
-round, ran 10 rounds with seed `cold-seed`, and rendered RTP 0.00%, volatility
-0.00, and the explicit low-sample/no-win warnings; the collector recorded that
-those short-run metrics are not stable estimates. Its recorded round replayed.
-Exact generation then rendered 1,024 outcomes, RTP 135.94%, and a 1,323ms
-duration; the native Outcome Library report and a seed `library-seed` draw
-rendered a round artifact. PAR export rendered its one-way-snapshot boundary,
-then reopened read-only with `parsheet-provenance-present` and a matching
-recorded hash. The supplied `source-2` Stake source rendered RTP `1.08e-17%`,
-hit frequency `5.42e-18%`, and max win `2`, preserving a nonzero rare event.
-
-No P0, P1, or material P2 product finding remains from these bounded public
-flows. The machine-owned transcripts retain the three screenshots per run;
-none are committed. No product code or test was changed by this verifier.
-
-## P9-07 implementer correction — 2026-10-09
-
-The current repair read the immutable `frozen-initial.json` and `transcript.json`
-from `P9-07-c86efe33e5b6c4e6/run-2026-10-09T13-05-34-467Z`, bound to
-candidate `32415dc5176aaae7eb237d7ead47adc6237a9710`. Neither receipt nor any
-prior-step artifact was modified. This receipt supersedes no historical run.
-Its frozen initial observations establish creation, model inspection, play,
-100-round seed `valera-42` simulation and exact generation, but explicitly do
-not establish PAR export/import, library inspection/report/replay or inspection
-of the supplied Stake source. The library inspection attempt has no accepted
-action; the subsequent generation error is uncorrelated. It remains unverified,
-rather than an attributed product defect or a closed acceptance row.
-
-The supplementary transcript records a separate recoverability problem:
-`13:22:06.371Z` observes the restored payout input, and `13:22:55.230Z` still
-shows diagnostics from the preceding failed Save. Source tracing on HEAD found
-that payout edits committed only on blur and Game Model retained the previous
-Save's validation view after draft mutations. Two named rendered-workflow
-regressions reproduced the stale banner before correction (2 failed, the other
-27 tests passed). Payout edits now commit on change, and Game Model retires
-validation/write diagnostics when the draft changes. Save still validates the
-current draft before any write; clearing a diagnostic does not assert validity.
-
-| Acceptance obligation | Correction/check evidence and independent boundary |
+| Finding / severity | Correction and named regression |
 | --- | --- |
-| Cold user, neutral inputs, frozen terminology/defaults/errors, real bounded timings, at most three screenshots | Existing frozen receipt preserved; no new collector, timing claim or screenshot. Fresh-profile verification belongs to the controller. |
-| Inspect/edit symbols, reels and paytable; validate, save, reopen and play | Composed tiny integration retained and passed. New Game Model tests reject an empty payout without writing, correct it while focused, then verify validated save/reopen or confirmed discard/reopen. |
-| Seeded simulation and interpretation of actual metrics/defaults/provenance | Composed Play/CLI/Studio eight-round parity regression passed; frozen 100-round observation and its low-sample interpretation preserved. No math/RNG/default change. |
-| PAR preview/Apply/save/reopen and truthful provenance | Composed real workbook round trip and existing PAR client suite passed. Guided/raw payout regressions cover the shared editor's validation and dirty-state consumers. Public cold-user PAR interaction remains controller-owned. |
-| Tiny exact library, publication/output, analysis/report, recorded draw and replay | Composed four-outcome generation/report/draw/replay passed. Frozen generation success does not prove the missing public terminal inspection path. |
-| Supplied rare weighted source stays nonzero, public-entry parity and existing Node/WASM/workbook behavior | Composed supplied-fixture reader/Studio/report regression passed; no probability, runtime, package, export or workbook implementation changed. Independent public rare-source inspection remains required. |
-| Failed edit, recovery and cancellation; no unresolved material finding after clean retest | New rejection/correction/save/discard tests passed; no invalid draft is persisted. The supplementary collector note alone does not prove terminal discard rendering: its last rendered snapshot still contains the confirmation dialog. Clean affected browser retest remains controller-owned. |
+| Payout recovery / material P2: at 13:22:06.371Z the payout was restored; at 13:22:55.230Z prior failed-Save diagnostics remained | Previous correction `c15a396c` makes payout edits commit on change and retires old diagnostics on mutation. Retained whole-file evidence: composed integration 2/2, payout recovery 2/2 and Game Model workflow 29/29. The supplementary discard note does not prove terminal discard: its final snapshot still contains the dialog. |
+| `P9-07-LIBRARY-COMPARE` / P1: frontend imposed runtime snapshot requirements on native library draws and omitted source provenance from comparison | ReplayTab carries the inspected/stored outcomeSource through the availability gate; pasted bytes cannot substitute for the server's validated source. ProjectDashboardPage carries both sources and selection inputs into comparison. Replay interpretation verifies actual library identity/hash, game, mode, seed, round, algorithm, selected outcome/weight and recorded stake/payout/screen alongside the full round result. Native draws have no live session snapshots; those dimensions are explicitly inapplicable. Ordinary runtime seed/build/state/trace safeguards remain. Regressions: `ProjectDashboardPage.replayWorkflow.test.tsx` (paste and Recent, exact comparison, differing library hash, missing validated source), `domain/interpret/Replay.test.ts` (missing/mismatched provenance and consistent but different selections). |
+| `P9-07-SAVE-REVISION` / P2: pending validation/write accepted edits that were discarded or diagnosed against an older draft, and dropped unsaved-work protection | Game Model disables the entire section form throughout validation/write and synchronously rejects queued mutations/late preview callbacks while Save is in flight. Dirty/navigation/beforeunload protection includes saving. Deferred invalid-validation and successful-write regressions in `ProjectDashboardPage.gameModelWorkflow.test.tsx` exercise attempted edits, all section controls, navigation Stay, retained values, diagnostic recovery and saved/reopened truth. |
 
-Permitted foreground checks on the correction: five existing focused suites
-passed (63 tests, 142.176 s), then
-`BlueprintEditorPage.paytableRecovery.test.tsx` passed (2 tests, 6.058 s).
-The five suites were `ProjectDashboardPage.gameModelWorkflow.test.tsx`,
-`BlueprintEditorPage.validation.test.tsx`, `BlueprintEditorPage.sections.test.tsx`,
-`BlueprintEditorPage.parSheetImportExport.test.tsx`, and
-`P907ValeraMathematician.integration.test.ts`. These are regression timings,
-not independent human-session timings. `npm run typecheck` exited 0, including
-`npm run typecheck-studio-client` (not repeated separately). The browser bundle
-consumes the changed TSX and must be built and
-verified by the controller on the committed SHA under the bounded implementer
-policy. No independent rerun, production build, packaging or official gate was
-launched by this repair. The retained P1 coverage verdict remains open until
-the independent machine-owned receipt establishes all missing public actions.
+## Acceptance closure ledger
+
+| Immutable obligation | Current evidence and independent boundary |
+| --- | --- |
+| Cold persona, neutral inputs, isolated application/browser/workspace, frozen actions/confusion/defaults, real bounded timing | Retained initial observations above; no new collector is manufactured. Full cold-user success and qualitative coverage remain independently unproven. |
+| Symbols/reels/paytable validation/save/reopen/play; invalid edits and draft recovery | Retained composed workflow and payout recovery; this correction adds deferred-response protection. Fresh-profile affected browser retest remains required. |
+| PAR export/import/canonical preview/Apply/managed Save/reopen, workbook preservation and truthful provenance | Retained composed workbook-byte/hash/restart checks and supplementary editable conversion/reopen observation. No workbook or server conversion contract changes. |
+| Simulation defaults, seed/mode/workers, requested/completed rounds, RTP/volatility/uncertainty, reopened reports/downloads | Retained short seeded simulation and warnings plus composed parity. Actual defaults remain 10000 rounds, one worker, no explicit seed. Observed RTP is total payout / total stake; volatility is payout standard deviation in payout units. Collector understanding of that formula and those units still needs independent evidence. |
+| Tiny exact generation/publication/output/analysis/report, recorded draw/replay/comparison | Retained exact generation and supplementary draw; confirmed P1 corrected with rendered-workflow regressions. Successful current-candidate public comparison and full terminal inspection/report path still need an independent receipt. |
+| Job failure/cancellation/resource cleanup, switching/shutdown/polling/durable recovery | Existing service/repository coverage retained and production contracts unchanged. Terminal public cancellation/recovery remains independently outstanding. |
+| Positive rare metrics, BigInt boundary, public parity and truthful source restrictions | Retained reader/Studio/report regressions and independent visibly nonzero Stake labels. No math, RNG, formatting or capability change. |
+| Node/WASM constructor/first-result/continuation/restore parity; exports/CLI/package/browser boundaries | Existing focused parity tests and public contracts retained. This repair changes only Studio frontend code; candidate-consistent production browser assets and their independent execution belong to the controller. |
+| All material defects corrected and affected tasks rerun cleanly | Product regressions cover accumulated payout/library/save defects. Independent clean browser/application/workspace retest remains open; implementation tests cannot close it. |
+
+## Fixture and check provenance
+
+Neutral fixture inputs remain under `tests/cli/fixtures/p907/`: two literal reels
+with two stops, one row/payline and stake 1. The composed test renames B to C,
+reverses a reel and changes C's payout to 2 (paid outcomes 0, 0, 2, 2). It uses
+real Studio HTTP/services, workbook persistence, generated Node runtime,
+Play/CLI/Studio simulation, report downloads/reopening, exact four-outcome
+publication and backend replay. Its candidate-source runtime adapter avoids
+compiler/npm subprocesses; it does not verify browser delivery.
+
+The supplied Stake fixture retains UInt64-maximum loss weight, unit win weight,
+exact total `18446744073709551616` and safe IDs/payouts. Its extra recognition
+manifest is fixture preparation, not an export receipt or support for arbitrary
+manifest-less Studio imports. Standalone reading without the marker remains
+covered. Relative checks preserve positive finite p = 2^-64, RTP 2p, variance
+4p(1-p), deviation 2^-31. Moments are floating point; large-total displayed
+fractions have a 40-fractional-digit boundary. Native persisted libraries retain
+safe-integer weight/total limits; Stake remains inspection-only.
+
+Historical automation receipts remain historical: initial 34-suite/837-test
+run (446.044 s), composed rerun 2/2 (2.207 s), prior five-suite/63-test repair
+(142.176 s) and payout recovery 2/2 (6.058 s), with root typecheck success.
+These do not claim a current-candidate reviewer matrix pass or human timings.
+Current repair check results are recorded after foreground execution below.
+Production browser build, independent reruns, packaging and official gates are
+controller-owned and were not launched by this repair.
+
+Final foreground correction checks:
+
+- `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts`
+  exited 0: three whole files, 178/178 tests, 156.379 s; no test-name filtering.
+  Earlier attempts exposed fixture/route mistakes and an overly broad form lock
+  affecting read-only New sample. Those and the pre-commit hook's test lint
+  findings were corrected before this final run.
+- `npm run typecheck` exited 0, including its Studio client compiler; no separate
+  successful Studio compiler run or production bundle build is claimed.
+- `git diff --check` passed. The controller retains the broader independent
+  reviewer matrix; this repair does not claim that matrix passed.

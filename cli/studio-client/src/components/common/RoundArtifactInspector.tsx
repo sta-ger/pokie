@@ -14,6 +14,9 @@ import {RoundWinsTable} from "./RoundWinsTable";
 import {describeRoundPresentation} from "./roundPresentation";
 
 const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
+    source: "Library source",
+    selection: "Selection inputs",
+    recordedResult: "Selected outcome",
     screen: "Visible screen",
     wins: "Wins",
     totalPayout: "Total payout",
@@ -27,6 +30,9 @@ const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
 // one dimension being unavailable (e.g. rngReelStops, which is only ever best-effort) needs to know what
 // that dimension actually stands for, not just its label.
 const DIMENSION_WHY_IT_MATTERS: Record<keyof ReplayComparisonDimensions, string> = {
+    source: "The library identity and content hash must agree with the recorded source.",
+    selection: "Mode, seed, round and selection algorithm determine the library draw.",
+    recordedResult: "The selected outcome id, weight, stake and payout must agree.",
     screen: "The visible symbols are what the player actually saw -- a difference means the recreated round landed a different outcome.",
     wins: "Wins are what turns the outcome into a payout -- a difference here means credits would be awarded differently.",
     totalPayout: "The round's bottom-line payout is the one number that reaches the player's balance.",
@@ -58,7 +64,7 @@ function describeDimensionResult(dimension: ComparisonDimensionResult): string {
     if (dimension.status === "mismatch") {
         return dimension.detail;
     }
-    return `unavailable — ${dimension.reason}`;
+    return `${dimension.status === "notApplicable" ? "not applicable" : "unavailable"} — ${dimension.reason}`;
 }
 
 // The Inspect step's core view: provenance, screen, a step navigator (each step shows its own wins and
@@ -130,7 +136,7 @@ export function RoundArtifactInspector({
                                     <Text span fw={600}>
                                         {DIMENSION_LABELS[key]}:
                                     </Text>{" "}
-                                    {describeDimensionResult(comparison.dimensions[key])}
+                                    {describeDimensionResult(comparison.dimensions[key]!)}
                                     <Text size="xs" c="dimmed">
                                         {DIMENSION_WHY_IT_MATTERS[key]}
                                     </Text>
