@@ -1,6 +1,7 @@
 import {PreGeneratedRoundReplayer} from "../pregenerated/PreGeneratedRoundReplayer.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 import {ReplayRecorder} from "../replay/ReplayRecorder.js";
+import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ReplayDescriptor} from "../replay/ReplayDescriptor.js";
 import {OutcomeLibraryBundleReader} from "../weightedoutcome/bundle/OutcomeLibraryBundleReader.js";
 import {computeWeightedOutcomeLibraryHash} from "../weightedoutcome/computeWeightedOutcomeLibraryHash.js";
@@ -49,7 +50,9 @@ export async function replayOutcomeSourceProject(
     const libraryHash = computeWeightedOutcomeLibraryHash(library);
     const mismatches: string[] = [];
     const compare = (field: string, recordedValue: unknown, currentValue: unknown): void => {
-        if (recordedValue !== undefined && JSON.stringify(recordedValue) !== JSON.stringify(currentValue)) {
+        // Bundle artifacts have sorted object keys; the manifest preserves its authored order.
+        // Compare their JSON content, retaining array order and every provenance/result field.
+        if (recordedValue !== undefined && JSON.stringify(toCanonicalJson(recordedValue)) !== JSON.stringify(toCanonicalJson(currentValue))) {
             mismatches.push(`${field}: recorded ${JSON.stringify(recordedValue)}, current ${JSON.stringify(currentValue)}`);
         }
     };

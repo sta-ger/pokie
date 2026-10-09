@@ -1672,19 +1672,7 @@ describe("P9-07 production native descriptors", () => {
         return result as T;
     }
 
-    beforeEach(async () => {
-        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "p907-native-descriptors-"));
-        fs.writeFileSync(path.join(workspace, "index.html"), "<html>studio</html>");
-        const manifest = {...GAME, description: "Tiny exact math model", author: "Mathematician"};
-        const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({
-            game: {...buildFixtureGame(), getManifest: () => manifest}, libraryId: "native-library", pokieVersion: "1.3.0", betMode: "base", stake: 1,
-        });
-        expect(diagnostics.strategy).toBe("exact");
-        const bundle = path.join(workspace, "library");
-        const publication = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([
-            {modeName: "base", libraryId: library.libraryId, outcomes: library.outcomes, generator: diagnostics},
-        ], bundle);
-        expect(publication.manifest?.game).toEqual(manifest);
+    async function startStudio() {
         const homeService = new StudioHomeService("1.3.0");
         server = new StudioServer({
             pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: workspace, homeService,
@@ -1703,14 +1691,34 @@ describe("P9-07 production native descriptors", () => {
             req.on("error", reject);
             req.end(init?.body);
         });
-        await request("/api/home/projects/open", {projectRoot: bundle});
+        await request("/api/home/projects/open", {projectRoot: path.join(workspace, "library")});
+    }
+
+    beforeEach(async () => {
+        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "p907-native-descriptors-"));
+        fs.writeFileSync(path.join(workspace, "index.html"), "<html>studio</html>");
+        const manifest = {...GAME, description: "Tiny exact math model", author: "Mathematician"};
+        const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({
+            game: {...buildFixtureGame(), getManifest: () => manifest}, libraryId: "native-library", pokieVersion: "1.3.0", betMode: "base", stake: 1,
+        });
+        expect(diagnostics.strategy).toBe("exact");
+        const bundle = path.join(workspace, "library");
+        const publication = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([
+            {modeName: "base", libraryId: library.libraryId, outcomes: library.outcomes, generator: diagnostics},
+        ], bundle);
+        expect(publication.manifest?.game).toEqual(manifest);
+        await startStudio();
+    });
+
+    async function createProducerDescriptors() {
+        const bundle = path.join(workspace, "library");
         const started = await request<{id: string}>("/api/project/replays", {round: 1, seed: "demo-seed", modeName: "base"});
         await waitFor(async () => {
             studioJob = await request<StudioReplayJobView>(`/api/project/replays/${started.id}`);
             expect(studioJob.status).toBe("completed");
         });
-        expect(studioJob.descriptor!.outcomeSource!.game).toEqual(manifest);
-        expect(studioJob.descriptor!.artifact!.provenance.game).toEqual(manifest);
+        expect(studioJob.descriptor!.outcomeSource!.game).toEqual({...GAME, description: "Tiny exact math model", author: "Mathematician"});
+        expect(studioJob.descriptor!.artifact!.provenance.game).toEqual(studioJob.descriptor!.outcomeSource!.game);
         const out = path.join(workspace, "cli-replay.json");
         // Invoke the public command unchanged; only suppress its console echo.
         const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
@@ -1721,8 +1729,8 @@ describe("P9-07 production native descriptors", () => {
         }
         cliDescriptor = JSON.parse(fs.readFileSync(out, "utf8")) as ReplayDescriptor;
         expect(cliDescriptor.artifact).toBeUndefined();
-        expect(cliDescriptor.outcomeSource!.artifact!.provenance.game).toEqual(manifest);
-    });
+        expect(cliDescriptor.outcomeSource!.artifact!.provenance.game).toEqual(studioJob.descriptor!.outcomeSource!.game);
+    }
 
     afterEach(async () => {
         await server?.stop();
@@ -1730,6 +1738,7 @@ describe("P9-07 production native descriptors", () => {
     });
 
     it.each(["studio-paste", "cli-paste", "studio-recent"])("compares %s from real producers and rejects contradictory records", async (source) => {
+        await createProducerDescriptors();
         const recorded = source === "cli-paste" ? cliDescriptor : studioJob.descriptor!;
         const inspected = await request<{artifact: RoundArtifactJson; outcomeSource: ReplayDescriptor["outcomeSource"]; artifactWarnings: string[]}>(
             "/api/project/replays/inspect-artifact", recorded,
@@ -1737,6 +1746,10 @@ describe("P9-07 production native descriptors", () => {
         expect(inspected.artifact).toEqual(studioJob.descriptor!.artifact);
         expect(inspected.outcomeSource).toEqual(recorded.outcomeSource);
         expect(inspected.artifactWarnings).toEqual([]);
+        const reordered = JSON.parse(JSON.stringify(recorded)) as ReplayDescriptor;
+        reordered.game = Object.fromEntries(Object.entries(reordered.game).reverse()) as ReplayDescriptor["game"];
+        reordered.outcomeSource!.artifact = Object.fromEntries(Object.entries(reordered.outcomeSource!.artifact!).reverse()) as RoundArtifact;
+        expect(await request("/api/project/replays/inspect-artifact", reordered)).toMatchObject({artifact: inspected.artifact});
         expect(recorded.stateBefore).toBeUndefined();
         expect(recorded.stateAfter).toBeUndefined();
         const user = userEvent.setup();
@@ -1796,6 +1809,84 @@ describe("P9-07 production native descriptors", () => {
                 method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(altered),
             });
             expect(response.status).toBe(400);
+        }
+    }, 60000);
+
+    it.each(["recent", "download-paste"])("P9-07 draws through Overview, retains the result after restart and compares via %s", async (source) => {
+        expect(await request("/api/project/replays")).toEqual([]);
+        const user = userEvent.setup();
+        let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        try {
+            await user.type(await screen.findByLabelText("Seed (optional)"), "valera-library-42");
+            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            const download = await screen.findByRole("link", {name: "Download draw replay JSON"});
+            const url = download.getAttribute("href")!;
+            const recorded = await request<ReplayDescriptor>(url);
+            expect(recorded.seed).toBe("valera-library-42");
+            expect(recorded.outcomeSource).toMatchObject({modeName: "base", round: 1, selectionAlgorithm: "derived-round-seed-v1"});
+            expect(recorded.outcomeSource!.artifact!.provenance.game).toEqual({...GAME, description: "Tiny exact math model", author: "Mathematician"});
+            const rounds = await request<StudioRuntimeSessionView[]>("/api/project/rounds");
+            expect(rounds[0].sessionId).toBe(recorded.sessionId);
+            expect(rounds[0].replay).toEqual(recorded.outcomeSource);
+            await request("/api/project/replays/inspect-artifact", recorded);
+            // Navigate immediately: the draw callback refreshes the existing Replay list.
+            await user.click(screen.getByRole("button", {name: "Replay"}));
+            await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+            let picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+            expect(await within(picker).findByRole("button", {name: /round 1/})).toBeEnabled();
+            rendered.unmount();
+            await server.stop();
+            await startStudio();
+            // A new frontend and executor recover the same descriptor from the file repository.
+            expect(await request(url)).toEqual(recorded);
+            rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/replay"]});
+            await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+            if (source === "recent") {
+                picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+                await user.click(await within(picker).findByRole("button", {name: /round 1/}));
+            } else {
+                fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+                await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            }
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            await waitFor(() => expect(reproduce).toBeEnabled());
+            await user.click(reproduce);
+            await waitFor(() => {
+                if (!screen.queryByText("Match -- recorded and recreated results agree")) throw new Error(document.body.textContent ?? "No rendered result");
+            }, {timeout: 15000});
+            expect(dimensionRow("Library source:")).toHaveTextContent("match");
+            expect(dimensionRow("Selection inputs:")).toHaveTextContent("match");
+            expect(dimensionRow("Selected outcome:")).toHaveTextContent("match");
+            expect(dimensionRow("State transition:")).toHaveTextContent("not applicable");
+        } finally {
+            rendered.unmount();
+        }
+    }, 60000);
+
+    it("P9-07 exports an unseeded draw without enabling reproduction or retaining failed draws", async () => {
+        const user = userEvent.setup();
+        const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        try {
+            await user.click(await screen.findByRole("button", {name: "Draw an outcome"}));
+            const url = (await screen.findByRole("link", {name: "Download draw replay JSON"})).getAttribute("href")!;
+            expect(screen.getByText(/No seed was recorded, so exact reproduction is unavailable/)).toBeInTheDocument();
+            const recorded = await request<ReplayDescriptor>(url);
+            expect(recorded.seed).toBeNull();
+            expect(recorded.outcomeSource).toBeUndefined();
+            await user.click(screen.getByRole("button", {name: "Replay"}));
+            expect(await screen.findByText(/Reproduce unavailable — no recorded seed/)).toBeInTheDocument();
+            await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+            fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+            await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            expect(reproduce).toBeDisabled();
+            const failed = await fetchImpl("/api/project/outcome-source/sample", {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({modeName: "missing", seed: "valera-library-42"}),
+            });
+            expect(failed.ok).toBe(false);
+            expect(await request<StudioReplayListEntry[]>("/api/project/replays")).toHaveLength(1);
+        } finally {
+            rendered.unmount();
         }
     }, 60000);
 });

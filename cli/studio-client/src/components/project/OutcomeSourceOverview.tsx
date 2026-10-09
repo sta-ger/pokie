@@ -1,8 +1,8 @@
 import {formatAnalysisNumber} from "../../../../../src/internal/formatAnalysisNumber";
-import {Alert, Badge, Button, Group, Table, Text, TextInput, Title} from "@mantine/core";
+import {Alert, Anchor, Badge, Button, Group, Table, Text, TextInput, Title} from "@mantine/core";
 import {IconAlertTriangle} from "@tabler/icons-react";
 import {useState} from "react";
-import {sampleOutcomeSource} from "../../api/apiClient";
+import {buildReplayDownloadUrl, sampleOutcomeSource} from "../../api/apiClient";
 import type {OutcomeSourceSampleView} from "../../api/types";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {errorMessage} from "../../domain/errorMessage";
@@ -30,7 +30,8 @@ type OutcomeSourceHeader = Extract<ProjectHeaderView, {status: "outcome-source"}
 // same shared StudioRoundRecorder every other Studio tab's rounds do (see StudioServer's own outcome-
 // source sample route), so a caller wired to it (ProjectDashboardPage, passing its own
 // refreshRecentSpins) sees this draw in the Replay tab's "Session Spin" list without the user having to
-// remember to click that list's own Refresh button.
+// remember to click that list's own Refresh button. The dashboard also refreshes Replay Recent,
+// which uses the durable recorded descriptor returned as replayId, rather than session history.
 export function OutcomeSourceOverview({header, onRoundRecorded}: {header: OutcomeSourceHeader; onRoundRecorded?: () => void}) {
     const fetchImpl = useStudioApi();
     const [seed, setSeed] = useState("");
@@ -132,6 +133,16 @@ export function OutcomeSourceOverview({header, onRoundRecorded}: {header: Outcom
                         its own (see RoundArtifactDisplayView's own doc comment) and no session state to show
                         before/after it. */}
                     <RoundArtifactInspector artifact={describeRoundArtifact(result.selection.outcome.artifact)} />
+                    {result.replayId !== undefined && (
+                        <div>
+                            <Anchor href={buildReplayDownloadUrl(result.replayId)} download>Download draw replay JSON</Anchor>
+                            <Text size="sm" mt="xs">
+                                {result.replay
+                                    ? "Saved in Replay Recent. Open Replay, choose Replay Artifact, then pick this recorded round to reproduce & compare."
+                                    : "Saved in Replay Recent for inspection and export. No seed was recorded, so exact reproduction is unavailable."}
+                            </Text>
+                        </div>
+                    )}
                 </Alert>
             )}
 

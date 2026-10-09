@@ -1332,7 +1332,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 </>
                             )}
                             {activeTab === "overview" && header.status === "outcome-source" && (
-                                <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
+                                <OutcomeSourceOverview header={header} onRoundRecorded={() => {
+                                    refreshRecentSpins();
+                                    refreshReplayList();
+                                }} />
                             )}
                             {activeTab === "overview" && header.status === "artifact" && (
                                 header.type === "wasm"

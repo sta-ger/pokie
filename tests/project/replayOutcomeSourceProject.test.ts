@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleWriter, PokieProject, type PreGeneratedRoundReplayDescriptor, ProjectTargetResolver, replayOutcomeSourceProject} from "pokie";
+import {OutcomeLibraryBundleWriter, PokieProject, type PreGeneratedRoundReplayDescriptor, ProjectTargetResolver, replayOutcomeSourceProject, toCanonicalJson} from "pokie";
 import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // Proves P3-POLISH-21's own replay boundary: a resolved "outcomeLibrary" project reproduces a (seed, round)
@@ -69,6 +69,26 @@ describe("replayOutcomeSourceProject", () => {
         await expect(
             replayOutcomeSourceProject(project, "base", "reproducible-seed", 4, {...original.replay, libraryHash: "sha256:stale"}),
         ).rejects.toThrow(/recorded.*current.*Restore\/open the original game and outcome-library artifact/i);
+    });
+
+    it("P9-07 accepts canonical object ordering while rejecting changed results and screen order", async () => {
+        const bundleDir = path.join(workDir, "bundle");
+        const outcomes = buildOutcomeLibraryBundleTestLibrary("base-lib").outcomes.map((outcome) => ({
+            ...outcome,
+            artifact: {...outcome.artifact, screen: [["A", "B"]], steps: outcome.artifact.steps.map((step) => ({...step, screen: [["A", "B"]]}))},
+        }));
+        await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([{modeName: "base", libraryId: "base-lib", outcomes}], bundleDir);
+        const project = (await resolver.resolve(bundleDir)) as PokieProject;
+        const original = await replayOutcomeSourceProject(project, "base", "reproducible-seed", 4);
+        if (!original.supported) throw new Error("expected a supported outcome-library project");
+        const reordered = toCanonicalJson(original.replay) as unknown as PreGeneratedRoundReplayDescriptor;
+        expect(await replayOutcomeSourceProject(project, "base", reordered.seed, reordered.round, reordered)).toMatchObject({supported: true});
+        await expect(replayOutcomeSourceProject(project, "base", reordered.seed, reordered.round, {
+            ...reordered, game: {...reordered.game!, name: "changed"},
+        })).rejects.toThrow(/game:/);
+        await expect(replayOutcomeSourceProject(project, "base", reordered.seed, reordered.round, {
+            ...reordered, screen: reordered.screen!.map((row) => [...row].reverse()),
+        })).rejects.toThrow(/screen:/);
     });
 
     it("fails closed for every supplied canonical game and result field", async () => {

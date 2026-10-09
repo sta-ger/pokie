@@ -238,3 +238,66 @@ cancellation/recovery and the clean affected retest also remain uncompleted.
 This is supplementary evidence, not a replacement for the frozen cold pass.
 The two continuation screenshots remain only in the machine-owned runtime
 harness; no generated assets or runtime payloads are committed.
+
+## Native draw retention correction
+
+Finding `946bca50ce1e8594` / P1, material
+`P9-VALERA-MATHEMATICIAN:sha256:05785ec460ba86b9`, is confirmed. The retained
+`15-56-13-979Z/frozen-initial.json` preserves the cold terminology/default
+observations and the unseeded draw; the `16-08-43-406Z/transcript.json` preserves
+the later seeded draw followed by an empty Replay Artifact recovery surface.
+On preparation HEAD `9d8a5aab`, the HTTP route constructed real seeded provenance
+and recorded Session Spin history, but never retained a descriptor in the replay
+repository or durable job store. Overview rendered the artifact without export,
+and its completion callback refreshed only Session Spin. A new real HTTP
+regression reproduced the empty Recent list for both seeded and unseeded draws.
+
+The correction retains that same settled artifact through the existing replay
+repository and durable lifecycle, exposes its standard download from Overview,
+and refreshes both histories. It performs no second draw and invents no wallet,
+runtime snapshots or RNG trace. Seeded records carry the full game manifest,
+library/hash, mode, derived-round selection algorithm, seed/round, outcome/weight
+and results. Unseeded records expose inspection/export and explicitly disable
+reproduction. Records remain scoped to the project captured before asynchronous
+sampling; unsuccessful or unsupported sampling creates no completed descriptor.
+
+The real rendered regression also exposed object-order comparison failures:
+streaming artifact metadata has canonical sorted keys, while the manifest keeps
+authored key order. Studio outer/nested validation and public native replay now
+compare canonical JSON content, preserving every field and array order. Actual
+Studio/CLI producer tests still reject altered author/game, library hash,
+missing provenance, conflicting artifacts and changed selection/results.
+
+| Accumulated criterion | Current implementation closure |
+| --- | --- |
+| Native draw reaches recorded-versus-recreated comparison | Real Overview draw -> download -> Replay Artifact Recent, then a new Studio process/frontend recovers the same file-backed descriptor and completes exact comparison through Recent and pasted download. |
+| Native comparison metadata, canonical CLI nesting and runtime safeguards | Whole producer-backed replay workflow, interpretation, replay execution, public CLI and project replay files exercise exact comparisons, field rejection, object-order equivalence and meaningful screen-order rejection. |
+| Pending Save revisions and payout recovery | Whole Game Model workflow retains deferred validation/write protection and payout recovery. |
+| Exact generation recovery and durable inspection | Whole library durability workflow and generation service tests retain occupied-destination protection and inspectable completed results. |
+| PAR, bounded simulation/public math parity and nonzero rare source | Composed P9-07 integration and outcome-source routes/components retain these contracts; math, workbook, Node/WASM and probability implementations are unchanged. |
+| Independent cold understanding, fresh affected retest and cancellation/recovery receipts | Still controller/verifier obligations. The implementation tests are not independent collection and do not close these rows. |
+
+The affected graph is Overview -> sample API -> atomic native selector -> existing
+replay retention/job lifecycle -> project-scoped Recent/status/download -> server
+inspection -> ReplayTab/dashboard comparison -> native replay/CLI reconstruction.
+Session Spin still receives the same draw and identity. Runtime replay and
+simulation-sample callbacks retain their command-specific behavior. No shared
+constructor default, injected callback, bundle writer or CLI behavior was
+replaced. All prior receipts and screenshots are preserved; this repair adds no
+browser evidence or screenshot. Production browser build and independent
+browser/CLI reruns remain controller-owned under the bounded policy.
+
+Foreground checks on the final correction source:
+
+- `npm run test:targeted -- tests/cli/studio/OutcomeSourceProjectRoutes.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeSourceWorkflow.test.tsx tests/cli/studio-client/src/components/project/OutcomeSourceOverview.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/project/replayOutcomeSourceProject.test.ts tests/cli/commands/ReplayCommand.test.ts`
+  exited 0: eight files, 266 tests, 73.774 s. Earlier runs reproduced the
+  missing retention and then the real metadata-order defect. A subsequent run
+  passed the production paths but exposed an ineffective screen-order test
+  fixture (a one-cell screen); the final fixture uses two distinct cells.
+- `npm run test:targeted -- tests/project/replayOutcomeSourceProject.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio/OutcomeSourceProjectRoutes.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx tests/cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateService.test.ts tests/cli/P907ValeraMathematician.integration.test.ts`
+  exited 0: seven files, 156 tests, 136.613 s. Together the final runs cover
+  twelve distinct whole files. Rendered HTTP tests retain React `act` warnings.
+- `npm run typecheck` exited 0, including the mandatory Studio client compiler;
+  no second standalone compiler run was needed. `git diff --check` passed.
+  The changed-TypeScript ESLint commit hook remains enabled. No official gate,
+  browser rerun, packaging or controller-owned build was launched here.

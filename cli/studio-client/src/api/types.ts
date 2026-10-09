@@ -91,6 +91,8 @@ export type OutcomeSourceSampleView =
           // Present for a seeded sample: this is the same portable identity the public replay command
           // consumes, rather than a UI-only approximation of the selected outcome.
           replay?: OutcomeSourceReplayDescriptorView;
+          // The actual settled draw retained in Replay Recent, with the standard download route.
+          replayId?: string;
       }
     | {supported: false; diagnostic: {detectedType: StudioProjectType; operation: string; missingCapability: string; alternatives: StudioProjectType[]; recovery?: string; message: string}};
 

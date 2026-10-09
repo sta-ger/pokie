@@ -44,4 +44,6 @@ export type StudioReplayJobRecord = {
     // StudioSimulationJobRecord's own modeName field. Always undefined for an ordinary
     // "tsPackage"/"blueprint" replay.
     modeName?: string;
+    // This is a retained settled draw, rather than a newly executed reproduction.
+    source?: "outcome-source-sample";
 };

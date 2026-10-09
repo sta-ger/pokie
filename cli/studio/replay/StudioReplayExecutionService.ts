@@ -23,6 +23,7 @@ import {
     PokieJsonRoundArtifactProjector,
     PokieProject,
     PokieSessionState,
+    PreGeneratedRoundReplayDescriptor,
     ReplayDescriptor,
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
@@ -130,6 +131,39 @@ export class StudioReplayExecutionService {
 
     public attachJobService(jobService: StudioJobService): void {
         this.jobService = jobService;
+    }
+
+    // Retain the already-settled draw, never draw again to obtain an export. The usual replay
+    // repository and durable lifecycle supply Recent, inspection and download after restart.
+    // An unseeded draw remains inspectable/exportable without claiming exact reproduction.
+    public recordOutcomeSourceSample(projectRoot: string, artifact: RoundArtifact, modeName: string, replay?: PreGeneratedRoundReplayDescriptor): StudioReplayJobView {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        const sessionId = this.createId();
+        const startedAt = this.now();
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "replay",
+            request: {source: "outcome-source-sample", round: 1, modeName, ...(replay === undefined ? {} : {seed: replay.seed})},
+            // A settled sample owns no running replay resource and cannot reattach to another run.
+            conflictKey: `outcome-source-sample:${sessionId}`,
+        });
+        if (common !== undefined && common.status !== "created") throw new Error("Could not retain the outcome-source draw. Retry the draw.");
+        const record: StudioReplayJobRecord = {
+            id: common?.job.id ?? this.createId(), projectRoot, status: "completed", round: 1, source: "outcome-source-sample",
+            seed: replay?.seed, modeName, startedAt, completedRounds: 1, durationMs: 0,
+            game: artifact.provenance.game, abortController: new AbortController(),
+            descriptor: {
+                sessionId, game: artifact.provenance.game, seed: replay?.seed ?? null, round: 1,
+                totalBet: artifact.stake, totalWin: artifact.totalWin, screen: artifact.screen.map((row) => [...row]),
+                timestamp: replay?.timestamp ?? startedAt, durationMs: 0,
+                artifact: new PokieJsonRoundArtifactProjector().project(artifact),
+                ...(replay === undefined ? {} : {outcomeSource: replay}),
+            },
+        };
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "recorded draw", unit: "rounds", current: 1, total: 1});
+        this.markTerminal(record);
+        return this.toJobView(record);
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -818,7 +852,7 @@ export class StudioReplayExecutionService {
         this.repository.save(record);
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {
-                summary: "Replay completed.",
+                summary: record.source === "outcome-source-sample" ? "Outcome Library draw recorded." : "Replay completed.",
                 outputs: [{label: "Replay descriptor", downloadPath: `/api/project/replays/${encodeURIComponent(record.id)}/download`}],
                 provenance: {replayId: record.id, projectRoot: record.projectRoot},
                 detail: {replayId: record.id, round: record.round, descriptor: record.descriptor},
