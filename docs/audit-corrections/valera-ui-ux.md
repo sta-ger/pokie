@@ -172,3 +172,78 @@ and observation updates; all assertions pass. Production builds, independent
 observation collection, the post-freeze P909 browser execution, the preserved
 broader reviewer matrix and official gates remain controller-owned and pending.
 This is a committed implementation handoff, not a P9-09 audit closeout.
+
+## Independent verifier addendum — 2026-10-09
+
+This addendum records new verifier-owned evidence; it does not rewrite the
+implementation handoff or its earlier pending statements. Product identity was
+`f2904a7c4f41e02c38b0e466c1a01a8c69c0c3ab`, with an empty worktree at
+collection start and after cleanup.
+
+### Persona, freeze, and chronology
+
+A fresh local producer opened the ready-to-edit Starter Slot, waited for its
+visible validation, and created it through the rendered UI. The fresh profile
+used isolated registry/config and Documents roots. The independent initial
+collection was frozen before this document, reviewer hand-off, test source, or
+other history was read:
+
+- Initial freeze: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-2e4ace422a16773c/run-2026-10-09T22-53-05-174Z/frozen-initial.json`
+  (`sha256:a9cfe7611cf17c49aca9635612882f1ac5682a7e4070765dca91c7484ef9a0d8`).
+- Initial transcript: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-2e4ace422a16773c/run-2026-10-09T22-53-05-174Z/transcript.json`
+  (`sha256:22d245d01f6cf49435b519a57d85d0037e0e1d0d940fd288d01df468b9b385ba`).
+- Supplementary post-freeze transcript: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-2e4ace422a16773c/run-2026-10-09T22-55-57-877Z/transcript.json`
+  (`sha256:72cda36b4dce4f34cac30052c55f62f50c87b00dbd6d96c864565d87b2c6d104`).
+- Representative initial screenshots only (three): `1-observation.png`
+  (`sha256:e8c3ca9be1b21960843fe8e36a74944f264a18cf911c2c9e198e17b01f308e99`),
+  `2-observation.png` (`sha256:c12f9a2a4fa71b939ca245279e3a670050513955eca47740059c8db75004d420`), and
+  `3-observation.png` (`sha256:207de9592bb0043af55edd3f2fe6ad8a4084987545c351b32e0a4d59e2dcc96c`),
+  all beneath the initial run directory above.
+
+### Observed public workflow and disposition
+
+The producer entered `100000` in the labelled Rounds control, observed the
+same simulation queued and then running at `2000/100000`, and used native
+`Ctrl+R`. On reload, the same screen showed `100000/100000`, a readable report,
+and a completed simulation operation (1.4 s): a truthful terminal branch, not
+lost work. The project was visited through Projects, reopened, closed, and
+reopened again with the retained simulation visible.
+
+The first TypeScript package build completed to its displayed default. A second
+activation after that terminal state gave an action-local occupied-directory
+failure, explained that no files would be overwritten, and exposed both a
+different-destination instruction and Rebuild. In supplementary verification,
+the visible TypeScript-package field accepted the new `/tmp/p9alt` destination,
+its preflight became Ready to build, and the resulting build rendered `Built to
+/tmp/p9alt.` The generated 17,634-byte `/tmp/p9alt` tree was then moved to the
+trash; both Studio/browser child sets exited. No generated output, profile,
+screenshots, or runtime transcript is committed here.
+
+Keyboard input was exercised for the labelled Rounds field and native
+`Tab`/`Return` navigation from Overview to Play. The rendered path was checked
+at 1439 × 1099 and 900 × 700. No P0, P1, or material P2 was observed in this
+actual journey. The intentional occupied-destination failure is a recovery
+case, not a product finding.
+
+Limitations remain explicit: the initial bounded job finished during reload, so
+the cancellation branch was not reached; no confirmation dialog was rendered
+on this path, so confirmation-focus evidence is not reached; and a before/after
+byte checksum of the already-occupied default directory was not captured,
+although the action-local UI stated it would not overwrite it. These are
+evidence gaps, not retroactive product defects or a clean closeout.
+
+### Independent checks and closeout state
+
+The controller-provided complete-file Jest receipt is retained at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/46f2c0ab135f1b903906eb19/result.json`,
+with its `stdout.log` and `stderr.log`. It exited 1 solely because
+`P909_FROZEN_OBSERVATIONS` was absent before this independent freeze; it is a
+deferred controller prerequisite, not candidate-owned product-failure proof.
+The verifier did not rerun it. `npm pack --dry-run --json --ignore-scripts`
+returned the `pokie@1.3.0` aggregate (3,477,013-byte packed size; 9,028 entries;
+shasum `6f8c61c67e79f9a15179e403fe3539e66caf8d1f`) without retaining a tarball.
+
+Closeout is therefore **evidence-incomplete, not approved**: the controller
+must authenticate the frozen record, run its deferred whole-file regression
+with that record, and obtain the missing confirmation-focus and independently
+measured occupied-byte-preservation evidence before a passed campaign verdict.
