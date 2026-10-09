@@ -933,6 +933,10 @@ export type StudioReplayListEntry = {
     durationMs: number;
     error?: string;
     modeName?: string;
+    // A settled Overview draw is recorded, rather than a fresh reproduction.
+    source?: "outcome-source-sample";
+    // Selection provenance only; the full artifact remains on the detail/download endpoint.
+    outcomeSource?: {libraryId: string; libraryHash: string; outcomeId: string};
 };
 
 // Play tab (and Outcome Source Analysis "Sample") response DTO — see

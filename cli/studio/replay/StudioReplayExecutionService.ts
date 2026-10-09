@@ -292,11 +292,14 @@ export class StudioReplayExecutionService {
                 entries.set(job.id, {
                     id: view.id,
                     status: view.status,
+                    ...replayDescriptorSummary(view.descriptor),
+                    ...(job.request.source === "outcome-source-sample" ? {source: "outcome-source-sample" as const} : {}),
                     round: view.round,
                     ...(view.seed === undefined ? {} : {seed: view.seed}),
                     ...(view.modeName === undefined ? {} : {modeName: view.modeName}),
                     completedRounds: view.completedRounds,
                     startedAt: view.startedAt,
+                    ...(job.completedAt === undefined ? {} : {completedAt: new Date(job.completedAt).toISOString()}),
                     durationMs: view.durationMs,
                     ...(view.error === undefined ? {} : {error: view.error}),
                 });
@@ -324,19 +327,22 @@ export class StudioReplayExecutionService {
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
         const common = this.jobService?.get(record.projectRoot, record.id);
+        const completedAt = common?.completedAt ?? record.completedAt;
         return {
             id: record.id,
             status: common?.operation === "replay" ? common.status : record.status,
+            ...replayDescriptorSummary(record.status === "completed" ? record.descriptor : undefined),
             game: record.game,
-            configHash: record.configHash,
+            configHash: record.configHash ?? record.descriptor?.artifact?.provenance.configHash,
+            source: record.source,
             round: record.round,
             seed: record.seed,
             completedRounds: record.completedRounds,
             totalBet: record.status === "completed" ? record.descriptor?.totalBet : undefined,
             totalWin: record.status === "completed" ? record.descriptor?.totalWin : undefined,
-            startedAt: new Date(record.startedAt).toISOString(),
-            completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
-            durationMs: record.durationMs,
+            startedAt: new Date(common?.startedAt ?? record.startedAt).toISOString(),
+            completedAt: completedAt === undefined ? undefined : new Date(completedAt).toISOString(),
+            durationMs: common?.durationMs ?? record.durationMs,
             error: common?.operation === "replay" ? common.error ?? record.error : record.error,
             modeName: record.modeName,
         };
@@ -902,17 +908,23 @@ export class StudioReplayExecutionService {
     }
 
     private projectDurableJob(job: StudioJobView): StudioReplayJobView {
+        const descriptor = descriptorFromDurableDetail(job);
+        const modeName = descriptor?.outcomeSource?.modeName ?? (typeof job.request.modeName === "string" ? job.request.modeName : undefined);
         return {
+            ...(descriptor === undefined ? {} : {
+                game: descriptor.game,
+                configHash: descriptor.artifact?.provenance.configHash,
+                descriptor,
+            }),
             id: job.id,
             status: job.status,
             round: typeof job.request.round === "number" ? job.request.round : 0,
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             ...(typeof job.request.simulationId === "string" ? {simulationId: job.request.simulationId} : {}),
-            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+            ...(modeName === undefined ? {} : {modeName}),
             startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
             completedRounds: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
             durationMs: job.durationMs ?? 0,
-            ...(descriptorFromDurableDetail(job) === undefined ? {} : {descriptor: descriptorFromDurableDetail(job)}),
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
@@ -925,4 +937,23 @@ function descriptorFromDurableDetail(job: StudioJobView): ReplayDescriptor | und
     return typeof descriptor === "object" && descriptor !== null && "sessionId" in descriptor && "round" in descriptor
         ? descriptor as ReplayDescriptor
         : undefined;
+}
+
+// Use the retained result for both live and restarted summaries. Never reconstruct provenance
+// from the currently opened library, which may have changed since this draw/replay.
+function replayDescriptorSummary(descriptor: ReplayDescriptor | undefined): Pick<StudioReplayListEntry, "game" | "configHash" | "totalBet" | "totalWin" | "outcomeSource"> {
+    if (descriptor === undefined) return {};
+    return {
+        game: descriptor.game,
+        configHash: descriptor.artifact?.provenance.configHash,
+        totalBet: descriptor.totalBet,
+        totalWin: descriptor.totalWin,
+        ...(descriptor.outcomeSource === undefined ? {} : {
+            outcomeSource: {
+                libraryId: descriptor.outcomeSource.libraryId,
+                libraryHash: descriptor.outcomeSource.libraryHash,
+                outcomeId: descriptor.outcomeSource.outcomeId,
+            },
+        }),
+    };
 }

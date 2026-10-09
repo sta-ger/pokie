@@ -1220,6 +1220,35 @@ describe("StudioReplayExecutionService", () => {
     });
 
     describe("listJobs", () => {
+        it("preserves completed runtime summaries and detail identity across file-backed restart", async () => {
+            const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-replay-summary-"));
+            const jobsDirectory = path.join(directory, "jobs");
+            try {
+                const service = new StudioReplayExecutionService(
+                    new InMemoryStudioReplayRepository(),
+                    () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+                );
+                service.attachJobService(new StudioJobService(new FileStudioJobRepository(jobsDirectory)));
+                const started = service.start("/a", {round: 3, seed: "runtime-seed"});
+                if (started.status !== "created") throw new Error("expected job to be created");
+                const completed = await waitForTerminal(service, "/a", started.job.id);
+                const before = service.listJobs("/a");
+                expect(before[0]).toMatchObject({game: manifest, seed: "runtime-seed", round: 3, status: "completed"});
+                const restarted = new StudioReplayExecutionService();
+                restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(jobsDirectory)));
+                expect(restarted.listJobs("/a")).toEqual(before);
+                expect(restarted.listJobs("/a")[0].source).toBeUndefined();
+                expect(restarted.getStatus("/a", started.job.id)?.game).toEqual(manifest);
+                expect(restarted.getStatus("/a", started.job.id)?.descriptor).toEqual(completed.descriptor);
+                expect(restarted.getDownload("/a", started.job.id)).toEqual({status: "ok", descriptor: completed.descriptor});
+                expect(restarted.listJobs("/b")).toEqual([]);
+                expect(restarted.getStatus("/b", started.job.id)).toBeUndefined();
+                expect(restarted.getDownload("/b", started.job.id)).toEqual({status: "not-found"});
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        });
+
         it("lists a project's replays with the expected summary fields", async () => {
             const service = new StudioReplayExecutionService(
                 new InMemoryStudioReplayRepository(),

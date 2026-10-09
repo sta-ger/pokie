@@ -2,6 +2,7 @@ import {
     describeReplayCapabilities,
     describeReplayComparison,
     describeReplayEntryStatus,
+    describeReplayEntryLabel,
     describeReplayList,
     describeReplayProgress,
     describeReplayReproducibility,
@@ -698,6 +699,24 @@ describe("describeReplayList", () => {
             status: "loaded",
             entries: [sameGame, differentId, differentVersion],
         });
+    });
+});
+
+describe("describeReplayEntryLabel", () => {
+    it("distinguishes two retained draws even when selection inputs are identical", () => {
+        const entry: StudioReplayListEntry = {
+            id: "draw-1", status: "completed", source: "outcome-source-sample", game: {id: "tiny", name: "Tiny", version: "1"},
+            seed: "valera-closure-1", round: 1, modeName: "base", completedRounds: 1,
+            startedAt: "2026-10-09T17:07:00Z", durationMs: 3,
+            outcomeSource: {libraryId: "tiny-base", libraryHash: "hash-A", outcomeId: "outcome-A"},
+        };
+        const label = describeReplayEntryLabel(entry);
+        expect(label).toContain("tiny round 1 — Recorded draw");
+        expect(label).toContain("Library tiny-base (hash-A) · Seed valera-closure-1 · Mode base · Outcome outcome-A");
+        expect(label).toContain("2026-10-09T17:07:00Z · Record draw-1");
+        expect(describeReplayEntryLabel({...entry, id: "draw-2"})).not.toBe(label);
+        expect(describeReplayEntryLabel({...entry, seed: undefined, outcomeSource: undefined})).toContain("Outcome Library · Seed not recorded · Mode base");
+        expect(describeReplayEntryLabel({...entry, source: undefined})).toContain("Reproduced");
     });
 });
 

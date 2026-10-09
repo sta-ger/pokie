@@ -364,3 +364,63 @@ draw-to-Replay handoff, not a replacement for the frozen cold observations.
 The bounded receipts are the two transcripts under the machine-owned harness;
 no new screenshot, profile, generated project, library, or browser payload is
 committed.
+
+## Recent provenance correction (`37fb8f677293c018`)
+
+The two supplementary transcripts above were read without modification. On
+preparation HEAD `ac707b52`, the confirmed draw's descriptor is retained in the
+file-backed replay job result. However, `listJobs` projects restarted jobs without
+game, totals, completion time or library selection identity. ReplayTab's two
+Recent surfaces render only game/round/status, hide seed/mode and call a settled
+Overview draw “Reproduced”. This explains the saved `? round 1` choices; it is
+not evidence that the draw itself vanished. The prior single-record restart
+regression selected by round alone and did not prove distinguishable provenance.
+Its earlier closure claim is superseded for this criterion.
+
+The live and recovered summaries now derive library ID/hash/outcome from the
+retained descriptor, preserve game/totals/completion time, and retain the durable
+request's recorded-draw classification. Both Recent surfaces share one label:
+game/round, Recorded draw versus Reproduced, library ID/hash, seed, mode, selected
+outcome, time and unique record ID. Equal-input draws remain distinct. Resolved
+native modes come from the retained descriptor during recovery; the public API
+continues to require explicit recorded seed/mode before exact reproduction. Live/recovered times use the same job lifecycle clock. No current-library
+lookup substitutes for historical provenance, and full artifacts remain in the
+existing project-scoped detail/download path.
+
+| Accumulated failed criterion | Product closure / bounded regression |
+| --- | --- |
+| Recorded draw handoff and distinguishable restart selection | Real Overview creates two seeded draws, including `valera-closure-1`; file-backed server/frontend restart preserves both summaries and renders matching provenance in both Recent surfaces. The intended seed is uniquely selected, loaded and compared to a fresh reproduction; pasted download also reaches exact comparison. |
+| Missing snapshots, full game metadata and canonical CLI nested artifacts | Whole producer-backed replay workflow/interpretation/service/CLI/project files retain exact comparison and rejection of altered hash/game/author/selection/results/conflicting artifacts. A completed native reproduction is also recovered after restart. |
+| Unseeded/failed sampling and runtime replay isolation | Unseeded draw survives restart for inspection/export while reproduction stays disabled; failed sampling adds no record. Runtime replay summary/detail/download preserve their identities and totals after file-backed restart, remain classified as reproduction, and reject another project's access. |
+| Payout recovery, pending Save revisions, exact-generation durability | Whole Game Model, library durability and generation service regressions retain the prior corrections. |
+| PAR/public math/report parity and nonzero rare source | Composed bounded P9-07 integration and source route/Overview workflows retain these contracts; math, Node/WASM, RNG and workbook implementations are unchanged. |
+| Cold understanding/frozen observations, real timings, clean browser retest, terminal public cancellation/recovery | Retained independent receipts remain authoritative. Fresh affected verification and production browser assets remain controller-owned obligations; these tests do not manufacture or close them. No screenshot is added. |
+
+Consuming boundaries are the root/Studio TypeScript compilers, Studio HTTP
+list/status/download projection and Studio client production bundle. Root
+`npm run typecheck` includes `typecheck-studio-client`; the duplicate compiler
+command is unnecessary after that passes. `build-studio-client` is explicitly
+listed as an orchestrator-owned gate and was not launched. The current step's
+document alone is reconciled; all prior evidence remains immutable.
+
+Permitted foreground check evidence for this correction:
+
+- The thirteen-file focused regression run covered the prior retention matrix
+  above plus ReplayTab. Twelve files passed; the three producer cases in the
+  replay workflow failed because this repair's test request omitted the mode
+  required by the existing public validation guard. That fixture was corrected,
+  preserving the guard. An earlier four-file run also exposed the live/durable
+  timing mismatch corrected above and an undefined-field matcher issue.
+- `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio-client/src/components/project/ReplayTab.test.tsx`
+  exited 0 on the final correction source: 4/4 files, 217/217 tests, 66.996 s.
+  Together with the nine unchanged accumulated-regression files from the
+  broader run, thirteen distinct whole files are covered. No test-name filters
+  were used. The rendered HTTP regressions retain existing React `act` warnings.
+- A standalone `npm exec -- eslint` attempt was rejected by the clone's command
+  policy before ESLint ran. Lint authority remains the mandatory staged-file
+  pre-commit hook; it is not bypassed.
+- `npm run typecheck` exited 0, including `npm run typecheck-studio-client`.
+  `git diff --check` passed. No duplicate standalone Studio compiler, production
+  build, browser/CLI verifier rerun, packaging or official gate was launched.
+  Fresh-profile affected verification remains independent work on the committed
+  SHA, as required by the bounded implementer policy.

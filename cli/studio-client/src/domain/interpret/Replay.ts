@@ -644,9 +644,8 @@ function dedupeReplayListEntries(entries: StudioReplayListEntry[]): StudioReplay
 
 // Plain, human-readable status for a "Recent replays" entry -- the raw StudioReplayStatus enum
 // ("completed", "cancelled", ...) is job-execution vocabulary, not honest about what this list actually
-// is: every entry here is a *recreated* replay session, never a genuinely recorded one (see
-// describeLoadedReplay's own "Recorded" vs "Recreated" distinction below) -- "Reproduced"/"Reproduction
-// failed" say so plainly instead of implying a generic background job.
+// is. These labels describe fresh reproductions; describeReplayEntryLabel distinguishes retained
+// Overview draws from those reproductions.
 const REPLAY_ENTRY_STATUS_LABEL: Record<StudioReplayStatus, string> = {
     queued: "Queued to reproduce",
     running: "Reproducing…",
@@ -659,6 +658,17 @@ const REPLAY_ENTRY_STATUS_LABEL: Record<StudioReplayStatus, string> = {
 
 export function describeReplayEntryStatus(status: StudioReplayStatus): string {
     return REPLAY_ENTRY_STATUS_LABEL[status];
+}
+
+// Both Recent surfaces expose the same retained provenance before a user selects a record.
+export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
+    const status = entry.source === "outcome-source-sample" && entry.status === "completed"
+        ? "Recorded draw" : describeReplayEntryStatus(entry.status);
+    const identity = `${entry.game?.id ?? "?"} round ${entry.round} — ${status}`;
+    if (entry.source !== "outcome-source-sample" && entry.outcomeSource === undefined) return identity;
+    const source = entry.outcomeSource === undefined ? "Outcome Library" : `Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`;
+    const outcome = entry.outcomeSource === undefined ? "" : ` · Outcome ${entry.outcomeSource.outcomeId}`;
+    return `${identity} · ${source} · Seed ${entry.seed ?? "not recorded"} · Mode ${entry.modeName ?? "not recorded"}${outcome} · ${entry.startedAt} · Record ${entry.id}`;
 }
 
 // Whether "Reproduce & compare" from this exact "Recent replays" entry can ever produce anything

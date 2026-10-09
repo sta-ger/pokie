@@ -6,7 +6,7 @@ import {buildReplayDownloadUrl} from "../../api/apiClient";
 import type {OutcomeSourceReplayDescriptorView, RoundArtifact, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
     describeLoadedReplay,
-    describeReplayEntryStatus,
+    describeReplayEntryLabel,
     describeReplayReproducibility,
     describeRoundArtifact,
     describeStudioRoundOperation,
@@ -553,13 +553,13 @@ export function ReplayTab({
                                                     }}
                                                     style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                                 >
-                                                    {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                                    {describeReplayEntryLabel(entry)}
                                                 </Anchor>
                                             </List.Item>
                                         ) : (
                                             <List.Item key={entry.id}>
                                                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                                                    {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)} (reproduce
+                                                    {describeReplayEntryLabel(entry)} (reproduce
                                                 unavailable — no recorded seed; use Recent replays below to inspect it instead)
                                                 </Text>
                                             </List.Item>
@@ -1243,7 +1243,7 @@ export function ReplayTab({
                                 <List.Item key={entry.id}>
                                     <Group gap="xs" wrap="wrap" align="baseline">
                                         <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                            {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                            {describeReplayEntryLabel(entry)}
                                         </Text>
                                         <Anchor
                                             component="button"
