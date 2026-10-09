@@ -424,3 +424,64 @@ Permitted foreground check evidence for this correction:
   build, browser/CLI verifier rerun, packaging or official gate was launched.
   Fresh-profile affected verification remains independent work on the committed
   SHA, as required by the bounded implementer policy.
+
+## Supplementary selection correction (`3e8920f5ba0ba3ab`)
+
+The retained `P9-07-29c0fdc577e7f5e8/run-2026-10-09T17-48-28-040Z/transcript.json`
+was read unchanged. Its supplementary retained-profile session ends at
+17:51:25.709Z (177.669 seconds), with no screenshots. Two successful native
+draws used `closure-library-a` and `closure-library-b`, selecting the same
+outcome. At 17:51:01.471Z Recent showed duplicate generic rows and duplicate
+Inspect / Reproduce & compare actions. This is a confirmed P1 selection
+failure; the previous source-test closure does not prove that delivered session
+worked or replace its frozen cold observations.
+
+Preparation HEAD `07ffd468` already projects full native provenance in source.
+The clone's supplied `dist/cli/studio/replay/StudioReplayExecutionService.js`,
+however, still omits source/outcomeSource in live rows and descriptor summaries
+in recovered rows. Its browser bundle contains the source helper's conditional
+early return: absent native summary fields reduce the row to game/round/status.
+This source/distribution discrepancy explains how the saved presentation can
+persist despite the previous source correction; it does not establish which
+bytes the independent launch served. No generated asset was rewritten here.
+The new domain regression first failed on current HEAD with the exact
+`? round 1 — Reproduced` label despite retained seed/mode/record inputs.
+
+The shared label now always exposes retained seed, mode, time and record ID,
+including older summaries. Missing source remains explicitly "not recorded";
+no current-library identity is inferred. Native summaries keep library ID/hash,
+outcome and Recorded draw classification. Recent Inspect and Reproduce & compare
+now visibly name the record and expose its full identifying label as their
+accessible name. Both Recent surfaces still invoke the existing project-scoped
+detail and validated comparison paths; availability and runtime safeguards are
+unchanged. Controller verification must consume matching server and browser
+artifacts from the committed candidate, rather than reuse the supplied server
+distribution. The production build and independent rerun remain controller-owned.
+
+| Accumulated criterion | Final product regression authority |
+| --- | --- |
+| Distinct native draws, durable handoff and unambiguous selection | Real HTTP/rendered Overview draws use both saved seeds and assert the same outcome, distinct record IDs and both histories' provenance after file-backed restart. Unique Recent actions are asserted. Both seeds reach exact comparison from the picker; the Recent compare action and pasted download also reach terminal exact comparison. |
+| Native comparison snapshots, full manifest metadata, CLI nested artifact and rejection contracts | Whole producer-backed replay workflow and interpretation retain metadata-bearing CLI/Studio paste and Recent coverage, plus altered identity/hash/selection/results and conflicting artifact rejection. Service/routes retain canonical validation and runtime isolation. |
+| Unseeded/failed draw and inspect failure | Whole replay workflow retains unseeded inspection/export with disabled reproduction, no retention for failed draws, and failed Inspect without advancing to stale results. |
+| Payout recovery, pending Save revisions and durable exact generation | Whole Game Model and library durability files pass their deferred validation/write, payout correction and real publication/reopening regressions. |
+| PAR, short seeded simulation/report/public math parity and nonzero rare source | Whole bounded P9-07 integration passes workbook/model/play/simulation/exact/report/replay and positive UInt64 rare-source inspection. No math, probability or Node/WASM implementation changes. |
+| Cold understanding, frozen defaults/errors/terminology, real timings, clean affected browser retest and terminal cancellation/recovery | Prior independent receipts remain authoritative and immutable. Remaining independent obligations are controller/verifier work; these implementation regressions add no receipt, screenshot or action/finding reclassification. |
+
+Permitted foreground checks on this correction:
+
+- `npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/cli/studio-client/src/components/project/ReplayTab.test.tsx`
+  exited 0: three whole files, 161/161 tests, 74.531 s. The commit hook then
+  rejected a nested ternary; explicit branches replaced it. This same command
+  passed again on the final source: 161/161 tests, 70.493 s.
+- `npm run test:targeted -- tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio/OutcomeSourceProjectRoutes.test.ts tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx tests/cli/P907ValeraMathematician.integration.test.ts`
+  exited 0: five whole files, 106/106 tests, 137.320 s. Both runs use no
+  test-name filter and retain existing React `act` warnings.
+- `npm run typecheck` exited 0 before and after that lint correction, including
+  the Studio client compiler. The root
+  compiler and Studio production bundle consume the changed interpretation;
+  ReplayTab additionally belongs to the Studio compiler/bundle. No duplicate
+  standalone compiler or controller-owned `build-studio-client` gate ran.
+  CLI/package production builds, browser reruns and official gates were not run.
+- `git diff --check` passed; staged TypeScript must also pass the installed
+  ESLint pre-commit hook before submission. Only this P9-07 document is updated;
+  all prior-step evidence and external runtime receipts are preserved.

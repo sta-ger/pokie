@@ -1248,6 +1248,7 @@ export function ReplayTab({
                                         <Anchor
                                             component="button"
                                             type="button"
+                                            aria-label={`Inspect record ${entry.id}: ${describeReplayEntryLabel(entry)}`}
                                             onClick={() => {
                                                 switchSource("seedRound");
                                                 // Only mark it loaded once the fetch actually succeeds -- a
@@ -1258,19 +1259,20 @@ export function ReplayTab({
                                                     .catch(() => undefined);
                                             }}
                                         >
-                                        Inspect
+                                            Inspect record {entry.id}
                                         </Anchor>
                                         {isReplayListEntryReproducible(entry) ? (
                                             <Anchor
                                                 component="button"
                                                 type="button"
+                                                aria-label={`Reproduce & compare record ${entry.id}: ${describeReplayEntryLabel(entry)}`}
                                                 onClick={() => {
                                                     switchSource("artifact");
                                                     onCompareStored(entry.id);
                                                     markLoaded("artifact", false);
                                                 }}
                                             >
-                                            Reproduce &amp; compare
+                                                Reproduce &amp; compare record {entry.id}
                                             </Anchor>
                                         ) : (
                                             <Text size="sm" c="dimmed">

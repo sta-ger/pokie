@@ -665,8 +665,14 @@ export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
     const status = entry.source === "outcome-source-sample" && entry.status === "completed"
         ? "Recorded draw" : describeReplayEntryStatus(entry.status);
     const identity = `${entry.game?.id ?? "?"} round ${entry.round} — ${status}`;
-    if (entry.source !== "outcome-source-sample" && entry.outcomeSource === undefined) return identity;
-    const source = entry.outcomeSource === undefined ? "Outcome Library" : `Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`;
+    // Older summaries may have no native classification. Still expose the retained inputs and
+    // record identity; never guess the library from the currently opened project.
+    let source = "Source not recorded";
+    if (entry.outcomeSource !== undefined) {
+        source = `Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`;
+    } else if (entry.source === "outcome-source-sample") {
+        source = "Outcome Library";
+    }
     const outcome = entry.outcomeSource === undefined ? "" : ` · Outcome ${entry.outcomeSource.outcomeId}`;
     return `${identity} · ${source} · Seed ${entry.seed ?? "not recorded"} · Mode ${entry.modeName ?? "not recorded"}${outcome} · ${entry.startedAt} · Record ${entry.id}`;
 }

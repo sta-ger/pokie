@@ -263,7 +263,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         }
         expect(within(recentReplaysSection).getByText("Showing replays 201–250 of 250.")).toBeInTheDocument();
         expect(within(recentReplaysSection).getByText(/round 250 —/)).toBeInTheDocument();
-        await user.click(within(recentReplaysSection).getAllByRole("button", {name: "Inspect"})[49]);
+        await user.click(within(recentReplaysSection).getByRole("button", {name: /^Inspect record replay-249:/}));
         await waitFor(() => expect(inspectedLastReplay).toBe(true));
     });
 
@@ -803,8 +803,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // The gate only blocks *this pasted record's* Reproduce action -- a stored replay's own
         // Inspect/Reproduce-and-compare actions in Recent Replays stay fully available regardless.
         const recentReplaysSection = screen.getByText("Recent replays").closest("fieldset") as HTMLElement;
-        expect(within(recentReplaysSection).getByRole("button", {name: "Inspect"})).not.toBeDisabled();
-        expect(within(recentReplaysSection).getByRole("button", {name: "Reproduce & compare"})).not.toBeDisabled();
+        expect(within(recentReplaysSection).getByRole("button", {name: /^Inspect record /})).not.toBeDisabled();
+        expect(within(recentReplaysSection).getByRole("button", {name: /^Reproduce & compare record /})).not.toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete missing-state explanation and remediation for an incomplete record with no session state captured", async () => {
@@ -1278,7 +1278,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
         const recentReplaysSection = await screen.findByText("round 1 —", {exact: false}).then((el) => el.closest("fieldset") as HTMLElement);
 
-        await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
+        await user.click(within(recentReplaysSection).getByRole("button", {name: /^Inspect record bad:/}));
 
         // Subject-specific recovery copy, not the raw "That replay no longer exists." server text.
         expect(await within(recentReplaysSection).findByText(/The replay list could no longer be found\./)).toBeInTheDocument();
@@ -1819,17 +1819,17 @@ describe("P9-07 production native descriptors", () => {
         }
     }, 60000);
 
-    it.each(["recent", "download-paste"])("P9-07 draws through Overview, retains the result after restart and compares via %s", async (source) => {
+    it.each(["recent", "history", "download-paste"])("P9-07 draws through Overview, retains the result after restart and compares via %s", async (source) => {
         expect(await request("/api/project/replays")).toEqual([]);
         const user = userEvent.setup();
         let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         try {
-            await user.type(await screen.findByLabelText("Seed (optional)"), "valera-closure-1");
+            await user.type(await screen.findByLabelText("Seed (optional)"), "closure-library-a");
             await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
             const download = await screen.findByRole("link", {name: "Download draw replay JSON"});
             const url = download.getAttribute("href")!;
             const recorded = await request<ReplayDescriptor>(url);
-            expect(recorded.seed).toBe("valera-closure-1");
+            expect(recorded.seed).toBe("closure-library-a");
             expect(recorded.outcomeSource).toMatchObject({modeName: "base", round: 1, selectionAlgorithm: "derived-round-seed-v1"});
             expect(recorded.outcomeSource!.artifact!.provenance.game).toEqual({...GAME, description: "Tiny exact math model", author: "Mathematician"});
             const rounds = await request<StudioRuntimeSessionView[]>("/api/project/rounds");
@@ -1838,18 +1838,20 @@ describe("P9-07 production native descriptors", () => {
             await request("/api/project/replays/inspect-artifact", recorded);
             // A second draw makes the actual saved finding observable: round/status alone
             // cannot identify the first draw after reopening.
-            fireEvent.change(screen.getByLabelText("Seed (optional)"), {target: {value: "another-draw"}});
+            fireEvent.change(screen.getByLabelText("Seed (optional)"), {target: {value: "closure-library-b"}});
             await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
             await waitFor(() => expect(screen.getByRole("link", {name: "Download draw replay JSON"}).getAttribute("href")).not.toBe(url));
             const liveEntries = await request<StudioReplayListEntry[]>("/api/project/replays");
-            const savedEntry = liveEntries.find((entry) => entry.seed === "valera-closure-1")!;
+            const savedEntry = liveEntries.find((entry) => entry.seed === "closure-library-a")!;
+            const secondEntry = liveEntries.find((entry) => entry.seed === "closure-library-b")!;
             expect(liveEntries).toHaveLength(2);
+            expect(secondEntry.outcomeSource!.outcomeId).toBe(savedEntry.outcomeSource!.outcomeId);
             expect(savedEntry).toMatchObject({
                 game: recorded.game, source: "outcome-source-sample", round: 1, modeName: "base",
                 totalBet: recorded.totalBet, totalWin: recorded.totalWin,
                 outcomeSource: {libraryId: recorded.outcomeSource!.libraryId, libraryHash: recorded.outcomeSource!.libraryHash, outcomeId: recorded.outcomeSource!.outcomeId},
             });
-            const label = /round 1.*Recorded draw.*Library native-library.*Seed valera-closure-1.*Mode base/;
+            const label = /round 1.*Recorded draw.*Library native-library.*Seed closure-library-a.*Mode base/;
             // Navigate immediately: the draw callback refreshes the existing Replay list.
             await user.click(screen.getByRole("button", {name: "Replay"}));
             await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
@@ -1871,18 +1873,26 @@ describe("P9-07 production native descriptors", () => {
             expect(choice).toHaveTextContent(recorded.outcomeSource!.outcomeId);
             expect(choice).toHaveTextContent(savedEntry.id);
             expect(choice).toHaveTextContent(savedEntry.startedAt);
-            expect(within(picker).getByRole("button", {name: /Seed another-draw/})).toBeEnabled();
+            expect(within(picker).getByRole("button", {name: /Seed closure-library-b/})).toBeEnabled();
             const history = screen.getByText("Recent replays").closest("fieldset")!;
             expect(within(history).getByText(choice.textContent!)).toBeInTheDocument();
+            for (const entry of [savedEntry, secondEntry]) {
+                const inspect = within(history).getByRole("button", {name: new RegExp(`^Inspect record ${entry.id}:.*Library native-library.*Seed ${entry.seed}.*Mode base`)});
+                expect(inspect).toHaveTextContent(`Inspect record ${entry.id}`);
+                const compare = within(history).getByRole("button", {name: new RegExp(`^Reproduce & compare record ${entry.id}:.*Seed ${entry.seed}.*Mode base`)});
+                expect(compare).toHaveTextContent(`Reproduce & compare record ${entry.id}`);
+            }
             if (source === "recent") {
                 await user.click(choice);
+            } else if (source === "history") {
+                await user.click(within(history).getByRole("button", {name: new RegExp(`^Reproduce & compare record ${savedEntry.id}:`)}));
             } else {
                 fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
                 await user.click(screen.getByRole("button", {name: "Validate & load"}));
             }
             const reproduce = await screen.findByRole("button", {name: "Reproduce"});
             await waitFor(() => expect(reproduce).toBeEnabled());
-            expect(screen.getByText("Round 1, seed valera-closure-1.")).toBeInTheDocument();
+            expect(screen.getByText("Round 1, seed closure-library-a.")).toBeInTheDocument();
             await user.click(reproduce);
             await waitFor(() => {
                 if (!screen.queryByText("Match -- recorded and recreated results agree")) throw new Error(document.body.textContent ?? "No rendered result");
@@ -1891,6 +1901,16 @@ describe("P9-07 production native descriptors", () => {
             expect(dimensionRow("Selection inputs:")).toHaveTextContent("match");
             expect(dimensionRow("Selected outcome:")).toHaveTextContent("match");
             expect(dimensionRow("State transition:")).toHaveTextContent("not applicable");
+            if (source === "recent") {
+                // The second same-outcome record must load its own seed and reach comparison too.
+                await user.click(within(picker).getByRole("button", {name: new RegExp(`Record ${secondEntry.id}$`)}));
+                const secondReproduce = await screen.findByRole("button", {name: "Reproduce"});
+                await waitFor(() => expect(secondReproduce).toBeEnabled());
+                expect(screen.getByText("Round 1, seed closure-library-b.")).toBeInTheDocument();
+                await user.click(secondReproduce);
+                await waitFor(() => expect(dimensionRow("Selection inputs:")).toHaveTextContent("match"));
+                expect(screen.getByText("Match -- recorded and recreated results agree")).toBeInTheDocument();
+            }
         } finally {
             rendered.unmount();
         }

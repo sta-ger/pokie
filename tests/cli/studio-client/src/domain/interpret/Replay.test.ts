@@ -703,6 +703,20 @@ describe("describeReplayList", () => {
 });
 
 describe("describeReplayEntryLabel", () => {
+    it("keeps legacy summaries identifiable without inferring missing native provenance", () => {
+        const entry: StudioReplayListEntry = {
+            id: "legacy-draw-a", status: "completed", seed: "closure-library-a", modeName: "base",
+            round: 1, completedRounds: 1, startedAt: "2026-10-09T17:50:00Z", durationMs: 4,
+        };
+        const label = describeReplayEntryLabel(entry);
+        expect(label).toContain("Source not recorded");
+        expect(label).toContain("Seed closure-library-a · Mode base");
+        expect(label).toContain("Record legacy-draw-a");
+        expect(describeReplayEntryLabel({...entry, id: "legacy-draw-b"})).not.toBe(label);
+        expect(label).not.toContain("Recorded draw");
+        expect(describeReplayEntryLabel({...entry, seed: undefined, modeName: undefined})).toContain("Seed not recorded · Mode not recorded");
+    });
+
     it("distinguishes two retained draws even when selection inputs are identical", () => {
         const entry: StudioReplayListEntry = {
             id: "draw-1", status: "completed", source: "outcome-source-sample", game: {id: "tiny", name: "Tiny", version: "1"},
