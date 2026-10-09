@@ -89,7 +89,8 @@ const ALL_MODES = "all";
 const USAGE =
     "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
     `[--mode <betModeId>|${ALL_MODES}] [--out <file>] [--format json] ` +
-    "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]";
+    "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+    "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]";
 
 export class SimCommand implements CliCommandHandling {
     private readonly loadGame: (packageRoot: string) => Promise<PokieGame>;
@@ -163,7 +164,7 @@ export class SimCommand implements CliCommandHandling {
     }
 
     public getDescription(): string {
-        return "Run a simulation against a POKIE game package and report RTP/hit-frequency/max win.";
+        return "Simulate a POKIE game package, Blueprint, native outcome library or canonical WASM artifact and report RTP/hit-frequency/max win.";
     }
 
     public getCommanderCommand(): Command {
@@ -218,7 +219,7 @@ export class SimCommand implements CliCommandHandling {
     private buildCommand(): Command {
         return createCommanderCliCommand("sim")
             .description(this.getDescription())
-            .argument("<packageRoot>", "an existing POKIE game package, or a native outcome-library bundle (with --mode)")
+            .argument("<packageRoot>", "a POKIE game package, Blueprint, canonical WASM artifact, or native outcome-library bundle (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
             .option("--rounds <number>", `number of rounds to simulate (default: ${SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS})`, (value: string): number => {
                 const parsed = Number(value);
@@ -227,7 +228,7 @@ export class SimCommand implements CliCommandHandling {
                 }
                 return parsed;
             }, SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS)
-            .option("--seed <string>", "seed for a reproducible simulation (default: a random seed)")
+            .option("--seed <string>", "seed for a reproducible simulation (WASM default: pokie-wasm-simulation; package default: random)")
             .option(
                 "--workers <number>",
                 `number of parallel worker threads, 1-${MAX_SIMULATION_WORKERS} (default: 1)`,
@@ -281,6 +282,7 @@ export class SimCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
+            .addHelpText("after", "\nCanonical WASM: use --workers 1; --mode and adaptive convergence are unavailable.\nCompare with replay using the same explicit --seed and --round as simulation --rounds.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(async (packageRoot: string, excess: string[], rawOptions: SimCliOptions) => {
                 // An empty-string positional ("pokie sim ''") is present as far as Commander's own
                 // required-argument check is concerned, but the pre-Commander behavior this preserves

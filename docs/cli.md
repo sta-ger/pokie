@@ -29,9 +29,19 @@ npx pokie build slot.blueprint.json --target wasm --out game.wasm
 npx pokie game.wasm              # inspect its bound metadata and next actions
 npx pokie validate game.wasm
 npx pokie run game.wasm --seed demo
+npx pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json
+npx pokie replay game.wasm --round 6 --seed demo
 ```
 
 Canonical WASM artifacts also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component contract does not declare the local HTTP/server adapter required by the dev server. It validates the artifact binding and returns the normal capability diagnostic before loading a package or allocating a server.
+
+Use the same explicit seed for comparisons: run, sim and replay have different WASM defaults
+(`pokie-wasm-cli`, `pokie-wasm-simulation`, `pokie-wasm-replay`). `replay --round N` plays through N rounds,
+so its cumulative `totalBet`/`totalWin` match `sim --rounds N` with that seed and artifact. Repeated replay
+descriptors match after excluding `timestamp` and `durationMs`; repeated run output includes the same draw.
+WASM simulation requires `--workers 1` and does not accept `--mode` or adaptive convergence; WASM replay
+does not accept `--mode`. Omit replay `--out` when parsing stdout as JSON, or read the written JSON file:
+with `--out`, stdout also contains a destination notice.
 
 `npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
 
@@ -1585,6 +1595,9 @@ inside the package directory) runs [`pokie dev .`](#pokie-dev-packageroot) — t
 Loads a [game package](game-packages.md) with `loadPokieGame` and runs an [aggregate simulation](simulation.md)
 (`AggregateSimulationRunner`) against it, then reports RTP/hit-frequency/max-win statistics.
 
+The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a canonical WASM
+artifact. See the [WASM quick start](#wasm-quick-start) for the seeded single-worker comparison with replay.
+
 ```
 pokie sim ./sample-slot --rounds 10000 --seed demo --out report.json
 pokie sim ./sample-slot --rounds 1000000 --seed demo --workers 4 --out report.json
@@ -2135,6 +2148,11 @@ Failure modes:
 Best-effort replay of a single round, identified by `--seed`/`--round`, from a [game package](game-packages.md).
 This is the first foundation for POKIE replay — it does not (yet) reconstruct full session/RNG/audit state; see
 [Limitations](#limitations) below.
+
+The positional also accepts a Blueprint, a native Outcome Library (with `--mode`), or a canonical WASM
+artifact. Canonical WASM replay is deterministic and includes cumulative totals and portable continuation
+state where supported; the package limitations below apply to the package path. See the
+[WASM quick start](#wasm-quick-start) for matching seeds and round counts.
 
 ```
 pokie replay ./sample-slot --seed demo --round 42 --out replay.json
