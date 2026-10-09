@@ -177,6 +177,9 @@ export function SimulationTab({
             setActiveStep(1);
         }
         const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running" || prevStatusRef.current === "cancelling";
+        // A rejected submission has no durable progress. Keep the attempted
+        // configuration visible and editable beside its actionable error.
+        if (status === undefined && wasActive) setActiveStep(0);
         const nowTerminal = status === "completed" || status === "failed" || status === "cancelled" || status === "recovery-required";
         if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed"))) {
             setActiveStep(2);

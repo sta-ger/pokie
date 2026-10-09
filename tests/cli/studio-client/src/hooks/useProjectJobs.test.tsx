@@ -288,3 +288,114 @@ it("bounds a hung discovery request and reattaches without leaving deadline time
         jest.useRealTimers();
     }
 });
+
+
+describe("useProjectJobs control response ownership", () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+    const record = (status: StudioJobView["status"]) => job("job-a", "/project-a", status);
+    const response = (body: unknown) => ({ok: true, status: 200, json: () => Promise.resolve(body)});
+    const listPath = "/api/project/jobs";
+
+    it.each([
+        ["cancel", "list", "cancelling"], ["cancel", "detail", "cancelling"],
+        ["recover", "list", "running"], ["recover", "detail", "running"],
+        ["cancel", "list", "completed"], ["recover", "detail", "completed"],
+    ] as const)("retains the terminal and outputs observed by %s's pending %s request before its %s acknowledgment", async (action, observation, acknowledgmentStatus) => {
+        let current = record(action === "recover" ? "recovery-required" : "running");
+        const executionTime = action === "recover" ? 3 : current.createdAt;
+        const terminal: StudioJobView = {...record("completed"), createdAt: executionTime, completedAt: 5,
+            result: {summary: "Finished work", outputs: [{label: "Retained output", path: "/output/result.json"}]}};
+        let finishControl: (() => void) | undefined;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "POST") return new Promise((resolve) => {
+                finishControl = () => resolve(response({...record(acknowledgmentStatus), createdAt: executionTime}));
+            });
+            if (url === listPath) return Promise.resolve(response({jobs: [current]}));
+            if (url === `${listPath}/${current.id}`) return Promise.resolve(response(terminal));
+            throw new Error(`Unexpected request ${url}`);
+        };
+        const {result, unmount} = renderHook(() => useProjectJobs(fetchImpl, "/project-a", 1));
+        try {
+            await act(async () => {
+                await Promise.resolve();
+            });
+            act(() => result.current[action](current.id));
+            expect(finishControl).toBeDefined();
+            expect(result.current.pendingIds).toEqual([current.id]);
+            current = observation === "list" ? terminal : {...record("running"), createdAt: executionTime};
+            await act(async () => {
+                await result.current.refresh();
+            });
+            if (observation === "detail") {
+                await act(async () => {
+                    await jest.advanceTimersByTimeAsync(500);
+                });
+            }
+            expect(result.current.jobs[0]).toEqual(terminal);
+            expect(result.current.pendingIds).toEqual([current.id]);
+            await act(async () => {
+                finishControl?.();
+                await Promise.resolve();
+            });
+            expect(result.current.jobs[0]).toEqual(terminal);
+            expect(result.current.pendingIds).toEqual([]);
+            expect(result.current.actionError).toBeUndefined();
+        } finally {
+            unmount();
+        }
+    });
+
+    it("accepts an explicit same-ID resume response for a new execution and rejects the old execution's later discovery", async () => {
+        const retained = record("recovery-required");
+        const resumed: StudioJobView = {...retained, status: "running", createdAt: 3};
+        const fetchImpl: FetchLike = (_url, init) => Promise.resolve(response(init?.method === "POST" ? resumed : {jobs: [retained]}));
+        const {result, unmount} = renderHook(() => useProjectJobs(fetchImpl, "/project-a", 1));
+        try {
+            await act(async () => {
+                await Promise.resolve();
+            });
+            await act(async () => {
+                result.current.recover(retained.id);
+                await Promise.resolve();
+            });
+            expect(result.current.jobs[0]).toEqual(resumed);
+            await act(async () => {
+                await result.current.refresh();
+            });
+            expect(result.current.jobs[0]).toEqual(resumed);
+        } finally {
+            unmount();
+        }
+    });
+
+    it("rejects a delayed control acknowledgment from the execution preceding a discovered same-ID resume", async () => {
+        let current = record("running");
+        let finishControl: (() => void) | undefined;
+        const fetchImpl: FetchLike = (_url, init) => {
+            if (init?.method === "POST") return new Promise((resolve) => {
+                finishControl = () => resolve(response(record("cancelled")));
+            });
+            return Promise.resolve(response({jobs: [current]}));
+        };
+        const {result, unmount} = renderHook(() => useProjectJobs(fetchImpl, "/project-a", 1));
+        try {
+            await act(async () => {
+                await Promise.resolve();
+            });
+            act(() => result.current.cancel(current.id));
+            current = {...current, createdAt: 3};
+            await act(async () => {
+                await result.current.refresh();
+            });
+            expect(result.current.jobs[0]).toEqual(current);
+            await act(async () => {
+                finishControl?.();
+                await Promise.resolve();
+            });
+            expect(result.current.jobs[0]).toEqual(current);
+        } finally {
+            unmount();
+        }
+    });
+});

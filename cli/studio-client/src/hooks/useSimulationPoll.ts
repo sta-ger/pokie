@@ -52,6 +52,9 @@ export function useSimulationPoll() {
     const [terminalReceipt, setTerminalReceipt] = useState<SimulationTerminalReceipt>();
     const operationRef = useRef<SimulationOperation>("simulation");
     const currentJobId = useRef<string | undefined>(undefined);
+    // Discovery may attach only before this workflow has an owner. An explicit
+    // submission retains ownership even if acceptance fails without a job id.
+    const attachmentRef = useRef<"initial" | "restored" | "submitted">("initial");
     // A terminal view can outlive the in-memory job snapshot while a reload
     // or recovery reconciliation settles. Keep the real request that created
     // it so Retry remains a public operation, never a visible no-op.
@@ -156,6 +159,13 @@ export function useSimulationPoll() {
         stopPollRequest();
         stopCancelRequest();
         runGuardGenerationRef.current = generation;
+        attachmentRef.current = "submitted";
+        currentJobId.current = undefined;
+        setJob(undefined);
+        if (timeoutRef.current !== undefined) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = undefined;
+        }
         lastRequestRef.current = {rounds, seed, workers, modeName};
         operationRef.current = startedBy;
         setOperation(startedBy);
@@ -207,9 +217,10 @@ export function useSimulationPoll() {
      * durable recovery-required result rather than inventing completion.
      */
     function restore(id: string): void {
-        if (currentJobId.current !== undefined) {
+        if (attachmentRef.current !== "initial") {
             return;
         }
+        attachmentRef.current = "restored";
         const generation = generationRef.current + 1;
         generationRef.current = generation;
         currentJobId.current = id;
@@ -236,6 +247,7 @@ export function useSimulationPoll() {
         runGuard.end();
         cancelGuard.end();
         currentJobId.current = undefined;
+        attachmentRef.current = "initial";
         lastRequestRef.current = undefined;
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
@@ -321,5 +333,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, connectionError, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    return {progress, job, error, connectionError, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, canRestore: attachmentRef.current === "initial", currentJobId: currentJobId.current};
 }

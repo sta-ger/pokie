@@ -137,3 +137,38 @@ successful retry assertions remain intact. No production recovery behavior or
 browser assertions were changed. The same whole-file targeted run passes all
 13 tests. The preserved reviewer matrix, independent observation freeze and
 browser retests remain controller-owned and pending.
+
+## Response-ownership review correction
+
+The saved review of `3caa5226b1bee6983a4a4dac8e68826dc24e09e5` identified
+two additional source-informed defects. Before changing production code, the
+new regressions reproduced discovery superseding a pending simulation and
+delayed control acknowledgments replacing already observed results through
+both durable-job adapters. The rejected-Run path was traced from its cleared
+job ID to the dashboard's unconditional restoration effect.
+
+| Accumulated finding | Correction and focused closure |
+| --- | --- |
+| P909-RESTORE: retained history replaced an explicit pending or rejected submission | Simulation now distinguishes initial attachment, restored work and explicit submission. Only initial attachment permits discovery restoration; an explicit request retains ownership after rejection. Starting a Run clears the previous job projection immediately, and a rejection returns to Configure with the attempted values and actionable error visible. The dashboard workflow tests restore a completed report on mount and reopening, reject a new Run while retaining its attempted configuration, and discover older history during a pending Run without superseding the accepting job ID. The hook regression also preserves Retry's request parameters and operation receipt through pending discovery and a rejected start, then verifies restoration after a project reset. |
+| P909-CONTROL-ORDER: delayed Cancel/Resume acknowledgments regressed newer terminal observations | Controls reconcile with the latest state inside the state updater. A terminal from the same execution retains its full result and outputs, including when an older acknowledgment has the same terminal status but lacks output metadata. A later creation time still identifies a genuinely new same-ID checkpoint execution. Both Home and project suites cover list/detail terminal observation while Cancel/Resume is pending, explicit resume responses, old-execution discovery, and delayed old-execution control responses. |
+| Independent progress/recovery and keyboard/two-viewport observations | Still pending controller collection and freeze, followed by clean affected browser retests. These component/hook results do not close either immutable browser acceptance criterion. No prior-step evidence or frozen observations were changed. |
+
+The existing dashboard focus regression now waits for the rendered
+`Overview ready` receipt before assigning focus, rather than the earlier router
+location update. Its selected-task, retained-report, single-submission and
+focus-preservation assertions remain intact.
+
+Permitted final-tree checks completed successfully:
+
+```text
+npm run test:targeted -- tests/cli/studio-client/src/hooks/useProjectJobs.test.tsx tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx tests/cli/studio-client/src/hooks/useSimulationPoll.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.jobs.test.tsx
+5 suites passed; 88 tests passed; exit 0.
+npm run typecheck
+Root and Studio client compilers passed; exit 0.
+```
+
+The workflow suite emits React `act` diagnostics for asynchronous transitions
+and observation updates; all assertions pass. Production builds, independent
+observation collection, the post-freeze P909 browser execution, the preserved
+broader reviewer matrix and official gates remain controller-owned and pending.
+This is a committed implementation handoff, not a P9-09 audit closeout.

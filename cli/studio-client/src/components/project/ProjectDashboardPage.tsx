@@ -627,7 +627,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // recovery-required record is deliberately polled once: its vanished
     // executor must be represented as recovery-required, never as completed.
     useEffect(() => {
-        if (projectKey === undefined || simulation.currentJobId !== undefined) return;
+        if (projectKey === undefined || !simulation.canRestore) return;
         const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
         if (restorableSimulation !== undefined) {
             if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);

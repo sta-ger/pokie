@@ -62,6 +62,9 @@ describe("ProjectDashboardPage durable jobs", () => {
         await user.click(screen.getByRole("button", {name: "Overview"}));
         await waitFor(() => expect(router.state.location.pathname).toMatch(/\/overview$/));
         expect(await screen.findByText("simulation · Running")).toBeInTheDocument();
+        // Focus belongs to the rendered destination, after its navigation
+        // effect settles, rather than the router's earlier location update.
+        await screen.findByText("Overview ready");
         const copyControl = screen.getByRole("button", {name: "Close project"});
         copyControl.focus();
         completed = true;

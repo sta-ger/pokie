@@ -141,8 +141,14 @@ export function useDurableJobs(port: DurableJobsObserving, scope: string | undef
         request((signal) => port[action](id, signal)).then((job) => {
             if (token !== owner.current || revision !== revisions.current.get(id)) return;
             if (job.id !== id) throw new Error(`Studio returned a different job for ${id}.`);
-            // Control responses are authoritative, including explicit resume.
-            setJobs((previous) => previous.map((existing) => existing.id === id ? job : existing));
+            // Discovery/detail can observe completion while this acknowledgment
+            // is in flight. Retain that terminal and its outputs; a same-ID
+            // checkpoint resume is authoritative only for a newer execution.
+            setJobs((previous) => previous.map((existing) => {
+                if (existing.id !== id) return existing;
+                if (existing.createdAt === job.createdAt && !active(existing)) return existing;
+                return observed(existing, job);
+            }));
         }).catch((error: unknown) => {
             if (token === owner.current) setActionError(`Could not ${action === "cancel" ? "cancel" : "resume"} job ${id}. Work remains retained. Try again or reattach. ${errorMessage(error)}`);
         }).finally(() => {
