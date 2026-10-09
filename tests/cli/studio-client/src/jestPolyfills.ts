@@ -43,7 +43,8 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 // Mantine scrolls the active Combobox option into view after opening it. jsdom intentionally has no
 // layout engine and therefore does not implement this DOM method; a no-op keeps the real option
 // selection interaction usable in workflow tests without pretending to calculate layout.
-if (typeof Element.prototype.scrollIntoView !== "function") {
+// Production-browser tests override this project's jsdom environment with Node.
+if (typeof Element !== "undefined" && typeof Element.prototype.scrollIntoView !== "function") {
     Element.prototype.scrollIntoView = () => undefined;
 }
 

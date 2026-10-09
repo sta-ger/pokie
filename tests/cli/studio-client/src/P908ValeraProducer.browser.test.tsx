@@ -49,6 +49,11 @@ async function stop(child: ChildProcess | undefined): Promise<void> {
     }
 }
 
+it("loads the shared Studio test setup without supplying a simulated browser DOM", () => {
+    expect(typeof Element).toBe("undefined");
+    expect(typeof window).toBe("undefined");
+});
+
 it("saves an edited design, validates and plays it, then builds and reopens its real local package", async () => {
     const candidate = process.cwd();
     const overallDeadline = Date.now() + 180_000;

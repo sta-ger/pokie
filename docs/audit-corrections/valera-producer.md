@@ -59,6 +59,19 @@ builds/reopens the real package, checks read-only guidance, and plays a real rec
 It builds/packs nothing and cleans up its own processes and temporary state in bounded finally paths.
 This source-aware regression must not be supplied as a script to the initial cold collector.
 
+### Changed-test gate correction
+
+The saved direct-Jest failure was reproduced: the Node-environment production-browser regression
+inherits the component project's shared setup, which referenced `Element` unconditionally.
+Guard DOM-only scrolling and session-storage cleanup when the DOM is absent; jsdom keeps both.
+A focused assertion in the same browser test verifies that shared setup loads without a simulated DOM.
+
+`npm run test:targeted -- tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx`
+now passes that assertion and its cleanup, but the production journey fails at its unchanged asset
+precondition: this correction clone has no `dist/cli/pokie.js` or compiled Studio entry.
+No build was launched under the gate-fix command policy. The required suite and independent gate
+remain pending controller asset preparation and rerun; no cold-browser success is claimed.
+
 ## Pending independent evidence
 
 The controller must provide only the cold charter and working public entry to a fresh producer,
