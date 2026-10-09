@@ -6,8 +6,8 @@ Immutable brief: `sha256:4fd9e99e7a2f07b766a7146049831e2b3f0793792d740f5c69526ca
 
 **Acceptance remains pending.** The controller owns P9-VALERA-PRODUCER cold browser collection,
 production asset preparation, and independent affected retest. This worker inspected source and
-cannot supply blind observations. No rendered producer pass, cold-profile outcome, or screenshots
-have been produced here. No prior-step evidence was changed.
+cannot supply blind observations. No independent cold-collector outcome or screenshots have been
+produced here; the source-aware rendered regression is recorded below. No prior-step evidence changed.
 
 ## Supplied observations, before investigation
 
@@ -51,7 +51,7 @@ The BuildCommand regression actually executes the generated README's rebuild han
 packages and the original design survive. No official gate, packaging, or production build was launched.
 The worker policy rejects standalone Studio typecheck; the permitted root typecheck completed instead.
 
-`P908ValeraProducer.browser.test.tsx` is a prepared controller-owned regression, **unexecuted** here.
+`P908ValeraProducer.browser.test.tsx` is a source-aware regression, now **passed** in this correction.
 After initial observations are frozen, it requires the candidate's compiled CLI/UI, launches isolated
 Studio data/jobs/documents/runtime-cache state and a fresh Chromium profile, edits a payout through
 public controls, saves once, checks the persisted design and registry, validates/plays the design,
@@ -66,11 +66,21 @@ inherits the component project's shared setup, which referenced `Element` uncond
 Guard DOM-only scrolling and session-storage cleanup when the DOM is absent; jsdom keeps both.
 A focused assertion in the same browser test verifies that shared setup loads without a simulated DOM.
 
-`npm run test:targeted -- tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx`
-now passes that assertion and its cleanup, but the production journey fails at its unchanged asset
-precondition: this correction clone has no `dist/cli/pokie.js` or compiled Studio entry.
-No build was launched under the gate-fix command policy. The required suite and independent gate
-remain pending controller asset preparation and rerun; no cold-browser success is claimed.
+The prior correction run passed the setup assertion but failed because compiled assets were absent.
+The controller has since supplied the CLI/UI assets. Further fixture repairs preserve the native ESM
+transport import under ts-jest, deliver Ctrl+A with its virtual key code, locate disposable Documents
+outside `node_modules`, and verify the real recorded artifact screen rather than an optional public
+serializer field. The production child strips npm lifecycle/package metadata and INIT_CWD and owns
+its TMPDIR, so those fixture inputs are independent of the test launcher. Save failures retain their
+rendered state and actual HTTP response in test diagnostics.
+
+Passed: `npm run test:targeted -- tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx`
+(2 tests). The rendered journey changed a payout to 7, saved and registered exactly one design,
+validated and played it, built/reopened its compiled package, verified read-only guidance and the
+original design's survival, then played a real recorded package round. Cleanup completed. No build,
+packaging command, parent-review test or official gate was launched by this worker. This scripted
+regression does not replace the independent initial exploration or affected cold retest; the direct
+Jest gate rerun remains controller-owned.
 
 ## Pending independent evidence
 
