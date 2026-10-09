@@ -153,3 +153,36 @@ No packaging, coverage, project-wide or official gate, browser/CLI collector,
 or background work was launched. The complete campaign remains unproven until
 the controller-owned cold receipt, severity/correction ledger and clean affected
 retest close the open acceptance rows above.
+
+## Independent host-verifier supplement — 2026-10-09
+
+Candidate `67e61f40478946b0fb9db358705c5d60f7ffa309` was assessed through a
+new Studio registry/documents directory and Chromium profile, not through the
+historical record above. The first isolated initial pass ran from 10:53:51Z to
+10:54:27Z in
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-0fd604ea14fa3e6b/run-2026-10-09T10-53-51-402Z`.
+It reached creation, saved model edits, play, seeded simulation, replay, PAR
+export/reopen, and the rare source. Its exact-library control was correctly
+disabled after the collector itself had selected the displayed default
+high-cardinality reel mode (2,373,046,875 combinations against a 20,000,000
+cap). This was frozen as a collector-itinerary limitation, not a product
+failure; no rendered terminology, default, validation, or action-local error
+was observed.
+
+The clean fresh-profile affected rerun, from 10:59:17Z to 10:59:46Z in
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-0fd604ea14fa3e6b/run-2026-10-09T10-59-17-603Z`,
+kept the starter's literal strips small. It renamed a symbol, changed one reel
+stop and a paytable payout, then saved and reopened the Blueprint. It played a
+round, ran 10 rounds with seed `cold-seed`, and rendered RTP 0.00%, volatility
+0.00, and the explicit low-sample/no-win warnings; the collector recorded that
+those short-run metrics are not stable estimates. Its recorded round replayed.
+Exact generation then rendered 1,024 outcomes, RTP 135.94%, and a 1,323ms
+duration; the native Outcome Library report and a seed `library-seed` draw
+rendered a round artifact. PAR export rendered its one-way-snapshot boundary,
+then reopened read-only with `parsheet-provenance-present` and a matching
+recorded hash. The supplied `source-2` Stake source rendered RTP `1.08e-17%`,
+hit frequency `5.42e-18%`, and max win `2`, preserving a nonzero rare event.
+
+No P0, P1, or material P2 product finding remains from these bounded public
+flows. The machine-owned transcripts retain the three screenshots per run;
+none are committed. No product code or test was changed by this verifier.
