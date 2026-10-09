@@ -124,3 +124,16 @@ check:fast/full/release, packaging, coverage or workflow campaign is authorized
 here. The strict work report carries exact passing commands and outcomes from
 the final candidate. A done implementation report hands off a committed
 candidate; it does not close P9-09 or discharge future material findings.
+
+## Changed-test gate correction
+
+The saved dashboard gate failures were reproduced with
+`npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx`:
+three error-path assertions saw an additional connection alert because the
+fixture had no `/api/project/jobs` route. The shared dashboard fixture now
+answers project and Home discovery with the API's empty `{jobs: []}` response.
+The planner diagnostic, stale-validation removal, failed-close recovery and
+successful retry assertions remain intact. No production recovery behavior or
+browser assertions were changed. The same whole-file targeted run passes all
+13 tests. The preserved reviewer matrix, independent observation freeze and
+browser retests remain controller-owned and pending.
