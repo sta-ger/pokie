@@ -131,8 +131,8 @@ export function HomePage() {
             navigate("/home/design", {state: {initialParSheetPath: job.request.path, recoverParImport: true, recoveryRequest: job.request}});
             return;
         }
-        if ((job.operation === "design-build" || job.operation === "design-par-export") && typeof job.request.sourcePath === "string") {
-            navigate("/home/design", {state: {initialBlueprintPath: job.request.sourcePath, recoveryRequest: job.request}});
+        if ((job.operation === "design-build" || job.operation === "design-par-export") && (job.request.blueprint !== undefined || typeof job.request.sourcePath === "string")) {
+            navigate("/home/design", {state: {initialBlueprintPath: typeof job.request.sourcePath === "string" ? job.request.sourcePath : undefined, recoveryRequest: job.request}});
         }
     };
 
@@ -170,6 +170,11 @@ export function HomePage() {
         >
             <DesignNavigationGuardProvider value={navigationGuard}>
                 <Stack className="studio-page" gap="lg">
+                    <Text size="sm" c="dimmed">
+                        POKIE is a slot-game logic framework for JavaScript/TypeScript developers and game-math authors.
+                        Studio lets producers design, validate, and play games locally. Validation is structural;
+                        simulation estimates game math. Local artifacts do not deploy a game or certify it for real-money use.
+                    </Text>
                     <div id="home-design-panel" ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
                         <BlueprintEditorPage
                             guided

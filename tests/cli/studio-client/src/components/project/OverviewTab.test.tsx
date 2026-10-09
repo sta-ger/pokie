@@ -47,9 +47,9 @@ describe("OverviewTab", () => {
         expect(screen.queryByText("Registered")).not.toBeInTheDocument();
         expect(screen.queryByText(/Blueprint source/)).not.toBeInTheDocument();
 
-        expect(screen.getByText(/Open Play to spin a real round and find a win or free-games feature/)).toBeInTheDocument();
+        expect(screen.getByText(/Open Play to spin a real round/)).toBeInTheDocument();
         expect(screen.getByText(/Use Game Model to edit the saved layout, symbols, reels, paytable, and bets/)).toBeInTheDocument();
-        expect(screen.getByText(/generate an outcome library before exporting it for Stake Engine/)).toBeInTheDocument();
+        expect(screen.getByText(/Stake Engine export automatically plans outcome-library reuse or generation/)).toBeInTheDocument();
         await user.click(screen.getByRole("button", {name: "Open Play"}));
         expect(onOpenPlay).toHaveBeenCalledTimes(1);
 
@@ -58,6 +58,15 @@ describe("OverviewTab", () => {
         expect(screen.queryByText("Package name")).not.toBeInTheDocument();
         expect(screen.queryByText("Package version")).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Re-run Inspect"})).not.toBeInTheDocument();
+    });
+
+    it("keeps package editing guidance read-only and bounds structural validation", () => {
+        renderWithMantine(<OverviewTab header={header({type: "tsPackage", capabilities: ["runtime.execute"]})}
+            validation={VALIDATION_IDLE} onRevalidate={() => undefined} onOpenPlay={() => undefined} />);
+        expect(screen.getByText(/Game Model is read-only for this package; open the original Blueprint/)).toBeInTheDocument();
+        expect(screen.queryByText(/Use Game Model to edit/)).not.toBeInTheDocument();
+        expect(screen.getByText(/Structural validation checks the project contract/)).toBeInTheDocument();
+        expect(screen.getByText(/Read-only — this game can't be changed directly in Studio/)).toBeInTheDocument();
     });
 
     it("uses the same provenance language as Projects for games added from a computer", () => {

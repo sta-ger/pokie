@@ -10,6 +10,18 @@ npm install pokie
 
 POKIE ships both ESM and CJS builds plus type declarations, so it works from `import` or `require` in JS or TS.
 
+## Design and test in Studio
+
+Run `npx pokie` to open Home. Choose a starter, change its design, then **Create game** to save it and open
+its workspace. **Overview** checks structural validity; **Play** runs real local rounds. **Simulation** estimates
+RTP, and **Build/Export** writes a local package or another supported artifact. Saving a design, preparing its
+runtime, validating the project, and building an artifact are separate results. The saved Blueprint remains
+editable; an exported package is read-only in Studio. Keep the Blueprint for later design changes.
+
+POKIE serves developers and game-math authors; Studio provides a producer-facing local authoring/testing path.
+It does not provide mathematical certification or a casino backend. Delivering a game to an operator requires
+developer integration. See the [CLI reference](cli.md#pokie-projectroot) for launch and artifact commands.
+
 ## Play a round
 
 ```ts

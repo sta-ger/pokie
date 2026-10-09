@@ -29,18 +29,15 @@ validate → build → simulate → view a report — not around internal module
 **Home (`/home/:tab`)** — 2 tabs, both permanently mounted (hidden via CSS, never unmounted, so switching
 tabs never loses in-progress work):
 
-- **Design Game** (`/home/design`, the default) — the guided happy path: a New Blueprint dialog (Blank/Random/
-  from an existing file) starts a draft, then the same editor configures, validates, and builds it. Renders
-  `BlueprintEditorPage` in
-  `guided` mode: a `StepProgressList` (Configure → Validate → Build, a read-only status list — not a
-  `Stepper`, since there's nothing to click ahead to; see "Stepper vs. other step UI" below) and a
-  `NextStepCallout` next-step hint, both driven by the panel's own existing local validation state. JSON
-  mode and Load/Save-by-path are tucked
-  behind a "Show advanced options" disclosure — Build works directly off the in-memory blueprint, so neither
-  is required for the guided flow. A successful build's "Open in Studio" button (unchanged) is the bridge
-  into the Project Dashboard.
+- **Design Game** (`/home/design`, the default) — start from a recommended starter, blank design,
+  generated idea, or existing Blueprint. `BlueprintEditorPage` in `guided` mode checks the current
+  revision automatically; **Create game** saves/registers the design once and opens that saved workspace.
+  JSON, file load/save, and PAR import live behind **Show advanced options**. PAR Apply updates the draft.
+  Package and PAR artifact publication live in the saved workspace’s **Build/Export**, with destination
+  preflight and explicit terminal results. Home does not also publish an unsaved draft through Build Package.
+  Saving, runtime preparation, project validation, and building an artifact are distinct results.
 
-  The "Configure" step's own fields are grouped into 6 named sections — Game basics, Layout, Symbols,
+  The design fields are grouped into 6 named sections — Game basics, Layout, Symbols,
   Reels, Paytable, Bets — via `components/blueprintEditor/SectionedFormEditor.tsx`, a Mantine `Tabs`
   (`keepMounted keepMountedMode="display-none"`, so switching sections never loses an in-progress edit,
   and gives arrow-key navigation between sections for free) wrapping the *same* field components the
@@ -56,7 +53,7 @@ tabs never loses in-progress work):
   new `LayoutFieldset` (Game basics keeps only the manifest fields).
 
   The blueprint is dirty-tracked (`BlueprintEditorPage`'s `onDirtyChange`,
-  cleared on a fresh New/Load or a successful Save/Build) and guarded by one centralized mechanism,
+  cleared on a fresh New/Load or a successful Save) and guarded by one centralized mechanism,
   `hooks/useDesignNavigationGuard.ts`, used once in `HomePage`, which handles two distinct kinds of exit:
   - Transitions the router already knows about *before* they commit — browser Back/Forward and any in-app
     `navigate()` call are both just "history transitions" to a data router, blocked uniformly by a
@@ -85,15 +82,13 @@ tabs never loses in-progress work):
 
   Reload/tab-close is guarded separately by a native `beforeunload` listener, attached only while dirty.
   Switching between Home's own 2 tabs is never blocked by any of the above.
-- **Projects** (`/home/projects`) — every already-known project: managed (created/opened this Studio session,
-  in-memory only, reset on restart) and registered (persisted across restarts via
-  `StudioProjectRegistrationService`), plus **Import Project**, which previews/validates a target path before
+- **Projects** (`/home/projects`) — managed designs created in Studio and external projects added from
+  the computer, persisted across restarts via
+  `StudioProjectRegistrationService`, plus **Import Project**, which previews/validates a target path before
   ever registering it. A detected PAR sheet can be registered and opened into its own Build/Export dashboard
   to republish the workbook; it also retains a separate Design Game route for the guided PAR Sheet
-  Import/Export workflow. There is no
-  scaffolding/init/build-from-an-existing-blueprint-file surface in Studio any more — those flows now live only
-  in the CLI (`pokie init [directory]`, `pokie create [name]`); Home doesn't duplicate them, only imports what
-  they produce. The old, separate, always-mounted "raw" (non-`guided`) Blueprint Editor instance that used to
+  import/apply workflow. Package scaffolding remains a CLI developer workflow (`pokie init`); Home can
+  load an existing Blueprint into the same design editor. The old, separate, always-mounted "raw" (non-`guided`) Blueprint Editor instance that used to
   back that surface is gone too — Design Game's own JSON mode and Load/Save-by-path (behind its "Show advanced
   options" disclosure) already cover the same ground.
 
@@ -135,11 +130,10 @@ Dashboard passes `[projectName, activeTabLabel]`). Every page sets `document.tit
 users don't lose their place after a tab switch or a cross-page navigation.
 
 This redesign consolidated rather than merely relabeled: Home's old standalone scaffolding/init/build-from-file
-surface ("Advanced Tools") was removed outright — those flows now live only in the CLI. The Project Dashboard's
+surface ("Advanced Tools") was removed. Home loads/saves designs; the workspace owns artifact publication. The Project Dashboard's
 old Deployment and Stake Engine Export tabs moved to Build/Export cards; its old Outcome Libraries
 select-existing/inspect/compare task has no equivalent builder, so it recovers on Overview with explicit
-unavailable/CLI-comparison guidance. Everything else from before the redesign is still reachable, just
-re-labeled and de-emphasized relative to the primary flow.
+unavailable/CLI-comparison guidance. Existing CLI and API artifact compatibility routes remain available.
 
 Certification has one deliberate handoff. Studio owns source validation, evidence build, inspection, and
 manifest download; after a successful build it displays `pokie certification verify <certDir> --source

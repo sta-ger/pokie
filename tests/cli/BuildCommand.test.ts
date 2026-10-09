@@ -113,6 +113,31 @@ describe("BuildCommand", () => {
         expect(printed).toContain("Build running: Writing bundle (1/8)");
     });
 
+    it("emits a usable rebuild handoff that chooses a new output and preserves the saved design", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-producer-build-docs-"));
+        const source = path.join(root, "design.blueprint.json");
+        const output = path.join(root, "first-package");
+        const nextOutput = path.join(root, "next-package");
+        const original = JSON.stringify(fullBlueprint);
+        fs.writeFileSync(source, original);
+        try {
+            const command = new BuildCommand("1.3.0");
+            await expect(command.run([source, "--target", "tsPackage", "--out", output])).resolves.toBe(0);
+            const readme = fs.readFileSync(path.join(output, "README.md"), "utf8");
+            const handoff = readme.match(/`pokie build <config.json> ([^`]+)`/);
+            expect(handoff).not.toBeNull();
+            const args = handoff![1].replace("<new-directory>", nextOutput).split(" ");
+            await expect(command.run([source, ...args])).resolves.toBe(0);
+            expect(fs.existsSync(path.join(nextOutput, "dist/index.js"))).toBe(true);
+            expect(fs.readFileSync(source, "utf8")).toBe(original);
+            expect(fs.readFileSync(path.join(output, "README.md"), "utf8")).toBe(readme);
+            expect(readme).toContain("the local link is not portable");
+            expect(readme).not.toContain("--target .");
+        } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
     it("has the expected name and description", () => {
         const command = new BuildCommand("1.3.0");
 

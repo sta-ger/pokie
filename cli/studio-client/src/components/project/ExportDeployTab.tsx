@@ -59,7 +59,7 @@ import {PathInput} from "../common/PathInput";
 const GROUP_LABELS: Record<ExportDeployTargetKind, {legend: string; blurb: string}> = {
     outcomeLibrary: {
         legend: "Outcome libraries",
-        blurb: "Create the game outcomes used by the export and delivery options below.",
+        blurb: "Optional advanced outcome generation. Stake Engine export can automatically reuse or generate its outcome library.",
     },
     buildArtifact: {
         legend: "Build artifact",
@@ -1056,9 +1056,6 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     useEffect(() => () => {
         if (outcomeLibraryPollTimer.current !== undefined) clearTimeout(outcomeLibraryPollTimer.current);
     }, []);
-    useEffect(() => {
-        onFeatureOwnedOutcomeLibraryJobChange?.(featureOwnedOutcomeLibraryJobId);
-    }, [featureOwnedOutcomeLibraryJobId, onFeatureOwnedOutcomeLibraryJobChange]);
     useEffect(() => () => {
         onFeatureOwnedOutcomeLibraryJobChange?.(undefined);
     }, [onFeatureOwnedOutcomeLibraryJobChange]);
@@ -1184,6 +1181,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
     }, [fetchImpl]);
     const artifactCards = describeArtifactBuildTargetCards(artifactTargets);
     const cards = [...describeExportDeployTargetCards(deploymentTargets, artifactTargets), ...artifactCards];
+    const outcomeGeneratorVisible = cards.some((card) => card.kind === "outcomeLibrary" && card.supported);
+    useEffect(() => {
+        // A hidden/unavailable generator cannot replace the common durable job receipt.
+        onFeatureOwnedOutcomeLibraryJobChange?.(outcomeGeneratorVisible ? featureOwnedOutcomeLibraryJobId : undefined);
+    }, [featureOwnedOutcomeLibraryJobId, onFeatureOwnedOutcomeLibraryJobChange, outcomeGeneratorVisible]);
 
     // One registry-backed preview per supported artifactTarget (keyed by StudioArtifactTargetType), fetched
     // automatically as soon as artifactTargets reports it supported -- see ArtifactPreviewRunView's own doc
