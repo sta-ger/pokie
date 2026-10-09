@@ -1,4 +1,5 @@
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
 import {buildGameBuildInfo} from "pokie";
@@ -12,18 +13,34 @@ import type {ProjectDashboardContext} from "../../../cli/studio/ProjectDashboard
 import {StudioServer} from "../../../cli/studio/StudioServer.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";
 
-async function get(url: string): Promise<{status: number; body: unknown}> {
-    const response = await fetch(url);
-    return {status: response.status, body: await response.json()};
+function requestJson(url: string, method: "GET" | "POST", body?: unknown): Promise<{status: number; body: unknown}> {
+    // Each request needs its own connection: the executor intentionally holds the first response
+    // open while retries/conflicts are checked. Avoid fetch's process-wide pool across Jest realms.
+    return new Promise((resolve, reject) => {
+        const request = http.request(url, {method, agent: false, headers: {"Content-Type": "application/json"}}, (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("error", reject);
+            response.on("end", () => {
+                try {
+                    resolve({status: response.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8"))});
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        });
+        request.on("error", reject);
+        request.setTimeout(10_000, () => request.destroy(new Error(`${method} ${url} did not respond`)));
+        request.end(body === undefined ? undefined : JSON.stringify(body));
+    });
 }
 
-async function post(url: string, body: unknown): Promise<{status: number; body: unknown}> {
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body),
-    });
-    return {status: response.status, body: await response.json()};
+function get(url: string): Promise<{status: number; body: unknown}> {
+    return requestJson(url, "GET");
+}
+
+function post(url: string, body: unknown): Promise<{status: number; body: unknown}> {
+    return requestJson(url, "POST", body);
 }
 
 describe("StudioJobService executor bridge routes", () => {
@@ -363,36 +380,43 @@ describe("StudioJobService executor bridge routes", () => {
             sourcePath: path.join(aliasRoot, "source.blueprint.json"),
             outDir: path.join(aliasRoot, "nested", "out"),
         };
+        const result: Awaited<ReturnType<StudioBlueprintService["build"]>> = {
+            status: "ok", projectRoot: physicalRequest.outDir, manifest: blueprint.manifest, createdFiles: [],
+            buildInfo: buildGameBuildInfo(blueprint, "1.3.0", physicalRequest.sourcePath), warnings: [],
+        };
         const first = post(`${baseUrl}/api/home/blueprints/build`, physicalRequest);
-        // If preflight rejects or throws, surface the HTTP result instead of waiting for a timeout.
-        await expect(Promise.race([running.then(() => ({status: "running"})), first])).resolves.toEqual({status: "running"});
-        await expect(post(`${baseUrl}/api/home/blueprints/build`, aliasRequest)).resolves.toMatchObject({
-            status: 200,
-            body: {status: "error", activeJobId: "bridge-job", reattached: true},
-        });
-        await expect(post(`${baseUrl}/api/home/blueprints/build`, {
-            ...aliasRequest,
-            blueprint: {...blueprint, rows: 4},
-        })).resolves.toMatchObject({
-            status: 409,
-            body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
-        });
-        await expect(post(`${baseUrl}/api/home/blueprints/build`, {
-            ...physicalRequest,
-            sourcePath: path.join(physicalRoot, "independent-source.blueprint.json"),
-        })).resolves.toMatchObject({
-            status: 409,
-            body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
-        });
-        expect(build).toHaveBeenCalledTimes(1);
-        expect(build).toHaveBeenCalledWith(blueprint, physicalRequest.outDir, physicalRequest.sourcePath, expect.any(AbortSignal));
-        expect(jobs.list()).toMatchObject([{
-            projectId: `design:${physicalRequest.sourcePath}`,
-            conflictKey: `design-destination:${physicalRequest.outDir}`,
-            status: "running",
-        }]);
-
-        release?.({status: "ok", projectRoot: physicalRequest.outDir, manifest: blueprint.manifest, createdFiles: [], buildInfo: buildGameBuildInfo(blueprint, "1.3.0", physicalRequest.sourcePath), warnings: []});
+        try {
+            // If preflight rejects or throws, surface the HTTP result instead of waiting for a timeout.
+            await expect(Promise.race([running.then(() => ({status: "running"})), first])).resolves.toEqual({status: "running"});
+            await expect(post(`${baseUrl}/api/home/blueprints/build`, aliasRequest)).resolves.toMatchObject({
+                status: 200,
+                body: {status: "error", activeJobId: "bridge-job", reattached: true},
+            });
+            await expect(post(`${baseUrl}/api/home/blueprints/build`, {
+                ...aliasRequest,
+                blueprint: {...blueprint, rows: 4},
+            })).resolves.toMatchObject({
+                status: 409,
+                body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
+            });
+            await expect(post(`${baseUrl}/api/home/blueprints/build`, {
+                ...physicalRequest,
+                sourcePath: path.join(physicalRoot, "independent-source.blueprint.json"),
+            })).resolves.toMatchObject({
+                status: 409,
+                body: {activeJobId: "bridge-job", recovery: {action: "retry"}},
+            });
+            expect(build).toHaveBeenCalledTimes(1);
+            expect(build).toHaveBeenCalledWith(blueprint, physicalRequest.outDir, physicalRequest.sourcePath, expect.any(AbortSignal));
+            expect(jobs.list()).toMatchObject([{
+                projectId: `design:${physicalRequest.sourcePath}`,
+                conflictKey: `design-destination:${physicalRequest.outDir}`,
+                status: "running",
+            }]);
+        } finally {
+            // A failed retry assertion must still release the held executor before server.stop().
+            release?.(result);
+        }
         await expect(first).resolves.toMatchObject({status: 201, body: {status: "ok", projectRoot: physicalRequest.outDir}});
         expect(jobs.get(`design:${physicalRequest.sourcePath}`, "bridge-job")).toMatchObject({
             status: "completed",
