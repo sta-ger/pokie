@@ -1,69 +1,54 @@
 # P9-08 — independent Valera producer audit
 
-Candidate: `d1fce0b92ce72284d1adb93f29d40781a4bf4353` (the checked-out
-candidate). Collected on 2026-10-09 from a new Studio registry, managed
-Documents directory, and Chromium profile. This is an interactive cold
-collection, not a scripted browser route.
+Candidate: `f4655fc882caee398fb32c17950ca58f35c5dbcf`. Collected on
+2026-10-09 from a new Studio registry, managed Documents directory, and
+Chromium profile. This is an interactive cold collection, not a scripted
+browser route.
 
 ## Frozen initial observation
 
-The public entry describes POKIE Studio as a local tool for JavaScript/
-TypeScript slot-game developers and game-math authors. It says that Studio can
-design, validate, and play games locally, while structural validation and
-simulation do not establish mathematical balance, deployment, or real-money
-certification. That gave a credible and appropriately bounded producer task:
-make a small game and play one real round.
+The public entry identifies POKIE Studio as a local tool for JavaScript/
+TypeScript slot-game developers and game-math authors. It says Studio can
+design, structurally validate, simulate, and play games locally; it also says
+that local artifacts neither deploy games nor certify them for real-money use.
 
-I used the ready-to-edit starter, renamed it **Valera Mini Slot**, waited for
-its visible valid state, and selected **Create game**. Studio opened a saved
-workspace at `valera-mini-slot`, showed a completed
-`project-open-materialization` operation, the local blueprint location,
-structural validity, and a next action to play. In Play, I started one play
-session and spun once. The action's local terminal state was **Round complete**
-with a 10.00 win, two rendered paylines, and 1009 credits.
+I renamed the ready-to-edit starter **Valera Test Slot**, waited for the
+visible valid state, and selected **Create game**. Studio opened a named saved
+workspace, showed a completed `project-open-materialization` operation, the
+local blueprint location, structural validity, and a useful next action to
+play. I created one Play session and spun one real round. Its accepted
+`Spinning…` state reached **Round complete**, with a 6.00 total win, credits
+from 1000 to 1005, rendered reel symbols and line wins, and an inspectable
+round artifact.
 
-The visible route was coherent: edit → structural validation → saved local
-workspace → play session → settled round. The product also gave useful next
-actions (model editing, simulation, replay, and Build/Export) without
-pretending that they certify or deploy the game. No P0, P1, or material P2
-confusion, duplicate artifact route, dead end, or misleading completion/limit
-claim was observed.
+Build/Export then presented local TypeScript, PAR, and WASM outputs with
+destinations and preflight states; optional outcome generation was marked as
+such. Remote delivery was explicitly shown as not configured. The observed
+route—edit, validate, save, play, then review next actions and limits—was
+coherent. No duplicate public workflow, dead end, false completion, or
+P0/P1/material-P2 trust or clarity finding was observed.
 
-One click on the Overview **Open Play** call-to-action left its rendered view
-unchanged. I did not resend it. The separately rendered **Play** tab then
-opened the ready Play surface and the subsequent session and spin completed.
-There is no candidate-local terminal failure tying that isolated response to
-the product, so it is retained as driver/selector uncertainty rather than a
-product finding.
-
-Reached: audience and limitations; a single small design edit; automatic
-structural validation; local saved output; a named next action; and a real
-settled play result. Not reached by design: detailed model editing,
-simulation, replay, export/build, advanced file/JSON tools, and documentation.
-Those are outside this one natural producer journey, rather than omitted
-claims of coverage. No material finding was observed, so no affected-path
-product retest was required.
+Reached: audience and limitations; one small design edit; automatic structural
+validation; saved local project; one settled round; and public next actions.
+Not reached by design: detailed model editing, simulation, replay, running an
+export, file/JSON tools, and documentation. This is one natural producer
+journey, not a full-surface matrix.
 
 ## Retained bounded evidence
 
-- Frozen initial observations:
-  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-08-4bd5030caa61d6ed/run-2026-10-09T20-59-28-631Z/frozen-initial.json`
+- Frozen initial observation:
+  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-08-200f12cfa1c018be/run-2026-10-09T21-18-34-432Z/frozen-initial.json`
 - Completed interactive transcript:
-  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-08-4bd5030caa61d6ed/run-2026-10-09T20-59-28-631Z/transcript.json`
-- Screenshots (two, from the ready Play state and its settled result):
-  `1-observation.png`, `2-observation.png` in that same run directory.
+  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-08-200f12cfa1c018be/run-2026-10-09T21-18-34-432Z/transcript.json`
+- Two representative screenshots are retained beside that transcript.
 
-The transcript records the candidate identity, new config/documents paths,
-actual decisions and rendered results. SHA-256 values at closeout:
+SHA-256 at closeout:
 
 ```
-frozen-initial.json  47fea335151e1060552cde1ffbb5d41add9bfc9eeda14f64c34e45ddb418b8ff
-transcript.json      a002b2662a8c30140104fe4806d2e3bb2088836344ffb6411ef44a86e13f3f2d
-1-observation.png    ade8714d24e55facc5d9619fbd39ed1786adef2adce3f3e2d026c4dd9508d014
-2-observation.png    c92607961a3e273e71ac5571a0f6463d6cfe798980fe479ef385fd0e8b878b85
+frozen-initial.json  70e04321b39a25f96eb4964c078cba93e8cd12d2f752ef5ad76a47e384b113d9
+transcript.json      13cb1c56e73efbede71fdd343e88f01239a33995849d57b7acbce307c2ee58e3
+1-observation.png    0b262e4f86e0fe840e0af4da1fb7bcf4b6c7cb7c297c865f266f6ca09058df59
+2-observation.png    f5a89784fbbf1de1eec81ee7cfb0f6878f0a4dabad9028b4d400c9cdc998f6fa
 ```
 
-No targeted test files were required by the persisted request. The post-freeze
-reviewer hand-off was read only after freezing and matched this candidate and
-`P9-08`; its requested cold evidence is satisfied by the bounded collection
-above.
+No targeted test files were required by the persisted request.
