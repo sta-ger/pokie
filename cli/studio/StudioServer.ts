@@ -41,6 +41,7 @@ import {
     STAKE_ENGINE_EXPORT_OPERATION,
     SIM_OPERATION,
     STUDIO_OPERATION,
+    toCanonicalJson,
     VALIDATE_OPERATION,
 } from "pokie";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
@@ -2884,6 +2885,9 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
+        const project = this.projectDashboard.project;
+        const projectRoot = this.currentContext.projectRoot;
+
         const body = await this.readJsonBody(req);
         let validated;
         try {
@@ -2900,8 +2904,9 @@ export class StudioServer implements StudioServerHandling {
             validated.seed !== undefined
                 ? new SeededWeightedOutcomeRandomSource(deriveDeterministicSeed(validated.seed, 1))
                 : new SecureWeightedOutcomeRandomSource();
-        const result = await sampleOutcomeSourceProject(this.projectDashboard.project, validated.modeName, randomSource);
+        const result = await sampleOutcomeSourceProject(project, validated.modeName, randomSource);
         let replay: PreGeneratedRoundReplayDescriptor | undefined;
+        let replayId: string | undefined;
         if (result.supported) {
             if (validated.seed !== undefined) {
                 const startedAt = Date.now();
@@ -2926,9 +2931,11 @@ export class StudioServer implements StudioServerHandling {
                     durationMs: 0,
                 };
             }
-            this.recordOutcomeSourceSample(result.selection.outcome.artifact, this.currentContext.projectRoot, validated.seed, validated.modeName, replay);
+            const recorded = this.replayService.recordOutcomeSourceSample(projectRoot, result.selection.outcome.artifact, validated.modeName, replay);
+            replayId = recorded.id;
+            this.recordOutcomeSourceSample(result.selection.outcome.artifact, projectRoot, validated.seed, validated.modeName, replay, recorded.descriptor!.sessionId);
         }
-        this.sendJson(res, 200, replay === undefined ? result : {...result, replay});
+        this.sendJson(res, 200, {...result, ...(replay === undefined ? {} : {replay}), ...(replayId === undefined ? {} : {replayId})});
     }
 
     // Records a "Sample" draw into the shared round history exactly like every other round-producing
@@ -2945,9 +2952,10 @@ export class StudioServer implements StudioServerHandling {
         seed: string | undefined,
         modeName: string,
         replay?: PreGeneratedRoundReplayDescriptor,
+        sessionId?: string,
     ): void {
         const view: StudioRuntimeSessionView = {
-            sessionId: crypto.randomUUID(),
+            sessionId: sessionId ?? crypto.randomUUID(),
             game: artifact.provenance.game,
             bet: artifact.stake,
             win: artifact.totalWin,
@@ -3582,7 +3590,7 @@ export class StudioServer implements StudioServerHandling {
             }
             const outerMismatches: string[] = [];
             const compareOuter = (field: string, outerValue: unknown, recordedValue: unknown): void => {
-                if (outerValue !== undefined && JSON.stringify(outerValue) !== JSON.stringify(recordedValue)) {
+                if (outerValue !== undefined && JSON.stringify(toCanonicalJson(outerValue)) !== JSON.stringify(toCanonicalJson(recordedValue))) {
                     outerMismatches.push(field);
                 }
             };
@@ -3605,7 +3613,11 @@ export class StudioServer implements StudioServerHandling {
                 this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
                 return;
             }
-            this.sendJson(res, 200, {round: validated.round, seed: validated.seed, modeName: recorded.modeName, outcomeSource: recorded, artifactWarnings});
+            // Normalize the real nested artifact only after verification against the opened library.
+            this.sendJson(res, 200, {
+                round: validated.round, seed: validated.seed, modeName: recorded.modeName, outcomeSource: recorded,
+                artifact: new PokieJsonRoundArtifactProjector<string | number>().project(recorded.artifact!), artifactWarnings,
+            });
             return;
         }
 

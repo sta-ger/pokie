@@ -2,6 +2,7 @@ import {
     describeReplayCapabilities,
     describeReplayComparison,
     describeReplayEntryStatus,
+    describeReplayEntryLabel,
     describeReplayList,
     describeReplayProgress,
     describeReplayReproducibility,
@@ -701,6 +702,38 @@ describe("describeReplayList", () => {
     });
 });
 
+describe("describeReplayEntryLabel", () => {
+    it("keeps legacy summaries identifiable without inferring missing native provenance", () => {
+        const entry: StudioReplayListEntry = {
+            id: "legacy-draw-a", status: "completed", seed: "closure-library-a", modeName: "base",
+            round: 1, completedRounds: 1, startedAt: "2026-10-09T17:50:00Z", durationMs: 4,
+        };
+        const label = describeReplayEntryLabel(entry);
+        expect(label).toContain("Source not recorded");
+        expect(label).toContain("Seed closure-library-a · Mode base");
+        expect(label).toContain("Record legacy-draw-a");
+        expect(describeReplayEntryLabel({...entry, id: "legacy-draw-b"})).not.toBe(label);
+        expect(label).not.toContain("Recorded draw");
+        expect(describeReplayEntryLabel({...entry, seed: undefined, modeName: undefined})).toContain("Seed not recorded · Mode not recorded");
+    });
+
+    it("distinguishes two retained draws even when selection inputs are identical", () => {
+        const entry: StudioReplayListEntry = {
+            id: "draw-1", status: "completed", source: "outcome-source-sample", game: {id: "tiny", name: "Tiny", version: "1"},
+            seed: "valera-closure-1", round: 1, modeName: "base", completedRounds: 1,
+            startedAt: "2026-10-09T17:07:00Z", durationMs: 3,
+            outcomeSource: {libraryId: "tiny-base", libraryHash: "hash-A", outcomeId: "outcome-A"},
+        };
+        const label = describeReplayEntryLabel(entry);
+        expect(label).toContain("tiny round 1 — Recorded draw");
+        expect(label).toContain("Library tiny-base (hash-A) · Seed valera-closure-1 · Mode base · Outcome outcome-A");
+        expect(label).toContain("2026-10-09T17:07:00Z · Record draw-1");
+        expect(describeReplayEntryLabel({...entry, id: "draw-2"})).not.toBe(label);
+        expect(describeReplayEntryLabel({...entry, seed: undefined, outcomeSource: undefined})).toContain("Outcome Library · Seed not recorded · Mode base");
+        expect(describeReplayEntryLabel({...entry, source: undefined})).toContain("Reproduced");
+    });
+});
+
 describe("describeReplayEntryStatus", () => {
     it("maps every StudioReplayStatus to a plain, honest-about-recreation label", () => {
         expect(describeReplayEntryStatus("queued")).toBe("Queued to reproduce");
@@ -965,5 +998,112 @@ describe("describeStudioRoundOperation", () => {
 
     it("falls back to Unknown only for a genuinely unrecognized operation", () => {
         expect(describeStudioRoundOperation(undefined)).toBe("Unknown");
+    });
+});
+
+
+describe("P9-07 recorded native-library contract", () => {
+    function libraryRecord(): ComparableReplayResult {
+        const artifact = createArtifact();
+        const nativeArtifact = {...artifact};
+        Reflect.deleteProperty(nativeArtifact, "hash");
+        return {
+            seed: "library-seed", round: 1, modeName: "base", artifact,
+            outcomeSource: {
+                game: artifact.provenance.game!, libraryId: "library-1", libraryHash: "actual-library-hash",
+                modeName: "base", selectionAlgorithm: "derived-round-seed-v1", seed: "library-seed", round: 1,
+                outcomeId: "outcome-1", weight: 1, totalWin: 5, payoutMultiplier: 5, stake: 1,
+                screen: artifact.screen, artifact: nativeArtifact, timestamp: 1, durationMs: 1,
+            },
+        };
+    }
+
+    it("requires library provenance instead of invented session snapshots and excludes clocks", () => {
+        const recorded = libraryRecord();
+        const recreated = libraryRecord();
+        recreated.outcomeSource!.timestamp = 999;
+        recreated.outcomeSource!.durationMs = 99;
+        expect(describeReplayReproducibility(recorded, recorded.outcomeSource!.game)).toEqual({status: "ready"});
+        const comparison = describeReplayComparison(recorded, recreated);
+        expect(comparison.status).toBe("match");
+        expect(comparison.dimensions.source?.status).toBe("match");
+        expect(comparison.dimensions.selection?.status).toBe("match");
+        expect(comparison.dimensions.recordedResult?.status).toBe("match");
+        expect(comparison.dimensions.state.status).toBe("notApplicable");
+        expect(comparison.dimensions.rngReelStops.status).toBe("notApplicable");
+        expect(comparison.recorded.versionHash).toContain("actual-library-hash");
+        expect(comparison.recorded.completeness).not.toContain("Partial");
+    });
+
+    it.each(["libraryId", "libraryHash", "modeName", "selectionAlgorithm", "seed", "round", "outcomeId", "weight", "totalWin", "payoutMultiplier", "stake", "screen", "game", "artifact"])(
+        "missing %s blocks library availability and prevents an exact comparison", (field) => {
+            const recorded = libraryRecord();
+            Reflect.deleteProperty(recorded.outcomeSource!, field);
+            expect(describeReplayReproducibility(recorded, undefined).status).toBe("blocked");
+            expect(describeReplayComparison(recorded, libraryRecord()).status).not.toBe("match");
+        },
+    );
+
+    it.each(["libraryId", "libraryHash", "outcomeId", "weight", "seed", "round", "modeName", "totalWin", "payoutMultiplier", "stake", "screen", "game", "selectionAlgorithm"])(
+        "changed %s cannot match even with an identical round-artifact hash", (field) => {
+            const recorded = libraryRecord();
+            const recreated = libraryRecord();
+            const source = recreated.outcomeSource as unknown as Record<string, unknown>;
+            if (typeof source[field] === "number") {
+                source[field] = 2;
+            } else if (field === "screen") {
+                source[field] = [["different"]];
+            } else {
+                source[field] = "different";
+            }
+            expect(describeReplayComparison(recorded, recreated).status).not.toBe("match");
+        },
+    );
+
+    it.each([{seed: "other-seed"}, {round: 2}, {modeName: "other-mode"}])("compares internally valid selection inputs %j", (patch) => {
+        const recorded = libraryRecord();
+        const recreated = {...libraryRecord(), ...patch};
+        Object.assign(recreated.outcomeSource!, patch);
+        expect(describeReplayReproducibility(recreated, undefined).status).toBe("ready");
+        expect(describeReplayComparison(recorded, recreated).dimensions.selection?.status).toBe("mismatch");
+    });
+
+    it("rejects absent reproduced provenance and inconsistent outer seed/round/mode", () => {
+        const recorded = libraryRecord();
+        expect(describeReplayComparison(recorded, {...libraryRecord(), outcomeSource: undefined}).status).not.toBe("match");
+        for (const patch of [{seed: "other"}, {round: 2}, {modeName: "other"}]) {
+            expect(describeReplayReproducibility({...recorded, ...patch}, undefined).status).toBe("blocked");
+        }
+        expect(describeReplayReproducibility({...recorded, outcomeSource: undefined}, undefined).status).toBe("blocked");
+    });
+
+    it("accepts nested-only CLI artifacts and rejects reduced or contradictory game metadata", () => {
+        const recorded = libraryRecord();
+        const game = {...recorded.outcomeSource!.game!, description: "Exact model", author: "Mathematician"};
+        recorded.artifact = {...recorded.artifact!, provenance: {...recorded.artifact!.provenance, game}};
+        recorded.outcomeSource!.game = game;
+        recorded.outcomeSource!.artifact = {...recorded.outcomeSource!.artifact!, provenance: {...recorded.outcomeSource!.artifact!.provenance, game}};
+        const cli = {...recorded, artifact: undefined};
+        expect(describeReplayReproducibility(cli, game).status).toBe("ready");
+        expect(describeReplayComparison(cli, recorded).status).toBe("match");
+        for (const field of ["description", "author", "id", "name", "version"]) {
+            const reduced = JSON.parse(JSON.stringify(cli)) as ComparableReplayResult;
+            Reflect.deleteProperty(reduced.outcomeSource!.game!, field);
+            expect(describeReplayReproducibility(reduced, game).status).toBe("blocked");
+            expect(describeReplayComparison(reduced, recorded).status).not.toBe("match");
+        }
+    });
+
+    it("does not replace an explicitly malformed outer artifact with a valid nested artifact", () => {
+        const recorded = {...libraryRecord(), artifact: null} as unknown as ComparableReplayResult;
+        expect(describeReplayReproducibility(recorded, undefined).status).toBe("blocked");
+        expect(describeReplayComparison(recorded, libraryRecord()).status).toBe("unavailable");
+    });
+
+    it("rejects a provenance artifact that differs from the loaded result", () => {
+        const recorded = libraryRecord();
+        recorded.outcomeSource!.artifact = createArtifact({totalWin: 9});
+        expect(describeReplayReproducibility(recorded, undefined).status).toBe("blocked");
+        expect(describeReplayComparison(recorded, libraryRecord()).status).not.toBe("match");
     });
 });

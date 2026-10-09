@@ -204,6 +204,27 @@ describe("StudioServer outcome-source project routes", () => {
             expect(entries[0].replay).toEqual(expect.objectContaining({modeName: "base", seed: "studio-sample-seed", round: 1}));
         });
 
+        it.each(["valera-library-42", undefined])("P9-07 retains the actual draw in Replay Recent and downloads (seed %s)", async (seed) => {
+            const bundleDir = await buildNativeLibraryDir();
+            await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
+            const sampled = await post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base", seed});
+            const result = sampled.body as {replayId: string; replay?: unknown; selection: {outcome: {artifact: import("pokie").RoundArtifact}}};
+            const recent = await get(`${baseUrl}/api/project/replays`);
+            expect(recent.body).toEqual([expect.objectContaining({id: result.replayId, status: "completed", round: 1, modeName: "base"})]);
+            const downloaded = await get(`${baseUrl}/api/project/replays/${result.replayId}/download`);
+            expect(downloaded.status).toBe(200);
+            expect(downloaded.body).toMatchObject({
+                seed: seed ?? null, round: 1, game: result.selection.outcome.artifact.provenance.game,
+                totalWin: result.selection.outcome.artifact.totalWin, totalBet: result.selection.outcome.artifact.stake,
+                artifact: result.selection.outcome.artifact,
+            });
+            expect(downloaded.body).not.toHaveProperty("stateBefore");
+            expect(downloaded.body).not.toHaveProperty("stateAfter");
+            if (seed) expect(downloaded.body).toHaveProperty("outcomeSource", result.replay);
+            else expect(downloaded.body).not.toHaveProperty("outcomeSource");
+            expect(loadGame).not.toHaveBeenCalled();
+        });
+
         it("uses one derived-round descriptor for seeded simulation, Recent Rounds, exact replay, and stale artifact inspection", async () => {
             const bundleDir = await buildNativeLibraryDir();
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});

@@ -1,7 +1,7 @@
 import type {
+    OutcomeSourceReplayDescriptorView,
     ReplayDescriptor,
     RoundArtifact,
-    RoundArtifactJson,
     StudioReplayJobView,
     StudioReplayListEntry,
     StudioReplayStatus,
@@ -161,7 +161,8 @@ function formatScreenCell(cell: unknown): string {
 export type ComparisonDimensionResult =
     | {status: "match"}
     | {status: "mismatch"; detail: string}
-    | {status: "unavailable"; reason: string};
+    | {status: "unavailable"; reason: string}
+    | {status: "notApplicable"; reason: string};
 
 export type ReplayComparisonDimensions = {
     screen: ComparisonDimensionResult;
@@ -171,6 +172,9 @@ export type ReplayComparisonDimensions = {
     featureEvents: ComparisonDimensionResult;
     state: ComparisonDimensionResult;
     rngReelStops: ComparisonDimensionResult;
+    source?: ComparisonDimensionResult;
+    selection?: ComparisonDimensionResult;
+    recordedResult?: ComparisonDimensionResult;
 };
 
 export type ReplayComparisonView = {
@@ -197,7 +201,11 @@ export type ReplayComparisonView = {
 // actually live in at the call site (ProjectDashboardPage.tsx), keeping this module decoupled from that
 // tab's own view-model types.
 export type ComparableReplayResult = {
-    artifact?: RoundArtifactJson;
+    outcomeSource?: OutcomeSourceReplayDescriptorView;
+    seed?: string;
+    round?: number;
+    modeName?: string;
+    artifact?: RoundArtifact & {readonly hash?: string};
     // Non-empty when the server's RoundArtifactValidator flagged the "expected" side's nested artifact
     // as structurally malformed (see StudioServer.handleInspectReplayArtifact) — round/seed alone can
     // still be valid enough to attempt a replay even when this is non-empty (the two-tier split
@@ -234,6 +242,9 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
     if (provenanceGame?.id && provenanceGame.version) {
         versionHashParts.push(`${provenanceGame.id} v${provenanceGame.version}`);
     }
+    if (side.outcomeSource) {
+        versionHashParts.push(`library ${side.outcomeSource.libraryId}, hash ${side.outcomeSource.libraryHash}`);
+    }
     if (side.artifact?.hash) {
         versionHashParts.push(`hash ${side.artifact.hash}`);
     }
@@ -243,6 +254,8 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
         completeness = `Incomplete -- artifact is malformed: ${side.artifactWarnings.join(" ")}`;
     } else if (side.artifact === undefined) {
         completeness = "Minimal -- no round artifact recorded for this side.";
+    } else if (side.outcomeSource !== undefined) {
+        completeness = describeLibraryRecordIssue(side) ?? "Full -- library source, selection inputs and recorded result; no live session snapshots.";
     } else if (side.stateBefore === undefined || side.stateAfter === undefined) {
         completeness = "Partial -- round artifact recorded, but no session state captured.";
     } else if (extractDeterministicReelStops(side.artifact.debug) === undefined) {
@@ -262,7 +275,16 @@ function describeComparisonSide(role: "recorded" | "recreated", side: Comparable
     };
 }
 
+// Public native CLI descriptors store the authoritative round under outcomeSource.artifact.
+// Preserve an outer artifact when present so contradictory duplicates still fail validation.
+// A nested artifact has no projector hash; do not manufacture one on the client.
+export function resolveReplayArtifact(record: Pick<ComparableReplayResult, "artifact" | "outcomeSource">): ComparableReplayResult["artifact"] {
+    return record.artifact === undefined ? record.outcomeSource?.artifact : record.artifact;
+}
+
 export function describeReplayComparison(expected: ComparableReplayResult, reproduced: ComparableReplayResult): ReplayComparisonView {
+    expected = {...expected, artifact: resolveReplayArtifact(expected)};
+    reproduced = {...reproduced, artifact: resolveReplayArtifact(reproduced)};
     const recorded = describeComparisonSide("recorded", expected);
     const recreated = describeComparisonSide("recreated", reproduced);
 
@@ -270,7 +292,7 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
         const unavailableReason = `Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
-    if (expected.artifact === undefined || reproduced.artifact === undefined) {
+    if (!isDebugObject(expected.artifact) || !isDebugObject(reproduced.artifact)) {
         const unavailableReason = "No round artifact is available on one or both sides to compare.";
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
     }
@@ -297,6 +319,38 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
         state: compareStatePair(expected.stateBefore, expected.stateAfter, reproduced.stateBefore, reproduced.stateAfter),
         rngReelStops: compareRngReelStopsDimension(expectedArtifact.debug, reproducedArtifact.debug),
     };
+
+    if (expected.outcomeSource !== undefined || reproduced.outcomeSource !== undefined) {
+        const issue = describeLibraryRecordIssue(expected) ?? describeLibraryRecordIssue(reproduced);
+        if (issue) {
+            const unavailable: ComparisonDimensionResult = {status: "unavailable", reason: issue};
+            dimensions.source = unavailable;
+            dimensions.selection = unavailable;
+            dimensions.recordedResult = unavailable;
+        } else {
+            const a = expected.outcomeSource!;
+            const b = reproduced.outcomeSource!;
+            dimensions.source = compareDimension(
+                {game: a.game, libraryId: a.libraryId, libraryHash: a.libraryHash},
+                {game: b.game, libraryId: b.libraryId, libraryHash: b.libraryHash},
+                isDebugObject, (left, right) => deepEqualJson(left, right) ? undefined : "Library identity, hash or game provenance differs.",
+            );
+            dimensions.selection = compareDimension(
+                {mode: a.modeName, algorithm: a.selectionAlgorithm, seed: a.seed, round: a.round},
+                {mode: b.modeName, algorithm: b.selectionAlgorithm, seed: b.seed, round: b.round},
+                isDebugObject, (left, right) => deepEqualJson(left, right) ? undefined : "Library selection inputs differ.",
+            );
+            dimensions.recordedResult = compareDimension(
+                {id: a.outcomeId, weight: a.weight, stake: a.stake, win: a.totalWin, multiplier: a.payoutMultiplier, screen: a.screen},
+                {id: b.outcomeId, weight: b.weight, stake: b.stake, win: b.totalWin, multiplier: b.payoutMultiplier, screen: b.screen},
+                isDebugObject, (left, right) => deepEqualJson(left, right) ? undefined : "Selected outcome or recorded result differs.",
+            );
+            // Library draws have no live session state or runtime RNG/reel-stop trace.
+            // Their deterministic contract is checked above, never synthesized as snapshots.
+            dimensions.state = {status: "notApplicable", reason: "Library draws have no live session state."};
+            dimensions.rngReelStops = {status: "notApplicable", reason: "Library selection inputs are compared instead."};
+        }
+    }
 
     const values = Object.values(dimensions);
     const hasMismatch = values.some((dimension) => dimension.status === "mismatch");
@@ -379,6 +433,10 @@ function extractDeterministicReelStops(debug: Record<string, unknown> | undefine
     return debug.reelStops;
 }
 
+function isDebugObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isFiniteNumber(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value);
 }
@@ -408,8 +466,8 @@ function deepEqualJson(a: unknown, b: unknown, depth = 0): boolean {
     return false;
 }
 
-function screensEqual(a: readonly (readonly (string | number)[])[], b: readonly (readonly (string | number)[])[]): boolean {
-    if (a.length !== b.length) {
+function screensEqual(a: readonly (readonly unknown[])[], b: readonly (readonly unknown[])[]): boolean {
+    if (!Array.isArray(a) || !Array.isArray(b) || !a.every(Array.isArray) || !b.every(Array.isArray) || a.length !== b.length) {
         return false;
     }
     return a.every((row, rowIndex) => {
@@ -445,8 +503,38 @@ export type ReplayReproducibilityGate =
     | {status: "bestEffort"; reason: string}
     | {status: "blocked"; reason: string; remediation: string};
 
+// Stored jobs are typed DTOs; pasted downloads enter through server inspection. Still guard
+// both boundaries so missing/hand-edited provenance can never acquire an exact-match verdict.
+function describeLibraryRecordIssue(record: ComparableReplayResult): string | undefined {
+    const source = record.outcomeSource;
+    if (!source || !isDebugObject(source) ||
+        ![source.libraryId, source.libraryHash, source.modeName, source.seed, source.outcomeId].every((value) => typeof value === "string" && value.trim().length > 0) ||
+        source.selectionAlgorithm !== "derived-round-seed-v1" ||
+        !Number.isSafeInteger(source.round) || source.round < 1 ||
+        !Number.isSafeInteger(source.weight) || source.weight <= 0 ||
+        !isFiniteNumber(source.totalWin) || !isFiniteNumber(source.payoutMultiplier) ||
+        !isFiniteNumber(source.stake) || source.stake <= 0 || !Array.isArray(source.screen) ||
+        !source.game?.id || !source.game.name || !source.game.version || !source.artifact || !resolveReplayArtifact(record)) {
+        return "Incomplete library source, selection provenance or recorded result. Restore the original downloaded descriptor and open its original library.";
+    }
+    const artifact = resolveReplayArtifact(record)!;
+    if (source.seed !== record.seed || source.round !== record.round || source.modeName !== record.modeName ||
+        !deepEqualJson(source.game, artifact.provenance?.game) ||
+        source.stake !== artifact.stake || source.totalWin !== artifact.totalWin || source.payoutMultiplier !== artifact.payoutMultiplier ||
+        !screensEqual(source.screen, artifact.screen)) {
+        return "Library provenance does not agree with the loaded seed, round, mode or recorded artifact. Restore the original downloaded descriptor.";
+    }
+    if (source.artifact !== undefined) {
+        const {hash: _hash, ...outerArtifact} = artifact;
+        if (!deepEqualJson(source.artifact, outerArtifact)) {
+            return "Library recorded artifact does not agree with its selection provenance. Restore the original downloaded descriptor.";
+        }
+    }
+    return undefined;
+}
+
 export function describeReplayReproducibility(
-    expected: {seed?: string; artifact?: RoundArtifactJson; stateBefore?: unknown; stateAfter?: unknown},
+    expected: ComparableReplayResult,
     currentGame: {id: string; version: string} | undefined,
 ): ReplayReproducibilityGate {
     if (expected.seed === undefined || expected.seed.trim().length === 0) {
@@ -457,6 +545,18 @@ export function describeReplayReproducibility(
             remediation:
                 'Add a "seed" field with the original seed to the pasted artifact JSON before reproducing, or use it for inspection only (skip Reproduce and go straight to Inspect via Recent Replays).',
         };
+    }
+
+    if (expected.outcomeSource !== undefined) {
+        const issue = describeLibraryRecordIssue(expected);
+        if (issue) {
+            return {status: "blocked", reason: issue, remediation: "Load the original download or Recent replay with complete library provenance."};
+        }
+        const game = expected.outcomeSource.game!;
+        if (currentGame && (game.id !== currentGame.id || game.version !== currentGame.version)) {
+            return {status: "blocked", reason: "The recorded library belongs to a different game build.", remediation: "Open the original library project before reproducing."};
+        }
+        return {status: "ready"};
     }
 
     const provenanceGame = expected.artifact?.provenance?.game;
@@ -544,9 +644,8 @@ function dedupeReplayListEntries(entries: StudioReplayListEntry[]): StudioReplay
 
 // Plain, human-readable status for a "Recent replays" entry -- the raw StudioReplayStatus enum
 // ("completed", "cancelled", ...) is job-execution vocabulary, not honest about what this list actually
-// is: every entry here is a *recreated* replay session, never a genuinely recorded one (see
-// describeLoadedReplay's own "Recorded" vs "Recreated" distinction below) -- "Reproduced"/"Reproduction
-// failed" say so plainly instead of implying a generic background job.
+// is. These labels describe fresh reproductions; describeReplayEntryLabel distinguishes retained
+// Overview draws from those reproductions.
 const REPLAY_ENTRY_STATUS_LABEL: Record<StudioReplayStatus, string> = {
     queued: "Queued to reproduce",
     running: "Reproducing…",
@@ -559,6 +658,23 @@ const REPLAY_ENTRY_STATUS_LABEL: Record<StudioReplayStatus, string> = {
 
 export function describeReplayEntryStatus(status: StudioReplayStatus): string {
     return REPLAY_ENTRY_STATUS_LABEL[status];
+}
+
+// Both Recent surfaces expose the same retained provenance before a user selects a record.
+export function describeReplayEntryLabel(entry: StudioReplayListEntry): string {
+    const status = entry.source === "outcome-source-sample" && entry.status === "completed"
+        ? "Recorded draw" : describeReplayEntryStatus(entry.status);
+    const identity = `${entry.game?.id ?? "?"} round ${entry.round} — ${status}`;
+    // Older summaries may have no native classification. Still expose the retained inputs and
+    // record identity; never guess the library from the currently opened project.
+    let source = "Source not recorded";
+    if (entry.outcomeSource !== undefined) {
+        source = `Library ${entry.outcomeSource.libraryId} (${entry.outcomeSource.libraryHash})`;
+    } else if (entry.source === "outcome-source-sample") {
+        source = "Outcome Library";
+    }
+    const outcome = entry.outcomeSource === undefined ? "" : ` · Outcome ${entry.outcomeSource.outcomeId}`;
+    return `${identity} · ${source} · Seed ${entry.seed ?? "not recorded"} · Mode ${entry.modeName ?? "not recorded"}${outcome} · ${entry.startedAt} · Record ${entry.id}`;
 }
 
 // Whether "Reproduce & compare" from this exact "Recent replays" entry can ever produce anything
@@ -691,7 +807,7 @@ export type LoadedReplayInput =
     | {source: "spin"; spin: StudioRuntimeSessionView; canExport: boolean}
     | {
           source: "artifact";
-          expected: {seed?: string; artifact?: RoundArtifactJson};
+          expected: ComparableReplayResult;
           reproducibility?: ReplayReproducibilityGate;
           result?: ReplayResultView;
           comparison?: ReplayComparisonView;
@@ -828,7 +944,7 @@ export function describeStudioRoundOperation(operation: StudioRuntimeSessionView
 }
 
 function describeLoadedArtifact(
-    expected: {seed?: string; artifact?: RoundArtifactJson},
+    expected: ComparableReplayResult,
     reproducibility: ReplayReproducibilityGate | undefined,
     result: ReplayResultView | undefined,
     comparison: ReplayComparisonView | undefined,
@@ -842,11 +958,16 @@ function describeLoadedArtifact(
     if (expected.artifact?.hash) {
         versionHashParts.push(`hash ${expected.artifact.hash}`);
     }
+    if (expected.outcomeSource) {
+        versionHashParts.push(`library ${expected.outcomeSource.libraryId}, hash ${expected.outcomeSource.libraryHash}`);
+    }
     let completeness: string;
     if (reproducibility === undefined) {
         completeness = "(not yet validated)";
     } else if (reproducibility.status === "ready") {
-        completeness = "Full -- seed, provenance, state, and RNG trace all recorded.";
+        completeness = expected.outcomeSource
+            ? "Full -- library source, selection inputs and recorded result; no live session snapshots."
+            : "Full -- seed, provenance, state, and RNG trace all recorded.";
     } else if (reproducibility.status === "bestEffort") {
         completeness = "Partial -- seed, provenance, and state recorded, but no RNG/reel-stop trace (best-effort reproduction only).";
     } else {

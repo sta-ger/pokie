@@ -23,4 +23,8 @@ export type StudioReplayListEntry = {
     // The real outcome-library mode this job replayed -- see StudioReplayJobRecord's own doc comment.
     // Undefined for an ordinary "tsPackage"/"blueprint" replay.
     modeName?: string;
+    // A settled Overview draw is recorded, rather than a fresh reproduction.
+    source?: "outcome-source-sample";
+    // Selection provenance only; the full artifact remains on the detail/download endpoint.
+    outcomeSource?: {libraryId: string; libraryHash: string; outcomeId: string};
 };

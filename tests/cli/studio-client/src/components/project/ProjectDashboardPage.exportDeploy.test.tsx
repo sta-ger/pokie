@@ -1521,12 +1521,13 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText(/Generation was cancelled at 12 \/ 27/)).toBeInTheDocument();
         await waitFor(() => expect(preflightTokens.length).toBeGreaterThan(2));
         await waitFor(() => expect(screen.getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled());
+        const retryPreflightToken = preflightTokens.at(-1);
 
         await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
 
         expect(await screen.findByText(/Generated 27 outcomes for mode "base" using exact/)).toBeInTheDocument();
         expect(starts).toHaveLength(2);
-        expect(starts[1].preflightToken).toBe(preflightTokens.at(-1));
+        expect(starts[1].preflightToken).toBe(retryPreflightToken);
         expect(starts[1].preflightToken).not.toBe(starts[0].preflightToken);
     });
 

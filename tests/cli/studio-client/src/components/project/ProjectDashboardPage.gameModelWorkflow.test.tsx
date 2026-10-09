@@ -585,6 +585,141 @@ function sectionFieldset(legend: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Game Model tab editing", () => {
+    it.each(["invalid", "save"])("P9-07 locks every section edit and protects dirty work through delayed %s completion", async (completion) => {
+        const user = userEvent.setup();
+        let releaseValidation: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        let releaseSave: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+        let savedBlueprint = {...RAW_BLUEPRINT, paytable: {A: {3: 5}}};
+        const routes = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {...fullProjection(), paytable: {status: "available", data: [{symbolId: "A", matchCount: 3, payout: savedBlueprint.paytable.A[3]}]}}}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", blueprint: savedBlueprint, blueprintHash: "h1", path: "/games/a"}}),
+        });
+        const writes: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/home/blueprints/validate") return new Promise((resolve) => {
+                releaseValidation = resolve;
+            });
+            if (url === "/api/home/blueprints/save") {
+                savedBlueprint = JSON.parse(init!.body!).blueprint as typeof savedBlueprint;
+                writes.push(savedBlueprint);
+                return new Promise((resolve) => {
+                    releaseSave = resolve;
+                });
+            }
+            return routes.fetchImpl(url, init);
+        };
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const paytable = sectionFieldset("Paytable");
+        await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+        const payout = await within(paytable).findByLabelText("A x3 payout");
+        await user.clear(payout);
+        await user.type(payout, "7");
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        await waitFor(() => expect(releaseValidation).toBeDefined());
+        const assertLockedAndProtected = async () => {
+            expect(payout).toBeDisabled();
+            expect(within(paytable).getByRole("button", {name: "Add payout"})).toBeDisabled();
+            expect(within(paytable).getByRole("button", {name: "Cancel"})).toBeDisabled();
+            expect(screen.getAllByRole("button", {name: "Edit"}).every((button) => button.matches(":disabled"))).toBe(true);
+            await user.type(payout, "9");
+            expect(payout).toHaveValue("7");
+            const event = new Event("beforeunload", {cancelable: true});
+            window.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(true);
+            await user.click(screen.getByRole("button", {name: "Play"}));
+            await screen.findByText("You have unsaved changes to this game model section. Leave and lose them?");
+            await user.click(screen.getByRole("button", {name: "Stay"}));
+            expect(router.state.location.pathname).toMatch(/\/gameModel$/);
+        };
+        await assertLockedAndProtected();
+        if (completion === "invalid") {
+            await act(() => Promise.resolve(releaseValidation!(jsonResponse({status: "invalid", errors: [{code: "blueprint-paytable-invalid-multiplier", severity: "error", message: "Rejected submitted payout"}], warnings: []}))));
+            expect(await within(paytable).findByText(/Rejected submitted payout/)).toBeVisible();
+            expect(payout).toBeEnabled();
+            expect(writes).toHaveLength(0);
+            await user.clear(payout);
+            await user.type(payout, "8");
+            expect(within(paytable).queryByText(/Rejected submitted payout/)).not.toBeInTheDocument();
+            expect(payout).toHaveValue("8");
+        } else {
+            await act(() => Promise.resolve(releaseValidation!(jsonResponse({status: "ok", warnings: []}))));
+            await waitFor(() => expect(releaseSave).toBeDefined());
+            await assertLockedAndProtected();
+            expect(savedBlueprint.paytable.A[3]).toBe(7);
+            await act(() => Promise.resolve(releaseSave!(jsonResponse({status: "ok", path: "/games/a", blueprintHash: "h2"}))));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(writes).toHaveLength(1);
+            expect(within(paytable).getByText("7")).toBeVisible();
+            const event = new Event("beforeunload", {cancelable: true});
+            window.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+            await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+            expect(await within(paytable).findByLabelText("A x3 payout")).toHaveValue("7");
+        }
+    });
+
+    it.each(["save", "discard"])("P9-07 clears stale payout diagnostics during correction and preserves validated saved truth (%s)", async (finish) => {
+        const user = userEvent.setup();
+        let savedBlueprint = {...RAW_BLUEPRINT, paytable: {A: {3: 5}}};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {
+                ...fullProjection(), paytable: {status: "available", data: [{symbolId: "A", matchCount: 3, payout: savedBlueprint.paytable.A[3]}]},
+            }}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: savedBlueprint, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": ({init}) => {
+                const blueprint = JSON.parse(init!.body!).blueprint as typeof savedBlueprint;
+                return {ok: true, status: 200, body: blueprint.paytable.A[3] > 0
+                    ? {status: "ok", warnings: []}
+                    : {status: "invalid", errors: [{code: "blueprint-paytable-invalid-multiplier", severity: "error", message: '"paytable.A.3" must be a positive number.'}], warnings: []}};
+            },
+            "/api/home/blueprints/save": ({init}) => {
+                savedBlueprint = JSON.parse(init!.body!).blueprint as typeof savedBlueprint;
+                return {ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}};
+            },
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const paytable = sectionFieldset("Paytable");
+        await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+        const payout = await within(paytable).findByLabelText("A x3 payout");
+        await user.clear(payout);
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        expect(await within(paytable).findByText(/blueprint-paytable-invalid-multiplier/)).toBeVisible();
+        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+        expect(savedBlueprint.paytable.A[3]).toBe(5);
+
+        // Keep focus in the repaired field, matching the saved browser observation. Diagnostics
+        // about the rejected revision must disappear before any blur or another Save action.
+        await user.type(payout, "7");
+        expect(payout).toHaveFocus();
+        expect(within(paytable).queryByText(/blueprint-paytable-invalid-multiplier/)).not.toBeInTheDocument();
+        expect(savedBlueprint.paytable.A[3]).toBe(5);
+        if (finish === "save") {
+            await user.click(within(paytable).getByRole("button", {name: "Save"}));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(savedBlueprint.paytable.A[3]).toBe(7);
+            const validated = calls.filter((call) => call.url === "/api/home/blueprints/validate");
+            expect(validated).toHaveLength(2);
+            expect(JSON.parse(validated[1].init!.body!).blueprint).toEqual(savedBlueprint);
+            expect(calls.filter((call) => call.url === "/api/home/blueprints/save")).toHaveLength(1);
+            expect(within(paytable).getByText("7")).toBeVisible();
+        } else {
+            await user.click(within(paytable).getByRole("button", {name: "Cancel"}));
+            await screen.findByText("Discard your unsaved changes to this section?");
+            await user.click(screen.getByRole("button", {name: "Confirm"}));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(savedBlueprint.paytable.A[3]).toBe(5);
+            expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+            expect(within(paytable).getByText("5")).toBeVisible();
+        }
+        await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+        expect(await within(paytable).findByLabelText("A x3 payout")).toHaveValue(finish === "save" ? "7" : "5");
+        expect(within(paytable).queryByText(/blueprint-paytable-invalid-multiplier/)).not.toBeInTheDocument();
+    });
+
     it("shows required metadata and the recommended default reel mode while editing the Game Model", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

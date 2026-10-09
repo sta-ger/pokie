@@ -1,3 +1,17 @@
+/** @jest-environment-options {"customExportConditions": ["node", "node-addons"]} */
+import fs from "fs";
+import http from "http";
+import os from "os";
+import path from "path";
+import {generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter} from "pokie";
+import {ReplayCommand} from "../../../../../../cli/commands/ReplayCommand.js";
+import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService.js";
+import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/StudioBlueprintService.js";
+import {StudioProjectRegistrationService} from "../../../../../../cli/studio/StudioProjectRegistrationService.js";
+import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStudioJobRepository.js";
+import {StudioJobService} from "../../../../../../cli/studio/jobs/StudioJobService.js";
+import {StudioServer} from "../../../../../../cli/studio/StudioServer.js";
+import {buildFixtureGame} from "../../../../../weightedoutcome/generate/GenerateTestFixtures.js";
 import {fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
@@ -114,6 +128,83 @@ function dimensionRow(label: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Replay & Debug workflow", () => {
+    it.each(["paste", "recent"])("P9-07 compares a recorded library download through %s without session snapshots", async (source) => {
+        const user = userEvent.setup();
+        const recorded = descriptorFor();
+        const nativeArtifact = {...recorded.artifact!};
+        Reflect.deleteProperty(nativeArtifact, "hash");
+        recorded.outcomeSource = {
+            game: GAME, libraryId: "native-library", libraryHash: "native-content-hash", modeName: "base",
+            selectionAlgorithm: "derived-round-seed-v1", seed: "demo-seed", round: 1,
+            outcomeId: "weighted-outcome", weight: 2, totalWin: 5, payoutMultiplier: 5,
+            stake: 1, screen: recorded.screen!, artifact: nativeArtifact, timestamp: 1, durationMs: 1,
+        };
+        // Real native descriptors carry a round artifact but no live session state or reel trace.
+        expect(recorded.stateBefore).toBeUndefined();
+        expect(recorded.stateAfter).toBeUndefined();
+        let recreated = {...recorded, sessionId: "fresh-session"};
+        let validatedSource: ReplayDescriptor["outcomeSource"] = recorded.outcomeSource;
+        let omitStoredSource = false;
+        const requests: unknown[] = [];
+        const {fetchImpl} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/context": () => ({ok: true, status: 200, body: {
+                status: "outcome-source", projectRoot: "/games/a",
+                project: {type: "outcomeLibrary", rootPath: "/games/a", capabilities: ["outcomeSource.sample"], provenance: "outcome-library-manifest"},
+                report: {rootPath: "/games/a", descriptor: {kind: "native", streaming: true, limitations: []}, issues: [],
+                    modes: [{modeName: "base", analysis: {totalWeight: 4, rtp: 1, hitFrequency: 0.5, zeroWinFrequency: 0.5, variance: 1, standardDeviation: 1, maxRatio: 2, maxWinProbability: 0.5}}]},
+            }}),
+            "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "demo-seed", modeName: "base", outcomeSource: validatedSource, artifact: validatedSource ? recorded.artifact : undefined, artifactWarnings: []}}),
+            "/api/project/replays/stored-library": () => ({ok: true, status: 200, body: jobFor("stored-library", {descriptor: omitStoredSource ? {...recorded, outcomeSource: undefined} : recorded, modeName: "base"})}),
+            "/api/project/replays": (call) => {
+                if (call.init?.method === "POST") {
+                    requests.push(JSON.parse(call.init.body ?? "{}"));
+                    return {ok: true, status: 201, body: jobFor("library-reproduction", {status: "queued", completedRounds: 0})};
+                }
+                return {ok: true, status: 200, body: [listEntryFor("stored-library")]};
+            },
+            "/api/project/replays/library-reproduction": () => ({ok: true, status: 200, body: jobFor("library-reproduction", {descriptor: recreated, modeName: "base"})}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Replay"}));
+        await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+        const load = async (run = true) => {
+            if (source === "paste") {
+                fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+                await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            } else {
+                const picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+                await user.click(within(picker).getByRole("button", {name: /round 1/}));
+            }
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            await waitFor(() => run ? expect(reproduce).toBeEnabled() : expect(reproduce).toBeDisabled());
+            if (run) await user.click(reproduce);
+        };
+        await load();
+        await screen.findByText("Match -- recorded and recreated results agree", {}, {timeout: 15000});
+        expect(requests[0]).toEqual({round: 1, seed: "demo-seed", modeName: "base", outcomeSource: recorded.outcomeSource});
+        expect(dimensionRow("Library source:")).toHaveTextContent("match");
+        expect(dimensionRow("Selection inputs:")).toHaveTextContent("match");
+        expect(dimensionRow("Selected outcome:")).toHaveTextContent("match");
+        expect(dimensionRow("State transition:")).toHaveTextContent("not applicable");
+        expect(screen.getAllByText(/native-content-hash/).length).toBeGreaterThan(0);
+
+        // Artifact hash/screen/payout still agree; an actual source-hash change must differ.
+        recreated = {...recreated, outcomeSource: {...recorded.outcomeSource, libraryHash: "different-library-hash"}};
+        await load();
+        await screen.findByText("Difference -- recorded and recreated results disagree", {}, {timeout: 15000});
+        expect(dimensionRow("Library source:")).toHaveTextContent("Library identity, hash or game provenance differs.");
+        expect(screen.queryByText("Match -- recorded and recreated results agree")).not.toBeInTheDocument();
+
+        // Pasted bytes alone are not trusted when server inspection returns no validated source.
+        // Recent entries without provenance must likewise remain inspection-only.
+        validatedSource = undefined;
+        omitStoredSource = true;
+        await load(false);
+        expect(screen.queryByText("Match -- recorded and recreated results agree")).not.toBeInTheDocument();
+        expect(requests).toHaveLength(2);
+    }, 60000);
+
     it("restores a retained replay request and reproduces it only after the user explicitly loads and runs it", async () => {
         const user = userEvent.setup();
         const recoveryRequest = {round: 4, seed: "recovered-replay-seed"};
@@ -172,7 +263,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         }
         expect(within(recentReplaysSection).getByText("Showing replays 201–250 of 250.")).toBeInTheDocument();
         expect(within(recentReplaysSection).getByText(/round 250 —/)).toBeInTheDocument();
-        await user.click(within(recentReplaysSection).getAllByRole("button", {name: "Inspect"})[49]);
+        await user.click(within(recentReplaysSection).getByRole("button", {name: /^Inspect record replay-249:/}));
         await waitFor(() => expect(inspectedLastReplay).toBe(true));
     });
 
@@ -712,8 +803,8 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         // The gate only blocks *this pasted record's* Reproduce action -- a stored replay's own
         // Inspect/Reproduce-and-compare actions in Recent Replays stay fully available regardless.
         const recentReplaysSection = screen.getByText("Recent replays").closest("fieldset") as HTMLElement;
-        expect(within(recentReplaysSection).getByRole("button", {name: "Inspect"})).not.toBeDisabled();
-        expect(within(recentReplaysSection).getByRole("button", {name: "Reproduce & compare"})).not.toBeDisabled();
+        expect(within(recentReplaysSection).getByRole("button", {name: /^Inspect record /})).not.toBeDisabled();
+        expect(within(recentReplaysSection).getByRole("button", {name: /^Reproduce & compare record /})).not.toBeDisabled();
     }, 60000);
 
     it("disables Reproduce with a concrete missing-state explanation and remediation for an incomplete record with no session state captured", async () => {
@@ -1187,7 +1278,7 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
         await goToReplayTab(user);
         const recentReplaysSection = await screen.findByText("round 1 —", {exact: false}).then((el) => el.closest("fieldset") as HTMLElement);
 
-        await user.click(within(recentReplaysSection).getByRole("button", {name: "Inspect"}));
+        await user.click(within(recentReplaysSection).getByRole("button", {name: /^Inspect record bad:/}));
 
         // Subject-specific recovery copy, not the raw "That replay no longer exists." server text.
         expect(await within(recentReplaysSection).findByText(/The replay list could no longer be found\./)).toBeInTheDocument();
@@ -1559,5 +1650,303 @@ describe("ProjectDashboardPage - Replay & Debug workflow", () => {
 
         expect(await screen.findByText(/This replay request couldn't reach the Studio server\./)).toBeInTheDocument();
         expect(screen.queryByText(/ECONNREFUSED talking to the game sandbox/)).not.toBeInTheDocument();
+    }, 60000);
+});
+
+
+// Actual exact generator, CLI/Studio producers, HTTP inspection and rendered comparison.
+// This exercises the product contract; it is not an independent browser receipt.
+describe("P9-07 production native descriptors", () => {
+    let workspace: string;
+    let server: StudioServer;
+    let fetchImpl: FetchLike;
+    let cliDescriptor: ReplayDescriptor;
+    let studioJob: StudioReplayJobView;
+
+    async function request<T>(url: string, body?: unknown): Promise<T> {
+        const response = await fetchImpl(url, body === undefined ? undefined : {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(`${url}: ${response.status}: ${JSON.stringify(result)}`);
+        return result as T;
+    }
+
+    async function startStudio() {
+        const homeService = new StudioHomeService("1.3.0");
+        server = new StudioServer({
+            pokieVersion: "1.3.0", host: "127.0.0.1", port: 0, studioRoot: workspace, homeService,
+            blueprintService: new StudioBlueprintService("1.3.0", workspace, homeService),
+            projectRegistrationService: new StudioProjectRegistrationService(),
+            jobService: new StudioJobService(new FileStudioJobRepository(path.join(workspace, "jobs"))),
+        });
+        const address = await server.start();
+        fetchImpl = (url, init) => new Promise((resolve, reject) => {
+            const req = http.request(`http://${address.host}:${address.port}${url}`, {method: init?.method, headers: init?.headers}, (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("end", () => resolve({ok: res.statusCode! >= 200 && res.statusCode! < 300, status: res.statusCode!,
+                    json: () => Promise.resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")))}));
+            });
+            req.on("error", reject);
+            req.end(init?.body);
+        });
+        await request("/api/home/projects/open", {projectRoot: path.join(workspace, "library")});
+    }
+
+    beforeEach(async () => {
+        workspace = fs.mkdtempSync(path.join(os.tmpdir(), "p907-native-descriptors-"));
+        fs.writeFileSync(path.join(workspace, "index.html"), "<html>studio</html>");
+        const manifest = {...GAME, description: "Tiny exact math model", author: "Mathematician"};
+        const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({
+            game: {...buildFixtureGame(), getManifest: () => manifest}, libraryId: "native-library", pokieVersion: "1.3.0", betMode: "base", stake: 1,
+        });
+        expect(diagnostics.strategy).toBe("exact");
+        const bundle = path.join(workspace, "library");
+        const publication = await new OutcomeLibraryBundleWriter("1.3.0").writeToDirectory([
+            {modeName: "base", libraryId: library.libraryId, outcomes: library.outcomes, generator: diagnostics},
+        ], bundle);
+        expect(publication.manifest?.game).toEqual(manifest);
+        await startStudio();
+    });
+
+    async function createProducerDescriptors() {
+        const bundle = path.join(workspace, "library");
+        const started = await request<{id: string}>("/api/project/replays", {round: 1, seed: "demo-seed", modeName: "base"});
+        await waitFor(async () => {
+            studioJob = await request<StudioReplayJobView>(`/api/project/replays/${started.id}`);
+            expect(studioJob.status).toBe("completed");
+        });
+        expect(studioJob.descriptor!.outcomeSource!.game).toEqual({...GAME, description: "Tiny exact math model", author: "Mathematician"});
+        expect(studioJob.descriptor!.artifact!.provenance.game).toEqual(studioJob.descriptor!.outcomeSource!.game);
+        const out = path.join(workspace, "cli-replay.json");
+        // Invoke the public command unchanged; only suppress its console echo.
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            await new ReplayCommand().run([bundle, "--mode", "base", "--seed", "demo-seed", "--round", "1", "--out", out]);
+        } finally {
+            log.mockRestore();
+        }
+        cliDescriptor = JSON.parse(fs.readFileSync(out, "utf8")) as ReplayDescriptor;
+        expect(cliDescriptor.artifact).toBeUndefined();
+        expect(cliDescriptor.outcomeSource!.artifact!.provenance.game).toEqual(studioJob.descriptor!.outcomeSource!.game);
+    }
+
+    afterEach(async () => {
+        await server?.stop();
+        fs.rmSync(workspace, {recursive: true, force: true});
+    });
+
+    it.each(["studio-paste", "cli-paste", "studio-recent"])("compares %s from real producers and rejects contradictory records", async (source) => {
+        await createProducerDescriptors();
+        const recorded = source === "cli-paste" ? cliDescriptor : studioJob.descriptor!;
+        const inspected = await request<{artifact: RoundArtifactJson; outcomeSource: ReplayDescriptor["outcomeSource"]; artifactWarnings: string[]}>(
+            "/api/project/replays/inspect-artifact", recorded,
+        );
+        expect(inspected.artifact).toEqual(studioJob.descriptor!.artifact);
+        expect(inspected.outcomeSource).toEqual(recorded.outcomeSource);
+        expect(inspected.artifactWarnings).toEqual([]);
+        const reordered = JSON.parse(JSON.stringify(recorded)) as ReplayDescriptor;
+        reordered.game = Object.fromEntries(Object.entries(reordered.game).reverse()) as ReplayDescriptor["game"];
+        reordered.outcomeSource!.artifact = Object.fromEntries(Object.entries(reordered.outcomeSource!.artifact!).reverse()) as RoundArtifact;
+        expect(await request("/api/project/replays/inspect-artifact", reordered)).toMatchObject({artifact: inspected.artifact});
+        expect(recorded.stateBefore).toBeUndefined();
+        expect(recorded.stateAfter).toBeUndefined();
+        if (source === "studio-recent") {
+            const before = await request<StudioReplayListEntry[]>("/api/project/replays");
+            expect(before[0]).toMatchObject({modeName: "base", game: recorded.game, outcomeSource: {libraryId: "native-library"}});
+            await server.stop();
+            await startStudio();
+            expect(await request("/api/project/replays")).toEqual(before);
+        }
+        const user = userEvent.setup();
+        const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        try {
+            await user.click(await screen.findByRole("button", {name: "Replay"}));
+            await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+            if (source.endsWith("paste")) {
+                fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+                await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            } else {
+                const picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+                await user.click(within(picker).getByRole("button", {name: /round 1/}));
+            }
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            await waitFor(() => expect(reproduce).toBeEnabled());
+            await user.click(reproduce);
+            await screen.findByText("Match -- recorded and recreated results agree", {}, {timeout: 15000});
+            expect(dimensionRow("Library source:")).toHaveTextContent("match");
+            expect(dimensionRow("Selected outcome:")).toHaveTextContent("match");
+            expect(dimensionRow("State transition:")).toHaveTextContent("not applicable");
+        } finally {
+            rendered.unmount();
+        }
+        // Inspection checks the opened library, not just internally consistent duplicates.
+        const mutations: Array<(descriptor: ReplayDescriptor) => void> = [
+            (d) => {
+                d.game.id = "wrong-game";
+            },
+            (d) => {
+                d.outcomeSource!.game!.author = "wrong-author";
+            },
+            (d) => {
+                d.outcomeSource!.libraryHash = "wrong-hash";
+            },
+            (d) => {
+                Reflect.deleteProperty(d.outcomeSource!, "game");
+            },
+            (d) => {
+                Reflect.deleteProperty(d.outcomeSource!, "artifact");
+            },
+            (d) => {
+                d.outcomeSource!.outcomeId = "wrong-outcome";
+            },
+            (d) => {
+                d.outcomeSource!.totalWin += 1;
+                d.totalWin += 1;
+            },
+            (d) => {
+                d.artifact = {...inspected.artifact, totalWin: inspected.artifact.totalWin + 1};
+            },
+        ];
+        for (const mutate of mutations) {
+            const altered = JSON.parse(JSON.stringify(recorded)) as ReplayDescriptor;
+            mutate(altered);
+            const response = await fetchImpl("/api/project/replays/inspect-artifact", {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(altered),
+            });
+            expect(response.status).toBe(400);
+        }
+    }, 60000);
+
+    it.each(["recent", "history", "download-paste"])("P9-07 draws through Overview, retains the result after restart and compares via %s", async (source) => {
+        expect(await request("/api/project/replays")).toEqual([]);
+        const user = userEvent.setup();
+        let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        try {
+            await user.type(await screen.findByLabelText("Seed (optional)"), "closure-library-a");
+            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            const download = await screen.findByRole("link", {name: "Download draw replay JSON"});
+            const url = download.getAttribute("href")!;
+            const recorded = await request<ReplayDescriptor>(url);
+            expect(recorded.seed).toBe("closure-library-a");
+            expect(recorded.outcomeSource).toMatchObject({modeName: "base", round: 1, selectionAlgorithm: "derived-round-seed-v1"});
+            expect(recorded.outcomeSource!.artifact!.provenance.game).toEqual({...GAME, description: "Tiny exact math model", author: "Mathematician"});
+            const rounds = await request<StudioRuntimeSessionView[]>("/api/project/rounds");
+            expect(rounds[0].sessionId).toBe(recorded.sessionId);
+            expect(rounds[0].replay).toEqual(recorded.outcomeSource);
+            await request("/api/project/replays/inspect-artifact", recorded);
+            // A second draw makes the actual saved finding observable: round/status alone
+            // cannot identify the first draw after reopening.
+            fireEvent.change(screen.getByLabelText("Seed (optional)"), {target: {value: "closure-library-b"}});
+            await user.click(screen.getByRole("button", {name: "Draw an outcome"}));
+            await waitFor(() => expect(screen.getByRole("link", {name: "Download draw replay JSON"}).getAttribute("href")).not.toBe(url));
+            const liveEntries = await request<StudioReplayListEntry[]>("/api/project/replays");
+            const savedEntry = liveEntries.find((entry) => entry.seed === "closure-library-a")!;
+            const secondEntry = liveEntries.find((entry) => entry.seed === "closure-library-b")!;
+            expect(liveEntries).toHaveLength(2);
+            expect(secondEntry.outcomeSource!.outcomeId).toBe(savedEntry.outcomeSource!.outcomeId);
+            expect(savedEntry).toMatchObject({
+                game: recorded.game, source: "outcome-source-sample", round: 1, modeName: "base",
+                totalBet: recorded.totalBet, totalWin: recorded.totalWin,
+                outcomeSource: {libraryId: recorded.outcomeSource!.libraryId, libraryHash: recorded.outcomeSource!.libraryHash, outcomeId: recorded.outcomeSource!.outcomeId},
+            });
+            const label = /round 1.*Recorded draw.*Library native-library.*Seed closure-library-a.*Mode base/;
+            // Navigate immediately: the draw callback refreshes the existing Replay list.
+            await user.click(screen.getByRole("button", {name: "Replay"}));
+            await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+            let picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+            expect(await within(picker).findByRole("button", {name: label})).toBeEnabled();
+            rendered.unmount();
+            await server.stop();
+            await startStudio();
+            // A new frontend and executor recover the same descriptor from the file repository.
+            expect(await request(url)).toEqual(recorded);
+            const restoredEntries = await request<StudioReplayListEntry[]>("/api/project/replays");
+            expect(restoredEntries).toEqual(expect.arrayContaining(liveEntries));
+            expect(restoredEntries).toHaveLength(2);
+            rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/replay"]});
+            await user.click(await screen.findByRole("radio", {name: "Replay Artifact"}));
+            picker = (await screen.findByText("Or pick from recent replays to reproduce & compare")).closest("fieldset")!;
+            const choice = await within(picker).findByRole("button", {name: label});
+            expect(choice).toHaveTextContent(recorded.outcomeSource!.libraryHash);
+            expect(choice).toHaveTextContent(recorded.outcomeSource!.outcomeId);
+            expect(choice).toHaveTextContent(savedEntry.id);
+            expect(choice).toHaveTextContent(savedEntry.startedAt);
+            expect(within(picker).getByRole("button", {name: /Seed closure-library-b/})).toBeEnabled();
+            const history = screen.getByText("Recent replays").closest("fieldset")!;
+            expect(within(history).getByText(choice.textContent!)).toBeInTheDocument();
+            for (const entry of [savedEntry, secondEntry]) {
+                const inspect = within(history).getByRole("button", {name: new RegExp(`^Inspect record ${entry.id}:.*Library native-library.*Seed ${entry.seed}.*Mode base`)});
+                expect(inspect).toHaveTextContent(`Inspect record ${entry.id}`);
+                const compare = within(history).getByRole("button", {name: new RegExp(`^Reproduce & compare record ${entry.id}:.*Seed ${entry.seed}.*Mode base`)});
+                expect(compare).toHaveTextContent(`Reproduce & compare record ${entry.id}`);
+            }
+            if (source === "recent") {
+                await user.click(choice);
+            } else if (source === "history") {
+                await user.click(within(history).getByRole("button", {name: new RegExp(`^Reproduce & compare record ${savedEntry.id}:`)}));
+            } else {
+                fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+                await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            }
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            await waitFor(() => expect(reproduce).toBeEnabled());
+            expect(screen.getByText("Round 1, seed closure-library-a.")).toBeInTheDocument();
+            await user.click(reproduce);
+            await waitFor(() => {
+                if (!screen.queryByText("Match -- recorded and recreated results agree")) throw new Error(document.body.textContent ?? "No rendered result");
+            }, {timeout: 15000});
+            expect(dimensionRow("Library source:")).toHaveTextContent("match");
+            expect(dimensionRow("Selection inputs:")).toHaveTextContent("match");
+            expect(dimensionRow("Selected outcome:")).toHaveTextContent("match");
+            expect(dimensionRow("State transition:")).toHaveTextContent("not applicable");
+            if (source === "recent") {
+                // The second same-outcome record must load its own seed and reach comparison too.
+                await user.click(within(picker).getByRole("button", {name: new RegExp(`Record ${secondEntry.id}$`)}));
+                const secondReproduce = await screen.findByRole("button", {name: "Reproduce"});
+                await waitFor(() => expect(secondReproduce).toBeEnabled());
+                expect(screen.getByText("Round 1, seed closure-library-b.")).toBeInTheDocument();
+                await user.click(secondReproduce);
+                await waitFor(() => expect(dimensionRow("Selection inputs:")).toHaveTextContent("match"));
+                expect(screen.getByText("Match -- recorded and recreated results agree")).toBeInTheDocument();
+            }
+        } finally {
+            rendered.unmount();
+        }
+    }, 60000);
+
+    it("P9-07 exports an unseeded draw without enabling reproduction or retaining failed draws", async () => {
+        const user = userEvent.setup();
+        let rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        try {
+            await user.click(await screen.findByRole("button", {name: "Draw an outcome"}));
+            const url = (await screen.findByRole("link", {name: "Download draw replay JSON"})).getAttribute("href")!;
+            expect(screen.getByText(/No seed was recorded, so exact reproduction is unavailable/)).toBeInTheDocument();
+            const recorded = await request<ReplayDescriptor>(url);
+            expect(recorded.seed).toBeNull();
+            expect(recorded.outcomeSource).toBeUndefined();
+            rendered.unmount();
+            await server.stop();
+            await startStudio();
+            expect(await request(url)).toEqual(recorded);
+            expect(await request<StudioReplayListEntry[]>("/api/project/replays")).toEqual([
+                expect.objectContaining({source: "outcome-source-sample", game: recorded.game, modeName: "base", round: 1}),
+            ]);
+            rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/replay"]});
+            expect(await screen.findByText(/Reproduce unavailable — no recorded seed/)).toBeInTheDocument();
+            await user.click(screen.getByRole("radio", {name: "Replay Artifact"}));
+            fireEvent.change(screen.getByLabelText(/Paste a replay artifact JSON/), {target: {value: JSON.stringify(recorded)}});
+            await user.click(screen.getByRole("button", {name: "Validate & load"}));
+            const reproduce = await screen.findByRole("button", {name: "Reproduce"});
+            expect(reproduce).toBeDisabled();
+            const failed = await fetchImpl("/api/project/outcome-source/sample", {
+                method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({modeName: "missing", seed: "valera-closure-1"}),
+            });
+            expect(failed.ok).toBe(false);
+            expect(await request<StudioReplayListEntry[]>("/api/project/replays")).toHaveLength(1);
+        } finally {
+            rendered.unmount();
+        }
     }, 60000);
 });

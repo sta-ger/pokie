@@ -37,7 +37,7 @@ import {
     type ProjectHeaderView,
     type ProjectValidationView,
 } from "../../domain/interpret/ProjectDashboard";
-import {describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
+import {resolveReplayArtifact, describeReplayComparison, describeReplayList, describeReplayResult, isReplayActive, type ReplayListView} from "../../domain/interpret/Replay";
 import {describeReportsList, type ReportListView} from "../../domain/interpret/Reports";
 import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
@@ -841,7 +841,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: job.descriptor.seed ?? undefined,
                         modeName: job.descriptor.outcomeSource?.modeName,
                         outcomeSource: job.descriptor.outcomeSource,
-                        artifact: job.descriptor.artifact,
+                        artifact: resolveReplayArtifact(job.descriptor),
                         artifactWarnings: [],
                         credits: job.descriptor.credits,
                         stateBefore: job.descriptor.stateBefore,
@@ -895,8 +895,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         round: response.round,
                         seed: response.seed,
                         modeName: response.modeName,
-                        outcomeSource: response.outcomeSource ?? parsedDescriptor?.outcomeSource,
-                        artifact: parsedDescriptor?.artifact,
+                        outcomeSource: response.outcomeSource,
+                        artifact: response.outcomeSource ? response.artifact : parsedDescriptor?.artifact,
                         artifactWarnings: response.artifactWarnings,
                         credits: parsedDescriptor?.credits,
                         stateBefore: parsedDescriptor?.stateBefore,
@@ -963,6 +963,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         expectedReplay.status === "loaded" && replay.job?.status === "completed"
             ? describeReplayComparison(
                 {
+                    outcomeSource: expectedReplay.outcomeSource,
+                    seed: expectedReplay.seed,
+                    round: expectedReplay.round,
+                    modeName: expectedReplay.modeName,
                     artifact: expectedReplay.artifact,
                     artifactWarnings: expectedReplay.artifactWarnings,
                     stateBefore: expectedReplay.stateBefore,
@@ -970,6 +974,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     identity: expectedReplay.identity,
                 },
                 {
+                    outcomeSource: replay.job.descriptor?.outcomeSource,
+                    seed: replay.job.descriptor?.seed ?? undefined,
+                    round: replay.job.descriptor?.round,
+                    modeName: replay.job.descriptor?.outcomeSource?.modeName,
                     artifact: replay.job.descriptor?.artifact,
                     stateBefore: replay.job.descriptor?.stateBefore,
                     stateAfter: replay.job.descriptor?.stateAfter,
@@ -1324,7 +1332,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                 </>
                             )}
                             {activeTab === "overview" && header.status === "outcome-source" && (
-                                <OutcomeSourceOverview header={header} onRoundRecorded={refreshRecentSpins} />
+                                <OutcomeSourceOverview header={header} onRoundRecorded={() => {
+                                    refreshRecentSpins();
+                                    refreshReplayList();
+                                }} />
                             )}
                             {activeTab === "overview" && header.status === "artifact" && (
                                 header.type === "wasm"

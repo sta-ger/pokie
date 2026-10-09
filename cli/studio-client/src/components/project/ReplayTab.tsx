@@ -3,10 +3,10 @@ import {useForm} from "@mantine/form";
 import {useMediaQuery} from "@mantine/hooks";
 import {useEffect, useState} from "react";
 import {buildReplayDownloadUrl} from "../../api/apiClient";
-import type {OutcomeSourceReplayDescriptorView, RoundArtifactJson, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
+import type {OutcomeSourceReplayDescriptorView, RoundArtifact, StudioRuntimeSessionView, StudioSimulationReportListEntry} from "../../api/types";
 import {
     describeLoadedReplay,
-    describeReplayEntryStatus,
+    describeReplayEntryLabel,
     describeReplayReproducibility,
     describeRoundArtifact,
     describeStudioRoundOperation,
@@ -45,7 +45,7 @@ export type ExpectedReplayState =
           seed?: string;
           modeName?: string;
           outcomeSource?: OutcomeSourceReplayDescriptorView;
-          artifact?: RoundArtifactJson;
+          artifact?: RoundArtifact & {readonly hash?: string};
           artifactWarnings: string[];
           // A stored/pasted Studio replay descriptor can carry the player-facing post-round balance.
           // It stays optional for portable artifacts produced by older/other replay tools.
@@ -362,7 +362,7 @@ export function ReplayTab({
     // claim to reproduce one *specific* prior result, and Session Spin has nothing to reproduce at all.
     const artifactReproducibility =
         expected.status === "loaded"
-            ? describeReplayReproducibility({seed: expected.seed, artifact: expected.artifact, stateBefore: expected.stateBefore, stateAfter: expected.stateAfter}, currentGame)
+            ? describeReplayReproducibility(expected, currentGame)
             : undefined;
 
     // The round/seed/mode to reproduce, shared across every non-spin source once its own load step has
@@ -405,7 +405,7 @@ export function ReplayTab({
         } else if (findMethod === "artifact") {
             loadedReplayCard = describeLoadedReplay({
                 source: "artifact",
-                expected: expected.status === "loaded" ? {seed: expected.seed, artifact: expected.artifact} : {},
+                expected: expected.status === "loaded" ? expected : {},
                 reproducibility: artifactReproducibility,
                 result: finishedResult,
                 comparison,
@@ -553,13 +553,13 @@ export function ReplayTab({
                                                     }}
                                                     style={{overflowWrap: "anywhere", whiteSpace: "normal", textAlign: "left"}}
                                                 >
-                                                    {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                                    {describeReplayEntryLabel(entry)}
                                                 </Anchor>
                                             </List.Item>
                                         ) : (
                                             <List.Item key={entry.id}>
                                                 <Text size="sm" c="dimmed" style={{overflowWrap: "anywhere"}}>
-                                                    {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)} (reproduce
+                                                    {describeReplayEntryLabel(entry)} (reproduce
                                                 unavailable — no recorded seed; use Recent replays below to inspect it instead)
                                                 </Text>
                                             </List.Item>
@@ -1243,11 +1243,12 @@ export function ReplayTab({
                                 <List.Item key={entry.id}>
                                     <Group gap="xs" wrap="wrap" align="baseline">
                                         <Text size="sm" style={{overflowWrap: "anywhere"}}>
-                                            {entry.game?.id ?? "?"} round {entry.round} — {describeReplayEntryStatus(entry.status)}
+                                            {describeReplayEntryLabel(entry)}
                                         </Text>
                                         <Anchor
                                             component="button"
                                             type="button"
+                                            aria-label={`Inspect record ${entry.id}: ${describeReplayEntryLabel(entry)}`}
                                             onClick={() => {
                                                 switchSource("seedRound");
                                                 // Only mark it loaded once the fetch actually succeeds -- a
@@ -1258,19 +1259,20 @@ export function ReplayTab({
                                                     .catch(() => undefined);
                                             }}
                                         >
-                                        Inspect
+                                            Inspect record {entry.id}
                                         </Anchor>
                                         {isReplayListEntryReproducible(entry) ? (
                                             <Anchor
                                                 component="button"
                                                 type="button"
+                                                aria-label={`Reproduce & compare record ${entry.id}: ${describeReplayEntryLabel(entry)}`}
                                                 onClick={() => {
                                                     switchSource("artifact");
                                                     onCompareStored(entry.id);
                                                     markLoaded("artifact", false);
                                                 }}
                                             >
-                                            Reproduce &amp; compare
+                                                Reproduce &amp; compare record {entry.id}
                                             </Anchor>
                                         ) : (
                                             <Text size="sm" c="dimmed">

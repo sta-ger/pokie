@@ -822,6 +822,8 @@ export type InspectReplayArtifactResult = {
     seed?: string;
     modeName?: string;
     outcomeSource?: import("./types").OutcomeSourceReplayDescriptorView;
+    // Server-normalized artifact, including canonical native descriptors with only a nested artifact.
+    artifact?: import("./types").RoundArtifactJson;
     artifactWarnings: string[];
 };
 

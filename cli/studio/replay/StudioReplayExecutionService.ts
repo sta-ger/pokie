@@ -23,6 +23,7 @@ import {
     PokieJsonRoundArtifactProjector,
     PokieProject,
     PokieSessionState,
+    PreGeneratedRoundReplayDescriptor,
     ReplayDescriptor,
     resolveGameSessionSerializer,
     resolveOutcomeLibraryModeName,
@@ -130,6 +131,39 @@ export class StudioReplayExecutionService {
 
     public attachJobService(jobService: StudioJobService): void {
         this.jobService = jobService;
+    }
+
+    // Retain the already-settled draw, never draw again to obtain an export. The usual replay
+    // repository and durable lifecycle supply Recent, inspection and download after restart.
+    // An unseeded draw remains inspectable/exportable without claiming exact reproduction.
+    public recordOutcomeSourceSample(projectRoot: string, artifact: RoundArtifact, modeName: string, replay?: PreGeneratedRoundReplayDescriptor): StudioReplayJobView {
+        projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        const sessionId = this.createId();
+        const startedAt = this.now();
+        const common = this.jobService?.start({
+            projectId: projectRoot,
+            operation: "replay",
+            request: {source: "outcome-source-sample", round: 1, modeName, ...(replay === undefined ? {} : {seed: replay.seed})},
+            // A settled sample owns no running replay resource and cannot reattach to another run.
+            conflictKey: `outcome-source-sample:${sessionId}`,
+        });
+        if (common !== undefined && common.status !== "created") throw new Error("Could not retain the outcome-source draw. Retry the draw.");
+        const record: StudioReplayJobRecord = {
+            id: common?.job.id ?? this.createId(), projectRoot, status: "completed", round: 1, source: "outcome-source-sample",
+            seed: replay?.seed, modeName, startedAt, completedRounds: 1, durationMs: 0,
+            game: artifact.provenance.game, abortController: new AbortController(),
+            descriptor: {
+                sessionId, game: artifact.provenance.game, seed: replay?.seed ?? null, round: 1,
+                totalBet: artifact.stake, totalWin: artifact.totalWin, screen: artifact.screen.map((row) => [...row]),
+                timestamp: replay?.timestamp ?? startedAt, durationMs: 0,
+                artifact: new PokieJsonRoundArtifactProjector().project(artifact),
+                ...(replay === undefined ? {} : {outcomeSource: replay}),
+            },
+        };
+        this.jobService?.markRunning(record.id);
+        this.jobService?.progress(record.id, {stage: "recorded draw", unit: "rounds", current: 1, total: 1});
+        this.markTerminal(record);
+        return this.toJobView(record);
     }
 
     // Returns immediately with a "queued" job — the actual replay runs in the background (see run()),
@@ -258,11 +292,14 @@ export class StudioReplayExecutionService {
                 entries.set(job.id, {
                     id: view.id,
                     status: view.status,
+                    ...replayDescriptorSummary(view.descriptor),
+                    ...(job.request.source === "outcome-source-sample" ? {source: "outcome-source-sample" as const} : {}),
                     round: view.round,
                     ...(view.seed === undefined ? {} : {seed: view.seed}),
                     ...(view.modeName === undefined ? {} : {modeName: view.modeName}),
                     completedRounds: view.completedRounds,
                     startedAt: view.startedAt,
+                    ...(job.completedAt === undefined ? {} : {completedAt: new Date(job.completedAt).toISOString()}),
                     durationMs: view.durationMs,
                     ...(view.error === undefined ? {} : {error: view.error}),
                 });
@@ -290,19 +327,22 @@ export class StudioReplayExecutionService {
 
     private toListEntry(record: StudioReplayJobRecord): StudioReplayListEntry {
         const common = this.jobService?.get(record.projectRoot, record.id);
+        const completedAt = common?.completedAt ?? record.completedAt;
         return {
             id: record.id,
             status: common?.operation === "replay" ? common.status : record.status,
+            ...replayDescriptorSummary(record.status === "completed" ? record.descriptor : undefined),
             game: record.game,
-            configHash: record.configHash,
+            configHash: record.configHash ?? record.descriptor?.artifact?.provenance.configHash,
+            source: record.source,
             round: record.round,
             seed: record.seed,
             completedRounds: record.completedRounds,
             totalBet: record.status === "completed" ? record.descriptor?.totalBet : undefined,
             totalWin: record.status === "completed" ? record.descriptor?.totalWin : undefined,
-            startedAt: new Date(record.startedAt).toISOString(),
-            completedAt: record.completedAt !== undefined ? new Date(record.completedAt).toISOString() : undefined,
-            durationMs: record.durationMs,
+            startedAt: new Date(common?.startedAt ?? record.startedAt).toISOString(),
+            completedAt: completedAt === undefined ? undefined : new Date(completedAt).toISOString(),
+            durationMs: common?.durationMs ?? record.durationMs,
             error: common?.operation === "replay" ? common.error ?? record.error : record.error,
             modeName: record.modeName,
         };
@@ -580,7 +620,7 @@ export class StudioReplayExecutionService {
             return;
         }
         this.markRunning(record);
-        const gameIdentity = {id: manifestGame.id, name: manifestGame.name, version: manifestGame.version};
+        const gameIdentity = manifestGame;
         record.game = gameIdentity;
 
         const sessionId = this.createId();
@@ -818,7 +858,7 @@ export class StudioReplayExecutionService {
         this.repository.save(record);
         if (record.status === "completed") {
             this.jobService?.complete(record.id, {
-                summary: "Replay completed.",
+                summary: record.source === "outcome-source-sample" ? "Outcome Library draw recorded." : "Replay completed.",
                 outputs: [{label: "Replay descriptor", downloadPath: `/api/project/replays/${encodeURIComponent(record.id)}/download`}],
                 provenance: {replayId: record.id, projectRoot: record.projectRoot},
                 detail: {replayId: record.id, round: record.round, descriptor: record.descriptor},
@@ -868,17 +908,23 @@ export class StudioReplayExecutionService {
     }
 
     private projectDurableJob(job: StudioJobView): StudioReplayJobView {
+        const descriptor = descriptorFromDurableDetail(job);
+        const modeName = descriptor?.outcomeSource?.modeName ?? (typeof job.request.modeName === "string" ? job.request.modeName : undefined);
         return {
+            ...(descriptor === undefined ? {} : {
+                game: descriptor.game,
+                configHash: descriptor.artifact?.provenance.configHash,
+                descriptor,
+            }),
             id: job.id,
             status: job.status,
             round: typeof job.request.round === "number" ? job.request.round : 0,
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             ...(typeof job.request.simulationId === "string" ? {simulationId: job.request.simulationId} : {}),
-            ...(typeof job.request.modeName === "string" ? {modeName: job.request.modeName} : {}),
+            ...(modeName === undefined ? {} : {modeName}),
             startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
             completedRounds: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
             durationMs: job.durationMs ?? 0,
-            ...(descriptorFromDurableDetail(job) === undefined ? {} : {descriptor: descriptorFromDurableDetail(job)}),
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),
         };
@@ -891,4 +937,23 @@ function descriptorFromDurableDetail(job: StudioJobView): ReplayDescriptor | und
     return typeof descriptor === "object" && descriptor !== null && "sessionId" in descriptor && "round" in descriptor
         ? descriptor as ReplayDescriptor
         : undefined;
+}
+
+// Use the retained result for both live and restarted summaries. Never reconstruct provenance
+// from the currently opened library, which may have changed since this draw/replay.
+function replayDescriptorSummary(descriptor: ReplayDescriptor | undefined): Pick<StudioReplayListEntry, "game" | "configHash" | "totalBet" | "totalWin" | "outcomeSource"> {
+    if (descriptor === undefined) return {};
+    return {
+        game: descriptor.game,
+        configHash: descriptor.artifact?.provenance.configHash,
+        totalBet: descriptor.totalBet,
+        totalWin: descriptor.totalWin,
+        ...(descriptor.outcomeSource === undefined ? {} : {
+            outcomeSource: {
+                libraryId: descriptor.outcomeSource.libraryId,
+                libraryHash: descriptor.outcomeSource.libraryHash,
+                outcomeId: descriptor.outcomeSource.outcomeId,
+            },
+        }),
+    };
 }

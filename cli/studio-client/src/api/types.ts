@@ -91,6 +91,8 @@ export type OutcomeSourceSampleView =
           // Present for a seeded sample: this is the same portable identity the public replay command
           // consumes, rather than a UI-only approximation of the selected outcome.
           replay?: OutcomeSourceReplayDescriptorView;
+          // The actual settled draw retained in Replay Recent, with the standard download route.
+          replayId?: string;
       }
     | {supported: false; diagnostic: {detectedType: StudioProjectType; operation: string; missingCapability: string; alternatives: StudioProjectType[]; recovery?: string; message: string}};
 
@@ -762,7 +764,7 @@ export type StudioSimulationReportListEntry = {
 // kept as their own client-side copies here, same convention as every other type in this file. Deeply
 // readonly to match the server's own guarantee (a RoundArtifact is deep-frozen at build time).
 export type RoundArtifactProvenance = {
-    readonly game: {id: string; name: string; version: string};
+    readonly game: PokieGameManifest;
     readonly pokieVersion: string;
     readonly configHash?: string;
 };
@@ -820,7 +822,7 @@ export type RoundArtifactJson = RoundArtifact & {readonly hash: string};
 // Mirrors PreGeneratedRoundReplayDescriptor. It travels with ordinary outcome-library Play and
 // Sample results so consumers can hand the exact recorded seed/round/mode/provenance to `pokie replay`.
 export type OutcomeSourceReplayDescriptorView = {
-    game?: {id: string; name: string; version: string};
+    game?: PokieGameManifest;
     libraryId: string;
     libraryHash: string;
     modeName: string;
@@ -931,6 +933,10 @@ export type StudioReplayListEntry = {
     durationMs: number;
     error?: string;
     modeName?: string;
+    // A settled Overview draw is recorded, rather than a fresh reproduction.
+    source?: "outcome-source-sample";
+    // Selection provenance only; the full artifact remains on the detail/download endpoint.
+    outcomeSource?: {libraryId: string; libraryHash: string; outcomeId: string};
 };
 
 // Play tab (and Outcome Source Analysis "Sample") response DTO — see
