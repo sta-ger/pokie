@@ -579,3 +579,49 @@ affected retest or the terminal cancellation/recovery portion of the same
 fresh-profile criterion.  No workflow was run for this report repair, so its
 formatting neither changes the readiness recovery cause nor supplies new
 acceptance evidence.
+
+## Fresh affected retest — 2026-10-09 (candidate `46d02af`)
+
+`run-2026-10-09T18-37-59-852Z` is a new isolated browser, application and
+Documents profile (18:37:59Z–18:47:11Z; 159 rendered observations; no
+screenshots).  Its candidate-bound build receipt remains
+`candidate-builds/46d02af7e519f938baf732aca303e02b27fec672/result.json`:
+`npm run build-cli` exited 0 and Studio was launched from this checkout with
+`node ./dist/cli/pokie.js --no-open`.
+
+Using only rendered Studio controls, the fresh profile imported the supplied
+tiny Blueprint; inspected literal reels; changed one displayed stop; cleared a
+real empty-payout error by restoring `A x2` to `2`; and saved/opened the
+managed project.  One seeded Play round (`p907-fresh-play`) settled at stake
+1 with payout 2.00.  The short one-worker simulation (`p907-fresh-sim`) ran
+100/100 rounds in 17 ms: total bet 100.00, payout 104.00, RTP 104.00%, hit
+frequency 52.00%, payout-standard-deviation 1.00, and RTP 95% CI
+84.42%--123.58%.  The visible 10,000-round/one-worker/no-seed defaults and
+low-round warning were recorded; the collector interpreted this as a noisy
+estimate, not certified RTP.
+
+The exact preflight reported four raw combinations.  One accepted exact
+generation completed with two outcomes, RTP 100.00%, 4,172 bytes and 55 ms.
+The native library displayed non-derived reader limits and base metrics.  Its
+seeded draw `p907-library-fresh` recorded
+`outcome-5d52fbab29e92341`; Replay Recent then showed source/hash, seed, mode,
+outcome and record ID.  The record's one Reproduce action reached the terminal
+“Verified -- matches the recorded result,” including library source, selection
+inputs and selected outcome.
+
+The same run exported `parWorkbook.xlsx`, reopened it read-only with
+`parsheet-provenance-present` and a matching recorded hash, then followed the
+public PAR Diagnose → Preview canonical model → Apply confirmation surface.
+No generated project/output tree or browser artifact is committed; the full
+machine-owned transcript remains under the runtime harness.
+
+Cancellation remains unreached, not a product finding.  The 100-round short
+run completed before its current Cancel control could be targeted.  A separate
+bounded 100,000-round recovery request (`p907-fresh-cancel`) rendered queued
+`0/100000` but completed `100000/100000` in 0.8 s before the transport received
+an enabled Cancel target.  No request was resent and no cancelled terminal or
+withheld-output proof exists.  The supplied rare-source inspection is retained
+in the immutable earlier candidate-bound observation; this fresh run did not
+repeat it.  Therefore the sole persisted criterion remains **not reached** and
+the semantic verdict remains **inconclusive / driver**, despite the successful
+fresh affected-path observations.
