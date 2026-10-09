@@ -247,3 +247,28 @@ Closeout is therefore **evidence-incomplete, not approved**: the controller
 must authenticate the frozen record, run its deferred whole-file regression
 with that record, and obtain the missing confirmation-focus and independently
 measured occupied-byte-preservation evidence before a passed campaign verdict.
+
+## Implementation repair revalidation — 2026-10-09
+
+This continuation inspected the current worktree at
+`75ed83d5bfb0af448e39119b48f7e9fdec55f609`. The requested production fixes and
+regressions are already committed in
+`f2904a7c4f41e02c38b0e466c1a01a8c69c0c3ab`; no additional production edit was
+needed. This update changes only the current-step handoff and preserves the
+verifier addendum and all prior evidence.
+
+| Repair acceptance criterion | Current implementation and focused evidence |
+| --- | --- |
+| Rejected Run preserves its error and attempted configuration despite retained completed history | The dashboard workflow regression restores a completed report on mount and reopen, then submits different rounds, seed and workers. It asserts the actionable rejection, retained inputs, enabled Run, absent old report and unchanged old-job polling count. |
+| Pending explicit submission keeps its accepting identity and operation receipt | The dashboard discovers older completed history while acceptance is pending and asserts it never attaches that history. Its terminal receipt belongs to the accepting job. The StrictMode simulation hook regression also checks rejected-start ownership, unchanged Retry parameters and the Retry receipt, then checks restoration after project reset. |
+| Delayed Cancel/Resume cannot replace a newer terminal or remove its outputs | Both adapter suites cover list and detail completion while each control is pending, including a delayed same-status acknowledgment without output metadata. They assert the full terminal record and outputs remain unchanged after the acknowledgment and the pending control clears. |
+| Same-ID checkpoint resume remains discoverable without accepting old-execution responses | Both adapters test a newer creation time accepted through discovery and explicit Resume, reject subsequent old-execution discovery, and retain a discovered new execution against a delayed previous-execution control acknowledgment. |
+| Bounded checks and controller ownership | The five directly affected whole-file suites pass: 88 tests, exit 0. Root typecheck, including the Studio compiler once, passes with exit 0. React `act` diagnostics remain in the workflow suite; its assertions pass. No broader reviewer matrix, official gate, production build or browser execution was run by this worker. |
+
+The exact targeted command is the five-file command in the response-ownership
+correction above. The verifier addendum supplies partial observation provenance;
+it does not establish the missing cancellation, confirmation-focus or measured
+occupied-byte-preservation proof. Authentication of the freeze, independent
+affected retests and the post-freeze production-browser regression remain
+controller-owned. This committed repair handoff does not close the immutable
+P9-09 browser acceptance criteria.
