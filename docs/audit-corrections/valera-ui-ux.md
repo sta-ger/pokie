@@ -423,3 +423,30 @@ driver-limited and not approved**: exact dialog-focus return, keyboard visible
 focus/geometry at both widths, occupied-destination terminal preservation plus
 alternate publication, and the controller-owned post-freeze regression remain
 required before a passed disposition.
+
+## Independent recovery continuation — 2026-10-09 (evidence descendant `54178004`)
+
+This bounded continuation retained the same candidate identity
+`c576bcebaa50d61b2681e151e7ebe97b3a591326` and the same authenticated profile.
+The initial freeze and its sibling transcript are unchanged:
+
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/frozen-initial.json`
+  (`sha256:75c3c93cd9dc96edae5bce4be4ea11a66c90d68f08a34e8ffb6b1a74184dae6a`)
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/transcript.json`
+  (`sha256:33233992ec2388b0339d19781757afff902dc9b41c91114cd9238d0bfe7ec3a3`)
+
+The supplementary continuation is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-48-38-036Z/transcript.json`
+(`sha256:270647d7f503d77937b111a834f5c0525c83dd8c6a4e4daf8c51e33f853db049`).
+It reused the candidate-bound build receipt (8,162 files; output digest
+`f4b4833c8d1fba9e0a50ed51ff3f86b49b8862926770309f961962c80b709b6f`) and
+added no screenshots.
+
+The preserved public Projects list rendered both saved projects. Selecting the
+distinct **Second Slot** made both local `Open` controls disabled. Fresh
+rendered observations contained no pending state, accepted operation, local
+success, or action-local error. The selection was not resent and no unrelated
+`Open Opened project` control was substituted. This does not prove a product
+defect under the action-correlation contract; it leaves the remaining recovery
+actions driver-limited. Studio and Chromium drained after close. No product
+code, test, generated output, browser profile, or screenshot was committed.
