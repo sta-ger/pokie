@@ -563,3 +563,19 @@ artifact.  The verifier did not resubmit it.  Thus this transcript adds
 durable-record/replay evidence but does not prove a cancelled terminal,
 withheld completed output, fresh-profile affected retest, or the reviewer’s
 remaining full closure matrix.
+
+## Report-contract reconciliation
+
+This evidence-only reconciliation preserves the semantic verdict
+`inconclusive` with category `readiness`.  The sole persisted acceptance
+criterion is recorded here verbatim, once, with its unchanged result:
+
+> One fresh-profile mathematician uses public Studio controls for a tiny model/PAR, play, short seeded simulation and exact Outcome Library/report/replay task, and inspects a rare-event weighted source. Retain frozen terminology/default/error findings, bounded real timings and no more than three screenshots, with clean affected retest and no unresolved P0/P1/material P2. No large generation or Cartesian matrix.
+
+**Status:** not reached.  The immutable initial collection and the later
+candidate-bound continuation retain bounded public-path observations, timings,
+and no additional screenshots.  They do not establish the required clean
+affected retest or the terminal cancellation/recovery portion of the same
+fresh-profile criterion.  No workflow was run for this report repair, so its
+formatting neither changes the readiness recovery cause nor supplies new
+acceptance evidence.
