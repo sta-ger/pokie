@@ -585,6 +585,66 @@ function sectionFieldset(legend: string): HTMLElement {
 }
 
 describe("ProjectDashboardPage - Game Model tab editing", () => {
+    it.each(["save", "discard"])("P9-07 clears stale payout diagnostics during correction and preserves validated saved truth (%s)", async (finish) => {
+        const user = userEvent.setup();
+        let savedBlueprint = {...RAW_BLUEPRINT, paytable: {A: {3: 5}}};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/gameModel": () => ({ok: true, status: 200, body: {
+                ...fullProjection(), paytable: {status: "available", data: [{symbolId: "A", matchCount: 3, payout: savedBlueprint.paytable.A[3]}]},
+            }}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprint: savedBlueprint, blueprintHash: "h1"}}),
+            "/api/home/blueprints/validate": ({init}) => {
+                const blueprint = JSON.parse(init!.body!).blueprint as typeof savedBlueprint;
+                return {ok: true, status: 200, body: blueprint.paytable.A[3] > 0
+                    ? {status: "ok", warnings: []}
+                    : {status: "invalid", errors: [{code: "blueprint-paytable-invalid-multiplier", severity: "error", message: '"paytable.A.3" must be a positive number.'}], warnings: []}};
+            },
+            "/api/home/blueprints/save": ({init}) => {
+                savedBlueprint = JSON.parse(init!.body!).blueprint as typeof savedBlueprint;
+                return {ok: true, status: 200, body: {status: "ok", path: "/games/a", blueprintHash: "h2"}};
+            },
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToGameModelTab(user);
+        const paytable = sectionFieldset("Paytable");
+        await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+        const payout = await within(paytable).findByLabelText("A x3 payout");
+        await user.clear(payout);
+        await user.click(within(paytable).getByRole("button", {name: "Save"}));
+        expect(await within(paytable).findByText(/blueprint-paytable-invalid-multiplier/)).toBeVisible();
+        expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+        expect(savedBlueprint.paytable.A[3]).toBe(5);
+
+        // Keep focus in the repaired field, matching the saved browser observation. Diagnostics
+        // about the rejected revision must disappear before any blur or another Save action.
+        await user.type(payout, "7");
+        expect(payout).toHaveFocus();
+        expect(within(paytable).queryByText(/blueprint-paytable-invalid-multiplier/)).not.toBeInTheDocument();
+        expect(savedBlueprint.paytable.A[3]).toBe(5);
+        if (finish === "save") {
+            await user.click(within(paytable).getByRole("button", {name: "Save"}));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(savedBlueprint.paytable.A[3]).toBe(7);
+            const validated = calls.filter((call) => call.url === "/api/home/blueprints/validate");
+            expect(validated).toHaveLength(2);
+            expect(JSON.parse(validated[1].init!.body!).blueprint).toEqual(savedBlueprint);
+            expect(calls.filter((call) => call.url === "/api/home/blueprints/save")).toHaveLength(1);
+            expect(within(paytable).getByText("7")).toBeVisible();
+        } else {
+            await user.click(within(paytable).getByRole("button", {name: "Cancel"}));
+            await screen.findByText("Discard your unsaved changes to this section?");
+            await user.click(screen.getByRole("button", {name: "Confirm"}));
+            await within(paytable).findByRole("button", {name: "Edit"});
+            expect(savedBlueprint.paytable.A[3]).toBe(5);
+            expect(calls.some((call) => call.url === "/api/home/blueprints/save")).toBe(false);
+            expect(within(paytable).getByText("5")).toBeVisible();
+        }
+        await user.click(within(paytable).getByRole("button", {name: "Edit"}));
+        expect(await within(paytable).findByLabelText("A x3 payout")).toHaveValue(finish === "save" ? "7" : "5");
+        expect(within(paytable).queryByText(/blueprint-paytable-invalid-multiplier/)).not.toBeInTheDocument();
+    });
+
     it("shows required metadata and the recommended default reel mode while editing the Game Model", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

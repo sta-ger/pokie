@@ -186,3 +186,51 @@ hit frequency `5.42e-18%`, and max win `2`, preserving a nonzero rare event.
 No P0, P1, or material P2 product finding remains from these bounded public
 flows. The machine-owned transcripts retain the three screenshots per run;
 none are committed. No product code or test was changed by this verifier.
+
+## P9-07 implementer correction — 2026-10-09
+
+The current repair read the immutable `frozen-initial.json` and `transcript.json`
+from `P9-07-c86efe33e5b6c4e6/run-2026-10-09T13-05-34-467Z`, bound to
+candidate `32415dc5176aaae7eb237d7ead47adc6237a9710`. Neither receipt nor any
+prior-step artifact was modified. This receipt supersedes no historical run.
+Its frozen initial observations establish creation, model inspection, play,
+100-round seed `valera-42` simulation and exact generation, but explicitly do
+not establish PAR export/import, library inspection/report/replay or inspection
+of the supplied Stake source. The library inspection attempt has no accepted
+action; the subsequent generation error is uncorrelated. It remains unverified,
+rather than an attributed product defect or a closed acceptance row.
+
+The supplementary transcript records a separate recoverability problem:
+`13:22:06.371Z` observes the restored payout input, and `13:22:55.230Z` still
+shows diagnostics from the preceding failed Save. Source tracing on HEAD found
+that payout edits committed only on blur and Game Model retained the previous
+Save's validation view after draft mutations. Two named rendered-workflow
+regressions reproduced the stale banner before correction (2 failed, the other
+27 tests passed). Payout edits now commit on change, and Game Model retires
+validation/write diagnostics when the draft changes. Save still validates the
+current draft before any write; clearing a diagnostic does not assert validity.
+
+| Acceptance obligation | Correction/check evidence and independent boundary |
+| --- | --- |
+| Cold user, neutral inputs, frozen terminology/defaults/errors, real bounded timings, at most three screenshots | Existing frozen receipt preserved; no new collector, timing claim or screenshot. Fresh-profile verification belongs to the controller. |
+| Inspect/edit symbols, reels and paytable; validate, save, reopen and play | Composed tiny integration retained and passed. New Game Model tests reject an empty payout without writing, correct it while focused, then verify validated save/reopen or confirmed discard/reopen. |
+| Seeded simulation and interpretation of actual metrics/defaults/provenance | Composed Play/CLI/Studio eight-round parity regression passed; frozen 100-round observation and its low-sample interpretation preserved. No math/RNG/default change. |
+| PAR preview/Apply/save/reopen and truthful provenance | Composed real workbook round trip and existing PAR client suite passed. Guided/raw payout regressions cover the shared editor's validation and dirty-state consumers. Public cold-user PAR interaction remains controller-owned. |
+| Tiny exact library, publication/output, analysis/report, recorded draw and replay | Composed four-outcome generation/report/draw/replay passed. Frozen generation success does not prove the missing public terminal inspection path. |
+| Supplied rare weighted source stays nonzero, public-entry parity and existing Node/WASM/workbook behavior | Composed supplied-fixture reader/Studio/report regression passed; no probability, runtime, package, export or workbook implementation changed. Independent public rare-source inspection remains required. |
+| Failed edit, recovery and cancellation; no unresolved material finding after clean retest | New rejection/correction/save/discard tests passed; no invalid draft is persisted. The supplementary collector note alone does not prove terminal discard rendering: its last rendered snapshot still contains the confirmation dialog. Clean affected browser retest remains controller-owned. |
+
+Permitted foreground checks on the correction: five existing focused suites
+passed (63 tests, 142.176 s), then
+`BlueprintEditorPage.paytableRecovery.test.tsx` passed (2 tests, 6.058 s).
+The five suites were `ProjectDashboardPage.gameModelWorkflow.test.tsx`,
+`BlueprintEditorPage.validation.test.tsx`, `BlueprintEditorPage.sections.test.tsx`,
+`BlueprintEditorPage.parSheetImportExport.test.tsx`, and
+`P907ValeraMathematician.integration.test.ts`. These are regression timings,
+not independent human-session timings. `npm run typecheck` exited 0, including
+`npm run typecheck-studio-client` (not repeated separately). The browser bundle
+consumes the changed TSX and must be built and
+verified by the controller on the committed SHA under the bounded implementer
+policy. No independent rerun, production build, packaging or official gate was
+launched by this repair. The retained P1 coverage verdict remains open until
+the independent machine-owned receipt establishes all missing public actions.

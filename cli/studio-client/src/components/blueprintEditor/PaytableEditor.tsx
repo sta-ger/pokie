@@ -59,8 +59,8 @@ export function PaytableEditor({blueprint, mutate}: {blueprint: Record<string, u
                                     <NumberInput
                                         aria-label={`${row.symbolId} x${row.matchCount} payout`}
                                         defaultValue={row.payout}
-                                        onBlur={(event) => {
-                                            const value = Number(event.currentTarget.value);
+                                        onChange={(input) => {
+                                            const value = Number(input);
                                             if (Number.isFinite(value)) {
                                                 mutate((b) => setPaytablePayout(b, row.symbolId, row.matchCount, value));
                                             }

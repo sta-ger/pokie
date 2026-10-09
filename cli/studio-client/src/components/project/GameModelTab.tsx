@@ -7,7 +7,7 @@ import {setReelGenerationMode} from "../../domain/blueprintFormOps";
 import {describeValidation, type BlueprintValidationView} from "../../domain/interpret/BlueprintEditor";
 import {errorMessage} from "../../domain/errorMessage";
 import {describePathActionError} from "../../domain/pathActionError";
-import {useBlueprintEditor} from "../../hooks/useBlueprintEditor";
+import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
 import {useNavigationBlockerConfirm} from "../../hooks/useNavigationBlockerConfirm";
@@ -250,6 +250,14 @@ export function GameModelTab({
         }
     };
 
+    const mutateBlueprint: BlueprintMutate = (mutate) => {
+        // The previous Save validated a different revision. Retire its diagnostics as soon as
+        // the user corrects the draft; the next Save still validates before writing anything.
+        setValidationView({status: "stale"});
+        setEditError(undefined);
+        editor.mutate(mutate);
+    };
+
     const handleSave = (): void => {
         if (editState.status !== "editing" || projectRoot === undefined || !saveGuard.begin()) {
             return;
@@ -315,7 +323,7 @@ export function GameModelTab({
                                 saving: editState.status === "saving",
                                 validationView,
                                 blueprint: editor.state.blueprint,
-                                mutate: editor.mutate,
+                                mutate: mutateBlueprint,
                                 drafts: editor.drafts,
                                 modeDrafts: editor.modeDrafts,
                                 revision: editor.state.revision,
