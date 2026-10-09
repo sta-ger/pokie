@@ -370,3 +370,56 @@ publication, a distinct-project isolation check, proven dialog-focus return,
 and the controller-owned post-freeze whole-file regression. A later verifier
 must repair the neutral selector transport in this same persistent harness and
 complete those actions without rewriting this initial history.
+
+## Independent recovery supplement — 2026-10-09 (evidence descendant `802eb2d3`)
+
+This update preserves the immutable initial record and is a supplementary
+continuation only. Product identity remains
+`c576bcebaa50d61b2681e151e7ebe97b3a591326`; the inspected worktree HEAD was
+`802eb2d373e970a800d4755bdc202fce0bf42ebb`, an authenticated clean
+evidence-only descendant whose only candidate-relative change was this audit
+document. No product source or test changed.
+
+The original frozen chronology remains unchanged:
+
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/frozen-initial.json`
+  (`sha256:75c3c93cd9dc96edae5bce4be4ea11a66c90d68f08a34e8ffb6b1a74184dae6a`)
+- its sibling `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/transcript.json`
+  (`sha256:33233992ec2388b0339d19781757afff902dc9b41c91114cd9238d0bfe7ec3a3`)
+
+No screenshots were added: the initial run's three representative screenshots
+remain the complete retained set. The post-freeze recovery transcripts are
+`run-2026-10-09T23-32-04-095Z/transcript.json`
+(`sha256:d6b2ba3619251e67d60a1282fd7a7aac4137da076f9cb8b6b9225d032291b992`)
+and `run-2026-10-09T23-33-56-722Z/transcript.json`
+(`sha256:63e61c4d6b291c5771c668e0ac71d272815827b5860d0d2ff4b26fe8e6afb3da`).
+
+The neutral transport was repaired once for true hit-testable duplicate labels.
+Through the retained profile it then created **Second Slot** and observed only
+its own `project-open-materialization` operation: no Starter Slot simulation
+or report leaked into that workspace. Returning through Projects and reopening
+**Starter Slot** restored the prior completed simulation and downloadable
+report. These observations satisfy the distinct-project isolation and retained
+original-result portions of the reviewer request.
+
+The retained earlier supplementary run remains the only confirmation evidence:
+it reached the rendered Unsaved changes dialog and declined it by Escape after
+an unconfirmed one-time Stay activation. This continuation could not target
+the repeated Game basics Edit control through the neutral section resolver, so
+it did not fabricate a second activation; visible focus return remains
+unproven. At Build/Export, a one-file occupied destination sentinel was
+created under this runtime run before UI activation and measured as 74 bytes,
+`sha256:878cd443954985a4e412a6534fd75683bfc41b6bc64a76273ff3bc06f00ab8b7`.
+The exact TypeScript Game Package Browse control was activated once, then
+rendered disabled without opening a native picker (Studio remained the active
+window). No path was typed into an absent dialog and the action was not
+repeated. The sentinel remained unchanged, but alternate publication never
+became reachable.
+
+Both owned Studio/Chromium launches were closed and their children drained.
+No P0/P1/material-P2 product defect was observed, and the deferred controller
+browser test was neither inspected nor run. This is still **inconclusive,
+driver-limited and not approved**: exact dialog-focus return, keyboard visible
+focus/geometry at both widths, occupied-destination terminal preservation plus
+alternate publication, and the controller-owned post-freeze regression remain
+required before a passed disposition.
