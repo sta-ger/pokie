@@ -342,3 +342,25 @@ Foreground checks on the final correction source:
   no second standalone compiler run was needed. `git diff --check` passed.
   The changed-TypeScript ESLint commit hook remains enabled. No official gate,
   browser rerun, packaging or controller-owned build was launched here.
+
+## Supplementary recovery verification — 2026-10-09 (candidate `b4bd45d`)
+
+The retained frozen initial record remains immutable.  A supplementary launch
+of the candidate source's `dist/cli/pokie.js --no-open` used its retained
+application profile at
+`P9-07-f7f99e3f48be1b8c/run-2026-10-09T17-07-13-779Z`.  The public native
+library Overview accepted one seeded draw, `valera-closure-1`, disabling Draw
+while accepted and then rendering outcome `outcome-d9d545c2b6de3b43`, library
+`starter-slot-base`, base mode, stake 1, and the local terminal statement
+“Saved in Replay Recent”; its visible download link was also exposed.
+
+After closing that launch and reopening the retained library through the public
+Projects UI in `run-2026-10-09T17-11-11-864Z`, Replay Artifact rendered only
+two indistinguishable `? round 1 — Reproduced` choices.  Neither item exposed
+the just-drawn source, seed, mode, or round, so the promised record could not
+be uniquely selected for the required recorded-versus-recreated comparison.
+This is a supplementary P1 finding in the current candidate's durable native
+draw-to-Replay handoff, not a replacement for the frozen cold observations.
+The bounded receipts are the two transcripts under the machine-owned harness;
+no new screenshot, profile, generated project, library, or browser payload is
+committed.
