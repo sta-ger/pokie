@@ -625,3 +625,28 @@ in the immutable earlier candidate-bound observation; this fresh run did not
 repeat it.  Therefore the sole persisted criterion remains **not reached** and
 the semantic verdict remains **inconclusive / driver**, despite the successful
 fresh affected-path observations.
+
+## Supplementary cancellation-only continuation — 2026-10-09 (candidate `46d02af`)
+
+`run-2026-10-09T18-55-52-930Z` used another isolated browser, application and
+Documents profile solely to continue the outstanding cancellation observation;
+it did not relabel itself as a cold pass or repeat the previously retained
+model/PAR/play/library tasks.  The candidate checkout rebuilt successfully
+(`npm run build-cli`, output checksum
+`52320362b5fe51f4835d6224cbf82064b25e3bb8d4595e221dd40744e6d2e33c`) and
+launched Studio through `node ./dist/cli/pokie.js --no-open`.
+
+The ready state was the public Simulation page of a newly created isolated
+starter workspace with no completed simulations.  The sole 100,000-round
+submission rendered the action-local accepted state “Simulation queued —
+0/100000 rounds” with its enabled `Cancel` control.  Activating that exact
+control opened its confirmation, but the same run had already rendered its
+local completed terminal — `100000/100000`, duration 1.4 s, one completed
+report — before a confirmation could request cancellation.  The subsequent
+rendered state had no pending control and retained the completed report.  The
+verifier did not repeat the action; it closed only after owned children drained.
+There are no screenshots.  This is a driver-timing limitation, not a product
+finding: no cancellation request was accepted and no cancelled terminal,
+withheld output, or recovery proof was rendered.  The persisted criterion
+therefore remains **not reached** and the report remains **inconclusive /
+driver**.
