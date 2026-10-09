@@ -272,3 +272,101 @@ occupied-byte-preservation proof. Authentication of the freeze, independent
 affected retests and the post-freeze production-browser regression remain
 controller-owned. This committed repair handoff does not close the immutable
 P9-09 browser acceptance criteria.
+
+## Independent verifier revision — 2026-10-09 (candidate `c576bce`)
+
+This verifier-owned revision is a new record. It preserves all earlier
+handoffs and observations, and does not backdate or reinterpret them. The
+product candidate was `c576bcebaa50d61b2681e151e7ebe97b3a591326`; `HEAD` was
+that SHA with an empty worktree before collection. Studio was built from that
+checkout once by the neutral candidate-bound launcher (receipt output digest
+`f4b4833c8d1fba9e0a50ed51ff3f86b49b8862926770309f961962c80b709b6f`, 8,162
+files), then both owned Studio and Chromium children exited before this record
+was authored.
+
+### Persona, blind freeze, and retained chronology
+
+The fresh-profile persona was a first-time producer creating the supplied
+starter game, then using its public Play and Simulation pages. Before reading
+this document, the reviewer hand-off, test source, or prior recovery history,
+the collector froze its actual questions, decisions, interpretations, and
+coverage:
+
+- Initial freeze:
+  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/frozen-initial.json`
+  (`sha256:75c3c93cd9dc96edae5bce4be4ea11a66c90d68f08a34e8ffb6b1a74184dae6a`).
+- Initial transcript:
+  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/transcript.json`
+  (`sha256:33233992ec2388b0339d19781757afff902dc9b41c91114cd9238d0bfe7ec3a3`).
+- Post-freeze supplementary transcript:
+  `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-15-03-201Z/transcript.json`
+  (`sha256:ce29394d9364b14343c870b49d894719e4b9bd191ace37b67fd1dcea046778f5`).
+- The initial session alone contains the three permitted representative
+  screenshots: `1-observation.png`
+  (`sha256:2b0cd6627ab6032b09ffc433ec9598a960210bac04cbcbcfde1378387bd27f28`),
+  `2-observation.png`
+  (`sha256:c9202e8ce78d218c1a8e44b480296d30cee26dc329f3ea87e0bb8110cbd1698c`),
+  and `3-observation.png`
+  (`sha256:b2fec893210473f4392e684c1806bb88d3326fe6eb4bbbd931047dcb39baa61b`).
+
+### Observations and disposition
+
+The producer observed validation enable Create game, created the starter,
+and saw the retained `project-open-materialization` completion. One real Play
+round showed its local `Spinning…` state and a terminal no-win result with the
+updated 999-credit balance. A single 50,000-round Simulation rendered its
+local queued state (`0/50000`) and Cancel affordance, then a completed report
+and retained simulation operation in 0.8 seconds. Its late cancellation
+confirmation arrived after completion, so no second job was submitted.
+
+After `Ctrl+R`, the first rendered Simulations view was briefly unhydrated and
+showed no runs. A later observation in that same reloaded client, and a
+close/reopen through Projects, restored the exact completed report and
+operation. This is a readiness/recovery observation, not a product finding.
+The original project closed and reopened successfully. At 1439x1099 and then
+900x760, the public route remained readable; native Tab was accepted, though
+the neutral text transport does not expose the focused element.
+
+The existing project location was resolved and checked through the public
+Add-a-game form. Its rendered `Add to projects` confirmation could not be
+activated: the neutral rendered-target helper repeatedly returned `No unique
+enabled rendered hit target` for that visible control and subsequently for the
+visible Game id field. The permitted keyboard attempt did not establish an
+activation. Post-freeze, the same limitation prevented a distinct second
+project and alternate output-publication branch. A separate visible Unsaved
+changes confirmation was reached after leaving a modified design; Stay did not
+produce a local acceptance state, while one Escape dismissed it. Focus return
+is therefore not proven. These are driver/evidence limitations, not product
+defects.
+
+No P0, P1, or material P2 product defect was observed. The review hand-off was
+read only after the initial freeze and matched candidate
+`c576bcebaa50d61b2681e151e7ebe97b3a591326`, step `P9-09`, and finding
+`P9-VALERA-UI-UX`.
+
+### Verification receipt, package aggregate, and closeout
+
+The controller-owned complete-file receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/dc9dab12c857bb635d84f4c7/result.json`,
+with sibling `stdout.log` (`sha256:3db23e37d87b40000a84d305b874659b373d9015245e4f74c99a2887b8091fb2`)
+and `stderr.log` (`sha256:85e195d5b88a84e3327d010a265261cb80ba7d07dfb25df036dc28f93a8acd12`).
+It ran against the clean requested candidate before and after, but exited 1
+solely because `P909_FROZEN_OBSERVATIONS` was absent. That is a deferred
+post-freeze prerequisite, not candidate-owned product-failure evidence; this
+verifier did not rerun the test.
+
+`npm pack --dry-run --json --ignore-scripts` returned `pokie@1.3.0`, 9,028
+entries, packed size 3,477,013 bytes, and shasum
+`6f8c61c67e79f9a15179e403fe3539e66caf8d1f`; it retained no tarball. No
+generated project/output, profile, browser data, raw logs, or screenshots is
+committed.
+
+Closeout disposition: **inconclusive — evidence/driver-limited, not approved**.
+The frozen initial evidence is authentic and the reachable real-job,
+reload/reattach, terminal-result, close/reopen, keyboard, and smaller-viewport
+observations are retained. The unresolved required proof is a completed
+occupied-destination recovery with directory bytes before/after and alternate
+publication, a distinct-project isolation check, proven dialog-focus return,
+and the controller-owned post-freeze whole-file regression. A later verifier
+must repair the neutral selector transport in this same persistent harness and
+complete those actions without rewriting this initial history.
