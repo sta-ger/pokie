@@ -219,3 +219,22 @@ Foreground durability-correction checks:
   pre-commit hook is retained. `npm run build-studio-client`, independent
   browser/CLI collection, packaging and official gates are controller-owned
   and were not run here.
+
+## Supplementary browser continuation — 2026-10-09 (candidate `4aab6e7`)
+
+The retained fresh-profile application state was reopened through the public
+Studio UI in `P9-07-6f480bd7dc08a464/run-2026-10-09T16-08-43-406Z`.
+The candidate Studio launch used `node ./dist/cli/pokie.js --no-open` and the
+recorded continuation profile. A seeded native-library draw (`valera-library-42`)
+completed and rendered its exact outcome id, `starter-slot-base` library,
+one-of-1,024 weight, base mode, stake, game/version and configuration hash.
+
+The visible native `Replay Artifact` choice exposed only paste and Recent
+recovery. Recent reported no replays, while the successfully rendered native
+draw supplied neither a durable Recent record nor a public artifact export or
+handoff control. Consequently the required recorded-versus-recreated native
+comparison could not be completed by this path. Saved-model recovery,
+cancellation/recovery and the clean affected retest also remain uncompleted.
+This is supplementary evidence, not a replacement for the frozen cold pass.
+The two continuation screenshots remain only in the machine-owned runtime
+harness; no generated assets or runtime payloads are committed.
