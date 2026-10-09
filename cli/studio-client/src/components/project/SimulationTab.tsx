@@ -1,7 +1,7 @@
 import {Anchor, Button, Collapse, Group, List, NumberInput, Progress, Select, SimpleGrid, Stepper, Text, TextInput} from "@mantine/core";
 import {useForm} from "@mantine/form";
 import {useDisclosure} from "@mantine/hooks";
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useLayoutEffect, useRef, useState} from "react";
 import type {StudioSimulationReportListEntry} from "../../api/types";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
@@ -39,6 +39,7 @@ type FormValues = {rounds: number; seed: string; workers: number; modeName: stri
 export function SimulationTab({
     progress,
     error,
+    connectionError,
     cancellationRequested,
     operation,
     terminalReceipt,
@@ -62,6 +63,7 @@ export function SimulationTab({
 }: {
     progress: SimulationProgressView | undefined;
     error: string | undefined;
+    connectionError?: string;
     /** A cancel request accepted locally before the next durable poll catches up. */
     cancellationRequested: boolean;
     /** The rendered public control that started the current durable job. */
@@ -158,6 +160,17 @@ export function SimulationTab({
     // the status *value*, not the progress object identity, so re-renders while already terminal
     // (e.g. the user manually flips back to Configure to look at defaults) never yank them back.
     const prevStatusRef = useRef<string | undefined>(undefined);
+    const workflowRef = useRef<HTMLDivElement>(null);
+    const focusedControlRef = useRef<HTMLElement | undefined>(undefined);
+    useLayoutEffect(() => {
+        // A Run/Cancel control can be replaced by the next step. Restore a
+        // reading position only when that exact focused node disappeared;
+        // completion must never take focus from another live task or dialog.
+        const previous = focusedControlRef.current;
+        if (previous !== undefined && !previous.isConnected && document.activeElement === document.body) {
+            workflowRef.current?.focus({preventScroll: true});
+        }
+    });
     useEffect(() => {
         const status = progress?.status;
         if (status === "queued" || status === "running" || status === "cancelling") {
@@ -165,7 +178,7 @@ export function SimulationTab({
         }
         const wasActive = prevStatusRef.current === "queued" || prevStatusRef.current === "running" || prevStatusRef.current === "cancelling";
         const nowTerminal = status === "completed" || status === "failed" || status === "cancelled" || status === "recovery-required";
-        if (wasActive && nowTerminal) {
+        if (nowTerminal && (wasActive || (prevStatusRef.current === undefined && status === "completed"))) {
             setActiveStep(2);
             closeFullReport();
             setCompareOpened(false);
@@ -208,7 +221,15 @@ export function SimulationTab({
     })();
 
     return (
-        <div>
+        <div ref={workflowRef} tabIndex={-1} role="region" aria-label="Simulation workflow" onFocusCapture={(event) => {
+            focusedControlRef.current = event.target;
+        }} onBlurCapture={(event) => {
+            if (event.relatedTarget instanceof HTMLElement && !event.currentTarget.contains(event.relatedTarget) && event.relatedTarget.closest('[role="dialog"]') === null) {
+                focusedControlRef.current = undefined;
+            }
+        }}>
+            {connectionError !== undefined && <ErrorState message={connectionError} />}
+            {error !== undefined && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
             {!exportReachable && (
                 <Text id="simulation-export-unavailable" size="xs" c="dimmed" mb={4}>
                     Export becomes available after a completed simulation report is ready.
@@ -285,7 +306,6 @@ export function SimulationTab({
             {activeStep === 1 && (
                 <div>
                     {progress === undefined && <EmptyState message="No simulation has been run yet." />}
-                    {error && <ErrorState message={describeProjectActionError("This simulation request", error)} />}
                     {progress !== undefined && (
                         <div>
                             <Progress value={progress.percent} mb="sm" />

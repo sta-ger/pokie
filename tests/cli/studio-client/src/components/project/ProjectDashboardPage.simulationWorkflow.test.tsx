@@ -13,6 +13,7 @@ import {createLargeSimulationLibrary} from "../../testUtils/largeStudioProjectFi
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
+    "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/context": () => ({
         ok: true,
         status: 200,
@@ -334,6 +335,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         await waitFor(() => expect(cancelCalled).toBe(true));
         await waitFor(() => expect(screen.getByText(/Cancelled after/)).toBeInTheDocument(), {timeout: 15000});
+        await waitFor(() => expect(screen.getByRole("region", {name: "Simulation workflow"})).toHaveFocus());
     }, 60000);
 
     it("lists recent runs and lets the user reopen a result or run the same configuration again", async () => {

@@ -41,6 +41,7 @@ export function useSimulationPoll() {
     const [progress, setProgress] = useState<SimulationProgressView | undefined>(undefined);
     const [job, setJob] = useState<StudioSimulationJobView>();
     const [error, setError] = useState<string>();
+    const [connectionError, setConnectionError] = useState<string>();
     const [cancellationRequested, setCancellationRequested] = useState(false);
     // The terminal receipt belongs to the public control that created this
     // durable job. A Retry must not be rendered as a second, anonymous Run.
@@ -60,6 +61,8 @@ export function useSimulationPoll() {
     const runGuardGenerationRef = useRef<number | undefined>(undefined);
     const cancelGuardGenerationRef = useRef<number | undefined>(undefined);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const pollRequestRef = useRef<{controller: AbortController; timer: ReturnType<typeof setTimeout>} | undefined>(undefined);
+    const cancelRequestRef = useRef<{controller: AbortController; timer: ReturnType<typeof setTimeout>} | undefined>(undefined);
     const runGuard = useDoubleSubmitGuard();
     const cancelGuard = useDoubleSubmitGuard();
 
@@ -68,6 +71,8 @@ export function useSimulationPoll() {
         return () => {
             cancelledRef.current = true;
             generationRef.current += 1;
+            stopPollRequest();
+            stopCancelRequest();
             if (timeoutRef.current !== undefined) {
                 clearTimeout(timeoutRef.current);
                 timeoutRef.current = undefined;
@@ -79,11 +84,22 @@ export function useSimulationPoll() {
         return !cancelledRef.current && generationRef.current === generation;
     }
 
+    function stopPollRequest(): void {
+        if (pollRequestRef.current === undefined) return;
+        clearTimeout(pollRequestRef.current.timer);
+        pollRequestRef.current.controller.abort();
+        pollRequestRef.current = undefined;
+    }
+
     function poll(id: string, generation: number): void {
         if (!isCurrent(generation)) {
             return;
         }
-        getSimulation(fetchImpl, id)
+        stopPollRequest();
+        const controller = new AbortController();
+        const request = {controller, timer: setTimeout(() => controller.abort(), 10_000)};
+        pollRequestRef.current = request;
+        getSimulation(fetchImpl, id, controller.signal)
             .then((polledJob) => {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
@@ -102,6 +118,7 @@ export function useSimulationPoll() {
                     return;
                 }
                 setJob(polledJob);
+                setConnectionError(undefined);
                 lastRequestRef.current = {rounds: polledJob.rounds, seed: polledJob.seed, workers: polledJob.workers, modeName: polledJob.modeName};
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
@@ -114,9 +131,20 @@ export function useSimulationPoll() {
             })
             .catch((err: unknown) => {
                 if (isCurrent(generation) && currentJobId.current === id) {
-                    setError(errorMessage(err));
+                    setConnectionError(`Cannot observe this simulation. Your job is retained; reconnecting automatically. ${errorMessage(err)}`);
+                    timeoutRef.current = setTimeout(() => poll(id, generation), POLL_INTERVAL_MS);
                 }
+            }).finally(() => {
+                clearTimeout(request.timer);
+                if (pollRequestRef.current === request) pollRequestRef.current = undefined;
             });
+    }
+
+    function stopCancelRequest(): void {
+        if (cancelRequestRef.current === undefined) return;
+        clearTimeout(cancelRequestRef.current.timer);
+        cancelRequestRef.current.controller.abort();
+        cancelRequestRef.current = undefined;
     }
 
     function run(rounds: number, seed: string | undefined, workers: number, modeName?: string, startedBy: SimulationOperation = "simulation"): void {
@@ -125,12 +153,15 @@ export function useSimulationPoll() {
         }
         const generation = generationRef.current + 1;
         generationRef.current = generation;
+        stopPollRequest();
+        stopCancelRequest();
         runGuardGenerationRef.current = generation;
         lastRequestRef.current = {rounds, seed, workers, modeName};
         operationRef.current = startedBy;
         setOperation(startedBy);
         setTerminalReceipt(undefined);
         setError(undefined);
+        setConnectionError(undefined);
         setCancellationRequested(false);
         setProgress({status: "queued", roundsCompleted: 0, rounds, workers, percent: 0, durationMs: 0});
         startSimulation(fetchImpl, rounds, seed, workers, modeName)
@@ -198,6 +229,8 @@ export function useSimulationPoll() {
     // the old job still goes out before that same check stops it) and clears every piece of job state.
     function resetForProjectSwitch(): void {
         generationRef.current += 1;
+        stopPollRequest();
+        stopCancelRequest();
         runGuardGenerationRef.current = undefined;
         cancelGuardGenerationRef.current = undefined;
         runGuard.end();
@@ -211,6 +244,7 @@ export function useSimulationPoll() {
         setProgress(undefined);
         setJob(undefined);
         setError(undefined);
+        setConnectionError(undefined);
         setCancellationRequested(false);
         setTerminalReceipt(undefined);
         operationRef.current = "simulation";
@@ -225,6 +259,7 @@ export function useSimulationPoll() {
         // Cancellation supersedes both the scheduled poll and any GET already
         // in flight. An older running snapshot must never replace its terminal.
         const generation = ++generationRef.current;
+        stopPollRequest();
         if (timeoutRef.current !== undefined) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = undefined;
@@ -234,7 +269,11 @@ export function useSimulationPoll() {
         // poll reports `cancelling`. Reflect the accepted user intent now so
         // the rendered Cancel action cannot be submitted twice in that gap.
         setCancellationRequested(true);
-        cancelSimulation(fetchImpl, id)
+        setError(undefined);
+        const controller = new AbortController();
+        const request = {controller, timer: setTimeout(() => controller.abort(), 10_000)};
+        cancelRequestRef.current = request;
+        cancelSimulation(fetchImpl, id, controller.signal)
             .then((polledJob) => {
                 if (!isCurrent(generation) || currentJobId.current !== id) {
                     return;
@@ -247,6 +286,7 @@ export function useSimulationPoll() {
                     setError(`The simulation response did not match durable job "${id}".`);
                     return;
                 }
+                setConnectionError(undefined);
                 setJob(polledJob);
                 setProgress(describeSimulationProgress(polledJob));
                 if (!isSimulationActive(polledJob)) {
@@ -265,6 +305,8 @@ export function useSimulationPoll() {
                 }
             })
             .finally(() => {
+                clearTimeout(request.timer);
+                if (cancelRequestRef.current === request) cancelRequestRef.current = undefined;
                 if (cancelGuardGenerationRef.current === generation) {
                     cancelGuardGenerationRef.current = undefined;
                     cancelGuard.end();
@@ -279,5 +321,5 @@ export function useSimulationPoll() {
         }
     }
 
-    return {progress, job, error, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
+    return {progress, job, error, connectionError, cancellationRequested, operation, terminalReceipt, run, retry, restore, cancel, resetForProjectSwitch, currentJobId: currentJobId.current};
 }

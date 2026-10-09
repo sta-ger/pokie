@@ -10,6 +10,66 @@ const activeJob = {
 };
 
 describe("ProjectDashboardPage durable jobs", () => {
+    it("shows a rejected common simulation cancellation outside Simulation while retaining the active job", async () => {
+        const user = userEvent.setup();
+        const simulationJob = {...activeJob, id: "observed-simulation", operation: "simulation"};
+        const {fetchImpl} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [simulationJob]}}),
+            "/api/project/jobs/observed-simulation": () => ({ok: true, status: 200, body: simulationJob}),
+            "/api/project/simulations/observed-simulation": (call) => call.init?.method === "DELETE"
+                ? {ok: false, status: 503, body: {error: "Cancellation unavailable"}}
+                : {ok: true, status: 200, body: {id: "observed-simulation", status: "running", rounds: 10, roundsCompleted: 2, workers: 1, durationMs: 100, startedAt: new Date().toISOString()}},
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Cancel"}));
+        expect(await screen.findByText(/Simulation control failed/)).toHaveTextContent("Cancellation unavailable");
+        expect(screen.getByText("simulation · Running")).toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Reattach to retained work"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Cancel"})).toBeEnabled();
+    });
+    it("discovers a simulation started after mount, retains its report outside the feature panel, and leaves the user's selected task and focus in place", async () => {
+        const user = userEvent.setup();
+        let started = false;
+        let completed = false;
+        const durable = () => ({id: "new-simulation", projectId: "/games/sample-slot", operation: "simulation", request: {rounds: 10}, conflictKey: "simulation", createdAt: 1,
+            status: completed ? "completed" : "running", result: completed ? {summary: "Ten real rounds completed.", outputs: [{label: "simulation report", downloadPath: "/api/project/reports/new-simulation/download?format=json"}]} : undefined});
+        const simulation = () => ({id: "new-simulation", status: completed ? "completed" : "running", rounds: 10, roundsCompleted: completed ? 10 : 2, workers: 1, durationMs: 100, startedAt: new Date().toISOString()});
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]}}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: started ? [durable()] : []}}),
+            "/api/project/jobs/new-simulation": () => ({ok: true, status: 200, body: durable()}),
+            "/api/project/simulations": () => {
+                started = true;
+                return {ok: true, status: 201, body: simulation()};
+            },
+            "/api/project/simulations/new-simulation": () => ({ok: true, status: 200, body: simulation()}),
+            "/api/project/reports/new-simulation": () => ({ok: true, status: 200, body: {report: {game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, requestedRounds: 10, rounds: 10, totalBet: 10, totalWin: 2, rtp: 0.2, hitFrequency: 0.1, maxWin: 2, workers: 1, durationMs: 100, spinsPerSecond: 100, warnings: [], recommendations: []}}}),
+            "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, generated: false}}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+            "/api/project/validate": () => ({ok: true, status: 200, body: {packageRoot: "/games/sample-slot", valid: true, game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, errors: [], warnings: [], suggestions: []}}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Simulation"}));
+        await user.click(await screen.findByRole("button", {name: "Run Simulation"}));
+        await user.click(screen.getByRole("button", {name: "Overview"}));
+        await waitFor(() => expect(router.state.location.pathname).toMatch(/\/overview$/));
+        expect(await screen.findByText("simulation · Running")).toBeInTheDocument();
+        const copyControl = screen.getByRole("button", {name: "Close project"});
+        copyControl.focus();
+        completed = true;
+        expect(await screen.findByRole("link", {name: "Download simulation report"})).toHaveAttribute("href", "/api/project/reports/new-simulation/download?format=json");
+        expect(router.state.location.pathname).toMatch(/\/overview$/);
+        expect(copyControl).toHaveFocus();
+        expect(calls.filter((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")).toHaveLength(1);
+    });
     it.each(["held", "loading", "failed"])("holds a dependent workflow selection through its exact %s context refresh in StrictMode", async (refreshState) => {
         const user = userEvent.setup();
         const projectContext = {status: "loaded", projectRoot: "/games/sample-slot", game: {id: "sample-slot", name: "Sample Slot", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]};

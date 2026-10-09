@@ -52,8 +52,8 @@ import {useOpenProject} from "../../hooks/useOpenProject";
 import {useReplayPoll} from "../../hooks/useReplayPoll";
 import {useSimulationPoll} from "../../hooks/useSimulationPoll";
 import {ErrorState} from "../common/ErrorState";
-import {JobProgressCard} from "../common/JobProgressCard";
-import {JobResultCard} from "../common/JobResultCard";
+import {JobCard} from "../common/JobCard";
+import {JobObservationNotice} from "../common/JobObservationNotice";
 import {LoadingState} from "../common/LoadingState";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
 import {AppShellLayout} from "../layout/AppShellLayout";
@@ -519,6 +519,10 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         setProjectGeneration((previous) => previous + 1);
     }, [projectKey]);
     const commonJobs = useProjectJobs(fetchImpl, projectKey, projectGeneration);
+    const refreshJobs = commonJobs.refresh;
+    useEffect(() => {
+        refreshJobs();
+    }, [activeTab, refreshJobs]);
     const capabilityRefreshJobsRef = useRef(new Set<string>());
     useEffect(() => {
         // A terminal durable record is the only product-owned signal that an
@@ -624,7 +628,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // executor must be represented as recovery-required, never as completed.
     useEffect(() => {
         if (projectKey === undefined || simulation.currentJobId !== undefined) return;
-        const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation" && (job.status === "queued" || job.status === "running" || job.status === "cancelling" || job.status === "recovery-required"));
+        const restorableSimulation = commonJobs.jobs.find((job) => job.operation === "simulation");
         if (restorableSimulation !== undefined) {
             if (restorableSimulation.status === "recovery-required") setRecoveryJob(restorableSimulation);
             simulation.restore(restorableSimulation.id);
@@ -675,8 +679,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // different main report also invalidates/clears any comparison in progress -- a comparison is only
     // ever meaningful against *this* report (requirement 7).
     const selectReport = useCallback(
-        (id: string) => {
-            setActiveTab("simulation");
+        (id: string, openTab = true) => {
+            if (openTab) setActiveTab("simulation");
             setSelectedReportId(id);
             setReportDetail({status: "loading"});
             const requestId = ++reportRequestIdRef.current;
@@ -705,7 +709,9 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     useEffect(() => {
         if (simulation.job?.status === "completed" && simulation.job.id !== autoOpenedJobIdRef.current) {
             autoOpenedJobIdRef.current = simulation.job.id;
-            selectReport(simulation.job.id);
+            // Prepare the durable result without taking someone away from
+            // the workflow they chose while this simulation was running.
+            selectReport(simulation.job.id, false);
             refreshReports();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1119,8 +1125,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // when the page finishes loading fresh from Home (the wrapper this ref points at doesn't exist yet
     // while still "loading", so the very first activeTab-only effect run can't reach it).
     const panelRef = useRef<HTMLDivElement>(null);
+    const focusedTabRef = useRef<ProjectTab | undefined>(undefined);
     useEffect(() => {
-        panelRef.current?.focus();
+        if (panelRef.current === null) return;
+        if (focusedTabRef.current !== activeTab || document.activeElement === document.body) panelRef.current.focus();
+        focusedTabRef.current = activeTab;
     }, [activeTab, header.status]);
 
     const [closeError, setCloseError] = useState<string>();
@@ -1375,6 +1384,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                     key={projectKey ?? "no-project"}
                                     progress={simulation.progress}
                                     error={simulation.error}
+                                    connectionError={simulation.connectionError}
                                     cancellationRequested={simulation.cancellationRequested}
                                     operation={simulation.operation}
                                     terminalReceipt={simulation.terminalReceipt}
@@ -1474,15 +1484,12 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     {/* Polling job details belong after the active workflow so
                         progress, throughput and retained terminals cannot move
                         its controls while a user presses them. */}
+                    <JobObservationNotice connectionError={commonJobs.connectionError} actionError={commonJobs.actionError ?? (activeTab !== "simulation" && simulation.error !== undefined ? `Simulation control failed. Try again or reattach to retained work. ${simulation.error}` : undefined)} onReattach={commonJobs.refresh} />
                     {visibleCommonJobs.length > 0 && (
                         <Stack gap="xs" mb="md" aria-labelledby="studio-operations-heading">
                             <Title id="studio-operations-heading" order={3}>Studio operations</Title>
                             <Text size="sm" c="dimmed">Current and retained work stays available here while you continue through this project.</Text>
-                            {visibleCommonJobs.map((job) =>
-                                job.status === "queued" || job.status === "running" || job.status === "cancelling"
-                                    ? <JobProgressCard job={job} onCancel={commonJobs.cancel} key={job.id} />
-                                    : <JobResultCard job={job} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />,
-                            )}
+                            {visibleCommonJobs.map((job) => <JobCard job={job} cancellationPending={commonJobs.pendingIds.includes(job.id) || (job.id === simulation.currentJobId && simulation.cancellationRequested)} onCancel={(id) => id === simulation.currentJobId ? simulation.cancel() : commonJobs.cancel(id)} onRecover={commonJobs.recover} onRecoveryAction={handleJobRecoveryAction} onOpenOutput={openJobOutput} onRevealOutput={revealJobOutput} onInspectOutput={inspectJobOutput} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} key={job.id} />)}
                         </Stack>
                     )}
                     {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}

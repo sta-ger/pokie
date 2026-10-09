@@ -641,6 +641,7 @@ function TargetCard({
                             "data-pokie-lifecycle-field": "artifact-build-destination",
                         }} : undefined}
                         value={artifactDestination}
+                        error={artifactPreview.status === "conflict" ? "Choose a new or empty destination; existing files will not be overwritten." : undefined}
                         onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
                         onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
                     />

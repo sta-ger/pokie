@@ -13,8 +13,8 @@ import type {StudioJobView, StudioOpenFolderView, StudioProjectRegistryView} fro
 import {checkNativePickerAvailability, openOutputFolder, revealOutputPath} from "../../api/apiClient";
 import {useStudioApi} from "../../context/StudioApiProvider";
 import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
-import {JobProgressCard} from "../common/JobProgressCard";
-import {JobResultCard} from "../common/JobResultCard";
+import {JobCard} from "../common/JobCard";
+import {JobObservationNotice} from "../common/JobObservationNotice";
 import {useOpenProject} from "../../hooks/useOpenProject";
 
 export type HomeTab = "design" | "projects";
@@ -136,22 +136,21 @@ export function HomePage() {
         }
     };
 
-    const homeJobsPanel = homeJobs.jobs.length === 0 ? undefined : (
+    const homeJobsPanel = homeJobs.jobs.length === 0 && homeJobs.connectionError === undefined && homeJobs.actionError === undefined ? undefined : (
         <Stack gap="xs" mt="lg" aria-label="Home jobs">
             <Title order={3}>Home jobs</Title>
             <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Cancel active work or reconstruct a server-supported recovery.</Text>
+            <JobObservationNotice connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
             {homeJobs.jobs.map((job) =>
-                job.status === "queued" || job.status === "running" || job.status === "cancelling"
-                    ? <JobProgressCard key={job.id} job={job} onCancel={homeJobs.cancel} />
-                    : <JobResultCard key={job.id} job={job} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
-                        openOutputFolder(fetchImpl, outputPath).then((result) => {
-                            setJobOutputNotice(describeJobOutputAction(result, "Opened job output."));
-                        }).catch(() => setJobOutputNotice("Couldn't open the job output."));
-                    }} onRevealOutput={(outputPath) => {
-                        revealOutputPath(fetchImpl, outputPath).then((result) => {
-                            setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
-                        }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
-                    }} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} />,
+                <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
+                    openOutputFolder(fetchImpl, outputPath).then((result) => {
+                        setJobOutputNotice(describeJobOutputAction(result, "Opened job output."));
+                    }).catch(() => setJobOutputNotice("Couldn't open the job output."));
+                }} onRevealOutput={(outputPath) => {
+                    revealOutputPath(fetchImpl, outputPath).then((result) => {
+                        setJobOutputNotice(describeJobOutputAction(result, "Revealed job output."));
+                    }).catch(() => setJobOutputNotice("Couldn't reveal the job output."));
+                }} outputActionsUnavailableReason={jobOutputActionsUnavailableReason} />,
             )}
             {jobOutputNotice !== undefined && <Text size="xs" aria-live="polite" c="dimmed">{jobOutputNotice}</Text>}
         </Stack>
