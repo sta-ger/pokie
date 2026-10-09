@@ -121,3 +121,37 @@ Current producer-contract correction checks:
   observations or clean-profile closure receipts.
 - `git diff --check` and explicit changed-file ESLint passed. The installed
   pre-commit hook checks the staged TypeScript separately.
+
+## Independent browser rerun — 2026-10-09 (candidate `9e26c15`)
+
+Fresh application and browser state were used at
+`P9-07-8924bdd53985e359/run-2026-10-09T15-21-14-062Z`. The cold initial
+observations were frozen before review feedback. The bounded public path
+imported the tiny Blueprint, inspected symbols/reels/paytable, saved it,
+settled one Play spin, and ran a 100-round, one-worker simulation with seed
+`valera-2026`. The rendered report was RTP 100.00%, hit frequency 50.00%,
+volatility 1.00, max win 2.00 and 95% RTP interval 80.40%--119.60%; Studio
+also expressly marked that short run as noisy.
+
+The exact Outcome Library preflight showed four combinations. Its only
+accepted generation reported success: four exact base outcomes, RTP 100.00%,
+5,860 bytes and 67 ms, and exposed an **Inspect library** action. On the
+following rendered recovery state, that action was absent and the same
+generator reported it could not load the project. Its expanded diagnostic said
+the successful action's `outcomelibrary` output already existed and was not
+empty, while `pokie build` required a new or empty output directory. Thus the
+visible success claim did not leave an inspectable result; no generation retry
+was sent. This is the current independent P1 finding
+`P9-VALERA-MATHEMATICIAN`, blocking the exact-library inspection/report
+portion of the required workflow.
+
+Supplementary replay from the public Replay tab did succeed independently:
+round 1 with the same seed produced a completed, inspectable/exportable replay
+with rendered replay session/job IDs, game version/hash and config hash. A
+Cancel attempt could not be uniquely targeted before that one-round job
+completed, so it is retained as driver-inconclusive rather than a product
+finding. PAR import/export and rare-event Stake inspection remain not reached
+in this run because the material library finding blocked the required clean
+path. Retained evidence is the frozen initial record, transcript and three
+screenshots in that runtime run directory; no generated project/output tree is
+committed.
