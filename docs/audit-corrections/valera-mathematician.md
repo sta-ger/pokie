@@ -1,5 +1,53 @@
 # P9-07 — Valera mathematician
 
+## Independent browser verification — 2026-10-09 (candidate `46d02af`)
+
+Fresh candidate-bound application, browser and fixture state were created in
+`P9-07-dfc74a68844b16dd/run-2026-10-09T18-19-26-487Z`. The Studio source
+launch was the candidate checkout's `node ./dist/cli/pokie.js --no-open`; the
+collector's initial observations were frozen before the reviewer hand-off was
+read. The candidate build receipt, frozen observations and full transcript
+remain in that machine-owned run directory.
+
+The cold public path loaded the supplied tiny Blueprint, inspected reels and
+the paytable, made and restored a payout edit, saved it, and settled a real
+no-win play round (stake 1, credits 999, payout 0). A one-worker, 100-round
+simulation seeded `valera-p9-seed` completed in 16 ms with RTP 72.00%, hit
+frequency 52.00%, volatility 0.78, max win 2.00 and a 95% RTP interval of
+56.80%--87.20%. The collector recorded the UI's explicit low-round warning and
+10,000+ recommendation, interpreting this as a noisy estimate rather than a
+certified RTP.
+
+Exact library preflight reported four combinations. One accepted exact base
+generation completed with four outcomes, RTP 75.00%, 6,021 bytes and 69 ms.
+Its native reader drew `outcome-5d52fbab29e92341` with seed
+`valera-library-draw`, library `small-model-base`, base mode and stake 1.00.
+The recorded artifact replayed as job `ab91f843f5704173a81611340ab23f44` and
+visibly matched the recorded result, library hash, selection inputs, outcome,
+screen, wins, payout and steps; state/RNG were explicitly inapplicable for a
+library draw. After a public reopen, a second seeded draw
+`valera-library-second` was retained alongside the original and recreated
+records with distinct record identities in Replay Recent.
+
+The public PAR export completed at its disclosed fresh path. Reopening it
+reported a read-only PAR spreadsheet with the same warnings and truthful
+`parsheet-provenance-present`: exported by pokie v1.3.0 with the recorded hash
+matching imported data. The independently supplied `source-2` was checked,
+added and opened through Projects. Studio identified it as a Stake Engine
+export and rendered nonzero rare metrics: RTP `1.08e-17%`, hit frequency
+`5.42e-18%`, max win 2. Its stated source boundary correctly withholds a
+recoverable Blueprint/manifest.
+
+No rendered P0/P1/material-P2 failure occurred in this run. The frozen
+collector did note that the read-only export still exposes a Game Model tab
+whose unavailable sections are less direct than its Overview boundary, and
+that the paytable's match-count increment/decrement controls lack labels.
+Those were not assessed as material launch blockers. Reviewer checklist
+coverage still missing from this bounded run: an independent terminal
+cancellation/recovery interaction, explicit occupied-destination repetition,
+and the full clean affected-retest matrix. This evidence therefore does not
+claim campaign closure.
+
 Immutable brief: `a80b3554d7f660bf6826f3b0ebeaae5a0bb7e847e436322ff40fb08b992b23d5`.
 Preparation base: `c86ac680`. Product corrections and implementation tests do
 **not** establish independent campaign completion. All runtime receipts and
