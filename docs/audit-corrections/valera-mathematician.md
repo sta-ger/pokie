@@ -239,6 +239,47 @@ This is supplementary evidence, not a replacement for the frozen cold pass.
 The two continuation screenshots remain only in the machine-owned runtime
 harness; no generated assets or runtime payloads are committed.
 
+## Independent browser verification — 2026-10-09 (candidate `b4bd45d`)
+
+Fresh Studio application and browser state were collected in
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-07-f7f99e3f48be1b8c/run-2026-10-09T16-43-47-173Z`.
+The initial observations were frozen before the reviewer hand-off was read.
+The candidate launch used the source checkout's `dist/cli/pokie.js`; the
+candidate CLI was built once beforehand.
+
+The cold session created the starter game and made bounded saved edits: `A` to
+`Ace`, the first reel order, and Ace three-of-a-kind payout from 10 to 11.
+The visible model updated dependent reel/paytable references. A seeded play
+round (`valera-play-1`) settled at stake 1 with a 6.00 line win. A one-worker,
+50-round seeded simulation (`valera-sim-1`) completed in 0.1s and rendered RTP
+92.00%, hit frequency 16.00%, volatility 2.31, max win 8.00 and a 95% RTP CI
+of 28.11%--155.89%. The UI explicitly warned that 50 rounds is noisy; this
+was recorded as an estimate, not a certified RTP.
+
+Exact base Outcome Library generation acknowledged submission and completed:
+1,024 outcomes, exact RTP 100.78%, 871,951 bytes and 1320ms. The public native
+reader drew `outcome-a56b4e1bd376cf95` with seed `valera-library-1`, weight
+1/1024, recorded game/version/config hash and a 6.00 K line win. Replay Recent
+opened a completed, full, inspectable/exportable reconstructed round with the
+same seed/mode/round and the same result; its visible comparison disposition
+truthfully stated that no prior result was available to compare.
+
+After freeze, the supplied neutral `source-2` fixture was added through the
+public Projects check/add/open workflow. Studio identified it as a Stake Engine
+export and visibly reported nonzero rare-event metrics: base RTP
+`1.08e-17%`, hit frequency `5.42e-18%`, max win 2. Its reader limitations also
+truthfully state that it reads the mode fully and cannot reconstruct Blueprint
+or manifest provenance. A direct manifest-file attempt in the Blueprint loader
+was rejected with clear validation errors and was not classified as a product
+failure; the Projects workflow is the appropriate route.
+
+Three screenshots, the frozen initial record and transcript are retained only
+under that runtime harness. No generated projects, libraries, profiles or raw
+logs are committed. Supplementary gaps remain: public PAR export/import
+round-trip, downloaded-artifact restart/reopen comparison, cancellation and
+recovery, and clean affected retest. These observations therefore do not close
+the reviewer checklist or supersede the frozen initial history.
+
 ## Native draw retention correction
 
 Finding `946bca50ce1e8594` / P1, material
