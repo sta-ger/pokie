@@ -4,21 +4,29 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {pathToFileURL} from "url";
+import {constants, runInThisContext} from "node:vm";
 import {BUILT_PACKAGE_FILES} from "pokie";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
+function importSmokeScript(filename: string): Promise<unknown> {
+    const url = pathToFileURL(path.join(REPO_ROOT, "scripts", filename)).href;
+    // This lane is transpiled to CommonJS. Keep the real ESM scripts and their
+    // dependencies on Node's loader rather than ts-jest's require(fileURL).
+    return runInThisContext(`import(${JSON.stringify(url)})`, {
+        importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    }) as Promise<unknown>;
+}
+
 async function buildPackageForSmoke(): Promise<void> {
     const run = (command: string, args: string[]): void => {
         execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit", timeout: 60000});
     };
-    const ownershipModule = pathToFileURL(path.join(REPO_ROOT, "scripts/pc-20-release-completion.mjs")).href;
-    const closeoutModule = pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-corrective-closeout.mjs")).href;
-    const {runBoundedProcess} = await import(ownershipModule) as {
+    const {runBoundedProcess} = await importSmokeScript("pc-20-release-completion.mjs") as {
         runBoundedProcess: (command: string, args: string[], options: {cwd: string; timeoutMs: number; signal: AbortSignal; resourceRegistryPath: string}) => Promise<{stdout: string; stderr: string}>;
     };
-    const {settleP911Commands} = await import(closeoutModule) as {
+    const {settleP911Commands} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
         settleP911Commands: (commands: Array<(signal: AbortSignal) => Promise<void>>) => Promise<unknown>;
     };
     const runInParallel = (command: string, args: string[]) => async (signal: AbortSignal): Promise<void> => {
@@ -114,8 +122,7 @@ function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs =
 }
 
 async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
-    const module = pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-corrective-closeout.mjs")).href;
-    const {stopP911Child} = await import(module) as {stopP911Child: (owned: ChildProcessWithoutNullStreams) => Promise<void>};
+    const {stopP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {stopP911Child: (owned: ChildProcessWithoutNullStreams) => Promise<void>};
     await stopP911Child(child);
 }
 
@@ -200,8 +207,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         let sharedInstallation: string | undefined;
         if (p911Handoff) {
             expect(handoffConfig).toBeUndefined();
-            const module = pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-candidate.mjs")).href;
-            const {readP911Candidate} = await import(module) as {
+            const {readP911Candidate} = await importSmokeScript("p9-11-candidate.mjs") as {
                 readP911Candidate: (reference: {path: string; sha256: string | undefined}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string}>;
             };
             const candidate = await readP911Candidate({path: p911Handoff, sha256: process.env.POKIE_P911_CANDIDATE_HANDOFF_SHA256});
@@ -215,8 +221,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             // Re-authenticate the exact archived product at the real install
             // boundary. The reviewed tooling commit remains the release SHA;
             // archive/gitHead retain their original audited identity.
-            const handoffModule = pathToFileURL(path.join(REPO_ROOT, "scripts/p8-05-release-handoff.mjs")).href;
-            const {readP805ReleaseArchive} = await import(handoffModule) as {
+            const {readP805ReleaseArchive} = await importSmokeScript("p8-05-release-handoff.mjs") as {
                 readP805ReleaseArchive: (config: unknown) => Promise<{archive: Buffer; binding: {auditedCandidateId: string}; sha256: string}>;
             };
             const config = JSON.parse(handoffConfig) as {candidateId: string; candidatePackageSha256: string};
@@ -275,7 +280,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // Every test in this describe is registered through smokeIt.  Keep the
         // expected count explicit so adding an unwrapped test cannot silently
         // make a release receipt describe only a subset of this suite.
-        const suitePassed = completedSmokeTests.size === 22;
+        const suitePassed = completedSmokeTests.size === 25;
         // Drain even when an assertion/startup fails before its per-test finally.
         // allSettled prevents the first failed stop from abandoning siblings.
         const stops = await Promise.allSettled([...spawnedSmokeChildren].map((child) => stopChild(child)));
