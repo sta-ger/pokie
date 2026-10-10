@@ -1,8 +1,26 @@
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import {JobProgressCard} from "../../../../../../cli/studio-client/src/components/common/JobProgressCard";
+import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 
 describe("JobProgressCard", () => {
+    it("keeps a keyboard reading position when the focused active card becomes its retained terminal", () => {
+        const job = {id: "focus-job", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation", status: "running" as const, createdAt: 1};
+        const {rerender} = render(<MantineProvider><JobCard job={job} onCancel={() => undefined} /></MantineProvider>);
+        screen.getByRole("button", {name: "Cancel"}).focus();
+        rerender(<MantineProvider><JobCard job={{...job, status: "cancelled"}} onCancel={() => undefined} /></MantineProvider>);
+        expect(screen.getByRole("region", {name: "simulation job focus-job"})).toHaveFocus();
+        expect(screen.getByText("simulation · Cancelled")).toBeInTheDocument();
+    });
+    it("keeps Cancel disabled while sending intent and explains executor cleanup after acceptance", () => {
+        const job = {id: "pending", projectId: "/project", operation: "simulation", request: {}, conflictKey: "simulation", status: "running" as const, createdAt: 1};
+        const {rerender} = render(<MantineProvider><JobProgressCard job={job} cancellationPending onCancel={() => undefined} /></MantineProvider>);
+        expect(screen.getByRole("button", {name: "Cancel"})).toBeDisabled();
+        expect(screen.getByText("Sending cancellation request…")).toBeInTheDocument();
+        rerender(<MantineProvider><JobProgressCard job={{...job, status: "cancelling"}} cancellationPending onCancel={() => undefined} /></MantineProvider>);
+        expect(screen.getByRole("button", {name: "Cancel"})).toBeDisabled();
+        expect(screen.getByText("Cancellation requested; waiting for cleanup.")).toBeInTheDocument();
+    });
     it("renders the persisted semantic stage and indeterminate unit without inventing a percentage", () => {
         render(<MantineProvider><JobProgressCard job={{
             id: "job-1", projectId: "/project", operation: "deployment", request: {}, conflictKey: "deployment",

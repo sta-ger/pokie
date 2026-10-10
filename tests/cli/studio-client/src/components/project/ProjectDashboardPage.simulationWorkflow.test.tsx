@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {act, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {
@@ -13,6 +13,7 @@ import {createLargeSimulationLibrary} from "../../testUtils/largeStudioProjectFi
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
+    "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/context": () => ({
         ok: true,
         status: 200,
@@ -92,6 +93,88 @@ function stepperStep(label: string, description: string): RegExp {
 }
 
 describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
+    it("restores completed results on reopening but keeps a rejected new Run's error and attempted configuration", async () => {
+        const user = userEvent.setup();
+        const attempted = {rounds: 123, seed: "attempted-seed", workers: 2};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-completed", projectId: "/games/a", operation: "simulation", request: {rounds: 10000},
+                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1,
+            }]}}),
+            "/api/project/simulations/retained-completed": () => ({ok: true, status: 200, body: jobFor("retained-completed", {report: reportFor()})}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/reports/retained-completed": () => ({ok: true, status: 200, body: reportDetailFor()}),
+            "/api/project/simulations": () => ({ok: false, status: 400, body: {error: "Rounds must be a positive integer."}}),
+        });
+        const first = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Simulation"}));
+        expect(await screen.findByText(/^Simulation completed —/)).toBeInTheDocument();
+        first.unmount();
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Simulation"}));
+        expect(await screen.findByText(/^Simulation completed —/)).toBeInTheDocument();
+        expect(await screen.findByRole("button", {name: "Open full report"})).toBeInTheDocument();
+        expect(screen.getByText("96.00%")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")}));
+        await user.clear(screen.getByLabelText(/^Rounds/));
+        await user.type(screen.getByLabelText(/^Rounds/), String(attempted.rounds));
+        await user.click(screen.getByRole("button", {name: "Show advanced details (seed, workers)"}));
+        await user.type(screen.getByLabelText("Seed (optional)"), attempted.seed);
+        await user.clear(screen.getByLabelText(/^Workers/));
+        await user.type(screen.getByLabelText(/^Workers/), String(attempted.workers));
+        const restorations = calls.filter((call) => call.url === "/api/project/simulations/retained-completed").length;
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        expect(await screen.findByRole("alert")).toHaveTextContent("This simulation request was rejected as invalid. Check the values entered and try again.");
+        await waitFor(() => expect(screen.getByLabelText(/^Rounds/)).toBeVisible());
+        expect(screen.getByLabelText(/^Rounds/)).toHaveValue("123");
+        expect(screen.getByLabelText("Seed (optional)")).toHaveValue(attempted.seed);
+        expect(screen.getByLabelText(/^Workers/)).toHaveValue("2");
+        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
+        expect(screen.queryByText(/^Simulation completed —/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Open full report"})).not.toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/project/simulations/retained-completed")).toHaveLength(restorations);
+        expect(JSON.parse(calls.find((call) => call.init?.method === "POST" && call.url === "/api/project/simulations")?.init?.body ?? "{}")).toEqual(attempted);
+    });
+
+    it("keeps a pending submission's accepting identity when retained history is discovered", async () => {
+        const user = userEvent.setup();
+        let submitted = false;
+        let accept: (() => void) | undefined;
+        const {fetchImpl: baseFetch, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: submitted ? [{
+                id: "older-completed", projectId: "/games/a", operation: "simulation", request: {rounds: 9},
+                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1,
+            }] : []}}),
+            "/api/project/simulations/older-completed": () => ({ok: true, status: 200, body: jobFor("older-completed", {rounds: 9})}),
+            "/api/project/simulations/accepted-current": () => ({ok: true, status: 200, body: jobFor("accepted-current", {status: "cancelled"})}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        });
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                submitted = true;
+                return new Promise((resolve) => {
+                    accept = () => resolve({ok: true, status: 201, json: () => Promise.resolve(jobFor("accepted-current", {status: "queued", roundsCompleted: 0}))});
+                });
+            }
+            return baseFetch(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        await screen.findByText("simulation · Completed");
+        expect(calls.filter((call) => call.url === "/api/project/simulations/older-completed")).toHaveLength(0);
+        expect(screen.queryByText(/^Simulation completed —/)).not.toBeInTheDocument();
+        await act(async () => {
+            accept?.();
+            await Promise.resolve();
+        });
+        const receipt = await screen.findByText(/^Simulation cancelled —/);
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-captured-job", "accepted-current");
+        expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation");
+    });
+
     it("restores a retained simulation request and runs it only after an explicit submission", async () => {
         const user = userEvent.setup();
         const recoveryRequest = {rounds: 4321, seed: "recovered-simulation-seed", workers: 2};
@@ -334,6 +417,7 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
 
         await waitFor(() => expect(cancelCalled).toBe(true));
         await waitFor(() => expect(screen.getByText(/Cancelled after/)).toBeInTheDocument(), {timeout: 15000});
+        await waitFor(() => expect(screen.getByRole("region", {name: "Simulation workflow"})).toHaveFocus());
     }, 60000);
 
     it("lists recent runs and lets the user reopen a result or run the same configuration again", async () => {

@@ -20,6 +20,56 @@ function strictModeWrapper(fetchImpl: FetchLike) {
 }
 
 describe("useSimulationPoll - StrictMode + cleanup", () => {
+    it("keeps Retry ownership through pending and rejected submission discovery until a project reset", async () => {
+        let finishStart: (() => void) | undefined;
+        let rejectStart = true;
+        const submitted: unknown[] = [];
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url === "/api/project/simulations" && init?.method === "POST") {
+                submitted.push(JSON.parse(init.body ?? "{}"));
+                return new Promise((resolve) => {
+                    finishStart = () => resolve(rejectStart
+                        ? {ok: false, status: 400, json: () => Promise.resolve({error: "Rounds must be a positive integer."})}
+                        : {ok: true, status: 201, json: () => Promise.resolve({...job("queued", 0), id: "accepted-retry"})});
+                });
+            }
+            if (url === "/api/project/simulations/accepted-retry") {
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("completed", 10), id: "accepted-retry"})});
+            }
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({...job("completed", 99), id: "retained", rounds: 99})});
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.run(10, "attempted", 2));
+        await act(async () => {
+            result.current.restore("retained");
+            finishStart?.();
+            await Promise.resolve();
+        });
+        expect(result.current.error).toBe("Rounds must be a positive integer.");
+        await act(async () => {
+            result.current.restore("retained");
+            await Promise.resolve();
+        });
+        expect(result.current.error).toBe("Rounds must be a positive integer.");
+        expect(result.current.currentJobId).toBeUndefined();
+        rejectStart = false;
+        act(() => result.current.retry());
+        await act(async () => {
+            result.current.restore("retained");
+            finishStart?.();
+            await Promise.resolve();
+        });
+        expect(submitted).toEqual([{rounds: 10, seed: "attempted", workers: 2}, {rounds: 10, seed: "attempted", workers: 2}]);
+        expect(result.current.terminalReceipt).toMatchObject({operation: "simulation-retry", capturedJobId: "accepted-retry", requestId: "accepted-retry"});
+        act(() => result.current.resetForProjectSwitch());
+        await act(async () => {
+            result.current.restore("retained");
+            await Promise.resolve();
+        });
+        expect(result.current.progress?.status).toBe("completed");
+        expect(result.current.currentJobId).toBe("retained");
+    });
+
     it("clears an optimistic queued state after a rejected start so a corrected rendered Configure submission can run", async () => {
         let starts = 0;
         const fetchImpl: FetchLike = (url, init) => {
@@ -267,6 +317,49 @@ describe("useSimulationPoll - StrictMode + cleanup", () => {
 });
 
 describe("useSimulationPoll - resetForProjectSwitch", () => {
+    it("retains the durable identity through a transient poll failure and clears the connection diagnostic after reattachment", async () => {
+        jest.useFakeTimers();
+        let polls = 0;
+        let starts = 0;
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "POST") starts++;
+            if (url === "/api/project/simulations/job-1") {
+                polls++;
+                if (polls === 2) return Promise.reject(new Error("connection interrupted"));
+                return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job(polls > 2 ? "completed" : "running", polls > 2 ? 10 : 2))});
+            }
+            throw new Error(`Unexpected request ${url}`);
+        };
+        const {result, unmount} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        try {
+            await act(async () => {
+                result.current.restore("job-1");
+                await Promise.resolve();
+            });
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(500);
+            });
+            expect(result.current.job?.status).toBe("running");
+            expect(result.current.currentJobId).toBe("job-1");
+            expect(result.current.connectionError).toContain("reconnecting automatically");
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(500);
+            });
+            expect(result.current.connectionError).toBeUndefined();
+            expect(result.current.terminalReceipt?.jobId).toBe("job-1");
+            expect(result.current.progress?.status).toBe("completed");
+            expect(starts).toBe(0);
+            unmount();
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(5_000);
+            });
+            expect(polls).toBe(3);
+        } finally {
+            unmount();
+            jest.useRealTimers();
+        }
+    });
+
     it("discards a start response that resolves after a project switch", async () => {
         let releaseStart: (() => void) | undefined;
         let pollCalls = 0;

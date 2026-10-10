@@ -157,6 +157,10 @@ describe("BlueprintBuildPanel", () => {
 
         expect(screen.queryByRole("button", {name: "Confirm"})).not.toBeInTheDocument();
         expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toBeEnabled();
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).toHaveAttribute("aria-invalid", "true");
+        await user.type(screen.getByRole("textbox", {name: "Output directory (optional)"}), "new-output");
+        expect(screen.getByRole("textbox", {name: "Output directory (optional)"})).not.toHaveAttribute("aria-invalid", "true");
+        expect(screen.queryByText(/already has content/)).not.toBeInTheDocument();
     });
 
     it("checks and refuses an occupied destination even without a prior preview", async () => {

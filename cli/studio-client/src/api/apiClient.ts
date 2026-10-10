@@ -59,17 +59,17 @@ import type {
     StudioStakeEngineExportView,
 } from "./types";
 
-export async function listProjectJobs(fetchImpl: FetchLike): Promise<StudioJobView[]> {
-    const response = await fetchImpl("/api/project/jobs", {cache: "no-store"});
+export async function listProjectJobs(fetchImpl: FetchLike, signal?: AbortSignal): Promise<StudioJobView[]> {
+    const response = await fetchImpl("/api/project/jobs", {cache: "no-store", ...(signal === undefined ? {} : {signal})});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Studio jobs"));
     const body = await response.json() as {jobs?: unknown};
     return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
 }
 
 /** Discovers retained Design/project-opening jobs before a project context exists. */
-export async function listHomeSourceJobs(fetchImpl: FetchLike, sourcePath?: string): Promise<StudioJobView[]> {
+export async function listHomeSourceJobs(fetchImpl: FetchLike, sourcePath?: string, signal?: AbortSignal): Promise<StudioJobView[]> {
     const query = sourcePath === undefined ? "" : `?sourcePath=${encodeURIComponent(sourcePath)}`;
-    const response = await fetchImpl(`/api/home/jobs${query}`, {cache: "no-store"});
+    const response = await fetchImpl(`/api/home/jobs${query}`, {cache: "no-store", ...(signal === undefined ? {} : {signal})});
     if (!response.ok) throw new Error(await extractErrorMessage(response, "Failed to list Home Studio jobs"));
     const body = await response.json() as {jobs?: unknown};
     return Array.isArray(body.jobs) ? body.jobs as StudioJobView[] : [];
@@ -703,16 +703,16 @@ export async function startSimulation(
     return {status: "created", job: (await response.json()) as StudioSimulationJobView};
 }
 
-export async function getSimulation(fetchImpl: FetchLike, id: string): Promise<StudioSimulationJobView> {
-    const response = await fetchImpl(`/api/project/simulations/${encodeURIComponent(id)}`);
+export async function getSimulation(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioSimulationJobView> {
+    const response = await fetchImpl(`/api/project/simulations/${encodeURIComponent(id)}`, signal === undefined ? undefined : {cache: "no-store", signal});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to fetch simulation status"));
     }
     return (await response.json()) as StudioSimulationJobView;
 }
 
-export async function cancelSimulation(fetchImpl: FetchLike, id: string): Promise<StudioSimulationJobView> {
-    const response = await fetchImpl(`/api/project/simulations/${encodeURIComponent(id)}`, {method: "DELETE"});
+export async function cancelSimulation(fetchImpl: FetchLike, id: string, signal?: AbortSignal): Promise<StudioSimulationJobView> {
+    const response = await fetchImpl(`/api/project/simulations/${encodeURIComponent(id)}`, {method: "DELETE", ...(signal === undefined ? {} : {signal})});
     if (!response.ok) {
         throw new Error(await extractErrorMessage(response, "Failed to cancel simulation"));
     }

@@ -2200,6 +2200,7 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
 
             expect(await within(buildArtifactSection).findByText(/already exists and is not empty/)).toBeInTheDocument();
             expect(within(buildArtifactSection).getByRole("button", {name: "Build"})).toBeDisabled();
+            expect(within(buildArtifactSection).getByRole("textbox", {name: "Output directory (optional)"})).toHaveAttribute("aria-invalid", "true");
             expect(buildWasAttempted).toBe(false);
         });
     });

@@ -255,6 +255,7 @@ export function BlueprintBuildPanel({
         if (current.blueprintJson !== identity.blueprintJson || current.sourcePath !== identity.sourcePath || current.outDir !== identity.outDir) {
             previewedRequest.current = undefined;
             setPreview({status: "idle"});
+            setResult((previous) => previous.status === "error" || previous.status === "failed" || previous.status === "load-error" ? {status: "idle"} : previous);
         }
         currentIdentityRef.current = identity;
     }, [blueprint, sourcePath, outDir]);
@@ -425,6 +426,9 @@ export function BlueprintBuildPanel({
                     browseId="blueprint-build-out-dir"
                     autoDestinationPath={buildOutputAutoDestination(blueprint)}
                     value={outDir}
+                    error={preview.status === "ok" && (preview.destinationHasContent || preview.destinationError !== undefined)
+                        ? preview.destinationError ?? "Choose a new or empty directory; existing files will not be overwritten."
+                        : undefined}
                     onChange={(event) => setOutDir(event.currentTarget.value)}
                     onPathSelected={setOutDir}
                 />

@@ -5,6 +5,9 @@ import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 function baseFetchRoutes() {
     return {
+        // Discovery runs alongside feature requests and continues after returning Home.
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
         "/api/project/context": () => ({
             ok: true,
             status: 200,
