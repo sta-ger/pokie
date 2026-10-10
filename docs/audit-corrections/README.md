@@ -782,3 +782,58 @@ The Commander factory supplies the visible `help` command at
 required all-six-corrective-scenarios row; occupied-destination and all five
 persona smokes are not reached. No visual disposition, controller gate,
 publication, or acceptance result is claimed.
+
+### P9-11 shared CLI help repair and accumulated closure audit
+
+The retained `935084382c9fc051` failure receipt above was read and its SHA-256
+rechecked as `615f173bf931dafe5d3b6ebabbe5cf24cf77f67bc8f4f1f9b7a9ddb1187e60ae`.
+Source inspection and an initially failing regression reproduced
+`CertificationCommand.run(["help", "--help"])` on baseline `0890e959`:
+Commander renders help, throws `commander.help` with exit code zero, and the
+shared adapter translates it into a no-command failure. The implicit
+`help [command]` is advertised but absent from Commander's `.commands` array,
+so the older recursive metadata walk missed this surface.
+
+The adapter now accepts only zero-code `commander.help` and
+`commander.helpDisplayed`. Callers retain nonzero missing/unknown-verb, option
+and action diagnostics. The real registration/dispatch
+[help contract](../../tests/cli/CommanderHelp.contract.test.ts) checks implicit
+help, every explicit child, root flags, target-specific text, empty stderr and
+rejected missing/unknown verbs. It also covers internal Outcome Library,
+Outcome Source and Stake handlers sharing the adapter.
+[Certification tests](../../tests/cli/commands/CertificationCommand.test.ts)
+assert that help never resolves a source, reads config, builds or verifies.
+Both whole files pass together (204 tests). Root typecheck includes the Studio
+compiler; no production build, packaging, browser or official gate was run.
+
+The initial broader `cliCommandInventory.contract.test.ts` run was red: it
+reproduced the help defect and also exposed unrelated stale Simulation/Replay
+description and usage expectations. That file and its frozen fixtures are
+unchanged. The dedicated help contract supplies the bounded repair regression;
+no green whole-inventory or release result is claimed.
+
+Every cumulative finding was checked against current source and retained repair
+ledgers. This records implementation closure, not independent acceptance or a
+rerun of the controller's preserved matrix.
+
+| Accumulated finding | Current closure authority | Remaining controller proof |
+| --- | --- | --- |
+| `04313bf8d2dde540`: handoff import and child drainage | Programmer packaging uses the native VM loader. `spawnP911Child` acquires ownership/close listeners at launch and gates success on descendant/resource/stdio drainage. Existing regressions remain intact. | Shared-install packaging and final resource receipts. |
+| `2432870611d8fff2`, `be2c13d3f25051b1`: guided Design controls | `BlueprintEditorPage` mounts the Build panel within advanced options in guided mode. Guided-build and destination ledgers retain the fresh enabled path and rejection/recovery regressions. | Occupied-destination itinerary. |
+| `e1b3d3e21357cfc5`: authenticated producer | `p9-11-produce-candidate.mjs` produces normal build/archive/install and pinned delivery; the consumer authenticates source/tree, driver, resolutions and installed bytes. | New exact-commit delivery. |
+| `f7014303e1a68ec0`: recovery and source identity | Navigation guards dirty recovery within Home; draft reset clears observers, drift, overwrite/PAR authority and destinations. Build/PAR export pass an optional real source separately from hashed draft job identity. HTTP/editor regressions remain intact. | Independent recovery/destination observations. |
+| `45fafbdbee49e426`: stale Build callbacks and save lock | Panel cleanup/event-time identity rejects abandoned effects; parent identity rejects late snapshots. Cancelling deferred save clears its timer and releases only the unsubmitted guard. Submitted durable jobs retain their outcomes. | Authenticated recovery retest. |
+| `4244816bdd6f6e3c`, `5cafd64253cf60ae`: missing itineraries | The committed driver implements seven required rendered IDs; closeout enforces exact action coverage. | Driver installation/pin and real receipts. |
+| `706091c10ac6f4a8`: generator, inputs, visuals, environment and metrics | Driver uses configurable generation/Inspect, checked deterministic inputs, four graphic sheets including expanded Design, separate browser environment and actual rare Overview values. Startup/DOM/service regressions remain intact. | Persona smokes, asset binding and visual judgment. |
+| `416ccfa43f20caa3`: Paytable and dependent Stake bypass | Native ArrowRight selects Paytable; the original Blueprint submits refreshed Stake once with managed reuse, selected borrowed prerequisite and unchanged manifest. Driver/service/closeout rejection regressions remain intact. | Producer/programmer smokes. |
+| `0b244d51149b68d1`, `935084382c9fc051`: Certification help | New help tests pass root flags and exact `help --help` via real dispatch; only successful help exits bypass error translation. | Installed canonical-CLI scenario. |
+
+Immutable acceptance remains open: one exact normal delivery must bind source,
+archive, installation, public resolutions, driver and served assets; all six
+public repros and five isolated final persona smokes must pass. Original frozen
+P909/P910 observations, retained images and settled viewport focus require
+independent authentication/judgment; closeout must drain all owned resources.
+Release/packaging, post-merge checks, integration/push/publication and Drive
+round-trip remain controller-owned. Prior receipts/initial observations and
+wider partial/unconfirmed roadmap statuses remain unchanged. This committed
+implementation handoff does not mark P9-11 or the campaign complete.

@@ -85,10 +85,8 @@ export class CertificationCommand implements CliCommandHandling {
     // subcommand it came from; an empty/unrecognized verb falls back to the combined USAGE+hint the
     // original hand-rolled switch's own `default` case threw.
     public run(args: string[]): Promise<number> {
-        // An empty argv has no verb for Commander to dispatch on at all; rather than lean on
-        // Commander's own incidental "commander.help" throw for this (still handled below via
-        // noCommand, e.g. for "pokie certification help"), reject it explicitly up front with the
-        // same combined usage+hint text the original hand-rolled switch's own `default` case threw.
+        // Keep a missing verb's combined usage+hint failure separate from explicit
+        // help requests, which Commander renders and the shared adapter accepts.
         if (args.length === 0) {
             return Promise.reject(new Error(`${USAGE}\n${CONFIG_HINT}`));
         }

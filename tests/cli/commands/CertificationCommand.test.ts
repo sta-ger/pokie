@@ -101,6 +101,27 @@ describe("CertificationCommand", () => {
         await expect(command.run(["bogus"])).rejects.toThrow(/Usage: pokie certification build/);
     });
 
+    it.each([
+        ["--help"], ["-h"], ["help"], ["help", "--help"], ["help", "-h"],
+        ["help", "build"], ["help", "verify"], ["build", "--help"], ["verify", "--help"],
+    ].map((args) => [args.join(" "), args] as const))("renders explicit help for %s without certification work", async (_label, args) => {
+        const builder = createStubBuilder(successResult);
+        const verifier = createStubVerifier([]);
+        const loadJson = jest.fn();
+        const resolver = {resolve: jest.fn()};
+        const command = new CertificationCommand("1.3.0", builder, verifier, loadJson, resolver);
+
+        await expect(command.run(args)).resolves.toBe(0);
+
+        expect(logSpy).toHaveBeenCalledTimes(1);
+        expect(logSpy.mock.calls[0][0]).toContain("Usage:");
+        expect(errorSpy).not.toHaveBeenCalled();
+        expect(builder.calledWith).toBeUndefined();
+        expect(verifier.calledWith).toBeUndefined();
+        expect(loadJson).not.toHaveBeenCalled();
+        expect(resolver.resolve).not.toHaveBeenCalled();
+    });
+
     describe("build", () => {
         it("reports cancellation as a retryable build outcome", async () => {
             const builder = {
