@@ -1241,3 +1241,61 @@ Studio's Vite production bundle/normal package candidate and the single official
 release/packaging, exact integration/push/publication, Drive and lifecycle cleanup
 also remain controller-owned and pending. This implementation handoff does not
 complete P9-11 or the campaign and relabels no historical evidence.
+
+### 2026-10-10 P9-11 targeted receipt and closeout-adapter disposition
+
+Independent verification authenticated clean HEAD and the product candidate as
+`be9f91ef316ba03b804f0d50aea77ab65d1096dc`.  The controller-owned complete-file
+receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/c8e79a63b29316c7e5656d3a/result.json`.
+It records the required one-command P909/P910 invocation, an un-timed-out
+terminal exit of 1, clean identical `candidate_before` and `candidate_after`, and
+the candidate `build-cli` receipt
+`candidate-builds/be9f91ef316ba03b804f0d50aea77ab65d1096dc/result.json`
+(output SHA-256 `cb8acd98f1ad252151998bec4533c072d215240bccee840937670ecbc2d55e87`).
+Its authorized complete logs remain runtime-only: `stdout.log` SHA-256
+`334ca6493d7c0563def436bbddb6b9c7d6a0ff134540337d50e88d52f09754ba` and
+`stderr.log` SHA-256
+`92757b5cfef1cc2cc94d9659041332e5cd346cd30a3771e54ef2dbdc5fe7e2ed`.
+
+The terminal Jest summary is **1 failed, 10 passed, 11 total**. P909 passed.
+P910 executed its frozen-input rendered case and failed `measure("Home 390x844")`:
+the local clipping audit returned the visible `#blueprint-create-game` “Create
+game” button in its nonempty `failures` list, despite no document-width overflow.
+The audit checks content and local-ancestor clipping, not merely geometry
+([P910 lines 417–435](../../tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx)).
+This is a current-candidate P1 presentation finding; it is neither a provider
+timeout nor a stale/dirty-candidate result. No browser action was repeated to
+manufacture a second observation.
+
+Both frozen inputs and transcripts supplied for the command rehash exactly:
+P910 frozen/transcript are `0d589d88871b41a85a18ebc41ddb489fde09fdf50b1cf91376df9d0111e2bb1a` /
+`ff7bacd895af5812ca5e24f42dfe0cb208ab91f1b4f49b6f5e075d6992f6b4dd`, and
+P909 frozen/transcript are `ff43bb56e5a1510181abce5433557163adf27db4485adc834392f440fc5f5583` /
+`21f717aaffa39f9230205e73436c7a79bc4c1df3b24928ecd02acc520a8faf0b`.
+
+The assigned persistent harness was checked in place. Its current driver equals
+the candidate's `scripts/p9-11-rendered-driver.mjs`
+(`cf5084090abc247ff72235ad874ad4fd79e74fc830dfaf677a6bb28c39200209`), and its
+`--describe` capability check exposes all required six-scenario/five-persona
+coverage IDs.  It was not launched for another public collection: this
+invocation supplies neither `POKIE_P911_CANDIDATE_HANDOFF` nor
+`POKIE_P911_CANDIDATE_HANDOFF_SHA256`, and the assigned harness contains no
+exact-candidate handoff, archive, installation, or controller-pinned producer
+configuration.  The only local build receipt is `npm run build-cli`, which is
+not a normal pack/install proof.
+
+This is a real consumer boundary, not a missing selector or a reason to invent
+an adapter. `readP911Candidate` requires a pinned handoff, normal production
+build/pack and install receipts, archive identity, installed assets, and a
+controller-authenticated driver
+([candidate reader lines 61–117](../../scripts/p9-11-candidate.mjs)). The
+controller-only producer requires the pinned configuration and its driver before
+it can perform its one build/pack/install and emit the handoff
+([producer lines 27–45 and 70–110](../../scripts/p9-11-produce-candidate.mjs));
+the closeout calls that reader before it creates any profile or launches any
+scenario ([closeout lines 209–240](../../scripts/p9-11-corrective-closeout.mjs)).
+Accordingly the six corrective repros, five fresh persona smokes, image/focus
+disposition, packed-asset comparison, and closeout/drain record remain
+**not reached** on this candidate. Historic candidate handoffs were not reused
+or relabelled. Controller release lifecycle remains explicitly pending.
