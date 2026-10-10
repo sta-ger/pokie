@@ -1375,3 +1375,46 @@ gap, not a product defect or visual closure.
 The current retest transcript is
 `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-65bc11c01a25efb9/run-2026-10-10T08-03-47-062Z/transcript.json`
 (`3c5ad71628d28166f1e35967aee925fc1957ad2d6c7b1d5f3e416fac2c688753`).
+
+## 2026-10-10 focused clean-state closure — passed
+
+Candidate product identity remains `832793cb47167a7d4367176021f1f82a92b55f1b`;
+the committed evidence head is recorded by the verifier separately.  Two fresh,
+isolated public Studio runs completed the only formerly unreached work without
+changing product code or tests.  Their authentic frozen initial observations
+and chronological transcripts are retained outside the repository:
+
+| Run | Frozen initial / transcript | SHA-256 |
+| --- | --- | --- |
+| Validation/recovery run | `run-2026-10-10T08-12-07-790Z/frozen-initial.json` / `transcript.json` | `4b8a13a7ca4c7b76213d48cdf7b8132bc38f6efea0ea12eb7ad54d2089df96ca` / `d246d6e4de46a0480670ff08e992283099b2b3045ed6bca4c6f3b437dc14b9b4` |
+| Terminal-focus run | `run-2026-10-10T08-14-59-175Z/frozen-initial.json` / `transcript.json` | `e1b65f6abfb8be24a7ec39ce9c5bb4b2fd190d3c4451227f1efbef90094cb6cb` / `29e02ab24f293d1774787442047d50b902ac9aeb367dc967fab66ce94065d8d6` |
+
+The first run created its fresh starter through Home, reached readable Overview
+and configured Build/Export, then showed `5000000` unchanged in Rounds with the
+associated “between 1 and 2,000,000” error and disabled Run Simulation.  There
+was no queued simulation card.  Correcting the value to `500000` enabled the
+control, produced one queued/running/completed 500,000-round job, and retained
+its result.  That job completed before its common JobCard Cancel could be
+reached, so it was not resubmitted in that run.
+
+The second fresh run used the visible supported maximum, `2000000`, for its one
+accepted request.  It rendered the matching queued/running job and native Tab
+reached the separate common JobCard Cancel at `x=1272.1875,y=664.765625`; it was
+focused with a solid 2px `rgb(76, 110, 245)` outline.  Without activation or
+additional navigation, that same job completed at `2000000/2000000`; focus then
+belonged to its terminal `simulation · Completed` region, which retained the
+same solid 2px visible outline.  This is the required action-local transition,
+not a page-wide alert or a prior job.
+
+I independently opened the retained current-candidate 900×700 image
+`run-2026-10-10T08-03-47-062Z/1-observation.png`
+(`d795b35fff83a149778e3aa5041c1bf296367643d23fb70d915b2b81336e4acc`).
+It shows a readable compact Simulation summary, distinct stepper, warnings and
+actions without clipping.  Alongside the retained readable Overview and
+configured Build/Export observations, this supports the remaining compact and
+smaller visual disposition: no P0, P1 or material P2 remains.  No screenshot
+was added in either focused run: the existing collection stays at four useful
+images/contact sheets, and no gallery was created.
+
+The complete deferred P910 execution remains at the controller-owned
+authenticated boundary, as required; this verifier did not run it.
