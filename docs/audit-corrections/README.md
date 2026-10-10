@@ -478,3 +478,36 @@ repros, five isolated persona final smokes and authenticated P909/P910 obligatio
 production bundle/build/package boundaries, release/integration/push/publication,
 Drive round-trip and campaign completion remain pending controller-owned work,
 as indexed above. Prior loader/producer/drainage corrections remain unchanged.
+
+### P9-11 asynchronous draft replacement isolation repair
+
+Finding `45fafbdbee49e426` against `31e1d7977f7198d41511f04490cceca08158b833`
+was traced through the shared reset, every New/Load/Undo/PAR/recovery caller,
+the panel's preview/publication callbacks and both save paths. Delayed-response
+regressions reproduced the old panel submitting after unmount and attaching A's
+build to recovered B or a New/Load replacement before the correction.
+
+Panel cleanup now invalidates preview authorization and suppresses abandoned
+panel effects. An event-time draft check also rejects continuations before
+remount cleanup runs; the parent checks the submitting identity before attaching
+a snapshot or revalidating. Submitted requests are not aborted or cancelled:
+StudioServer's existing durable operation still records the truthful terminal.
+Ordinary edits preserve the draft identity and compare against the exact submitted
+blueprint. Cancelling the deferred guided save clears its timer reference and
+releases its unsubmitted activation's guard. Real Save/managed-save requests keep
+that guard until their own finalizer settles.
+
+| Saved failure | Current product regression authority |
+| --- | --- |
+| Stale fallback/advisory preview and late publication after recovery, New/Load or unmount | [Delayed editor replacements](../../tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx); [unmount, event-time identity and same-draft comparison](../../tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx). Replacement validation, destination, snapshot and restore controls remain isolated; no cancellation is sent for submitted work. |
+| Cancelled deferred action locks saving or unlocks another request | Controlled timers in the guided-build file cover recovery and pending Load, subsequent Create game/Save, another replacement during a real Save, and both submitted save paths. |
+
+The two directly affected whole files pass together (51 tests); root
+`npm run typecheck` includes the Studio compiler. The clone policy rejected the
+standalone Studio typecheck before launch, so the allowed root command supplies
+that compiler boundary. The controller retains the complete sibling reviewer
+matrix. All prior evidence and loader/producer/cleanup/source/recovery corrections
+remain intact. Six installed-candidate repros, five independent final persona
+smokes, authenticated P909/P910 execution, the production build/package boundary
+and release/integration/push/publication/Drive lifecycle remain pending
+controller execution; this source repair does not close those evidence rows.

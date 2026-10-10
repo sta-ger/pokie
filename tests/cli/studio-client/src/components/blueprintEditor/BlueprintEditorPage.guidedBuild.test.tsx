@@ -17,6 +17,18 @@ function RecoveryHarness({initialPath}: {initialPath?: string}) {
     </>;
 }
 
+async function replaceDraft(replacement: string, user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    if (replacement === "Recover") {
+        await user.click(screen.getByRole("button", {name: "Recover B"}));
+    } else if (replacement === "Load") {
+        fireEvent.change(screen.getByLabelText("Load from path"), {target: {value: "/games/B.json"}});
+        await user.click(screen.getByRole("button", {name: "Load", exact: true}));
+    } else {
+        await user.click(screen.getByRole("button", {name: "Choose a different start", exact: true}));
+        await user.click(await screen.findByRole("button", {name: "Use the starter game"}));
+    }
+}
+
 function validRoutes() {
     return createRoutedFakeFetch({
         "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/A.json", blueprint: createRecommendedBlueprint(), blueprintHash: "A"}}),
@@ -156,6 +168,214 @@ describe("Guided draft package safety", () => {
         await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
     });
 
+    it.each(["Recover", "New", "Load"])("isolates delayed preview and submitted build responses across %s replacement", async (replacement) => {
+        const user = userEvent.setup();
+        const original = createRecommendedBlueprint();
+        const manifest = original.manifest;
+        const preview = {status: "ok", manifest, warnings: [], reels: 3, rows: 3, symbolsCount: 2, blueprintHash: "A", expectedFiles: ["package.json"], projectRoot: "/games/A-package", destinationHasContent: false, createFiles: ["package.json"], updateFiles: [], deleteFiles: []};
+        const built = {status: "ok", manifest, warnings: [], projectRoot: "/games/A-package", createdFiles: ["package.json"], buildInfo: {schemaVersion: 1, generatedBy: "pokie build", pokieVersion: "1.0.0", generatedAt: "2026-01-01T00:00:00.000Z", blueprintHash: "A", game: manifest}, unchanged: false};
+        const base = createRoutedFakeFetch({
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/B.json", blueprint: recoveredBlueprint, blueprintHash: "B"}}),
+            "/api/home/blueprints/check-source": () => ({ok: true, status: 200, body: {status: "unchanged", blueprintHash: "B"}}),
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: preview}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: built}),
+        });
+        const responses: Array<(body: unknown) => void> = [];
+        const fetchImpl: typeof base.fetchImpl = (url, init) => base.fetchImpl(url, init).then((response) => url === "/api/home/blueprints/build" || url === "/api/home/blueprints/build-preview"
+            ? {...response, json: () => new Promise((resolve) => {
+                responses.push(resolve);
+            })}
+            : response);
+        renderWithProviders(<RecoveryHarness />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
+        // Two checks are outstanding: the explicit preview and Build's fallback.
+        await user.click(screen.getByRole("button", {name: "Build Preview"}));
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(responses).toHaveLength(2));
+        // The fallback authorizes one durable publication, leaving the advisory preview pending.
+        await act(async () => {
+            responses[1](preview);
+            await Promise.resolve();
+        });
+        await waitFor(() => expect(responses).toHaveLength(3));
+        await replaceDraft(replacement, user);
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
+        const validationsBefore = base.calls.filter((call) => call.url === "/api/home/blueprints/validate").length;
+        await act(async () => {
+            responses[0](preview);
+            responses[2](built);
+            await Promise.resolve();
+        });
+        expect(screen.queryByText(/Last built/)).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Restore built blueprint"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Discard unbuilt changes"})).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue(replacement === "Recover" ? "/games/B-package" : "");
+        expect(screen.getByLabelText("Game name")).toHaveValue(replacement === "New" ? manifest.name : "Recovered B");
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled();
+        expect(base.calls.filter((call) => call.url === "/api/home/blueprints/validate")).toHaveLength(validationsBefore);
+        expect(base.calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1);
+        expect(base.calls.some((call) => call.url.includes("cancel"))).toBe(false);
+    });
+
+    it.each(["Recover", "New", "Load"])("does not submit A when its fallback preview settles after %s replacement", async (replacement) => {
+        const user = userEvent.setup();
+        const base = createRoutedFakeFetch({
+            "/api/home/blueprints/load": () => ({ok: true, status: 200, body: {status: "ok", path: "/games/B.json", blueprint: recoveredBlueprint, blueprintHash: "B"}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/check-source": () => ({ok: true, status: 200, body: {status: "unchanged", blueprintHash: "B"}}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {status: "error", error: "Stale build submitted"}}),
+        });
+        let finish!: (body: unknown) => void;
+        const fetchImpl: typeof base.fetchImpl = (url, init) => url === "/api/home/blueprints/build-preview"
+            ? Promise.resolve({ok: true, status: 200, json: () => new Promise((resolve) => {
+                finish = resolve;
+            })})
+            : base.fetchImpl(url, init);
+        renderWithProviders(<RecoveryHarness />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(finish).toBeDefined());
+        await replaceDraft(replacement, user);
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
+        await act(async () => {
+            finish({status: "ok", manifest: createRecommendedBlueprint().manifest, warnings: [], projectRoot: "/games/A-package", destinationHasContent: false, expectedFiles: [], createFiles: [], updateFiles: [], deleteFiles: []});
+            await Promise.resolve();
+        });
+        expect(base.calls.some((call) => call.url === "/api/home/blueprints/build")).toBe(false);
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue(replacement === "Recover" ? "/games/B-package" : "");
+    });
+
+    it.each(["Recover", "Load"])("cancels an unsubmitted guided save on %s and leaves both save actions usable", async (replacement) => {
+        const user = userEvent.setup();
+        const base = validRoutes();
+        let finishLoad!: (body: unknown) => void;
+        let finishSave: ((body: unknown) => void) | undefined;
+        const fetchImpl: typeof base.fetchImpl = (url, init) => {
+            if (url === "/api/home/blueprints/load") return Promise.resolve({ok: true, status: 200, json: () => new Promise((resolve) => {
+                finishLoad = resolve;
+            })});
+            if (url === "/api/home/blueprints/check-source") return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "unchanged", blueprintHash: "B"})});
+            return base.fetchImpl(url, init).then((response) => url === "/api/home/blueprints/save" && JSON.parse(init?.body ?? "{}").path === "/games/explicit-B.json" && finishSave === undefined
+                ? {...response, json: () => new Promise((resolve) => {
+                    finishSave = resolve;
+                })}
+                : response);
+        };
+        const view = renderWithProviders(<RecoveryHarness />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        if (replacement === "Load") {
+            fireEvent.change(screen.getByLabelText("Load from path"), {target: {value: "/games/B.json"}});
+            await user.click(screen.getByRole("button", {name: "Load", exact: true}));
+            await waitFor(() => expect(finishLoad).toBeDefined());
+        }
+        jest.useFakeTimers();
+        try {
+            fireEvent.click(screen.getByRole("button", {name: "Create game"}));
+            if (replacement === "Recover") fireEvent.click(screen.getByRole("button", {name: "Recover B"}));
+            else await act(async () => {
+                finishLoad({status: "ok", path: "/games/B.json", blueprint: recoveredBlueprint, blueprintHash: "B"});
+                await Promise.resolve();
+            });
+            await act(async () => {
+                jest.advanceTimersByTime(0);
+                await Promise.resolve();
+            });
+            expect(base.calls.filter((call) => call.url.includes("/save"))).toHaveLength(0);
+            await act(async () => {
+                jest.advanceTimersByTime(600);
+                await Promise.resolve();
+            });
+            const primary = screen.getByRole("button", {name: replacement === "Load" ? "Save game" : "Create game"});
+            expect(primary).toBeEnabled();
+            fireEvent.click(primary);
+            await act(async () => {
+                jest.advanceTimersByTime(1);
+                await Promise.resolve();
+            });
+            const saves = base.calls.filter((call) => call.url.includes("/save"));
+            expect(saves).toHaveLength(1);
+            expect(JSON.parse(saves[0].init!.body!).blueprint).toEqual(recoveredBlueprint);
+            fireEvent.change(screen.getByLabelText("Save to path"), {target: {value: "/games/explicit-B.json"}});
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", {name: "Save", exact: true}));
+                await Promise.resolve();
+            });
+            expect(base.calls.filter((call) => call.url.includes("/save"))).toHaveLength(2);
+            expect(finishSave).toBeDefined();
+            // The cancelled timer must not retain a reference that can unlock this real Save.
+            fireEvent.click(screen.getByRole("button", {name: "Recover B"}));
+            const confirmation = screen.queryByRole("button", {name: "Confirm", exact: true});
+            if (confirmation) fireEvent.click(confirmation);
+            await act(async () => {
+                jest.advanceTimersByTime(600);
+                await Promise.resolve();
+            });
+            fireEvent.click(screen.getByRole("button", {name: "Save", exact: true}));
+            fireEvent.click(screen.getByRole("button", {name: "Create game"}));
+            await act(async () => {
+                jest.advanceTimersByTime(1);
+                await Promise.resolve();
+            });
+            expect(base.calls.filter((call) => call.url.includes("/save"))).toHaveLength(2);
+            await act(async () => {
+                finishSave?.({status: "error", error: "Old save failed"});
+                await Promise.resolve();
+            });
+            await act(async () => {
+                fireEvent.click(screen.getByRole("button", {name: "Save", exact: true}));
+                await Promise.resolve();
+            });
+            expect(base.calls.filter((call) => call.url.includes("/save"))).toHaveLength(3);
+            expect(screen.queryByText(/Old save failed/)).not.toBeInTheDocument();
+        } finally {
+            view.unmount();
+            jest.useRealTimers();
+        }
+    });
+
+    it.each(["save", "save-managed"])("keeps a submitted %s guarded across repeated replacement until that request settles", async (operation) => {
+        const user = userEvent.setup();
+        const base = validRoutes();
+        let finish!: (body: unknown) => void;
+        let submitted = 0;
+        const fetchImpl: typeof base.fetchImpl = (url, init) => {
+            if (url === `/api/home/blueprints/${operation}`) {
+                submitted += 1;
+                if (submitted === 1) return Promise.resolve({ok: true, status: 200, json: () => new Promise((resolve) => {
+                    finish = resolve;
+                })});
+            }
+            return base.fetchImpl(url, init);
+        };
+        renderWithProviders(<RecoveryHarness />, {fetchImpl});
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        if (operation === "save") fireEvent.change(screen.getByLabelText("Save to path"), {target: {value: "/games/A.json"}});
+        await user.click(screen.getByRole("button", {name: operation === "save" ? "Save" : "Create game", exact: true}));
+        await waitFor(() => expect(finish).toBeDefined());
+        for (let i = 0; i < 2; i++) {
+            await user.click(screen.getByRole("button", {name: "Recover B"}));
+            const confirmation = screen.queryByRole("button", {name: "Confirm", exact: true});
+            if (confirmation) await user.click(confirmation);
+            await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+            fireEvent.click(screen.getByRole("button", {name: "Create game"}));
+            fireEvent.click(screen.getByRole("button", {name: "Save", exact: true}));
+            expect(submitted).toBe(1);
+            expect(base.calls.some((call) => call.url === `/api/home/blueprints/${operation === "save" ? "save-managed" : "save"}`)).toBe(false);
+        }
+        await act(async () => {
+            finish({status: "error", error: "A failed"});
+            await Promise.resolve();
+        });
+        await user.click(screen.getByRole("button", {name: operation === "save" ? "Save" : "Create game", exact: true}));
+        await waitFor(() => expect(submitted).toBe(2));
+        expect(screen.queryByText(/A failed/)).not.toBeInTheDocument();
+    });
+
     it("clears unrelated PAR provenance before saving the recovered draft", async () => {
         const user = userEvent.setup();
         window.sessionStorage.setItem("pokie-studio:design-draft:v1", JSON.stringify({blueprint: createRecommendedBlueprint(), importedFromParSheetPath: "/games/A.xlsx"}));
@@ -186,7 +406,7 @@ describe("Guided draft package safety", () => {
         } else {
             await user.click(screen.getByRole("button", {name: "Choose a different start", exact: true}));
             await user.click(await screen.findByRole("button", {name: "Discard", exact: true}));
-            await user.click(screen.getByRole("button", {name: "Use the starter game"}));
+            await user.click(await screen.findByRole("button", {name: "Use the starter game"}));
         }
         await waitFor(() => expect(screen.getByLabelText("Output directory (optional)")).toHaveValue(""));
         expect(screen.queryByText(/Recovered the draft for the previous artifact destination/)).not.toBeInTheDocument();

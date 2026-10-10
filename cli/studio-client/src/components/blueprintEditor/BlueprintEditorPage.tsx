@@ -144,6 +144,8 @@ export function BlueprintEditorPage({
     const [buildOutDir, setBuildOutDir] = useState<string>();
     // A replacement invalidates pending Load/Save responses as well as source observers.
     const draftIdentityRef = useRef(0);
+    const [draftIdentity, setDraftIdentity] = useState(0);
+    const isCurrentDraft = useCallback(() => draftIdentity === draftIdentityRef.current, [draftIdentity]);
     const [overwriteConfirmedForPath, setOverwriteConfirmedForPath] = useState<string>();
     const [loadView, setLoadView] = useState<BlueprintLoadView>({status: "idle"});
     const [saveView, setSaveView] = useState<BlueprintSaveView>({status: "idle"});
@@ -442,6 +444,15 @@ export function BlueprintEditorPage({
     // Kept separately from the validation debounce: this one only yields a primary action until React
     // has drained the input's preceding blur batch (see handleGuidedSave below).
     const guidedSaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const endSave = saveGuard.end;
+    const cancelDeferredGuidedSave = useCallback((): void => {
+        if (guidedSaveTimerRef.current === undefined) return;
+        clearTimeout(guidedSaveTimerRef.current);
+        guidedSaveTimerRef.current = undefined;
+        // Only the deferred, unsubmitted activation owns this timer. Submitted saves release
+        // the same guard in their request's finally; replacement must not unlock those requests.
+        endSave();
+    }, [endSave]);
     useEffect(() => {
         const isInitialMount = !hasRunRevisionEffectRef.current;
         hasRunRevisionEffectRef.current = true;
@@ -468,16 +479,8 @@ export function BlueprintEditorPage({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.state.revision, isVisible]);
 
-    // Cancels a pending debounced auto-validate on unmount -- a stray setTimeout firing after this page
-    // is gone would call setValidationView on an unmounted component.
-    useEffect(
-        () => () => {
-            if (guidedSaveTimerRef.current !== undefined) {
-                clearTimeout(guidedSaveTimerRef.current);
-            }
-        },
-        [],
-    );
+    // Cancel the unsubmitted guided action on unmount as well as on draft replacement.
+    useEffect(() => cancelDeferredGuidedSave, [cancelDeferredGuidedSave]);
 
     // Detects the persisted Blueprint source (whatever sourceVersionRef above is currently watching)
     // changing *externally* -- a hand edit, another Studio tab, a CLI command, anything that isn't this
@@ -612,8 +615,9 @@ export function BlueprintEditorPage({
 
     const resetDraftIdentity = (): void => {
         draftIdentityRef.current += 1;
+        setDraftIdentity(draftIdentityRef.current);
         workspaceOpenRequestIdRef.current += 1;
-        if (guidedSaveTimerRef.current !== undefined) clearTimeout(guidedSaveTimerRef.current);
+        cancelDeferredGuidedSave();
         sourceVersionRef.current = undefined;
         sourceCheckPausedRef.current = false;
         setSourceDrift(undefined);
@@ -848,6 +852,9 @@ export function BlueprintEditorPage({
     // here -- it must keep describing exactly what was materialized regardless of what a later validate
     // finds, the same "never touched" contract handleRestoreBuilt's own doc comment already relies on.
     const handleBuilt = (snapshot: BuiltBlueprintSnapshot): void => {
+        // This callback belongs to the submitting draft, even if its panel's cleanup has not
+        // run yet. Ordinary edits keep that identity and still compare against the sent snapshot.
+        if (!isCurrentDraft()) return;
         setBuiltSnapshot(snapshot);
         if (guided) {
             setValidationView((prev) => (prev.status === "ok" || prev.status === "invalid" || prev.status === "stale" ? {status: "stale"} : prev));
@@ -1360,6 +1367,7 @@ export function BlueprintEditorPage({
                     sourcePath={blueprintPath}
                     initialOutDir={buildOutDir}
                     builtSnapshot={builtSnapshot}
+                    isCurrentDraft={isCurrentDraft}
                     onBuilt={handleBuilt}
                     onRestoreBuilt={handleRestoreBuilt}
                     blocked={guided ? validationView.status !== "ok" || sourceDrift !== undefined || jsonDraftDirty || guidedActionPending : validationView.status === "invalid"}
