@@ -511,3 +511,45 @@ remain intact. Six installed-candidate repros, five independent final persona
 smokes, authenticated P909/P910 execution, the production build/package boundary
 and release/integration/push/publication/Drive lifecycle remain pending
 controller execution; this source repair does not close those evidence rows.
+
+### 2026-10-10 P9-11 exact-candidate closeout adapter preflight
+
+The independent verifier authenticated product candidate and initial HEAD
+`af890c80dde5ab1cf0c85db41fb78cdc7508c3a3` (tree
+`e048ab4772c962baf7e4f8296f3a79d580454e2a`) with a clean worktree.  It did
+not launch Studio, build, pack, install, invoke an official gate, or publish.
+
+The assigned persistent adapter
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-9a681260c6a73825/current.mjs`
+was inspected through its non-launch command:
+
+```text
+node "$POKIE_VERIFIER_HARNESS_WORKSPACE/current.mjs" --describe
+{"schemaVersion":1,"kind":"verifier-driver-capabilities","coverage":{"stake-uint64-total":["stake.recognized-studio"]}}
+exit 0
+```
+
+This is a deterministic offline adapter rejection, not a rendered product
+observation.  `scripts/p9-11-corrective-closeout.mjs` requires rendered action
+coverage for `occupied-destination` and each of the five persona IDs in addition
+to Stake.  In contrast, the assigned adapter has a successful result branch only
+for `request.id === "stake-uint64-total"`; its other-ID branch terminates with
+`no implemented visible itinerary for <id>`.  Thus it cannot produce the
+consumer's required action receipts for the exact six-repro/five-persona run.
+
+No `POKIE_P911_CANDIDATE_HANDOFF`/`POKIE_P911_CANDIDATE_HANDOFF_SHA256` delivery
+was exported for this invocation.  The candidate reader in
+`scripts/p9-11-candidate.mjs` correctly refuses to substitute one: it requires
+an absolute pinned handoff containing the normal archive, production build and
+install receipts, installation, and hashed driver.  The sole producer,
+`scripts/p9-11-produce-candidate.mjs`, can create that handoff only from a
+controller-pinned producer configuration and driver; neither was supplied here.
+No synthetic receipt, archive, installation, driver authentication, or rendered
+action record was created.
+
+The correction boundary is therefore the controller-to-closeout rendered-driver
+adapter: implement all required visible itineraries in the retained current
+driver, pin that repaired driver with a controller-produced exact-candidate
+handoff, then continue from the first missing row.  All acceptance work remains
+not reached; this preflight neither repeats nor changes any historical product
+finding or final-smoke disposition.
