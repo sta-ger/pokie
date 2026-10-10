@@ -123,6 +123,13 @@ describe("Guided Design Game: automatic validation", () => {
         });
         const {router} = renderRoutedApp({fetchImpl: deferredFetch, initialEntries: ["/home/design"]});
         const create = screen.getByRole("button", {name: "Create game"});
+        const entrySurfaces: boolean[] = [];
+        const unsubscribe = router.subscribe((state) => {
+            if (state.location.pathname === "/project/%2Fgames%2Fstarter/overview") {
+                entrySurfaces.push(document.getElementById("home-design-panel") === null
+                    && document.getElementById("blueprint-create-game") === null);
+            }
+        });
         const activations: string[] = [];
         create.addEventListener("click", () => activations.push(create.getAttribute("data-pokie-validation-state")!));
         await waitFor(() => expect(finishValidation).toBeDefined());
@@ -150,6 +157,9 @@ describe("Guided Design Game: automatic validation", () => {
             await finishSave?.();
         });
         await screen.findByRole("heading", {name: "Starter Slot"});
+        unsubscribe();
+        expect(entrySurfaces.length).toBeGreaterThan(0);
+        expect(entrySurfaces.every(Boolean)).toBe(true);
         expect(activations).toEqual(["ok"]);
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fstarter/overview");
         expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]')).toBeVisible();

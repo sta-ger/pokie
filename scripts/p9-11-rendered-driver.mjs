@@ -64,7 +64,8 @@ export async function runItinerary(request, s) {
     const workspace = path.join(request.profileRoot, "workspace");
     const create = async () => {
         await s.activate(button("Create game"));
-        await see("location.hash.endsWith('/overview') && document.body.innerText.includes('Valid — no issues found.')", "Create game terminal Overview validation");
+        await see("location.hash.endsWith('/overview') && document.body.innerText.includes('Valid — no issues found.') && Boolean(document.querySelector('[data-pokie-lifecycle-result-control=\"project-tab:overview\"][data-pokie-lifecycle-terminal=\"rendered\"]'))", "Create game terminal Overview validation");
+        requireObserved(await s.evaluate("document.getElementById('home-design-panel') === null && document.getElementById('blueprint-create-game') === null"), "saved Overview retains Home editor controls");
         const savedPath = await s.evaluate("decodeURIComponent(location.hash.split('/')[2])");
         const blueprint = JSON.parse(await s.read(savedPath));
         requireObserved(blueprint.manifest?.id && blueprint.reels > 0, "saved starter readback is not a design");
@@ -605,7 +606,13 @@ export async function navigateSurface(label, {evaluate, activate, until}) {
     }
     await activate(target);
     const routes={"Start a game":"/home/design", "Your projects":"/home/projects", "Build/Export":"/exportDeploy", Simulation:"/simulation", Replay:"/replay", Overview:"/overview"};
-    if(routes[label]) await until(() => evaluate(`location.hash.endsWith(${q(routes[label])})`), `navigation ${label}`);
+    if(routes[label]) {
+        const tab = routes[label].slice(1);
+        const rendered = tab.startsWith("home/")
+            ? `Boolean((${target})?.getAttribute('aria-current') === 'page')`
+            : `Boolean(document.querySelector(${q(`[data-pokie-lifecycle-result-control="project-tab:${tab}"][data-pokie-lifecycle-terminal="rendered"]`)}))`;
+        await until(() => evaluate(`location.hash.endsWith(${q(routes[label])}) && ${rendered}`), `navigation ${label}`);
+    }
 }
 
 export async function reloadPage(cdp, until) {

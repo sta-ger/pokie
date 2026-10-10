@@ -562,10 +562,12 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
         }
         await viewport(1100, 800);
         await activate(button("Create game"));
-        await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Valid — no issues found.')"), "real saved starter project");
+        await until(() => evaluate<boolean>(`location.hash.endsWith('/overview') && document.body.innerText.includes('Valid — no issues found.')
+            && Boolean(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]'))`), "real saved starter project");
         const projectRoot = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
         expect(projectRoot.startsWith(documents + path.sep)).toBe(true);
         await fs.access(projectRoot);
+        expect(await evaluate<boolean>("document.getElementById('home-design-panel') === null && document.getElementById('blueprint-create-game') === null")).toBe(true);
         await measure('Saved project overview');
         const occupied = path.join(workspace, 'occupied-' + 'long-destination-'.repeat(6));
         await fs.mkdir(occupied);

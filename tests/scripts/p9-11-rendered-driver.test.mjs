@@ -54,6 +54,8 @@ function surface(id, fault) {
         if(!route.startsWith('home/')) html+='<button>Close project</button>';
         if(route==='overview') {
             html+='Valid — no issues found. Game export <button>Open Play</button>';
+            if(fault!=='uncommitted-overview') html+='<div data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="rendered"></div>';
+            if(fault==='retained-editor') html+='<div id="home-design-panel"><button id="blueprint-create-game">Create game</button></div>';
             if(id==='stake-uint64-total') html+=`<table data-testid="outcome-source-mode-table"><thead><tr><th>Mode</th><th>RTP</th><th>Hit frequency</th></tr></thead><tbody><tr><td>base</td><td>${fault==='rendered-zero'?'0.00%':'1.0842e-17%'}</td>${fault==='rendered-missing'?'':`<td>5.4210e-18%</td>`}</tr></tbody></table>`;
             if(currentProject===output('outcomeLibrary')) html+=`${field('Seed (optional)')}<button>Draw an outcome</button>${drawn?'Saved in Replay Recent':''}`;
         }
@@ -409,8 +411,37 @@ test('phone navigation reveals the actual collapsed navigation before activating
     const activated=[];
     await navigateSurface('Build/Export',{
         evaluate:async expression=>dom.window.eval(expression),
-        activate:async expression=>{const element=dom.window.eval(expression);assert.ok(element?.getClientRects().length);activated.push(element.textContent);if(element.textContent==='Menu'){dom.window.document.querySelector('nav').hidden=false;element.setAttribute('aria-expanded','true');}else dom.window.location.hash='/project/fixture/exportDeploy';},
+        activate:async expression=>{const element=dom.window.eval(expression);assert.ok(element?.getClientRects().length);activated.push(element.textContent);if(element.textContent==='Menu'){dom.window.document.querySelector('nav').hidden=false;element.setAttribute('aria-expanded','true');}else {dom.window.location.hash='/project/fixture/exportDeploy';dom.window.document.body.insertAdjacentHTML('beforeend','<div data-pokie-lifecycle-result-control="project-tab:exportDeploy" data-pokie-lifecycle-terminal="rendered"></div>');}},
         until:async fn=>assert.ok(await fn()),
     });
     assert.deepEqual(activated,['Menu','Build/Export']);
+});
+
+
+test('saved Overview requires its own rendered terminal and no retained Home editor', async () => {
+    for (const fault of ['uncommitted-overview','retained-editor']) {
+        const f=surface('producer',fault);
+        await assert.rejects(runItinerary(f.request,f.s), /Create game terminal Overview validation|saved Overview retains Home editor controls/);
+        assert.deepEqual(f.receipts,[]);
+    }
+});
+
+test('a changed hash alone cannot authorize measuring a project navigation', async () => {
+    const dom=new JSDOM('<nav id="studio-navigation-panel"><button>Overview</button></nav>',{url:'http://fixture/#/project/fixture/exportDeploy',runScripts:'outside-only'});
+    windows.push(dom.window);
+    Object.defineProperty(dom.window.HTMLElement.prototype,'getClientRects',{value:function(){return [{}];}});
+    let probes=0;
+    await navigateSurface('Overview',{
+        evaluate:async expression=>dom.window.eval(expression),
+        activate:async ()=>{dom.window.location.hash='/project/fixture/overview';},
+        until:async fn=>{
+            probes++;
+            assert.equal(await fn(),false);
+            dom.window.document.body.insertAdjacentHTML('beforeend','<div data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading"></div>');
+            assert.equal(await fn(),false);
+            dom.window.document.querySelector('[data-pokie-lifecycle-terminal]').setAttribute('data-pokie-lifecycle-terminal','rendered');
+            assert.equal(await fn(),true);
+        },
+    });
+    assert.equal(probes,1);
 });

@@ -1108,3 +1108,87 @@ runs settle.  This supports that narrow settled-card disposition, but cannot
 pass the separate failed P910 Overview measurement.  No test, build, pack,
 installation, release gate, publication, or duplicate public journey was run
 by this disposition step.
+
+### P9-11 saved Overview transition correction (controller retest pending)
+
+The retained finding `9db9d1fb13cebec3`, complete targeted receipt/stdout/stderr
+at `verifier-targeted-results/9d3c3eb80b516f3bfb1cd2a3`, and every prior P9-11
+run/closeout/inspection directory indexed above were read without modification.
+The latest `closeout-2026-10-10T20-45-00Z/checks.json` still binds product
+`90ac641d2e8eda731ca0821b56c4788f5d63eb19`: all 12 result/process receipt pairs
+rehash correctly, six public corrective scenarios and five distinct persona
+profiles are accounted for, and process group/tree/resource/stdio drainage and
+profile removal are true. These historical receipts do not cover changed
+product or driver bytes. The original independent freezes and four Graphic
+Designer contact sheets remain intact; their accepted visual disposition does
+not override the retained P910 failure.
+
+Source tracing found that data-router navigation writes the hash before its
+normally scheduled React route commit. Home and Overview both contain
+“Valid — no issues found.”, so the old collector predicate could accept Home
+under the new Overview URL. The saved failure lists Home's Create control and
+Form/JSON inputs; subsequent failure diagnostics already show the project's
+“Opening your game…” state. Focused real-router regressions reproduced retained
+Home DOM at project-entry notification on the unchanged production source,
+through both Create game and registered-project Open, before the fix.
+
+Guided save/open and the shared `useOpenProject` now request a synchronous
+route commit after confirmed server opening. The destination loading surface
+replaces the editor immediately. The shared hook also serves retained Home
+opening recovery, built-package Open in Studio, configurable-library Inspect,
+artifact Open as Project and project-job Inspect output. Existing dirty-draft
+confirmation, server-operation cancellation confirmation, stale draft/open
+response rejection and submitted durable-job outcomes retain their authority.
+Home tab changes still preserve the editor draft.
+
+P910 and the bounded driver now wait for Overview's own rendered navigation
+terminal together with successful validation, and reject retained Home editor
+controls. The driver's common section navigation also requires the selected
+Home control or the project section's rendered terminal before measurement.
+Its regressions reject hash-only transitions, loading terminals and retained
+editor DOM. Native keyboard activation, actual visible-content/local-ancestor
+clipping checks, accessibility text, deterministic requests, the four-image
+budget and all retained workflow assertions remain in place. No rendered test
+was run with synthetic observations or counted as closed by a skip.
+
+| Immutable row / accumulated finding | Closure authority and current-candidate obligation |
+| --- | --- |
+| Normal producer and authenticated delivery (`e1b3d3e21357cfc5`) | Existing producer/reader and latest normal archive/install receipts remain intact. Changed product requires controller delivery; changed driver requires a new pin. |
+| Fresh Design destination producer (`be2c13d3f25051b1`) | Existing advanced Home build form and destination safety regressions remain intact; fresh/recovered publication remains explicit. Latest historical occupied/new-path/race action receipts passed. |
+| Source identity and dirty recovery (`f7014303e1a68ec0`) | Build/PAR export still omit nonexistent source paths; recovery guards and coherent draft reset retain source/overwrite/PAR/destination isolation. Focused guided-build and Home regressions cover replacements and disabled branches. |
+| Late build and deferred-save guard (`45fafbdbee49e426`) | Existing panel activity/draft checks and timer-owner release remain intact; delayed-response and controlled-timer regressions retained. |
+| Complete itineraries (`4244816bdd6f6e3c`, `5cafd64253cf60ae`) | Seven rendered IDs and exact action classifications remain required by the driver/closeout contracts and historical aggregate. No finding/unreached record replaces a required action. |
+| Reachable generator, deterministic inputs, launch environment, rare metrics and image budget (`706091c10ac6f4a8`) | Public generator, submitted input/readback checks, separate browser launch environment, rendered Overview percentages and four contact sheets remain required by whole driver regressions. |
+| Native producer and original dependent Stake (`416ccfa43f20caa3`) | Native arrows select Paytable; programmer remains on its original Blueprint for one refreshed reuse/borrowed build and unchanged manifest. Existing action contracts and historical receipts retain these exact results. |
+| Certification help (`0b244d51149b68d1`, `935084382c9fc051`) and executable inventory (`8d3fc6b430185879`) | Shared zero-code Commander help handling and current Simulation/Replay/WASM inventory remain unchanged. Latest whole inventory result is green; controller reuses applicable valid authority. |
+| Saved Overview clipping (`9db9d1fb13cebec3`) | Product route commits and real-router regressions prevent retained Home controls at entry; collectors require the actual rendered destination. Original authenticated P910 whole-file execution against the new installed candidate remains mandatory controller work. |
+| Six exact public repros and five independent final smokes | Prior observations and current indexed regression authorities are preserved. Controller binds all affected retests to one normally built/packed candidate; no historical receipt is relabelled and no broad P8 matrix is added. |
+| P909/P910, independent images, served assets and cleanup | Complete frozen-input files remain mandatory with current authenticated installation. Independent visual/focus review and current asset/result/drain receipts remain pending controller verification. |
+| Single release lifecycle and wider gaps | Release/packaging, exact integration/push/publication and Drive round-trip remain controller-owned and pending. Unsupported capabilities and documented wider missing/partial/deferred statuses are unchanged. |
+
+The consuming production boundaries are the Studio TypeScript compiler and
+Vite browser bundle, plus the directly loaded native-ESM driver. Root typecheck
+covers Studio compilation once; the controller owns the normal production
+build/pack/install and rendered execution on the committed candidate. This
+implementation handoff does not complete P9-11 or the campaign.
+
+Permitted foreground checks completed successfully on the final source:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx tests/cli/studio-client/src/components/home/HomePage.test.tsx
+npm run test:targeted -- tests/scripts/p9-11-rendered-driver.test.mjs tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx tests/cli/studio-client/src/designNavigationGuard.test.tsx tests/cli/studio-client/src/routing.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.jobs.test.tsx
+npm run test:targeted -- tests/scripts/p9-11-rendered-driver.test.mjs tests/cli/studio-client/src/routing.test.tsx
+npm run typecheck
+```
+
+Creation/Home passed 20 tests. The sibling run passed five whole files but
+initially failed two test fixtures: the new driver navigation fixture needed
+visible control rectangles, and the existing unsupported-route fixture omitted
+`/api/project/jobs`, producing an extra connection-error alert. Their explicit
+fixture responses were corrected without weakening the exact diagnostic or
+navigation assertions; both whole files then passed together (82 tests).
+The final passing whole-file results cover nine suites / 232 distinct tests.
+Root typecheck exited zero, including the Studio compiler once. Some existing
+workflow fixtures emit React `act` warnings while passing. P909/P910 rendered
+execution, production bundle/packaging and official gates were not launched by
+this worker and are not claimed green for the correction candidate.

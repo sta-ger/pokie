@@ -1017,7 +1017,9 @@ export function BlueprintEditorPage({
                             setWorkspaceOpenPending(false);
                             setWorkspaceOpenError(undefined);
                             allowNextDesignNavigation();
-                            navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
+                            // Commit the saved workspace before retiring the pending editor action.
+                            // A deferred route render otherwise leaves Home actionable under Overview.
+                            navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`, {flushSync: true});
                         })
                         .catch((error: unknown) => {
                             if (workspaceOpenRequestId === workspaceOpenRequestIdRef.current) {

@@ -53,7 +53,9 @@ export function useOpenProject(): (projectRoot: string) => Promise<void> {
                 // whose state the entry represents before its dashboard can become interactive. The
                 // server resolves the selected registry entry (a Blueprint can resolve to its generated
                 // runtime package), so its returned context is the authoritative route identity.
-                navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`);
+                // The server has switched identity. Commit the destination immediately so the new
+                // URL never exposes the old Home controls while React schedules its route render.
+                navigate(`/project/${encodeURIComponent(context.projectRoot)}/overview`, {flushSync: true});
             }),
         [navigate, guardedAction, openWithConfirmation],
     );

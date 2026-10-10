@@ -380,7 +380,14 @@ describe("HomePage", () => {
             }),
         });
 
-        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        const entrySurfaces: boolean[] = [];
+        const unsubscribe = router.subscribe((state) => {
+            if (state.location.pathname === "/project/%2Fgames%2Fa/overview") {
+                entrySurfaces.push(document.getElementById("home-design-panel") === null
+                    && document.getElementById("home-projects-panel") === null);
+            }
+        });
 
         await user.click(sectionsNav().getByRole("button", {name: "Projects"}));
         await expectActiveSection("Projects");
@@ -394,6 +401,10 @@ describe("HomePage", () => {
                 }),
             );
         });
+        await waitFor(() => expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview"));
+        unsubscribe();
+        expect(entrySurfaces.length).toBeGreaterThan(0);
+        expect(entrySurfaces.every(Boolean)).toBe(true);
     });
 
     it("preserves a Design Game draft across Design -> Projects -> Design (tabs stay mounted, never unmounted)", async () => {
