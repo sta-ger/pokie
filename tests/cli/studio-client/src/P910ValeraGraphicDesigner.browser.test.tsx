@@ -11,6 +11,60 @@ type Devtools = {
     close(): Promise<void>;
 };
 
+type RenderedStyles = {
+    stylesheetsLoaded: boolean;
+    mainMinWidth: string | null;
+    pageMinWidth: string | null;
+    actionDisplay: string | null;
+    actionInnerDisplay: string | null;
+    actionBorderRadius: string | null;
+    primaryColorFilled: string;
+};
+
+function assertRenderedStyles(styles: RenderedStyles): void {
+    // An inline-block Button computes to block when it is a flex/grid item (Home's
+    // QuickActions and project action groups). Standalone buttons retain inline-block.
+    // Compare named measurements together so terminal failures identify every bad clause.
+    expect(styles).toEqual({
+        stylesheetsLoaded: true,
+        mainMinWidth: '0px',
+        pageMinWidth: '0px',
+        actionDisplay: expect.stringMatching(/^(?:inline-)?block$/),
+        actionInnerDisplay: 'flex',
+        actionBorderRadius: expect.stringMatching(/[1-9]/),
+        primaryColorFilled: expect.stringMatching(/\S/),
+    });
+}
+
+it("accepts computed blockification while keeping every rendered style clause diagnostic and required", () => {
+    const styled: RenderedStyles = {
+        stylesheetsLoaded: true,
+        mainMinWidth: '0px',
+        pageMinWidth: '0px',
+        actionDisplay: 'block',
+        actionInnerDisplay: 'flex',
+        actionBorderRadius: '8px',
+        primaryColorFilled: 'var(--mantine-color-indigo-filled)',
+    };
+    assertRenderedStyles(styled);
+    assertRenderedStyles({...styled, actionDisplay: 'inline-block'});
+    const invalid: RenderedStyles = {
+        stylesheetsLoaded: false,
+        mainMinWidth: 'auto',
+        pageMinWidth: 'auto',
+        actionDisplay: 'inline',
+        actionInnerDisplay: 'block',
+        actionBorderRadius: '0px',
+        primaryColorFilled: '',
+    };
+    for (const clause of Object.keys(invalid) as Array<keyof RenderedStyles>) {
+        expect(() => assertRenderedStyles({...styled, [clause]: invalid[clause]})).toThrow(clause);
+    }
+    for (const clause of ['mainMinWidth', 'pageMinWidth', 'actionDisplay', 'actionInnerDisplay', 'actionBorderRadius'] as const) {
+        expect(() => assertRenderedStyles({...styled, [clause]: null})).toThrow(clause);
+    }
+});
+
 // Controller-owned regression, run after cold observations are frozen and the candidate is built.
 // This is deliberately separate from the unscripted initial collector. It neither builds nor packs
 // the candidate, substitutes UI/source loaders, nor runs the historical persona campaign.
@@ -331,18 +385,21 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             expect(result.count).toBeGreaterThan(0);
         };
         const styles = async () => {
-            expect(await evaluate<boolean>(`(() => {
+            assertRenderedStyles(await evaluate<RenderedStyles>(`(() => {
                 const main = document.querySelector('.studio-app-main');
                 const page = document.querySelector('.studio-page');
                 const action = Array.from(document.querySelectorAll('.mantine-Button-root')).find(e=>e.getClientRects().length);
-                return document.styleSheets.length > 0 && !!main && !!page && !!action
-                    && getComputedStyle(main).minWidth === '0px'
-                    && getComputedStyle(page).minWidth === '0px'
-                    && getComputedStyle(action).display === 'inline-block'
-                    && getComputedStyle(action.querySelector('.mantine-Button-inner')).display === 'flex'
-                    && getComputedStyle(action).borderRadius !== '0px'
-                    && getComputedStyle(document.documentElement).getPropertyValue('--mantine-primary-color-filled').trim() !== '';
-            })()`)).toBe(true);
+                const inner = action?.querySelector('.mantine-Button-inner');
+                return {
+                    stylesheetsLoaded: document.styleSheets.length > 0,
+                    mainMinWidth: main ? getComputedStyle(main).minWidth : null,
+                    pageMinWidth: page ? getComputedStyle(page).minWidth : null,
+                    actionDisplay: action ? getComputedStyle(action).display : null,
+                    actionInnerDisplay: inner ? getComputedStyle(inner).display : null,
+                    actionBorderRadius: action ? getComputedStyle(action).borderRadius : null,
+                    primaryColorFilled: getComputedStyle(document.documentElement).getPropertyValue('--mantine-primary-color-filled').trim(),
+                };
+            })()`));
         };
         const viewport = async (width: number, height: number) => {
             await send("Emulation.setDeviceMetricsOverride", {width, height, deviceScaleFactor: 1, mobile: false});

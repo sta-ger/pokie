@@ -360,3 +360,71 @@ Runtime-only absolute records: initial
 `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-9c7a879181850068/run-2026-10-10T01-58-29-703Z/transcript.json`, and the
 supplementary transcript
 `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-9c7a879181850068/run-2026-10-10T02-03-14-435Z/transcript.json`.
+
+## Rendered style-contract repair — independent execution pending
+
+Finding `90cd84042a8cec88` was traced on clean HEAD
+`4c1dfa6cd09dbc10ed4cbf105480172e82728393`. Read the three supplied runtime
+records and verified their SHA-256 values against the preceding table. The
+frozen observations, transcripts and four retained screenshots are unchanged;
+this correction creates no additional visual evidence.
+
+The failed predicate required the first visible Mantine Button's computed
+`display` to equal `inline-block`. On Home that button is `Create game`:
+`HomePage` → guided `BlueprintEditorPage` → `QuickActions` → Mantine `Group`.
+It is a direct child of the Group, whose installed stylesheet declares
+`display: flex`. Mantine declares the Button root `display: inline-block` and
+its inner wrapper `display: flex`, but CSS blockifies the outer display of a
+flex item to `block`. Thus this exact clause rejects the correct production
+composition. This is a source trace of the saved failure, not a new browser
+observation or a claim that the other clauses have been independently measured.
+Changing the production layout to satisfy that erroneous expectation would
+break the shared action-row contract.
+
+Audited both consumers of the browser's `styles()` helper: Home at 1100×800,
+900×700 and 390×844, and the project Simulation surface after its terminal
+job at 1100×800 and 390×844. Project actions, including the header's Close
+project button, simulation QuickActions and common job controls, also use
+flex groups; ordinary standalone Mantine Buttons retain `inline-block`.
+The same style check now accepts those two legitimate computed displays and
+rejects `inline`, absent elements and unstyled inner wrappers. It returns all
+seven named measurements and compares them together, so assertion output shows
+the actual failing fields instead of only `false`. Minimum-width, stylesheet,
+inner-flex, nonzero-radius and theme-color checks remain required. The
+regression still reads computed styles from the real production browser;
+its new pure assertion test verifies rejection and terminal diagnostics for
+each individual clause, without pretending to measure a rendered component.
+
+The section regression confirms the actual Home action is a direct Group child
+with Mantine's inner wrapper. The shared QuickActions regression now renders
+a real Mantine Button and checks that same structure and retained wrapping.
+No production CSS, theme, control, hidden validation text or accessibility
+behavior changed. Native tab traversal, six-section geometry, disabled/conflict
+paths, persisted project creation, sentinel preservation, running/terminal
+cards, report retrieval and cooperative cleanup remain in the complete browser
+journey.
+
+| Acceptance / accumulated finding | Final candidate evidence and remaining authority |
+| --- | --- |
+| Independent initial assessment before source/history; bounded evidence | Preserved frozen cold assessment and four screenshots. Actual reached matrix remains Home compact/smaller, project Game Model compact and terminal job compact; the complete browser and any outstanding affected visual coverage are controller-owned, not inferred from component tests. |
+| `4a58ccd4ec9f8a24`: six-step row clips Bets at 900×700 | Shared wrapping correction retained. Eight section tests preserve all six tabs, drafts, validation/error badges, selected panels and save/open behavior. Saved independent supplementary retest already observed wrapped tabs and native traversal through Bets and back. |
+| `285d0e8a87d8b14f`: hidden validation text defeats tab lookup | Scoped tablist/visible-label lookup retained for initial focus and both active-element assertions. Validated section traversal regression passes with accessible `valid` text retained. |
+| `90cd84042a8cec88`: aggregate rendered-style rejection | Corrected CSS blockification expectation for both existing helper consumers; every style clause now has measured terminal diagnostics and focused rejection coverage. Complete production-browser confirmation remains pending on the correction SHA. |
+| Material findings fixed at shared cause and clean affected rerender | Earlier layout cause and clean independent 900×700 retest preserved. This audit-contract repair does not declare final visual closure; the controller must build the exact committed candidate and execute the complete P910 file using the authenticated frozen receipt. |
+
+Permitted foreground checks:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx tests/cli/studio-client/src/components/common/responsive.test.tsx
+npm run typecheck
+```
+
+Three suites / 38 tests passed, with one explicit controller-owned rendered
+skip because no freeze opt-in was supplied to this worker's test command.
+Existing asynchronous Home updates emitted React `act(...)` warnings; there
+were no assertion failures. Changed test files are consumed by their Jest
+component/workflow lanes and the clone-installed changed-file ESLint commit
+hook. Root typecheck includes the Studio compiler once. Production bundle,
+packaging, full browser execution and official gates remain controller-owned;
+none ran in this implementation worker. Final independent step approval remains
+pending and is not replaced by this candidate handoff.

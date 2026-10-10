@@ -101,6 +101,11 @@ describe("Guided Design Game: sectioned layout", () => {
     it("keeps all six sections in a wrapping tablist outside intrinsic-width scroll content", () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
+        // The actual Home action is a direct flex item, so the browser computes
+        // Mantine's declared inline-block display to block. Do not force inline layout.
+        const action = buttonNamed("Create game");
+        expect(action.parentElement).toHaveClass("mantine-Group-root");
+        expect(action.querySelector(".mantine-Button-inner")).not.toBeNull();
         const tablist = screen.getByRole("tablist", {name: "Game design sections"});
         expect(tablist).toHaveStyle({flexWrap: "wrap"});
         expect(tablist.closest(".mantine-ScrollArea-root")).toBeNull();

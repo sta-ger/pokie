@@ -1,4 +1,4 @@
-import {MantineProvider, Stepper} from "@mantine/core";
+import {Button, MantineProvider, Stepper} from "@mantine/core";
 import {fireEvent, render, screen} from "@testing-library/react";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
@@ -179,11 +179,13 @@ describe("Button/action groups wrap instead of overflowing (source + render guar
     it("QuickActions (the shared action-row wrapper) renders a Group with wrap=\"wrap\"", () => {
         renderWithMantine(
             <QuickActions>
-                <button type="button">Action</button>
+                <Button type="button">Action</Button>
             </QuickActions>,
         );
         const group = screen.getByRole("button", {name: "Action"}).closest(".mantine-Group-root") as HTMLElement;
         expect(group).not.toBeNull();
+        expect(screen.getByRole("button", {name: "Action"}).parentElement).toBe(group);
+        expect(screen.getByRole("button", {name: "Action"}).querySelector(".mantine-Button-inner")).not.toBeNull();
         expect(group.style.getPropertyValue("--group-wrap")).toBe("wrap");
     });
 });
