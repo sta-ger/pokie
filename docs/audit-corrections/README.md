@@ -171,6 +171,45 @@ not evidence paths, and are deliberately omitted from the corrected evidence
 index. Historical source-provenance discussion above remains descriptive; it
 does not turn those source files into retained proof.
 
+### 2026-10-10 P9-11 controller delivery and bounded closeout attempt
+
+The controller supplied and pinned the closeout driver at
+'/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-94e3b3bca933a5b9/current.mjs'
+with SHA-256
+'9fe7fc4eb8e0524a9de2efadf44b873906ffd107f70f3c9a5c0c2dd1dee893d0'.
+Its one controller-owned normal build/pack/install delivery is at
+'/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-94e3b3bca933a5b9/controller-candidates/3cddf327fe4c9aa9310f578bc9a59f71bea0c67a-9fe7fc4eb8e0524a9de2efadf44b873906ffd107f70f3c9a5c0c2dd1dee893d0/output';
+the handoff digest is
+'b1d37ce229087413c358f3fde774fdf749c0b7ff78cec9dd9af8d5ce157882d4',
+the normal archive digest is
+'36361323e16e1952be188a24a99f931d7de6531e2c755195eb3e5aa0b4d2aaf3',
+and the executable projection digest is
+'87c3126fc08566c2e8fe5b4e34c1cf958ae61a14d6f3c4558832150cbc616a6b'.
+The handoff reader authenticated candidate
+'3cddf327fe4c9aa9310f578bc9a59f71bea0c67a', its installed public
+resolutions, and the current clean evidence-only descendant.
+
+The verifier ran the reviewed closeout once at
+'/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-94e3b3bca933a5b9/closeout-2026-10-10T12-26-00Z'.
+Its complete installed public node-wasm-first-subsequent,
+serialized-zero-replay, bounded-long-state, and stake-uint64-total
+subcommands exited 0 with every owned process tree and stdio stream drained.
+Before the required rendered Stake observation, the pinned driver launched
+Studio from the installed package but its default Chromium command failed to
+expose CDP; the closeout's retained failed.json records terminal exit 1, the
+exact child command, and complete cleanup. This is a driver bootstrap failure,
+not a rendered product action or a product finding. The same persistent driver
+was repaired to select /usr/bin/chromium-browser, but its bytes consequently
+no longer match the delivered pin and no second closeout, build, install,
+browser launch, official gate, or publication was attempted.
+
+Thus the four passed installed subcommands are retained partial collection
+only. The rendered Stake row, occupied-destination scenario, canonical CLI
+completion, all five persona smokes, P909/P910, focus/image review,
+served-asset binding, and full cleanup closeout remain not reached pending a
+new controller pin for the repaired driver. No candidate product defect was
+observed or inferred.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
