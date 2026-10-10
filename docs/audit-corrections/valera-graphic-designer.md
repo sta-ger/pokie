@@ -1150,3 +1150,40 @@ browser execution ran here. Build freshness is deliberately required by P910
 after these source changes. Independent clean visual closure and current-SHA
 machine provenance remain pending; this is a committed product-correction
 handoff, not completion of P9-10.
+
+## Pre-review changed-tests correction after shared presentation
+
+The saved gate on `eb88fa932f5419c2307087f0ea4ba50d493fdfe2` reported
+five failures across PC18, PC14 and Export/Deploy. Source tracing confirmed
+that three card lookups still required the former inline `margin-bottom`,
+although the shared presentation now uses `.studio-output-choice`. Stake
+checks now locate the existing `artifact-build` lifecycle form; the remote
+retry check locates the output-choice wrapper. Explicit non-null checks retain
+the requirement that the actual owning card exists. No product styles or
+controls were reverted to satisfy the stale selectors.
+
+The PC14 close-project check found the real confirmation dialog during its
+opening transition (opacity zero). It now waits for visibility before clicking
+Confirm, preserving the public confirmation and subsequent project-list
+navigation rather than bypassing either. No fixed delay or animation override
+was introduced.
+
+The complete permitted foreground command exited zero:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx
+```
+
+Three suites / 62 tests passed, with no skips. This covers the real server-backed
+managed-library handoff and PC14 artifact workflows, unavailable-target technical
+disclosures, and both remote rejection/retry cases through terminal publication
+and collapsed status retention. React act warnings remain in the transcript.
+The test changes add no ambient npm environment dependency; their consuming
+boundaries are the existing Jest lane and changed-file ESLint commit hook.
+No production source/compiler/bundle input changed in this correction.
+
+The immutable brief, frozen observations, screenshot budget and earlier
+corrections remain intact. Current-candidate clean rendered visual disposition,
+authenticated browser evidence and the preserved independent gate matrix remain
+controller-owned and pending. These component/interoperability passes do not
+close the open visual finding or constitute independent visual approval.

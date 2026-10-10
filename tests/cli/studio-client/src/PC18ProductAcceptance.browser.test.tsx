@@ -135,7 +135,7 @@ describe("PC-18 Studio product acceptance", () => {
             );
             await waitFor(() => expect(requests.filter((request) => request === "POST /api/project/artifacts/preview").length).toBeGreaterThan(4));
 
-            const stakeCard = screen.getByText("Stake Engine export", {selector: "p"}).closest('div[style*="margin-bottom"]');
+            const stakeCard = screen.getByText("Stake Engine export", {selector: "p"}).closest('[data-pokie-lifecycle-form="artifact-build"]');
             expect(stakeCard).not.toBeNull();
             await user.click(within(stakeCard!).getByRole("button", {name: "Configure Stake Engine export"}));
             const build = within(stakeCard!).getByRole("button", {name: "Build"});

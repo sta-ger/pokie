@@ -975,7 +975,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByText(/runtime adapter delivers/)).not.toBeVisible();
         expect(await screen.findByText("package.json")).not.toBeVisible();
 
-        const stakeCard = within(buildArtifactSection).getByText("Stake Engine export").closest('div[style*="margin-bottom"]') as HTMLElement;
+        const stakeCard = within(buildArtifactSection).getByText("Stake Engine export").closest('[data-pokie-lifecycle-form="artifact-build"]') as HTMLElement;
+        expect(stakeCard).not.toBeNull();
         await configureOutput("artifact-stakeAdapter");
         await user.click(within(stakeCard).getByRole("button", {name: "Show advanced details (technical information)"}));
         expect(within(stakeCard).getByText(/Stake Engine export directory/)).toBeVisible();
@@ -1065,7 +1066,8 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         };
         renderRoutedApp({fetchImpl, initialEntries: ["/project/exportDeploy"]});
         const toggle = await screen.findByRole("button", {name: "Configure Remote delivery"});
-        const card = toggle.closest('div[style*="margin-bottom"]')!;
+        const card = toggle.closest(".studio-output-choice")!;
+        expect(card).not.toBeNull();
         const form = document.getElementById(toggle.getAttribute("aria-controls")!)!;
         await user.click(toggle);
         await user.click(within(form).getByRole("button", {name: "Check compatibility"}));

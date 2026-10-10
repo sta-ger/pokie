@@ -539,7 +539,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         ).toBe(true));
         const closeConfirmation = screen.queryByRole("dialog", {name: "Please confirm"});
         if (closeConfirmation !== null) {
-            expect(closeConfirmation).toBeVisible();
+            await waitFor(() => expect(closeConfirmation).toBeVisible());
             await user.click(within(closeConfirmation).getByRole("button", {name: "Confirm"}));
         }
         await waitFor(() => expect(designApp.router.state.location.pathname).toBe("/home/projects"));
