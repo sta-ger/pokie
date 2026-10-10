@@ -10,7 +10,7 @@ import {WebSocketServer} from "ws";
 import {verifyP805CandidatePackage} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 import {P805_WORKFLOW_CONTRACTS, P805_SCREEN_CONTROL_STATES, hasP805SharedNavigationContext, p805TerminalResponseStatus, p805WorkflowActionLabel, validateP805LiveDomTransaction, validateP805RuntimeRecoveryEvidence} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {projectP805PersonaAudit} from "../../scripts/p8-05-persona-projection.mjs";
-import {captureP805RestartRecoveryResponse, recordP805RenderedApiResponse} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {ensureP805ExportDisclosure, captureP805RestartRecoveryResponse, recordP805RenderedApiResponse} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {navigateP805RenderedControl, openP805ImportedProject, validateP805ImportedProjectOpen, activateP805FocusedControl, activateP805KeyboardControl, setP805ReplayArtifactInput, validateP805ReplayArtifactInspection, clickP805CapturedControl, hasP805NativeActivation, connectP805Devtools, createP805RenderedGame, observeP805CreatorValidation, observeP805NavigationReadiness, observeP805PointerTerminal, pressP805Enter, validateP805BlueprintMutationResponse, validateP805RetryTerminalReceipt} from "../../scripts/p8-05-valera-browser-audit.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -1446,6 +1446,48 @@ test("native navigation waits for rendered context and Retry retains captured id
             await cdp.send("Page.navigate",{url:overviewUrl});
             await poll(()=>evaluate("document.readyState==='complete' && typeof window.finishValidation==='function' && location.hash==='#/project/source/overview'"));
         };
+        // Exercise the runner's disclosure helper against real hidden forms
+        // and trusted native keyboard events, without running the campaign.
+        const disclosureServices = {
+            evaluate,
+            waitFor: (predicate) => poll(predicate, 500),
+            focusRenderedControl: (selector, predicate) => evaluate(`(() => {
+                const item = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => (${predicate})(item, item.getAttribute('aria-label')));
+                item?.focus();
+                return item && document.activeElement === item ? {stableControlId:item.id, keyboardFocused:true} : null;
+            })()`),
+            activateFocusedControl: (...args) => activateP805FocusedControl(cdp, evaluate, ...args),
+        };
+        for (const [cardId, label] of [['outcome-library', 'Outcome library generator'], ['artifact-parWorkbook', 'PAR sheet (.xlsx)']]) {
+            const controlId = `export-configure-${cardId}`;
+            const mountDisclosure = async (mode = 'working') => evaluate(`(() => {
+                document.body.innerHTML = '<button id="${controlId}" aria-label="Configure ${label}" aria-expanded="false" aria-controls="export-form">Configure</button><div id="export-form" hidden><label>Destination<input id="destination"></label></div>';
+                window.disclosureActivations = [];
+                const button = document.getElementById('${controlId}');
+                if (${JSON.stringify(mode)} === 'unreachable') button.focus = () => {};
+                if (${JSON.stringify(mode)} === 'missing') button.remove();
+                if (${JSON.stringify(mode)} === 'hidden-control') button.hidden = true;
+                button.addEventListener('click', (event) => {
+                    window.disclosureActivations.push({trusted:event.isTrusted, controlId:event.currentTarget.id});
+                    button.setAttribute('aria-expanded', 'true');
+                    button.setAttribute('aria-label', 'Hide options for ${label}');
+                    if (${JSON.stringify(mode)} !== 'unrevealed') document.getElementById('export-form').hidden = false;
+                });
+            })()`);
+            await mountDisclosure();
+            assert.equal(await evaluate("document.getElementById('destination').getClientRects().length"), 0);
+            await ensureP805ExportDisclosure(disclosureServices, cardId, label, 'focused preparation');
+            assert.equal(await evaluate("document.getElementById('destination').getClientRects().length > 0"), true);
+            assert.deepEqual(await evaluate('window.disclosureActivations'), [{trusted:true, controlId}]);
+            await ensureP805ExportDisclosure(disclosureServices, cardId, label, 'already open preparation');
+            assert.equal(await evaluate('window.disclosureActivations.length'), 1, 'an open form is never collapsed by preparation');
+            for (const mode of ['unreachable', 'unrevealed', 'missing', 'hidden-control']) {
+                await mountDisclosure(mode);
+                await assert.rejects(() => ensureP805ExportDisclosure(disclosureServices, cardId, label, mode), /unreachable|timed out/);
+                assert.equal(await evaluate("document.getElementById('destination').getClientRects().length"), 0, 'failed disclosure cannot authorize a hidden form');
+                assert.equal(await evaluate('window.disclosureActivations.length'), mode === 'unrevealed' ? 1 : 0);
+            }
+        }
         await loadOverview();
         // Reproduce the saved native boundary: Overview's shell is terminal,
         // but its validation can add a scrollbar after the final measurement.

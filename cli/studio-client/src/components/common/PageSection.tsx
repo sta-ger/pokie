@@ -19,10 +19,11 @@ export function PageSection({
 }) {
     return (
         <Fieldset
+            className="studio-section"
             id={id}
             legend={
                 action ? (
-                    <Group justify="space-between" wrap="nowrap" gap="xs">
+                    <Group justify="space-between" wrap="wrap" gap="xs">
                         <span>{legend}</span>
                         {action}
                     </Group>

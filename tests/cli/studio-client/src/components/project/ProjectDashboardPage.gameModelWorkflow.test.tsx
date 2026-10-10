@@ -9,6 +9,8 @@ import {createLargeGameModelProjection, createLargeReelStripModelerBlueprint} fr
 const GAME = {id: "a", name: "A", version: "1.0.0"};
 
 const BASE_ROUTES: Record<string, (call: FakeCall) => {ok: boolean; status: number; body: unknown}> = {
+    // Job discovery runs on every project tab, independently of Game Model requests.
+    "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: "/games/a", game: GAME, type: "blueprint", capabilities: ["blueprint.build"]}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
@@ -212,7 +214,6 @@ describe("ProjectDashboardPage - Game Model tab", () => {
         let resolveContext: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
         const routes = createRoutedFakeFetch({
             ...BASE_ROUTES,
-            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
             "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
         });
         const fetchImpl: FetchLike = (url, init) => {

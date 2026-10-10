@@ -11,7 +11,7 @@ import {StudioProjectRegistrationService} from "../../../../../../cli/studio/Stu
 import {FileStudioJobRepository} from "../../../../../../cli/studio/jobs/FileStudioJobRepository.js";
 import {StudioJobService} from "../../../../../../cli/studio/jobs/StudioJobService.js";
 import {StudioServer} from "../../../../../../cli/studio/StudioServer.js";
-import {act, screen, waitFor} from "@testing-library/react";
+import {act, cleanup, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
@@ -101,6 +101,7 @@ describe("P9-07 library publication and refreshed generation", () => {
     });
 
     afterEach(async () => {
+        cleanup();
         releaseStart?.();
         releasePreflight?.();
         await server?.stop();
@@ -112,6 +113,7 @@ describe("P9-07 library publication and refreshed generation", () => {
         const user = userEvent.setup();
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await user.click(await screen.findByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Configure Outcome library generator"}));
         const generate = await screen.findByRole("button", {name: "Generate exact outcome library (base)"});
         await waitFor(() => expect(generate).toBeEnabled());
         holdStart = true;
@@ -150,6 +152,7 @@ describe("P9-07 library publication and refreshed generation", () => {
         const user = userEvent.setup();
         const first = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
         await user.click(await screen.findByRole("button", {name: "Build/Export"}));
+        await user.click(await screen.findByRole("button", {name: "Configure Outcome library generator"}));
         await waitFor(() => expect(screen.getByRole("button", {name: "Generate exact outcome library (base)"})).toBeEnabled());
         await user.click(screen.getByRole("button", {name: "Generate exact outcome library (base)"}));
         await screen.findByRole("button", {name: "Inspect library"});

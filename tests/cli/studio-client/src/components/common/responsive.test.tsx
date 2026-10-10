@@ -1,7 +1,8 @@
-import {MantineProvider, Stepper} from "@mantine/core";
+import {Button, MantineProvider, Stepper} from "@mantine/core";
 import {fireEvent, render, screen} from "@testing-library/react";
 import {readFileSync} from "node:fs";
 import {join} from "node:path";
+import {parse} from "postcss";
 import {CodeBlock} from "../../../../../../cli/studio-client/src/components/common/CodeBlock";
 import {EmptyState} from "../../../../../../cli/studio-client/src/components/common/EmptyState";
 import {ErrorState} from "../../../../../../cli/studio-client/src/components/common/ErrorState";
@@ -23,6 +24,56 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
         expect(stylesheet).toMatch(/html,[\s\S]*?body,[\s\S]*?#root[\s\S]*?min-width: 0;/);
         expect(stylesheet).not.toMatch(/html,[\s\S]*?body,[\s\S]*?#root[\s\S]*?overflow-x:\s*(?:hidden|clip)/);
+    });
+
+    it("resizes the shared main column without interpolating the desktop rail into phone content", () => {
+        const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
+        expect(stylesheet).toMatch(/\.studio-app-main\s*\{[^}]*transition-property:\s*none;/);
+        expect(stylesheet).not.toMatch(/\.studio-app-main\s*\{[^}]*overflow(?:-x)?:\s*(?:hidden|clip)/);
+        expect(stylesheet).toContain("padding-block-start: calc(var(--app-shell-header-offset, 0px) + var(--mantine-spacing-sm))");
+    });
+
+    it("keeps an explicit computed keyboard outline on both page and nested focus regions", () => {
+        const stylesheet = parse(readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8"));
+        const focusRules: string[] = [];
+        const suppressedSelectors: string[] = [];
+        stylesheet.walkRules(rule => {
+            if (!rule.selector.includes(":focus")) return;
+            focusRules.push(rule.toString());
+            rule.walkDecls("outline", declaration => {
+                if (declaration.value === "none") suppressedSelectors.push(...rule.selectors);
+            });
+        });
+        // Use the production focus rules verbatim; jsdom does not implement the
+        // stylesheet's light-dark() surfaces or native pointer/keyboard modality.
+        const style = document.createElement("style");
+        style.textContent = focusRules.join("\n");
+        document.head.append(style);
+        try {
+            renderWithMantine(<div className="studio-page" role="region" aria-label="Project" tabIndex={-1}>
+                <div role="region" aria-label="Editor" tabIndex={-1} />
+                <div role="region" aria-label="Job" tabIndex={-1} />
+                <button>Action</button>
+                <a href="#report">Download</a>
+            </div>);
+            expect(suppressedSelectors.length).toBeGreaterThan(0);
+            // Pointer/programmatic focus without :focus-visible keeps the frame
+            // suppression. No such selector may also match keyboard focus.
+            for (const selector of suppressedSelectors) expect(selector).toContain(":focus:not(:focus-visible)");
+            for (const target of [
+                ...screen.getAllByRole("region"), screen.getByRole("button", {name: "Action"}),
+                screen.getByRole("link", {name: "Download"}),
+            ]) {
+                target.focus();
+                expect(target).toHaveFocus();
+                expect(target.matches(":focus-visible")).toBe(true);
+                for (const selector of suppressedSelectors) expect(target.matches(selector)).toBe(false);
+                expect(getComputedStyle(target).outline).toBe("2px solid var(--mantine-primary-color-filled)");
+                expect(getComputedStyle(target).outlineOffset).toBe("3px");
+            }
+        } finally {
+            style.remove();
+        }
     });
 
     it("ScreenTable wraps its table in a horizontally-scrollable container instead of letting it expand the page", () => {
@@ -179,11 +230,13 @@ describe("Button/action groups wrap instead of overflowing (source + render guar
     it("QuickActions (the shared action-row wrapper) renders a Group with wrap=\"wrap\"", () => {
         renderWithMantine(
             <QuickActions>
-                <button type="button">Action</button>
+                <Button type="button">Action</Button>
             </QuickActions>,
         );
         const group = screen.getByRole("button", {name: "Action"}).closest(".mantine-Group-root") as HTMLElement;
         expect(group).not.toBeNull();
+        expect(screen.getByRole("button", {name: "Action"}).parentElement).toBe(group);
+        expect(screen.getByRole("button", {name: "Action"}).querySelector(".mantine-Button-inner")).not.toBeNull();
         expect(group.style.getPropertyValue("--group-wrap")).toBe("wrap");
     });
 });

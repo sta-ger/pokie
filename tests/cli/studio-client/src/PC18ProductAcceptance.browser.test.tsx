@@ -1,4 +1,4 @@
-import {act, screen, waitFor, within} from "@testing-library/react";
+import {act, cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import http from "http";
@@ -68,6 +68,7 @@ describe("PC-18 Studio product acceptance", () => {
             await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(second)}/simulation`));
             expect(screen.queryByRole("heading", {name: "First PC-18 Slot"})).not.toBeInTheDocument();
         } finally {
+            cleanup();
             await server.stop();
             fs.rmSync(studioRoot, {recursive: true, force: true});
             fs.rmSync(workDir, {recursive: true, force: true});
@@ -118,6 +119,7 @@ describe("PC-18 Studio product acceptance", () => {
             const user = userEvent.setup();
             renderRoutedApp({fetchImpl, initialEntries: [`/project/${encodeURIComponent(blueprint)}/exportDeploy`]});
 
+            await user.click(await screen.findByRole("button", {name: "Configure Outcome library generator"}));
             await screen.findByRole("button", {name: "Generate exact outcome library (base)"});
             await waitFor(() => expect(requests.filter((request) => request === "POST /api/project/outcome-libraries/generate/estimate").length).toBeGreaterThan(1));
             const generate = screen.getByRole("button", {name: "Generate exact outcome library (base)"});
@@ -133,11 +135,13 @@ describe("PC-18 Studio product acceptance", () => {
             );
             await waitFor(() => expect(requests.filter((request) => request === "POST /api/project/artifacts/preview").length).toBeGreaterThan(4));
 
-            const stakeCard = screen.getByText("Stake Engine export", {selector: "p"}).closest('div[style*="margin-bottom"]');
+            const stakeCard = screen.getByText("Stake Engine export", {selector: "p"}).closest('[data-pokie-lifecycle-form="artifact-build"]');
             expect(stakeCard).not.toBeNull();
+            await user.click(within(stakeCard!).getByRole("button", {name: "Configure Stake Engine export"}));
             const build = within(stakeCard!).getByRole("button", {name: "Build"});
             await waitFor(() => expect(build).toBeEnabled());
         } finally {
+            cleanup();
             prepare.mockRestore();
             await server.stop();
             fs.rmSync(studioRoot, {recursive: true, force: true});

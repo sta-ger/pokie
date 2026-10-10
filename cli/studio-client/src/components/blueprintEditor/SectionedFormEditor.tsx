@@ -1,4 +1,4 @@
-import {ScrollArea, Tabs} from "@mantine/core";
+import {Tabs} from "@mantine/core";
 import {useEffect, useRef, useState} from "react";
 import type {ValidationIssue} from "../../api/types";
 import {
@@ -110,20 +110,20 @@ export function SectionedFormEditor({
             <IssueList title="Warnings" issues={unclassified.filter((issue) => issue.severity !== "error")} />
 
             <Tabs value={activeSection} onChange={(value) => activateSection(value as BlueprintSectionId)} keepMounted keepMountedMode="display-none">
-                <ScrollArea type="auto" scrollbarSize={6}>
-                    <Tabs.List style={{flexWrap: "nowrap"}}>
-                        {BLUEPRINT_SECTIONS.map((section) => (
-                            <Tabs.Tab
-                                key={section.id}
-                                value={section.id}
-                                ref={tabRefs[section.id]}
-                                rightSection={<StatusBadge status={describeSectionStatus(section.id, validationView)} />}
-                            >
-                                {section.label}
-                            </Tabs.Tab>
-                        ))}
-                    </Tabs.List>
-                </ScrollArea>
+                {/* Fit the available editor column, including desktop widths with the navigation
+                    rail still open. Every section and its status stays visible without scrolling. */}
+                <Tabs.List aria-label="Game design sections" style={{flexWrap: "wrap"}}>
+                    {BLUEPRINT_SECTIONS.map((section) => (
+                        <Tabs.Tab
+                            key={section.id}
+                            value={section.id}
+                            ref={tabRefs[section.id]}
+                            rightSection={<StatusBadge status={describeSectionStatus(section.id, validationView)} />}
+                        >
+                            {section.label}
+                        </Tabs.Tab>
+                    ))}
+                </Tabs.List>
 
                 <Tabs.Panel value="basics">
                     {visitedSections.has("basics") && <>

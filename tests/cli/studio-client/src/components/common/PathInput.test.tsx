@@ -77,6 +77,19 @@ describe("PathInput", () => {
         expect(input).toHaveAttribute("data-pokie-lifecycle-field", "artifact-build-destination");
     });
 
+    it("lets the destination field shrink and picker actions wrap without changing their label or activation", async () => {
+        const {fetchImpl} = createRoutedFakeFetch(UNAVAILABLE_ROUTE);
+        renderWithProviders(<Harness pathPurpose="destination" initial="/long/" browseId="responsive-destination" />, {fetchImpl});
+        const input = screen.getByRole("textbox", {name: "Path"});
+        const group = input.closest(".mantine-Group-root") as HTMLElement;
+        expect(group.style.getPropertyValue("--group-wrap")).toBe("wrap");
+        expect(input.closest(".mantine-TextInput-root")).toHaveStyle({minWidth: 0, flex: "1 1 12rem"});
+        const browse = screen.getByRole("button", {name: "Browse…"});
+        expect(group).toContainElement(browse);
+        expect(input).toHaveValue("/long/");
+        await waitFor(() => expect(browse).toBeEnabled());
+    });
+
     it("shows a contextual permission-denied status and remediation (never the raw backend message) when focused", async () => {
         const user = userEvent.setup();
         const {fetchImpl} = createRoutedFakeFetch({

@@ -42,6 +42,7 @@ import {describeReportsList, type ReportListView} from "../../domain/interpret/R
 import {describeRecentSpinsList, type RecentSpinsListView} from "../../domain/interpret/Runtime";
 import {describeSimulationReport, isSimulationActive} from "../../domain/interpret/Simulation";
 import {describeReplayActionError} from "../../domain/replayActionError";
+import {getSimulationRoundsError} from "../../domain/simulationRounds";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDeploymentManager} from "../../hooks/useDeploymentManager";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
@@ -717,15 +718,17 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [simulation.job, selectReport]);
 
-    // Every path that starts a new run (Configure submit, Retry, a Recent Runs "Run again") funnels
-    // through here so a previous run's report/compare state never lingers stale while the new one is
-    // in flight -- also bumps the report/compare request ids so a fetch already in flight *before* this
-    // run started can never land afterward and repopulate what was just cleared. Also clears
-    // runAgainNotice unconditionally -- whatever blocked the *previous* attempt no longer applies once a
-    // run has actually started, regardless of which of the three entry points (Configure, Retry, Run
-    // again) got it going.
+    // Configure and Recent Runs "Run again" share this report/compare reset.
+    // Validate before clearing a retained result or invalidating its in-flight
+    // reads. Only an accepted configuration clears the previous run-again notice.
+    // Retry uses the hook's retained request and its same rounds preflight.
     const startRun = useCallback(
         (rounds: number, seed: string | undefined, workers: number, modeName?: string) => {
+            const roundsError = getSimulationRoundsError(rounds);
+            if (roundsError !== null) {
+                setRunAgainNotice(roundsError);
+                return;
+            }
             reportRequestIdRef.current++;
             compareRequestIdRef.current++;
             setReportDetail({status: "empty"});
@@ -1258,7 +1261,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                 {header.status === "loaded" && <Text size="sm" c="dimmed">{header.id} · v{header.version}</Text>}
                 {projectKey !== undefined && (
                     <AdvancedDisclosure label="project location">
-                        <Text size="sm">Project path: {projectKey}</Text>
+                        <Text className="studio-technical-text" size="sm">Project path: {projectKey}</Text>
                         <Button variant="default" size="xs" mt="xs" onClick={copyProjectPath}>
                             Copy path
                         </Button>

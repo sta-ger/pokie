@@ -90,8 +90,8 @@ export function JobProgressCard({job, onCancel, cancellationPending = false}: {j
                     <Text size="sm" data-job-detail>{description}</Text>
                     {progress !== undefined && <Text size="xs" data-job-detail>{progress.current} / {progress.total} {progress.unit}{progress.message === undefined ? "" : ` · ${progress.message}`}</Text>}
                     {progress === undefined && job.status !== "queued" && <Text size="xs" data-job-detail>Progress is indeterminate while this operation prepares its next safe boundary.</Text>}
-                    {elapsedMs !== undefined && <Text size="xs">Elapsed: {elapsedMs}ms</Text>}
-                    {rate !== undefined && <Text size="xs">Throughput: {rate.perSecond.toFixed(2)} {progress?.unit}/s · ETA: {Math.ceil(rate.etaMs)}ms</Text>}
+                    {elapsedMs !== undefined && <Text size="xs" c="dimmed">Elapsed: {elapsedMs}ms</Text>}
+                    {rate !== undefined && <Text size="xs" c="dimmed">Throughput: {rate.perSecond.toFixed(2)} {progress?.unit}/s · ETA: {Math.ceil(rate.etaMs)}ms</Text>}
                 </div>
                 {onCancel !== undefined && <Button size="xs" variant="light" color="red" disabled={cancellationPending || job.status === "cancelling"} onClick={() => onCancel(job.id)}>Cancel</Button>}
             </Group>

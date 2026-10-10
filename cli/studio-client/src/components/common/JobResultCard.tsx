@@ -86,7 +86,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
         >
             <Stack gap={4}>
                 <Text size="sm" data-job-detail>{job.result?.summary ?? job.error ?? job.recovery?.reason ?? presentation.fallback}</Text>
-                {job.durationMs !== undefined && <Text size="xs">Duration: {job.durationMs}ms</Text>}
+                {job.durationMs !== undefined && <Text size="xs" c="dimmed">Duration: {job.durationMs}ms</Text>}
                 {job.result?.warnings?.map((warning) => <Text size="xs" c="orange" key={warning}>{warning}</Text>)}
                 {outcomeResult !== undefined && (
                     <Stack gap={2} aria-label="Published Outcome Library result">
@@ -124,7 +124,7 @@ export function JobResultCard({job, onRecover, onRecoveryAction, onOpenOutput, o
                             {outputPath !== undefined && outputActionsUnavailableReason !== undefined &&
                                 <Text size="xs" data-job-detail>Open and reveal are unavailable: {outputActionsUnavailableReason}</Text>}
                             {output.downloadPath === undefined && (outputPath === undefined || (onOpenOutput === undefined && onRevealOutput === undefined && onInspectOutput === undefined)) &&
-                                <Text size="xs" data-job-detail>{output.label}{outputPath === undefined ? "" : `: ${outputPath}`}</Text>}
+                                <Text className="studio-technical-text" size="xs" data-job-detail>{output.label}{outputPath === undefined ? "" : `: ${outputPath}`}</Text>}
                         </Group>
                     );
                 })}
