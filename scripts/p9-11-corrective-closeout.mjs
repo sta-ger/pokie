@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /** Bounded controller-invoked checks, never a release controller or cold collector. */
 import {randomBytes} from "node:crypto";
+import {spawn} from "node:child_process";
+import {mkdtempSync, rmSync} from "node:fs";
+import os from "node:os";
 import {mkdir, readFile, realpath, rm, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {runBoundedProcess, drainProcessTree, processIdentity} from "./pc-20-release-completion.mjs";
+import {runBoundedProcess} from "./pc-20-release-completion.mjs";
 import {P911_CAMPAIGN, readP911Candidate, readPinnedJson, sha256} from "./p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "./p9-11-corrective-scenarios.mjs";
 
@@ -26,7 +29,7 @@ export const P911_RENDERED_COVERAGE = Object.freeze({
 });
 const fail = (message) => { throw new Error(`P9-11 closeout: ${message}`); };
 const clean = (result) => result.exitCode === 0 && !result.signal && !result.cancelled && !result.timedOut
-    && result.processGroupDrained === true && result.processTreeDrained === true && result.resourcesDrained === true;
+    && result.processGroupDrained === true && result.processTreeDrained === true && result.resourcesDrained === true && result.stdioClosed === true;
 const json = async (file, value) => writeFile(file, `${JSON.stringify(value, null, 2)}\n`, {flag:"wx"});
 
 export function validateActionCoverage(id, result) {
@@ -94,22 +97,106 @@ export async function settleP911Commands(commands) {
     return results.map((result) => result.value);
 }
 
-/** Local deadline in addition to the controller's spawn-time ownership ledger.
- * Controller runBoundedProcess owns/drains detached grandchildren as well. */
-export async function stopP911Child(child, {graceMs = 1_000} = {}) {
-    if (child.exitCode !== null || child.signalCode !== null) return;
-    const closed = new Promise((resolve) => child.once("close", resolve));
-    const owned = new Map([[child.pid, processIdentity(child.pid)]]);
-    const drainage = await drainProcessTree(child, graceMs, owned);
-    if (!drainage.processTreeDrained) fail("packaging child cleanup deadline exceeded");
+// Each child is acquired by runBoundedProcess before returning its handle.
+// Its signed ledger retains detached descendants across root exit; the close
+// listener also starts at launch, so a late stop cannot miss stdio closure.
+const packagingChildren = new WeakMap();
+
+function awaitP911Closure(closed, graceMs) {
     let timer;
-    try {
-        await Promise.race([closed, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("P9-11 child stdio did not close")), graceMs); })]);
-    } finally { clearTimeout(timer); }
+    return Promise.race([
+        closed,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("P9-11 child stdio did not close")), graceMs); }),
+    ]).finally(() => clearTimeout(timer));
+}
+
+export function spawnP911Child(command, args, {cwd, env = process.env, timeoutMs = 180_000, graceMs = 1_000, signal, resourceRegistryPath, spawnCommand = spawn} = {}) {
+    if (!Number.isSafeInteger(graceMs) || graceMs < 1 || graceMs > 10_000) fail("invalid packaging cleanup deadline");
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180_000) fail("invalid packaging execution deadline");
+    if (signal?.aborted) fail("packaging child cancelled before launch");
+    const directory = resourceRegistryPath ? undefined : mkdtempSync(path.join(os.tmpdir(), "p911-packaging-child-"));
+    const controller = new AbortController();
+    const state = {controller, stopRequested:false, drained:false, stdout:"", stderr:""};
+    const abort = () => controller.abort();
+    signal?.addEventListener("abort", abort, {once:true});
+    let child, closed;
+    const execution = runBoundedProcess(command, args, {
+        cwd, env, timeoutMs, signal:controller.signal, resourceRegistryPath:resourceRegistryPath ?? path.join(directory, "resources.ndjson"),
+        spawnCommand:(...parameters) => {
+            child = spawnCommand(...parameters);
+            closed = new Promise((resolve) => child.once("close", () => { state.stdioClosed = true; resolve(); }));
+            packagingChildren.set(child, state);
+            child.stdout?.on("data", (chunk) => { state.stdout += chunk; });
+            child.stderr?.on("data", (chunk) => { state.stderr += chunk; });
+            return child;
+        },
+    });
+    // Attach the failure handler now, even if a test has not yet called stop.
+    state.completion = execution.then((result) => ({result}), (error) => ({result:error.pc20Result, error})).then(async (outcome) => {
+        try {
+            if (!closed) throw outcome.error ?? new Error("P9-11 packaging child was not launched");
+            await awaitP911Closure(closed, graceMs);
+            const result = outcome.result;
+            if (!result?.processGroupDrained || !result.processTreeDrained || !result.resourcesDrained) fail("packaging child cleanup deadline exceeded");
+            // An intentional cooperative stop is the only expected failure.
+            // Identity/registry errors, deadlines and natural failures stay visible.
+            if (outcome.error && !(state.stopRequested && result.cancelled
+                && outcome.error.message === "release gate was cancelled after its process tree was drained")) throw outcome.error;
+            outcome.error = undefined;
+            state.drained = true;
+        } catch (error) { outcome.error = error; }
+        finally {
+            signal?.removeEventListener("abort", abort);
+            try { if (directory) rmSync(directory, {recursive:true, force:true}); }
+            catch (error) { outcome.error ??= error; state.drained = false; }
+        }
+        if (outcome.result) outcome.result = {...outcome.result, stdout:state.stdout, stderr:state.stderr, stdioClosed:state.stdioClosed === true,
+            resourcesDrained:outcome.result.resourcesDrained === true && state.stdioClosed === true};
+        if (outcome.error && outcome.result) outcome.error.pc20Result = outcome.result;
+        state.result = outcome.result;
+        state.failure = outcome.error;
+        return outcome;
+    });
+    if (!child) fail("packaging child launch failed");
+    return child;
+}
+
+export async function stopP911Child(child) {
+    const state = packagingChildren.get(child);
+    if (!state) fail("packaging child lacks launch-time ownership");
+    state.stopRequested = true;
+    // An exited root still has a pending completion: never skip its descendant
+    // drain or the bounded wait for inherited stdout/stderr handles.
+    if (child.exitCode === null && child.signalCode === null) state.controller.abort();
+    return waitP911Child(child);
+}
+
+export async function waitP911Child(child) {
+    const state = packagingChildren.get(child);
+    if (!state) fail("packaging child lacks launch-time ownership");
+    const outcome = await state.completion;
+    if (outcome.error) throw outcome.error;
+    return outcome.result;
+}
+
+export function runP911Process(command, args, options) {
+    return waitP911Child(spawnP911Child(command, args, options));
+}
+
+export function p911ChildrenDrained(children) {
+    return [...children].every((child) => {
+        const state = packagingChildren.get(child);
+        return state?.drained === true && !state.failure;
+    });
+}
+
+export function retainP911PackagingReceipt(children, retain) {
+    if (!p911ChildrenDrained(children)) fail("packaging receipt requires complete child and stdio cleanup");
+    return retain();
 }
 
 export async function runP911Closeout(options, dependencies = {}) {
-    const services = {readCandidate:readP911Candidate, run:runBoundedProcess, remove:rm, ...dependencies};
+    const services = {readCandidate:readP911Candidate, run:runP911Process, remove:rm, ...dependencies};
     let candidate, phase = "candidate-authentication", directoryCreated = false, failure;
     const results = [], profiles = [];
     if (!path.isAbsolute(options.runRoot ?? "")) fail("fresh absolute run directory required");

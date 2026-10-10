@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
-import {cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile, access} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, writeFile, access} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {test, jest} from "@jest/globals";
-import {P911_SCENARIOS, P911_PERSONAS, P911_RENDERED_COVERAGE, runP911Closeout, validateActionCoverage, settleP911Commands, stopP911Child} from "../../scripts/p9-11-corrective-closeout.mjs";
+import {P911_SCENARIOS, P911_PERSONAS, P911_RENDERED_COVERAGE, runP911Closeout, validateActionCoverage, settleP911Commands, stopP911Child, spawnP911Child, p911ChildrenDrained, retainP911PackagingReceipt, waitP911Child, runP911Process} from "../../scripts/p9-11-corrective-closeout.mjs";
 import {readPinnedJson, sha256, P911_CAMPAIGN} from "../../scripts/p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "../../scripts/p9-11-corrective-scenarios.mjs";
-import {archiveExecutableManifest} from "../../scripts/p8-05-candidate-package-verifier.mjs";
-import {runBoundedProcess} from "../../scripts/pc-20-release-completion.mjs";
+import {candidateFixture} from "../testUtils/createP911CandidateFixture.mjs";
 import {spawn} from "node:child_process";
 
 const digest = "a".repeat(64);
-const success = {exitCode:0, signal:null, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, stdout:"", stderr:""};
+const success = {exitCode:0, signal:null, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, stdioClosed:true, stdout:"", stderr:""};
 const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 const exists = async (file) => access(file).then(() => true, () => false);
 
@@ -78,36 +77,6 @@ test("numeric proof rejects lost rare probabilities, totals and inconsistent dev
     assert.throws(() => assertRareP911Metrics({...mode, totalWeight:2 ** 64}));
 });
 
-async function candidateFixture(directory) {
-    const repository = path.join(directory, "repository"), pack = path.join(directory, "pack"), installationRoot = path.join(directory, "installation");
-    await mkdir(repository); await mkdir(path.join(pack, "package"), {recursive:true});
-    const declaration = {name:"pokie", version:"1.3.0", type:"module", exports:{".":{import:"./dist/esm/index.js", require:"./dist/cjs/index.cjs"}, "./browser":"./dist/esm/browser.js", "./wasm":"./dist/esm/wasm.js", "./client/player":"./dist/cli/player.js"}, bin:{pokie:"./dist/cli/pokie.js"}};
-    await json(path.join(repository, "package.json"), declaration);
-    execFileSync("git", ["init", "--quiet"], {cwd:repository});
-    execFileSync("git", ["add", "package.json"], {cwd:repository});
-    execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "test fixture"], {cwd:repository});
-    const candidateId = execFileSync("git", ["rev-parse", "HEAD"], {cwd:repository, encoding:"utf8"}).trim();
-    const candidateTreeId = execFileSync("git", ["rev-parse", "HEAD^{tree}"], {cwd:repository, encoding:"utf8"}).trim();
-    await json(path.join(pack, "package/package.json"), declaration);
-    for (const file of ["dist/cjs/index.cjs", "dist/esm/index.js", "dist/esm/browser.js", "dist/esm/wasm.js", "dist/cli/player.js", "dist/cli/pokie.js", "dist/cli/studio-client/index.html"]) {
-        await mkdir(path.dirname(path.join(pack, "package", file)), {recursive:true});
-        await writeFile(path.join(pack, "package", file), `fixture:${file}`);
-    }
-    const archivePath = path.join(directory, "fixture.tgz");
-    execFileSync("tar", ["-czf", archivePath, "-C", pack, "package"], {timeout:5000});
-    const projection = await archiveExecutableManifest(await readFile(archivePath));
-    await mkdir(path.join(installationRoot, "node_modules/.bin"), {recursive:true});
-    await cp(path.join(pack, "package"), path.join(installationRoot, "node_modules/pokie"), {recursive:true});
-    await symlink("../pokie/dist/cli/pokie.js", path.join(installationRoot, "node_modules/.bin/pokie"));
-    const binding = {candidateId, candidateTreeId, archiveSha256:sha256(await readFile(archivePath)), executableSha256:projection.sha256, exitCode:0, resourcesDrained:true, issuer:"fixture-controller", receiptId:"fixture"};
-    const buildPath = path.join(directory, "build.json"), installPath = path.join(directory, "install.json");
-    await json(buildPath, {...binding, kind:"p9-11-normal-build-pack", buildCommand:"npm run build", packCommand:"npm pack --ignore-scripts", environment:{NODE_ENV:"production"}});
-    await json(installPath, {...binding, kind:"p9-11-npm-install", command:"npm install <archive>", installationRoot});
-    const handoff = {schemaVersion:1, kind:"p9-11-candidate-handoff", campaignId:P911_CAMPAIGN, ...binding, packageName:"pokie", packageVersion:"1.3.0", archivePath, installationRoot,
-        buildReceipt:{path:buildPath, sha256:sha256(await readFile(buildPath))}, installReceipt:{path:installPath, sha256:sha256(await readFile(installPath))}};
-    const handoffPath = path.join(directory, "handoff.json"); await json(handoffPath, handoff);
-    return {reference:{path:handoffPath, sha256:sha256(await readFile(handoffPath))}, repository, handoff};
-}
 
 test("pinned real file/archive reader rejects candidate, stale assets, extra assets and product descendants", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-candidate-contract-"));
@@ -175,7 +144,7 @@ async function runnerFixture(directory, options = {}) {
         if (options.incompleteId === request.id) result.actions = [];
         if (options.mismatchId === request.id) result.archiveSha256 = "b".repeat(64);
         await json(args[4], result);
-        return options.undrainedId === request.id ? {...success, resourcesDrained:false} : {...success};
+        return options.undrainedId === request.id ? {...success, resourcesDrained:false} : options.stdioOpenId === request.id ? {...success, stdioClosed:false} : {...success};
     });
     const readCandidate = jest.fn(async () => candidate);
     const remove = options.cleanupFailure ? async () => { throw new Error("cleanup failed"); } : rm;
@@ -205,7 +174,7 @@ test("one candidate across exactly six repros/five isolated profiles; no build/g
 
 test.each([
     {failId:"serialized-zero-replay", phase:"serialized-zero-replay"}, {incompleteId:"programmer", phase:"programmer"},
-    {mismatchId:"producer", phase:"producer"}, {undrainedId:"canonical-cli", phase:"canonical-cli"}, {cleanupFailure:true, phase:"profile-cleanup"},
+    {mismatchId:"producer", phase:"producer"}, {stdioOpenId:"canonical-cli", phase:"canonical-cli"}, {undrainedId:"canonical-cli", phase:"canonical-cli"}, {cleanupFailure:true, phase:"profile-cleanup"},
     {timeoutId:"bounded-long-state", phase:"bounded-long-state"},
 ])("failure retains its precise phase and never writes successful checks: %j", async (options) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-failure-contract-"));
@@ -252,7 +221,7 @@ test.each(["deadline", "cancel", "success-with-descendant"])("real owned executi
         const options = {cwd:directory, timeoutMs:mode === "deadline" ? 400 : 5000, signal:controller.signal, resourceRegistryPath:path.join(directory, "resources.ndjson")};
         if (mode === "cancel") timer = setTimeout(() => controller.abort(), 400);
         let result;
-        try { result = await runBoundedProcess(process.execPath, [script], options); }
+        try { result = await runP911Process(process.execPath, [script], options); }
         catch (error) { result = error.pc20Result; }
         assert.ok(result); assert.equal(result.timedOut, mode === "deadline"); assert.equal(result.cancelled, mode === "cancel");
         assert.equal(result.processTreeDrained, true); assert.equal(result.resourcesDrained, true);
@@ -265,9 +234,125 @@ test.each(["deadline", "cancel", "success-with-descendant"])("real owned executi
 }, 10000);
 
 test("packaging stop escalates a SIGTERM-resistant owned child and waits for stdio", async () => {
-    const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready'); setInterval(() => {}, 1000)"], {stdio:["ignore", "pipe", "pipe"], detached:true});
+    const child = spawnP911Child(process.execPath, ["-e", "process.on('SIGTERM', () => {}); process.stdout.write('ready'); setInterval(() => {}, 1000)"], {cwd:process.cwd(), graceMs:150});
     await new Promise((resolve) => child.stdout.once("data", resolve));
-    await stopP911Child(child, {graceMs:150});
+    await stopP911Child(child);
     assert.equal(child.signalCode, "SIGKILL"); assert.equal(child.stdout.destroyed, true);
     await stopP911Child(child);
 });
+
+
+test.each([
+    {detached:false, inherited:true}, {detached:true, inherited:false}, {detached:true, inherited:true},
+])("packaging root exit retains descendants and awaits inherited stdio: %j", async ({detached, inherited}) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-packaging-drain-"));
+    const unrelated = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {stdio:"ignore"});
+    const unrelatedClosed = new Promise((resolve) => unrelated.once("close", resolve));
+    let child;
+    try {
+        child = spawnP911Child(process.execPath, ["--input-type=module", "-e", `
+            import {spawn} from 'node:child_process';
+            const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'],
+                {detached:${detached}, stdio:${inherited ? "['ignore', 'inherit', 'inherit']" : "'ignore'"}});
+            descendant.unref();
+            process.stdout.write('owned:' + descendant.pid + '\\n');
+        `], {cwd:directory});
+        let output = ""; child.stdout.on("data", (chunk) => { output += chunk; });
+        await new Promise((resolve) => child.once("exit", resolve));
+        assert.equal(child.exitCode, 0);
+        assert.equal(p911ChildrenDrained([child]), false);
+        if (inherited) assert.equal(child.stdout.destroyed, false);
+        const result = await stopP911Child(child);
+        const descendant = Number(/owned:(\d+)/.exec(output)?.[1]); assert.ok(descendant > 0);
+        assert.ok(result.ownedProcessIds.includes(descendant));
+        assert.equal(result.processTreeDrained, true); assert.equal(result.resourcesDrained, true); assert.equal(result.stdioClosed, true);
+        assert.equal(child.stdout.destroyed, true); assert.equal(child.stderr.destroyed, true);
+        assert.equal(p911ChildrenDrained([child]), true);
+        process.kill(unrelated.pid, 0); // Same unrelated process is still alive.
+        const receipt = path.join(directory, "cleanup.json");
+        await retainP911PackagingReceipt([child], () => json(receipt, {cleanup:true}));
+        assert.equal(await exists(receipt), true);
+        await stopP911Child(child); // Already-closed handles use retained closure.
+    } finally {
+        try { if (child) await stopP911Child(child); }
+        finally {
+            unrelated.kill("SIGKILL"); await unrelatedClosed;
+            await rm(directory, {recursive:true, force:true});
+        }
+    }
+}, 10000);
+
+test("packaging incomplete resource cleanup blocks a success receipt after root exit", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-packaging-failed-cleanup-"));
+    try {
+        const child = spawnP911Child(process.execPath, ["--input-type=module", "-e", `
+            import {registerPc20OwnedResource} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/pc-20-release-completion.mjs")).href)};
+            registerPc20OwnedResource({kind:'provider', resourceId:'unreleased-provider'});
+        `], {cwd:directory});
+        await new Promise((resolve) => child.once("exit", resolve));
+        assert.equal(child.exitCode, 0);
+        await assert.rejects(stopP911Child(child), /cleanup deadline exceeded/);
+        assert.equal(child.stdout.destroyed, true);
+        assert.equal(p911ChildrenDrained([child]), false);
+        const receipt = path.join(directory, "cleanup.json");
+        assert.throws(() => retainP911PackagingReceipt([child], () => json(receipt, {cleanup:true})), /requires complete/);
+        assert.equal(await exists(receipt), false);
+        await assert.rejects(stopP911Child(child), /cleanup deadline exceeded/);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test("packaging requires launch ownership and bounds a missing stdio close event", async () => {
+    await assert.rejects(stopP911Child({exitCode:0, signalCode:null}), /launch-time ownership/);
+    const child = spawnP911Child(process.execPath, ["-e", "process.stdout.write('done')"], {
+        cwd:process.cwd(), graceMs:75,
+        spawnCommand:(...parameters) => {
+            const owned = spawn(...parameters), emit = owned.emit;
+            // Emulate a transport whose close notification never arrives, after
+            // real process exit/drain. Exit alone cannot authorize the receipt.
+            owned.emit = function (event, ...args) { return event === "close" ? false : emit.call(this, event, ...args); };
+            return owned;
+        },
+    });
+    await new Promise((resolve) => child.once("exit", resolve));
+    await assert.rejects(stopP911Child(child), (error) => {
+        assert.match(error.message, /stdio did not close/);
+        assert.equal(error.pc20Result.stdioClosed, false); assert.equal(error.pc20Result.resourcesDrained, false);
+        assert.equal(error.pc20Result.exitCode, 0); assert.equal(error.pc20Result.stdout, "done");
+        return true;
+    });
+    const retain = jest.fn();
+    assert.throws(() => retainP911PackagingReceipt([child], retain), /requires complete/);
+    assert.equal(retain.mock.calls.length, 0);
+});
+
+
+test("packaging compiler failure aborts and awaits owned sibling process and stdio drainage", async () => {
+    const children = [], results = [];
+    await assert.rejects(settleP911Commands([
+        async (signal) => {
+            const child = spawnP911Child(process.execPath, ["-e", "setTimeout(() => process.exit(1), 300)"], {cwd:process.cwd(), signal});
+            children.push(child);
+            return waitP911Child(child);
+        },
+        async (signal) => {
+            const child = spawnP911Child(process.execPath, ["--input-type=module", "-e", `
+                import {spawn} from 'node:child_process';
+                const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {detached:true, stdio:['ignore', 'inherit', 'inherit']});
+                descendant.unref(); process.stdout.write('owned:' + descendant.pid);
+                setInterval(() => {}, 1000);
+            `], {cwd:process.cwd(), signal});
+            children.push(child);
+            try { return await waitP911Child(child); }
+            catch (error) { results.push(error.pc20Result); throw error; }
+        },
+    ]), /exit code 1/);
+    assert.equal(results.length, 1);
+    const result = results[0];
+    assert.equal(result.cancelled, true); assert.equal(result.resourcesDrained, true); assert.equal(result.stdioClosed, true);
+    const descendant = Number(/owned:(\d+)/.exec(result.stdout)?.[1]); assert.ok(descendant > 0);
+    assert.ok(result.ownedProcessIds.includes(descendant));
+    for (const child of children) { assert.equal(child.stdout.destroyed, true); assert.equal(child.stderr.destroyed, true); }
+    const retain = jest.fn();
+    assert.throws(() => retainP911PackagingReceipt(children, retain), /requires complete/);
+    assert.equal(retain.mock.calls.length, 0);
+}, 10000);

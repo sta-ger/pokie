@@ -153,3 +153,36 @@ checked by the normal commit hook. Fixture-only lifecycle/driver results are
 contract tests, never persona observations or acceptance receipts. No original
 report, image, transcript, checkpoint, campaign record or historical receipt
 was removed or rewritten.
+
+## P9-11 shared-candidate and cleanup review repair
+
+Both packaging consumers now use Node's native ESM loader under their actual
+CommonJS Jest transform. Their focused handoff tests authenticate a pinned
+fixture archive/installation, consume its unchanged archive and borrowed bin,
+reject a changed pin, and remove only the scratch consumer. The shared fixture
+is synthetic contract coverage, never a normal candidate or independent proof.
+The existing installed CLI/npx, semantic failure, Studio/assets, public imports
+and worker assertions remain intact.
+
+Packaging Studio children, parallel compilers and closeout scenario/driver
+children now launch through the existing signed ownership runner. The retained completion drains identified descendants
+after root exit and awaits a locally bounded stdio close notification acquired
+at launch. An incomplete resource ledger, missing stdio closure, execution
+failure or deadline blocks receipt retention. Focused regressions cover root
+exit before descendants, detached descendants, inherited open stdout/stderr,
+SIGTERM escalation, sibling compiler failure, unrelated-process preservation
+and cleanup failure without a success receipt.
+
+This review repair's required foreground check is the complete three-file set:
+
+```sh
+npm run test:targeted -- tests/packaging/P805ValeraProgrammer.test.ts tests/packaging/npmPackSmoke.test.ts tests/scripts/p9-11-corrective-closeout.test.mjs
+```
+
+The committed work report records its final outcome and the changed-file ESLint
+hook result. Mandatory P9-CORRECTIVE-CLOSEOUT, authentic retained-original
+verification, all five isolated final persona smokes and independent image
+inspection remain pending. The single release gate/packaging boundary, exact
+post-merge verification, develop integration/push/publication, Drive round-trip
+and campaign completion remain controller-owned and pending. No prior completed
+step evidence has changed; no substitute independent transcript was collected.

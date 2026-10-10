@@ -1,4 +1,4 @@
-import {ChildProcessWithoutNullStreams, execFileSync, spawn, spawnSync} from "child_process";
+import {ChildProcessWithoutNullStreams, execFileSync, spawnSync} from "child_process";
 import {createHash} from "crypto";
 import fs from "fs";
 import os from "os";
@@ -19,28 +19,74 @@ function importSmokeScript(filename: string): Promise<unknown> {
     }) as Promise<unknown>;
 }
 
+async function readSharedSmokeCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined> {
+    if (!environment.POKIE_P911_CANDIDATE_HANDOFF) return undefined;
+    const {readP911Candidate} = await importSmokeScript("p9-11-candidate.mjs") as {
+        readP911Candidate: (reference: {path: string; sha256: string | undefined}, options?: {repository: string}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string}>;
+    };
+    return readP911Candidate({path: environment.POKIE_P911_CANDIDATE_HANDOFF, sha256: environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256}, options);
+}
+
+function stageSharedSmokeArchive(archive: Buffer, directory: string): string {
+    const file = path.join(directory, "p9-candidate.tgz");
+    fs.writeFileSync(file, archive, {flag: "wx"});
+    return file;
+}
+
+function borrowSmokeInstallation(installation: string, sharedInstallation: string): void {
+    fs.symlinkSync(path.join(sharedInstallation, "node_modules"), path.join(installation, "node_modules"), "dir");
+}
+
+it("selects the pinned P9 smoke archive/installation through native ESM without build/pack", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "p911-smoke-handoff-"));
+    try {
+        const url = pathToFileURL(path.join(REPO_ROOT, "tests/testUtils/createP911CandidateFixture.mjs")).href;
+        const {candidateFixture} = await runInThisContext(`import(${JSON.stringify(url)})`, {importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER}) as {
+            candidateFixture: (directory: string) => Promise<{reference: {path: string; sha256: string}; repository: string; handoff: {installationRoot: string; archivePath: string; archiveSha256: string}}>;
+        };
+        const fixture = await candidateFixture(directory);
+        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+        const shared = await readSharedSmokeCandidate(environment, {repository: fixture.repository});
+        expect(shared?.installationRoot).toBe(fixture.handoff.installationRoot);
+        expect(shared?.archiveSha256).toBe(fixture.handoff.archiveSha256);
+        expect(shared?.archive.equals(fs.readFileSync(fixture.handoff.archivePath))).toBe(true);
+        expect(shared).toBeDefined();
+        const archive = stageSharedSmokeArchive(shared!.archive, directory);
+        expect(fs.readFileSync(archive).equals(fs.readFileSync(fixture.handoff.archivePath))).toBe(true);
+        const installation = path.join(directory, "consumer");
+        fs.mkdirSync(installation);
+        borrowSmokeInstallation(installation, shared!.installationRoot);
+        expect(fs.realpathSync(path.join(installation, "node_modules"))).toBe(path.join(fixture.handoff.installationRoot, "node_modules"));
+        expect(fs.readFileSync(path.join(installation, "node_modules/.bin/pokie"), "utf8")).toBe("fixture:dist/cli/pokie.js");
+        fs.rmSync(installation, {recursive: true, force: true});
+        expect(fs.existsSync(path.join(fixture.handoff.installationRoot, "node_modules/.bin/pokie"))).toBe(true);
+        expect(shared?.archive.equals(fs.readFileSync(fixture.handoff.archivePath))).toBe(true);
+        await expect(readSharedSmokeCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, {repository: fixture.repository})).rejects.toThrow("digest mismatch");
+    } finally {
+        fs.rmSync(directory, {recursive: true, force: true});
+    }
+});
+
 async function buildPackageForSmoke(): Promise<void> {
     const run = (command: string, args: string[]): void => {
         execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit", timeout: 60000});
     };
-    const {runBoundedProcess} = await importSmokeScript("pc-20-release-completion.mjs") as {
-        runBoundedProcess: (command: string, args: string[], options: {cwd: string; timeoutMs: number; signal: AbortSignal; resourceRegistryPath: string}) => Promise<{stdout: string; stderr: string}>;
+    const {spawnP911Child, waitP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+        spawnP911Child: (command: string, args: string[], options: {cwd: string; timeoutMs: number; signal: AbortSignal}) => ChildProcessWithoutNullStreams;
+        waitP911Child: (child: ChildProcessWithoutNullStreams) => Promise<{stdout: string; stderr: string}>;
     };
     const {settleP911Commands} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
         settleP911Commands: (commands: Array<(signal: AbortSignal) => Promise<void>>) => Promise<unknown>;
     };
     const runInParallel = (command: string, args: string[]) => async (signal: AbortSignal): Promise<void> => {
-        const ledger = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pack-compiler-"));
         try {
-            const result = await runBoundedProcess(command, args, {cwd: REPO_ROOT, timeoutMs: 180000, signal, resourceRegistryPath: path.join(ledger, "resources.ndjson")});
+            const result = await waitP911Child(spawnP911Child(command, args, {cwd: REPO_ROOT, timeoutMs: 180000, signal}));
             process.stdout.write(result.stdout);
             process.stderr.write(result.stderr);
         } catch (error) {
             const result = (error as {pc20Result?: unknown}).pc20Result;
             if (result !== undefined) process.stderr.write(`${JSON.stringify(result)}\n`);
             throw error;
-        } finally {
-            fs.rmSync(ledger, {recursive: true, force: true});
         }
     };
     const node = process.execPath;
@@ -139,12 +185,14 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     const smokeResults = {cli: false, studioApi: false, studioAssets: false, libraryWorker: false, wasm: false, processesDrained: false};
     const completedSmokeTests = new Set<string>();
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
-    const spawnSmokeChild = (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): ChildProcessWithoutNullStreams => {
-        const child = spawn(pokieBinPath, args, {cwd, env, detached: process.platform !== "win32"}) as ChildProcessWithoutNullStreams;
+    const spawnSmokeChild = async (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<ChildProcessWithoutNullStreams> => {
+        const {spawnP911Child} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+            spawnP911Child: (command: string, args: string[], options: {cwd: string; env: NodeJS.ProcessEnv}) => ChildProcessWithoutNullStreams;
+        };
+        const child = spawnP911Child(pokieBinPath, args, {cwd, env});
         spawnedSmokeChildren.add(child);
         return child;
     };
-    const verifySmokeProcessCleanup = (): boolean => [...spawnedSmokeChildren].every((child) => child.exitCode !== null || child.signalCode !== null);
     const smokeIt = (name: string, implementation: () => unknown | Promise<unknown>): void => {
         it(name, async () => {
             await implementation();
@@ -203,20 +251,16 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
         const handoffConfig = process.env.POKIE_P805_RELEASE_HANDOFF;
-        const p911Handoff = process.env.POKIE_P911_CANDIDATE_HANDOFF;
+        const p911Candidate = await readSharedSmokeCandidate(process.env);
         let sharedInstallation: string | undefined;
-        if (p911Handoff) {
+        if (p911Candidate) {
             expect(handoffConfig).toBeUndefined();
-            const {readP911Candidate} = await importSmokeScript("p9-11-candidate.mjs") as {
-                readP911Candidate: (reference: {path: string; sha256: string | undefined}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string}>;
-            };
-            const candidate = await readP911Candidate({path: p911Handoff, sha256: process.env.POKIE_P911_CANDIDATE_HANDOFF_SHA256});
+            const candidate = p911Candidate;
             expect(candidate.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
             expect(candidate.archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
             sharedInstallation = candidate.installationRoot;
             packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
-            tarballPath = path.join(packDir, "p9-candidate.tgz");
-            fs.writeFileSync(tarballPath, candidate.archive, {flag: "wx"});
+            tarballPath = stageSharedSmokeArchive(candidate.archive, packDir);
         } else if (handoffConfig) {
             // Re-authenticate the exact archived product at the real install
             // boundary. The reviewed tooling commit remains the release SHA;
@@ -257,7 +301,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         if (sharedInstallation !== undefined) {
             // A scratch consumer borrows the authenticated real npm installation;
             // removing this scratch directory never removes the controller's install.
-            fs.symlinkSync(path.join(sharedInstallation, "node_modules"), path.join(installDir, "node_modules"), "dir");
+            borrowSmokeInstallation(installDir, sharedInstallation);
         } else {
             execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8", timeout: 120000});
         }
@@ -301,8 +345,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         }
         // This is a real handle audit, not a finally-block declaration. A
         // receipt can claim cleanup only once every smoke-launched server has
-        // delivered an exit outcome after its stop attempt.
-        smokeResults.processesDrained = verifySmokeProcessCleanup();
+        // drained its signed descendant ledger and closed its stdio handles.
+        const {p911ChildrenDrained, retainP911PackagingReceipt} = await importSmokeScript("p9-11-corrective-closeout.mjs") as {
+            p911ChildrenDrained: (children: Iterable<ChildProcessWithoutNullStreams>) => boolean;
+            retainP911PackagingReceipt: (children: Iterable<ChildProcessWithoutNullStreams>, retain: () => void) => void;
+        };
+        smokeResults.processesDrained = p911ChildrenDrained(spawnedSmokeChildren);
         const cleanup = {
             temporaryInstallRemoved: installDir === undefined || !fs.existsSync(installDir),
             temporaryPackDirectoryRemoved: packDir === undefined || !fs.existsSync(packDir),
@@ -312,11 +360,11 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         if (cleanupFailure !== undefined) throw cleanupFailure;
         expect(Object.values(cleanup).every(Boolean)).toBe(true);
         if (suitePassed && archive !== undefined && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) stageReleaseSmokeArchive(archive);
-        retainReleaseSmokeReceipt(suitePassed, cleanup);
+        retainP911PackagingReceipt(spawnedSmokeChildren, () => retainReleaseSmokeReceipt(suitePassed, cleanup));
     });
 
     smokeIt("runs `pokie --no-open` (Home mode): serves the app shell/assets and a healthy API", async () => {
-        const child = spawnSmokeChild(["--no-open", "--port", "0"], installDir!);
+        const child = await spawnSmokeChild(["--no-open", "--port", "0"], installDir!);
         try {
             const port = await waitForListeningPort(child);
             const baseUrl = `http://127.0.0.1:${port}`;
@@ -362,7 +410,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     });
 
     smokeIt("runs `pokie . --no-open` (Project mode) against a non-package directory: starts cleanly, reports an error dashboard, never crashes", async () => {
-        const child = spawnSmokeChild([".", "--no-open", "--port", "0"], installDir!);
+        const child = await spawnSmokeChild([".", "--no-open", "--port", "0"], installDir!);
         try {
             const port = await waitForListeningPort(child);
             const baseUrl = `http://127.0.0.1:${port}`;
@@ -499,7 +547,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             // Keep argv literal: adding --no-open here would exercise option-only
             // project discovery, not the no-argument global Home contract. The
             // browser launch is best-effort; suppress Linux's desktop opener only.
-            const child = spawnSmokeChild(args, cwd, {...process.env, BROWSER: "true"});
+            const child = await spawnSmokeChild(args, cwd, {...process.env, BROWSER: "true"});
             try {
                 const port = await waitForListeningPort(child);
                 return await (await fetch(`http://127.0.0.1:${port}/api/context`)).json();
@@ -878,7 +926,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const expectFile = (filePath: string): void => expect(fs.existsSync(filePath)).toBe(true);
         const expectDirectory = (directoryPath: string): void => expect(fs.statSync(directoryPath).isDirectory()).toBe(true);
         const runListeningWorkflow = async (id: string, args: string[], assertion: (baseUrl: string) => Promise<void>): Promise<void> => {
-            const child = spawnSmokeChild(args, workflowRoot);
+            const child = await spawnSmokeChild(args, workflowRoot);
             workflowIds.push(id);
             exercisedPublicWorkflows.add(args[0]);
             try {

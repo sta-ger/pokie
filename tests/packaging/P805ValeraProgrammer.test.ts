@@ -1,9 +1,59 @@
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, symlinkSync, writeFileSync} from "fs";
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, realpathSync, symlinkSync, writeFileSync} from "fs";
 import {execFileSync} from "child_process";
 import {createHash} from "crypto";
 import {tmpdir} from "os";
 import path from "path";
 import {pathToFileURL} from "url";
+import {constants, runInThisContext} from "node:vm";
+
+function importProgrammerScript(file: string): Promise<unknown> {
+    const url = pathToFileURL(path.resolve(__dirname, file)).href;
+    return runInThisContext(`import(${JSON.stringify(url)})`, {
+        importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    }) as Promise<unknown>;
+}
+
+async function readSharedProgrammerCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<{installationRoot: string; candidateId: string; archive: Buffer} | undefined> {
+    if (!environment.POKIE_P911_CANDIDATE_HANDOFF) return undefined;
+    const {readP911Candidate} = await importProgrammerScript("../../scripts/p9-11-candidate.mjs") as {
+        readP911Candidate: (reference: {path: string; sha256: string | undefined}, options?: {repository: string}) => Promise<{installationRoot: string; candidateId: string; archive: Buffer}>;
+    };
+    return readP911Candidate({path: environment.POKIE_P911_CANDIDATE_HANDOFF, sha256: environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256}, options);
+}
+
+function borrowProgrammerInstallation(shared: {installationRoot: string}, installation: string): string {
+    mkdirSync(installation);
+    writeFileSync(path.join(installation, "package.json"), JSON.stringify({name: "p9-installed-cli-consumer", private: true}));
+    symlinkSync(path.join(shared.installationRoot, "node_modules"), path.join(installation, "node_modules"), "dir");
+    return path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
+}
+
+it("selects the pinned P9 programmer archive/installation through native ESM without build/pack", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "p911-programmer-handoff-"));
+    try {
+        const {candidateFixture} = await importProgrammerScript("../testUtils/createP911CandidateFixture.mjs") as {
+            candidateFixture: (directory: string) => Promise<{reference: {path: string; sha256: string}; repository: string; handoff: {installationRoot: string; archivePath: string; candidateId: string}}>;
+        };
+        const fixture = await candidateFixture(directory);
+        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+        const shared = await readSharedProgrammerCandidate(environment, {repository: fixture.repository});
+        expect(shared?.installationRoot).toBe(fixture.handoff.installationRoot);
+        expect(shared?.candidateId).toBe(fixture.handoff.candidateId);
+        expect(shared?.archive.equals(readFileSync(fixture.handoff.archivePath))).toBe(true);
+        expect(shared).toBeDefined();
+        const installation = path.join(directory, "consumer");
+        const launcher = borrowProgrammerInstallation(shared!, installation);
+        expect(realpathSync(path.join(installation, "node_modules"))).toBe(path.join(fixture.handoff.installationRoot, "node_modules"));
+        expect(readFileSync(launcher, "utf8")).toBe("fixture:dist/cli/pokie.js");
+        expect(existsSync(path.join(directory, "source"))).toBe(false);
+        rmSync(installation, {recursive: true, force: true});
+        expect(existsSync(path.join(fixture.handoff.installationRoot, "node_modules/.bin/pokie"))).toBe(true);
+        expect(shared?.archive.equals(readFileSync(fixture.handoff.archivePath))).toBe(true);
+        await expect(readSharedProgrammerCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, {repository: fixture.repository})).rejects.toThrow("digest mismatch");
+    } finally {
+        rmSync(directory, {recursive: true, force: true});
+    }
+});
 
 const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
 const packedTestPath = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => !entry.includes("pokie-command-policy")).join(path.delimiter);
@@ -39,20 +89,12 @@ describe("P8-05 Valera Programmer installed public path", () => {
             return JSON.parse(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd()})) as Array<{filename: string}>;
         };
         try {
-            const handoff = process.env.POKIE_P911_CANDIDATE_HANDOFF;
+            const shared = await readSharedProgrammerCandidate(process.env);
             let launcher: string;
             let installedCandidate = candidate;
-            if (handoff) {
-                const module = pathToFileURL(path.join(process.cwd(), "scripts/p9-11-candidate.mjs")).href;
-                const {readP911Candidate} = await import(module) as {
-                    readP911Candidate: (reference: {path: string; sha256: string | undefined}) => Promise<{installationRoot: string; candidateId: string}>;
-                };
-                const shared = await readP911Candidate({path: handoff, sha256: process.env.POKIE_P911_CANDIDATE_HANDOFF_SHA256});
+            if (shared) {
                 installedCandidate = shared.candidateId;
-                mkdirSync(installation);
-                writeFileSync(path.join(installation, "package.json"), JSON.stringify({name: "p9-installed-cli-consumer", private: true}));
-                symlinkSync(path.join(shared.installationRoot, "node_modules"), path.join(installation, "node_modules"), "dir");
-                launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
+                launcher = borrowProgrammerInstallation(shared, installation);
             } else {
                 // Preserve the historical standalone P8 verifier path. The P9
                 // lifecycle instead consumes its pinned normal build/install.
