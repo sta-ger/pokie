@@ -1508,3 +1508,53 @@ reviewer matrix, affected image collection, independent visual disposition and
 complete authenticated P910 execution belong to the controller. No official
 gate, packaging smoke, browser-file execution or collector ran in this repair.
 This is an implementation handoff, not roadmap or visual acceptance closure.
+
+## 2026-10-10 independent affected retest — settled terminal-focus closure
+
+Candidate product identity is `ecc43ee3c87be95acd0887fb79e63a7c9d7e1b4a`.
+The candidate-only source build completed before Studio launch with output digest
+`75468b0dcf0e5a57c2956b249512bf8936891bf9dc829c1cefd7b0aba2fcf7bf`
+(8,162 files); its bounded receipt remains in the assigned runtime harness.
+The fresh application config, Documents root and browser profile were isolated
+under the same run directory.
+
+The actual frozen interactive record and chronological transcript are retained
+outside the repository:
+
+| Runtime record | SHA-256 |
+| --- | --- |
+| `P9-10-8a759574447bda0b/run-2026-10-10T08-52-02-923Z/frozen-initial.json` | `88c296efcd40fe311c227fbefe60b8a1ea492c4d5d2630b76f7be5ba4f245431` |
+| Same run's `transcript.json` | `abffa55e9349dec84ece699fb040d7e2d6fb37308897111cdea14399f9bd1d03` |
+
+One fresh public starter project was created from Home. At 1439×956, the
+independently inspected Overview image has a readable callout, aligned metadata,
+contained long location and distinct validation panel; the configured
+Build/Export image has readable card hierarchy, state badges, grouped controls
+and a clear destination form. The terminal Simulation image has a readable
+summary, warning, Recent runs card and distinct green completed JobCard. These
+three runtime images have SHA-256 values
+`92c353c7108150f21dbeef53b78f7ad1dbf841fc10c55540628a211a6d37e737`,
+`dd2ee929826b03220235130d6cf00035220830f63b11d007a023a50aa1508577`, and
+`e9caf34864c2e2c245ce42612c28c1c33a9916b6e7e4823e9ffad88e5eb4e286`,
+respectively. I opened and assessed all three actual images. The previously
+retained smaller Build/Export observation is unaffected by this JobCard-only
+correction and is reused; no fifth screenshot was retained.
+
+The visible Rounds error preserved `5000000`, disabled Run Simulation and
+created no queue. After restoring `2000000`, exactly one native-Enter
+submission rendered the matching queued/running simulation. Native Tab then
+reached its common JobCard Cancel at `x=1272.1875,y=664.765625`, visibly
+outlined with solid `2px rgb(76, 110, 245)`. Without activation or refocus,
+that same job completed. After Review, report and Recent runs settled, focus
+belonged to the same job's terminal `simulation · Completed` region at
+`x=276,y=715.75,width=1088,height=232.0625` in a 1439×956 viewport. Its
+solid 2px outline was painted inside the viewport on two observations. Native
+Tab continued through the region's disclosures to its visible `Download
+Simulation report` link. A later 900×700 resize occurred only after that
+navigation; its offscreen Download focus is not an action-local terminal-focus
+transition and was not used to manufacture or negate the preceding result.
+
+Disposition: no P0, P1 or material P2 was observed in the affected Home,
+Overview, configured Build/Export or settled terminal-job presentations. The
+controller-owned authenticated complete P910 execution remains mandatory and
+was not run by this verifier.
