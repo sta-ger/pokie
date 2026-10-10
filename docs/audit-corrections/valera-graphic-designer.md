@@ -268,8 +268,8 @@ post-freeze dependent regression. It does not reclassify historical findings.
 | --- | --- |
 | Candidate / HEAD | `e6014f496ac833b34a2e98c262ce4e81e9d2343f` / `e6014f496ac833b34a2e98c262ce4e81e9d2343f` |
 | Fresh interactive collection | `2026-10-10T02:51:24.054Z` to its frozen boundary; fresh app config/Documents and browser profile under the assigned P9-10 harness |
-| Frozen initial record | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/frozen-initial.json` — SHA-256 `71c30329d173a999b17b16fb43314260864bd76ff2bed3aa04fb11145bb0d37b` |
-| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/transcript.json` — SHA-256 `4dfde7c64da45db2a689e99d87412e41db638936b79941fbf5d179445c975d46` |
+| Frozen initial record | Controller-authenticated retained record — SHA-256 `71c30329d173a999b17b16fb43314260864bd76ff2bed3aa04fb11145bb0d37b` |
+| Chronological transcript | Controller-authenticated retained sibling — SHA-256 `4dfde7c64da45db2a689e99d87412e41db638936b79941fbf5d179445c975d46` |
 | Initial coverage | Home/Design form at 1439×956, created-project Overview with completed `project-open-materialization` card, and Build/Export at 1439×956 and 800×700; three bounded runtime screenshots retained beside the records |
 
 The independent visual assessment found no P0/P1/material-P2 defect: the
@@ -947,34 +947,14 @@ Home, project/model/build or job-card presentation. This conclusion is limited
 to the required P9-10 matrix and does not recast older historical findings as
 current failures.
 
-## 2026-10-10 independent affected visual reassessment — incomplete driver record
+## 2026-10-10 evidence-locator cleanup
 
-Candidate `e0ca3eab465db602b48e210a1288f97aab46ffa5` was the checked-out HEAD
-at assessment start. The controller's retained initial observations remain
-unchanged and authenticated: `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/frozen-initial.json`
-(`71c30329d173a999b17b16fb43314260864bd76ff2bed3aa04fb11145bb0d37b`) and
-its sibling `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/transcript.json`
-(`4dfde7c64da45db2a689e99d87412e41db638936b79941fbf5d179445c975d46`).
+The retained frozen initial record and its sibling chronological transcript were
+verified byte-for-byte by their SHA-256 values above. Their runtime payloads
+remain preserved; this evidence-only cleanup removes superseded, non-authorized
+Git-document locators rather than deleting or replacing those records.
 
-Two fresh, isolated visible-Studio attempts used the candidate source launch
-`node ./dist/cli/pokie.js --no-open`, separate application config/Documents
-roots and separate Chromium profiles. The first reached Home at 1439px but
-attempted the disabled Create game control before its validation readiness
-completed; its bounded diagnostic is
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-614bfb8c7db80194/retest-2026-10-10T04-53-35-278Z/transcript.json`.
-After repairing that readiness error, the second attempt reached a validated
-Home, an accepted visible Create game activation, save/opening state and the
-created project Overview. The driver then treated `Overview ready` as the
-action terminal before the separate project-open job card had rendered. Its
-authentic chronological diagnostic is
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-614bfb8c7db80194/retest-2026-10-10T04-54-02-680Z/transcript.json`.
-
-The observed compact Home retained a clear rail/title/action/form hierarchy;
-that partial observation is not a visual approval. Build/Export and the
-affected 900px wrapped-tab retest were not reached in this independent attempt.
-No product error, visual regression, screenshot or new material disposition is
-claimed. The two-launch limit prevents another Studio start in this invocation;
-the remaining work is a repaired driver whose Create-game terminal wait requires
-the rendered `project-open-materialization` card, followed by the clean
-Build/Export and 900px affected visual observations. The existing three-image
-collection was not enlarged.
+The preceding reassessment remains incomplete: a repaired driver must still
+reach the rendered `project-open-materialization` card, then collect the clean
+Build/Export and 900px affected visual observations. No product error, visual
+regression, screenshot, or new material disposition is claimed by this cleanup.
