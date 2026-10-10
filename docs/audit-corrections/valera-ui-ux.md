@@ -617,3 +617,44 @@ authentication of its externally referenced original record. The controller's
 rerun with the original frozen record and preserved official gate matrix
 remains pending. No build, packaging, parent-review suite, or official gate
 was launched by this worker.
+
+## Post-review focus gate correction — 2026-10-10
+
+The saved gate on `cd440a7740919b6dccd1c8840499b165921d2b1f` stopped
+while waiting for Confirm's geometry after focus had moved to the modal's
+close button. Source inspection traced the modal's deferred initial focus;
+the regression helper waited for the target to regain focus without sending
+another Tab. The permitted baseline run also failed at the same helper after
+the compact-viewport resize: Open as Project extended to 801.375 px in an
+800 px viewport. Its supposed Shift+Tab event used DevTools modifier 1 (Alt),
+so the intended reverse navigation was never dispatched.
+
+The helper now rechecks focus and geometry after two rendering frames when
+Tab reaches a target, resumes native Tab navigation if modal initialization
+moved focus, and re-enters a clipped control with native Tab/Shift+Tab to let
+Chromium scroll it into the settled layout. Both reverse-navigation sites use
+the correct Shift modifier, 8. The original viewport tolerance, visible-focus
+assertion, 100-Tab bound, job/browser deadlines, real workloads, and every
+workflow/result/error assertion remain intact. No DOM focus or scroll API,
+artificial progress, production change, or additional operation was added.
+
+The complete permitted command passed both tests (one suite, exit 0,
+12.743 seconds):
+
+```sh
+P909_FROZEN_OBSERVATIONS="$PWD/docs/audit-corrections/valera-ui-ux.md" npm run test:targeted -- tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx
+```
+
+The acceptance matrix remains the full browser path: actual progress and
+same-ID reload/reconnect without duplicate submission; active confirmation
+decline/focus return and terminal/result access; distinct-project isolation and
+reopening; occupied-destination error association and disabled Build, unchanged
+sentinel bytes, and alternate publication; native keyboard and viewport/focus
+checks at 390 × 844 and 1100 × 800. Existing independent observations,
+transcript references and the initial three screenshots remain unchanged.
+As in the preceding correction, the local prerequisite uses this document's
+retained observations because no controller freeze variable was supplied;
+it does not authenticate the external frozen record. The controller-owned
+independent post-review full gate and preserved reviewer matrix remain pending.
+Only the permitted test is run here, with a final rerun on the committed tree;
+no build, packaging, parent-review suite or official gate is launched.

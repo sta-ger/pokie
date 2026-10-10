@@ -161,21 +161,34 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
             await send("Input.dispatchKeyEvent", {type: "keyDown", key: name, code, windowsVirtualKeyCode: virtualKey, modifiers, ...(name === "Enter" ? {text: "\r", unmodifiedText: "\r"} : {})});
             await send("Input.dispatchKeyEvent", {type: "keyUp", key: name, code, windowsVirtualKeyCode: virtualKey, modifiers});
         };
+        const shiftModifier = 8; // DevTools modifier bits use 8 for Shift; 1 is Alt.
         // Reach every operation through native Tab/Enter activation. DOM inspection only locates
         // the target and reads its observable state; it never clicks or focuses the target for us.
         const focus = async (expression: string) => {
             await until(() => evaluate<boolean>(`Boolean(${expression})`), `keyboard target: ${expression}`);
             for (let tabs = 0; tabs < 100; tabs++) {
-                if (await evaluate<boolean>(`document.activeElement === (${expression})`)) {
-                    // The mobile drawer animates after aria-expanded changes. Keep native focus
-                    // and wait for its visible position before judging geometry or pressing Enter.
-                    await until(() => evaluate<boolean>(`(() => {const e=document.activeElement;if(e!==(${expression}))return false;const r=e.getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth+1 && r.top >= 0 && r.bottom <= innerHeight+1;})()`), `focused control inside viewport: ${expression}`);
+                // Modal initialization can move focus after Tab, and responsive layout can move
+                // a focused control after Chromium's scroll. Observe both after rendering, then
+                // continue native navigation instead of waiting for lost focus to return itself.
+                const state = await evaluate<string>(`new Promise(resolve => {
+                    if (document.activeElement !== (${expression})) {resolve('seek'); return;}
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        const e = (${expression});
+                        if (!e || document.activeElement !== e) {resolve('seek'); return;}
+                        const r = e.getBoundingClientRect();
+                        resolve(r.left >= 0 && r.right <= innerWidth+1 && r.top >= 0 && r.bottom <= innerHeight+1 ? 'ready' : 'clipped');
+                    }));
+                })`);
+                if (state === "ready") {
                     expect(await evaluate<boolean>("document.activeElement.matches(':focus-visible')")).toBe(true);
                     return;
                 }
                 await key("Tab", "Tab", 9);
+                // Re-enter a clipped target through the native tab order so the browser scrolls
+                // it into the settled layout. Never focus or scroll a control through DOM APIs.
+                if (state === "clipped") await key("Tab", "Tab", 9, shiftModifier);
             }
-            throw new Error(`Keyboard cannot reach ${expression}`);
+            throw new Error(`Keyboard cannot reach focused control inside viewport: ${expression}`);
         };
         const activate = async (expression: string) => {
             await focus(expression);
@@ -337,7 +350,7 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
         // A resize retains focus without scrolling it to the new layout. Re-enter the native
         // tab order so Chromium brings this control into view at the compact viewport too.
         await key("Tab", "Tab", 9);
-        await key("Tab", "Tab", 9, 1);
+        await key("Tab", "Tab", 9, shiftModifier);
         await focus(button("Open as Project", scope));
         await geometry();
     } catch (error) {
