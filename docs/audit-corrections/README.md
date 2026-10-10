@@ -743,38 +743,42 @@ controller must install and pin the new driver bytes before collecting them.
 
 ### 2026-10-10 P9-11 exact-candidate corrective closeout finding
 
-The controller-authenticated normal delivery for candidate
-`a54db9890a70b0f6ecb1cfe73eafa85b56c08bab` produced archive
-`pokie-1.3.0.tgz` with SHA-256
-`0d4a7fc50984b2f7c06a430fae7f86cdb582d3c640a0e345d0d138c20038d3fa` and
-installed it before collection. The final pinned rendered driver was
-`sha256:89af0427062f2848c328c42bcb59c325d91ca604361156da23b3cedae501da07`.
+Product identity is `a54db9890a70b0f6ecb1cfe73eafa85b56c08bab`; this report
+was produced from its clean evidence-only descendant
+`b0311dfbd8053fe7b040621c0424527075b8f7e2`. The controller-authenticated
+normal archive/install was reused without another build or install (archive
+SHA-256 `0d4a7fc50984b2f7c06a430fae7f86cdb582d3c640a0e345d0d138c20038d3fa`).
+The final controller handoff pin was
+`18331dd3b97aab24222c00172f9f3133475fb4ed28a7dfd3fb72a50beecddd44` and
+the repaired persistent driver SHA-256 was
+`d478b2b714c11dd51116e1f8255346819606bbc02f2530fa7af9b26b5035dd74`.
 
-The first final closeout attempt exposed a driver-only unsaved-draft confirmation
-after opening the external Stake export. The persistent driver was repaired and
-the controller's inspection-only delivery then independently reached the exact
-installed Studio Overview and rendered the rare-event table. That inspection is
-diagnostic only, not acceptance evidence.
+The bounded final closeout reached and cleanly drained the installed public
+`node-wasm-first-subsequent`, `serialized-zero-replay`, `bounded-long-state`,
+and `stake-uint64-total` scenarios. Its isolated rendered Stake observation
+also passed: Studio opened the real recognized export and rendered non-zero
+`2^-64` metrics. The retained runtime result checksum is
+`22d24df362782c5ec9536a2c5f049815ec0ca772c2e0f97eff82abed5bb85aca`; its
+action-receipt checksum is
+`2a67ceae61abeee4a1c2a01ab9320d5d23df845b6ee83f4de11b5433daa15d20`.
 
-The subsequently admitted consolidated closeout passed and drained the first
-four public corrective rows (`node-wasm-first-subsequent`,
-`serialized-zero-replay`, `bounded-long-state`, and `stake-uint64-total`),
-including the latter's rendered Studio observation. It then stopped at the
-`canonical-cli` row: the installed public command `pokie certification --help`
-printed certification usage but exited `1`. The public consumer is
-[`scripts/p9-11-corrective-scenarios.mjs`](../../scripts/p9-11-corrective-scenarios.mjs)
-at its recursive nested-help call; the candidate producer boundary is
-[`cli/commands/CertificationCommand.ts`](../../cli/commands/CertificationCommand.ts),
-where `run()` only rejects an empty argv before parsing and does not treat
-top-level `--help` as help success. Commander consequently reports the parent
-missing-command path instead of the command's `isCommanderHelpDisplay` success
-path. This is a candidate-owned offline CLI defect, not a controller receipt,
-browser-driver, or network failure.
+`canonical-cli` then failed before any remaining scenario or persona smoke:
+the installed public help advertises `help [command]` beneath `certification`,
+but the exact command `pokie certification help --help` exited `1` with the
+Certification usage/error instead of successful nested help. The complete
+bounded failure receipt is retained only in the assigned runtime harness at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-bcb0e775c099475e/final-complete-closeout-a54db9890a70b0f6ecb1cfe73eafa85b56c08bab-d478b2b714c11dd51116e1f8255346819606bbc02f2530fa7af9b26b5035dd74/failed.json`
+(SHA-256 `615f173bf931dafe5d3b6ebabbe5cf24cf77f67bc8f4f1f9b7a9ddb1187e60ae`).
+All owned processes, resources, and stdio were drained.
 
-Bounded runtime evidence (not committed) is retained at:
-
-- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-bcb0e775c099475e/controller-candidates/a54db9890a70b0f6ecb1cfe73eafa85b56c08bab-89af0427062f2848c328c42bcb59c325d91ca604361156da23b3cedae501da07/output/handoff.json`
-- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-bcb0e775c099475e/final-closeout-a54db9890a70b0f6ecb1cfe73eafa85b56c08bab-89af0427062f2848c328c42bcb59c325d91ca604361156da23b3cedae501da07/failed.json`
-
-All remaining closeout/persona/P909/P910 rows are not reached. No official
-gate, publication, acceptance, or rendered action correlation is claimed.
+This is a candidate-owned CLI defect, not a browser-driver result: the public
+closeout consumer at `scripts/p9-11-corrective-scenarios.mjs:214-221` obtains
+the advertised verbs and invokes every nested help command. The installed
+consumer is projected from `cli/commands/CertificationCommand.ts:87-125`,
+whose `run()` assigns verb diagnostics only for `build` and `verify` before
+translating the remaining Commander error into the no-command usage failure.
+The Commander factory supplies the visible `help` command at
+`cli/commands/internal/CommanderCliAdapter.ts:24-25`. The defect blocks the
+required all-six-corrective-scenarios row; occupied-destination and all five
+persona smokes are not reached. No visual disposition, controller gate,
+publication, or acceptance result is claimed.
