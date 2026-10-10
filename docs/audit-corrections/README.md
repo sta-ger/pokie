@@ -245,6 +245,38 @@ acceptance was synthesized. The next verifier-owned repair is to add those
 visible, per-request journeys to the same driver, pin it through the controller
 handoff, and continue only from the first missing rendered row.
 
+### 2026-10-10 P9-11 bounded controller-closeout continuation
+
+Product identity remains `3cddf327fe4c9aa9310f578bc9a59f71bea0c67a`; this
+evidence-only descendant remains clean. The controller rebound the existing
+normal archive/install (archive SHA-256
+`36361323e16e1952be188a24a99f931d7de6531e2c755195eb3e5aa0b4d2aaf3`) to
+the repaired persistent driver without a verifier build, pack, or install.
+Each retained closeout below used fresh application and browser profiles.
+
+At `closeout-2026-10-10T14-30-00Z`, the installed public
+`node-wasm-first-subsequent`, `serialized-zero-replay`, `bounded-long-state`,
+and `stake-uint64-total` commands exited `0` with all owned process and stdio
+resources drained. The rendered driver then used the visible `Your projects`
+import form to check and add that same-profile `rare-stake` export, opened its
+`Game export` Overview, and activated `Build/Export`. Its action-local
+transcript is `stake-uint64-total.rendered.transcript.json` in that run
+directory. The closeout rejected this partial result only because the driver's
+served-asset receipt initially named the root and API response rather than the
+archive's `dist/cli/studio-client/{index.html,assets/...}` files. The bytes
+matched; the driver was corrected before another launch.
+
+The two latest fresh-profile Stake import probes (`14-50-00Z` and `15-00-00Z`)
+retained an accepted visible `Check game` activation but no rendered recognition
+terminal or local rendered error before their bounded acceptance probes
+expired. This is driver/readiness-inconclusive, not a product finding. The
+current driver also has no implemented action-local itinerary for the pending
+occupied-destination and five-persona rows, so no complete closeout, P909/P910
+execution, focus assessment, or campaign acceptance is claimed. The compact
+failure/transcript records under the assigned harness preserve the commands,
+candidate/archive identities, terminal exit and cleanup; no generated runtime
+payload is committed here.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
