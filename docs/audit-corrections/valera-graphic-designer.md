@@ -316,3 +316,47 @@ point changed. Home's guided editor remains the only `SectionedFormEditor`
 consumer through `BlueprintEditorPage`; persisted project editing uses the
 separate `GameModelSections` presentation. No production build, browser rerun,
 official gate, packaging check or independent collection ran in this worker.
+
+## 2026-10-10 independent cold collection and supplementary retest
+
+This is the current candidate-bound assessment for
+`badbd783c5d76cc4956c8e4cebf4f33d976c9d18`; historical passages above are not
+current failures. A fresh, isolated interactive collection was frozen before
+the post-freeze hand-off was read. The initial record reached the Home/start
+form at 1280×800 and 680×760, created the displayed valid starter once, reached
+the project Game Model, and observed the terminal
+`project-open-materialization · Completed` card. Three initial screenshots were
+retained. The collector found no P0, P1, or material P2 visual issue.
+
+The post-freeze clean retest at 900×700 used one additional screenshot. All six
+validated editor tabs were visible and wrapped onto a second row rather than
+clipping. Native arrow navigation reached Bets and returned to Game basics;
+the displayed starter values were unchanged and validation returned to Valid.
+This independently closes the earlier responsive-overflow disposition at the
+rendered surface, but does not override the source-level regression below.
+
+The required complete browser file was then executed once with
+`P910_FROZEN_OBSERVATIONS` set to the frozen record. Jest ran all five cases:
+four passed and the rendered-style case failed. Its terminal assertion required
+the rendered Home style predicate to be `true` but received `false` at
+`P910ValeraGraphicDesigner.browser.test.tsx:345`. The candidate-owned browser
+audit's combined predicate covers stylesheet presence, the main/page minimum
+widths, visible button structure/display/radius, and a non-empty
+`--mantine-primary-color-filled` variable. The failure output only identifies
+the combined predicate as false, not its individual false clause. This
+non-diagnostic candidate-owned style-contract rejection is the current P1
+finding, even though the manual 900×700 surface remained readable and
+un-clipped.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| initial frozen record | `1c2efd1f3639d5937aaa8e66888f515fc9bd7dda80be7cf58c22f158f053420b` |
+| initial transcript | `e8580a7bbe24d4a71a3f350ab784da737fa0000bb703a5fc892cbc34b1213644` |
+| initial screenshots 1–3 | `9253f08b636ef4104e3c1768046b346ae89d41eb236783cc992f5fc8fb890689`, `1c675b6c5f875cf05eb96682100448ca73544c9d543137bf50d7fbb040a6798f`, `b2ba60f1168f50f59b82114ad19168ec4a54ac53ec8a767fd5be43272429dc13` |
+| supplementary transcript and 900×700 screenshot | `651f0521ceac49d8e59178cd1762f41fcb91f20596163eccbb5f2b2e6b0596c0`, `6f84a96d663f43b82497dae40fa897891e4de3cb4584c94286c12b327aae871c` |
+
+Runtime-only absolute records: initial
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-9c7a879181850068/run-2026-10-10T01-58-29-703Z/frozen-initial.json`, its sibling
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-9c7a879181850068/run-2026-10-10T01-58-29-703Z/transcript.json`, and the
+supplementary transcript
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-9c7a879181850068/run-2026-10-10T02-03-14-435Z/transcript.json`.
