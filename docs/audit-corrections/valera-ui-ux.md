@@ -536,3 +536,35 @@ geometry. Studio and Chromium drained after close. No product P0/P1/material-P2
 was observed; the deferred controller browser test was not inspected or run.
 The overall browser criterion remains **not reached**, pending only the
 unreached active-work-confirmation and keyboard/focus-at-smaller-width proof.
+
+## Independent recovery completion — 2026-10-10 (evidence descendant `3126bfdd`)
+
+This final supplementary collection retained the authenticated candidate
+`c576bcebaa50d61b2681e151e7ebe97b3a591326` and clean evidence-only descendant
+`3126bfdd14df9ffd1480e279b5ec101f6799eb18`. The immutable initial record and
+its sibling transcript remain present and hash-matched:
+
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/frozen-initial.json`
+  (`sha256:75c3c93cd9dc96edae5bce4be4ea11a66c90d68f08a34e8ffb6b1a74184dae6a`);
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/transcript.json`
+  (`sha256:33233992ec2388b0339d19781757afff902dc9b41c91114cd9238d0bfe7ec3a3`).
+
+The completion supplement is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-10T00-25-12-858Z/transcript.json`
+(`sha256:80edf78ad73d0b562daa8d9ba7bbfc3c2439dae5fb18a9a9aed94f0da539d21c`).
+No screenshot was added, preserving the initial three-screenshot bound.
+
+Because retained simulations were terminal, one minimum public **Repeat
+simulation** was submitted exactly once. It rendered its accepted running
+state at `2000/50000`, then completed truthfully at `50000/50000` in 821 ms.
+The specified immediate rendered **Close project** follow-up produced the
+active-operations confirmation. Its **Cancel** response kept the project and
+completed report available and returned measured focus to **Close project**.
+Native `Tab` then produced visible focus on **Configure** at 1439 × 956
+(124.625 × 36 px, 2 px solid outline) and on **Run** at 900 × 700
+(140.984 × 36 px, 2 px solid outline). Thus this continuation closes the
+previously missing active-work confirmation, focus-return, and smaller-viewport
+keyboard evidence without redoing the already retained project-isolation or
+occupied-destination observations. Owned Studio and browser children drained;
+no P0/P1/material-P2 product defect was observed. The deferred whole-file
+browser regression remains controller-owned and was not inspected or run here.
