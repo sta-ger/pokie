@@ -183,8 +183,8 @@ frozen.
 | --- | --- |
 | Candidate / checkout | `422b48844da6f5b059fee0b63307fe5a54fae8dc` / this assigned worktree |
 | Initial collection | Interactive, fresh application config and Documents roots; 2026-10-10T01:40:11.864Z to 2026-10-10T01:42:43.189Z |
-| Frozen initial record | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-0e99011eed131b75/run-2026-10-10T01-40-11-863Z/frozen-initial.json` (`c81a6d71ff48d4be90d1f53b638bafb1e5ac9dab621590f1c1d522a398b27863`) |
-| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-0e99011eed131b75/run-2026-10-10T01-40-11-863Z/transcript.json` (`dbc716121e7392f4bf53baf474eedc86b3d56c0f5d7a4581d4905de86b3e9cd1`) |
+| Frozen initial record | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-6d4568a3c9593b96/frozen-initial/frozen-initial.json` (`c81a6d71ff48d4be90d1f53b638bafb1e5ac9dab621590f1c1d522a398b27863`) |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-6d4568a3c9593b96/frozen-initial/transcript.json` (`dbc716121e7392f4bf53baf474eedc86b3d56c0f5d7a4581d4905de86b3e9cd1`) |
 | Viewports | 1439×956 compact desktop; 900×700 smaller desktop |
 
 Reached public surfaces: Home and its ready-to-edit starter form at both
@@ -478,3 +478,45 @@ the production Studio compiler includes only `src`, so no production compiler
 or bundle boundary changed. The controller retains the PathInput/simulation
 workflow matrix, production build, complete browser run and independent visual
 closure. No official gate, packaging, browser rerun or evidence cleanup ran here.
+
+## 2026-10-10 post-freeze candidate execution — audit-source finding
+
+The authenticated retained initial record and its chronological sibling remain
+unchanged, byte-for-byte, in this assigned harness at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-6d4568a3c9593b96/frozen-initial/frozen-initial.json`
+(`c81a6d71ff48d4be90d1f53b638bafb1e5ac9dab621590f1c1d522a398b27863`) and
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-6d4568a3c9593b96/frozen-initial/transcript.json`
+(`dbc716121e7392f4bf53baf474eedc86b3d56c0f5d7a4581d4905de86b3e9cd1`). No
+screenshots or gallery entries were added.
+
+On candidate `f4e3c948a1b9ec5d4127fc8d2b40b8f694e0164f`, `npm run build-cli`
+completed before the one complete required command:
+
+```sh
+P910_FROZEN_OBSERVATIONS=<authenticated frozen record> npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
+```
+
+The real production CLI served the current assets at a fresh local Studio
+origin; its fresh browser and isolated runtime reached Home at 1100×800. Five
+test cases passed. The rendered case then failed at line 384 before project
+creation, Build/Export, or either simulation iteration, so those remaining
+workflow rows are not reached on this candidate.
+
+### P9-VALERA-GRAPHIC-02 — P1 required browser-audit false rejection (open)
+
+This is deterministic candidate-owned audit-source failure, not a driver or
+product-layout timeout. The failure lists precisely all six valid Home section
+tabs. `measure()` at lines 359–384 selects each visible tab button, calls
+`Range.selectNodeContents`, and rejects its whole content rectangle when it
+extends beyond the button. Each validated tab deliberately contains the
+`StatusBadge` `VisuallyHidden` accessible text (`valid`); that nonvisual
+accessibility sibling participates in the whole-content range, so the generic
+visual-overflow predicate rejects every otherwise rendered tab. The regression
+must measure visible label/badge boxes (or exclude visually hidden content)
+while retaining the accessibility-name assertion. No product visual defect is
+claimed from this source-level rejection.
+
+The candidate-bound harness receipts are runtime-only:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-6d4568a3c9593b96/post-freeze-run.json`
+and `post-freeze-result.json` (exit `1`, no signal). The run used no additional
+Studio launch and retained no generated project/output tree.
