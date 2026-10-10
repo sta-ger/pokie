@@ -1,5 +1,38 @@
 # P9 correction and reviewed product status register
 
+### 2026-10-10 P9-11 supplied-handoff preflight
+
+The verifier authenticated the clean requested product candidate and HEAD
+`2c6979b74672c834748bd0738ac57f766af1461d`.  The assigned persistent harness
+contains only `current.mjs`; its offline `--describe` command exited `0` and
+reported all seven expected itinerary groups, and its SHA-256 is
+`e59b0016e731e759bd9068f130cd02cfef44aa74b689194f240297f803686338`.
+This capability report is not controller authentication of that driver.
+
+No `POKIE_P911_CANDIDATE_HANDOFF` or
+`POKIE_P911_CANDIDATE_HANDOFF_SHA256` was supplied, and no handoff, archive,
+build receipt, install receipt, or driver-pin record is present in the named
+harness (depth two).  The fresh offline consumer invocation
+`node scripts/p9-11-corrective-closeout.mjs` therefore exited `1` before any
+Studio launch with `Usage: node scripts/p9-11-corrective-closeout.mjs
+--handoff <absolute-json> --sha256 <controller-pinned-digest> --run-root
+<fresh-directory>`.
+
+The boundary is source-backed: `scripts/p9-11-corrective-closeout.mjs`
+calls `readP911Candidate` and then requires the handoff's authenticated
+`browserDriver`; `scripts/p9-11-candidate.mjs` requires a pinned normal
+archive, shared installation, and successful production build/install
+receipts.  The actual producer is implemented in
+`scripts/p9-11-produce-candidate.mjs`, which requires a controller-pinned
+`p9-11-producer-config` and externally pinned driver, then emits the handoff
+and the two `POKIE_P911_*` variables.  Neither the candidate consumer nor the
+verifier may create that controller configuration or authenticate the
+un-pinned harness driver.  Consequently this is an evidence handoff gap, not
+a product or browser finding: no build, package/install, Studio workflow,
+official gate, or publication was launched.  The next verifier-owned action
+is to validate and execute the delivered controller-pinned handoff on this
+candidate.
+
 ### 2026-10-10 authenticated P9-11 corrective closeout
 
 The independent verifier authenticated clean candidate
