@@ -837,3 +837,26 @@ Release/packaging, post-merge checks, integration/push/publication and Drive
 round-trip remain controller-owned. Prior receipts/initial observations and
 wider partial/unconfirmed roadmap statuses remain unchanged. This committed
 implementation handoff does not mark P9-11 or the campaign complete.
+
+### P9-11 executable Simulation/Replay inventory repair
+
+Reviewer finding `8d3fc6b430185879` (`P9-11-CLI-INVENTORY`) was traced on
+`0796ea695e4939a9481a972d8ebd96051601479b` against the current Sim/Replay
+commands and the full inventory consumer. The
+[executable fixture](../../tests/cli/fixtures/cliCommandInventory.ts) now
+matches both descriptions, both complete usages, and all 24 affected exact
+invalid-input/missing-value diagnostics, including the canonical WASM
+alternatives. The consumer and production behavior are unchanged.
+
+The sole permitted foreground regression,
+`npm run test:targeted -- tests/cli/cliCommandInventory.contract.test.ts`,
+passed (1 suite, 1080 tests). It retains exact diagnostic, exit-code, stream,
+dispatch, option-value and recursive-help assertions. This supersedes the
+earlier red whole-inventory result without rewriting that historical record.
+
+This fixture correction preserves the accumulated product repairs and prior
+evidence. Immutable criteria 1–3 remain pending: exact-candidate six-scenario
+closeout, five isolated final persona smokes, authenticated P909/P910
+observations and independent visual/focus judgment, plus official
+release/packaging, integration/push/publication, Drive round-trip and lifecycle
+receipts are controller/verifier work. No independent acceptance is claimed.

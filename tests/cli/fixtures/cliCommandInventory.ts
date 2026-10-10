@@ -555,11 +555,14 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "replay",
-        description: "Replay one round: exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package replay.",
+        description: "Replay one round: deterministic canonical WASM replay, exact native outcome-library reconstruction with seed, round and mode, or best-effort game-package/Blueprint replay.",
         verbs: [
             {
                 verb: undefined,
-                usage: "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]",
+                usage:
+                    "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
+                    "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+                    "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
                 positionals: ["packageRoot"],
                 options: [
                     {flag: "--round", required: true, kind: "validated", acceptedValue: "3"},
@@ -607,14 +610,15 @@ export const CLI_COMMAND_DESCRIPTORS: CliCommandDescriptor[] = [
     },
     {
         name: "sim",
-        description: "Run a simulation against a POKIE game package and report RTP/hit-frequency/max win.",
+        description: "Simulate a POKIE game package, Blueprint, native outcome library or canonical WASM artifact and report RTP/hit-frequency/max win.",
         verbs: [
             {
                 verb: undefined,
                 usage:
                     "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
                     "[--mode <betModeId>|all] [--out <file>] [--format json] " +
-                    "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+                    "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+                    "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
                 positionals: ["packageRoot"],
                 options: [
                     // defaultValue is SimulationConfig.DEFAULT_NUMBER_OF_ROUNDS (SimCommand.parseArgs's own default),
@@ -2153,7 +2157,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -2163,7 +2168,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--round is required. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -2173,7 +2179,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -2183,7 +2190,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             '--format only supports "json". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n' +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -2285,7 +2293,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] " +
             "[--mode <betModeId>|all] [--out <file>] [--format json] " +
-            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -2296,7 +2305,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--rounds must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] " +
             "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
-            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -2307,7 +2317,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             `--workers must be an integer between 1 and ${MAX_SIMULATION_WORKERS}. Usage: pokie sim <packageRoot> [--rounds <number>] ` +
             "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
-            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -2318,7 +2329,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             '--format only supports "json". Usage: pokie sim <packageRoot> [--rounds <number>] ' +
             "[--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] " +
-            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+            "[--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -2329,7 +2341,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--min-rounds, --rtp-tolerance and --check-interval must all be provided together to enable adaptive convergence. " +
             "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] " +
-            "[--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+            "[--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -2340,7 +2353,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedError:
             "--stable-checks requires --min-rounds, --rtp-tolerance and --check-interval to also be set. " +
             "Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] " +
-            "[--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+            "[--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -2983,7 +2997,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--round must be a positive integer. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -2993,7 +3008,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--seed requires a value. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -3003,7 +3019,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--out requires a file path. Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
     {
         command: "replay",
@@ -3013,7 +3030,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         expectedExitCode: 1,
         expectedError:
             "--format only supports \"json\". Usage: pokie replay <packageRoot> --round <number> [--seed <string>] [--out <file>] [--format json]\n" +
-            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]",
+            "   or: pokie replay <outcomeLibraryPath> --round <number> --seed <string> --mode <modeName> [--out <file>]\n" +
+            "   or: pokie replay <artifact.wasm> --round <number> --seed <string> [--out <file>]",
     },
 
     // --- report: missing-value cases ---
@@ -3064,7 +3082,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--rounds given with no value",
         args: ["pkg", "--format", "json", "--rounds"],
         expectedExitCode: 1,
-        expectedError: "--rounds must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--rounds must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3072,7 +3091,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--seed given with no value",
         args: ["pkg", "--format", "json", "--seed"],
         expectedExitCode: 1,
-        expectedError: "--seed requires a value. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--seed requires a value. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3080,7 +3100,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--workers given with no value",
         args: ["pkg", "--format", "json", "--workers"],
         expectedExitCode: 1,
-        expectedError: "--workers must be an integer between 1 and 32. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--workers must be an integer between 1 and 32. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3088,7 +3109,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--mode given with no value",
         args: ["pkg", "--format", "json", "--mode"],
         expectedExitCode: 1,
-        expectedError: "--mode requires a bet mode id. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--mode requires a bet mode id. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3096,7 +3118,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--out given with no value",
         args: ["pkg", "--format", "json", "--out"],
         expectedExitCode: 1,
-        expectedError: "--out requires a file path. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--out requires a file path. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3104,7 +3127,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--format given with no value",
         args: ["pkg", "--format"],
         expectedExitCode: 1,
-        expectedError: "--format only supports \"json\". Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--format only supports \"json\". Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3112,7 +3136,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--min-rounds given with no value",
         args: ["pkg", "--format", "json", "--min-rounds"],
         expectedExitCode: 1,
-        expectedError: "--min-rounds must be a non-negative integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--min-rounds must be a non-negative integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3120,7 +3145,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--rtp-tolerance given with no value",
         args: ["pkg", "--format", "json", "--rtp-tolerance"],
         expectedExitCode: 1,
-        expectedError: "--rtp-tolerance must be a positive number. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--rtp-tolerance must be a positive number. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3128,7 +3154,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--check-interval given with no value",
         args: ["pkg", "--format", "json", "--check-interval"],
         expectedExitCode: 1,
-        expectedError: "--check-interval must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--check-interval must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
     {
         command: "sim",
@@ -3136,7 +3163,8 @@ export const CLI_CONTRACT_CASES: CliContractCase[] = [
         label: "--stable-checks given with no value",
         args: ["pkg", "--format", "json", "--stable-checks"],
         expectedExitCode: 1,
-        expectedError: "--stable-checks must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]",
+        expectedError: "--stable-checks must be a positive integer. Usage: pokie sim <packageRoot> [--rounds <number>] [--seed <string>] [--workers <number>] [--mode <betModeId>|all] [--out <file>] [--format json] [--min-rounds <number> --rtp-tolerance <number> --check-interval <number> [--stable-checks <number>]]\n" +
+            "   or: pokie sim <artifact.wasm> --rounds <number> --workers 1 --seed <string> [--format json]",
     },
 
     // --- stakeengine: missing-value cases ---
