@@ -186,3 +186,91 @@ inspection remain pending. The single release gate/packaging boundary, exact
 post-merge verification, develop integration/push/publication, Drive round-trip
 and campaign completion remain controller-owned and pending. No prior completed
 step evidence has changed; no substitute independent transcript was collected.
+
+## P9-11 authenticated producer integration
+
+The saved independent preflight correctly identified a missing producer: the
+reader and closeout could only consume records, and the synthetic test fixture
+was the only local constructor. The new controller-only entry point is
+[`scripts/p9-11-produce-candidate.mjs`](../../scripts/p9-11-produce-candidate.mjs).
+The implementer does not invoke this command. The controller invokes it once
+on the committed exact candidate, before the packaging consumers and bounded
+closeout. It does not run a release gate, integrate, push, publish or collect
+independent persona observations.
+
+The controller supplies and externally pins a JSON configuration:
+
+```text
+schemaVersion: 1
+kind: p9-11-producer-config
+campaignId: pokie-phase-9-audit-corrections
+issuer: controller identity
+candidateId: exact committed HEAD
+candidateTreeId: that commit's tree
+repositoryDirectory: absolute clean candidate checkout
+outputDirectory: absolute fresh directory outside that checkout
+browserDriver: { path: absolute independent rendered-driver module, sha256: controller-pinned digest }
+timeoutMs: optional per-command deadline, 1..180000 (default 180000)
+```
+
+```sh
+node scripts/p9-11-produce-candidate.mjs --config /absolute/producer-config.json --sha256 CONTROLLER_PINNED_CONFIG_SHA256
+```
+
+The producer runs exactly `npm run build` with `NODE_ENV=production`, then
+`npm pack --ignore-scripts --json --pack-destination <fresh-archive-directory>`,
+then `npm install --omit=dev --no-audit --no-fund -- <that-archive>` in the
+fresh shared installation. It removes inherited npm lifecycle/package context
+and Node/Jest options from these commands. Every command uses the existing
+spawn-time ownership runner, bounded descendant drainage and awaited stdio
+closure. SIGINT/SIGTERM cancel the active command. There is no retry, existing
+dist fallback, copied-package fallback or test fixture in the production path.
+
+Source commit/tree, clean exact HEAD and driver bytes are checked before launch,
+after each command and before delivery. The packed declaration must equal the
+committed source declaration. Command receipts retain real argv, cwd,
+production environment, stdout/stderr, terminal/deadline/cancellation and
+ownership results. The native candidate reader verifies the resulting archive,
+executable projection, installed bytes and public resolutions before the
+producer delivers `handoff.json`. The candidate reader now also requires the
+pinned regular rendered-driver file, so neither packaging consumer can accept
+a driverless handoff. A precise `failed.json` retains the failing phase and
+command results; failure prevents handoff delivery and preserves this run's
+logs, ownership ledgers and archive/install for diagnosis. Existing output
+directories are rejected without overwriting previous receipts.
+
+`delivery.json` and the single JSON stdout result provide the exact candidate,
+tree, archive path/digest, executable digest, installation and pinned `handoff`
+reference, an `environment` object containing both `POKIE_P911_CANDIDATE_HANDOFF`
+and `POKIE_P911_CANDIDATE_HANDOFF_SHA256`, and the exact `closeout` command/argv.
+The controller passes that environment into its one release/packaging boundary;
+it binds the delivered archive digest as that boundary's
+`candidatePackageSha256`. Both packaging suites then consume this same
+archive/install. Their shared selector accepts the release runner's empty P8
+handoff variable, rejects a real competing P8 handoff, and rejects partial P9
+delivery instead of falling back to rebuilding. To invoke the
+bounded verifier, append `--run-root <absolute-fresh-closeout-directory>` to
+the delivered closeout argv. No producer/build/install command is added to the
+verifier. The controller pins the delivered reference at this transport
+boundary; a self-declared issuer alone is not authentication.
+
+The rendered driver remains an independently supplied executable, pinned in
+the controller configuration. The producer authenticates and delivers its
+reference; it does not invent rendered observations or substitute the P8
+Cartesian collector. Its required actions, images, served-asset hashes,
+fresh-profile isolation and terminal cleanup are the existing closeout contract
+above. Authentic original P909/P910 evidence, all six installed repros, five
+short final smokes, independent image review, the single release boundary,
+post-merge checks, publication and Drive round-trip remain pending controller
+execution. Synthetic producer tests demonstrate contract behavior only.
+
+This repair's permitted foreground checks are the producer/closeout whole-file
+contract tests (including the packaging consumers' shared native selector) and
+root typecheck. The bounded command policy rejects Jest name-filter arguments;
+the attempted filtered packaging command did not launch Jest. Full packaging
+execution and the existing two native-ESM consumer tests remain controller-owned:
+
+```sh
+npm run test:targeted -- tests/scripts/p9-11-produce-candidate.test.mjs tests/scripts/p9-11-corrective-closeout.test.mjs
+npm run typecheck
+```

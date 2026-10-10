@@ -20,11 +20,10 @@ function importSmokeScript(filename: string): Promise<unknown> {
 }
 
 async function readSharedSmokeCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined> {
-    if (!environment.POKIE_P911_CANDIDATE_HANDOFF) return undefined;
-    const {readP911Candidate} = await importSmokeScript("p9-11-candidate.mjs") as {
-        readP911Candidate: (reference: {path: string; sha256: string | undefined}, options?: {repository: string}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string}>;
+    const {readP911CandidateFromEnvironment} = await importSmokeScript("p9-11-candidate.mjs") as {
+        readP911CandidateFromEnvironment: (environment: NodeJS.ProcessEnv, options?: {repository: string}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string} | undefined>;
     };
-    return readP911Candidate({path: environment.POKIE_P911_CANDIDATE_HANDOFF, sha256: environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256}, options);
+    return readP911CandidateFromEnvironment(environment, options);
 }
 
 function stageSharedSmokeArchive(archive: Buffer, directory: string): string {
@@ -45,7 +44,8 @@ it("selects the pinned P9 smoke archive/installation through native ESM without 
             candidateFixture: (directory: string) => Promise<{reference: {path: string; sha256: string}; repository: string; handoff: {installationRoot: string; archivePath: string; archiveSha256: string}}>;
         };
         const fixture = await candidateFixture(directory);
-        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+        // The shared release runner supplies an empty P8 handoff when absent.
+        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256, POKIE_P805_RELEASE_HANDOFF: ""};
         const shared = await readSharedSmokeCandidate(environment, {repository: fixture.repository});
         expect(shared?.installationRoot).toBe(fixture.handoff.installationRoot);
         expect(shared?.archiveSha256).toBe(fixture.handoff.archiveSha256);
@@ -62,6 +62,8 @@ it("selects the pinned P9 smoke archive/installation through native ESM without 
         expect(fs.existsSync(path.join(fixture.handoff.installationRoot, "node_modules/.bin/pokie"))).toBe(true);
         expect(shared?.archive.equals(fs.readFileSync(fixture.handoff.archivePath))).toBe(true);
         await expect(readSharedSmokeCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, {repository: fixture.repository})).rejects.toThrow("digest mismatch");
+        await expect(readSharedSmokeCandidate({...environment, POKIE_P805_RELEASE_HANDOFF: "{}"}, {repository: fixture.repository})).rejects.toThrow("cannot be combined");
+        await expect(readSharedSmokeCandidate({POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256}, {repository: fixture.repository})).rejects.toThrow("absolute receipt path");
     } finally {
         fs.rmSync(directory, {recursive: true, force: true});
     }
@@ -254,7 +256,6 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const p911Candidate = await readSharedSmokeCandidate(process.env);
         let sharedInstallation: string | undefined;
         if (p911Candidate) {
-            expect(handoffConfig).toBeUndefined();
             const candidate = p911Candidate;
             expect(candidate.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
             expect(candidate.archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);

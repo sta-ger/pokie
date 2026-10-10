@@ -14,11 +14,10 @@ function importProgrammerScript(file: string): Promise<unknown> {
 }
 
 async function readSharedProgrammerCandidate(environment: NodeJS.ProcessEnv, options?: {repository: string}): Promise<{installationRoot: string; candidateId: string; archive: Buffer} | undefined> {
-    if (!environment.POKIE_P911_CANDIDATE_HANDOFF) return undefined;
-    const {readP911Candidate} = await importProgrammerScript("../../scripts/p9-11-candidate.mjs") as {
-        readP911Candidate: (reference: {path: string; sha256: string | undefined}, options?: {repository: string}) => Promise<{installationRoot: string; candidateId: string; archive: Buffer}>;
+    const {readP911CandidateFromEnvironment} = await importProgrammerScript("../../scripts/p9-11-candidate.mjs") as {
+        readP911CandidateFromEnvironment: (environment: NodeJS.ProcessEnv, options?: {repository: string}) => Promise<{installationRoot: string; candidateId: string; archive: Buffer} | undefined>;
     };
-    return readP911Candidate({path: environment.POKIE_P911_CANDIDATE_HANDOFF, sha256: environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256}, options);
+    return readP911CandidateFromEnvironment(environment, options);
 }
 
 function borrowProgrammerInstallation(shared: {installationRoot: string}, installation: string): string {
@@ -35,7 +34,7 @@ it("selects the pinned P9 programmer archive/installation through native ESM wit
             candidateFixture: (directory: string) => Promise<{reference: {path: string; sha256: string}; repository: string; handoff: {installationRoot: string; archivePath: string; candidateId: string}}>;
         };
         const fixture = await candidateFixture(directory);
-        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256, POKIE_P805_RELEASE_HANDOFF: ""};
         const shared = await readSharedProgrammerCandidate(environment, {repository: fixture.repository});
         expect(shared?.installationRoot).toBe(fixture.handoff.installationRoot);
         expect(shared?.candidateId).toBe(fixture.handoff.candidateId);
@@ -50,6 +49,8 @@ it("selects the pinned P9 programmer archive/installation through native ESM wit
         expect(existsSync(path.join(fixture.handoff.installationRoot, "node_modules/.bin/pokie"))).toBe(true);
         expect(shared?.archive.equals(readFileSync(fixture.handoff.archivePath))).toBe(true);
         await expect(readSharedProgrammerCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, {repository: fixture.repository})).rejects.toThrow("digest mismatch");
+        await expect(readSharedProgrammerCandidate({...environment, POKIE_P805_RELEASE_HANDOFF: "{}"}, {repository: fixture.repository})).rejects.toThrow("cannot be combined");
+        await expect(readSharedProgrammerCandidate({POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256}, {repository: fixture.repository})).rejects.toThrow("absolute receipt path");
     } finally {
         rmSync(directory, {recursive: true, force: true});
     }

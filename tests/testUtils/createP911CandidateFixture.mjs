@@ -29,10 +29,13 @@ export async function candidateFixture(directory) {
     await symlink("../pokie/dist/cli/pokie.js", path.join(installationRoot, "node_modules/.bin/pokie"));
     const binding = {candidateId, candidateTreeId, archiveSha256:sha256(await readFile(archivePath)), executableSha256:projection.sha256, exitCode:0, resourcesDrained:true, issuer:"fixture-controller", receiptId:"fixture"};
     const buildPath = path.join(directory, "build.json"), installPath = path.join(directory, "install.json");
+    const driverPath = path.join(directory, "fixture-driver.mjs");
+    await writeFile(driverPath, "// Synthetic contract driver; never acceptance evidence.\n");
     await json(buildPath, {...binding, kind:"p9-11-normal-build-pack", buildCommand:"npm run build", packCommand:"npm pack --ignore-scripts", environment:{NODE_ENV:"production"}});
     await json(installPath, {...binding, kind:"p9-11-npm-install", command:"npm install <archive>", installationRoot});
     const handoff = {schemaVersion:1, kind:"p9-11-candidate-handoff", campaignId:P911_CAMPAIGN, ...binding, packageName:"pokie", packageVersion:"1.3.0", archivePath, installationRoot,
-        buildReceipt:{path:buildPath, sha256:sha256(await readFile(buildPath))}, installReceipt:{path:installPath, sha256:sha256(await readFile(installPath))}};
+        buildReceipt:{path:buildPath, sha256:sha256(await readFile(buildPath))}, installReceipt:{path:installPath, sha256:sha256(await readFile(installPath))},
+        browserDriver:{path:driverPath, sha256:sha256(await readFile(driverPath))}};
     const handoffPath = path.join(directory, "handoff.json"); await json(handoffPath, handoff);
     return {reference:{path:handoffPath, sha256:sha256(await readFile(handoffPath))}, repository, handoff};
 }

@@ -127,6 +127,33 @@ controller-to-closeout producer handoff at the consumer boundary above; a
 controller-produced, pinned normal archive/install and driver are required
 before the current checklist can be executed.
 
+### P9-11 producer integration repair (controller execution pending)
+
+The saved preflight remains unchanged above. Its exact missing-arguments
+failure was reproduced on this task's HEAD before editing. The production
+[`producer`](../../scripts/p9-11-produce-candidate.mjs) now creates the normal
+build/pack/npm-install receipts and candidate handoff, authenticates the
+controller-pinned rendered driver, and delivers the handoff pin and environment
+consumed by both packaging suites and the corrective closeout. The
+[invocation and transport contract](p9-11-closeout.md#p9-11-authenticated-producer-integration)
+identifies the one controller-owned producer run; no build or packaging work is
+added to the verifier.
+
+The [producer contract regression](../../tests/scripts/p9-11-produce-candidate.test.mjs)
+traces delivery into the native installed-package reader and rejects missing or
+changed driver pins, dirty/wrong source, repeated output, precise build/pack/npm
+installation failures, stale installed bytes and undrained processes/stdio.
+The [closeout regressions](../../tests/scripts/p9-11-corrective-closeout.test.mjs)
+retain the exact six repro/five persona action classification and accumulated
+descendant/stdio cleanup obligations. Both native-ESM packaging handoff consumers
+remain covered by their focused existing tests. These synthetic checks are
+implementation evidence only. Actual producer delivery, candidate-bound six
+repros/five final smokes, authentic originals including P909/P910, independently
+reviewed settled-focus images and served-asset/cleanup receipts remain pending
+controller collection. Release, exact integration/push/publication, Drive
+round-trip and campaign completion remain pending as well. No completed-step
+report, image, transcript, checkpoint or receipt was rewritten or removed.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.

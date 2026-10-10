@@ -15,6 +15,7 @@ const fail = (message) => { throw new Error(`P9-11 candidate: ${message}`); };
 const tooling = new Set([
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
     "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs", "scripts/p9-11-corrective-scenarios.mjs",
+    "scripts/p9-11-produce-candidate.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
     "scripts/p8-05-candidate-package-verifier.mjs",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",
@@ -42,12 +43,28 @@ export async function readPinnedJson(reference) {
     return JSON.parse(bytes);
 }
 
+export async function authenticateP911Driver(reference) {
+    if (!path.isAbsolute(reference?.path ?? "") || !sha(reference?.sha256)
+        || !(await lstat(reference.path)).isFile() || sha256(await readFile(reference.path)) !== reference.sha256) fail("authenticated controller browser driver required");
+}
+
+/** Shared selector for both CommonJS packaging consumers. Empty legacy P8
+ * context is normal in the release runner; real competing handoffs fail closed.
+ * A partial P9 delivery must never fall back to rebuilding/reinstalling. */
+export function readP911CandidateFromEnvironment(environment, options) {
+    const file = environment.POKIE_P911_CANDIDATE_HANDOFF, pin = environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256;
+    if (!file && !pin) return Promise.resolve(undefined);
+    if (environment.POKIE_P805_RELEASE_HANDOFF) fail("P9 and P8 candidate handoffs cannot be combined");
+    return readP911Candidate({path:file, sha256:pin}, options);
+}
+
 export async function readP911Candidate(reference, {repository = root} = {}) {
     const handoff = await readPinnedJson(reference);
     if (handoff.schemaVersion !== 1 || handoff.kind !== "p9-11-candidate-handoff" || handoff.campaignId !== P911_CAMPAIGN
         || handoff.packageName !== "pokie" || !handoff.packageVersion || !sha(handoff.archiveSha256) || !sha(handoff.executableSha256)
         || !path.isAbsolute(handoff.archivePath ?? "") || !path.isAbsolute(handoff.installationRoot ?? "")) fail("incomplete controller handoff");
     const equivalence = authenticateP911Tree(handoff.candidateId, handoff.candidateTreeId, repository);
+    await authenticateP911Driver(handoff.browserDriver);
     const build = await readPinnedJson(handoff.buildReceipt), install = await readPinnedJson(handoff.installReceipt);
     for (const receipt of [build, install]) {
         if (receipt.candidateId !== handoff.candidateId || receipt.candidateTreeId !== handoff.candidateTreeId
