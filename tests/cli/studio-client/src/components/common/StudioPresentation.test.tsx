@@ -11,6 +11,7 @@ import {OverviewTab} from "../../../../../../cli/studio-client/src/components/pr
 import {theme} from "../../../../../../cli/studio-client/src/theme";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
+import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 const LONG_PATH = `/games/${"long-project-location/".repeat(12)}package`;
 // Load the actual focus selectors/declarations, without jsdom's unsupported
@@ -119,6 +120,53 @@ it("keeps Home editor and Projects region focus after keyboard section activatio
         expect(document.getElementById("home-design-panel")).not.toBeVisible();
     } finally {
         rendered.unmount();
+    }
+});
+
+it.each(["cancelled", "failed"] as const)("keeps Home's %s job and indicator through later page expansion", async status => {
+    const user = userEvent.setup();
+    const layout = jobFocusLayout();
+    let terminal = false;
+    const job = () => ({id: "home-focus", projectId: "design:starter", operation: "design-build", request: {},
+        conflictKey: "design-build", status: terminal ? status : "running", createdAt: 1,
+        ...(terminal ? {result: {summary: "Retained Home result", outputs: [{label: "Result", downloadPath: "/home-result"}]}} : {})});
+    const {fetchImpl, calls} = createRoutedFakeFetch({
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+        "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [job()]}}),
+        "/api/home/jobs/home-focus": () => ({ok: true, status: 200, body: job()}),
+        "/api/home/jobs/home-focus/cancel": () => {
+            terminal = true;
+            return {ok: true, status: 200, body: job()};
+        },
+    });
+    const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+    try {
+        const region = await screen.findByRole("region", {name: "design-build job home-focus"});
+        const geometry = layout.place(region, 100);
+        try {
+            within(region).getByRole("button", {name: "Cancel"}).focus();
+            if (status === "cancelled") await user.keyboard("{Enter}");
+            else terminal = true;
+            await waitFor(() => expect(region).toHaveFocus());
+            expect(screen.getByRole("region", {name: "design-build job home-focus"})).toBe(region);
+            expect(within(region).getByText("Retained Home result")).toBeVisible();
+            expect(getComputedStyle(region).outline).toBe("2px solid var(--mantine-primary-color-filled)");
+            layout.scroll.mockClear();
+            geometry.moveTo(994.75);
+            await layout.expand(region.closest(".studio-page")!);
+            expect(region).toHaveFocus();
+            expect(layout.scroll).toHaveBeenCalledTimes(1);
+            expect(layout.scroll.mock.instances[0]).toBe(region);
+            await user.tab();
+            expect(within(region).getByRole("link", {name: "Download Result"})).toHaveFocus();
+            expect(calls.filter(call => call.url.endsWith("/cancel"))).toHaveLength(status === "cancelled" ? 1 : 0);
+        } finally {
+            geometry.restore();
+        }
+    } finally {
+        rendered.unmount();
+        layout.restore();
     }
 });
 

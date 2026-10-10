@@ -12,6 +12,7 @@ import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {createLargeSimulationLibrary} from "../../testUtils/largeStudioProjectFixture";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 import {MAX_STUDIO_SIMULATION_ROUNDS} from "../../../../../../cli/studio/simulation/StudioSimulationLimits.js";
+import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
@@ -94,6 +95,92 @@ function stepperStep(label: string, description: string): RegExp {
 }
 
 describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
+    it("keeps the retained common job focused through separate Review, report and Recent runs responses", async () => {
+        const layout = jobFocusLayout();
+        let commonTerminal = false;
+        let simulationTerminal = false;
+        let releaseReport: (() => void) | undefined;
+        let releaseReports: (() => void) | undefined;
+        const commonJob = () => ({id: "settled-focus", projectId: "/games/a", operation: "simulation", request: {rounds: 10000},
+            conflictKey: "simulation:/games/a", status: commonTerminal ? "completed" : "running", createdAt: 1,
+            ...(commonTerminal ? {result: {summary: "Completed retained job", outputs: [{label: "JSON", downloadPath: "/retained-report"}]}} : {})});
+        const respond = (body: unknown) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+        const fetchImpl: FetchLike = (url) => {
+            const [path] = url.split("?");
+            if (path === "/api/project/jobs") return respond({jobs: [commonJob()]});
+            if (path === "/api/project/jobs/settled-focus") return respond(commonJob());
+            if (path === "/api/project/simulations/settled-focus") return respond(jobFor("settled-focus", {
+                status: simulationTerminal ? "completed" : "running", roundsCompleted: simulationTerminal ? 10000 : 100,
+            }));
+            if (path === "/api/project/reports/settled-focus") return new Promise(resolve => {
+                releaseReport = () => resolve({ok: true, status: 200, json: () => Promise.resolve(reportDetailFor())});
+            });
+            if (path === "/api/project/reports") {
+                if (!simulationTerminal) return respond([]);
+                return new Promise(resolve => {
+                    releaseReports = () => resolve({ok: true, status: 200, json: () => Promise.resolve([{
+                        id: "settled-focus", game: {id: "a", version: "1.0.0"}, requestedRounds: 10000, actualRounds: 10000,
+                        rtp: 0.96, hitFrequency: 0.25, maxWin: 500, durationMs: 1200,
+                        startedAt: "2026-10-10T00:00:00.000Z", workers: 1, hasWarnings: false,
+                    }])});
+                });
+            }
+            const route = BASE_ROUTES[path];
+            if (route !== undefined) return respond(route().body);
+            return Promise.reject(new Error(`No fixture route for ${path}`));
+        };
+        const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/simulation"]});
+        try {
+            const region = await screen.findByRole("region", {name: "simulation job settled-focus"});
+            const geometry = layout.place(region, 100);
+            try {
+                within(region).getByRole("button", {name: "Cancel"}).focus();
+                commonTerminal = true;
+                await waitFor(() => expect(region).toHaveFocus());
+                expect(screen.getByRole("region", {name: "simulation job settled-focus"})).toBe(region);
+                layout.scroll.mockClear();
+                // The common result has already transferred focus. The
+                // operation-specific workflow and its data settle afterward.
+                simulationTerminal = true;
+                await screen.findByText("Loading report…");
+                expect(screen.getByRole("button", {name: stepperStep("Review", "See results")})).toHaveAttribute("aria-current", "step");
+                expect(region).toHaveFocus();
+                await waitFor(() => expect(releaseReport).toBeDefined());
+                await act(async () => {
+                    releaseReport!();
+                    await Promise.resolve();
+                });
+                expect(await screen.findByRole("button", {name: "Open full report"})).toBeVisible();
+                geometry.moveTo(994.75);
+                const ancestor = region.closest(".studio-page")!;
+                await layout.expand(ancestor);
+                expect(layout.scroll.mock.instances.at(-1)).toBe(region);
+                expect(region).toHaveFocus();
+                await waitFor(() => expect(releaseReports).toBeDefined());
+                await act(async () => {
+                    releaseReports!();
+                    await Promise.resolve();
+                });
+                expect(await screen.findByText("Loaded 1 simulation report.")).toBeVisible();
+                geometry.moveTo(1200);
+                await layout.expand(ancestor);
+                expect(layout.scroll.mock.instances.at(-1)).toBe(region);
+                expect(region).toHaveFocus();
+                expect(within(region).getByText("Completed retained job")).toBeVisible();
+                within(region).getByRole("link", {name: "Download JSON"}).focus();
+                const scrollCount = layout.scroll.mock.calls.length;
+                await layout.expand(ancestor);
+                expect(within(region).getByRole("link", {name: "Download JSON"})).toHaveFocus();
+                expect(layout.scroll).toHaveBeenCalledTimes(scrollCount);
+            } finally {
+                geometry.restore();
+            }
+        } finally {
+            rendered.unmount();
+            layout.restore();
+        }
+    });
+
     it("rejects invalid Rounds beside the field without queuing, then submits the exact Studio ceiling", async () => {
         const user = userEvent.setup();
         const rounds = MAX_STUDIO_SIMULATION_ROUNDS;

@@ -1418,3 +1418,93 @@ images/contact sheets, and no gallery was created.
 
 The complete deferred P910 execution remains at the controller-owned
 authenticated boundary, as required; this verifier did not run it.
+
+
+## 2026-10-10 correction — terminal focus closure superseded
+
+This append-only correction supersedes the preceding “focused clean-state
+closure — passed” claim that the terminal outline was visible and that no
+material finding remained. The observations, transcript hashes, images and
+all earlier evidence remain unchanged. Computed outline styling proved that
+an indicator existed; it did not prove that the indicator was on screen.
+
+Exact contradictory observation: in
+`run-2026-10-10T08-14-59-175Z/transcript.json`
+(SHA-256 `29e02ab24f293d1774787442047d50b902ac9aeb367dc967fab66ce94065d8d6`),
+native Cancel focus was visible at `08:15:57.420Z`. At `08:16:00.446Z`,
+the focused terminal region was `x=276, y=994.75, width=1088,
+height=232.0625` in a `1439×956` viewport. Its solid 2px outline was entirely
+below the viewport. This is an observed material P2 product defect,
+`744d14d01ccf09a8`, rather than an unreached control or collector coverage gap.
+The current 900×700 image shows the Simulation summary with Configure focused,
+not that terminal region. Textual Overview/Build observations and that summary
+image do not discharge the missing image-based project/build/job dispositions.
+`P9-VALERA-GRAPHIC` therefore remains open pending controller verification.
+
+Shared cause and correction: `JobCard` transferred focus with
+`preventScroll:true`, but never corrected its position after content above it
+expanded. Home and ProjectDashboardPage both retain keyed instances of this
+same card. On the project page, SimulationTab's status effect advances to
+Review independently of the common job observation; ProjectDashboardPage's
+report-detail and refreshed Recent runs responses can add further height
+before the Studio operations region. Moving or remounting the card would
+break the retained focus owner and the existing workflow order.
+
+The shared card now tracks the exact focused node, transfers only after that
+node disappears with body focus, and observes its containing layout while the
+region itself owns focus. A coalesced layout callback rechecks ownership and
+scrolls that exact region only when its outline would be outside the viewport.
+Scroll margins account for the outline and fixed Studio header. Tall results
+retain a visible leading edge. Blur and unmount disconnect observation and
+cancel queued callbacks. A background result cannot focus or scroll on behalf
+of another control, job, output link or dialog. No lifecycle hook, cancel,
+recovery, request, report-fetch, output-action or persisted-data contract changes.
+SimulationTab's separate workflow focus fallback only handles its own removed
+control; it cannot replace the still-focused common job region. Home's section
+focus and project tab focus continue to follow explicit navigation.
+
+### Accumulated closure ledger for this correction
+
+| Finding / requirement | Current artifact and disposition |
+| --- | --- |
+| `4a58ccd4ec9f8a24`: Home section overflow | SectionedFormEditor retains wrapping and all six semantic tabs; affected correction does not change editor layout. Existing frozen observations retained. |
+| `285d0e8a87d8b14f`, `ccb894ddb9ea1e2d`: selectors and return to Configure | P910 retains scoped tab-label selection, actual Browse… label, explicit simulation-configure native activation, both viewport iterations and retained report behavior. |
+| `0f8d50097d40f6a7`, `c73df4a0d712e3b9`: visible-content/native reachability harness | Visible-content geometry helper and native Tab/Shift+Tab/Enter traversal retained. No scripted focus or activation bypass added. |
+| `ae1a1cd6af46fe4a`: disclosures, consecutive recovery and transport failures | Immutable recovery request identity, runError/Needs attention, and maintained component/packed workflow consumers remain intact. No shared disclosure or execution dependency changed. Prior unaffected green checks reused. |
+| `764e1b10c0a3c85b`: professional finish | Current theme, supporting metadata and full technical paths preserved. Missing readable Overview and configured Build/Export image-based dispositions remain pending; no textual/functional substitute asserted. |
+| `4e394aa498bcbc34`: painted region indicators | Exclusive non-focus-visible suppression and computed 2px region outline remain. P910 still requires painted focus after native Cancel, now after surrounding content settles. |
+| `5d6486b31c2c4fe1`: oversized rounds | Shared rounds preflight, Configure validation, restored/Run again/Retry requests and retained reports remain. The supplied independent rejection/corrected-submission observations are reused; no new submission campaign needed. |
+| `744d14d01ccf09a8`: offscreen terminal focus | Shared card observes ancestor expansion after transfer. Focused ordinary regressions pass for completed/cancelled/failed results, both Home/project callers, delayed report/list responses and another task/dialog owner. Independent settled terminal-focus observation remains mandatory. |
+| Immutable visual acceptance / evidence budget | All retained evidence preserved; zero images or replacement observations added here. Controller must collect only affected focus plus missing readable project/build/job visual dispositions from isolated clean state, within the existing maximum four-image/contact-sheet budget, reusing unaffected observations and checks. |
+| Complete deferred P910 | Native Cancel traversal and downstream Download retrieval retained. The assertion waits for Review, the loaded summary/report and refreshed Recent runs, then stable surrounding geometry/content for 300ms, and checks DOM identity, ownership, painted outline and viewport containment before navigation. Entire observation-dependent file remains mandatory and unexecuted by this worker. |
+
+### Permitted implementation verification
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/common/JobProgressCard.test.tsx tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx
+npm run test:targeted -- tests/cli/studio-client/src/components/common/JobProgressCard.test.tsx
+npm run typecheck
+```
+
+The initial combined run passed 3 suites / 51 tests. After adding the
+queued-scroll versus dialog-focus race and active-observer unmount check, the
+standalone JobProgressCard run passed all 13 tests. The commit hook rejected
+test formatting/callback style; every reported violation was repaired without
+bypassing the hook. The final combined run passed 3 suites / 52 tests.
+Root typecheck passed; each invocation includes the Studio compiler once,
+with no separate Studio compiler command. The existing Mantine
+transition/polling act warnings remain non-failing. The jsdom layout helper supplies explicit geometry and
+real observer callbacks to verify delayed displacement and ownership; it does
+not claim to establish actual browser geometry or independent visual quality.
+The project regression separately releases Review/report-detail/Recent runs
+responses after common-card focus transfer, and Home exercises native Enter
+cancellation and a failed terminal with retained output navigation.
+
+Consuming boundaries: root/Studio TypeScript and the changed-TypeScript ESLint
+commit hook; production Vite/build-studio-client via build-cli; Node/Chromium
+P910 served through the public production CLI/static assets. Only the bounded
+ordinary tests and typecheck ran here. Production builds, the full retained
+reviewer matrix, affected image collection, independent visual disposition and
+complete authenticated P910 execution belong to the controller. No official
+gate, packaging smoke, browser-file execution or collector ran in this repair.
+This is an implementation handoff, not roadmap or visual acceptance closure.

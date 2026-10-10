@@ -625,12 +625,53 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             await measure(`Running job ${width}x${height}`, region);
             await focus(button("Cancel", region));
             expect((await job(id)).status).toBe('running');
+            await evaluate(`globalThis.__p910FocusedJobRegion = (${region}); true`);
             // Let this bounded real operation finish. No artificial delays or fabricated states.
             await until(async () => (await job(id)).status === 'completed', 'real terminal simulation');
             await until(() => evaluate<boolean>(`Boolean((${region})?.querySelector('[data-pokie-lifecycle-terminal=completed]'))`), 'common terminal card');
+            const reportsResponse = await fetch(`${origin}/api/project/reports`, {signal: AbortSignal.timeout(5_000)});
+            expect(reportsResponse.ok).toBe(true);
+            const completedReports = await reportsResponse.json() as Array<{id: string}>;
+            expect(completedReports.some(entry => entry.id === id)).toBe(true);
+            let previousLayout = '';
+            let stableSince = 0;
+            await until(async () => {
+                const layout = await evaluate<string>(`(() => {
+                    const region = (${region});
+                    const workflow = Array.from(document.querySelectorAll('[role=region]')).find(e => e.getAttribute('aria-label') === 'Simulation workflow');
+                    const recent = Array.from(workflow?.querySelectorAll('fieldset') ?? []).find(e => e.querySelector('legend')?.textContent === 'Recent runs');
+                    const review = workflow?.querySelector('[aria-current=step]');
+                    const receipt = workflow?.querySelector('[data-pokie-lifecycle-result-job=${JSON.stringify(id)}][data-pokie-lifecycle-terminal=completed]');
+                    if (!region || !workflow || !recent || !receipt || !review?.textContent.includes('Review')
+                        || !Array.from(workflow.querySelectorAll('button')).some(e => e.textContent.trim() === 'Open full report')
+                        || workflow.innerText.includes('Loading report')
+                        || !recent.innerText.includes(${JSON.stringify(`Loaded ${completedReports.length} simulation report`)})) return '';
+                    return JSON.stringify([region, workflow, recent].map(e => {
+                        const r = e.getBoundingClientRect();
+                        return [r.x, r.y, r.width, r.height, e.innerText];
+                    }));
+                })()`);
+                if (layout === '' || layout !== previousLayout) {
+                    previousLayout = layout;
+                    stableSince = Date.now();
+                    return false;
+                }
+                return Date.now() - stableSince >= 300;
+            }, 'settled Review summary, report and refreshed Recent runs before terminal focus inspection');
             // Cancel was reached through native Tab. Before navigating to any
-            // terminal action, the same retained region must own visible focus.
+            // terminal action, the same DOM region must still own visible focus
+            // after all surrounding completed-result content has settled.
+            expect(await evaluate<boolean>(`(${region}) === globalThis.__p910FocusedJobRegion`)).toBe(true);
             await regionFocus(region);
+            expect(await evaluate<boolean>(`(() => {
+                const r = (${region}).getBoundingClientRect();
+                const header = document.querySelector('.mantine-AppShell-header')?.getBoundingClientRect().bottom ?? 0;
+                const style = getComputedStyle(${region});
+                const inset = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+                return r.left - inset >= 0 && r.right + inset <= innerWidth
+                    && r.top - inset >= header
+                    && (r.height + inset * 2 > innerHeight - header ? r.top + inset < innerHeight : r.bottom + inset <= innerHeight);
+            })()`)).toBe(true);
             await measure(`Terminal job ${width}x${height}`, region);
             const download = `Array.from((${region}).querySelectorAll('a')).find(e=>e.textContent.includes('Download'))`;
             await focus(download);
