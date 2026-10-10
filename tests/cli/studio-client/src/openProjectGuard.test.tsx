@@ -66,6 +66,77 @@ function createProjectDashboardFetchRoutes() {
 }
 
 describe("useOpenProject: guarded side effects", () => {
+    it("retained Retry confirms the dirty draft before active operations, keeps cancellation separate, and retries the captured source", async () => {
+        let activeOperation = true;
+        let serverIdentity = "/games/previous";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...registryRoute(),
+            ...createProjectDashboardFetchRoutes(),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-opening", projectId: "/games/source.blueprint.json", operation: "project-open-materialization",
+                request: {sourcePath: "/games/source.blueprint.json"}, conflictKey: "project-open:/games/source.blueprint.json",
+                status: "recovery-required", createdAt: 1,
+                recovery: {action: "retry", reason: "Reopen the captured project."},
+            }]}}),
+            "/api/home/projects/open": (call) => {
+                const request = JSON.parse(call.init!.body!) as {confirmActiveJobs?: boolean};
+                if (!request.confirmActiveJobs) {
+                    return {ok: false, status: 409, body: {code: "active-jobs-require-confirmation", operations: ["simulation"], error: "Active jobs require confirmation."}};
+                }
+                activeOperation = false;
+                serverIdentity = "/games/a";
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: "/games/a"}, manifest: {id: "a", name: "A", version: "0.1.0"}}};
+            },
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        dirtyTheDesignDraft();
+        const stored = window.sessionStorage.getItem("pokie-studio:design-draft:v1");
+        fireEvent.click(await screen.findByRole("button", {name: "Retry"}));
+        await screen.findByText(CONFIRM_TEXT);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        expect(activeOperation).toBe(true);
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
+        await waitFor(() => expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument());
+        expect(serverIdentity).toBe("/games/previous");
+        expect(window.sessionStorage.getItem("pokie-studio:design-draft:v1")).toBe(stored);
+
+        fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+        await screen.findByText(CONFIRM_TEXT);
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+        const activeConfirmation = "Active operations: simulation. Open another project and cancel them after cleanup?";
+        await screen.findByText(activeConfirmation);
+        expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
+        expect(activeOperation).toBe(true);
+        expect(serverIdentity).toBe("/games/previous");
+        fireEvent.click(screen.getByRole("button", {name: "Cancel", exact: true}));
+        expect(await screen.findByRole("alert")).toHaveTextContent("Project switch cancelled.");
+        expect(router.state.location.pathname).toBe("/home/design");
+        expect(screen.getByDisplayValue("wild-draft")).toBeInTheDocument();
+        expect(window.sessionStorage.getItem("pokie-studio:design-draft:v1")).toBe(stored);
+        expect(screen.getByRole("button", {name: "Retry"})).toBeEnabled();
+        expect(activeOperation).toBe(true);
+        expect(serverIdentity).toBe("/games/previous");
+
+        fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+        await screen.findByText(CONFIRM_TEXT);
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+        await screen.findByText(activeConfirmation);
+        fireEvent.click(screen.getByRole("button", {name: "Confirm", exact: true}));
+        expect(await screen.findByRole("heading", {name: "A"})).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent("/games/a")}/overview`);
+        expect(activeOperation).toBe(false);
+        expect(serverIdentity).toBe("/games/a");
+        expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init!.body!))).toEqual([
+            {projectRoot: "/games/source.blueprint.json"},
+            {projectRoot: "/games/source.blueprint.json"},
+            {projectRoot: "/games/source.blueprint.json", confirmActiveJobs: true},
+        ]);
+        expect(screen.queryByText(CONFIRM_TEXT)).not.toBeInTheDocument();
+        expect(calls.filter((call) => call.url.includes("/recover") || call.url.includes("/cancel"))).toHaveLength(0);
+    }, WORKFLOW_TIMEOUT_MS);
+
     it("saves an edited Blueprint Project, then opens its Workspace without an unsaved-draft prompt", async () => {
         let saved = false;
         const blueprintLocation = "/games/starter-slot/blueprint.json";

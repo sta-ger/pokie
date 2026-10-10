@@ -1,7 +1,43 @@
-import {fireEvent, screen, waitFor, within} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+
+const RETAINED_OPEN_SOURCE = "/games/recoverable";
+const RETAINED_OPEN_RUNTIME = "/games/recoverable/generated";
+const DIRTY_CONFIRMATION = "You have unsaved changes in Design Game. Leave and lose them?";
+
+function retainedOpeningRoutes() {
+    return {
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+            id: "open-retained", projectId: RETAINED_OPEN_SOURCE, operation: "project-open-materialization",
+            request: {sourcePath: RETAINED_OPEN_SOURCE}, conflictKey: `project-open:${RETAINED_OPEN_SOURCE}`,
+            status: "recovery-required", createdAt: 1,
+            recovery: {action: "retry", reason: "Reopen the captured project."},
+        }]}}),
+        "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+        "/api/project/context": () => ({ok: true, status: 200, body: {status: "loaded", projectRoot: RETAINED_OPEN_RUNTIME, game: {id: "recoverable", name: "Recoverable", version: "1.0.0"}, type: "blueprint", capabilities: []}}),
+        "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: RETAINED_OPEN_RUNTIME, valid: true, generated: false}}),
+        "/api/project/validate": () => ({ok: true, status: 200, body: {valid: true, errors: [], warnings: []}}),
+        "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+        "/api/project/replays": () => ({ok: true, status: 200, body: []}),
+        "/api/project/deployment/targets": () => ({ok: true, status: 200, body: []}),
+    };
+}
+
+async function dirtyOpeningDraft(mode: "form" | "JSON"): Promise<void> {
+    if (mode === "JSON") {
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        await user.click(screen.getByRole("radio", {name: "JSON"}));
+        fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: "unfinished JSON"}});
+    } else {
+        fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Unsaved A"}});
+        fireEvent.blur(screen.getByLabelText("Game name"));
+    }
+}
 
 // HomePage keeps both tab bodies permanently mounted (see HomePage.tsx) -- so a `screen`-wide
 // *ByRole/*ByLabelText query has to walk the entire document and run jsdom's getComputedStyle over it to
@@ -149,6 +185,106 @@ describe("HomePage", () => {
         await user.click(screen.getByRole("button", {name: "Retry"}));
 
         await waitFor(() => expect(calls.some((call) => call.url === "/api/home/projects/open" && call.init?.body === JSON.stringify({projectRoot: "/games/recoverable"}))).toBe(true));
+    });
+
+    it.each(["form", "JSON"] as const)("guards retained project-opening Retry before side effects for dirty %s, preserving Stay and committing Leave once", async (mode) => {
+        let serverIdentity = "/games/previous";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...retainedOpeningRoutes(),
+            "/api/home/projects/open": () => {
+                serverIdentity = RETAINED_OPEN_RUNTIME;
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: RETAINED_OPEN_RUNTIME}, manifest: {id: "recoverable", name: "Recoverable", version: "1.0.0"}}};
+            },
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await dirtyOpeningDraft(mode);
+        const stored = window.sessionStorage.getItem("pokie-studio:design-draft:v1");
+        const entrySurfaces: boolean[] = [];
+        const unsubscribe = router.subscribe((state) => {
+            if (state.location.pathname === `/project/${encodeURIComponent(RETAINED_OPEN_RUNTIME)}/overview`) {
+                entrySurfaces.push(document.getElementById("home-design-panel") === null);
+            }
+        });
+
+        fireEvent.click(await screen.findByRole("button", {name: "Retry"}));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        expect(serverIdentity).toBe("/games/previous");
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
+        await waitFor(() => expect(screen.queryByText(DIRTY_CONFIRMATION)).not.toBeInTheDocument());
+        expect(router.state.location.pathname).toBe("/home/design");
+        expect(router.state.location.state).toBeNull();
+        expect(screen.getByLabelText(mode === "JSON" ? "Blueprint JSON" : "Game name")).toHaveValue(mode === "JSON" ? "unfinished JSON" : "Unsaved A");
+        expect(window.sessionStorage.getItem("pokie-studio:design-draft:v1")).toBe(stored);
+        expect(screen.getByRole("region", {name: "project-open-materialization job open-retained"})).toHaveTextContent("Recovery required");
+        expect(serverIdentity).toBe("/games/previous");
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+
+        fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+        expect(await screen.findByRole("heading", {name: "Recoverable"})).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(RETAINED_OPEN_RUNTIME)}/overview`);
+        const openingCalls = calls.filter((call) => call.url === "/api/home/projects/open");
+        expect(openingCalls).toHaveLength(1);
+        expect(JSON.parse(openingCalls[0].init!.body!)).toEqual({projectRoot: RETAINED_OPEN_SOURCE});
+        expect(serverIdentity).toBe(RETAINED_OPEN_RUNTIME);
+        await waitFor(() => expect(screen.queryByText(DIRTY_CONFIRMATION)).not.toBeInTheDocument());
+        expect(entrySurfaces.length).toBeGreaterThan(0);
+        expect(entrySurfaces.every(Boolean)).toBe(true);
+        expect(calls.filter((call) => call.url.includes("/recover") || call.url.includes("/cancel"))).toHaveLength(0);
+        unsubscribe();
+    });
+
+    it.each(["HTTP", "network"] as const)("reports a rejected retained opening (%s), preserves the dirty draft and job, and allows guarded retry", async (failure) => {
+        let rejectOpening = true;
+        const mode = failure === "HTTP" ? "form" : "JSON";
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...retainedOpeningRoutes(),
+            "/api/home/projects/open": () => {
+                if (rejectOpening) {
+                    if (failure === "network") throw new Error("Failed to fetch");
+                    return {ok: false, status: 400, body: {error: "The captured source is temporarily unavailable."}};
+                }
+                return {ok: true, status: 200, body: {context: {mode: "project", projectRoot: RETAINED_OPEN_RUNTIME}, manifest: {id: "recoverable", name: "Recoverable", version: "1.0.0"}}};
+            },
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await dirtyOpeningDraft(mode);
+        const stored = window.sessionStorage.getItem("pokie-studio:design-draft:v1");
+        fireEvent.click(await screen.findByRole("button", {name: "Retry"}));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(failure === "HTTP" ? "The captured source is temporarily unavailable." : "Failed to fetch");
+        expect(alert).toHaveTextContent("Retry");
+        expect(alert).toHaveTextContent(RETAINED_OPEN_SOURCE);
+        expect(router.state.location.pathname).toBe("/home/design");
+        expect(screen.getByLabelText(mode === "JSON" ? "Blueprint JSON" : "Game name")).toHaveValue(mode === "JSON" ? "unfinished JSON" : "Unsaved A");
+        expect(window.sessionStorage.getItem("pokie-studio:design-draft:v1")).toBe(stored);
+        expect(screen.getByRole("region", {name: "project-open-materialization job open-retained"})).toHaveTextContent("Recovery required");
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+
+        // Failed side effects must release the one-navigation allowance.
+        await act(() => router.navigate("/project/overview"));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        expect(router.state.location.pathname).toBe("/home/design");
+        fireEvent.click(screen.getByRole("button", {name: "Stay"}));
+        await waitFor(() => expect(screen.queryByText(DIRTY_CONFIRMATION)).not.toBeInTheDocument());
+        rejectOpening = false;
+        fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+        await screen.findByText(DIRTY_CONFIRMATION);
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(1);
+        fireEvent.click(screen.getByRole("button", {name: "Leave"}));
+        expect(await screen.findByRole("heading", {name: "Recoverable"})).toBeInTheDocument();
+        expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(RETAINED_OPEN_RUNTIME)}/overview`);
+        expect(calls.filter((call) => call.url === "/api/home/projects/open").map((call) => JSON.parse(call.init!.body!))).toEqual([
+            {projectRoot: RETAINED_OPEN_SOURCE}, {projectRoot: RETAINED_OPEN_SOURCE},
+        ]);
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByText(DIRTY_CONFIRMATION)).not.toBeInTheDocument());
     });
 
     it("reconstructs a retained PAR import on Home without importing until the user explicitly submits it", async () => {

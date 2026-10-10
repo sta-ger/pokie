@@ -1192,3 +1192,52 @@ Root typecheck exited zero, including the Studio compiler once. Some existing
 workflow fixtures emit React `act` warnings while passing. P909/P910 rendered
 execution, production bundle/packaging and official gates were not launched by
 this worker and are not claimed green for the correction candidate.
+
+### P9-11 retained project-opening guard and error repair (independent retest pending)
+
+Review finding `462cae8cd3be8df7` supersedes the earlier shared-opening audit's
+claim for Home's retained Retry. On baseline
+`6f043d357553da186dca9d1878d81fdbdd9948f8`, Home's own `useOpenProject` captured
+the context default: its rendered provider covered descendants, not that hook.
+Source tracing confirmed server materialization/registration and active-operation
+cancellation could precede Stay. New routed regression cases failed on that
+source before correction. These are source-aware component checks, not cold
+observations or installed-candidate acceptance receipts.
+
+Home now provides the existing navigation guard above the component owning its
+opening hook. Retained Retry uses the same guarded opening, separate active-job
+confirmation and synchronous server-resolved Overview navigation as sibling
+controls. Rejected openings have a local alert naming the captured source and
+Retry action; another activation clears that action's error. No retained-job
+recovery/cancellation bypass or alternate opening implementation was added.
+
+| Repair criterion | Focused closure authority |
+| --- | --- |
+| Dirty form/unapplied JSON; Stay before server side effects | Home routed cases assert zero opening requests before confirmation, preserved draft/storage/route and retained recovery card. |
+| Leave; captured source; synchronous Overview | Home cases assert one captured-source POST, navigation to the server's distinct generated root and retired Home controls at route-entry notification. |
+| Active-operation confirmation | Shared-opening routed case proves Stay makes no request; Leave reaches a separate named-operation confirmation; Cancel preserves state; retry submits one confirmed opening. |
+| Rejected request and successful retry | HTTP and network cases retain actionable alerts, draft/storage/job, require confirmation on unrelated navigation after failure, then complete a guarded successful retry. |
+| Sibling opening consumers | Registry and guided-save/open cases remain green in the bounded files. Built-package, artifact/library and project-job controls still call the unchanged shared opening hook; direct-entry restoration still uses its existing confirmed opener. The controller retains its full sibling matrix. |
+
+The two directly affected whole files passed together: **2 suites / 24 tests**.
+Some existing shared-opening fixtures still emit React `act` warnings. The
+initial corrected-source run exposed modal-exit timing and an omitted destination
+validation response in the new test fixtures; both were corrected before the
+passing whole-file run. The smaller `typecheck-studio-client` command was rejected
+by the clone policy before launch; root `typecheck` is the permitted compiler
+boundary and includes Studio once. Exact final compiler and commit-hook outcomes
+are recorded in the committed work report.
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/home/HomePage.test.tsx tests/cli/studio-client/src/openProjectGuard.test.tsx
+npm run typecheck
+```
+
+The accumulated finding ledger above and every historical receipt remain intact.
+All three immutable scope rows retain their controller obligations: authenticated
+current-candidate six-repro/five-persona closeout, executed frozen-input P909/P910,
+independent rendered/image/focus review and the full sibling matrix remain pending.
+Studio's Vite production bundle/normal package candidate and the single official
+release/packaging, exact integration/push/publication, Drive and lifecycle cleanup
+also remain controller-owned and pending. This implementation handoff does not
+complete P9-11 or the campaign and relabels no historical evidence.
