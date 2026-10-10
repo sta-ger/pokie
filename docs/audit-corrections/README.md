@@ -154,6 +154,23 @@ controller collection. Release, exact integration/push/publication, Drive
 round-trip and campaign completion remain pending as well. No completed-step
 report, image, transcript, checkpoint or receipt was rewritten or removed.
 
+### 2026-10-10 P9-11 evidence-locator correction
+
+This evidence-only finalization retains the preceding P9-11 verdict unchanged:
+the exact product candidate is
+`3cddf327fe4c9aa9310f578bc9a59f71bea0c67a`, and the authenticated
+controller delivery required to run the six corrective repros and five persona
+smokes is still absent. No workflow, build, test, Studio launch, or product
+change was performed for this correction.
+
+The retained evidence locator for this verifier result is this README only.
+The previously reported `scripts/p9-11-produce-candidate.mjs`,
+`scripts/p9-11-candidate.mjs`, and
+`scripts/p9-11-corrective-closeout.mjs` paths are product source references,
+not evidence paths, and are deliberately omitted from the corrected evidence
+index. Historical source-provenance discussion above remains descriptive; it
+does not turn those source files into retained proof.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
