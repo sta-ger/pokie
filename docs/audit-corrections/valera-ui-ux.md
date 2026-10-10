@@ -568,3 +568,52 @@ keyboard evidence without redoing the already retained project-isolation or
 occupied-destination observations. Owned Studio and browser children drained;
 no P0/P1/material-P2 product defect was observed. The deferred whole-file
 browser regression remains controller-owned and was not inspected or run here.
+
+## Post-review changed-tests correction — 2026-10-10
+
+The saved gate failure at `854efe0642d6208676763eccdd0b21427d9a0eba`
+was reproduced through the permitted complete-file regression. Its managed
+project timeout left the browser on the valid starter design without a save
+request or error: the DevTools Enter event lacked the carriage-return text
+needed for native button activation. The regression now sends that text with
+Enter, retaining native Tab/Enter interaction throughout.
+
+Once activation worked, the same real path exposed timing assumptions in the
+test. Geometry now waits for the mobile drawer to finish entering the viewport;
+the simulation terminal check identifies the accepted job's own workflow
+projection instead of matching an earlier retained-history update. The
+workflow's Configure control is reached by native Tab after confirmed
+cancellation, whose removed trigger can release focus during dialog teardown;
+the exact focus-return assertions for both declined dialogs remain unchanged.
+The active fixture uses 500,000 real rounds, with unchanged 30-second terminal and
+180-second journey deadlines, so reload/reconnect and the cancellation dialogs
+can finish before a roughly 1.5-second 100,000-round run would complete. It adds
+no artificial progress or additional operation combinations. The separate
+completed-report fixture remains 20 rounds. Publication follow-up is reached
+by native Tab at 390 × 844 and again at 1100 × 800, with native Tab/Shift+Tab
+after resizing to bring the retained focused control into the new layout.
+Bounded failure diagnostics report the rendered page, focus geometry, and
+owned server output before normal child/job cleanup.
+
+The only permitted test command was run in the foreground:
+
+```sh
+P909_FROZEN_OBSERVATIONS="$PWD/docs/audit-corrections/valera-ui-ux.md" npm run test:targeted -- tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx
+```
+
+It passed both tests (one suite, exit 0, 12.859 seconds). The complete path
+checks real progress, retained identity after reload, visible reconnect and
+reattachment without duplicate submission, declined transition/cancellation
+focus return while active, terminal cleanup, a downloadable 20-round report,
+project isolation and reopening, occupied-destination errors/disabled Build,
+unchanged sentinel bytes, actual alternate package publication, and keyboard
+focus/geometry at both widths. Only this test and this appended note changed;
+the production assets and all earlier independent evidence remain intact.
+
+No controller freeze environment variable was supplied in this clone. For
+the local correction run, the prerequisite points to this committed document's
+retained independent observations; this is not a new blind collection or
+authentication of its externally referenced original record. The controller's
+rerun with the original frozen record and preserved official gate matrix
+remains pending. No build, packaging, parent-review suite, or official gate
+was launched by this worker.

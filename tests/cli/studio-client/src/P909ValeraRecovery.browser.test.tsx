@@ -156,7 +156,9 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
         };
         const button = (label: string, scope = "document") => `Array.from((${scope})?.querySelectorAll('button') ?? []).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
         const key = async (name: string, code: string, virtualKey: number, modifiers = 0) => {
-            await send("Input.dispatchKeyEvent", {type: "keyDown", key: name, code, windowsVirtualKeyCode: virtualKey, modifiers});
+            // Chromium needs Enter's character as well as its key code to perform native button
+            // activation. A keyDown without text delivers a key event but never submits it.
+            await send("Input.dispatchKeyEvent", {type: "keyDown", key: name, code, windowsVirtualKeyCode: virtualKey, modifiers, ...(name === "Enter" ? {text: "\r", unmodifiedText: "\r"} : {})});
             await send("Input.dispatchKeyEvent", {type: "keyUp", key: name, code, windowsVirtualKeyCode: virtualKey, modifiers});
         };
         // Reach every operation through native Tab/Enter activation. DOM inspection only locates
@@ -165,9 +167,10 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
             await until(() => evaluate<boolean>(`Boolean(${expression})`), `keyboard target: ${expression}`);
             for (let tabs = 0; tabs < 100; tabs++) {
                 if (await evaluate<boolean>(`document.activeElement === (${expression})`)) {
+                    // The mobile drawer animates after aria-expanded changes. Keep native focus
+                    // and wait for its visible position before judging geometry or pressing Enter.
+                    await until(() => evaluate<boolean>(`(() => {const e=document.activeElement;if(e!==(${expression}))return false;const r=e.getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth+1 && r.top >= 0 && r.bottom <= innerHeight+1;})()`), `focused control inside viewport: ${expression}`);
                     expect(await evaluate<boolean>("document.activeElement.matches(':focus-visible')")).toBe(true);
-                    const inside = await evaluate<boolean>("(() => {const r=document.activeElement.getBoundingClientRect();return r.left >= 0 && r.right <= innerWidth+1 && r.top >= 0 && r.bottom <= innerHeight+1;})()");
-                    expect(inside).toBe(true);
                     return;
                 }
                 await key("Tab", "Tab", 9);
@@ -211,7 +214,9 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
         const originalProject = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
         await fs.access(originalProject);
         await navigate("Simulation");
-        await fill(inputFor("Rounds"), "100000");
+        // A sub-million real run leaves a few seconds for the native keyboard recovery actions,
+        // while remaining bounded. The smaller completed-report run below still uses 20 rounds.
+        await fill(inputFor("Rounds"), "500000");
         await activate(button("Run Simulation"));
         let capturedJob = "";
         await until(async () => {
@@ -256,8 +261,13 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
             return ["completed", "cancelled"].includes((await job(capturedJob)).status);
         }, "truthful bounded terminal and cleanup");
         const terminal = await job(capturedJob);
-        await until(() => evaluate<boolean>(`document.body.innerText.toLowerCase().includes(${JSON.stringify(`simulation ${terminal.status}`)}) || document.body.innerText.includes(${JSON.stringify(`simulation · ${terminal.status === 'completed' ? 'Completed' : 'Cancelled'}`)})`), "rendered terminal");
+        // Retained job history can settle before the local workflow finishes cancellation cleanup.
+        // Verify this simulation's own terminal projection before continuing its keyboard path.
+        await until(() => evaluate<boolean>(`Array.from(document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')).some(e=>e.getAttribute('data-pokie-lifecycle-result-job') === ${JSON.stringify(capturedJob)} && e.getAttribute('data-pokie-lifecycle-terminal') === ${JSON.stringify(terminal.status)} && e.innerText.toLowerCase().includes(${JSON.stringify(`simulation ${terminal.status}`)}))`), "rendered simulation terminal");
         if (terminal.status === "cancelled") expect(terminal.result?.outputs?.some((output) => output.downloadPath?.includes("reports"))).not.toBe(true);
+        // Confirmed cancellation removes its trigger. Reach the next workflow step by native Tab
+        // before asserting focus geometry, rather than sampling modal teardown's transient focus.
+        await focus("document.getElementById('simulation-configure')");
         await geometry();
 
         // One small completion proves retained report access even if the observed active run was
@@ -317,12 +327,26 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
         await fs.access(path.join(alternate, "dist/index.js"));
         expect(await fs.readdir(occupied)).toEqual(["sentinel.bin"]);
         expect(await fs.readFile(path.join(occupied, "sentinel.bin"))).toEqual(sentinel);
+        // Loading disables Build, which can release native focus. Prove the published result's
+        // follow-up is reachable through Tab at the smaller viewport as well as compact desktop.
+        await focus(button("Open as Project", scope));
         await geometry();
         // The keyboard publish control must also remain usable at the compact viewport.
         await send("Emulation.setDeviceMetricsOverride", {width: 1100, height: 800, deviceScaleFactor: 1, mobile: false});
         small = false;
+        // A resize retains focus without scrolling it to the new layout. Re-enter the native
+        // tab order so Chromium brings this control into view at the compact viewport too.
+        await key("Tab", "Tab", 9);
+        await key("Tab", "Tab", 9, 1);
         await focus(button("Open as Project", scope));
         await geometry();
+    } catch (error) {
+        const rendered = devtools === undefined ? undefined : await bounded(devtools.send("Runtime.evaluate", {
+            expression: "JSON.stringify({url:location.href,active:{tag:document.activeElement?.tagName,id:document.activeElement?.id,text:document.activeElement?.textContent.slice(0,200)},rect:document.activeElement?.getBoundingClientRect().toJSON(),width:innerWidth,height:innerHeight,text:document.body.innerText.slice(0,8000)})",
+            returnByValue: true,
+        }), "failure diagnostics", 2_000).catch(() => undefined);
+        console.error("P9-09 browser failure", {rendered, stdout, stderr});
+        throw error;
     } finally {
         try {
             if (origin !== "" && studio?.exitCode === null) {
