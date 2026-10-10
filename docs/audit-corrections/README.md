@@ -277,6 +277,31 @@ failure/transcript records under the assigned harness preserve the commands,
 candidate/archive identities, terminal exit and cleanup; no generated runtime
 payload is committed here.
 
+### 2026-10-10 P9-11 controller-closeout retry: shared display repair
+
+The candidate product identity remains `3cddf327fe4c9aa9310f578bc9a59f71bea0c67a`.
+The persistent controller-pinned driver was repaired in place so the neutral
+child-owned display is passed to both installed Studio and Chromium; its new
+SHA-256 is `ff5aca6ed1cdebd7cf3398740be8a12985b926a82ad88d8ab80c6d8ac5f1f34f`.
+The controller rebound the existing authenticated archive/install to that exact
+driver without a verifier build, pack, or install. The resulting handoff is
+`controller-candidates/3cddf327fe4c9aa9310f578bc9a59f71bea0c67a-ff5aca6ed1cdebd7cf3398740be8a12985b926a82ad88d8ab80c6d8ac5f1f34f/output/handoff.json`
+with SHA-256 `8fd55b88f23679d583b872575d02e3c280bbbc0358d4adec689920923da81436`.
+
+One bounded closeout at `closeout-2026-10-10T15-30-00Z` reused that delivery.
+Its installed public `node-wasm-first-subsequent`, `serialized-zero-replay`,
+`bounded-long-state`, and `stake-uint64-total` commands all exited 0 with
+process trees, resources, and stdio drained. The first rendered Stake import
+then reached the visible `Check game` action, but no action-local recognized,
+registered, or error terminal rendered before its bounded acceptance probe
+expired. `failed.json` and `stake-uint64-total.rendered.transcript.json` in
+that run retain the exact command, candidate/archive/profile identities, exit
+1, and drained child ledger. This is a driver/readiness-inconclusive result,
+not a product finding: no rendered product error or false success claim was
+observed. The outstanding occupied-destination and five-persona itineraries
+remain not reached; no focus/image acceptance, P909/P910 closeout, official
+gate, publication, or campaign acceptance is claimed.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
