@@ -5,6 +5,7 @@ import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/compo
 import {createRecommendedBlueprint} from "../../../../../../cli/studio-client/src/domain/blueprintEditorState";
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
+import {jobFocusLayout} from "../../testUtils/jobFocusLayout";
 
 const recoveredBlueprint = {...createRecommendedBlueprint(), manifest: {id: "recovered-b", name: "Recovered B", version: "1.0.0"}};
 const recoveryRequest = {blueprint: recoveredBlueprint, sourcePath: "/games/B.json", destinationPath: "/games/B-package"};
@@ -42,6 +43,54 @@ function validRoutes() {
 describe("Guided draft package safety", () => {
     beforeEach(() => window.sessionStorage.clear());
     afterEach(() => window.sessionStorage.clear());
+    it.each([[1100, 800], [900, 700], [390, 844]])("keeps native Output directory focus visible after expanded Home layout moves at %sx%s", async (width, height) => {
+        const user = userEvent.setup();
+        const layout = jobFocusLayout();
+        const originalWidth = window.innerWidth;
+        const originalHeight = window.innerHeight;
+        Object.assign(window, {innerWidth: width, innerHeight: height});
+        const {fetchImpl, calls} = validRoutes();
+        const view = renderWithProviders(<><button>Outside Design</button><BlueprintEditorPage guided /></>, {fetchImpl});
+        try {
+            await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+            const output = screen.getByLabelText("Output directory (optional)");
+            const region = output.closest(".studio-design-editor") as HTMLElement;
+            const bounds = layout.place(output, 100);
+            try {
+                // Use the actual editor's native tab order, without programmatic focus.
+                for (let tabs = 0; document.activeElement !== output && tabs < 100; tabs++) await user.tab();
+                expect(output).toHaveFocus();
+                await layout.expand(region);
+                layout.scroll.mockClear();
+                // The earlier advanced section grows after native Tab already scrolled.
+                bounds.moveTo(height + 100);
+                await layout.expand(region);
+                expect(layout.scroll).toHaveBeenCalledTimes(1);
+                expect(layout.scroll.mock.instances[0]).toBe(output);
+                expect(layout.scroll).toHaveBeenCalledWith({block: "nearest", inline: "nearest", behavior: "instant"});
+                expect(output).toHaveFocus();
+                bounds.moveTo(100);
+                layout.scroll.mockClear();
+                await layout.expand(region);
+                expect(layout.scroll).not.toHaveBeenCalled();
+                await user.click(screen.getByRole("button", {name: "Outside Design"}));
+                bounds.moveTo(height + 100);
+                await layout.expand(region);
+                expect(layout.scroll).not.toHaveBeenCalled();
+                expect(screen.getByRole("button", {name: "Outside Design"})).toHaveFocus();
+                expect(calls.some(call => call.url === "/api/home/blueprints/build" || call.url === "/api/home/blueprints/build-preview")).toBe(false);
+                view.unmount();
+                expect(layout.observing(region)).toBe(false);
+            } finally {
+                bounds.restore();
+            }
+        } finally {
+            view.unmount();
+            layout.restore();
+            Object.assign(window, {innerWidth: originalWidth, innerHeight: originalHeight});
+        }
+    });
+
     it.each(["invalid", "error"])("keeps package publication disabled after %s validation with preview available", async (status) => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

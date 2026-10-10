@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
+import {productionStudioCandidate} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -63,9 +64,9 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
     const overallDeadline = Date.now() + 180_000;
     const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
-    // These exact assets are served by the production CLI. No fallback to mocked or source UI.
-    await fs.access(path.join(candidate, "dist/cli/pokie.js"));
-    await fs.access(path.join(candidate, "dist/cli/studio-client/index.html"));
+    // The normal shared installation is authenticated against source/archive hashes.
+    // Standalone collection still requires controller-built checkout assets.
+    const production = await productionStudioCandidate(process.env, candidate);
     // Reject stale dist rather than silently testing another candidate. The controller builds
     // these assets; this regression never invokes a compiler, packaging or a source UI loader.
     const newestSource = async (directory: string): Promise<number> => {
@@ -77,9 +78,11 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
         }));
         return Math.max(0, ...times);
     };
-    expect((await fs.stat(path.join(candidate, "dist/cli/studio-client/index.html"))).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio-client/src")));
-    expect((await fs.stat(path.join(candidate, "dist/cli/pokie.js"))).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio")));
-    const assets = path.join(candidate, "dist/cli/studio-client/assets");
+    if (!production.authenticated) {
+        expect((await fs.stat(path.join(candidate, "dist/cli/studio-client/index.html"))).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio-client/src")));
+        expect((await fs.stat(production.bin)).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio")));
+    }
+    const assets = path.join(production.packageRoot, "dist/cli/studio-client/assets");
     const bundle = (await Promise.all((await fs.readdir(assets)).filter((name) => name.endsWith(".js")).map((name) => fs.readFile(path.join(assets, name), "utf8")))).join("\n");
     expect(bundle).toContain("Reattach to retained work");
     // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
@@ -105,7 +108,7 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [path.join(candidate, "dist/cli/pokie.js"), "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [production.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
             env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],

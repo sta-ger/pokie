@@ -23,6 +23,7 @@ import type {BuiltBlueprintSnapshot} from "../../domain/interpret/Home";
 import {useBlueprintEditor, type BlueprintMutate} from "../../hooks/useBlueprintEditor";
 import {useConfirm} from "../../hooks/useConfirm";
 import {useDoubleSubmitGuard} from "../../hooks/useDoubleSubmitGuard";
+import {useDesignFocusVisibility} from "../../hooks/useDesignFocusVisibility";
 import {useConfirmedProjectOpen} from "../../hooks/useOpenProject";
 import {ErrorState} from "../common/ErrorState";
 import {QuickActions} from "../common/QuickActions";
@@ -130,6 +131,8 @@ export function BlueprintEditorPage({
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
     isVisible?: boolean;
 } = {}) {
+    const designRegion = useRef<HTMLDivElement>(null);
+    useDesignFocusVisibility(designRegion, guided && isVisible);
     const fetchImpl = useStudioApi();
     const openWithConfirmation = useConfirmedProjectOpen();
     const navigate = useNavigate();
@@ -1119,7 +1122,7 @@ export function BlueprintEditorPage({
     }
 
     return (
-        <div>
+        <div ref={designRegion} className="studio-design-editor">
             {guided && (
                 <div>
                     <Title id="design-game-heading" order={2}>Design Your Game</Title>

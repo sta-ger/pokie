@@ -914,3 +914,76 @@ candidate-owned offline preflight failure, P910 execution is complete, and the
 five-persona closeout remains incomplete because Graphic Designer did not
 reach its remaining four required observations. No official gate or
 publication was run.
+
+### P9-11 shared production assets and expanded Design focus repair
+
+Finding `48dcdde4e65f377b` was traced on `d25ac41c` (product candidate
+`b46933ad8f6005a198c1484becd49bf5cc7a8022`). The checkout has no
+`dist/cli/pokie.js`; both P909 and P910 selected checkout assets directly even
+though this campaign supplies one authenticated normal archive/installation.
+The saved six public scenarios and four completed persona smokes above remain
+unchanged historical evidence, not proofs for the repaired candidate.
+
+The [shared browser asset selector](../../tests/cli/studio-client/src/productionStudioCandidate.ts)
+now consumes the producer's `delivery.environment` through the existing
+`readP911CandidateFromEnvironment` reader. Both P909 and P910 launch its real
+installed CLI and inspect its installed Studio assets. The reader binds the
+clean committed source/tree, externally pinned handoff, normal build/install
+receipts, complete archive and installed executable hashes, and public module/bin
+resolutions. A partial pin, changed source, or corrupt/missing installed asset
+fails before launch; no fallback rebuild, source UI, or copied `dist` is used.
+Standalone collection still requires controller-built checkout assets and its
+existing freshness checks. The controller must supply the handoff environment
+and each separately authenticated frozen-observation input to rendered tests.
+
+The Home path is `HomePage` → guided `BlueprintEditorPage` → two advanced-option
+`Collapse` regions → `BlueprintBuildPanel` → destination `PathInput`. Native
+Tab can scroll the input before the earlier collapse finishes growing; viewport
+changes and the asynchronous path hint can subsequently displace that same
+control. The [Design visibility hook](../../cli/studio-client/src/hooks/useDesignFocusVisibility.ts)
+observes the containing layout and viewport, measures the current focused
+control, and scrolls it only when clipped, without changing focus. Focus scroll
+margins include the fixed header and outline. The hook is disabled outside the
+visible guided editor, never scrolls an abandoned control, and disconnects
+its observer and pending frame on cleanup. Draft replacement, publication
+authorization, validation, and durable job outcomes retain their existing paths.
+
+Permitted foreground checks passed:
+
+- `npm run test:targeted -- tests/cli/studio-client/src/productionStudioCandidate.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx`
+  — 2 suites, 29 tests. The real handoff reader selects installed assets with no
+  checkout `dist` and rejects partial/corrupt pins, stale/missing assets and
+  dirty source. Native editor Tab plus controlled layout observations covers
+  displacement at 1100×800, 900×700 and 390×844, retained focus, already visible
+  controls, focus moved outside Design and observer cleanup. The whole guided
+  file also retains invalid/error/drift/JSON disabled paths, delayed responses,
+  recovery/New/Load isolation, cancelled-save guard ownership and PAR provenance.
+- `npm run typecheck` — exit 0, including its Studio client compiler. No second
+  Studio typecheck, production build, pack/install, browser rerun or official
+  gate was launched by the implementer.
+
+The [P910 rendered regression](../../tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx)
+also checks expanded Home Build at all three sizes after settling, with no
+refocus or scripted scroll after reaching the field, and compares served bytes
+against the selected installation. Its execution remains controller-owned.
+For precision, the saved targeted receipt above reports one skipped test: its
+P910 file-level PASS does not establish execution of the frozen-input rendered
+case. Neither that skip nor the new controlled-layout tests provides independent
+visual approval.
+
+Accumulated closure ledger for this repair candidate:
+
+| Requirement / accumulated finding | Current implementation or retained authority | Required current-candidate proof |
+| --- | --- | --- |
+| Producer authentication (`e1b3d3e21357cfc5`); required itineraries (`4244816bdd6f6e3c`, `5cafd64253cf60ae`) | Existing normal producer/reader and exact seven-ID action classification contract retained; browser regressions now consume the same delivery. | One new exact-source normal controller delivery and authenticated receipts. |
+| Reachable Design build (`be2c13d3f25051b1`); draft/source/recovery and late-callback/save guards (`f7014303e1a68ec0`, `45fafbdbee49e426`) | Existing single Design panel/server paths retained; whole guided safety regression passes with the focus correction. | Current public occupied-destination/recovery and P909 execution. |
+| Driver generation, deterministic inputs, rendered metrics, browser isolation and image budget (`706091c10ac6f4a8`); native Paytable and original dependent Stake handoff (`416ccfa43f20caa3`) | Existing public generator, ArrowRight Paytable selection, original Blueprint Stake submission, checked inputs/values and four-sheet budget remain intact; exact action-versus-finding rejection contract retained. Prior six-scenario/four-persona receipts remain immutable. | Six current-candidate corrective repros and five separate final persona smokes, including Graphic Designer. |
+| Certification help (`0b244d51149b68d1`, `935084382c9fc051`); CLI inventory (`8d3fc6b430185879`) | Existing successful-help handling and corrected exact Sim/Replay inventory retained; prior installed canonical scenario passed. | Current installed canonical scenario. |
+| Missing checkout asset and displaced Home focus (`48dcdde4e65f377b`) | Shared authenticated installation selection and production Design visibility behavior covered by the bounded checks above. | Rendered P909/P910 without skips and transition-local Graphic Designer geometry/images. |
+| Immutable whole-step lifecycle and cleanup | Historical index/evidence preserved; no external acceptance or wider roadmap completion claimed. | Independent image judgment, complete drained closeout, controller release/packaging and post-merge checks, integration/push/publication and Drive round-trip. |
+
+The changed production boundary is the Studio browser bundle; the controller's
+normal `npm run build`/pack/install must consume this commit before the retained
+browser matrix and closeout. All immutable acceptance criteria remain pending
+their current-candidate machine-owned evidence. This is a committed correction
+handoff, not completion of P9-11 or the campaign.
