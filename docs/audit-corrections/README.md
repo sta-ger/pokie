@@ -90,6 +90,43 @@ was created in this continuation.
 The historical status register below is retained. Its prior pending wording
 describes the earlier review; the index above states P9-11's current obligations.
 
+### 2026-10-10 P9-11 closeout handoff preflight
+
+The current independent verifier authenticated clean evidence descendant
+`fd262c4d0d009a633ec00a0366073e4c7fc5297e` against product candidate
+`6a4c5cfad9687d2c338538d009e4f7104f78ad26` (candidate tree
+`25566a638f7f25e6e87035018ad5e136b26b3efc`).  The candidate-to-HEAD diff is
+only this README.  It then inspected the assigned persistent harness at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-45c1dc3bb3a294f9`:
+the retained interactive child (`pid 2194074`) is no longer running, and no
+handoff JSON, receipt JSON, or rendered-driver module exists at the named
+handoff-record boundary (harness depth two).  No `POKIE_P911_*` delivery
+variable is present.
+
+The exact candidate consumer command, `node scripts/p9-11-corrective-closeout.mjs`,
+exited `1` before launch with: `Usage: node scripts/p9-11-corrective-closeout.mjs
+--handoff <absolute-json> --sha256 <controller-pinned-digest> --run-root
+<fresh-directory>`.  This is an offline preflight rejection, not a rendered
+Studio action.  Its source boundary is explicit: `scripts/p9-11-candidate.mjs`
+only reads an absolute pinned `p9-11-candidate-handoff` and requires its normal
+archive, production build receipt, npm-install receipt, and installation;
+`scripts/p9-11-corrective-closeout.mjs` consumes that authenticated result and
+then requires the handoff's hashed `browserDriver`.  Neither module produces
+those controller records.  The sole matching local constructor is
+`tests/testUtils/createP911CandidateFixture.mjs`, whose leading contract says
+it is a synthetic archive/install fixture and never acceptance evidence; its
+test-only receipt issuer and mocked driver cannot supply this candidate.
+
+Consequently no archive path/SHA, executable SHA, installation root,
+controller build/install receipt, or authenticated rendered driver is
+available for the exact candidate.  The verifier did not synthesize any of
+them, invoke a public workflow, replay the already retained Studio observation,
+or run an official gate.  This leaves every installed corrective scenario and
+persona smoke not reached.  The actionable integration defect is the absent
+controller-to-closeout producer handoff at the consumer boundary above; a
+controller-produced, pinned normal archive/install and driver are required
+before the current checklist can be executed.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
