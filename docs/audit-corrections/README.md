@@ -860,3 +860,57 @@ closeout, five isolated final persona smokes, authenticated P909/P910
 observations and independent visual/focus judgment, plus official
 release/packaging, integration/push/publication, Drive round-trip and lifecycle
 receipts are controller/verifier work. No independent acceptance is claimed.
+
+### P9-11 exact-candidate corrective closeout, 2026-10-10
+
+This verifier authenticated clean product commit
+`b46933ad8f6005a198c1484becd49bf5cc7a8022` and used the controller-rebound
+normal archive/install (`7dacfb31e27183536cd2e4ca66ae12c441760a45c17a0080d823c74a7b87a0c3`)
+with persistent rendered-driver SHA-256
+`16113240e8ca988e95c9133e13132895b5b2b69cc0130d24d02825730c027cbe`.
+The bounded, isolated closeout is retained outside the repository at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-1a0db64d0da18acc/closeout-2026-10-10T18-45-00Z`;
+its failure receipt SHA-256 is
+`b679edbc6dd2ee0683cd4feff003fb3ebf0aacdc38ca909fff8ad04d72465bfa`.
+
+The installed public six-scenario prefix passed and drained: node/WASM,
+serialized replay, bounded long state, UInt64 Stake, canonical CLI, and the
+rendered occupied-destination recovery. The fresh isolated Stake, Programmer,
+Mathematician, Producer, and UI/UX rendered journeys also completed their exact
+action inventories with process group, process tree, resources, and stdio all
+drained. Their result hashes are respectively `ddbbd036`, `0a869395`,
+`704b96d4`, `59e90fed`, and `5eab127e` (full hashes are in the runtime
+receipts). This establishes substantial current-candidate evidence but not a
+successful campaign aggregate.
+
+Graphic Designer reached the required expanded Home Design Build form after
+the native Home-section keyboard transition. Its required Output directory
+control then had native focus outside the viewport; the action-local driver
+terminal is `expanded Home build form focus clipped`. This is a reproducible
+P1 focus-visibility finding, rather than a driver timeout or a retryable
+missing selector. No further click or refocus was sent. The failing graphic
+profile, Studio/browser child ledgers, and stderr are retained by that failure
+receipt; every owned child was drained.
+
+Independent visual review was performed on the two retained current images:
+`producer.producer-settled-round.png` (`6922b3b6…`) visibly shows a readable
+settled Play round with its controls and accounting, while
+`ui-ux.ui-ux-recovery-focus.png` (`ea191bdb…`) visibly shows the blue outlined
+Configure stage within the 1439×956 viewport after the completed simulation.
+Neither image is used to pass Graphic Designer visual acceptance, because that
+required Home form focus was observed offscreen before its image could be
+captured.
+
+The controller-owned targeted receipt at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/fa9d108a154577416a8287d4/result.json`
+was also authenticated (SHA-256 `3147f685…`; stdout `334ca649…`; stderr
+`9eb992d7…`). It has a clean unchanged candidate before/after and terminal
+Jest summary: P910 passed, P909 failed before browser collection with
+`ENOENT` for this checkout's `dist/cli/pokie.js`. The retained P909 frozen
+initial/transcript records still match their supplied SHA-256 values
+`ff43bb56…` and `21f717aa…`; they belong to historical candidate
+`ecd029b…` and cannot replace current P909 execution. Thus P909 remains a
+candidate-owned offline preflight failure, P910 execution is complete, and the
+five-persona closeout remains incomplete because Graphic Designer did not
+reach its remaining four required observations. No official gate or
+publication was run.
