@@ -302,6 +302,42 @@ observed. The outstanding occupied-destination and five-persona itineraries
 remain not reached; no focus/image acceptance, P909/P910 closeout, official
 gate, publication, or campaign acceptance is claimed.
 
+### 2026-10-10 P9-11 bounded driver inspection: destination producer absent
+
+The exact product identity remains `3cddf327fe4c9aa9310f578bc9a59f71bea0c67a`;
+this evidence-only descendant was `f72acb76648774cdc248cec13d1ea9972938ae74`
+before this bounded evidence append. The controller's retained normal
+archive/install was inspected without a build, pack, install, official gate, or
+consolidated closeout. The controller inspection envelope authenticated the
+same archive SHA-256
+`36361323e16e1952be188a24a99f931d7de6531e2c755195eb3e5aa0b4d2aaf3` and
+reported that the persistent driver still implements only
+`stake.recognized-studio`; it did not grant collection admission.
+
+One fresh-profile inspection of the missing `occupied-destination` itinerary
+then activated the public `Create game` control exactly once. Its local
+pending save/open state settled at the public Overview with
+`project-open-materialization · Completed`; the retained compact transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-94e3b3bca933a5b9/inspection-2026-10-10T13-18-00Z/occupied-destination.rendered.transcript.json`.
+The rendered Overview offered `Build/Export`, but not the required
+`BlueprintBuildPanel` `Build Preview` / `Build Package` controls or their
+destination input. This is not a selector or browser-readiness conclusion:
+the current candidate's `HomePage.tsx` always renders its public
+`BlueprintEditorPage` with `guided`, while `BlueprintEditorPage.tsx` mounts
+`BlueprintBuildPanel` only under `!guided`. The only Home recovery producer for
+the otherwise-hidden panel is a retained `design-build` job; the fresh public
+flow created only `project-open-materialization` and therefore produced no
+such record.
+
+Consequently the closeout consumer's required
+`destination.design-build` action has no authentic public producer in the
+fresh-profile candidate workflow. No fake action receipt, controller receipt,
+driver coverage declaration, or product terminal was created. The required
+occupied-destination row and all dependent closeout rows remain not reached;
+the actionable correction is to expose or authentically produce the
+`design-build` recovery path, then repair and repin the persistent driver
+before another closeout admission.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
