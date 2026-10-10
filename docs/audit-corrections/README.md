@@ -70,6 +70,23 @@ descendants must pass the explicit Git equivalence check; product/build-input
 changes require affected proofs again. All five original persona records and
 their chronological dispositions remain in their linked documents unchanged.
 
+### 2026-10-10 P9-11 continuation authentication
+
+The current verifier authenticated `51a81cc352c1082ebf339f5e1fb9b4d4b8b0bedb`
+as a clean evidence-only descendant of product candidate
+`6a4c5cfad9687d2c338538d009e4f7104f78ad26`: its only candidate-to-HEAD path
+change is this README. It rechecked the persistent P9-11 harness, its retained
+transcript and image checksums, and the bounded controller runtime/hand-off
+records. No `p9-11-candidate-handoff`, pinned normal archive, real npm
+installation, build/install receipt, or authenticated rendered-driver receipt
+for this candidate is present. The independently inspected retained image does
+show the local completed Spin described above, but cannot establish any missing
+installed corrective scenario, five-persona smoke, P909/P910 execution,
+settled-focus comparison, served-asset binding, or closeout cleanup. Those
+rows therefore remain pending collection from the controller-authenticated
+handoff; no replacement archive, public launch, official gate, or publication
+was created in this continuation.
+
 The historical status register below is retained. Its prior pending wording
 describes the earlier review; the index above states P9-11's current obligations.
 
