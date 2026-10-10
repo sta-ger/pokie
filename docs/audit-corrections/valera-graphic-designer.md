@@ -171,3 +171,51 @@ The corrected run exits zero: four passed, one skipped. The changed TypeScript
 is consumed by this Jest lane and the changed-file ESLint pre-commit hook; no
 production source/compiler boundary changed. No production build, independent
 browser rerun, parent-review matrix or official gate ran in this worker.
+
+## 2026-10-10 independent cold collection — finding
+
+This section is the actual independent assessment; it supersedes the earlier
+pending status above without rewriting it. The collector had no product source,
+history, prior findings, or reviewer hand-off until after the initial record was
+frozen.
+
+| Item | Actual record |
+| --- | --- |
+| Candidate / checkout | `422b48844da6f5b059fee0b63307fe5a54fae8dc` / this assigned worktree |
+| Initial collection | Interactive, fresh application config and Documents roots; 2026-10-10T01:40:11.864Z to 2026-10-10T01:42:43.189Z |
+| Frozen initial record | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-0e99011eed131b75/run-2026-10-10T01-40-11-863Z/frozen-initial.json` (`c81a6d71ff48d4be90d1f53b638bafb1e5ac9dab621590f1c1d522a398b27863`) |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-0e99011eed131b75/run-2026-10-10T01-40-11-863Z/transcript.json` (`dbc716121e7392f4bf53baf474eedc86b3d56c0f5d7a4581d4905de86b3e9cd1`) |
+| Viewports | 1439×956 compact desktop; 900×700 smaller desktop |
+
+Reached public surfaces: Home and its ready-to-edit starter form at both
+viewports; a project created through the visible `Create game` action; persisted
+Game Model; Build/Export; and `project-open-materialization` both Running
+(`1 / 3 opening stages`) and Completed (`198ms`). The local action sequence
+showed saving/opening before that matching job state; no fixed wait was treated
+as a failure.
+
+The compact surface has legible hierarchy, aligned two-column basics, clear
+primary action, coherent validation labels, and quiet bordered sections. The
+project Game Model and the visible Build/Export cards retained their reading
+order and control alignment at 900px. No P0 or P1 was observed.
+
+### P9-VALERA-GRAPHIC-01 — P2 material responsive overflow (open)
+
+At 900×700, the fixed 260px navigation rail leaves a 593px main column, but
+the six-item start-form step row remains on one line. The `Bets` tab starts at
+x=890 and continues past the 900px viewport, clipping a required editor step.
+This is a material professional-finish and navigation defect. The issue was not
+observed in the persisted Game Model’s smaller-view controls. Product code and
+tests were intentionally not changed by this independent verifier; a
+shared-cause responsive correction and clean affected rendered retest remain
+required before this finding can close.
+
+Three bounded screenshots were retained in the isolated runtime harness (not
+committed): compact starter form `1-observation.png`
+(`eb1833d3d73ca8c1943e48263cb15db301b741ffc3b254aa93967ca1668389c4`),
+smaller overflowing starter step row `2-observation.png`
+(`9e39fb40be09d8fca35e1a4a204c2932983c5fa055c771e73f40c4727b1ce1be`),
+and smaller Build/Export `3-observation.png`
+(`d2bce1d4ed3106ab21732d49d1dd9c223721257985c6054ebf0c7f08b617ea0e`).
+They are siblings of the frozen record above. No full viewport/status gallery
+was collected.
