@@ -5,26 +5,36 @@ import os from "os";
 import path from "path";
 import {pathToFileURL} from "url";
 import {BUILT_PACKAGE_FILES} from "pokie";
-import {ensureFixturesCanRequirePokie} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
 
 async function buildPackageForSmoke(): Promise<void> {
     const run = (command: string, args: string[]): void => {
-        execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
+        execFileSync(command, args, {cwd: REPO_ROOT, stdio: "inherit", timeout: 60000});
     };
-    const runInParallel = (command: string, args: string[]): Promise<void> => new Promise((resolve, reject) => {
-        const child = spawn(command, args, {cwd: REPO_ROOT, stdio: "inherit"});
-        child.once("error", reject);
-        child.once("exit", (code, signal) => {
-            if (code === 0) {
-                resolve();
-                return;
-            }
-            reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${signal === null ? "" : ` (signal ${signal})`}`));
-        });
-    });
+    const ownershipModule = pathToFileURL(path.join(REPO_ROOT, "scripts/pc-20-release-completion.mjs")).href;
+    const closeoutModule = pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-corrective-closeout.mjs")).href;
+    const {runBoundedProcess} = await import(ownershipModule) as {
+        runBoundedProcess: (command: string, args: string[], options: {cwd: string; timeoutMs: number; signal: AbortSignal; resourceRegistryPath: string}) => Promise<{stdout: string; stderr: string}>;
+    };
+    const {settleP911Commands} = await import(closeoutModule) as {
+        settleP911Commands: (commands: Array<(signal: AbortSignal) => Promise<void>>) => Promise<unknown>;
+    };
+    const runInParallel = (command: string, args: string[]) => async (signal: AbortSignal): Promise<void> => {
+        const ledger = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-pack-compiler-"));
+        try {
+            const result = await runBoundedProcess(command, args, {cwd: REPO_ROOT, timeoutMs: 180000, signal, resourceRegistryPath: path.join(ledger, "resources.ndjson")});
+            process.stdout.write(result.stdout);
+            process.stderr.write(result.stderr);
+        } catch (error) {
+            const result = (error as {pc20Result?: unknown}).pc20Result;
+            if (result !== undefined) process.stderr.write(`${JSON.stringify(result)}\n`);
+            throw error;
+        } finally {
+            fs.rmSync(ledger, {recursive: true, force: true});
+        }
+    };
     const node = process.execPath;
     const tsc = path.join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
     const shx = path.join(REPO_ROOT, "node_modules", "shx", "lib", "cli.js");
@@ -38,7 +48,7 @@ async function buildPackageForSmoke(): Promise<void> {
     // ESM and CJS have separate output directories and no generated-file dependency between
     // them. Building them concurrently keeps the smoke boundary identical while leaving enough
     // time for this intentionally real packaging test to complete inside the changed-tests gate.
-    await Promise.all([
+    await settleP911Commands([
         runInParallel(node, [tsc, "--project", "tsconfig.prod.json"]),
         runInParallel(node, [tsc, "--project", "tsconfig.prod.json", "--module", "CommonJS", "--outDir", "dist/cjs"]),
     ]);
@@ -49,7 +59,7 @@ async function buildPackageForSmoke(): Promise<void> {
     // The remaining build commands own separate output trees. Running the type checks and Vite
     // bundle together preserves the full production-package boundary while keeping this real smoke
     // suite below the changed-tests gate's timeout.
-    await Promise.all([
+    await settleP911Commands([
         runInParallel(node, [tsc, "--project", "tsconfig.cli.json"]),
         runInParallel(node, [tsc, "--project", "tsconfig.client.json"]),
         runInParallel(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]),
@@ -104,13 +114,9 @@ function waitForListeningPort(child: ChildProcessWithoutNullStreams, timeoutMs =
 }
 
 async function stopChild(child: ChildProcessWithoutNullStreams): Promise<void> {
-    if (child.exitCode !== null) {
-        return;
-    }
-    child.kill();
-    await new Promise<void>((resolve) => {
-        child.once("exit", () => resolve());
-    });
+    const module = pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-corrective-closeout.mjs")).href;
+    const {stopP911Child} = await import(module) as {stopP911Child: (owned: ChildProcessWithoutNullStreams) => Promise<void>};
+    await stopP911Child(child);
 }
 
 describe("npm pack smoke test (real tarball, real npm install, real spawned pokie binary)", () => {
@@ -127,7 +133,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     const completedSmokeTests = new Set<string>();
     const spawnedSmokeChildren = new Set<ChildProcessWithoutNullStreams>();
     const spawnSmokeChild = (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): ChildProcessWithoutNullStreams => {
-        const child = spawn(pokieBinPath, args, {cwd, env}) as ChildProcessWithoutNullStreams;
+        const child = spawn(pokieBinPath, args, {cwd, env, detached: process.platform !== "win32"}) as ChildProcessWithoutNullStreams;
         spawnedSmokeChildren.add(child);
         return child;
     };
@@ -139,7 +145,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         });
     };
 
-    function stageReleaseSmokeArchive(): void {
+    function stageReleaseSmokeArchive(archive: Buffer): void {
         const receiptPath = process.env.POKIE_PACK_SMOKE_RECEIPT;
         const archivePath = process.env.POKIE_PACK_SMOKE_ARCHIVE_PATH;
         if (receiptPath === undefined && archivePath === undefined) return;
@@ -150,11 +156,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // particular, an earlier failed suite must not be able to leave a
         // seemingly successful installed/cleanup receipt behind.
         if (!smokeResults.cli || !smokeResults.studioApi || !smokeResults.studioAssets || !smokeResults.libraryWorker || !smokeResults.wasm) return;
-        const archive = fs.readFileSync(tarballPath!);
         const archiveSha256 = createHash("sha256").update(archive).digest("hex");
         expect(archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
         fs.mkdirSync(path.dirname(archivePath!), {recursive: true});
-        fs.copyFileSync(tarballPath!, archivePath!, fs.constants.COPYFILE_EXCL);
+        fs.writeFileSync(archivePath!, archive, {flag: "wx"});
     }
 
     function retainReleaseSmokeReceipt(suitePassed: boolean, cleanup: {temporaryInstallRemoved: boolean; temporaryPackDirectoryRemoved: boolean; processesDrained: boolean}): void {
@@ -191,7 +196,22 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // files that output crossed execFileSync's default 1 MiB buffer and failed with ENOBUFS.
         // Silent non-JSON mode emits only the tarball filename and remains bounded as the package grows.
         const handoffConfig = process.env.POKIE_P805_RELEASE_HANDOFF;
-        if (handoffConfig) {
+        const p911Handoff = process.env.POKIE_P911_CANDIDATE_HANDOFF;
+        let sharedInstallation: string | undefined;
+        if (p911Handoff) {
+            expect(handoffConfig).toBeUndefined();
+            const module = pathToFileURL(path.join(REPO_ROOT, "scripts/p9-11-candidate.mjs")).href;
+            const {readP911Candidate} = await import(module) as {
+                readP911Candidate: (reference: {path: string; sha256: string | undefined}) => Promise<{archive: Buffer; candidateId: string; archiveSha256: string; installationRoot: string}>;
+            };
+            const candidate = await readP911Candidate({path: p911Handoff, sha256: process.env.POKIE_P911_CANDIDATE_HANDOFF_SHA256});
+            expect(candidate.candidateId).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_ID);
+            expect(candidate.archiveSha256).toBe(process.env.POKIE_PACK_SMOKE_CANDIDATE_PACKAGE_SHA256);
+            sharedInstallation = candidate.installationRoot;
+            packDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-npm-pack-output-"));
+            tarballPath = path.join(packDir, "p9-candidate.tgz");
+            fs.writeFileSync(tarballPath, candidate.archive, {flag: "wx"});
+        } else if (handoffConfig) {
             // Re-authenticate the exact archived product at the real install
             // boundary. The reviewed tooling commit remains the release SHA;
             // archive/gitHead retain their original audited identity.
@@ -229,20 +249,26 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // The tarball and its dependency metadata are already local. Prefer npm's cache for matching
         // dependencies while retaining a real `npm install` boundary (and its normal network fallback
         // for a cold cache), so this smoke suite cannot time out merely on registry metadata latency.
-        execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8"});
+        if (sharedInstallation !== undefined) {
+            // A scratch consumer borrows the authenticated real npm installation;
+            // removing this scratch directory never removes the controller's install.
+            fs.symlinkSync(path.join(sharedInstallation, "node_modules"), path.join(installDir, "node_modules"), "dir");
+        } else {
+            execFileSync("npm", ["install", tarballPath, "--no-audit", "--no-fund", "--prefer-offline"], {cwd: installDir, encoding: "utf-8", timeout: 120000});
+        }
 
         pokieBinPath = path.join(installDir, "node_modules", ".bin", "pokie");
         expect(fs.existsSync(pokieBinPath)).toBe(true);
 
-        // The third test below runs a real worker-thread simulation against
-        // tests/cli/fixtures/playable-game via the *installed* package's own default worker
-        // resolution -- that fixture does a bare require("pokie") of its own, which needs the same
-        // resolvable node_modules/pokie as the real-worker unit tests (see
-        // ensureFixturesCanRequirePokie.ts).
-        ensureFixturesCanRequirePokie();
+        // Keep the real worker fixture beneath this consumer's node_modules.
+        // The repository fixture helper would resolve its bare require("pokie")
+        // back to checkout dist and could also launch an extra runtime build.
+        fs.cpSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game"), path.join(installDir, "playable-game"), {
+            recursive: true, filter: (source) => path.basename(source) !== "node_modules",
+        });
     });
 
-    afterAll(() => {
+    afterAll(async () => {
         // Jest reaches afterAll only after every real installed CLI, Studio/API/assets and worker
         // assertion above has completed; the receipt is therefore an append-only release artifact,
         // not a pre-flight checklist written before the smoke boundary ran.
@@ -250,14 +276,23 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         // expected count explicit so adding an unwrapped test cannot silently
         // make a release receipt describe only a subset of this suite.
         const suitePassed = completedSmokeTests.size === 22;
-        if (suitePassed && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) {
-            stageReleaseSmokeArchive();
+        // Drain even when an assertion/startup fails before its per-test finally.
+        // allSettled prevents the first failed stop from abandoning siblings.
+        const stops = await Promise.allSettled([...spawnedSmokeChildren].map((child) => stopChild(child)));
+        const stopFailure = stops.find((result) => result.status === "rejected");
+        let cleanupFailure: unknown;
+        let archive: Buffer | undefined;
+        try {
+            if (tarballPath !== undefined) archive = fs.readFileSync(tarballPath);
+        } catch (error) {
+            cleanupFailure = error;
         }
-        if (installDir !== undefined) {
-            fs.rmSync(installDir, {recursive: true, force: true});
-        }
-        if (packDir !== undefined) {
-            fs.rmSync(packDir, {recursive: true, force: true});
+        for (const directory of [installDir, packDir]) {
+            try {
+                if (directory !== undefined) fs.rmSync(directory, {recursive: true, force: true});
+            } catch (error) {
+                cleanupFailure ??= error;
+            }
         }
         // This is a real handle audit, not a finally-block declaration. A
         // receipt can claim cleanup only once every smoke-launched server has
@@ -268,6 +303,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             temporaryPackDirectoryRemoved: packDir === undefined || !fs.existsSync(packDir),
             processesDrained: smokeResults.processesDrained,
         };
+        if (stopFailure?.status === "rejected") throw stopFailure.reason;
+        if (cleanupFailure !== undefined) throw cleanupFailure;
+        expect(Object.values(cleanup).every(Boolean)).toBe(true);
+        if (suitePassed && archive !== undefined && smokeResults.cli && smokeResults.studioApi && smokeResults.studioAssets && smokeResults.libraryWorker && smokeResults.wasm) stageReleaseSmokeArchive(archive);
         retainReleaseSmokeReceipt(suitePassed, cleanup);
     });
 
@@ -346,7 +385,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
     });
 
     smokeIt("imports ParallelSimulationRunner from the installed \"pokie\" package and runs a workers=2 simulation, exiting cleanly with no lingering worker threads", () => {
-        const fixtureRoot = path.join(REPO_ROOT, "tests", "cli", "fixtures", "playable-game");
+        const fixtureRoot = path.join(installDir!, "playable-game");
         const scriptPath = path.join(installDir!, "run-parallel-simulation.mjs");
         // Deliberately not importing anything from this repo's own src/cli — this script only ever
         // sees what npm actually installed from the tarball, exactly as a real third-party consumer
@@ -356,6 +395,10 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             `
             import {ParallelSimulationRunner} from "pokie";
 
+            const {createRequire} = await import('node:module');
+            const consumer = createRequire(import.meta.url);
+            const fixture = createRequire(${JSON.stringify(path.join(fixtureRoot, "package.json"))});
+            if (fixture.resolve('pokie') !== consumer.resolve('pokie')) throw new Error('worker fixture resolved a different POKIE');
             const runner = new ParallelSimulationRunner(${JSON.stringify(fixtureRoot)}, 20000, {seed: "demo", workers: 2});
             const result = await runner.run();
 

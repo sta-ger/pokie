@@ -1,8 +1,9 @@
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync} from "fs";
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, symlinkSync, writeFileSync} from "fs";
 import {execFileSync} from "child_process";
 import {createHash} from "crypto";
 import {tmpdir} from "os";
 import path from "path";
+import {pathToFileURL} from "url";
 
 const npmCli = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npm-cli.js");
 const packedTestPath = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => !entry.includes("pokie-command-policy")).join(path.delimiter);
@@ -17,7 +18,7 @@ const runNpm = (args: string[], {cwd, nodeEnv = "production"}: {cwd?: string; no
 // The complete candidate archive/install proof belongs to the controller-owned
 // packaging lifecycle; ordinary help and WASM coverage stays in tests/cli.
 describe("P8-05 Valera Programmer installed public path", () => {
-    it("packs the current candidate, installs its public launcher, and keeps npx and semantic failure behavior", () => {
+    it("packs the current candidate, installs its public launcher, and keeps npx and semantic failure behavior", async () => {
         // Keep the CLI proof independent from the repository's dist launcher.
         // The browser runner consumes the same verifier-owned archive, but this
         // focused contract makes a broken packed bin or npx entry point fail at
@@ -38,34 +39,52 @@ describe("P8-05 Valera Programmer installed public path", () => {
             return JSON.parse(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", sourceArchiveDirectory], {cwd: process.cwd()})) as Array<{filename: string}>;
         };
         try {
-            const packed = sourceArchive();
-            expect(packed).toHaveLength(1);
-            const source = path.join(sourceArchiveDirectory, packed[0].filename);
-            const archive = path.join(candidateDirectory, "candidate-package.tgz");
-            const receipt = path.join(candidateDirectory, "candidate-executable-receipt.json");
-            const canonicalBytes = readFileSync(source);
-            execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "p8-05-candidate-package-verifier.mjs"), "--source-archive", source, "--candidate-archive", archive, "--candidate", candidate, "--receipt", receipt], {encoding: "utf8", stdio: "pipe"});
-            expect(readFileSync(source).equals(canonicalBytes)).toBe(true);
-            expect(readFileSync(archive).equals(canonicalBytes)).toBe(true);
-            const provenance = JSON.parse(readFileSync(receipt, "utf8")) as {
-                candidateId: string;
-                candidatePackageSha256: string;
-                verifiedBuild: {candidateId: string; environment: {NODE_ENV: string}; executableFiles: number; executableSha256: string};
-            };
-            expect(provenance.candidateId).toBe(candidate);
-            expect(provenance.candidatePackageSha256).toBe(createHash("sha256").update(canonicalBytes).digest("hex"));
-            expect(provenance.verifiedBuild).toMatchObject({candidateId: candidate, environment: {NODE_ENV: "production"}});
-            expect(provenance.verifiedBuild.executableFiles).toBeGreaterThan(0);
-            expect(provenance.verifiedBuild.executableSha256).toMatch(/^[a-f0-9]{64}$/);
-            runNpm(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installation, archive]);
-            const launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
+            const handoff = process.env.POKIE_P911_CANDIDATE_HANDOFF;
+            let launcher: string;
+            let installedCandidate = candidate;
+            if (handoff) {
+                const module = pathToFileURL(path.join(process.cwd(), "scripts/p9-11-candidate.mjs")).href;
+                const {readP911Candidate} = await import(module) as {
+                    readP911Candidate: (reference: {path: string; sha256: string | undefined}) => Promise<{installationRoot: string; candidateId: string}>;
+                };
+                const shared = await readP911Candidate({path: handoff, sha256: process.env.POKIE_P911_CANDIDATE_HANDOFF_SHA256});
+                installedCandidate = shared.candidateId;
+                mkdirSync(installation);
+                writeFileSync(path.join(installation, "package.json"), JSON.stringify({name: "p9-installed-cli-consumer", private: true}));
+                symlinkSync(path.join(shared.installationRoot, "node_modules"), path.join(installation, "node_modules"), "dir");
+                launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
+            } else {
+                // Preserve the historical standalone P8 verifier path. The P9
+                // lifecycle instead consumes its pinned normal build/install.
+                const packed = sourceArchive();
+                expect(packed).toHaveLength(1);
+                const source = path.join(sourceArchiveDirectory, packed[0].filename);
+                const archive = path.join(candidateDirectory, "candidate-package.tgz");
+                const receipt = path.join(candidateDirectory, "candidate-executable-receipt.json");
+                const canonicalBytes = readFileSync(source);
+                execFileSync(process.execPath, [path.join(process.cwd(), "scripts", "p8-05-candidate-package-verifier.mjs"), "--source-archive", source, "--candidate-archive", archive, "--candidate", candidate, "--receipt", receipt], {encoding: "utf8", stdio: "pipe"});
+                expect(readFileSync(source).equals(canonicalBytes)).toBe(true);
+                expect(readFileSync(archive).equals(canonicalBytes)).toBe(true);
+                const provenance = JSON.parse(readFileSync(receipt, "utf8")) as {
+                    candidateId: string;
+                    candidatePackageSha256: string;
+                    verifiedBuild: {candidateId: string; environment: {NODE_ENV: string}; executableFiles: number; executableSha256: string};
+                };
+                expect(provenance.candidateId).toBe(candidate);
+                expect(provenance.candidatePackageSha256).toBe(createHash("sha256").update(canonicalBytes).digest("hex"));
+                expect(provenance.verifiedBuild).toMatchObject({candidateId: candidate, environment: {NODE_ENV: "production"}});
+                expect(provenance.verifiedBuild.executableFiles).toBeGreaterThan(0);
+                expect(provenance.verifiedBuild.executableSha256).toMatch(/^[a-f0-9]{64}$/);
+                runNpm(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installation, archive]);
+                launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
+            }
             const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "pokie", "package.json"), "utf8")) as {gitHead?: string};
             const run = (...args: string[]) => execFileSync(launcher, args, {encoding: "utf8", stdio: "pipe"});
             const npxLauncher = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js");
             const blueprint = path.join(candidateDirectory, "Valera packed blueprint.json");
             const wasm = path.join(candidateDirectory, "Valera packed artifact.wasm");
 
-            expect(installedPackage.gitHead === undefined || installedPackage.gitHead === candidate).toBe(true);
+            expect(installedPackage.gitHead === undefined || installedPackage.gitHead === installedCandidate).toBe(true);
             expect(run("--help")).toContain("Usage:");
             expect(existsSync(npxLauncher)).toBe(true);
             expect(execFileSync(process.execPath, [npxLauncher, "--no-install", "--prefix", installation, "pokie", "--help"], {encoding: "utf8", stdio: "pipe"})).toContain("Usage:");
