@@ -11,6 +11,7 @@ import type {
 import {createRoutedFakeFetch, type FakeCall} from "../../testUtils/fakeFetch";
 import {createLargeSimulationLibrary} from "../../testUtils/largeStudioProjectFixture";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {MAX_STUDIO_SIMULATION_ROUNDS} from "../../../../../../cli/studio/simulation/StudioSimulationLimits.js";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
     "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
@@ -93,6 +94,83 @@ function stepperStep(label: string, description: string): RegExp {
 }
 
 describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
+    it("rejects invalid Rounds beside the field without queuing, then submits the exact Studio ceiling", async () => {
+        const user = userEvent.setup();
+        const rounds = MAX_STUDIO_SIMULATION_ROUNDS;
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/reports": () => ({ok: true, status: 200, body: []}),
+            "/api/project/simulations": () => ({ok: true, status: 201, body: jobFor("limit-run", {status: "queued", rounds, roundsCompleted: 0})}),
+            "/api/project/simulations/limit-run": () => ({ok: true, status: 200, body: jobFor("limit-run", {rounds, roundsCompleted: rounds, report: reportFor({rounds, requestedRounds: rounds})})}),
+            "/api/project/reports/limit-run": () => ({ok: true, status: 200, body: reportDetailFor({rounds, requestedRounds: rounds})}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await goToSimulationTab(user);
+        const input = screen.getByLabelText(/^Rounds/);
+        expect(input).toHaveAccessibleDescription("1–2,000,000 rounds per simulation.");
+        for (const value of ["5000000", String(rounds + 1), "12.5", "0", "-1", ""]) {
+            await user.clear(input);
+            if (value !== "") await user.type(input, value);
+            expect(input).toHaveAttribute("aria-invalid", "true");
+            expect(input).toHaveAccessibleDescription(/Rounds must be a positive integer between 1 and 2,000,000\./);
+            expect(screen.getByRole("button", {name: "Run Simulation"})).toBeDisabled();
+            await user.keyboard("{Enter}");
+            await user.tab();
+            // Blur must preserve the attempted value rather than silently clamp it.
+            expect(input).toHaveValue(value);
+            expect(screen.queryByText(/^Simulation queued/)).not.toBeInTheDocument();
+            expect(calls.filter((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")).toHaveLength(0);
+        }
+        await user.clear(input);
+        await user.type(input, String(rounds));
+        expect(input).not.toHaveAttribute("aria-invalid", "true");
+        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: "Run Simulation"}));
+        expect(await screen.findByText(`Simulation completed — ${rounds}/${rounds} rounds — elapsed 1.2s`)).toBeInTheDocument();
+        expect(JSON.parse(calls.find((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")?.init?.body ?? "{}")).toEqual({rounds, workers: 1});
+        expect(await screen.findByRole("button", {name: "Open full report"})).toBeEnabled();
+    });
+
+    it("keeps the retained report through invalid Configure and historic Run again, then allows a valid Run again", async () => {
+        const user = userEvent.setup();
+        const entry = (id: string, requestedRounds: number): StudioSimulationReportListEntry => ({
+            id, game: {id: "a", version: "1.0.0"}, requestedRounds, actualRounds: requestedRounds,
+            rtp: 0.96, hitFrequency: 0.25, maxWin: 500, durationMs: 1200, startedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(), workers: 1, hasWarnings: false,
+        });
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            ...BASE_ROUTES,
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained-completed", projectId: "/games/a", operation: "simulation", request: {rounds: 10000},
+                conflictKey: "simulation:/games/a", status: "completed", createdAt: 1,
+            }]}}),
+            "/api/project/simulations/retained-completed": () => ({ok: true, status: 200, body: jobFor("retained-completed", {report: reportFor()})}),
+            "/api/project/reports/retained-completed": () => ({ok: true, status: 200, body: reportDetailFor()}),
+            "/api/project/reports": () => ({ok: true, status: 200, body: [entry("oversized-history", 5000000), entry("valid-history", 500000)]}),
+            "/api/project/simulations": () => ({ok: true, status: 201, body: jobFor("valid-again", {status: "queued", rounds: 500000, roundsCompleted: 0})}),
+            "/api/project/simulations/valid-again": () => ({ok: true, status: 200, body: jobFor("valid-again", {rounds: 500000, roundsCompleted: 500000, report: reportFor({rounds: 500000, requestedRounds: 500000})})}),
+            "/api/project/reports/valid-again": () => ({ok: true, status: 200, body: reportDetailFor({rounds: 500000, requestedRounds: 500000})}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        await user.click(await screen.findByRole("button", {name: "Simulation"}));
+        const retained = await screen.findByText(/^Simulation completed — 10000\/10000/);
+        expect(await screen.findByRole("button", {name: "Open full report"})).toBeEnabled();
+        await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")}));
+        await user.clear(screen.getByLabelText(/^Rounds/));
+        await user.type(screen.getByLabelText(/^Rounds/), "5000000{Enter}");
+        expect(screen.getByRole("button", {name: "Run Simulation"})).toBeDisabled();
+        expect(retained.parentElement).toHaveAttribute("data-pokie-lifecycle-result-job", "retained-completed");
+        expect(screen.getByRole("button", {name: stepperStep("Export", "Download report")})).toBeEnabled();
+        await user.click(screen.getAllByRole("button", {name: "Run again"})[0]);
+        expect(await screen.findByText("Rounds must be a positive integer between 1 and 2,000,000.", {selector: ".mantine-Alert-message"})).toBeVisible();
+        expect(retained).toBeInTheDocument();
+        expect(calls.filter((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")).toHaveLength(0);
+        await user.click(screen.getAllByRole("button", {name: "Run again"})[1]);
+        expect(await screen.findByText(/^Simulation completed — 500000\/500000/)).toBeInTheDocument();
+        expect(JSON.parse(calls.find((call) => call.url === "/api/project/simulations" && call.init?.method === "POST")?.init?.body ?? "{}")).toEqual({rounds: 500000, workers: 1});
+        expect(screen.queryByText("Rounds must be a positive integer between 1 and 2,000,000.", {selector: ".mantine-Alert-message"})).not.toBeInTheDocument();
+    });
+
     it("restores completed results on reopening but keeps a rejected new Run's error and attempted configuration", async () => {
         const user = userEvent.setup();
         const attempted = {rounds: 123, seed: "attempted-seed", workers: 2};
@@ -175,9 +253,9 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(receipt.parentElement).toHaveAttribute("data-pokie-lifecycle-result-operation", "simulation");
     });
 
-    it("restores a retained simulation request and runs it only after an explicit submission", async () => {
+    it.each([4321, 5000000])("restores a retained %s-round simulation request and runs only a valid explicit submission", async (rounds) => {
         const user = userEvent.setup();
-        const recoveryRequest = {rounds: 4321, seed: "recovered-simulation-seed", workers: 2};
+        const recoveryRequest = {rounds, seed: "recovered-simulation-seed", workers: 2};
         const runCalls: unknown[] = [];
         const {fetchImpl} = createRoutedFakeFetch({
             ...BASE_ROUTES,
@@ -192,10 +270,11 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
             })}),
             "/api/project/reports": () => ({ok: true, status: 200, body: []}),
             "/api/project/simulations": (call: FakeCall) => {
-                runCalls.push(JSON.parse(call.init?.body ?? "{}"));
-                return {ok: true, status: 201, body: jobFor("new-simulation", {status: "queued", roundsCompleted: 0, ...recoveryRequest})};
+                const request = JSON.parse(call.init?.body ?? "{}");
+                runCalls.push(request);
+                return {ok: true, status: 201, body: jobFor("new-simulation", {status: "queued", roundsCompleted: 0, ...request})};
             },
-            "/api/project/simulations/new-simulation": () => ({ok: true, status: 200, body: jobFor("new-simulation", {status: "cancelled", roundsCompleted: 0, ...recoveryRequest})}),
+            "/api/project/simulations/new-simulation": () => ({ok: true, status: 200, body: jobFor("new-simulation", {status: "cancelled", roundsCompleted: 0, ...recoveryRequest, rounds: 4321})}),
         });
 
         renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
@@ -218,13 +297,22 @@ describe("ProjectDashboardPage - Simulation & Reports workflow", () => {
         expect(recoveredTerminal).not.toHaveTextContent(/completed/i);
         // Mantine NumberInput is a text input so it can preserve intermediate numeric input;
         // the submitted request below proves the reconstructed form still emits a number.
-        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue("4321");
+        expect(await screen.findByLabelText(/^Rounds/)).toHaveValue(String(rounds));
         expect(screen.getByLabelText("Seed (optional)")).toHaveValue("recovered-simulation-seed");
         expect(screen.getByLabelText(/^Workers/)).toHaveValue("2");
         expect(runCalls).toEqual([]);
 
+        if (rounds > MAX_STUDIO_SIMULATION_ROUNDS) {
+            expect(screen.getByLabelText(/^Rounds/)).toHaveAttribute("aria-invalid", "true");
+            expect(screen.getByRole("button", {name: "Run Simulation"})).toBeDisabled();
+            await user.type(screen.getByLabelText(/^Rounds/), "{Enter}");
+            expect(runCalls).toEqual([]);
+            await user.clear(screen.getByLabelText(/^Rounds/));
+            await user.type(screen.getByLabelText(/^Rounds/), "4321");
+        }
+
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-        await waitFor(() => expect(runCalls).toEqual([recoveryRequest]));
+        await waitFor(() => expect(runCalls).toEqual([{...recoveryRequest, rounds: 4321}]));
     });
 
     it("keeps a 150-run library to a 50-row render window while every run remains reachable", async () => {

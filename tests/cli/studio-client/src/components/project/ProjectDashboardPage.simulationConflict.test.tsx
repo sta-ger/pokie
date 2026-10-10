@@ -4,6 +4,7 @@ import {createFakeFetch} from "../../testUtils/fakeFetch";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
 const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unknown}> = {
+    "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/context": () => ({
         ok: true,
         status: 200,

@@ -6,6 +6,7 @@ import type {StudioSimulationReportListEntry} from "../../api/types";
 import type {ReportListView} from "../../domain/interpret/Reports";
 import type {SimulationProgressView, SimulationReportView} from "../../domain/interpret/Simulation";
 import {describeProjectActionError} from "../../domain/projectActionError";
+import {getSimulationRoundsError, MAX_STUDIO_SIMULATION_ROUNDS} from "../../domain/simulationRounds";
 import {useConfirm} from "../../hooks/useConfirm";
 import type {SimulationTerminalReceipt} from "../../hooks/useSimulationPoll";
 import {AdvancedDisclosure} from "../common/AdvancedDisclosure";
@@ -92,7 +93,13 @@ export function SimulationTab({
     recoveryRequest?: Readonly<Record<string, unknown>>;
 }) {
     const confirm = useConfirm();
-    const form = useForm<FormValues>({mode: "uncontrolled", initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""}});
+    const form = useForm<FormValues>({
+        mode: "uncontrolled",
+        initialValues: {rounds: DEFAULT_ROUNDS, seed: "", workers: 1, modeName: ""},
+        validate: {rounds: getSimulationRoundsError},
+        validateInputOnChange: ["rounds"],
+        validateInputOnBlur: ["rounds"],
+    });
 
     useEffect(() => {
         if (recoveryRequest === undefined) return;
@@ -106,6 +113,7 @@ export function SimulationTab({
             ...(workers === undefined ? {} : {workers}),
             ...(modeName === undefined ? {} : {modeName}),
         });
+        form.validateField("rounds");
         // Mantine's uncontrolled form object is intentionally stable.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recoveryRequest]);
@@ -280,8 +288,19 @@ export function SimulationTab({
                         When it finishes, review the summary here or export the full report.
                     </Text>
                     <QuickActions>
-                        <NumberInput label="Rounds" min={1} step={1} required data-pokie-lifecycle-field="simulation-rounds" {...form.getInputProps("rounds")} key={form.key("rounds")} />
-                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active}>
+                        <NumberInput
+                            label="Rounds"
+                            description={`1–${MAX_STUDIO_SIMULATION_ROUNDS.toLocaleString("en-US")} rounds per simulation.`}
+                            min={1}
+                            max={MAX_STUDIO_SIMULATION_ROUNDS}
+                            clampBehavior="none"
+                            step={1}
+                            required
+                            data-pokie-lifecycle-field="simulation-rounds"
+                            {...form.getInputProps("rounds")}
+                            key={form.key("rounds")}
+                        />
+                        <Button id="simulation-run" type="submit" data-pokie-lifecycle="operation" data-pokie-transaction-state="editable-submission" data-pokie-lifecycle-operation="simulation" loading={progress?.status === "queued"} disabled={active || !form.isValid()}>
                             Run Simulation
                         </Button>
                     </QuickActions>

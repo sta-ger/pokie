@@ -153,6 +153,7 @@ async function assertFreshAssets(candidate: string): Promise<void> {
     const inputs = [
         await newestInput(path.join(candidate, 'cli/studio-client/src')),
         ...await Promise.all(['cli/studio-client/vite.config.ts', 'cli/studio-client/postcss.config.mjs', 'cli/studio-client/index.html', 'cli/studio-client/tsconfig.json',
+            'cli/studio/simulation/StudioSimulationLimits.ts',
             'package.json', 'package-lock.json', 'node_modules/@mantine/core/styles.css', 'node_modules/@mantine/notifications/styles.css']
             .map(async (name) => (await fs.stat(path.join(candidate, name))).mtimeMs)),
     ];
@@ -173,6 +174,7 @@ it("asset provenance rejects CSS-only, theme and build-input changes and missing
     try {
         const files = [
             'cli/studio-client/src/global.css', 'cli/studio-client/src/theme.ts', 'cli/studio/runtime.ts',
+            'cli/studio/simulation/StudioSimulationLimits.ts',
             'cli/studio-client/vite.config.ts', 'cli/studio-client/postcss.config.mjs', 'cli/studio-client/index.html', 'cli/studio-client/tsconfig.json',
             'package.json', 'package-lock.json', 'node_modules/@mantine/core/styles.css', 'node_modules/@mantine/notifications/styles.css',
             'dist/cli/pokie.js', 'dist/cli/studio-client/index.html', 'dist/cli/studio-client/assets/current.js', 'dist/cli/studio-client/assets/current.css',
@@ -188,7 +190,8 @@ it("asset provenance rejects CSS-only, theme and build-input changes and missing
             await fs.utimes(filename, baseline, file.startsWith('dist/') ? built : baseline);
         }
         await assertFreshAssets(root);
-        for (const input of ['cli/studio-client/src/global.css', 'cli/studio-client/src/theme.ts', 'cli/studio-client/vite.config.ts', 'node_modules/@mantine/core/styles.css']) {
+        for (const input of ['cli/studio-client/src/global.css', 'cli/studio-client/src/theme.ts', 'cli/studio-client/vite.config.ts',
+            'cli/studio/simulation/StudioSimulationLimits.ts', 'node_modules/@mantine/core/styles.css']) {
             await fs.utimes(path.join(root, input), changed, changed);
             await expect(assertFreshAssets(root)).rejects.toThrow();
             await fs.utimes(path.join(root, input), baseline, baseline);
@@ -357,7 +360,8 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 return {
                     ownsFocus: document.activeElement === region,
                     focusVisible: region.matches(':focus-visible'),
-                    visible: style.display !== 'none' && style.visibility === 'visible' && bounds.width > 0 && bounds.height > 0,
+                    visible: style.display !== 'none' && style.visibility === 'visible' && bounds.width > 0 && bounds.height > 0
+                        && bounds.right > 0 && bounds.left < innerWidth && bounds.bottom > 0 && bounds.top < innerHeight,
                     outlineStyle: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth),
                     outlineColor: style.outlineColor, outlineOffset: parseFloat(style.outlineOffset),
                 };
@@ -580,7 +584,36 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             // Returning after a completed run restores Review. Enter Configure through its
             // stable public control, whose whole text also includes a number and description.
             await activate("document.getElementById('simulation-configure')");
+            const simulationIds = async () => {
+                const response = await fetch(`${origin}/api/project/jobs`, {signal: AbortSignal.timeout(5_000)});
+                expect(response.ok).toBe(true);
+                const records = await response.json() as {jobs: Array<{id: string; operation: string}>};
+                return records.jobs.filter(record => record.operation === 'simulation').map(record => record.id).sort();
+            };
+            const retainedIds = await simulationIds();
+            const retainedReceipt = () => evaluate<string | null>("document.querySelector('[data-pokie-lifecycle-result-operation=simulation][data-pokie-lifecycle-terminal=completed]')?.getAttribute('data-pokie-lifecycle-result-job') ?? null");
+            const priorReceipt = await retainedReceipt();
+            // Reproduce the saved five-million-round edit through native input.
+            // It must remain editable and field-invalid without creating a job,
+            // showing an optimistic queue, or discarding the previous report.
+            await fill(inputFor("Rounds"), "5000000");
+            await until(() => evaluate<boolean>(`(${inputFor("Rounds")}).getAttribute('aria-invalid') === 'true'
+                && document.getElementById('simulation-run').disabled`), 'oversized rounds validation');
+            expect(await evaluate<string>(`(${inputFor("Rounds")}).value`)).toBe('5000000');
+            expect(await evaluate<boolean>(`(() => {
+                const input = (${inputFor("Rounds")});
+                return (input.getAttribute('aria-describedby') ?? '').split(' ').some(id =>
+                    document.getElementById(id)?.textContent.includes('Rounds must be a positive integer between 1 and 2,000,000.'));
+            })()`)).toBe(true);
+            await focus(inputFor("Rounds"));
+            await key("Enter", "Enter", 13);
+            await measure(`Simulation validation ${width}x${height}`);
+            expect(await simulationIds()).toEqual(retainedIds);
+            expect(await retainedReceipt()).toBe(priorReceipt);
+            expect(await evaluate<boolean>("document.body.innerText.includes('Simulation queued')")).toBe(false);
             await fill(inputFor("Rounds"), "500000");
+            expect(await evaluate<boolean>(`(${inputFor("Rounds")}).getAttribute('aria-invalid') !== 'true'
+                && !document.getElementById('simulation-run').disabled`)).toBe(true);
             await activate(button("Run Simulation"));
             let id = "";
             await until(async () => {

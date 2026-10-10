@@ -1250,3 +1250,90 @@ work. No P910 test (including its ordinary cases), build, packaging, official
 gate, browser or collector was executed here; no prior evidence was modified
 or removed. This correction is an implementation handoff, not closure of
 P9-VALERA-GRAPHIC or completion of P9-10.
+
+## Final consolidated simulation preflight correction — controller closure pending
+
+Review fingerprint `5d6486b31c2c4fe1`, material key
+`P9-VALERA-GRAPHIC:sha256:9e5bd669e5a56b28`; starting HEAD
+`fd05c2268265556cdac1ee432b3b2fda0b6c08ac`.
+Read the complete current-step history and the retained evidence directories
+referenced above, including their freezes, chronological records and post-freeze
+results. The supplied latest screenshot was visually inspected. No historical
+record, image or completed-step evidence was rewritten, moved or deleted.
+
+| Supplied retained artifact | SHA-256 |
+| --- | --- |
+| `P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json` | `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
+| Same run's `transcript.json` | `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
+| `P9-10-b7aeaaa2120923a5/run-2026-10-10T07-35-08-073Z/transcript.json` | `11d09a1f2331a405ba201d21e879094014d5761589488effb82c546eca0f5961` |
+| Same run's `1-observation.png` | `c713bb8563e906f09f4574a116f4f494dd0ae0e30d0079c1e0f51212e87bae57` |
+
+The latest transcript records a successful 500000-round simulation, then an
+editable `5000000` value, optimistic `0/5000000` queued copy and the local
+generic failure. It explicitly does not establish Cancel-to-terminal focus.
+The screenshot supports that failure disposition; the earlier success cannot
+close the missing focus observation. Historical passing rendered runs predate
+this correction and are not current-candidate proof.
+
+Current-HEAD tracing follows SimulationTab's unconstrained NumberInput through
+ProjectDashboardPage.startRun, useSimulationPoll.run and apiClient.startSimulation
+to StudioServer's validateSimulationRequest. The server rejects rounds above
+its existing 2000000 ceiling; the client formerly queued before this rejection.
+Other submission consumers are Recent Runs / Run again and the hook-owned Retry
+(including Repeat simulation), plus retained-job request reconstruction. All
+now share client rounds preflight using the actual server-owned constant.
+The server validator, durable executor, cancellation and conflict protocol,
+and the separate unbounded `pokie sim` command remain unchanged.
+
+Configure explains the limit, associates its validation error with Rounds and
+disables Run for missing, nonpositive, fractional or oversized values. Its max
+uses the server constant. Invalid edits remain visible after blur; no silent
+clamping changes the requested experiment. Form submission validates again.
+The hook validates before acquiring its submit guard, changing ownership,
+clearing a terminal receipt or displaying a queue. The dashboard validates
+before clearing retained report/comparison data. Invalid historic or recovery
+requests therefore retain their prior result and require correction and an
+explicit valid submission.
+
+| Whole-step acceptance / accumulated finding | Final candidate contract and closure authority |
+| --- | --- |
+| Independent cold Home, project/model/build and job judgment on compact/smaller viewports | All authentic earlier freezes and chronological records preserved. Latest real 900px Build and 500000-round terminal state were judged readable; this is not fresh approval of every surface on the correction SHA. Controller owns affected clean rerender and visual disposition. |
+| `4a58ccd4ec9f8a24`: clipped six-section row | Shared wrapping retained. P910 still requires exactly Game basics, Layout, Symbols, Reels, Paytable and Bets, contained tab bounds, phone reflow and native traversal. Historical affected visual disposition preserved. |
+| `285d0e8a87d8b14f`: validated-tab lookup | Tablist/visible-label selectors and hidden accessible validation statuses preserved. |
+| `ccb894ddb9ea1e2d`: Browse / retained Review | Actual scoped Browse… and native simulation-configure activation retained in both iterations; no fresh-tab assumption. |
+| `0f8d50097d40f6a7` and earlier style-contract rejection | Visible-content measurements still exclude nonvisual accessibility subtrees and reject real glyph/badge/path overflow; both legitimate Button displays and all measured style clauses remain required. |
+| `c73df4a0d712e3b9`: Create game reachability | Settled native Tab/Shift+Tab/Enter, visible control bounds, immediate responsive layout and saved-project creation preserved. No forced focus/click bypass. |
+| `ae1a1cd6af46fe4a`: disclosures / recovery / remote failures | Immutable request identity reopening, Needs attention for runError and explicit retry retained. Library, PC14/PC18 and packed generator/PAR disclosure consumers and confirmation/cleanup corrections remain intact. No shared disclosure dependency changed. |
+| `764e1b10c0a3c85b`: professional finish and readable candidate images | Shared theme, metadata table, supporting full paths, configured Build/Export and terminal presentation preserved. Current-SHA image-supported independent disposition remains controller-owned and pending. |
+| `4e394aa498bcbc34`: terminal-region focus / editor focus | Exclusive focus suppression and same retained JobCard focus owner preserved. Ordinary responsive/presentation checks pass; deferred P910 still requires native Cancel focus, terminal region ownership, computed visible outline before Download, and now actual intersection with the viewport. The latest collector did not reach this observation; no closure inferred. |
+| `5d6486b31c2c4fe1`: five-million-round rejection | Field validation, submission boundary and hook preflight cover Configure, retained reconstruction, Run again and Retry. Ordinary tests prove no optimistic queue/request, preserved prior receipt/report, error association, no blur clamping and a subsequent exact-ceiling or 500000-round success. Controller must independently rerender this correction. |
+| Occupied destination / workflow and asset provenance | Sentinel, disabled/conflict/recovered Build, both running/completed simulations, report retrieval and owned cleanup remain in the complete P910 file. Freshness now includes the server constant consumed by the browser bundle. |
+| Four-image budget and complete post-freeze gate | Zero images or observations added. The existing bounded collection remains intact. Complete P910 execution with authenticated P910_FROZEN_OBSERVATIONS and current production assets is still mandatory; no helper-only run, invented observation or rendered skip is counted as closure. |
+
+Permitted foreground verification:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationWorkflow.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.simulationConflict.test.tsx tests/cli/studio-client/src/hooks/useSimulationPoll.test.tsx tests/cli/studio/simulation/validateSimulationRequest.test.ts tests/cli/studio-client/src/components/common/responsive.test.tsx tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx
+npm run typecheck
+```
+
+Final bounded result: six suites / 104 tests passed with no skips. The initial
+run passed 103 tests but exposed a stale conflict fixture missing the dashboard's
+job-list endpoint; supplying its empty-list response preserved the no-error
+conflict assertion and the complete set passed on rerun. Existing React act
+warnings remain. Root typecheck passed before committing and again on the
+committed production tree; each invokes typecheck-studio-client once. No
+separate Studio typecheck command ran. An initial attempt to launch
+these checks concurrently was refused by the clone's single-verification
+command policy; both completed sequentially.
+
+Consuming boundaries: root/Studio TypeScript, component/workflow and server
+validator Jest lanes, changed-TypeScript ESLint hook, production Vite through
+build-studio-client/build-cli, and complete Node/Chromium P910 execution.
+Per the bounded implementer policy, production build and independent rendered
+execution remain controller-owned on the committed correction. No build,
+packaging, official gate, browser file (including its ordinary cases), collector
+or replacement evidence ran here. This committed implementation handoff does
+not complete P9-10; current-asset rendered execution, readable affected images,
+terminal focus observation and independent material-finding disposition remain
+explicitly pending with the controller.

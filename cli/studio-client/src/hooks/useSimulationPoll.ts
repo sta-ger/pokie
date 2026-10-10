@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from "react";
 import {cancelSimulation, getSimulation, startSimulation} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
 import {errorMessage} from "../domain/errorMessage";
+import {getSimulationRoundsError} from "../domain/simulationRounds";
 import {describeSimulationProgress, isSimulationActive, type SimulationProgressView} from "../domain/interpret/Simulation";
 import {useDoubleSubmitGuard} from "./useDoubleSubmitGuard";
 import type {StudioSimulationJobView} from "../api/types";
@@ -151,6 +152,11 @@ export function useSimulationPoll() {
     }
 
     function run(rounds: number, seed: string | undefined, workers: number, modeName?: string, startedBy: SimulationOperation = "simulation"): void {
+        const roundsError = getSimulationRoundsError(rounds);
+        if (roundsError !== null) {
+            setError(roundsError);
+            return;
+        }
         if (!runGuard.begin()) {
             return;
         }

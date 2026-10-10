@@ -20,6 +20,57 @@ function strictModeWrapper(fetchImpl: FetchLike) {
 }
 
 describe("useSimulationPoll - StrictMode + cleanup", () => {
+    it.each([5000000, 2000001, 0, -1, 12.5, NaN, Infinity])("rejects invalid rounds %s before any optimistic state or request mutation", async (rounds) => {
+        const submitted: unknown[] = [];
+        const fetchImpl: FetchLike = (_url, init) => {
+            if (init?.method === "POST") submitted.push(JSON.parse(init.body ?? "{}"));
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(job("completed", 10))});
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.run(rounds, undefined, 1));
+        expect(submitted).toEqual([]);
+        expect(result.current.progress).toBeUndefined();
+        expect(result.current.error).toBe("Rounds must be a positive integer between 1 and 2,000,000.");
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        const retained = {job: result.current.job, progress: result.current.progress, receipt: result.current.terminalReceipt};
+        act(() => result.current.run(rounds, undefined, 1));
+        expect(submitted).toEqual([{rounds: 10, workers: 1}]);
+        expect(result.current.job).toBe(retained.job);
+        expect(result.current.progress).toBe(retained.progress);
+        expect(result.current.terminalReceipt).toBe(retained.receipt);
+        expect(result.current.currentJobId).toBe("job-1");
+        // A rejected value must not acquire the double-submit guard.
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(submitted).toHaveLength(2));
+        await waitFor(() => expect(result.current.error).toBeUndefined());
+    });
+
+    it("rejects an oversized retained Retry without losing its durable job, then accepts a corrected Run", async () => {
+        const submitted: unknown[] = [];
+        const retained = {...job("failed", 0), id: "oversized-retained", rounds: 5000000};
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "POST") submitted.push(JSON.parse(init.body ?? "{}"));
+            const value = url === "/api/project/simulations/oversized-retained" ? retained : job("completed", 10);
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(value)});
+        };
+        const {result} = renderHook(() => useSimulationPoll(), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.restore(retained.id));
+        await waitFor(() => expect(result.current.progress?.status).toBe("failed"));
+        const receipt = result.current.terminalReceipt;
+        act(() => result.current.retry());
+        expect(submitted).toEqual([]);
+        expect(result.current.currentJobId).toBe(retained.id);
+        expect(result.current.job).toEqual(retained);
+        expect(result.current.terminalReceipt).toBe(receipt);
+        expect(result.current.progress?.status).toBe("failed");
+        expect(result.current.error).toBe("Rounds must be a positive integer between 1 and 2,000,000.");
+        act(() => result.current.run(10, undefined, 1));
+        await waitFor(() => expect(result.current.progress?.status).toBe("completed"));
+        expect(submitted).toEqual([{rounds: 10, workers: 1}]);
+        expect(result.current.error).toBeUndefined();
+    });
+
     it("keeps Retry ownership through pending and rejected submission discovery until a project reset", async () => {
         let finishStart: (() => void) | undefined;
         let rejectStart = true;
