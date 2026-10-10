@@ -105,7 +105,15 @@ export async function readP911Candidate(reference, {repository = root} = {}) {
         const resolver = require('node:module').createRequire(process.argv[1]);
         process.stdout.write(JSON.stringify(Object.fromEntries(['pokie', 'pokie/browser', 'pokie/wasm', 'pokie/client/player'].map(name => [name, resolver.resolve(name)]))));
     `, path.join(handoff.installationRoot, "package.json")], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
+    const esmResolutions = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+        import {fileURLToPath} from 'node:url';
+        process.stdout.write(JSON.stringify(Object.fromEntries(['pokie', 'pokie/browser', 'pokie/wasm', 'pokie/client/player'].map(name => [name, fileURLToPath(import.meta.resolve(name))]))));
+    `], {cwd:handoff.installationRoot, encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
     const bin = await realpath(path.join(handoff.installationRoot, "node_modules/.bin/pokie"));
-    if (bin !== path.join(packageRoot, projection.packageJson.bin.pokie) || Object.values(resolutions).some((file) => !file.startsWith(`${packageRoot}${path.sep}`))) fail("installed public resolution mismatch");
-    return {...handoff, packageRoot, bin, resolutions, equivalence, projection, archive};
+    for (const file of [...Object.values(resolutions), ...Object.values(esmResolutions)]) {
+        if (!file.startsWith(`${packageRoot}${path.sep}`) || await realpath(file) !== file
+            || !projection.entries.some((entry) => path.join(packageRoot, entry.path) === file)) fail("installed public resolution mismatch");
+    }
+    if (bin !== path.join(packageRoot, projection.packageJson.bin.pokie)) fail("installed public resolution mismatch");
+    return {...handoff, packageRoot, bin, resolutions, esmResolutions, equivalence, projection, archive};
 }

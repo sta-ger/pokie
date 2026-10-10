@@ -403,3 +403,46 @@ cleanup checks remain required. All exact-candidate collection, independent
 persona/image acceptance, authenticated P909/P910 and official lifecycle
 obligations listed above remain **pending controller execution**. Completed
 step evidence is preserved, and this handoff does not close P9-11.
+
+## Scope-criterion-1 packet handoff
+
+Continue from `98a3096f6c1cad9287aafcc3c95ea04a63c8ced4`; the production
+corrections and historical observations are retained. The reader now records
+native ESM as well as CommonJS installed resolutions, rejecting entries outside
+the authenticated real-file archive projection. Successful `checks.json` adds
+`candidateIdentity` (source/tree, package, archive, installation/bin/resolutions,
+build/install/driver receipt pins) and the original handoff reference.
+Each result links a pinned `resultReceipt` and `processReceipt`, with the
+authenticated served assets for rendered results. Final authentication rejects
+changed identity; result/process pins are re-read after profile cleanup, so
+cleanup or subsequent work cannot silently substitute an earlier observation.
+Failures retain their exact phase and publish no successful checks.
+
+The focused harness regression verifies both native resolution conditions,
+complete identity/receipt joins, changed final source/tree/package/installation/
+ESM/receipt identity, and changed result/process bytes during cleanup. Existing
+precise scenario failure, deadline, cancellation and cleanup-failure contracts
+remain mandatory. Synthetic fixtures establish these contracts only. The
+[packet proof index](README.md#p9-11-scope-criterion-1-packet-retained-production-proof-bindings)
+joins the six unchanged production scenarios to their receipts without inventing
+current collection. The controller still owns normal packaging and independent
+rendered reruns; no official gate, build/pack/install, publication or external
+workflow is authorized for this worker beyond the named focused tests' existing
+foreground test compilers. The 20 permitted whole-file paths from this packet's
+targeted list passed together: **20 suites / 419 tests**, exit 0. The focused
+closeout file separately passed **33 tests** after correcting one test fixture's
+process-receipt filename. Direct and default Worker snapshots measured 130,
+137 and 139 bytes at zero, 10,000 and 100,000 rounds; timing records impose no
+machine-dependent threshold. Runtime/Studio failure and cancellation, public
+registered CLI/report, rare-probability presentation and destination-race
+regressions remained green.
+
+`tests/packaging/npmPackSmoke.test.ts` remains explicitly pending controller
+execution. The command policy rejected the proposed test-name filter with
+`POKIE implementation policy: test argument must name a test file`; no filtered
+packaging check ran, and no real packaging boundary was attempted. The work
+report lists the complete 20-path command and this exclusion. This is the
+instruction's controller-owned packaging exception, not a passed packaging
+test or a fabricated acceptance receipt. Only the two `.mjs` readers/runners,
+their `.mjs` regression and these current-step documents changed; no TypeScript
+compiler or browser bundle consumes changed production files in this packet.

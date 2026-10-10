@@ -7,6 +7,7 @@ import os from "node:os";
 import {mkdir, readFile, realpath, rm, writeFile} from "node:fs/promises";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
+import {isDeepStrictEqual} from "node:util";
 import {runBoundedProcess} from "./pc-20-release-completion.mjs";
 import {P911_CAMPAIGN, readP911Candidate, readPinnedJson, sha256} from "./p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "./p9-11-corrective-scenarios.mjs";
@@ -31,6 +32,10 @@ const fail = (message) => { throw new Error(`P9-11 closeout: ${message}`); };
 const clean = (result) => result.exitCode === 0 && !result.signal && !result.cancelled && !result.timedOut
     && result.processGroupDrained === true && result.processTreeDrained === true && result.resourcesDrained === true && result.stdioClosed === true;
 const json = async (file, value) => writeFile(file, `${JSON.stringify(value, null, 2)}\n`, {flag:"wx"});
+const candidateIdentity = (candidate) => Object.fromEntries([
+    "candidateId", "candidateTreeId", "packageName", "packageVersion", "archivePath", "archiveSha256", "executableSha256",
+    "installationRoot", "packageRoot", "bin", "resolutions", "esmResolutions", "buildReceipt", "installReceipt", "browserDriver",
+].map((key) => [key, candidate[key]]));
 
 export function validateActionCoverage(id, result) {
     const required = P911_RENDERED_COVERAGE[id];
@@ -240,17 +245,24 @@ export async function runP911Closeout(options, dependencies = {}) {
                     cwd:path.join(profileRoot, "workspace"), env, signal:options.signal, timeoutMs:request.timeoutMs,
                     resourceRegistryPath:path.join(runRoot, `${id}.${command.kind}.resources.ndjson`),
                 });
-                results.push({id, kind:command.kind, profileId, run});
-                await json(path.join(runRoot, `${id}.${command.kind}.process.json`), run);
+                const record = {id, kind:command.kind, profileId, run};
+                results.push(record);
+                const processPath = path.join(runRoot, `${id}.${command.kind}.process.json`);
+                await json(processPath, run);
+                record.processReceipt = {path:processPath, sha256:sha256(await readFile(processPath))};
                 if (!clean(run)) fail(`${id}/${command.kind}: unsuccessful or undrained command`);
-                const result = JSON.parse(await readFile(outputPath, "utf8"));
+                const resultBytes = await readFile(outputPath);
+                const result = JSON.parse(resultBytes);
                 if (command.kind === "rendered") await authenticateRendered(id, result, request, candidate);
                 else if (result.kind !== "p9-11-public-result" || result.id !== id || result.candidateId !== candidate.candidateId
                     || result.archiveSha256 !== candidate.archiveSha256 || result.profileId !== profileId || result.status !== "passed" || !result.observations?.length) fail(`${id}: incomplete public result`);
+                record.resultReceipt = {path:outputPath, sha256:sha256(resultBytes)};
+                if (command.kind === "rendered") record.servedAssets = result.servedAssets;
             }
         }
         phase = "final-candidate-authentication";
-        await services.readCandidate(options.handoff);
+        const finalCandidate = await services.readCandidate(options.handoff);
+        if (!isDeepStrictEqual(candidateIdentity(candidate), candidateIdentity(finalCandidate))) fail("candidate identity changed during execution");
         if (sha256(await readFile(driver.path)) !== driver.sha256) fail("controller driver changed during execution");
     } catch (error) { failure = error; }
     finally {
@@ -258,6 +270,15 @@ export async function runP911Closeout(options, dependencies = {}) {
             try { await services.remove(profile, {recursive:true, force:true}); }
             catch (error) { failure ??= error; phase = "profile-cleanup"; }
         }
+    }
+    if (!failure) {
+        phase = "retained-proof-authentication";
+        try {
+            for (const record of results) {
+                await readPinnedJson(record.processReceipt);
+                await readPinnedJson(record.resultReceipt);
+            }
+        } catch (error) { failure = error; }
     }
     if (failure) {
         const failed = {kind:"p9-11-closeout-failure", campaignId:P911_CAMPAIGN, phase, message:failure.message, results,
@@ -268,6 +289,7 @@ export async function runP911Closeout(options, dependencies = {}) {
     }
     const result = {kind:"p9-11-closeout-checks", campaignId:P911_CAMPAIGN, candidateId:candidate.candidateId, archiveSha256:candidate.archiveSha256,
         executableSha256:candidate.executableSha256, resolutions:candidate.resolutions, equivalence:candidate.equivalence,
+        candidateIdentity:candidateIdentity(candidate), handoff:options.handoff,
         results, profilesRemoved:true, checks:"passed", campaignAcceptance:"pending-controller-independent-evidence-and-release-lifecycle"};
     await json(path.join(runRoot, "checks.json"), result);
     return result;

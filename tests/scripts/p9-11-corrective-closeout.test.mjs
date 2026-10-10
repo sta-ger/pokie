@@ -104,6 +104,11 @@ test("pinned real file/archive reader rejects candidate, stale assets, extra ass
         `], {encoding:"utf8", timeout:5000, stdio:["ignore", "pipe", "pipe"]}));
         const candidate = await verify();
         assert.equal(candidate.candidateId, fixture.handoff.candidateId);
+        assert.equal(candidate.resolutions.pokie, path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
+        assert.equal(candidate.esmResolutions.pokie, path.join(candidate.packageRoot, "dist/esm/index.js"));
+        for (const name of ["pokie/browser", "pokie/wasm", "pokie/client/player"]) {
+            assert.equal(candidate.esmResolutions[name], candidate.resolutions[name]);
+        }
         await assert.rejects(readPinnedJson({...fixture.reference, sha256:"b".repeat(64)}), /digest mismatch/);
         const archive = await readFile(fixture.handoff.archivePath);
         await writeFile(fixture.handoff.archivePath, "different packed bytes");
@@ -128,8 +133,9 @@ async function runnerFixture(directory, options = {}) {
     const driver = path.join(directory, "fixture-driver.mjs"); await writeFile(driver, "// fixture driver, never executed\n");
     const image = path.join(directory, "focus.png");
     await writeFile(image, "fixture image; no visual acceptance");
-    const candidate = {candidateId:"a".repeat(40), archiveSha256:digest, archivePath:path.join(directory, "archives/candidate.tgz"), executableSha256:digest, installationRoot:path.join(directory, "borrowed-install"),
-        packageRoot:path.join(directory, "borrowed-install/node_modules/pokie"), bin:"/fixture/pokie", packageVersion:"1.3.0", resolutions:{},
+    const candidate = {candidateId:"a".repeat(40), candidateTreeId:"b".repeat(40), packageName:"pokie", archiveSha256:digest, archivePath:path.join(directory, "archives/candidate.tgz"), executableSha256:digest, installationRoot:path.join(directory, "borrowed-install"),
+        packageRoot:path.join(directory, "borrowed-install/node_modules/pokie"), bin:"/fixture/pokie", packageVersion:"1.3.0", resolutions:{pokie:"/fixture/cjs/index.js"}, esmResolutions:{pokie:"/fixture/esm/index.js"},
+        buildReceipt:{path:"/fixture/build.json", sha256:digest}, installReceipt:{path:"/fixture/install.json", sha256:digest},
         browserDriver:{path:driver, sha256:sha256(await readFile(driver))}, projection:{entries:[{path:"dist/cli/studio-client/index.html", sha256:digest}, {path:"dist/cli/studio-client/assets/app.js", sha256:digest}, {path:"dist/cli/studio-client/assets/app.css", sha256:digest}]}};
     const requests = [], calls = [];
     const run = jest.fn(async (command, args, commandOptions) => {
@@ -182,6 +188,51 @@ test("one candidate across exactly six repros/five isolated profiles; no build/g
         }
         for (const request of fixture.requests) { assert.equal(request.archiveSha256, digest); assert.equal(await exists(request.profileRoot), false); }
         assert.equal(await exists(path.join(fixture.runRoot, "checks.json")), true);
+        const saved = JSON.parse(await readFile(path.join(fixture.runRoot, "checks.json"), "utf8"));
+        assert.deepEqual(saved.candidateIdentity, Object.fromEntries([
+            "candidateId", "candidateTreeId", "packageName", "packageVersion", "archivePath", "archiveSha256", "executableSha256",
+            "installationRoot", "packageRoot", "bin", "resolutions", "esmResolutions", "buildReceipt", "installReceipt", "browserDriver",
+        ].map((key) => [key, fixture.candidate[key]])));
+        for (const record of saved.results) {
+            const proof = await readPinnedJson(record.resultReceipt), process = await readPinnedJson(record.processReceipt);
+            assert.equal(proof.id, record.id); assert.equal(proof.profileId, record.profileId);
+            assert.deepEqual(process, record.run);
+            if (record.kind === "rendered") assert.deepEqual(record.servedAssets, proof.servedAssets);
+        }
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test.each(["candidateId", "candidateTreeId", "packageVersion", "installationRoot", "esmResolutions", "buildReceipt"])("final authentication rejects changed %s without acceptance", async (key) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-final-identity-"));
+    try {
+        const fixture = await runnerFixture(directory);
+        fixture.services.readCandidate.mockResolvedValueOnce(fixture.candidate)
+            .mockResolvedValueOnce({...fixture.candidate, [key]:"changed"});
+        await assert.rejects(runP911Closeout({runRoot:fixture.runRoot}, fixture.services), /candidate identity changed/);
+        const failed = JSON.parse(await readFile(path.join(fixture.runRoot, "failed.json"), "utf8"));
+        assert.equal(failed.phase, "final-candidate-authentication");
+        assert.equal(await exists(path.join(fixture.runRoot, "checks.json")), false);
+        for (const request of fixture.requests) assert.equal(await exists(request.profileRoot), false);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test.each(["public.json", "public.process.json"])("cleanup cannot alter a retained %s and still publish acceptance", async (suffix) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-retained-proof-"));
+    try {
+        const fixture = await runnerFixture(directory);
+        let changed = false;
+        fixture.services.remove = async (profile, options) => {
+            await rm(profile, options);
+            if (!changed) {
+                changed = true;
+                await json(path.join(fixture.runRoot, `node-wasm-first-subsequent.${suffix}`), {status:"substituted"});
+            }
+        };
+        await assert.rejects(runP911Closeout({runRoot:fixture.runRoot}, fixture.services), /receipt digest mismatch/);
+        const failed = JSON.parse(await readFile(path.join(fixture.runRoot, "failed.json"), "utf8"));
+        assert.equal(failed.phase, "retained-proof-authentication");
+        assert.equal(await exists(path.join(fixture.runRoot, "checks.json")), false);
+        for (const request of fixture.requests) assert.equal(await exists(request.profileRoot), false);
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
 

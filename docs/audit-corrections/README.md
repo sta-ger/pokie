@@ -987,3 +987,39 @@ normal `npm run build`/pack/install must consume this commit before the retained
 browser matrix and closeout. All immutable acceptance criteria remain pending
 their current-candidate machine-owned evidence. This is a committed correction
 handoff, not completion of P9-11 or the campaign.
+
+### P9-11 scope-criterion-1 packet: retained production proof bindings
+
+This packet continues from clean source `98a3096f6c1cad9287aafcc3c95ea04a63c8ced4`.
+It preserves the six successful historical corrective scenarios described above
+and the subsequent Design focus correction. It does not rebuild their candidate
+or relabel those observations as acceptance for a new source. The implementation
+commit is supplied by the packet's strict work report; the controller supplies
+the normal candidate and its externally pinned handoff for current collection.
+
+The [candidate reader](../../scripts/p9-11-candidate.mjs) now resolves both Node
+CommonJS and native ESM public entries from the shared installation, including
+root, browser, WASM and player exports. Each resolved file must be a real file
+in the authenticated archive projection. The
+[bounded closeout](../../scripts/p9-11-corrective-closeout.mjs) retains source
+commit/tree, package name/version, archive and executable digests, installation,
+bin, both resolution maps and pinned build/install/driver receipts in
+`checks.json.candidateIdentity`. Each of the six scenarios and five short smokes
+links its own `resultReceipt` and `processReceipt` with exact path/digest;
+rendered entries also retain the authenticated served asset identities.
+These are links to the existing receipts, not another evidence archive.
+
+| Finding-to-proof join | Current command/action and observable proof | Retained receipt / disposition |
+| --- | --- | --- |
+| Original repro, correction and production regression | The six criterion-1 rows at the start of this index retain their original documents, exact installed scenario IDs and regression paths. | `<run>/<scenario>.public.json` or `.rendered.json`, joined by `results[].resultReceipt`; current-candidate collection remains pending. |
+| Exact source/package/install and served assets | One pinned normal handoff; native CommonJS/ESM resolution; unchanged identity at final authentication; served HTML/JS/CSS compared with the archive. | `<run>/checks.json.candidateIdentity`, handoff/build/install pins and each rendered `servedAssets`; controller delivery remains pending. |
+| Observable result and terminal cleanup | Exact six scenarios plus five isolated smokes, no retry; authenticate retained result/process bytes after profile cleanup, before writing successful checks. Changed identity or a substituted receipt fails with its precise phase. | `results[].processReceipt`, result/action receipts and failure `failed.json`; passing contract fixtures are not acceptance receipts. |
+| Unsupported boundaries and wider gaps | [WASM subset and separate JavaScript evaluator](../wasm-compatibility-boundary.md), [Stake safe-number IDs/payouts and exact aggregate weights](../stake-engine-standalone.md), existing missing/partial/unconfirmed/deferred register above. | Unchanged boundary documents and historical status evidence; no broader product completion claimed. |
+
+The named foreground regression set remains the packet's local authority.
+`npmPackSmoke.test.ts` has a bounded native-ESM shared-handoff contract test;
+its real build/pack/install describe block remains controller-owned under this
+worker's command policy. Current installed six-repro execution, independent
+browser/persona judgment, the normal packaging boundary and the wider release
+lifecycle remain explicitly pending controller verification. No completed-step
+report, image, transcript, checkpoint or receipt was rewritten or removed.
