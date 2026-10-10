@@ -1065,3 +1065,46 @@ worker's command policy. Current installed six-repro execution, independent
 browser/persona judgment, the normal packaging boundary and the wider release
 lifecycle remain explicitly pending controller verification. No completed-step
 report, image, transcript, checkpoint or receipt was rewritten or removed.
+
+### P9-11 current-candidate verifier disposition, 2026-10-10
+
+The verifier authenticated the exact clean product candidate
+`90ac641d2e8eda731ca0821b56c4788f5d63eb19` both before and after the
+controller's one permitted complete-file command.  Its machine-owned receipt is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/9d3c3eb80b516f3bfb1cd2a3/result.json`;
+the receipt binds the candidate build output SHA-256
+`8e959964f9b7a391af67499cbbbde67c472719353d778e32ba660a29683f0a33`,
+clean `candidate_before`/`candidate_after`, and un-timed-out terminal result.
+The complete terminal Jest summary in its authorized stderr log is **1 failed,
+1090 passed, 1091 total**: the inventory consumer and P909 passed, while P910
+executed its rendered case with the supplied, hash-matching frozen input and
+failed.
+
+The P910 failure is a reproducible candidate-owned P1 presentation defect, not
+a provider or driver timeout.  On the saved project Overview, its exact
+`measure('Saved project overview')` rendered audit found three visible/clipped
+controls: `#blueprint-create-game` and the two native segmented-control
+`form`/`json` inputs.  The assertion reports `overflow: false` but a nonempty
+local clipped-element list, so document-wide geometry alone cannot dismiss the
+surface failure.  No action was repeated to manufacture a second failure.
+
+The verifier also reauthenticated the latest normal controller archive/install
+(`d435096e62e9e8c5812de26bbd79062eda33c28b9239fec1b9f3455777e6a0ac` /
+`99452acbb2282b80f7ee9461a6c79407ffc1b45eaee68781efb3f9e35ab55f95`) and
+the current persistent driver pin
+`48e3b7fe83e859847f69d53600e357c3c6b3e6eed350b5fae1adc009563d7d9f`.
+`closeout-2026-10-10T20-45-00Z/checks.json` under the assigned harness has all
+12 six-scenario/five-persona receipts, every receipt rehashes, every owned
+process group/tree/resource/stdio drain flag is true, and `profilesRemoved` is
+true.  It remains collection evidence rather than approval in light of the
+new P910 failure.  The retained P909/P910 frozen inputs still exactly match
+their controller-provided SHA-256 values.
+
+Independent visual review opened all four current Graphic Designer contact
+sheets from that closeout.  The Home Design, project Build/Export and running
+JobCard surfaces are legible; the settled sheet visibly shows the same blue
+outlined completed JobCard at 1100x800 and 390x844 after Review/report/Recent
+runs settle.  This supports that narrow settled-card disposition, but cannot
+pass the separate failed P910 Overview measurement.  No test, build, pack,
+installation, release gate, publication, or duplicate public journey was run
+by this disposition step.
