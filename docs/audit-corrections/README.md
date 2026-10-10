@@ -611,3 +611,63 @@ same persistent driver's six visible itineraries, truthfully declare precisely
 that implemented coverage, obtain a new controller pin/delivery, and then
 collect the one sequential closeout.  Until that happens, the full
 exact-candidate closeout criterion remains not reached.
+
+### P9-11 complete rendered adapter implementation repair
+
+Finding `5cafd64253cf60ae` was traced on task HEAD `50fc31d0` against the
+retained `53f6aa21…b33ef4-14d84e34…95eabb.json` preflight named above. The
+assigned external `current.mjs` has only the Stake result branch and its offline
+coverage declaration has only `stake.recognized-studio`. The six missing IDs
+therefore reject controller admission before the normal producer can run. The
+previous preflights, transcripts, images and all completed-step evidence remain
+unchanged; none is relabelled as an observation of this correction.
+
+The committed portable replacement is
+[`scripts/p9-11-rendered-driver.mjs`](../../scripts/p9-11-rendered-driver.mjs).
+It has executable branches for all seven rendered request IDs and declares
+exactly the consumer's full `P911_RENDERED_COVERAGE` in its offline `--describe`.
+Every branch begins in its own fresh profile, consumes the supplied installed
+bin, performs native keyboard/input actions and checks its own HTTP responses,
+rendered terminal and persisted bytes before writing action receipts. It does
+not build, pack, install, publish, rerun a broad readiness matrix, or promote a
+finding/unreached/blocked result into passed coverage. The Stake branch now
+checks the recognized source's actual public Studio analysis, including rare
+moments, against its same-profile public scenario rather than substituting CLI
+analysis as a Studio observation.
+
+| Accumulated failure / immutable row | Current closure authority and pending consuming proof |
+| --- | --- |
+| Missing occupied-destination itinerary / fresh Design producer | Native Home advanced Design controls, occupied Preview and guarded Build activation, original sentinel readback, edited new-path Preview/publication and durable job, then public preview/publication occupancy race with a second sentinel. Existing source/recovery/draft-identity protections are preserved. Installed rendered execution remains pending. |
+| Missing programmer itinerary / stale dependent Stake plan | Public startup help and canonical PAR build/readback; ordinary Outcome library Build; replacement generate→reuse plan with changed operation identity; exactly one Stake submission, its own completed job/output, borrowed prerequisite provenance and unchanged manifest hash. Existing real-service handoff regressions remain authoritative for the retained bounded-generation defect. Final independent smoke remains pending. |
+| Missing mathematician itinerary / durable replay selection | Saved model/PAR bytes; native-library draw with seed; exact rendered Recent row ID/seed/mode/time; explicit selected-record comparison; same durable record after closing/reopening the library. Final independent smoke remains pending. |
+| Missing producer itinerary / actual local result | Native Paytable edit persisted in the saved design, structural validation, one settled real Spin with wallet accounting, retained round image, useful next action and observed local-only/non-certification language. Final independent smoke remains pending. |
+| Missing UI/UX itinerary / P909 obligation | One actual-progress job through reload and visible offline/reconnection, one submission, own completed report, native recovery focus with viewport bounds, second-project isolation and original-project job readback. This is the short final smoke; controller authentication/execution of the original frozen P909 obligation remains pending and cannot be replaced by it. |
+| Missing graphic itinerary / P910 obligation | Native Home sections, project/build/running-job images, native Cancel focus, exact common-card object retained into terminal, Review/report/Recent-runs layout settling, local bounds/viewport and actual PNG outline pixels, then a second settled focus check. Independent image judgment and authenticated original P910 execution remain pending. |
+| Earlier native shared-install loader, packaging cleanup, producer integration, unsaved source/recovery and asynchronous draft replacement defects | Existing native-ESM consumers, signed launch ownership/drainage, pinned normal producer and guarded coherent draft replacement remain in their established production call paths. No alternate writer, submission route or dependency default was introduced. Producer/closeout contract regressions pass; the real package/build consuming boundary remains controller-owned. |
+| Exact six-repro/five-profile candidate, historical originals, release/publication/Drive and complete owned-resource drainage | Original six public scenarios, exact handoff reader and consumer validators remain unchanged. The driver retains action-local receipts and screenshots outside ephemeral profiles, hashes actual served assets, drains launch-owned groups and inherited stdio before writing its result; the enclosing signed closeout additionally authenticates and drains all owned descendants/resources. Actual candidate delivery, collection, official lifecycle and campaign completion remain pending controller execution. |
+
+Worker verification: root `npm run typecheck` passed, including the Studio
+compiler once. The complete directly relevant command passed **3 suites / 69
+tests**:
+
+```sh
+npm run test:targeted -- tests/scripts/p9-11-rendered-driver.test.mjs tests/scripts/p9-11-corrective-closeout.test.mjs tests/scripts/p9-11-produce-candidate.test.mjs
+```
+
+These are implementation contracts, never acceptance receipts. They exercise
+every implemented branch against the exact consumer coverage/classification,
+rejected publication, changed sentinels/manifests, stale plans, incorrect
+provenance/accounting, duplicate/isolation failures, missing/clipped/stolen
+focus, unpainted PNGs, root-before-descendant cleanup and inherited-stdio failure.
+The first run's two test-fixture mistakes (a completed CLI help action before an
+unreachable later control, and an incorrectly positioned fixture outline) were
+corrected before the passing run. Concurrent verification was rejected by the
+clone policy before Jest launch; the passing commands ran sequentially.
+
+The external persistent harness is outside this task's writable scope. The
+worker has committed its single-file replacement here; the controller must
+install these exact bytes at the **same assigned `current.mjs` path**, obtain
+its new SHA-256 pin and run its admission/normal producer once. No external
+driver, pin, delivery, archive, installation or receipt was edited or fabricated
+by this worker. See the [controller installation boundary](p9-11-closeout.md#p9-11-rendered-adapter-installation).
+This implementation handoff does not mark P9-11 or the campaign complete.

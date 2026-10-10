@@ -274,3 +274,47 @@ execution and the existing two native-ESM consumer tests remain controller-owned
 npm run test:targeted -- tests/scripts/p9-11-produce-candidate.test.mjs tests/scripts/p9-11-corrective-closeout.test.mjs
 npm run typecheck
 ```
+
+## P9-11 rendered adapter installation
+
+The committed single-file implementation is
+[`scripts/p9-11-rendered-driver.mjs`](../../scripts/p9-11-rendered-driver.mjs).
+Its neutral profile/display dependencies are the same controller-owned helpers
+used by the assigned persistent adapter. Offline `--describe` loads neither
+helper and launches no browser, Studio or workflow. It declares exactly seven
+implemented itineraries, matching `P911_RENDERED_COVERAGE`; admission is not
+action evidence. The focused regression exercises every branch and rejects
+partial coverage and failed observations.
+
+The controller installs this file's exact committed bytes at the existing
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-9a681260c6a73825/current.mjs`
+boundary, preserving retained transcripts and preflight records, then computes
+the new driver SHA-256 and invokes its existing authenticated
+`controller-candidate-handoff` admission against that path/pin. The worker must
+not modify that external harness. Do not reuse the old Stake-only pin or issue
+a delivery that names the unrepaired external file. The producer configuration
+pins this installed replacement and the exact committed candidate; the normal
+archive/install producer, packaging consumers and sequential closeout retain
+their existing contracts. No admission receipt, fixture or source-aware test
+replaces the controller's independent collection.
+
+The driver accepts only the consumer's absolute authenticated request/result
+paths, verifies its own byte pin and exact requested coverage before launching,
+uses an OS-assigned fresh CDP port, and isolates browser/application/workspace
+state under the supplied profile. Input uses native Tab/Enter/typing; DOM/CDP
+inspection locates targets and observes results without invoking React handlers
+or fabricating DOM state. Public HTTP calls observe persisted state and exercise
+the actual Design preview/publication race. Public CLI smoke calls use only the
+supplied installed bin. Served HTML/JS/CSS hashes come from actual fetched
+production assets after the itinerary.
+
+Action receipts/transcripts and bounded screenshots are retained beside the
+result, outside the disposable profile. The common-card focus receipt retains
+running and settled bounds plus viewport and a PNG hash; paint is checked against
+actual decoded screenshot pixels. The controller still makes the independent
+visual judgment. Local child cleanup tracks closure at launch, drains surviving
+groups even after root exit and bounds inherited-stdio closure independently of
+the scenario deadline. Cleanup failure prevents a successful result file; the
+outer signed closeout supplies complete descendant/resource receipts. None of
+these implementation mechanics closes an original frozen P909/P910 obligation
+or a release/publication/Drive acceptance row without its actual controller run.
