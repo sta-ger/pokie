@@ -678,3 +678,49 @@ the controller's complete Node-environment P910 Jest run, the new component
 contract suite, and the changed-file ESLint commit hook. No production source
 or generated barrel changed; production builds, packaging, the saved full
 verification matrix and official gates remain controller-owned.
+
+## 2026-10-10 independent cold collection and post-freeze result — finding
+
+This is the current candidate-bound record, not a restatement of the historical
+sections above. The independent collector first froze its own rendered
+observations, then read the post-freeze hand-off. The verified candidate and
+HEAD were both `d89c3307be5eb97c2cf0763bc19551b55818c133`.
+
+| Item | Current evidence |
+| --- | --- |
+| Frozen initial observation | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json` — SHA-256 `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/transcript.json` — SHA-256 `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
+| Collection | Fresh interactive application and browser profiles, 2026-10-10T03:22:29.150Z–03:25:01.563Z; Home, saved project, completed `project-open-materialization` card, Build/Export, and Game Model at 1439×956 and 1024×700 |
+| Screenshots (runtime only) | `1-observation.png` `eb1833d3d73ca8c1943e48263cb15db301b741ffc3b254aa93967ca1668389c4`; `2-observation.png` `7ff5f3ee1c4f4f4345eb29113c6945f2be5ccee78cc1548e65289f5361a5d839`; `3-observation.png` `6241d723284de72e704dd94c6be78c5800cc4c57bf61935a69e167ed5bd3dbf2` |
+
+The frozen initial assessment found a P1 professional-finish concern in the
+shared Build/Export information hierarchy: it is a 4062px continuous desktop
+stack and grows to 4526px at 1024×700, repeating raw absolute paths,
+prerequisite tokens, technical copy and visually indistinguishable actions.
+No horizontal clipping was observed at 1024px. Home was otherwise readable and
+the Game Model’s named sections were more scannable. The real creation flow was
+correlated as ready validated form → disabled/loading `Create game` with saving
+copy → saved Overview → completed `project-open-materialization` card.
+
+Post-freeze, the required complete command was run with the frozen receipt:
+
+```sh
+P910_FROZEN_OBSERVATIONS=<frozen-initial.json> npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
+```
+
+It failed deterministically in the candidate-owned browser-audit at rendered
+Home 390×844. The source test’s geometry assertion reported `overflow: true`
+and four offending rendered controls, including `#blueprint-create-game`, a
+default button, a validated tab and a primary button. Its rendered diagnostic
+recorded the active `Create game` button and its `x=218.5`, `width=138.734375`
+rectangle before rejection. This is a synchronous local terminal rejection of
+the candidate audit selector/geometry contract, not a driver timeout or a
+product-action lifecycle failure.
+
+Finding: **P9-VALERA-GRAPHIC (P1)**. Root cause: the current P910 browser audit
+classifies four visible Home controls as overflowed at its 390×844 measurement,
+so the mandatory candidate-owned rendered regression cannot establish the
+required smaller-viewport closure. Product code and tests were not modified by
+this verifier. The correction lane must repair the shared responsive layout or
+the candidate audit’s exact geometry contract, then rerun the affected rendered
+surface from clean state.
