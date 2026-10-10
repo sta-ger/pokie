@@ -483,13 +483,16 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             expect(await evaluate<boolean>(`(${inputFor("Output directory", scope)}).getAttribute('aria-invalid') === 'true'`)).toBe(true);
             expect(await evaluate<boolean>(`Array.from((${scope}).querySelectorAll('button')).find(e=>e.textContent.trim()==='Build').disabled`)).toBe(true);
             await measure(`Build conflict ${width}x${height}`, scope);
-            await focus(button("Browse", scope));
+            await focus(button("Browse…", scope));
             await fill(inputFor("Output directory", scope), path.join(workspace, `new-package-${width}`));
             await until(() => evaluate<boolean>(`(${scope})?.innerText.includes('Ready to build') === true`), "ready destination");
             await focus(button("Build", scope));
             await measure(`Build ready ${width}x${height}`, scope);
             expect(await fs.readFile(path.join(occupied, 'sentinel.txt'), 'utf8')).toBe('preserve');
             await navigate("Simulation");
+            // Returning after a completed run restores Review. Enter Configure through its
+            // stable public control, whose whole text also includes a number and description.
+            await activate("document.getElementById('simulation-configure')");
             await fill(inputFor("Rounds"), "500000");
             await activate(button("Run Simulation"));
             let id = "";

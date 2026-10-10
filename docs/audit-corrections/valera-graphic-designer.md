@@ -428,3 +428,53 @@ hook. Root typecheck includes the Studio compiler once. Production bundle,
 packaging, full browser execution and official gates remain controller-owned;
 none ran in this implementation worker. Final independent step approval remains
 pending and is not replaced by this candidate handoff.
+
+## Downstream browser workflow repair — controller execution pending
+
+Reviewer finding `ccb894ddb9ea1e2d` was traced against clean HEAD
+`6607f70aab4b789cecd292adafc2f35c5c28886a`. The scoped Build/Export lookup
+required exact `Browse` text, while `PathInput` renders `Browse…`. The lookup
+now matches that existing label and retains its visible/enabled filter and
+artifact-card scope. No product label or Browse behavior changes.
+
+`ProjectDashboardPage` retains simulation progress and report detail when
+switching tabs. `SimulationTab` therefore remounts on Review after completion;
+Rounds exists only on Configure. Each viewport iteration now uses the existing
+native Tab/Enter activation helper on `simulation-configure` before editing
+Rounds. Installed Mantine forwards that identity to the keyboard-accessible
+Stepper button and invokes `onStepClick`; its full text includes the step icon,
+label and description. Report retention remains unchanged. A new submission
+clears the prior terminal receipt before the current job identity is observed.
+
+Reviewed the remaining lookups against Home's creation/validation controls,
+the section tablist and visible labels, shell navigation buttons and mobile
+inert state, artifact-card identity and output labels, simulation submission
+and lifecycle receipts, and common job region/status/Cancel/Download controls.
+The production CLI/static asset path and style entry point remain unchanged.
+Both viewport iterations, destination conflict/ready checks, sentinel reads,
+real running/completed job assertions, report fetches, asset/style/geometry
+checks and cooperative cleanup are preserved.
+
+| Acceptance / accumulated finding | Correction evidence and remaining authority |
+| --- | --- |
+| Independent initial assessment and bounded evidence | Existing frozen observations, transcripts and screenshots remain unchanged; no new collection or gallery. |
+| `4a58ccd4ec9f8a24`: clipped section row | Shared wrapping correction and saved independent 900×700 retest retained. |
+| `285d0e8a87d8b14f`: validated tab lookup | Scoped visible-label lookup and native arrow navigation retained. |
+| Rendered style-contract finding | Blockification correction and all seven diagnostic measurements retained. |
+| `ccb894ddb9ea1e2d`: Browse and retained Review assumptions | Actual scoped `Browse…` lookup and explicit native Configure activation precede Rounds in both iterations. |
+| Complete browser journey and independent material-finding disposition | Pending controller execution with authenticated frozen observations and current production assets; this handoff does not close P9-VALERA-GRAPHIC or P9-10. |
+
+Permitted foreground check:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
+```
+
+Five helper checks passed; the single rendered case explicitly skipped without
+a controller freeze opt-in. This is not browser execution evidence. Only the
+browser test and this current-step document changed. The test is compiled by
+its existing ts-jest lane and checked by the changed-file ESLint commit hook;
+the production Studio compiler includes only `src`, so no production compiler
+or bundle boundary changed. The controller retains the PathInput/simulation
+workflow matrix, production build, complete browser run and independent visual
+closure. No official gate, packaging, browser rerun or evidence cleanup ran here.
