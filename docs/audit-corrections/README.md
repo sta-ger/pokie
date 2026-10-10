@@ -338,6 +338,28 @@ the actionable correction is to expose or authentically produce the
 `design-build` recovery path, then repair and repin the persistent driver
 before another closeout admission.
 
+### 2026-10-10 P9-11 corrected reachability-report boundary
+
+This is a report-format correction only. The retained finding remains a P1
+against product candidate `3cddf327fe4c9aa9310f578bc9a59f71bea0c67a`; no
+public workflow, build, test, Studio launch, or product/test edit occurred.
+The evidence descendant was clean before this bounded README append. The
+report's reachability proof is: required control `BlueprintBuildPanel`'s
+rendered `Build Preview` / `Build Package` destination controls; entry paths
+checked `Home Design: Create game → public Overview → Build/Export` and
+`Home retained-job recovery: design-build`; rendered evidence
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-94e3b3bca933a5b9/inspection-2026-10-10T13-18-00Z/occupied-destination.rendered.transcript.json`;
+and source paths
+`cli/studio-client/src/components/home/HomePage.tsx` and
+`cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.tsx`.
+The source boundary is that `HomePage` mounts the public editor with `guided`,
+while `BlueprintEditorPage` mounts `BlueprintBuildPanel` only when `!guided`;
+the only retained recovery branch for `design-build` requires an already
+existing design-build job. A fresh public `Create game` produces only
+`project-open-materialization`, so it cannot produce that prerequisite. This
+is source-backed reachability proof, not an invented action correlation or a
+driver timeout.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
