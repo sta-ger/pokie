@@ -16,6 +16,9 @@ const tooling = new Set([
     "docs/audit-corrections/README.md", "docs/audit-corrections/p9-11-closeout.md",
     "scripts/p9-11-candidate.mjs", "scripts/p9-11-corrective-closeout.mjs", "scripts/p9-11-corrective-scenarios.mjs",
     "scripts/p9-11-produce-candidate.mjs", "tests/scripts/p9-11-produce-candidate.test.mjs",
+    // Rendered collection tooling is separate from packed product bytes. The
+    // external controller driver must still authenticate against its own pin.
+    "scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs",
     "scripts/p8-05-candidate-package-verifier.mjs",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",

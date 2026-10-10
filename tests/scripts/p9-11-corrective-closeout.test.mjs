@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {execFileSync} from "node:child_process";
-import {mkdir, mkdtemp, readFile, rm, writeFile, access} from "node:fs/promises";
+import {mkdir, mkdtemp, readFile, rm, symlink, writeFile, access} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
@@ -8,13 +8,28 @@ import {test, jest} from "@jest/globals";
 import {P911_SCENARIOS, P911_PERSONAS, P911_RENDERED_COVERAGE, runP911Closeout, validateActionCoverage, settleP911Commands, stopP911Child, spawnP911Child, p911ChildrenDrained, retainP911PackagingReceipt, waitP911Child, runP911Process} from "../../scripts/p9-11-corrective-closeout.mjs";
 import {readPinnedJson, sha256, P911_CAMPAIGN} from "../../scripts/p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "../../scripts/p9-11-corrective-scenarios.mjs";
-import {candidateFixture} from "../testUtils/createP911CandidateFixture.mjs";
+import {candidateFixture, commitP911ToolingDescendant} from "../testUtils/createP911CandidateFixture.mjs";
 import {spawn} from "node:child_process";
 
 const digest = "a".repeat(64);
 const success = {exitCode:0, signal:null, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, stdioClosed:true, stdout:"", stderr:""};
 const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 const exists = async (file) => access(file).then(() => true, () => false);
+// All packaging and productionStudioCandidate callers use this selector. Keep
+// its installed resolution in native Node, outside Jest's source aliases.
+const selectRetained = async (fixture) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import {readP911CandidateFromEnvironment, sha256} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-candidate.mjs")).href)};
+    const {archive, ...candidate} = await readP911CandidateFromEnvironment(${JSON.stringify({
+        POKIE_P911_CANDIDATE_HANDOFF:fixture.reference.path,
+        POKIE_P911_CANDIDATE_HANDOFF_SHA256:fixture.reference.sha256,
+        POKIE_P805_RELEASE_HANDOFF:"",
+    })}, {repository:${JSON.stringify(fixture.repository)}});
+    process.stdout.write(JSON.stringify({...candidate, consumedArchiveSha256:sha256(archive)}));
+`], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
+const commitFixture = (repository) => {
+    execFileSync("git", ["add", "."], {cwd:repository});
+    execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture rejection boundary"], {cwd:repository});
+};
 
 function rendered(id) {
     return {
@@ -103,6 +118,72 @@ test("dependent handoff rejects direct publication, project switches, stale subm
     }
 });
 
+
+test("shared selector reuses the original authenticated archive/install after a committed driver repair", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-tooling-descendant-"));
+    try {
+        const fixture = await candidateFixture(directory), original = await selectRetained(fixture);
+        const retainedPaths = [fixture.reference.path, fixture.handoff.archivePath,
+            fixture.handoff.buildReceipt.path, fixture.handoff.installReceipt.path, fixture.handoff.browserDriver.path,
+            ...original.projection.entries.map(entry => path.join(original.packageRoot, entry.path))];
+        const retainedBytes = await Promise.all(retainedPaths.map(file => readFile(file)));
+        const reviewedId = await commitP911ToolingDescendant(fixture);
+        const selected = await selectRetained(fixture);
+        assert.notEqual(reviewedId, original.candidateId);
+        assert.deepEqual(selected.equivalence, {
+            candidateId:original.candidateId, candidateTreeId:original.candidateTreeId, reviewedId,
+            changedEvidenceAndTooling:["scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs"],
+        });
+        assert.deepEqual({...selected, equivalence:original.equivalence}, original);
+        assert.equal(selected.consumedArchiveSha256, fixture.handoff.archiveSha256);
+        assert.deepEqual(await Promise.all(retainedPaths.map(file => readFile(file))), retainedBytes);
+        assert.equal(await exists(path.join(fixture.repository, "dist")), false);
+        assert.equal(await exists(path.join(fixture.repository, "node_modules")), false);
+        // Permitting repository tooling never blesses changed external driver
+        // bytes or relabels observations with the reviewed descendant's SHA.
+        await writeFile(fixture.handoff.browserDriver.path, "// stale controller driver\n");
+        await assert.rejects(selectRetained(fixture), /authenticated controller browser driver required/);
+        await writeFile(fixture.handoff.browserDriver.path, retainedBytes[4]);
+        for (const file of ["scripts/p9-11-rendered-driver.mjs", "untracked.js"]) {
+            const target = path.join(fixture.repository, file), tracked = file.startsWith("scripts/");
+            const bytes = tracked ? await readFile(target) : undefined;
+            await writeFile(target, "// dirty checkout\n");
+            await assert.rejects(selectRetained(fixture), /candidate checkout is dirty/);
+            if (tracked) await writeFile(target, bytes); else await rm(target);
+        }
+        assert.deepEqual(await selectRetained(fixture), selected);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test.each([
+    "package.json", "package-lock.json", "generate-barrels.js", "tsconfig.prod.json", "src/index.ts", "cli/studio-client/src/global.css",
+    "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
+])("tooling descendant does not exempt product/build or unnamed input %s", async (file) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-protected-descendant-"));
+    try {
+        const fixture = await candidateFixture(directory);
+        await commitP911ToolingDescendant(fixture);
+        await selectRetained(fixture);
+        const target = path.join(fixture.repository, file);
+        await mkdir(path.dirname(target), {recursive:true});
+        await writeFile(target, file === "package.json" ? `${JSON.stringify({name:"changed-product"})}\n` : "changed protected input\n");
+        commitFixture(fixture.repository);
+        await assert.rejects(selectRetained(fixture), /product\/build inputs changed/);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
+
+test.each(["scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs"])("tooling descendant rejects nonregular entry %s", async (file) => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "p911-nonregular-descendant-"));
+    try {
+        const fixture = await candidateFixture(directory);
+        await commitP911ToolingDescendant(fixture);
+        await selectRetained(fixture);
+        const target = path.join(fixture.repository, file);
+        await rm(target); await symlink(fixture.handoff.browserDriver.path, target);
+        commitFixture(fixture.repository);
+        await assert.rejects(selectRetained(fixture), /nonregular tooling\/evidence entry/);
+    } finally { await rm(directory, {recursive:true, force:true}); }
+});
 
 test("pinned real file/archive reader rejects candidate, stale assets, extra assets and product descendants", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-candidate-contract-"));

@@ -7,7 +7,7 @@ import {pathToFileURL} from "node:url";
 import {test} from "@jest/globals";
 import {produceP911Candidate, runP911Producer} from "../../scripts/p9-11-produce-candidate.mjs";
 import {P911_CAMPAIGN, readPinnedJson, readP911CandidateFromEnvironment} from "../../scripts/p9-11-candidate.mjs";
-import {candidateFixture} from "../testUtils/createP911CandidateFixture.mjs";
+import {candidateFixture, commitP911ToolingDescendant} from "../testUtils/createP911CandidateFixture.mjs";
 
 // These fake npm outcomes test the real producer/reader boundary without
 // running controller-owned build/pack/install or claiming browser evidence.
@@ -142,8 +142,18 @@ test("producer requires exact clean HEAD and external fresh output", async () =>
         await writeFile(path.join(f.candidate.repository, "dirty.js"), "dirty");
         await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /dirty/);
         await rm(path.join(f.candidate.repository, "dirty.js"));
-        // Even an allowed evidence-only descendant is not the exact source
-        // this producer was authorized to build.
+        // The consumer can reuse the original delivery after a driver repair,
+        // but the producer may never rebuild that source from a descendant.
+        const reviewedId = await commitP911ToolingDescendant(f.candidate);
+        const retained = nativeRead(f.candidate.reference, {repository:f.candidate.repository});
+        assert.equal(retained.equivalence.reviewedId, reviewedId);
+        assert.equal(retained.candidateId, f.config.candidateId);
+        assert.deepEqual(retained.browserDriver, f.config.browserDriver);
+        await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /exact committed candidate HEAD/);
+        assert.equal(f.calls.length, 0);
+        assert.equal(await exists(f.config.outputDirectory), false);
+        // Even a further allowed evidence-only descendant is not the exact
+        // source this producer was authorized to build.
         await mkdir(path.join(f.candidate.repository, "docs/audit-corrections"), {recursive:true});
         await writeFile(path.join(f.candidate.repository, "docs/audit-corrections/README.md"), "fixture evidence");
         execFileSync("git", ["add", "."], {cwd:f.candidate.repository});

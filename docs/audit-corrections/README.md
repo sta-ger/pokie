@@ -41,6 +41,16 @@ distinguishes the retained passing collection from the corrected source and its
 future controller pin. Focused fixture results prove implementation contracts;
 they do not relabel the retained external collection as a run of these new bytes.
 
+The subsequent `P9-11-TOOLING-HANDOFF` repair explicitly permits only the named
+rendered driver and its regression alongside the existing tooling allowlist.
+The shared reader can retain the original archive/install after those committed
+changes while preserving the externally pinned collection driver and product
+identity. [Candidate reuse closure](p9-11-closeout.md#authenticated-tooling-descendant-reuse)
+records the committed-descendant regression and rejection boundaries. Existing
+product/browser/visual receipts stay attributed to their actual candidate and
+driver; release, integration, publication and Drive execution remain pending
+controller work.
+
 I independently inspected the final rendered Graphic Designer contact sheets,
 not merely the driver metadata: Home Design, project Overview/Build-Export,
 and settled common-card sheets respectively have SHA-256

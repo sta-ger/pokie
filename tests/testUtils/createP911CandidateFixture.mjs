@@ -5,16 +5,31 @@ import path from "node:path";
 import {P911_CAMPAIGN, sha256} from "../../scripts/p9-11-candidate.mjs";
 import {archiveExecutableManifest} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
+const driverTooling = ["scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs"];
+const commit = (repository, message) => {
+    execFileSync("git", ["add", "."], {cwd:repository});
+    execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", message], {cwd:repository});
+    return execFileSync("git", ["rev-parse", "HEAD"], {cwd:repository, encoding:"utf8"}).trim();
+};
+
+/** Change only the two repaired driver paths, leaving the retained delivery and
+ * external controller driver untouched. These comments are not executable proof. */
+export async function commitP911ToolingDescendant(fixture) {
+    for (const file of driverTooling) await writeFile(path.join(fixture.repository, file), "// Repaired tooling fixture; never executed.\n");
+    return commit(fixture.repository, "fixture driver repair descendant");
+}
 
 export async function candidateFixture(directory) {
     const repository = path.join(directory, "repository"), pack = path.join(directory, "pack"), installationRoot = path.join(directory, "installation");
     await mkdir(repository); await mkdir(path.join(pack, "package"), {recursive:true});
     const declaration = {name:"pokie", version:"1.3.0", type:"module", exports:{".":{import:"./dist/esm/index.js", require:"./dist/cjs/index.cjs"}, "./browser":"./dist/esm/browser.js", "./wasm":"./dist/esm/wasm.js", "./client/player":"./dist/cli/player.js"}, bin:{pokie:"./dist/cli/pokie.js"}};
     await json(path.join(repository, "package.json"), declaration);
+    for (const file of driverTooling) {
+        await mkdir(path.dirname(path.join(repository, file)), {recursive:true});
+        await writeFile(path.join(repository, file), "// Original tooling fixture; never executed.\n");
+    }
     execFileSync("git", ["init", "--quiet"], {cwd:repository});
-    execFileSync("git", ["add", "package.json"], {cwd:repository});
-    execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "test fixture"], {cwd:repository});
-    const candidateId = execFileSync("git", ["rev-parse", "HEAD"], {cwd:repository, encoding:"utf8"}).trim();
+    const candidateId = commit(repository, "test fixture");
     const candidateTreeId = execFileSync("git", ["rev-parse", "HEAD^{tree}"], {cwd:repository, encoding:"utf8"}).trim();
     await json(path.join(pack, "package/package.json"), declaration);
     for (const file of ["dist/cjs/index.cjs", "dist/esm/index.js", "dist/esm/browser.js", "dist/esm/wasm.js", "dist/cli/player.js", "dist/cli/pokie.js", "dist/cli/studio-client/index.html"]) {

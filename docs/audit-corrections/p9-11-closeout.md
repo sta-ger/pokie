@@ -504,3 +504,30 @@ controller-owned and pending. The controller retains its independent three-file
 driver/closeout/producer matrix. This implementation commit closes the assigned
 source-parity repair, not the campaign state machine; all external and completed
 prerequisite evidence remains unchanged.
+
+## Authenticated tooling descendant reuse
+
+Reviewer finding `39842817bc1bccc3` identified two protected-tree mismatches after
+the verified driver repair: `scripts/p9-11-rendered-driver.mjs` and
+`tests/scripts/p9-11-rendered-driver.test.mjs`. The candidate reader now lists
+those exact paths as non-product tooling; no directory or pattern exemption is
+added. Packaging's two consumers and `productionStudioCandidate` continue to
+use the same `readP911CandidateFromEnvironment` selector.
+
+| Repair requirement | Focused regression and retained boundary |
+| --- | --- |
+| Clean committed driver descendant consumes the same delivery | `createP911CandidateFixture.mjs` commits both modified tooling paths. The closeout contract reads before/after through the native selector, compares all returned identities except reviewed-tree equivalence, and verifies unchanged handoff, archive, receipts, external driver and installed asset bytes. Reading creates no checkout dist or installation. |
+| Product/build inputs and unnamed paths remain protected | Committed source, client, declaration, lockfile, compiler/barrel inputs, sibling tooling paths and a completed-persona document are rejected; both newly permitted paths still reject symlink entries, and tracked/untracked dirty trees fail. Existing archive, receipt and installed-asset rejection tests remain intact. |
+| External driver pin and producer source remain exact | Changing the pinned external driver's bytes fails even after the allowed descendant. The producer regression reads the retained delivery successfully, then rejects that descendant before any npm command or output; the producer still requires its exact authorized HEAD. |
+| Preserve immutable proof attribution | Accepted archive/product `b932e86c0113d0219a82362b392d6123ca0780f6`, aggregate `3be5fee19f4b345a04c5b05e44052c5d2f9008099ba6aec92092dd864cd72d0e` and external driver `e59b0016e731e759bd9068f130cd02cfef44aa74b689194f240297f803686338` remain their original observations. No collection or lifecycle receipt is rewritten or relabelled. |
+
+The directly affected whole-file command is
+`npm run test:targeted -- tests/scripts/p9-11-corrective-closeout.test.mjs tests/scripts/p9-11-produce-candidate.test.mjs`
+(2 suites, 58 tests passed). These contracts use synthetic delivery bytes, not
+new acceptance evidence. The controller retains its independent matrix,
+including `productionStudioCandidate.test.tsx`; this repair does not claim that
+matrix ran here. Immutable criteria 1 and 2 reuse their accepted product/browser/
+visual proofs and accumulated-finding dispositions above. Criterion 3 remains
+pending the controller-owned release, exact integration/push/publication, Drive
+round-trip and campaign state machine. No repackaging, cold exploration or
+official gate is requested by this correction.
