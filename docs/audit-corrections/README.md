@@ -553,3 +553,61 @@ driver, pin that repaired driver with a controller-produced exact-candidate
 handoff, then continue from the first missing row.  All acceptance work remains
 not reached; this preflight neither repeats nor changes any historical product
 finding or final-smoke disposition.
+
+### 2026-10-10 P9-11 controller-handoff recovery preflight
+
+This supersedes only the old statement that no controller adapter was supplied;
+it preserves the earlier preflight and does not convert it into candidate
+acceptance.  The controller supplied the bounded
+`controller-candidate-handoff` adapter and the verifier used its prescribed
+non-collection calls against the same persistent driver.  The worktree was
+clean at evidence descendant `cec20a0497b092bb613752af3a1a8396363f642d`, and
+`af890c80dde5ab1cf0c85db41fb78cdc7508c3a3` is its Git ancestor.  Product
+identity remains the latter candidate SHA.
+
+The exact retained commands and terminal diagnostics are:
+
+```text
+sha256sum <harness>/current.mjs
+53f6aa21ca57e8c28f3bbfc695d01d92b08f42690fa366c4ddb2f9b785b33ef4
+
+controller-candidate-handoff --inspect-existing <harness>/current.mjs 53f6…ef4
+exit 1: driver inspection requires an intact retained candidate delivery; no producer launched
+
+controller-candidate-handoff <harness>/current.mjs 53f6…ef4
+exit 1: driver preflight incomplete; inspect <harness>/driver-preflights/
+53f6aa21ca57e8c28f3bbfc695d01d92b08f42690fa366c4ddb2f9b785b33ef4-
+14d84e3424854c318a87a9f26395eabb.json; repair the same current.mjs
+itineraries before consolidated closeout: occupied-destination, programmer,
+mathematician, producer, ui-ux, graphic-designer.
+```
+
+That authenticated preflight record retains the complete required and declared
+coverage maps, the `--describe` exit result, and `product_acceptance:
+not-observed`.  Its declared map contains only
+`stake-uint64-total/stake.recognized-studio`; it has no claim for the six named
+missing rows.  No delivery directory, archive, installation, build receipt,
+install receipt, or installed public binary exists beneath the controller's
+candidate root for this pin.
+
+The actual producer/consumer boundary was traced without scanning runtime
+history: `candidate_handoff.py:_driver_preflight` reads
+`P911_RENDERED_COVERAGE` from
+[`scripts/p9-11-corrective-closeout.mjs`](../../scripts/p9-11-corrective-closeout.mjs),
+then runs `current.mjs --describe` before it can create its exact-candidate
+source worktree or invoke
+[`scripts/p9-11-produce-candidate.mjs`](../../scripts/p9-11-produce-candidate.mjs).
+The producer has not failed and no receipt is missing through a product defect:
+it has deliberately not run because the candidate-consuming renderer lacks the
+required itinerary implementations.  `--inspect-existing` can only expose an
+already delivered archive and correctly refuses when that producer output is
+absent.  The closeout's consumer validation rejects partial coverage and cannot
+accept a synthetic action receipt.
+
+Accordingly, no public workflow launch, Studio launch, build, pack, install,
+official gate, publication, browser artifact, or rendered action was performed
+in this recovery preflight.  The next verifier-owned action is to repair the
+same persistent driver's six visible itineraries, truthfully declare precisely
+that implemented coverage, obtain a new controller pin/delivery, and then
+collect the one sequential closeout.  Until that happens, the full
+exact-candidate closeout criterion remains not reached.
