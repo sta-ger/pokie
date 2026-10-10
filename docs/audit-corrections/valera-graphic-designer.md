@@ -1337,3 +1337,41 @@ or replacement evidence ran here. This committed implementation handoff does
 not complete P9-10; current-asset rendered execution, readable affected images,
 terminal focus observation and independent material-finding disposition remain
 explicitly pending with the controller.
+
+## 2026-10-10 affected clean-state retest — incomplete terminal-focus proof
+
+Candidate product identity: `832793cb47167a7d4367176021f1f82a92b55f1b`.
+The original independent freeze and its chronological transcript remain
+unchanged at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json`
+(`8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e`)
+and sibling `transcript.json`
+(`6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0`).
+
+A fresh isolated application and browser profile created a starter project via
+Home, rendered Overview and configured Build/Export at 1439x956, then exercised
+Simulation. Entering `5000000` left that exact value visible with “Rounds must
+be a positive integer between 1 and 2,000,000.” and disabled `Run Simulation`;
+there was no optimistic simulation card or queued job. Replacing it with
+`500000` re-enabled the control. Its one public submission rendered
+“Simulation queued — 0/500000”, then a running common job card, and completed
+with the retained report and 500000/500000 result.
+
+One current-candidate 900x700 image was retained at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-65bc11c01a25efb9/run-2026-10-10T08-03-47-062Z/1-observation.png`
+(`d795b35fff83a149778e3aa5041c1bf296367643d23fb70d915b2b81336e4acc`).
+It was independently opened and inspected: the completed simulation summary,
+stepper, warning and actions are readable and the stepper wraps without visual
+clipping. This is the sole new image, retaining the four-image budget.
+
+The common JobCard `Cancel` appeared while the job was running. The native Tab
+transition reached the simulation Configure control, but the job completed
+before the common JobCard Cancel received focus. Consequently no observation
+shows its terminal region retaining focus and painting its outline before
+navigation. The successful job is not evidence of that separate requirement,
+and it was not resubmitted merely to manufacture it. This is a driver/coverage
+gap, not a product defect or visual closure.
+
+The current retest transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-65bc11c01a25efb9/run-2026-10-10T08-03-47-062Z/transcript.json`
+(`3c5ad71628d28166f1e35967aee925fc1957ad2d6c7b1d5f3e416fac2c688753`).
