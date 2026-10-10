@@ -1,5 +1,45 @@
 # P9 correction and reviewed product status register
 
+### 2026-10-10 authenticated P9-11 corrective closeout
+
+The independent verifier authenticated clean candidate
+`b932e86c0113d0219a82362b392d6123ca0780f6` and its controller-pinned
+normal delivery: archive SHA-256
+`73901e9d8b33ec98d93d8dce02af97bf018fa6862f6b946fb978fa41c1b06548`,
+executable projection SHA-256
+`fc87c3e9e0fdb6714a2d0a397f12d5de8641f4e62b52195a93cb01dd021be372`,
+and the installed package resolutions recorded in the final aggregate. The
+machine-owned P909/P910 whole-file receipt
+`/home/stager/Work/sta-ger/agents/runtime/verifier-targeted-results/227aae219f12178099ab504a/result.json`
+records a clean before/after candidate and the terminal Jest result: 2 suites,
+11 tests passed; its bounded stdout/stderr siblings remain runtime evidence.
+
+The authenticated normal closeout aggregate is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-e55cfffeb5c8ef54/closeout-2026-10-10T22-58-30Z/checks.json`
+(`sha256:3be5fee19f4b345a04c5b05e44052c5d2f9008099ba6aec92092dd864cd72d0e`).
+It passed all six corrective paths and the five isolated final personas with
+new per-row profiles: Programmer, Mathematician, Producer, UI/UX, and Graphic
+Designer. Every recorded public/rendered child exited 0 with process-group,
+tree, resource, and stdio drainage; the aggregate records `profilesRemoved`.
+The six corrective paths include the Node/WASM sequence and replay/state
+checks, UInt64 Stake analytics, canonical CLI, and occupied-destination
+recovery; the rendered rows contain their action-local receipts and no
+findings.
+
+I independently inspected the final rendered Graphic Designer contact sheets,
+not merely the driver metadata: Home Design, project Overview/Build-Export,
+and settled common-card sheets respectively have SHA-256
+`af200e6903fd021f98008a66e9389981e4f5409baf3218f82e848ddaf2d687ae`,
+`93aa19a755c5c376cfc67e2fc810f933ea7a3fa40ff3c99061cf0b629ec4bdaf`, and
+`af207082b1bd4924c315560394b234c828b5f792f09af4fb747b3ee4bdc9f909`.
+The rendered Home and Build/Export controls remain contained at 1100×800,
+900×700, and 390×844. After Review, report, and Recent runs settled, the same
+common card retained a visibly painted blue focus outline within both 1100×800
+and 390×844 viewports; no focus theft or material visual defect was observed.
+Runtime profiles, images, transcripts, and receipts remain uncommitted under
+the assigned harness. Controller release/publication/Drive lifecycle remains
+explicitly pending and is not claimed by this closeout.
+
 P9-11 implementation baseline: `bd86dced40a10f6212518b14db951d03c7fb744f`.
 Immutable campaign brief: `27dfbbbd2ef5279d13929ad878c30b00d0ec40e9c4d40553a19284b8416c6a5c`.
 The [bounded closeout handoff](p9-11-closeout.md) describes the single normal
