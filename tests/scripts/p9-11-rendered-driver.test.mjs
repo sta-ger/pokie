@@ -8,9 +8,10 @@ import path from "node:path";
 import {createRequire} from "node:module";
 import {deflateSync} from "node:zlib";
 import {afterEach, test} from "@jest/globals";
-import {COVERAGE, runItinerary, button, input, paintedOutline, drainDriverChild, reloadPage, main, renderedStakeExpression, assertRenderedStake, contactSheet, decodePng, navigateSurface} from "../../scripts/p9-11-rendered-driver.mjs";
+import {COVERAGE, runItinerary, button, input, paintedOutline, drainDriverChild, reloadPage, main, renderedStakeExpression, assertRenderedStake, contactSheet, decodePng, navigateSurface, focusNativeTarget} from "../../scripts/p9-11-rendered-driver.mjs";
 import {P911_RENDERED_COVERAGE, validateActionCoverage} from "../../scripts/p9-11-corrective-closeout.mjs";
 const {JSDOM} = createRequire(import.meta.url)("jsdom");
+
 const windows = [];
 afterEach(() => {for (const window of windows.splice(0)) window.close();});
 const digest = "a".repeat(64);
@@ -27,16 +28,28 @@ function surface(id, fault) {
     windows.push(dom.window);
     Object.defineProperty(dom.window.HTMLElement.prototype,'getClientRects',{value:function(){return this.closest('[hidden]') ? [] : [{}];}});
     Object.defineProperty(dom.window.HTMLElement.prototype,'innerText',{get(){return this.textContent;}});
+    let prerequisiteDone=false;
     let savedCount=0, currentProject='/fixture/design.json', destination, target, buildCount=0, previews=0, afterReload=false, progressRead=false;
     let route='home/design', section='Game basics', advanced=false, generatorOpen=false, generationAdvanced=false, generatorDone=false, drawn=false, compared=false, started=false, spun=false, simulation=false, terminal=false, occupiedError=false;
     const opened = new Set(), completed = new Set(), values = new Map(), submissions = [];
     const output = target => `/fixture/${target}`;
+    const prerequisiteRoot = '/fixture/profile/workspace/compatible-outcome-library';
+    const sections = ['Game basics','Layout','Symbols','Reels','Paytable','Bets'];
+    dom.window.document.body.addEventListener('keydown', event => {
+        if (!['ArrowRight','ArrowLeft'].includes(event.key) || event.target.getAttribute('role') !== 'tab' || fault==='tab-only') return;
+        const tabs = [...dom.window.document.querySelectorAll('[role=tab]')];
+        const next = tabs[(tabs.indexOf(event.target) + (event.key==='ArrowRight'?1:tabs.length-1)) % tabs.length];
+        section=next.textContent;
+        for (const tab of tabs) tab.setAttribute('aria-selected',String(tab===next));
+        for (const panel of dom.window.document.querySelectorAll('[role=tabpanel]')) panel.hidden=panel.id!==next.getAttribute('aria-controls') || fault==='wrong-panel';
+        next.focus(); // Native roving-tab key handler, never a target-focus shortcut.
+    });
     const field = (label,value='') => `<label>${label}<input aria-label="${label}" value="${values.get(label) ?? value}"></label>`;
     const result = (id,output='') => `<div data-pokie-lifecycle-result-job="${id}" data-pokie-lifecycle-terminal="completed" data-pokie-lifecycle-result-output="${output}">Build completed ${target} Stake prerequisite: reuse (borrowed)</div>`;
     const render = () => {
         dom.window.location.hash=route.startsWith('home/') ? '/'+route : `/project/${encodeURIComponent(currentProject)}/${route}`;
         let html='Local artifacts do not deploy a game or certify it for real-money use.';
-        if(route==='home/design') html+=`<button role="tab" aria-selected="${section==='Game basics'}">Game basics</button><button role="tab" aria-selected="${section==='Paytable'}">Paytable</button>${field('A x2 payout')}<button>Create game</button><button>Show advanced options (file and JSON tools)</button><fieldset ${advanced?'':'hidden'}><legend>Build</legend>${destination??''}${field('Output directory')}<button>Build Preview</button><button>Build Package</button>${occupiedError?'Choose a new destination; contains existing files.':''}${completed.has('design')?'Last built':''}</fieldset>`;
+        if(route==='home/design') html+=`<div role="tablist" aria-label="Game design sections">${sections.map((label,index)=>`<button role="tab" tabindex="${index===0?0:-1}" aria-selected="${section===label}" aria-controls="section-${index}">${label}</button>`).join('')}</div>${sections.map((label,index)=>`<div role="tabpanel" id="section-${index}" ${section===label?'':'hidden'}>${label==='Paytable'?field('A x2 payout'):''}</div>`).join('')}<button>Create game</button><button>Show advanced options (file and JSON tools)</button><fieldset ${advanced?'':'hidden'}><legend>Build</legend>${destination??''}${field('Output directory')}<button>Build Preview</button><button>Build Package</button>${occupiedError?'Choose a new destination; contains existing files.':''}${completed.has('design')?'Last built':''}</fieldset>`;
         if(route==='home/projects') html+=`${field('Game location')}<button>Check game</button><div>Found a Game export</div><button>Add to projects</button><div class="project-registry-entry">rare-stake ${currentProject} /fixture/design.json /fixture/outcomeLibrary<button>Open</button></div>`;
         if(!route.startsWith('home/')) html+='<button>Close project</button>';
         if(route==='overview') {
@@ -63,7 +76,7 @@ function surface(id, fault) {
             if(file.endsWith('stake-uint64-total.public.json')) return JSON.stringify({...request,observations:[{analysis}]});
             if(file.endsWith('design.json')) return JSON.stringify({manifest:{id:'tiny'},reels:2,paytable:{A:{2:7}}});
             if(file.endsWith('package.json')) return JSON.stringify({name:'tiny'});
-            if(file.endsWith('manifest.json')) return Buffer.from(fault==='manifest' && buildCount>1 ? 'changed manifest' : JSON.stringify({modes:[{modeName:'base',generator:{strategy:'bounded-coverage',sampledRawCount:5000,seed:fault==='generator-persisted-seed'?'wrong':`p911-${id}-library`}}]}));
+            if(file.endsWith('manifest.json')) return Buffer.from(fault==='manifest' && completed.has('stakeAdapter') ? 'changed manifest' : JSON.stringify({modes:[{modeName:'base',generator:{strategy:'bounded-coverage',sampledRawCount:5000,seed:fault==='generator-persisted-seed'?'wrong':`p911-${id}-library`}}]}));
             return Buffer.from('published artifact');
         },
         write:async (file,bytes) => memory.set(file,bytes), mkdir:async()=>{},
@@ -75,6 +88,7 @@ function surface(id, fault) {
         activate:async expression => {
             const element=dom.window.eval(expression);
             assert.ok(element && element.getClientRects().length && !element.disabled,`missing/disabled native control: ${expression}`);
+            await s.focus(expression);
             activations.push(expression);
             const label=element.textContent.trim();
             if(label==='Create game') {savedCount++;currentProject=savedCount===1?'/fixture/design.json':'/fixture/second-design.json';route='overview';}
@@ -98,6 +112,7 @@ function surface(id, fault) {
         },
         fill:async (expression,value) => {
             const element=dom.window.eval(expression);assert.ok(element && element.getClientRects().length,`missing input: ${expression}`);
+            await s.focus(expression);
             values.set(element.getAttribute('aria-label'),value);element.value=value;
             if(expression.includes('Output directory')) destination=value;
         },
@@ -120,7 +135,7 @@ function surface(id, fault) {
             if(route==='/api/project/play/session')return {request,body:{session:{sessionId:'session-own',credits:1000,bet:1}}};
             return {request,body:{status:'ok',session:{studioRound:1,studioSeed:'p911-producer-play',credits:fault==='accounting'?1000:1001,bet:1,win:2,debug:{artifact:{screen:[['A']]}}}}};
         },
-        post:async route => route.endsWith('build-preview')?{status:200,body:{status:'ok',destinationHasContent:false}}:{status:200,body:{status:fault==='race'?'ok':'error'}},
+        post:async (route,body) => {if(route==='/api/project/artifacts/build'){assert.deepEqual(body,{target:'outcomeLibrary',outDir:prerequisiteRoot});prerequisiteDone=true;return {status:202,body:{job:{id:'prerequisite-own'}}};}return route.endsWith('build-preview')?{status:200,body:{status:'ok',destinationHasContent:false}}:{status:200,body:{status:fault==='race'?'ok':'error'}};},
         get:async route => {
             if(route==='/api/project/context')return {report:{modes:[{modeName:'base',analysis:fault==='rare-moment'?{...analysis,variance:0}:analysis}]}};
             if(route==='/api/project/rounds')return [{sessionId:'session-own',studioRound:1,studioSeed:fault==='recorded-seed'?'wrong':'p911-producer-play',bet:1,win:2,credits:1001}];
@@ -129,7 +144,8 @@ function surface(id, fault) {
             if(route==='/api/project/jobs')return {jobs:currentProject.includes('second')?(fault==='isolation'?[{id:'simulation-own'}]:[]):[{id:'simulation-own',operation:'simulation'}]};
             if(route==='/api/project/replays')return fault==='replay-provenance'?[{...row,startedAt:undefined}]:[{...row}];
             if(route.startsWith('/api/project/outcome-libraries/generate/jobs/'))return {id:'generator-own',status:fault==='generator-terminal'?'failed':'completed',result:{status:'ok',resolvedBundleDir:fault==='generator-output'?'/wrong':output('outcomeLibrary')}};
-            if(route.startsWith('/api/project/artifacts/build/'))return {result:{status:'ok',outputPath:output('stakeAdapter'),stakePrerequisiteProvenance:{route:'publish',disposition:'none'},plan:{source:{kind:'outcomeLibrary',canonicalLocation:fault==='borrowed'?'/wrong':output('outcomeLibrary')}}}};
+            if(route.endsWith('/prerequisite-own'))return {id:'prerequisite-own',status:fault==='prerequisite-terminal'?'failed':'completed',result:{status:'ok',outputPath:fault==='prerequisite-output'?'/wrong':prerequisiteRoot}};
+            if(route.startsWith('/api/project/artifacts/build/'))return {id:fault==='sibling-terminal'?'prerequisite-own':'job-stakeAdapter',status:'completed',result:{status:'ok',outputPath:output('stakeAdapter'),stakePrerequisiteProvenance:{route:fault==='direct-publish'?'publish':'reuse',disposition:fault==='direct-publish'?'none':'borrowed',selectedPrerequisiteLocation:fault==='borrowed'?'/wrong':prerequisiteRoot},plan:{source:{kind:fault==='project-switch'?'outcomeLibrary':'blueprint',canonicalLocation:fault==='project-switch'?output('outcomeLibrary'):currentProject}}}};
             if(route.startsWith('/api/project/jobs/simulation-own')) {
                 if(!progressRead && id==='ui-ux'){progressRead=true;return {id:'simulation-own',status:'running',progress:{current:1}};}
                 terminal=true;render();return {id:'simulation-own',status:'completed',request:fault==='persisted-seed'?{...simInputs(),seed:'wrong'}:simInputs()};
@@ -138,11 +154,23 @@ function surface(id, fault) {
             if(route.startsWith('/api/project/reports/'))return {report:fault==='report-seed'?{...simInputs(),seed:'wrong'}:simInputs()};
             throw new Error(`unexpected public read: ${route}`);
         },
-        latestPreview:async () => ++previews===1?{preparedOperationId:'initial',stakePreflight:{route:'generate'}}:currentProject===output('outcomeLibrary')?{preparedOperationId:'refreshed',stakePreflight:{route:'publish'},plan:{source:{kind:'outcomeLibrary',canonicalLocation:output('outcomeLibrary')}}}:{preparedOperationId:'generated',stakePreflight:{route:'generate'}},
+        latestPreview:async () => ++previews===1?{preparedOperationId:'initial',stakePreflight:{route:'generate'}}:prerequisiteDone?{preparedOperationId:'refreshed',stakePreflight:{route:'reuse',selectedPrerequisiteLocation:prerequisiteRoot},plan:{source:{kind:fault==='project-switch'?'outcomeLibrary':'blueprint',canonicalLocation:currentProject}}}:{preparedOperationId:'generated',stakePreflight:{route:'generate'}},
         reload:async () => {afterReload=true;},offline:async offline => {assert.ok(afterReload);dom.window.document.body.append(offline?'reconnecting automatically':'');if(!offline)render();},
         viewport:async (w,h) => viewports.push([w,h]),
-        focus:async expression => {const element=dom.window.eval(expression);assert.ok(element && element.getClientRects().length && !element.disabled,`unreachable focus: ${expression}`);element.setAttribute('tabindex','0');element.focus();},
-        key:async key => {section=key==='ArrowLeft'?'Game basics':'Paytable';render();const element=dom.window.document.querySelector('[role=tab][aria-selected=true]');element.setAttribute('tabindex','0');element.focus();},
+        focus:expression => focusNativeTarget(expression, s),
+        key:async key => {
+            const document=dom.window.document;
+            const event=new dom.window.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true});
+            document.activeElement.dispatchEvent(event);
+            // JSDOM has no browser default Tab action. Model only sequential
+            // native tab stops; never focus the helper's requested target.
+            if(key==='Tab' && !event.defaultPrevented) {
+                const stops=[...document.querySelectorAll('button,input,textarea,a[href],[tabindex]')].filter(e=>e.tabIndex>=0 && !e.disabled && e.getClientRects().length);
+                const next=stops[(stops.indexOf(document.activeElement)+1)%stops.length];
+                next?.focus();
+            }
+            document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keyup',{key,bubbles:true}));
+        },
         focusGeometry:async () => ({focused:fault!=='focus-theft',insideViewport:fault!=='clipped'}),
         keepObject:async () => 'remote-common-card',sameObject:async () => fault!=='replaced-card',
         settle:async()=>{},painted:async()=>fault!=='unpainted',
@@ -166,7 +194,12 @@ for (const id of Object.keys(P911_RENDERED_COVERAGE)) {
         assert.ok(result.actions.every(a=>a.classification==='action'&&a.outcome==='passed'));
         assert.deepEqual(result.findings,[]);
         assert.equal(f.receipts.length,P911_RENDERED_COVERAGE[id].length);
-        if (id==='programmer') assert.equal(f.activations.filter(e=>e.includes('artifact-build-stakeAdapter')&&e.includes('=== "Build"')).length,1);
+        if (id==='programmer') {
+            assert.equal(f.activations.filter(e=>e.includes('artifact-build-stakeAdapter')&&e.includes('=== "Build"')).length,1);
+            assert.ok(!f.activations.some(e=>e.includes('Inspect library')));
+            assert.equal(result.handoff.sourcePath,'/fixture/design.json');
+            assert.equal(result.handoff.route,'reuse');
+        }
         if (id==='occupied-destination') assert.equal(f.activations.filter(e=>e.includes('=== "Build Package"')).length,2);
         if (id==='graphic-designer') {
             assert.deepEqual(f.images.map(image=>image.name),['graphic-home-design','graphic-project-build','graphic-running-job','graphic-settled-common-card']);
@@ -180,9 +213,9 @@ for (const id of Object.keys(P911_RENDERED_COVERAGE)) {
 for (const [id, faults] of Object.entries({
     'stake-uint64-total':['rare-moment','rendered-zero','rendered-missing'],
     'occupied-destination':['occupied-submit','publication','race'],
-    programmer:['terminal','stale-plan','borrowed','manifest','absent-generator','disabled-generator','generator-terminal','generator-output','generator-persisted-seed','generator-submitted-seed'],
+    programmer:['direct-publish','project-switch','sibling-terminal','prerequisite-terminal','prerequisite-output','terminal','stale-plan','borrowed','manifest','absent-generator','disabled-generator','generator-terminal','generator-output','generator-persisted-seed','generator-submitted-seed'],
     mathematician:['replay-provenance','absent-generator','generator-output'],
-    producer:['accounting','invalid-design','submitted-seed','submitted-bet','recorded-seed'],
+    producer:['tab-only','wrong-panel','accounting','invalid-design','submitted-seed','submitted-bet','recorded-seed'],
     'ui-ux':['duplicate','isolation','clipped','submitted-seed','submitted-workers','submitted-rounds','persisted-seed','report-seed'],
     'graphic-designer':['duplicate','replaced-card','focus-theft','unpainted','clipped','submitted-seed','submitted-workers','persisted-seed','report-seed'],
 })) for (const fault of faults) {
@@ -192,6 +225,21 @@ for (const [id, faults] of Object.entries({
         assert.ok(f.receipts.length<COVERAGE[id].length);
     });
 }
+
+test('actual native focus helper cannot Tab to inactive Paytable, then arrows reach its editable panel', async () => {
+    const f=surface('producer');
+    const paytable="document.querySelector('[aria-controls=section-4]')";
+    await assert.rejects(f.s.focus(paytable), /native Tab target unreachable/);
+    assert.equal(f.dom.window.eval(paytable).getAttribute('tabindex'),'-1');
+    await f.s.focus("document.querySelector('[role=tab][aria-selected=true]')");
+    for(let index=0;index<4;index++) await f.s.key('ArrowRight');
+    assert.equal(f.dom.window.document.activeElement,f.dom.window.eval(paytable));
+    assert.equal(f.dom.window.eval(paytable).getAttribute('aria-selected'),'true');
+    assert.equal(f.dom.window.document.getElementById('section-4').hidden,false);
+    await f.s.focus(input('A x2 payout'));
+    assert.equal(f.dom.window.document.activeElement.getAttribute('aria-label'),'A x2 payout');
+    assert.equal(f.dom.window.eval(paytable).getAttribute('tabindex'),'-1');
+});
 
 test('occupied and race sentinels are read again, never accepted from a saved hash', async () => {
     for (const race of [false,true]) {

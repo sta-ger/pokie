@@ -29,6 +29,15 @@ const card = target => `document.getElementById(${q(`artifact-build-${target}`)}
 export const generatorScope = "document.querySelector('[data-pokie-lifecycle-form=outcome-library]')";
 const ownResult = (scope = "document") => `(${scope})?.querySelector('[data-pokie-lifecycle-result-job][data-pokie-lifecycle-terminal=completed]')`;
 
+export async function focusNativeTarget(expression, {until, evaluate, key}) {
+    await until(() => evaluate(`Boolean((${expression}) && !(${expression}).disabled && (${expression}).getClientRects().length)`), `enabled native target ${expression}`, 12000);
+    for (let index = 0; index < 240; index++) {
+        if (await evaluate(`document.activeElement === (${expression})`)) return;
+        await key("Tab", "Tab", 9);
+    }
+    fail(`native Tab target unreachable: ${expression}`);
+}
+
 export const renderedStakeExpression = `(() => {const table=document.querySelector('[data-testid=outcome-source-mode-table]');return table ? {headers:Array.from(table.querySelectorAll('thead th')).map(e=>e.textContent.trim()), rows:Array.from(table.querySelectorAll('tbody tr')).map(row=>Array.from(row.querySelectorAll('td')).map(e=>e.textContent.trim()))} : null;})()`;
 export function assertRenderedStake(rendered, analysis, modeName) {
     const row = rendered?.rows?.find(row => row[0] === modeName);
@@ -223,18 +232,27 @@ export async function runItinerary(request, s) {
             const initial = await s.latestPreview("stakeAdapter");
             requireObserved(initial.preparedOperationId && initial.stakePreflight?.route === "generate", "fresh Stake plan should generate prerequisite");
             const outcome = await generateLibrary();
-            const manifest = path.join(outcome.output, "manifest.json"), manifestBefore = hash(await s.read(manifest));
             await see(`Boolean(${button("Build", stakeScope)}) && !(${button("Build", stakeScope)}).disabled`, "dependent Stake replacement plan ready");
-            const generatedPlan = await s.until(async () => {const value=await s.latestPreview("stakeAdapter");return value.preparedOperationId !== initial.preparedOperationId ? value : false;}, "Blueprint Stake plan refreshed after generator completion");
-            // Configurable generation has its own provenance/policy. Open the
-            // actual library rather than pretending it is the Blueprint's
-            // automatic managed prerequisite.
-            await s.activate(button("Inspect library", generatorScope));
-            await see(`location.hash.endsWith('/overview') && decodeURIComponent(location.hash.split('/')[2]) === ${q(outcome.output)} && document.body.innerText.includes('Draw an outcome')`, "programmer generated library opened");
+            const generatedPlan = await s.until(async () => {const value=await s.latestPreview("stakeAdapter");return value.preparedOperationId && value.preparedOperationId !== initial.preparedOperationId ? value : false;}, "Blueprint Stake plan refreshed after generator completion");
+            // The configurable sample has a different compatibility policy.
+            // Use the public automatic build to establish the Blueprint's own
+            // compatible prerequisite, then refresh its dependent card.
+            const prerequisiteRoot = path.join(workspace, "compatible-outcome-library");
+            const prerequisite = await s.post('/api/project/artifacts/build', {target:'outcomeLibrary', outDir:prerequisiteRoot});
+            requireObserved(prerequisite.status === 202 && prerequisite.body.job?.id, "compatible prerequisite build not accepted");
+            const prerequisiteJob = await s.until(async () => {
+                const job = await s.get(`/api/project/artifacts/build/${encodeURIComponent(prerequisite.body.job.id)}`);
+                requireObserved(!['failed','cancelled'].includes(job.status), "compatible prerequisite build failed");
+                return job.status === 'completed' ? job : false;
+            }, "public automatic prerequisite build completed");
+            requireObserved(prerequisiteJob.id === prerequisite.body.job.id && prerequisiteJob.result?.status === 'ok' && prerequisiteJob.result.outputPath === prerequisiteRoot, "compatible prerequisite output differs");
+            const manifest = path.join(prerequisiteRoot, "manifest.json"), manifestBefore = hash(await s.read(manifest));
+            await s.navigate("Overview");
             await s.navigate("Build/Export");
             await openCard("stakeAdapter");
-            const refreshed = await s.until(async () => {const value=await s.latestPreview("stakeAdapter");return value.stakePreflight?.route === "publish" && value.plan?.source?.kind === "outcomeLibrary" && value.plan.source.canonicalLocation === outcome.output && value.preparedOperationId !== generatedPlan.preparedOperationId ? value : false;}, "opened library owns refreshed Stake publication plan");
-            await record("programmer.stake-plan-refresh", await text(stakeScope), {initial, generatedPlan, refreshed});
+            const refreshed = await s.until(async () => {const value=await s.latestPreview("stakeAdapter");return value.preparedOperationId && value.stakePreflight?.route === "reuse" && value.stakePreflight.selectedPrerequisiteLocation === prerequisiteRoot && value.plan?.source?.kind === "blueprint" && value.plan.source.canonicalLocation === savedPath && value.preparedOperationId !== generatedPlan.preparedOperationId && value.preparedOperationId !== initial.preparedOperationId ? value : false;}, "original Blueprint owns refreshed managed-reuse Stake plan");
+            await see(`location.hash.endsWith('/exportDeploy') && decodeURIComponent(location.hash.split('/')[2]) === ${q(savedPath)} && !(${button("Build", stakeScope)}).disabled`, "original Blueprint dependent Build enabled");
+            await record("programmer.stake-plan-refresh", await text(stakeScope), {initial, generatedPlan, refreshed, outcome, prerequisite, prerequisiteJob});
             const buildAt = s.mark();
             const stake = await build("stakeAdapter");
             const submissions = s.requests("/api/project/artifacts/build", buildAt).filter(entry => entry.request?.target === "stakeAdapter");
@@ -242,13 +260,13 @@ export async function runItinerary(request, s) {
             await record("programmer.one-build-terminal", stake.text, {stake, submissions});
             const buildResult = await s.get(`/api/project/artifacts/build/${encodeURIComponent(stake.id)}`);
             const provenance = buildResult.result?.stakePrerequisiteProvenance;
-            requireObserved(buildResult.result?.status === "ok" && buildResult.result.outputPath === stake.output && provenance?.route === "publish" && provenance.disposition === "none" && buildResult.result?.plan?.source?.kind === "outcomeLibrary" && buildResult.result.plan.source.canonicalLocation === outcome.output, "Stake publication did not consume the opened library as its borrowed source");
+            requireObserved(buildResult.id === stake.id && buildResult.status === 'completed' && buildResult.result?.status === "ok" && buildResult.result.outputPath === stake.output && provenance?.route === "reuse" && provenance.disposition === "borrowed" && provenance.selectedPrerequisiteLocation === prerequisiteRoot && buildResult.result?.plan?.source?.kind === "blueprint" && buildResult.result.plan.source.canonicalLocation === savedPath, "dependent Stake did not borrow its selected managed prerequisite");
             await s.read(path.join(stake.output, "pokie-manifest.json"));
-            await record("programmer.borrowed-prerequisite", stake.text, {provenance, borrowedSource:buildResult.result.plan.source});
+            await record("programmer.borrowed-prerequisite", stake.text, {provenance, blueprintSource:buildResult.result.plan.source});
             const manifestAfter = hash(await s.read(manifest));
             requireObserved(manifestAfter === manifestBefore, "borrowed manifest changed");
             await record("programmer.prerequisite-unchanged", "Outcome Library manifest SHA-256 unchanged across one completed Stake build", {manifestBefore, manifestAfter});
-            fields = {handoff:{buildSubmissions:submissions.length, terminal:stake.job.status, borrowedPrerequisite:buildResult.result.plan.source.canonicalLocation, manifestBefore, manifestAfter}};
+            fields = {handoff:{buildSubmissions:submissions.length, terminal:stake.job.status, jobId:stake.id, resultJobId:buildResult.id, sourceKind:buildResult.result.plan.source.kind, sourcePath:buildResult.result.plan.source.canonicalLocation, originalBlueprint:savedPath, initialOperationId:initial.preparedOperationId, refreshedOperationId:refreshed.preparedOperationId, submittedOperationId:submissions[0].request.preparedOperationId, route:provenance.route, disposition:provenance.disposition, selectedPrerequisite:refreshed.stakePreflight.selectedPrerequisiteLocation, borrowedPrerequisite:provenance.selectedPrerequisiteLocation, manifestBefore, manifestAfter}};
             break;
         }
         case "mathematician": {
@@ -290,8 +308,11 @@ export async function runItinerary(request, s) {
             const limits = await text();
             requireObserved(/Local artifacts do not deploy a game or certify it/.test(limits), "Home local/certification boundaries missing");
             const paytable = "Array.from(document.querySelectorAll('[role=tab]')).find(e => e.getClientRects().length && e.textContent.startsWith('Paytable'))";
-            await s.activate(paytable);
-            const payoutInput = "Array.from(document.querySelectorAll('input[aria-label]')).find(e => e.getClientRects().length && /x\\d+ payout$/.test(e.getAttribute('aria-label')))";
+            await s.focus("document.querySelector('[role=tablist][aria-label=\"Game design sections\"] [role=tab][aria-selected=true]')");
+            for (let index = 0; index < 6 && !await s.evaluate(`(${paytable})?.getAttribute('aria-selected') === 'true'`); index++) await s.key("ArrowRight", "ArrowRight", 39);
+            const paytablePanel = `document.getElementById((${paytable})?.getAttribute('aria-controls'))`;
+            await see(`document.activeElement === (${paytable}) && (${paytable})?.getAttribute('aria-selected') === 'true' && (${paytablePanel})?.getAttribute('role') === 'tabpanel' && (${paytablePanel}).getClientRects().length > 0`, "native Paytable selection and visible associated panel");
+            const payoutInput = `Array.from((${paytablePanel})?.querySelectorAll('input[aria-label]') ?? []).find(e => e.getClientRects().length && /x\\d+ payout$/.test(e.getAttribute('aria-label')))`;
             const label = await s.evaluate(`(${payoutInput})?.getAttribute('aria-label')`);
             requireObserved(label, "producer Paytable edit missing");
             await s.fill(payoutInput, "7");
@@ -663,14 +684,7 @@ export async function main(args, helpers = {}) {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key, code, windowsVirtualKeyCode, modifiers, ...(key === "Enter" ? {text:"\r"} : {})});
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key, code, windowsVirtualKeyCode, modifiers});
         };
-        const focus = async expression => {
-            await until(() => evaluate(`Boolean((${expression}) && !(${expression}).disabled && (${expression}).getClientRects().length)`), `enabled native target ${expression}`, 12000);
-            for (let index = 0; index < 240; index++) {
-                if (await evaluate(`document.activeElement === (${expression})`)) return;
-                await key("Tab", "Tab", 9);
-            }
-            fail(`native Tab target unreachable: ${expression}`);
-        };
+        const focus = expression => focusNativeTarget(expression, {until, evaluate, key});
         const activate = async expression => {await focus(expression); await key("Enter", "Enter", 13);};
         const fill = async (expression, value) => {
             await focus(expression); await key("a", "KeyA", 65, 2); await cdp.send("Input.insertText", {text:value}); await key("Tab", "Tab", 9);

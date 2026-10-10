@@ -49,6 +49,12 @@ export function validateActionCoverage(id, result) {
         || !/^[a-f0-9]{64}$/.test(result.destination?.sentinelBefore ?? "") || result.destination?.overwriteAuthorized !== false
         || result.destination?.raceExitStatus !== 200 || result.destination?.raceBodyStatus !== "error" || !result.destination?.publishedPath || result.destination?.publishedPath === result.destination?.occupiedPath)) fail(`${id}: destination protection/recovery/race mismatch`);
     if (id === "programmer" && (result.handoff?.buildSubmissions !== 1 || result.handoff?.terminal !== "completed"
+        || result.handoff?.sourceKind !== "blueprint" || !result.handoff?.originalBlueprint || result.handoff.sourcePath !== result.handoff.originalBlueprint
+        || result.handoff?.route !== "reuse" || result.handoff?.disposition !== "borrowed"
+        || !result.handoff?.initialOperationId || !result.handoff?.refreshedOperationId || result.handoff.initialOperationId === result.handoff.refreshedOperationId
+        || result.handoff.submittedOperationId !== result.handoff.refreshedOperationId
+        || !result.handoff?.jobId || result.handoff.resultJobId !== result.handoff.jobId
+        || result.handoff?.selectedPrerequisite !== result.handoff?.borrowedPrerequisite
         || !result.handoff?.borrowedPrerequisite || result.handoff?.manifestBefore !== result.handoff?.manifestAfter
         || !/^[a-f0-9]{64}$/.test(result.handoff?.manifestBefore ?? ""))) fail(`${id}: dependent Stake handoff mismatch`);
     if (id === "mathematician" && (!result.replay?.seed || !result.replay?.mode || !result.replay?.time || !result.replay?.recordId

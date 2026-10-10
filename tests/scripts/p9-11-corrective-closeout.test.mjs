@@ -21,7 +21,7 @@ function rendered(id) {
         actions:P911_RENDERED_COVERAGE[id].map((key) => ({id:key, classification:"action", outcome:"passed", observed:`observed ${key}`, receipt:{path:"/controller/action.json", sha256:digest}})),
         focus:{sameCard:true, nativeKeyboard:true, painted:true, insideViewport:true, layoutSettled:true, stoleFocus:false, imageReceipt:{path:"/controller/focus.png", sha256:digest}},
         destination:{sentinelBefore:digest, sentinelAfter:digest, overwriteAuthorized:false, occupiedPath:"/occupied", publishedPath:"/new", raceExitStatus:200, raceBodyStatus:"error"},
-        handoff:{buildSubmissions:1, terminal:"completed", borrowedPrerequisite:"library", manifestBefore:digest, manifestAfter:digest},
+        handoff:{buildSubmissions:1, terminal:"completed", jobId:"stake-own", resultJobId:"stake-own", sourceKind:"blueprint", sourcePath:"/design", originalBlueprint:"/design", initialOperationId:"initial", refreshedOperationId:"refreshed", submittedOperationId:"refreshed", route:"reuse", disposition:"borrowed", selectedPrerequisite:"library", borrowedPrerequisite:"library", manifestBefore:digest, manifestAfter:digest},
         replay:{seed:"0", mode:"base", time:"2026-10-10T00:00:00Z", recordId:"selected", selectedRecordId:"selected", reopenedRecordId:"selected", exactComparison:true},
         job:{id:"own-job", reloadedId:"own-job", reconnectedId:"own-job", submissions:1, terminal:"completed", resultAccessible:true},
         studioAnalysis:{totalWeight:"18446744073709551616", hitFrequency:2 ** -64, maxWinProbability:2 ** -64, rtp:2 ** -63, variance:2 ** -62, standardDeviation:2 ** -31},
@@ -75,6 +75,19 @@ test("numeric proof rejects lost rare probabilities, totals and inconsistent dev
     assertRareP911Metrics(mode);
     for (const key of ["hitFrequency", "maxWinProbability", "rtp", "variance", "standardDeviation"]) assert.throws(() => assertRareP911Metrics({...mode, [key]:0}), new RegExp(key));
     assert.throws(() => assertRareP911Metrics({...mode, totalWeight:2 ** 64}));
+});
+
+test("dependent handoff rejects direct publication, project switches, stale submissions and sibling terminals", () => {
+    for (const bypass of [
+        {sourceKind:"outcomeLibrary", sourcePath:"library", route:"publish", disposition:"none"},
+        {sourcePath:"/other-blueprint"}, {route:"publish"}, {disposition:"none"},
+        {selectedPrerequisite:"other-library"}, {resultJobId:"prerequisite-own"},
+        {submittedOperationId:"initial"}, {refreshedOperationId:"initial"}, {buildSubmissions:2},
+    ]) {
+        const result = rendered("programmer");
+        Object.assign(result.handoff, bypass);
+        assert.throws(() => validateActionCoverage("programmer", result), /dependent Stake handoff mismatch/);
+    }
 });
 
 

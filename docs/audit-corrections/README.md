@@ -711,3 +711,32 @@ normal candidate. Release/packaging, post-merge checks, integration/push,
 publication, Drive read-back and campaign completion remain controller-owned
 and pending. The [installation boundary](p9-11-closeout.md#p9-11-rendered-adapter-installation)
 requires a new pin for this committed driver before that collection.
+
+### P9-11 native producer and dependent Stake repair
+
+The reviewer findings `P9-11-PRODUCER-ROVING` and
+`P9-11-DEPENDENT-STAKE` supersede the acceptance claims in the preceding
+driver ledger. Its direct native-library `publish/none` workflow is valid
+functionality, but cannot prove the original Blueprint's dependent handoff.
+Historical observations and completed-step receipts remain intact.
+
+| Finding | Bounded implementation and regression proof | Controller acceptance still pending |
+| --- | --- | --- |
+| Inactive Paytable is unreachable with Tab | [Rendered driver](../../scripts/p9-11-rendered-driver.mjs) focuses the selected design tab, uses ArrowRight, verifies Paytable selection and its visible associated panel, then reaches that panel's payout field with native Tab. [Driver tests](../../tests/scripts/p9-11-rendered-driver.test.mjs) exercise the production focus helper with sequential tab stops and native tab-key handlers: Tab-only and wrong-panel routes fail; no target is made focusable to pass the test. | Fresh Home on the pinned installed candidate; independent native keyboard and saved-design observation. |
+| Programmer switches projects before dependent Build | The public automatic Outcome build establishes a compatible prerequisite after the configurable sample check. The original Blueprint's Build/Export card refreshes to `reuse`, submits its new prepared operation once, and must reach its own successful terminal with selected `borrowed` provenance and identical prerequisite manifest bytes. [Real-service handoff test](../../tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeStakeHandoff.test.tsx) covers the disabled replacement plan and first Build. No duplicate Outcome artifact card is restored. | Same-candidate isolated programmer smoke and action-local operation, terminal, provenance and byte receipts. |
+| Direct publication accepted as dependent proof | [Closeout contract](../../scripts/p9-11-corrective-closeout.mjs) binds original Blueprint identity, distinct refreshed/submitted operation, own terminal job, managed reuse and selected borrowed prerequisite. [Contract tests](../../tests/scripts/p9-11-corrective-closeout.test.mjs) reject `publish/none`, project switches, stale operations, sibling terminals, duplicate submissions and altered manifests. | Independent contract consumption and mandatory reviewer retest. |
+
+The bounded foreground checks for this repair passed: the three whole files
+above through `npm run test:targeted` (**3 suites / 95 tests**), plus root
+`npm run typecheck` (including the Studio compiler once). The component suite
+emitted React `act` warnings while passing. The committed worker report supplies
+the exact command outcomes. Unchanged deterministic inputs, rare
+Overview presentation, four-sheet image budget, isolation, candidate delivery
+and bounded cleanup assertions remain in their existing regression authorities.
+
+Implementation coverage does not close immutable criteria 1–3. Exact-candidate
+six-repro collection, five independent final persona smokes, authenticated
+P909/P910 execution, image review, official release/packaging, post-merge
+checks, develop integration/push/publication, Drive round-trip and controller
+cleanup/completion receipts remain **pending controller execution**. The
+controller must install and pin the new driver bytes before collecting them.

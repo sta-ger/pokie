@@ -16,7 +16,7 @@ import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiCli
 import type {StudioArtifactBuildView, StudioArtifactPreviewView} from "../../../../../../cli/studio-client/src/api/types";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
 
-it("publishes Stake on its first Build after the public configurable Outcome Library generator", async () => {
+it("submits the original Blueprint refreshed Stake operation once and borrows its compatible prerequisite", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-p906-handoff-"));
     const blueprint = path.join(directory, "source game.blueprint.json");
     const manifest = {id: "handoff-slot", name: "Handoff Slot", version: "1.0.0"};
@@ -106,33 +106,57 @@ it("publishes Stake on its first Build after the public configurable Outcome Lib
         expect(JSON.parse(outcomeManifest).modes[0].generator).toMatchObject({strategy: "bounded-coverage", sampledRawCount: 5000});
 
         await waitFor(() => expect(stakePreviews.at(-1)?.preparedOperationId).not.toBe(initialOperation));
-        // This configurable sample has different policy/provenance from the
-        // Blueprint's automatic managed output. Its replacement plan remains
-        // generate; opening the library is the supported direct publication.
+        // Preserve configurable generation coverage, then establish the automatic
+        // compatibility policy through the existing public build endpoint.
         expect(stakePreviews.at(-1)?.stakePreflight?.route).toBe("generate");
         expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeDisabled();
         expect(builds).toEqual([]);
-        releaseRefreshedPreview();
-        await waitFor(() => expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeEnabled());
-        await user.click(inspectLibrary);
-        await screen.findByRole("heading", {name: "Outcome Source"});
-        expect(screen.getByText("Native Outcome Library")).toBeVisible();
-        expect(screen.getByRole("button", {name: "Draw an outcome"})).toBeEnabled();
+        const compatibleRoot = path.join(directory, "compatible-outcome-library");
+        const prerequisite = await fetchImpl("/api/project/artifacts/build", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({target: "outcomeLibrary", outDir: compatibleRoot}),
+        });
+        expect(prerequisite.status).toBe(202);
+        const accepted = await prerequisite.json() as {job: {id: string}};
+        await waitFor(async () => {
+            const response = await fetchImpl(`/api/project/artifacts/build/${accepted.job.id}`);
+            const job = await response.json() as {status: string; result: {status: string; outputPath: string}};
+            expect(job).toMatchObject({status: "completed", result: {status: "ok", outputPath: compatibleRoot}});
+        }, {timeout: 10_000});
+        const compatibleManifest = fs.readFileSync(path.join(compatibleRoot, "manifest.json"), "utf8");
+        await user.click(screen.getByRole("button", {name: "Overview"}));
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         await user.click(await screen.findByRole("button", {name: "Configure Stake Engine export"}));
+        await waitFor(() => expect(stakePreviews.at(-1)).toMatchObject({
+            stakePreflight: {route: "reuse", selectedPrerequisiteLocation: compatibleRoot},
+            plan: {source: {kind: "blueprint", canonicalLocation: blueprint}},
+        }));
+        const refreshedOperation = stakePreviews.at(-1)?.preparedOperationId;
+        expect(refreshedOperation).toBeTruthy();
+        expect(refreshedOperation).not.toBe(initialOperation);
+        expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeDisabled();
+        expect(builds.filter(build => build.target === "stakeAdapter")).toEqual([]);
+        releaseRefreshedPreview();
         await waitFor(() => expect(within(card("Stake Engine export")).getByRole("button", {name: "Build"})).toBeEnabled());
-        expect(stakePreviews.at(-1)).toMatchObject({stakePreflight: {route: "publish"}, plan: {source: {kind: "outcomeLibrary", canonicalLocation: outcomeRoot}}});
+        expect(screen.queryByRole("heading", {name: "Outcome Source"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Draw an outcome"})).not.toBeInTheDocument();
         await user.click(within(card("Stake Engine export")).getByRole("button", {name: "Build"}));
         await waitFor(() => expect(
             card("Stake Engine export").querySelector('[data-pokie-lifecycle-terminal="completed"]')
                 ?? within(card("Stake Engine export")).queryByText(/prepared conversion graph is stale or invalid/),
         ).not.toBeNull());
         expect(within(card("Stake Engine export")).queryByText(/prepared conversion graph is stale or invalid/)).not.toBeInTheDocument();
-        expect(stakeResult).toMatchObject({status: "ok", stakePrerequisiteProvenance: {route: "publish", disposition: "none"}, plan: {source: {kind: "outcomeLibrary", canonicalLocation: outcomeRoot}}});
+        expect(stakeResult).toMatchObject({status: "ok", stakePrerequisiteProvenance: {
+            route: "reuse", disposition: "borrowed", selectedPrerequisiteLocation: compatibleRoot,
+        }, plan: {source: {kind: "blueprint", canonicalLocation: blueprint}}});
+        const terminal = card("Stake Engine export").querySelector('[data-pokie-lifecycle-terminal="completed"]')!;
+        const terminalJob = await fetchImpl(`/api/project/artifacts/build/${terminal.getAttribute("data-pokie-lifecycle-result-job")}`);
+        expect(await terminalJob.json()).toMatchObject({status: "completed", result: stakeResult});
         expect(stakePreviews.at(-1)?.preparedOperationId).not.toBe(initialOperation);
-        expect(builds).toEqual([
-            {target: "stakeAdapter", preparedOperationId: stakePreviews.at(-1)?.preparedOperationId},
+        expect(builds.filter(build => build.target === "stakeAdapter")).toEqual([
+            {target: "stakeAdapter", preparedOperationId: refreshedOperation},
         ]);
+        expect(fs.readFileSync(path.join(compatibleRoot, "manifest.json"), "utf8")).toBe(compatibleManifest);
         expect(fs.readFileSync(path.join(outcomeRoot, "manifest.json"), "utf8")).toBe(outcomeManifest);
         expect(JSON.parse(fs.readFileSync(path.join(stakeResult!.outputPath, "pokie-manifest.json"), "utf8")).modes).toEqual([expect.objectContaining({name: "base"})]);
         expect(screen.queryByText(/prepared conversion graph is stale or invalid/)).not.toBeInTheDocument();

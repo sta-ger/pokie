@@ -373,3 +373,33 @@ and five-persona evidence, original authenticated P909/P910 execution, official
 release/packaging, exact integration/push/publication, Drive and full external
 cleanup receipts remain pending. This is an implementation work handoff;
 neither P9-11 nor the campaign is marked complete by it.
+
+### Native producer and dependent Stake correction
+
+The preceding direct native-library publication check is superseded as
+programmer acceptance proof. The repaired itinerary preserves deterministic
+configurable-generation checks, then uses the existing public automatic
+`POST /api/project/artifacts/build` Outcome target to establish the compatible
+managed prerequisite. It refreshes Build/Export on the original Blueprint,
+submits that card's prepared Stake operation exactly once and verifies its
+own terminal, `reuse/borrowed` selected prerequisite and unchanged manifest.
+The closeout contract rejects direct-library `publish/none`, changed project
+identity, stale/substituted operations and sibling terminal jobs.
+
+Producer navigation now starts at the selected design tab and uses native
+ArrowRight to Paytable. Selection, the associated visible panel and its real
+editable field are checked before saving. The extracted production Tab helper
+is exercised against native tab stops; the old Tab-only route fails without
+adding focusability or directly focusing the requested unreachable target.
+DOM keyboard fixtures are regression checks, not browser observations.
+
+The three directly affected whole files passed together (**3 suites / 95
+tests**); root typecheck also passed, including the Studio compiler once.
+The component suite emitted React `act` warnings while passing. Exact permitted
+command outcomes belong to the committed work report.
+See the [repair ledger](README.md#p9-11-native-producer-and-dependent-stake-repair).
+Existing deterministic-input, presentation, image-budget, isolation and
+cleanup checks remain required. All exact-candidate collection, independent
+persona/image acceptance, authenticated P909/P910 and official lifecycle
+obligations listed above remain **pending controller execution**. Completed
+step evidence is preserved, and this handoff does not close P9-11.
