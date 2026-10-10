@@ -23,6 +23,43 @@ installed-candidate, independent browser, publication or Drive receipt.
 | 2: Graphic designer | [Append-only supersession and latest settled-layout independent retest](valera-graphic-designer.md#2026-10-10-independent-affected-retest--settled-terminal-focus-closure) | Common JobCard retains native focus and painted visible outline after Review/report/Recent runs settle; affected Home/project/build/job presentation, no stolen focus | Latest recorded candidate `ecc43ee3c87be95acd0887fb79e63a7c9d7e1b4a` closes the affected visual findings; earlier terminal-focus closure was superseded. Original-authenticated complete P910 and final `graphic-designer` smoke pending; skip is not acceptance |
 | 3: Exact release lifecycle | [Controller handoff and closure ledger](p9-11-closeout.md); [real packaging assertions](../../tests/packaging/npmPackSmoke.test.ts), [installed bin/npx authority](../../tests/packaging/P805ValeraProgrammer.test.ts), [existing ownership/lifecycle authority](../../scripts/pc-20-release-completion.mjs) | One controller release/packaging boundary reuses pinned archive/install, exact post-merge tree, develop integration/push/publication, authenticated Drive upload/read-back, all owned children drained, only this campaign completed | All external release receipts pending. Runner `checks.json` explicitly leaves campaign acceptance pending; it cannot approve, publish or complete a campaign |
 
+### 2026-10-10 independent P9-11 recovery observation
+
+The verifier authenticated the clean candidate checkout at
+`6a4c5cfad9687d2c338538d009e4f7104f78ad26` (the requested candidate and
+HEAD).  It ran one new Studio instance from this checkout through
+`node ./dist/cli/pokie.js --no-open`, with fresh application storage and a
+fresh browser profile.  The retained runtime transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-45c1dc3bb3a294f9/run-2026-10-10T11-31-04-879Z/transcript.json`
+(`sha256:1663f0b5a31901545a0c8586c1a65ab173643a47bee140029afac3ae9dff1da3`);
+the independently inspected rendered round image is
+`1-observation.png` beside it
+(`sha256:4ed609ce302af457ac19382a62e4678acac8d0f67a710c73772a5fb30e547f6a`).
+
+The observed public path created the valid starter game, accepted and saved
+it, started a new Play session, and accepted one Spin.  That same action
+settled locally as “Round complete — no win this round” with credits `999`,
+payout `0.00`, and a visible reel result; the image confirms that rendered
+terminal state.  The Build/Export surface then rendered a ready TypeScript
+Game Package card, an empty output-directory field, its resolved default
+path, and a Build action.  No product error was rendered in these reached
+steps.  A pointer activation of an idempotent navigation control initially
+left its local view unchanged; one native-key retry on the focused control
+reached Build/Export, so it is retained as driver interaction history, not a
+product finding.
+
+This does **not** close a P9-11 row.  No controller-pinned
+`p9-11-candidate-handoff` (normal production archive, npm installation,
+build/install receipts, and authenticated rendered driver) was supplied in
+the assigned runtime evidence, and no such handoff was present for this
+candidate in the inspected runtime handoff records.  Consequently the six
+installed corrective repros, occupied-destination sentinel/recovery, five
+complete isolated persona smokes, original P909/P910 execution receipts,
+focus-after-settle proof, served-asset binding, and closeout cleanup receipts
+remain pending controller-authenticated collection.  This record preserves
+only the bounded fresh-profile observation and does not relabel older
+findings, tests, or historical evidence.
+
 Every final proof joins `candidateId`, `candidateTreeId`, archive SHA-256,
 executable projection SHA-256, installed resolutions and served asset hashes
 through the controller-pinned handoff. `<run>` is the fresh controller-owned
