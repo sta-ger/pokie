@@ -283,10 +283,10 @@ export const PathInput = forwardRef<HTMLInputElement, PathInputProps>(({
 
     return (
         <Stack gap={4}>
-            <Group align="flex-end" gap="xs" wrap="nowrap">
+            <Group align="flex-end" gap="xs" wrap="wrap">
                 <TextInput
                     ref={ref}
-                    style={{flex: 1}}
+                    style={{flex: "1 1 12rem", minWidth: 0}}
                     onFocus={(event) => {
                         onFocus?.(event);
                         resolveHint(currentValue);

@@ -388,6 +388,13 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             await send("Emulation.setDeviceMetricsOverride", {width, height, deviceScaleFactor: 1, mobile: false});
             small = width < 768;
             await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+            // Layout resizing must be immediate; the former 200ms padding animation
+            // transiently kept the desktop rail inside the phone content column.
+            expect(await evaluate<string>("getComputedStyle(document.querySelector('.studio-app-main')).transitionProperty")).toBe('none');
+            if (small) {
+                expect(await evaluate<number>("document.querySelector('.studio-page').getBoundingClientRect().left")).toBeCloseTo(16, 0);
+                expect(await evaluate<number>("parseFloat(getComputedStyle(document.querySelector('.studio-app-main')).paddingTop)")).toBeGreaterThanOrEqual(60);
+            }
         };
         await until(() => evaluate<boolean>("document.body.innerText.includes('POKIE is a slot-game logic framework')"), "public Home");
         // Verify served bytes, not just the presence of a hashed filename in local dist.
@@ -462,6 +469,10 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
         for (const [width, height] of [[1100, 800], [390, 844]]) {
             await viewport(width, height);
             await navigate("Build/Export");
+            const configure = "document.getElementById('export-configure-artifact-tsPackage')";
+            await until(() => evaluate<boolean>(`Boolean(${configure})`), "TypeScript output choice");
+            if (await evaluate<boolean>(`(${configure}).getAttribute('aria-expanded') === 'false'`)) await activate(configure);
+            await measure(`Build choices ${width}x${height}`);
             const scope = "document.getElementById('artifact-build-tsPackage')?.closest('[data-pokie-lifecycle-form=artifact-build]')";
             await fill(inputFor("Output directory", scope), occupied);
             await until(() => evaluate<boolean>(`Boolean((${scope})?.innerText.includes('Choose a different destination'))`), "occupied destination validation");

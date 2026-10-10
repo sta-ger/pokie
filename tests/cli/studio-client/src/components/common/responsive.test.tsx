@@ -25,6 +25,13 @@ describe("Responsive / no-horizontal-page-overflow primitives", () => {
         expect(stylesheet).not.toMatch(/html,[\s\S]*?body,[\s\S]*?#root[\s\S]*?overflow-x:\s*(?:hidden|clip)/);
     });
 
+    it("resizes the shared main column without interpolating the desktop rail into phone content", () => {
+        const stylesheet = readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8");
+        expect(stylesheet).toMatch(/\.studio-app-main\s*\{[^}]*transition-property:\s*none;/);
+        expect(stylesheet).not.toMatch(/\.studio-app-main\s*\{[^}]*overflow(?:-x)?:\s*(?:hidden|clip)/);
+        expect(stylesheet).toContain("padding-block-start: calc(var(--app-shell-header-offset, 0px) + var(--mantine-spacing-sm))");
+    });
+
     it("ScreenTable wraps its table in a horizontally-scrollable container instead of letting it expand the page", () => {
         renderWithMantine(<ScreenTable screen={[[LONG_UNBROKEN_TEXT, "B", "C"]]} />);
         const cell = screen.getByText(LONG_UNBROKEN_TEXT);

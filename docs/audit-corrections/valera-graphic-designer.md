@@ -724,3 +724,97 @@ required smaller-viewport closure. Product code and tests were not modified by
 this verifier. The correction lane must repair the shared responsive layout or
 the candidate audit’s exact geometry contract, then rerun the affected rendered
 surface from clean state.
+
+
+## P9-10 convergence repair — build hierarchy and immediate responsive layout
+
+This append records a product correction, not an independent visual disposition.
+The saved freeze and transcript were read before editing. Their SHA-256 values
+remain `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e`
+and `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0`.
+No frozen observation, screenshot, transcript or completed-step artifact was
+rewritten, pruned or replaced. The three-image collection remains unchanged.
+
+Current-HEAD tracing reproduced the structural cause of the frozen Build/Export
+finding: `GROUP_ORDER` placed advanced generation first, every `TargetCard`
+rendered its full form, and each artifact preview repeated target, selected and
+resolved paths, destination kind, status and conversion steps at the same level.
+`ProjectDashboardPage` is the single public caller; legacy Deployment and Stake
+routes resolve to that same surface. Target support and conversion planning
+still come from `describeArtifactBuildTargetCards`, the server registry and its
+preview/build endpoints. Disclosure does not create a second writer or resolver.
+
+Build artifacts now come first. The first supported output opens initially;
+other named outputs, remote delivery and optional advanced generation have
+compact, keyboard-operated Configure controls with `aria-expanded` and a
+mounted controlled region. Each choice shows availability/activity, and all
+unavailable reasons remain visible. Expanding a choice reveals its actual form.
+Collapsed forms retain destinations, generation choices and terminal receipts;
+running/recovered work opens its owning form, and running forms cannot be hidden.
+The original Build, Browse…, Cancel, resume, delivery and output actions retain
+their handlers and safety conditions. Readiness, the real resolved destination,
+conflicts, complexity warnings and conversion losses remain in the open form;
+prerequisite tokens and detailed plans/provenance use technical disclosures.
+
+Tracing the exact 390×844 failure also found a resize race: Mantine's installed
+AppShell stylesheet transitions main padding for 200ms, while P910 resizes and
+measures after two rendering frames. The recorded Create game x=218.5 lies
+between the desktop column's x=276 and the phone column's x=16. This is consistent
+with the old rail padding still being interpolated during measurement; this
+source diagnosis is not a new rendered observation. The shared main column now
+resizes immediately. Its phone top padding also retains the fixed header offset.
+The shared PathInput field can shrink and its picker actions wrap, preserving
+labels, field associations, blur/change behavior and native/server picker paths.
+Callers include Home/Projects, Blueprint load/save/build/import/export and symbol
+assets, Build/Export, Certification, Fairness and the filesystem browser. No
+callback, resolver, request default or publication policy changed.
+
+P910 retains the real visible-content, clipping-ancestor and document-overflow
+assertions; no tolerance or accessibility exclusion was relaxed. It additionally
+requires immediate main layout and phone header clearance, natively expands the
+actual TypeScript output choice if necessary, and measures the full choice
+surface before its existing occupied-destination journey. All remaining button,
+section-tab, input-label, simulation-step, job-region and report selectors were
+traced against their production controls. No observations were invented to run
+this controller-owned file.
+
+| Acceptance / accumulated finding | Candidate contract and remaining authoritative evidence |
+| --- | --- |
+| Cold assessment of Home, one project/model/build form and job state at compact/smaller sizes | Existing authenticated cold freeze and completed-operation observations preserved. Independent affected clean retest/disposition remains pending on the correction SHA. |
+| `4a58ccd4ec9f8a24`: six-step row overflow | Shared wrapping remains; P910 still requires six named contained tabs, multiple rows at 900px/390px and native traversal to Bets and back. |
+| `285d0e8a87d8b14f`: validated-tab selection | Label-scoped lookup and all six accessible `valid` status assertions remain. Section and geometry contract suites retain those checks. |
+| `ccb894ddb9ea1e2d`: Browse and retained Simulation Review | Scoped Browse… remains; native `simulation-configure` activation precedes labelled Rounds in both iterations. Prior report state is retained. |
+| `0f8d50097d40f6a7`: hidden accessible text geometry | Existing shared visible-content measurement excludes only nonvisual subtrees and still rejects visible glyph/badge overflow on all four bounds. |
+| `c73df4a0d712e3b9`: enabled Create game focus | Settled native focus observations, direction from DOM order, resize re-entry, focus-visible and bounded rejection remain. No DOM focus/click bypass was added to P910. |
+| `ac68b14a95dcdcd2`: Build/Export hierarchy | One initially open artifact form, explicit named output disclosures, activity summaries, primary build group first, and technical plan disclosure correct the shared source cause. Component regressions cover native disclosure activation, retained input identity/value and no implicit writes; existing tests exercise each artifact writer, conflict/cancel, generation/resume and remote compatibility/publication. Visual approval still requires independent affected rerender. |
+| `ac68b14a95dcdcd2`: phone geometry rejection | Main padding interpolation removed, phone header clearance retained, path field/actions can reflow. Existing visible-content/overflow assertions remain and new immediate-layout assertions diagnose a stale or incorrect production stylesheet. Complete current-asset rendered execution remains mandatory. |
+| Saved creation, occupied sentinel, recovery, both simulation iterations and report | The complete P910 path still creates/opens an on-disk managed project, checks disabled Build and associated invalid field, preserves sentinel bytes, restores a ready destination, measures each actual running/completed simulation identity and fetches its nonempty report. No source-aware test or unreached record is claimed as rendered closure. |
+| Candidate/assets, native navigation and owned-process cleanup | Existing recursive freshness and served-byte checks, native Tab/Enter navigation, owned-job cancellation/drain and browser/Studio cooperative cleanup remain. No new screenshots or independent collector were started. |
+| No unresolved P0/P1/material P2; bounded clean retest | Controller-owned complete post-freeze P910 execution and independent visual disposition remain pending. This implementation handoff does not close the roadmap step. |
+
+Consuming boundaries are the Studio TypeScript compiler (included once by root
+`npm run typecheck`), production Vite/CSS bundling via controller-owned
+`npm run build-cli`, the component/workflow Jest lanes, complete Node-environment
+P910 execution and the installed changed-TypeScript ESLint commit hook. No build,
+packaging, official gate or independent browser rerun ran in this worker.
+
+
+Permitted foreground verification for this correction:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/common/PathInput.test.tsx tests/cli/studio-client/src/components/common/responsive.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx tests/cli/studio-client/src/nativeKeyboardFocus.test.tsx tests/cli/studio-client/src/visibleContentGeometry.test.tsx
+npm run typecheck
+```
+
+The final targeted run passed all six suites / 141 tests, with no skips.
+Existing section-suite asynchronous Home updates still emit React `act(...)`
+warnings. Initial runs failed six stale status-label assertions and then one new
+fixture which selected a generator-backed target as an artifact; those test
+contracts were corrected, and the complete focused set reran successfully.
+No skipped rendered case is counted: the post-freeze P910 file was not run here.
+
+Final root `npm run typecheck` exited zero and included the Studio compiler.
+
+The first commit attempt was rejected by the installed ESLint hook for nested
+ternaries/indentation in the new presentation logic. These were replaced with
+explicit branches; the hook remains enabled for the retry.

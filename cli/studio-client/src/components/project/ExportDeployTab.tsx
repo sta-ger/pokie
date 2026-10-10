@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from "react";
+import {useEffect, useId, useRef, useState} from "react";
 import {Badge, Button, Group, List, Text, TextInput} from "@mantine/core";
 import {
     cancelArtifactBuild,
@@ -95,7 +95,7 @@ function describeStakeRoute(route: "reuse" | "generate" | "publish"): string {
     return "publish existing Stake source";
 }
 
-const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["outcomeLibrary", "buildArtifact", "remoteDeployment"];
+const GROUP_ORDER: readonly ExportDeployTargetKind[] = ["buildArtifact", "remoteDeployment", "outcomeLibrary"];
 
 // Every "Configure"/etc-free run below runs against this single project-wide mode name -- the project's
 // own first current build mode when known, "base" (the same fallback generateOutcomeLibrary's own
@@ -287,6 +287,8 @@ function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPrev
 
 function TargetCard({
     card,
+    initiallyOpened,
+    recoveryRequested,
     defaultModeName,
     outcomeLibraryRun,
     outcomeLibraryPreflight,
@@ -313,6 +315,8 @@ function TargetCard({
     onCopyPath,
 }: {
     card: ExportDeployTargetCard;
+    initiallyOpened: boolean;
+    recoveryRequested: boolean;
     defaultModeName: string;
     outcomeLibraryRun: OutcomeLibraryRunView;
     outcomeLibraryPreflight: OutcomeLibraryPreflightView;
@@ -339,6 +343,41 @@ function TargetCard({
     onCopyPath: (path: string) => void;
 }) {
     const isActiveTarget = card.deploymentTarget !== undefined && deployment.selectedTarget?.id === card.deploymentTarget.id;
+    const [opened, setOpened] = useState(initiallyOpened);
+    const contentId = useId();
+    // Keep editable fields and terminal receipts mounted across disclosure changes.
+    // Recovered work opens its owning form; disclosure never submits or cancels it.
+    let hasOperation = false;
+    let operationPending = false;
+    let summaryStatus = "Optional";
+    if (card.kind === "outcomeLibrary") {
+        hasOperation = outcomeLibraryRun.status !== "idle";
+        operationPending = ["starting", "running"].includes(outcomeLibraryRun.status);
+        if (outcomeLibraryRun.status === "ok") summaryStatus = "Completed";
+        else if (outcomeLibraryRun.status === "cancelled") summaryStatus = "Cancelled";
+        else if (hasOperation) summaryStatus = "Needs attention";
+    } else if (card.kind === "buildArtifact") {
+        hasOperation = artifactBuildRun.status !== "idle";
+        operationPending = artifactBuildRun.status === "running";
+        if (artifactBuildRun.status === "ok") summaryStatus = "Built";
+        else if (artifactBuildRun.status === "error") summaryStatus = "Needs attention";
+        else if (artifactBuildRun.status === "cancelled") summaryStatus = "Cancelled";
+        else if (artifactPreview.status === "ok") summaryStatus = "Ready";
+        else if (artifactPreview.status === "conflict") summaryStatus = "Destination conflict";
+        else if (artifactPreview.status === "loading") summaryStatus = "Checking";
+        else summaryStatus = "Needs attention";
+    } else if (isActiveTarget) {
+        hasOperation = deployment.runLoading || deployment.runResult !== undefined;
+        operationPending = deployment.runLoading;
+        if (deployment.runResult?.ok === false) summaryStatus = "Needs attention";
+        else if (deployment.runResult?.ok === true) summaryStatus = deployment.runResult.publish ? "Published" : "Compatible";
+    }
+    if (!card.supported) summaryStatus = "Unavailable";
+    else if (operationPending) summaryStatus = "Running";
+    useEffect(() => {
+        if (hasOperation || recoveryRequested) setOpened(true);
+    }, [hasOperation, recoveryRequested]);
+
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
     let artifactBuildDisabledReason = "Fix the displayed build preflight issue before building this artifact.";
@@ -369,24 +408,28 @@ function TargetCard({
             data-pokie-lifecycle-form={lifecycleForm}
             style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}
         >
-            <Group gap="xs" mb={4}>
-                <Text fw={600}>{card.label}</Text>
-                <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
-                    {card.locality === "local" ? "This computer" : "Remote"}
-                </Badge>
+            <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+                <Group gap="xs" wrap="wrap">
+                    <Text fw={600}>{card.label}</Text>
+                    <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
+                        {card.locality === "local" ? "This computer" : "Remote"}
+                    </Badge>
+                    <Text size="xs" c="dimmed">{summaryStatus}</Text>
+                </Group>
+                <Button
+                    id={`export-configure-${card.id}`}
+                    size="xs"
+                    variant="default"
+                    aria-label={`${opened ? "Hide options for" : "Configure"} ${card.label}`}
+                    aria-expanded={opened}
+                    aria-controls={contentId}
+                    disabled={operationPending}
+                    title={operationPending ? "Options stay open while this operation is running." : undefined}
+                    onClick={() => setOpened((current) => !current)}
+                >
+                    {opened ? "Hide options" : "Configure"}
+                </Button>
             </Group>
-            <Text size="sm" mt={4}>
-                <Text span fw={600}>
-                    Purpose:
-                </Text>{" "}
-                {card.purpose}
-            </Text>
-            <Text size="sm" mt={4}>
-                <Text span fw={600}>
-                    Destination:
-                </Text>{" "}
-                {card.destination}
-            </Text>
             {!card.supported && (
                 <>
                     <Text size="sm" fw={600} mt={4}>
@@ -399,579 +442,584 @@ function TargetCard({
                     </List>
                 </>
             )}
-            {card.prerequisites.length > 0 && (
-                <>
-                    <Text size="sm" fw={600} mt={4}>
-                        Prerequisites
-                    </Text>
-                    <List size="sm" withPadding>
-                        {card.prerequisites.map((prerequisite, index) => (
-                            <List.Item key={index}>{prerequisite}</List.Item>
-                        ))}
-                    </List>
-                </>
-            )}
+            <div id={contentId} hidden={!opened}>
+                <Text size="sm" mt="xs">{card.purpose}</Text>
+                <Text size="sm" c="dimmed" mt={4}>{card.destination}</Text>
 
-            {card.kind === "outcomeLibrary" && (
-                <div>
-                    <TextInput
-                        mt="sm"
-                        label="Mode"
-                        description={`Leave blank to generate the current default mode (${defaultModeName}).`}
-                        value={outcomeLibraryGenerationOptions.mode}
-                        onChange={(event) =>
-                            onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, mode: event.currentTarget.value})
-                        }
-                    />
-                    <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
-                    <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
-                    <Group gap="xs" mt={4}>
-                        {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
-                            <Button key={generation} id={`outcome-library-generation-${generation}`} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
-                                {generationStrategyLabel(generation)}
-                            </Button>
-                        ))}
-                    </Group>
-                    {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
+                {card.kind === "outcomeLibrary" && (
+                    <div>
                         <TextInput
                             mt="sm"
-                            label="Sample size"
-                            description="Number of deterministic reel-stop draws to include."
-                            inputMode="numeric"
-                            value={outcomeLibraryGenerationOptions.sampleSize}
+                            label="Mode"
+                            description={`Leave blank to generate the current default mode (${defaultModeName}).`}
+                            value={outcomeLibraryGenerationOptions.mode}
                             onChange={(event) =>
-                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
+                                onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, mode: event.currentTarget.value})
                             }
                         />
-                    )}
-                    <AdvancedDisclosure label="Advanced generation controls">
-                        <Group align="start" grow>
-                            <TextInput
-                                label="Output destination"
-                                description="Project-relative bundle directory; existing modes are preserved safely."
-                                value={outcomeLibraryGenerationOptions.outDir}
-                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})}
-                            />
-                            <TextInput
-                                label="Library identity"
-                                description="Optional stable library ID; blank uses the game and mode."
-                                value={outcomeLibraryGenerationOptions.libraryId}
-                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})}
-                            />
+                        <Text size="sm" mt="sm" fw={600}>Generation strategy</Text>
+                        <Text size="xs" c="dimmed">Default follows the supported safe policy. Exact enumerates every combination. Sampled always takes a repeatable sample. Conditional bounded stays exact below the cap and samples only above it.</Text>
+                        <Group gap="xs" mt={4}>
+                            {(["default", "exact", "sampled", "bounded"] as const).map((generation) => (
+                                <Button key={generation} id={`outcome-library-generation-${generation}`} size="xs" variant={outcomeLibraryGenerationOptions.generation === generation ? "filled" : "default"} onClick={() => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, generation})}>
+                                    {generationStrategyLabel(generation)}
+                                </Button>
+                            ))}
                         </Group>
-                        <Group align="start" grow mt="sm">
-                            <TextInput
-                                label="Stake"
-                                description="Optional positive stake recorded on generated outcomes."
-                                inputMode="decimal"
-                                value={outcomeLibraryGenerationOptions.stake}
-                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})}
-                            />
-                            <TextInput
-                                label="Configuration identity"
-                                description="Optional loaded configuration identity to verify; it never overrides loaded provenance."
-                                value={outcomeLibraryGenerationOptions.configHash}
-                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})}
-                            />
-                        </Group>
-                        <TextInput
-                            mt="sm"
-                            label="Max outcome space size"
-                            description="Raise only when the complete library is practical to generate and store."
-                            inputMode="numeric"
-                            value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
-                            onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})}
-                        />
                         {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
                             <TextInput
                                 mt="sm"
-                                label="Coverage seed"
-                                description="Saved with the generated library so this sample can be reproduced."
-                                value={outcomeLibraryGenerationOptions.seed}
-                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, seed: event.currentTarget.value})}
+                                label="Sample size"
+                                description="Number of deterministic reel-stop draws to include."
+                                inputMode="numeric"
+                                value={outcomeLibraryGenerationOptions.sampleSize}
+                                onChange={(event) =>
+                                    onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, sampleSize: event.currentTarget.value})
+                                }
                             />
                         )}
-                    </AdvancedDisclosure>
-                    <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
-                    <div
-                        data-pokie-lifecycle-preflight={OUTCOME_LIBRARY_TRANSACTION.formId}
-                        data-pokie-lifecycle-preflight-control={OUTCOME_LIBRARY_TRANSACTION.controlId}
-                        data-pokie-lifecycle-preflight-status={outcomeLibraryPreflight.status}
-                    >
-                        {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
-                        {outcomeLibraryPreflight.status === "error" && (
+                        <AdvancedDisclosure label="Advanced generation controls">
+                            <Group align="start" grow>
+                                <TextInput
+                                    label="Output destination"
+                                    description="Project-relative bundle directory; existing modes are preserved safely."
+                                    value={outcomeLibraryGenerationOptions.outDir}
+                                    onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, outDir: event.currentTarget.value})}
+                                />
+                                <TextInput
+                                    label="Library identity"
+                                    description="Optional stable library ID; blank uses the game and mode."
+                                    value={outcomeLibraryGenerationOptions.libraryId}
+                                    onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, libraryId: event.currentTarget.value})}
+                                />
+                            </Group>
+                            <Group align="start" grow mt="sm">
+                                <TextInput
+                                    label="Stake"
+                                    description="Optional positive stake recorded on generated outcomes."
+                                    inputMode="decimal"
+                                    value={outcomeLibraryGenerationOptions.stake}
+                                    onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, stake: event.currentTarget.value})}
+                                />
+                                <TextInput
+                                    label="Configuration identity"
+                                    description="Optional loaded configuration identity to verify; it never overrides loaded provenance."
+                                    value={outcomeLibraryGenerationOptions.configHash}
+                                    onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, configHash: event.currentTarget.value})}
+                                />
+                            </Group>
+                            <TextInput
+                                mt="sm"
+                                label="Max outcome space size"
+                                description="Raise only when the complete library is practical to generate and store."
+                                inputMode="numeric"
+                                value={outcomeLibraryGenerationOptions.maxOutcomeSpaceSize}
+                                onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, maxOutcomeSpaceSize: event.currentTarget.value})}
+                            />
+                            {(outcomeLibraryGenerationOptions.generation === "sampled" || outcomeLibraryGenerationOptions.generation === "bounded") && (
+                                <TextInput
+                                    mt="sm"
+                                    label="Coverage seed"
+                                    description="Saved with the generated library so this sample can be reproduced."
+                                    value={outcomeLibraryGenerationOptions.seed}
+                                    onChange={(event) => onOutcomeLibraryGenerationOptionsChange({...outcomeLibraryGenerationOptions, seed: event.currentTarget.value})}
+                                />
+                            )}
+                        </AdvancedDisclosure>
+                        <Text size="sm" mt="sm" fw={600}>Generation preflight</Text>
+                        <div
+                            data-pokie-lifecycle-preflight={OUTCOME_LIBRARY_TRANSACTION.formId}
+                            data-pokie-lifecycle-preflight-control={OUTCOME_LIBRARY_TRANSACTION.controlId}
+                            data-pokie-lifecycle-preflight-status={outcomeLibraryPreflight.status}
+                        >
+                            {outcomeLibraryPreflight.status === "loading" && <Text size="sm" c="dimmed">Checking outcome space and generation plan…</Text>}
+                            {outcomeLibraryPreflight.status === "error" && (
+                                <>
+                                    <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
+                                    {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
+                                </>
+                            )}
+                            {outcomeLibraryPreflight.status === "ok" && (
+                                <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
+                                    {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
+                                    {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
+                                </Text>
+                            )}
+                            {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
+                                <Text size="xs" c="dimmed">
+                                    Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
+                                </Text>
+                            )}
+                            {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
+                                <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
+                            )}
+                        </div>
+                        <Button
+                            size="xs"
+                            mt="sm"
+                            onClick={onGenerateOutcomeLibrary}
+                            id={OUTCOME_LIBRARY_TRANSACTION.controlId}
+                            data-pokie-lifecycle="operation"
+                            data-pokie-transaction-state="editable-submission"
+                            data-pokie-lifecycle-operation={OUTCOME_LIBRARY_TRANSACTION.operation}
+                            loading={outcomeLibraryPending}
+                            disabled={outcomeLibraryDisabled}
+                            title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
+                        >
+                            Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
+                        </Button>
+                        {outcomeLibraryRun.status === "starting" && <LoadingState label="Submitting Outcome Library generation…" />}
+                        {outcomeLibraryRun.status === "running" && (
+                            outcomeLibraryRun.job.durableProgress !== undefined
+                                ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
+                                : <>
+                                    <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
+                                    {outcomeLibraryRun.job.status !== "cancelling" && !outcomeLibraryRun.job.cancellationRequested &&
+                                        <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>}
+                                </>
+                        )}
+                        {outcomeLibraryRun.status === "error" && (
+                            <div
+                                {...(outcomeLibraryRun.jobId === undefined ? {} : {
+                                    "data-pokie-lifecycle-result": OUTCOME_LIBRARY_TRANSACTION.formId,
+                                    "data-pokie-lifecycle-result-operation": OUTCOME_LIBRARY_TRANSACTION.operation,
+                                    "data-pokie-lifecycle-result-control": OUTCOME_LIBRARY_TRANSACTION.controlId,
+                                    "data-pokie-lifecycle-result-state": "editable-submission",
+                                    "data-pokie-lifecycle-result-job": outcomeLibraryRun.jobId,
+                                    "data-pokie-lifecycle-result-durable-job": outcomeLibraryRun.jobId,
+                                    "data-pokie-lifecycle-result-durable-status": outcomeLibraryRun.durableStatus ?? "unobserved",
+                                    "data-pokie-lifecycle-result-receipt": outcomeLibraryRun.durableStatus === "failed" || outcomeLibraryRun.durableStatus === "cancelled" || outcomeLibraryRun.durableStatus === "recovery-required" ? OUTCOME_LIBRARY_TRANSACTION.terminalReceipt : "poll-failure",
+                                    "data-pokie-lifecycle-terminal": outcomeLibraryRun.durableStatus ?? "poll-failure",
+                                    ...(outcomeLibraryRun.result === undefined ? {} : {"data-pokie-lifecycle-result-outcome": outcomeLibraryRun.result.status}),
+                                    ...(outcomeLibraryRun.browserRequestId === undefined ? {} : {"data-pokie-lifecycle-result-request-id": outcomeLibraryRun.browserRequestId}),
+                                    ...(outcomeLibraryRun.progressSnapshots === undefined ? {} : {"data-pokie-lifecycle-result-progress-snapshots": String(outcomeLibraryRun.progressSnapshots.length)}),
+                                    ...(outcomeLibraryRun.pollHttpStatus === undefined ? {} : {"data-pokie-lifecycle-poll-http-status": String(outcomeLibraryRun.pollHttpStatus)}),
+                                })}
+                            >
+                                <ErrorState message={outcomeLibraryRun.message} />
+                                {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
+                                {outcomeLibraryRun.jobId !== undefined && outcomeLibraryRun.recovery !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
+                                    <Button size="xs" variant="light" mt="xs" onClick={() => onFeatureOutcomeLibraryRecoveryAction(outcomeLibraryRun.jobId!)}>
+                                        {outcomeLibraryRun.recovery.action === "resume" ? "Resume" : "Retry"}
+                                    </Button>
+                                )}
+                                <PlannerSummary plan={outcomeLibraryRun.plan} />
+                            </div>
+                        )}
+                        {outcomeLibraryRun.status === "ok" && (
+                            <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result={OUTCOME_LIBRARY_TRANSACTION.formId} data-pokie-lifecycle-result-operation={OUTCOME_LIBRARY_TRANSACTION.operation} data-pokie-lifecycle-result-control={OUTCOME_LIBRARY_TRANSACTION.controlId} data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-receipt={OUTCOME_LIBRARY_TRANSACTION.terminalReceipt} data-pokie-lifecycle-result-durable-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-durable-status="completed" data-pokie-lifecycle-terminal="completed" data-pokie-lifecycle-result-request-id={outcomeLibraryRun.browserRequestId} data-pokie-lifecycle-result-progress-snapshots={String(outcomeLibraryRun.progressSnapshots.length)}>
+                                <Text size="sm" mt={4}>
+                                    Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
+                                    {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
+                                    {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
+                                        ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
+                                        : ""}
+                                    {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
+                                    {outcomeLibraryRun.result.bundleDir}.
+                                </Text>
+                                <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
+                                    {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
+                                <QuickActions>
+                                    <Button data-pokie-lifecycle-artifact={OUTCOME_LIBRARY_TRANSACTION.artifact} data-pokie-lifecycle-artifact-output={outcomeLibraryRun.result.resolvedBundleDir} size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
+                                    {outputActionsUnavailable ? (
+                                        <>
+                                            <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
+                                            <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
+                                        </>
+                                    ) : <>
+                                        <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.resolvedBundleDir)}>Open output folder</Button>
+                                        <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.resolvedBundleDir)}>Reveal output</Button>
+                                    </>}
+                                    {outcomeLibraryRun.result.warnings.map((warning) => <Text size="xs" c="orange" key={`${warning.code}:${warning.message}`}>{warning.message}</Text>)}
+                                    <AdvancedDisclosure label="Inspect completed library">
+                                        <Text size="xs">Hash: {outcomeLibraryRun.result.mode.hash}. Library: {outcomeLibraryRun.result.mode.libraryId}. Total weight: {outcomeLibraryRun.result.mode.totalWeight.toLocaleString()}.</Text>
+                                        <Text size="xs">Coverage: {outcomeLibraryRun.result.generator.strategy}; raw work {String(outcomeLibraryRun.result.generator.sampledRawCount)} / {String(outcomeLibraryRun.result.generator.totalOutcomeSpaceSize)}.</Text>
+                                        <Text size="xs">Selector: {describeCompletedOutcomeLibrarySelector(outcomeLibraryRun.result.selector)}. Files: {outcomeLibraryRun.result.files.join(", ")}.</Text>
+                                    </AdvancedDisclosure>
+                                </QuickActions>
+                                <PlannerSummary plan={outcomeLibraryRun.result.plan} />
+                            </div>
+                        )}
+                        {outcomeLibraryRun.status === "cancelled" && (
                             <>
-                                <Text size="sm" c="red">{outcomeLibraryPreflight.result === undefined ? outcomeLibraryPreflight.message ?? "Preflight could not be prepared." : describePreflightError(outcomeLibraryPreflight.result)} Refresh the preflight after resolving this issue.</Text>
-                                {outcomeLibraryPreflight.result !== undefined && <AdvancedDisclosure label="Preflight diagnostic"><Text size="sm">{outcomeLibraryPreflight.result.error}</Text></AdvancedDisclosure>}
+                                <Text size="sm" c="orange" mt="sm">
+                                    Generation was cancelled at {outcomeLibraryRun.result.processedRawIndex} / {outcomeLibraryRun.result.progressTotal}. No incomplete library was published. {outcomeLibraryRun.result.checkpoint === undefined
+                                        ? "Bounded coverage has no exact checkpoint; retry the same request to start a fresh deterministic sample."
+                                        : "The exact checkpoint is saved safely; resume while the displayed source and configuration remain unchanged."}
+                                </Text>
+                                {outcomeLibraryRun.result.checkpoint !== undefined && <Button size="xs" variant="light" mt="xs" onClick={onResumeOutcomeLibrary}>Resume exact generation</Button>}
+                                <PlannerSummary plan={outcomeLibraryRun.result.plan} />
                             </>
-                        )}
-                        {outcomeLibraryPreflight.status === "ok" && (
-                            <Text size="sm" c={outcomeLibraryPreflight.result.requiresBounded ? "orange" : "dimmed"}>
-                                {outcomeLibraryPreflight.result.strategy === "exact" ? "Exact enumeration" : "Bounded coverage"}: {String(outcomeLibraryPreflight.result.totalOutcomeSpaceSize)} raw combinations; expected work {String(outcomeLibraryPreflight.result.expectedRawWork)}.
-                                {outcomeLibraryPreflight.result.warnings.map((warning) => ` ${warning}`).join("")}
-                            </Text>
-                        )}
-                        {outcomeLibraryPreflight.status === "ok" && operationalEstimates !== undefined && (
-                            <Text size="xs" c="dimmed">
-                                Estimated records: {operationalEstimates.recordCount}; output size: {operationalEstimates.outputSize}; memory/disk risk: {operationalEstimates.memoryRisk}/{operationalEstimates.diskRisk}; likely duration: {operationalEstimates.likelyDuration}. These stay unknown until measured calibration supports an estimate.
-                            </Text>
-                        )}
-                        {outcomeLibraryPreflight.status === "ok" && outcomeLibraryPreflight.result.requiresBounded && outcomeLibraryGenerationOptions.generation !== "sampled" && outcomeLibraryGenerationOptions.generation !== "bounded" && (
-                            <Text size="sm" c="orange">Choose sampled or conditional bounded coverage with a sample size and seed, or raise the exact limit before generating.</Text>
                         )}
                     </div>
-                    <Button
-                        size="xs"
-                        mt="sm"
-                        onClick={onGenerateOutcomeLibrary}
-                        id={OUTCOME_LIBRARY_TRANSACTION.controlId}
-                        data-pokie-lifecycle="operation"
-                        data-pokie-transaction-state="editable-submission"
-                        data-pokie-lifecycle-operation={OUTCOME_LIBRARY_TRANSACTION.operation}
-                        loading={outcomeLibraryPending}
-                        disabled={outcomeLibraryDisabled}
-                        title={outcomeLibraryDisabled ? outcomeLibraryDisabledReason : undefined}
-                    >
-                        Generate {outcomeLibraryGenerationOptions.generation === "default" ? "exact" : outcomeLibraryGenerationOptions.generation} outcome library ({outcomeLibraryGenerationOptions.mode.trim() || defaultModeName})
-                    </Button>
-                    {outcomeLibraryRun.status === "starting" && <LoadingState label="Submitting Outcome Library generation…" />}
-                    {outcomeLibraryRun.status === "running" && (
-                        outcomeLibraryRun.job.durableProgress !== undefined
-                            ? <JobProgressCard job={toDurableOutcomeLibraryJob(outcomeLibraryRun.job)} onCancel={onCancelOutcomeLibrary} />
-                            : <>
-                                <LoadingState label={describeOutcomeLibraryLifecycle(outcomeLibraryRun.job)} />
-                                {outcomeLibraryRun.job.status !== "cancelling" && !outcomeLibraryRun.job.cancellationRequested &&
-                                    <Button size="xs" color="red" variant="light" mt="xs" onClick={onCancelOutcomeLibrary}>Cancel generation</Button>}
-                            </>
-                    )}
-                    {outcomeLibraryRun.status === "error" && (
-                        <div
-                            {...(outcomeLibraryRun.jobId === undefined ? {} : {
-                                "data-pokie-lifecycle-result": OUTCOME_LIBRARY_TRANSACTION.formId,
-                                "data-pokie-lifecycle-result-operation": OUTCOME_LIBRARY_TRANSACTION.operation,
-                                "data-pokie-lifecycle-result-control": OUTCOME_LIBRARY_TRANSACTION.controlId,
-                                "data-pokie-lifecycle-result-state": "editable-submission",
-                                "data-pokie-lifecycle-result-job": outcomeLibraryRun.jobId,
-                                "data-pokie-lifecycle-result-durable-job": outcomeLibraryRun.jobId,
-                                "data-pokie-lifecycle-result-durable-status": outcomeLibraryRun.durableStatus ?? "unobserved",
-                                "data-pokie-lifecycle-result-receipt": outcomeLibraryRun.durableStatus === "failed" || outcomeLibraryRun.durableStatus === "cancelled" || outcomeLibraryRun.durableStatus === "recovery-required" ? OUTCOME_LIBRARY_TRANSACTION.terminalReceipt : "poll-failure",
-                                "data-pokie-lifecycle-terminal": outcomeLibraryRun.durableStatus ?? "poll-failure",
-                                ...(outcomeLibraryRun.result === undefined ? {} : {"data-pokie-lifecycle-result-outcome": outcomeLibraryRun.result.status}),
-                                ...(outcomeLibraryRun.browserRequestId === undefined ? {} : {"data-pokie-lifecycle-result-request-id": outcomeLibraryRun.browserRequestId}),
-                                ...(outcomeLibraryRun.progressSnapshots === undefined ? {} : {"data-pokie-lifecycle-result-progress-snapshots": String(outcomeLibraryRun.progressSnapshots.length)}),
-                                ...(outcomeLibraryRun.pollHttpStatus === undefined ? {} : {"data-pokie-lifecycle-poll-http-status": String(outcomeLibraryRun.pollHttpStatus)}),
-                            })}
-                        >
-                            <ErrorState message={outcomeLibraryRun.message} />
-                            {outcomeLibraryRun.diagnostic !== undefined && <AdvancedDisclosure label="Generation diagnostic"><Text size="sm">{outcomeLibraryRun.diagnostic}</Text></AdvancedDisclosure>}
-                            {outcomeLibraryRun.jobId !== undefined && outcomeLibraryRun.recovery !== undefined && onFeatureOutcomeLibraryRecoveryAction !== undefined && (
-                                <Button size="xs" variant="light" mt="xs" onClick={() => onFeatureOutcomeLibraryRecoveryAction(outcomeLibraryRun.jobId!)}>
-                                    {outcomeLibraryRun.recovery.action === "resume" ? "Resume" : "Retry"}
-                                </Button>
-                            )}
-                            <PlannerSummary plan={outcomeLibraryRun.plan} />
-                        </div>
-                    )}
-                    {outcomeLibraryRun.status === "ok" && (
-                        <div role="status" aria-live="polite" tabIndex={-1} data-pokie-lifecycle-result={OUTCOME_LIBRARY_TRANSACTION.formId} data-pokie-lifecycle-result-operation={OUTCOME_LIBRARY_TRANSACTION.operation} data-pokie-lifecycle-result-control={OUTCOME_LIBRARY_TRANSACTION.controlId} data-pokie-lifecycle-result-state="editable-submission" data-pokie-lifecycle-result-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-receipt={OUTCOME_LIBRARY_TRANSACTION.terminalReceipt} data-pokie-lifecycle-result-durable-job={outcomeLibraryRun.jobId} data-pokie-lifecycle-result-durable-status="completed" data-pokie-lifecycle-terminal="completed" data-pokie-lifecycle-result-request-id={outcomeLibraryRun.browserRequestId} data-pokie-lifecycle-result-progress-snapshots={String(outcomeLibraryRun.progressSnapshots.length)}>
-                            <Text size="sm" mt={4}>
-                                Generated {outcomeLibraryRun.result.mode.outcomeCount.toLocaleString()} outcomes for mode &quot;
-                                {outcomeLibraryRun.result.mode.modeName}&quot; using {outcomeLibraryRun.result.generator.strategy}
-                                {outcomeLibraryRun.result.generator.strategy === "bounded-coverage"
-                                    ? ` (${(outcomeLibraryRun.result.coverage * 100).toFixed(4)}% of the raw space)`
-                                    : ""}
-                                {" "}(RTP {(outcomeLibraryRun.result.mode.rtp * 100).toFixed(2)}%) into{" "}
-                                {outcomeLibraryRun.result.bundleDir}.
-                            </Text>
-                            <Text size="xs" c="dimmed">Final size: {outcomeLibraryRun.result.byteSize === undefined ? "unknown" : `${outcomeLibraryRun.result.byteSize.toLocaleString()} bytes`}
-                                {outcomeLibraryRun.durationMs === undefined ? "" : ` · Duration: ${outcomeLibraryRun.durationMs}ms`}.</Text>
-                            <QuickActions>
-                                <Button data-pokie-lifecycle-artifact={OUTCOME_LIBRARY_TRANSACTION.artifact} data-pokie-lifecycle-artifact-output={outcomeLibraryRun.result.resolvedBundleDir} size="xs" variant="default" onClick={() => onInspectOutcomeLibrary(outcomeLibraryRun.result.resolvedBundleDir)}>Inspect library</Button>
-                                {outputActionsUnavailable ? (
-                                    <>
-                                        <Button size="xs" variant="default" onClick={() => onCopyPath(outcomeLibraryRun.result.resolvedBundleDir)}>Copy path</Button>
-                                        <Text size="xs" c="dimmed">Opening local output is unavailable from this headless or remote Studio session.</Text>
-                                    </>
-                                ) : <>
-                                    <Button size="xs" variant="default" onClick={() => onOpenFolder(outcomeLibraryRun.result.resolvedBundleDir)}>Open output folder</Button>
-                                    <Button size="xs" variant="default" onClick={() => onRevealOutput(outcomeLibraryRun.result.resolvedBundleDir)}>Reveal output</Button>
-                                </>}
-                                {outcomeLibraryRun.result.warnings.map((warning) => <Text size="xs" c="orange" key={`${warning.code}:${warning.message}`}>{warning.message}</Text>)}
-                                <AdvancedDisclosure label="Inspect completed library">
-                                    <Text size="xs">Hash: {outcomeLibraryRun.result.mode.hash}. Library: {outcomeLibraryRun.result.mode.libraryId}. Total weight: {outcomeLibraryRun.result.mode.totalWeight.toLocaleString()}.</Text>
-                                    <Text size="xs">Coverage: {outcomeLibraryRun.result.generator.strategy}; raw work {String(outcomeLibraryRun.result.generator.sampledRawCount)} / {String(outcomeLibraryRun.result.generator.totalOutcomeSpaceSize)}.</Text>
-                                    <Text size="xs">Selector: {describeCompletedOutcomeLibrarySelector(outcomeLibraryRun.result.selector)}. Files: {outcomeLibraryRun.result.files.join(", ")}.</Text>
-                                </AdvancedDisclosure>
-                            </QuickActions>
-                            <PlannerSummary plan={outcomeLibraryRun.result.plan} />
-                        </div>
-                    )}
-                    {outcomeLibraryRun.status === "cancelled" && (
-                        <>
-                            <Text size="sm" c="orange" mt="sm">
-                                Generation was cancelled at {outcomeLibraryRun.result.processedRawIndex} / {outcomeLibraryRun.result.progressTotal}. No incomplete library was published. {outcomeLibraryRun.result.checkpoint === undefined
-                                    ? "Bounded coverage has no exact checkpoint; retry the same request to start a fresh deterministic sample."
-                                    : "The exact checkpoint is saved safely; resume while the displayed source and configuration remain unchanged."}
-                            </Text>
-                            {outcomeLibraryRun.result.checkpoint !== undefined && <Button size="xs" variant="light" mt="xs" onClick={onResumeOutcomeLibrary}>Resume exact generation</Button>}
-                            <PlannerSummary plan={outcomeLibraryRun.result.plan} />
-                        </>
-                    )}
-                </div>
-            )}
+                )}
 
-            {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
-                <>
-                    <PathInput
-                        label={isFileArtifactTarget(card.artifactTarget) ? "Output file (optional)" : "Output directory (optional)"}
-                        description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file path." : "Use a new or empty directory."} Existing files will not be overwritten. Choose with Browse or type a server-filesystem path. Leave blank to use the shown default.`}
-                        kind={isFileArtifactTarget(card.artifactTarget) ? "file" : "directory"}
-                        pathPurpose="destination"
-                        filePickerMode={isFileArtifactTarget(card.artifactTarget) ? "save" : "open"}
-                        fileFilters={artifactFileFilters(card.artifactTarget)}
-                        browseTitle={artifactDestinationTitle(card.artifactTarget)}
-                        browseId={`artifact-${card.artifactTarget}-destination`}
-                        // This belongs to the editable control, not PathInput's
-                        // layout wrapper. The packed browser collector reads the
-                        // rendered input before it can enable Build, so keeping
-                        // the contract on the actual form field prevents a
-                        // route-level adapter from claiming a configured build.
-                        id={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
-                        attributes={card.artifactTarget === "parWorkbook" ? {input: {
-                            "data-pokie-lifecycle-field": "artifact-build-destination",
-                        }} : undefined}
-                        value={artifactDestination}
-                        error={artifactPreview.status === "conflict" ? "Choose a new or empty destination; existing files will not be overwritten." : undefined}
-                        onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
-                        onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
-                    />
-                    {artifactPreview.status === "loading" && (
-                        <Text size="sm" c="dimmed" mt={4}>
-                            Checking destination…
-                        </Text>
-                    )}
-                    {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
-                        <div style={{marginTop: "0.5rem"}}>
-                            <Text size="sm" fw={600}>
-                                Build preflight
+                {card.kind === "buildArtifact" && card.artifactTarget && card.supported && (
+                    <>
+                        <PathInput
+                            label={isFileArtifactTarget(card.artifactTarget) ? "Output file (optional)" : "Output directory (optional)"}
+                            description={`${isFileArtifactTarget(card.artifactTarget) ? "Use a new file path." : "Use a new or empty directory."} Existing files will not be overwritten. Choose with Browse or type a server-filesystem path. Leave blank to use the shown default.`}
+                            kind={isFileArtifactTarget(card.artifactTarget) ? "file" : "directory"}
+                            pathPurpose="destination"
+                            filePickerMode={isFileArtifactTarget(card.artifactTarget) ? "save" : "open"}
+                            fileFilters={artifactFileFilters(card.artifactTarget)}
+                            browseTitle={artifactDestinationTitle(card.artifactTarget)}
+                            browseId={`artifact-${card.artifactTarget}-destination`}
+                            // This belongs to the editable control, not PathInput's
+                            // layout wrapper. The packed browser collector reads the
+                            // rendered input before it can enable Build, so keeping
+                            // the contract on the actual form field prevents a
+                            // route-level adapter from claiming a configured build.
+                            id={card.artifactTarget === "parWorkbook" ? "artifact-build-destination" : undefined}
+                            attributes={card.artifactTarget === "parWorkbook" ? {input: {
+                                "data-pokie-lifecycle-field": "artifact-build-destination",
+                            }} : undefined}
+                            value={artifactDestination}
+                            error={artifactPreview.status === "conflict" ? "Choose a new or empty destination; existing files will not be overwritten." : undefined}
+                            onChange={(event) => onArtifactDestinationChange(card.artifactTarget!, event.currentTarget.value)}
+                            onPathSelected={(destination) => onArtifactDestinationChange(card.artifactTarget!, destination)}
+                        />
+                        {artifactPreview.status === "loading" && (
+                            <Text size="sm" c="dimmed" mt={4}>
+                                Checking destination…
                             </Text>
-                            <Text size="sm">Target: {card.label}</Text>
-                            <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
-                            <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
-                            <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
-                            <Text size="sm">Status: {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}</Text>
-                            {"stakePreflight" in artifactPreview.result && artifactPreview.result.stakePreflight !== undefined && (
-                                <Text size="sm" c="dimmed">
-                                    Stake route: {describeStakeRoute(artifactPreview.result.stakePreflight.route)}.
-                                    {artifactPreview.result.stakePreflight.selectedPrerequisiteLocation !== undefined && ` Selected prerequisite: ${artifactPreview.result.stakePreflight.selectedPrerequisiteLocation}.`}
-                                    {` Estimated Stake items: ${artifactPreview.result.stakePreflight.estimatedItemCount ?? "unavailable"}`}
-                                    {artifactPreview.result.stakePreflight.estimatedBytes !== undefined ? `, ${artifactPreview.result.stakePreflight.estimatedBytes} bytes` : ""}.
-                                    {artifactPreview.result.stakePreflight.complexityWarning !== undefined ? ` Warning: ${artifactPreview.result.stakePreflight.complexityWarning}` : ""}
-                                    {artifactPreview.result.stakePreflight.unavailableMetrics?.length ? ` ${artifactPreview.result.stakePreflight.unavailableMetrics.join(" ")}` : ""}
-                                    {artifactPreview.result.stakePreflight.warnings.length > 0 ? ` ${artifactPreview.result.stakePreflight.warnings.join(" ")}` : ""}
+                        )}
+                        {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
+                            <div style={{marginTop: "0.5rem"}}>
+                                <Text size="sm" fw={600} c={artifactPreview.status === "ok" ? "teal" : "red"}>
+                                    {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}
                                 </Text>
-                            )}
-                            {artifactPreview.result.plan !== undefined && (
-                                <>
-                                    <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
-                                    {artifactPreview.result.plan.steps.map((step, index) => (
-                                        <Text key={`${step.kind}-${index}`} size="sm" c="dimmed">
-                                            {step.choice === "reuse" ? "Reused" : "Durable/generated"} {step.output.kind}{step.output.canonicalLocation ? `: ${step.output.canonicalLocation}` : ""}
+                                <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
+                                <AdvancedDisclosure label="Build plan and provenance">
+                                    <Text size="sm">Target: {card.label}</Text>
+                                    <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
+                                    <Text size="sm">Destination kind: {artifactPreview.result.destinationKind}</Text>
+                                    {"stakePreflight" in artifactPreview.result && artifactPreview.result.stakePreflight !== undefined && (
+                                        <Text size="sm" c="dimmed">
+                                            Stake route: {describeStakeRoute(artifactPreview.result.stakePreflight.route)}.
+                                            {artifactPreview.result.stakePreflight.selectedPrerequisiteLocation !== undefined && ` Selected prerequisite: ${artifactPreview.result.stakePreflight.selectedPrerequisiteLocation}.`}
+                                            {` Estimated Stake items: ${artifactPreview.result.stakePreflight.estimatedItemCount ?? "unavailable"}`}
+                                            {artifactPreview.result.stakePreflight.estimatedBytes !== undefined ? `, ${artifactPreview.result.stakePreflight.estimatedBytes} bytes` : ""}.
+                                            {artifactPreview.result.stakePreflight.unavailableMetrics?.length ? ` ${artifactPreview.result.stakePreflight.unavailableMetrics.join(" ")}` : ""}
                                         </Text>
-                                    ))}
-                                    {artifactPreview.result.plan.steps.some((step) => step.kind === "importParWorkbook") && (
-                                        <Text size="sm" c="dimmed">PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.</Text>
                                     )}
-                                    {artifactPreview.result.plan.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss) => (
-                                        <Text key={loss} size="sm" c="dimmed">PAR import boundary: {loss}</Text>
-                                    ))}
-                                    {artifactPreview.result.plan.preflight.losses.length > 0 && (
-                                        <Text size="sm" c="dimmed">Data boundary: {artifactPreview.result.plan.preflight.losses.join(" ")}</Text>
+                                    {artifactPreview.result.plan !== undefined && (
+                                        <>
+                                            <Text size="sm">Plan: {artifactPreview.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}</Text>
+                                            {artifactPreview.result.plan.steps.map((step, index) => (
+                                                <Text key={`${step.kind}-${index}`} size="sm" c="dimmed">
+                                                    {step.choice === "reuse" ? "Reused" : "Durable/generated"} {step.output.kind}{step.output.canonicalLocation ? `: ${step.output.canonicalLocation}` : ""}
+                                                </Text>
+                                            ))}
+                                            {artifactPreview.result.plan.steps.some((step) => step.kind === "importParWorkbook") && (
+                                                <Text size="sm" c="dimmed">PAR evidence eligibility is verified from explicit import facts and Meta/hash provenance.</Text>
+                                            )}
+                                        </>
                                     )}
-                                </>
-                            )}
-                            {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
-                        </div>
-                    )}
-                    {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
-                        <>
-                            <ErrorState message={artifactPreview.message} />
-                            {artifactPreview.status === "unsupported" && (
-                                <Text size="sm" c="dimmed" mt={4}>
-                                    Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? (artifactPreview.plan.status === "planned" ? "The conversion route is supported; the concrete source still must pass validation." : "No executable conversion steps.")}
-                                </Text>
-                            )}
-                        </>
-                    )}
-                    {/* The PAR workbook is the public round-trip/build proof.
-                        Other cards retain their own operation identity so a
-                        collector cannot accidentally activate a disabled
-                        sibling card and call it the PAR workflow. */}
-                    <Button
-                        id={`artifact-build-${card.artifactTarget}`}
-                        data-pokie-lifecycle="operation"
-                        data-pokie-transaction-state="editable-submission"
-                        data-pokie-lifecycle-operation={card.artifactTarget === "parWorkbook" ? "artifact-build" : `artifact-build-${card.artifactTarget}`}
-                        size="xs"
-                        mt="sm"
-                        onClick={() => onBuildArtifact(card.artifactTarget!)}
-                        loading={artifactBuildRun.status === "running"}
-                        disabled={!canBuildArtifact}
-                        title={!canBuildArtifact ? artifactBuildDisabledReason : undefined}
-                    >
-                        Build
-                    </Button>
-                    {artifactBuildRun.status === "running" && (
-                        <Button size="xs" mt="sm" ml="xs" color="red" variant="light" onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>
-                            Cancel
-                        </Button>
-                    )}
-                    {(artifactBuildRun.status === "running" || artifactBuildRun.status === "ok") && artifactBuildRun.progress?.preflight !== undefined && (
-                        <Text size="sm" c="dimmed" mt={4}>
-                            {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
-                                `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
-                                `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
-                            {artifactBuildRun.status === "running" && artifactBuildRun.progress.status !== "preflight" && (
-                                <>
-                                    <br />
-                                    {`Building artifact${artifactBuildRun.progress.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
-                                        `${artifactBuildRun.progress.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`}
-                                </>
-                            )}
-                            {artifactBuildRun.status === "running" && artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
-                        </Text>
-                    )}
-                    {artifactBuildRun.status === "running" && artifactBuildRun.progress?.preflight === undefined && (
-                        <Text size="sm" c="dimmed" mt={4}>
-                            {artifactBuildRun.progress?.status !== "preflight" &&
-                                (`Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
-                                    `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
-                            {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
-                        </Text>
-                    )}
-                    {artifactBuildRun.status === "cancelled" && (
-                        <Text size="sm" c="dimmed" mt={4}>
-                            Build cancelled. No incomplete artifact was published.
-                        </Text>
-                    )}
-                    {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
-                    {artifactBuildRun.status === "ok" && (
-                        <div
-                            role="status"
-                            aria-live="polite"
-                            tabIndex={-1}
-                            data-pokie-lifecycle-result="artifact-build"
-                            data-pokie-lifecycle-result-control={`artifact-build-${card.artifactTarget}`}
-                            data-pokie-lifecycle-result-state="editable-submission"
-                            // These values are rendered from the terminal job
-                            // record that this card polled. They keep a visible
-                            // PAR result tied to its own activation, rather
-                            // than merely proving that some artifact card has
-                            // completed on this screen.
-                            data-pokie-lifecycle-result-job={artifactBuildRun.jobId}
-                            data-pokie-lifecycle-result-target={artifactBuildRun.result.target}
-                            data-pokie-lifecycle-result-output={artifactBuildRun.result.outputPath}
-                            data-pokie-lifecycle-terminal="completed"
-                        >
-                            <Text size="sm" mt={4}>
-                                Built to {artifactBuildRun.result.outputPath}.
-                                {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
-                                {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
-                            </Text>
-                            {artifactBuildRun.result.plan !== undefined && (
-                                <Text size="sm" c="dimmed" mt={4}>
-                                    Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
-                                </Text>
-                            )}
-                            {artifactBuildRun.result.stakeManifest !== undefined && (
-                                <Text size="sm" c="dimmed" mt={4}>
-                                    Stake manifest: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
-                                </Text>
-                            )}
-                            {artifactBuildRun.result.stakePrerequisiteProvenance !== undefined && (
-                                <Text size="sm" c="dimmed" mt={4}>
-                                    Stake prerequisite: {artifactBuildRun.result.stakePrerequisiteProvenance.route} ({artifactBuildRun.result.stakePrerequisiteProvenance.disposition}).
-                                    {artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation !== undefined && ` Location: ${artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation}.`}
-                                    {artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId !== undefined && ` Source: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId}@${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameVersion ?? "unknown"}.`}
-                                    {artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash !== undefined && ` Configuration: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash}.`}
-                                    {artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics !== undefined && ` Generation: ${artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics}${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount !== undefined ? ` (${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount}, seed ${artifactBuildRun.result.stakePrerequisiteProvenance.sampleSeed ?? "none"})` : ""}.`}
-                                    {artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion !== undefined && ` Policy: ${artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion}.`}
-                                </Text>
-                            )}
-                            {artifactBuildRun.result.preflight && (
-                                <Text size="sm" c="dimmed" mt={4}>
-                                    Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)
-                                    {artifactBuildRun.result.preflight.estimatedBytes !== undefined
-                                        ? ` (estimated ${artifactBuildRun.result.preflight.estimatedBytes} bytes)`
-                                        : ""}
-                                    {artifactBuildRun.result.preflight.complexityWarning ? ` — ${artifactBuildRun.result.preflight.complexityWarning}` : ""}
-                                </Text>
-                            )}
-                            <QuickActions>
-                                <Button
-                                    data-pokie-lifecycle-artifact="artifact-build-output"
-                                    data-pokie-lifecycle-artifact-target={artifactBuildRun.result.target}
-                                    data-pokie-lifecycle-artifact-output={artifactBuildRun.result.outputPath}
-                                    size="xs"
-                                    variant="default"
-                                    onClick={() => onOpenAsProject(artifactBuildRun.result)}
-                                >
-                                    Open as Project
-                                </Button>
-                                <Button
-                                    size="xs"
-                                    variant="default"
-                                    onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)}
-                                    disabled={addedToProjects}
-                                    title={addedToProjects ? "This output is already in Your projects." : undefined}
-                                >
-                                    {addedToProjects ? "Added to Projects" : "Add to Projects"}
-                                </Button>
-                                {outputActionsUnavailable ? (
+                                </AdvancedDisclosure>
+                                {"stakePreflight" in artifactPreview.result && artifactPreview.result.stakePreflight !== undefined && (
                                     <>
-                                        <Button size="xs" variant="default" onClick={() => onCopyPath(artifactBuildRun.result.outputPath)}>
-                                            Copy path
-                                        </Button>
-                                        <Text size="xs" c="dimmed">Opening local output is unsupported from a headless or remote Studio session.</Text>
+                                        {artifactPreview.result.stakePreflight.complexityWarning !== undefined && <Text size="sm" c="orange">{artifactPreview.result.stakePreflight.complexityWarning}</Text>}
+                                        {artifactPreview.result.stakePreflight.warnings.map((warning, index) => <Text key={index} size="sm" c="orange">{warning}</Text>)}
                                     </>
-                                ) : (
+                                )}
+                                {artifactPreview.result.plan?.preflight.losses.map((loss, index) => <Text key={index} size="sm" c="orange">Data boundary: {loss}</Text>)}
+                                {artifactPreview.result.plan?.steps.filter((step) => step.kind === "importParWorkbook").flatMap((step) => step.losses ?? []).map((loss, index) => <Text key={index} size="sm" c="orange">PAR import boundary: {loss}</Text>)}
+                                {artifactPreview.status === "conflict" && <ErrorState message="Destination unavailable. Choose a different destination; Build will not overwrite it." />}
+                            </div>
+                        )}
+                        {(artifactPreview.status === "unsupported" || artifactPreview.status === "error") && (
+                            <>
+                                <ErrorState message={artifactPreview.message} />
+                                {artifactPreview.status === "unsupported" && (
+                                    <Text size="sm" c="dimmed" mt={4}>
+                                        Planner diagnostic: {artifactPreview.plan.diagnostic?.message ?? (artifactPreview.plan.status === "planned" ? "The conversion route is supported; the concrete source still must pass validation." : "No executable conversion steps.")}
+                                    </Text>
+                                )}
+                            </>
+                        )}
+                        {/* The PAR workbook is the public round-trip/build proof.
+                            Other cards retain their own operation identity so a
+                            collector cannot accidentally activate a disabled
+                            sibling card and call it the PAR workflow. */}
+                        <Button
+                            id={`artifact-build-${card.artifactTarget}`}
+                            data-pokie-lifecycle="operation"
+                            data-pokie-transaction-state="editable-submission"
+                            data-pokie-lifecycle-operation={card.artifactTarget === "parWorkbook" ? "artifact-build" : `artifact-build-${card.artifactTarget}`}
+                            size="xs"
+                            mt="sm"
+                            onClick={() => onBuildArtifact(card.artifactTarget!)}
+                            loading={artifactBuildRun.status === "running"}
+                            disabled={!canBuildArtifact}
+                            title={!canBuildArtifact ? artifactBuildDisabledReason : undefined}
+                        >
+                            Build
+                        </Button>
+                        {artifactBuildRun.status === "running" && (
+                            <Button size="xs" mt="sm" ml="xs" color="red" variant="light" onClick={() => onCancelArtifactBuild(card.artifactTarget!)}>
+                                Cancel
+                            </Button>
+                        )}
+                        {(artifactBuildRun.status === "running" || artifactBuildRun.status === "ok") && artifactBuildRun.progress?.preflight !== undefined && (
+                            <Text size="sm" c="dimmed" mt={4}>
+                                {`Preflight: ${artifactBuildRun.progress.preflight.estimatedItemCount ?? "item count unavailable"} estimated item(s)` +
+                                    `${artifactBuildRun.progress.preflight.estimatedBytes !== undefined ? `, ${artifactBuildRun.progress.preflight.estimatedBytes} estimated bytes` : ""}` +
+                                    `${artifactBuildRun.progress.preflight.complexityWarning ? `. Warning: ${artifactBuildRun.progress.preflight.complexityWarning}` : ""}`}
+                                {artifactBuildRun.status === "running" && artifactBuildRun.progress.status !== "preflight" && (
+                                    <>
+                                        <br />
+                                        {`Building artifact${artifactBuildRun.progress.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                            `${artifactBuildRun.progress.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`}
+                                    </>
+                                )}
+                                {artifactBuildRun.status === "running" && artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
+                            </Text>
+                        )}
+                        {artifactBuildRun.status === "running" && artifactBuildRun.progress?.preflight === undefined && (
+                            <Text size="sm" c="dimmed" mt={4}>
+                                {artifactBuildRun.progress?.status !== "preflight" &&
+                                    (`Building artifact${artifactBuildRun.progress?.message ? `: ${artifactBuildRun.progress.message}` : ""}` +
+                                        `${artifactBuildRun.progress?.completed !== undefined ? ` (${artifactBuildRun.progress.completed}${artifactBuildRun.progress.total !== undefined ? `/${artifactBuildRun.progress.total}` : ""})` : ""}`)}
+                                {artifactBuildRun.cancellationRequested ? " Cancellation requested…" : ""}
+                            </Text>
+                        )}
+                        {artifactBuildRun.status === "cancelled" && (
+                            <Text size="sm" c="dimmed" mt={4}>
+                                Build cancelled. No incomplete artifact was published.
+                            </Text>
+                        )}
+                        {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
+                        {artifactBuildRun.status === "ok" && (
+                            <div
+                                role="status"
+                                aria-live="polite"
+                                tabIndex={-1}
+                                data-pokie-lifecycle-result="artifact-build"
+                                data-pokie-lifecycle-result-control={`artifact-build-${card.artifactTarget}`}
+                                data-pokie-lifecycle-result-state="editable-submission"
+                                // These values are rendered from the terminal job
+                                // record that this card polled. They keep a visible
+                                // PAR result tied to its own activation, rather
+                                // than merely proving that some artifact card has
+                                // completed on this screen.
+                                data-pokie-lifecycle-result-job={artifactBuildRun.jobId}
+                                data-pokie-lifecycle-result-target={artifactBuildRun.result.target}
+                                data-pokie-lifecycle-result-output={artifactBuildRun.result.outputPath}
+                                data-pokie-lifecycle-terminal="completed"
+                            >
+                                <Text size="sm" mt={4}>
+                                    Built to {artifactBuildRun.result.outputPath}.
+                                    {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
+                                    {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}
+                                </Text>
+                                {artifactBuildRun.result.plan !== undefined && (
+                                    <Text size="sm" c="dimmed" mt={4}>
+                                        Executed plan: {artifactBuildRun.result.plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "No executable steps"}.
+                                    </Text>
+                                )}
+                                {artifactBuildRun.result.stakeManifest !== undefined && (
+                                    <Text size="sm" c="dimmed" mt={4}>
+                                        Stake manifest: {artifactBuildRun.result.stakeManifest.modes.map((mode) => `${mode.name} (cost ${mode.cost})`).join(", ") || "no modes"}. Files: {artifactBuildRun.result.stakeFiles?.join(", ") || "none"}.
+                                    </Text>
+                                )}
+                                {artifactBuildRun.result.stakePrerequisiteProvenance !== undefined && (
+                                    <Text size="sm" c="dimmed" mt={4}>
+                                        Stake prerequisite: {artifactBuildRun.result.stakePrerequisiteProvenance.route} ({artifactBuildRun.result.stakePrerequisiteProvenance.disposition}).
+                                        {artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation !== undefined && ` Location: ${artifactBuildRun.result.stakePrerequisiteProvenance.selectedPrerequisiteLocation}.`}
+                                        {artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId !== undefined && ` Source: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameId}@${artifactBuildRun.result.stakePrerequisiteProvenance.sourceGameVersion ?? "unknown"}.`}
+                                        {artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash !== undefined && ` Configuration: ${artifactBuildRun.result.stakePrerequisiteProvenance.sourceConfigurationHash}.`}
+                                        {artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics !== undefined && ` Generation: ${artifactBuildRun.result.stakePrerequisiteProvenance.generationSemantics}${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount !== undefined ? ` (${artifactBuildRun.result.stakePrerequisiteProvenance.sampleCount}, seed ${artifactBuildRun.result.stakePrerequisiteProvenance.sampleSeed ?? "none"})` : ""}.`}
+                                        {artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion !== undefined && ` Policy: ${artifactBuildRun.result.stakePrerequisiteProvenance.compatibilityPolicyVersion}.`}
+                                    </Text>
+                                )}
+                                {artifactBuildRun.result.preflight && (
+                                    <Text size="sm" c="dimmed" mt={4}>
+                                        Published {artifactBuildRun.result.preflight.estimatedItemCount ?? "the estimated"} item(s)
+                                        {artifactBuildRun.result.preflight.estimatedBytes !== undefined
+                                            ? ` (estimated ${artifactBuildRun.result.preflight.estimatedBytes} bytes)`
+                                            : ""}
+                                        {artifactBuildRun.result.preflight.complexityWarning ? ` — ${artifactBuildRun.result.preflight.complexityWarning}` : ""}
+                                    </Text>
+                                )}
+                                <QuickActions>
+                                    <Button
+                                        data-pokie-lifecycle-artifact="artifact-build-output"
+                                        data-pokie-lifecycle-artifact-target={artifactBuildRun.result.target}
+                                        data-pokie-lifecycle-artifact-output={artifactBuildRun.result.outputPath}
+                                        size="xs"
+                                        variant="default"
+                                        onClick={() => onOpenAsProject(artifactBuildRun.result)}
+                                    >
+                                        Open as Project
+                                    </Button>
                                     <Button
                                         size="xs"
                                         variant="default"
-                                        onClick={() =>
-                                            artifactBuildRun.result.outputKind === "directory"
-                                                ? onOpenFolder(artifactBuildRun.result.outputPath)
-                                                : onRevealOutput(artifactBuildRun.result.outputPath)
-                                        }
+                                        onClick={() => onAddToProjects(artifactBuildRun.result.outputPath)}
+                                        disabled={addedToProjects}
+                                        title={addedToProjects ? "This output is already in Your projects." : undefined}
                                     >
-                                        {artifactBuildRun.result.outputKind === "directory" ? "Open output folder" : "Reveal file"}
+                                        {addedToProjects ? "Added to Projects" : "Add to Projects"}
                                     </Button>
-                                )}
-                            </QuickActions>
-                        </div>
-                    )}
-                </>
-            )}
-
-            {card.kind === "remoteDeployment" && (
-                <>
-                    <Button
-                        size="xs"
-                        mt="sm"
-                        loading={isActiveTarget && deployment.runLoading}
-                        disabled={card.deploymentTarget === undefined}
-                        title={card.deploymentTarget === undefined ? "Register and select a deployment target before checking compatibility." : undefined}
-                        onClick={() => {
-                            if (card.deploymentTarget !== undefined) {
-                                deployment.run(false, card.deploymentTarget);
-                            }
-                        }}
-                    >
-                        Check compatibility
-                    </Button>
-                    {previewedOk && (
-                        <Button
-                            size="xs"
-                            mt="xs"
-                            ml="xs"
-                            loading={isActiveTarget && deployment.runLoading}
-                            disabled={card.deploymentTarget === undefined}
-                            title={card.deploymentTarget === undefined ? "Register and select a deployment target before publishing." : undefined}
-                            onClick={() => deployment.run(true, card.deploymentTarget)}
-                        >
-                            Publish
-                        </Button>
-                    )}
-                    {isActiveTarget && deployment.runError && <ErrorState message={describeProjectActionError("The remote deployment", deployment.runError)} />}
-                    {isActiveTarget && deployment.runResult && !deployment.runLoading && (
-                        deployment.runResult.ok ? (
-                            <>
-                                <Text size="sm" mt={4}>
-                                    {deployment.runResult.publish
-                                        ? `Published${deployment.runResult.delivered ? "." : " -- delivery could not be confirmed."}`
-                                        : "Compatible -- ready to publish."}
-                                </Text>
-                                <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
-                            </>
-                        ) : (
-                            <>
-                                {deployment.runResult.error !== undefined && <ErrorState message={deployment.runResult.error} />}
-                                <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
-                                <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
-                            </>
-                        )
-                    )}
-                </>
-            )}
-
-            <AdvancedDisclosure detail="technical information">
-                <Text size="sm">
-                    <Text span fw={600}>
-                        Technical destination:
-                    </Text>{" "}
-                    {card.technicalDestination}
-                </Text>
-                <Text size="sm">
-                    <Text span fw={600}>
-                        Adapter:
-                    </Text>{" "}
-                    {card.adapter} (v{card.version})
-                </Text>
-                <Text size="sm" mt={4}>
-                    <Text span fw={600}>
-                        Write / publish behavior:
-                    </Text>{" "}
-                    {card.writePublishBehavior}
-                </Text>
-                {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
-                    <>
-                        <Text size="sm" mt={4}>
-                            <Text span fw={600}>
-                                Planned outputs:
-                            </Text>{" "}
-                            {artifactPreview.result.plannedOutputs.join("; ")}
-                        </Text>
-                        {artifactPreview.status === "conflict" && (
-                            <Text size="sm" mt={4}>
-                                <Text span fw={600}>
-                                    Preflight detail:
-                                </Text>{" "}
-                                {artifactPreview.result.message}
-                            </Text>
+                                    {outputActionsUnavailable ? (
+                                        <>
+                                            <Button size="xs" variant="default" onClick={() => onCopyPath(artifactBuildRun.result.outputPath)}>
+                                                Copy path
+                                            </Button>
+                                            <Text size="xs" c="dimmed">Opening local output is unsupported from a headless or remote Studio session.</Text>
+                                        </>
+                                    ) : (
+                                        <Button
+                                            size="xs"
+                                            variant="default"
+                                            onClick={() =>
+                                                artifactBuildRun.result.outputKind === "directory"
+                                                    ? onOpenFolder(artifactBuildRun.result.outputPath)
+                                                    : onRevealOutput(artifactBuildRun.result.outputPath)
+                                            }
+                                        >
+                                            {artifactBuildRun.result.outputKind === "directory" ? "Open output folder" : "Reveal file"}
+                                        </Button>
+                                    )}
+                                </QuickActions>
+                            </div>
                         )}
                     </>
                 )}
-                {card.capabilities.length > 0 && (
+
+                {card.kind === "remoteDeployment" && (
                     <>
-                        <Text size="sm" fw={600} mt={4}>
-                            Capabilities
-                        </Text>
-                        <List size="sm" withPadding>
-                            {card.capabilities.map((capability, index) => (
-                                <List.Item key={index}>{capability}</List.Item>
-                            ))}
-                        </List>
+                        <Button
+                            size="xs"
+                            mt="sm"
+                            loading={isActiveTarget && deployment.runLoading}
+                            disabled={card.deploymentTarget === undefined}
+                            title={card.deploymentTarget === undefined ? "Register and select a deployment target before checking compatibility." : undefined}
+                            onClick={() => {
+                                if (card.deploymentTarget !== undefined) {
+                                    deployment.run(false, card.deploymentTarget);
+                                }
+                            }}
+                        >
+                            Check compatibility
+                        </Button>
+                        {previewedOk && (
+                            <Button
+                                size="xs"
+                                mt="xs"
+                                ml="xs"
+                                loading={isActiveTarget && deployment.runLoading}
+                                disabled={card.deploymentTarget === undefined}
+                                title={card.deploymentTarget === undefined ? "Register and select a deployment target before publishing." : undefined}
+                                onClick={() => deployment.run(true, card.deploymentTarget)}
+                            >
+                                Publish
+                            </Button>
+                        )}
+                        {isActiveTarget && deployment.runError && <ErrorState message={describeProjectActionError("The remote deployment", deployment.runError)} />}
+                        {isActiveTarget && deployment.runResult && !deployment.runLoading && (
+                            deployment.runResult.ok ? (
+                                <>
+                                    <Text size="sm" mt={4}>
+                                        {deployment.runResult.publish
+                                            ? `Published${deployment.runResult.delivered ? "." : " -- delivery could not be confirmed."}`
+                                            : "Compatible -- ready to publish."}
+                                    </Text>
+                                    <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
+                                </>
+                            ) : (
+                                <>
+                                    {deployment.runResult.error !== undefined && <ErrorState message={deployment.runResult.error} />}
+                                    <PlannerSummary plan={deployment.runResult.plan} label="Deployment prerequisite plan" />
+                                    <IssueList title="Build issues" issues={deployment.runResult.stages.flatMap((stage) => stage.issues)} />
+                                </>
+                            )
+                        )}
                     </>
                 )}
-                {card.limits.length > 0 && (
-                    <>
-                        <Text size="sm" fw={600} mt={4}>
-                            Limits
-                        </Text>
-                        <List size="sm" withPadding>
-                            {card.limits.map((limit, index) => (
-                                <List.Item key={index}>{limit}</List.Item>
-                            ))}
-                        </List>
-                    </>
-                )}
-                <Text size="sm" mt={4}>
-                    <Text span fw={600}>
-                        Compatibility:
-                    </Text>{" "}
-                    {card.compatibility}
-                </Text>
-            </AdvancedDisclosure>
+
+                <AdvancedDisclosure detail="technical information">
+                    {card.prerequisites.length > 0 && (
+                        <>
+                            <Text size="sm" fw={600} mt={4}>
+                                Prerequisites
+                            </Text>
+                            <List size="sm" withPadding>
+                                {card.prerequisites.map((prerequisite, index) => (
+                                    <List.Item key={index}>{prerequisite}</List.Item>
+                                ))}
+                            </List>
+                        </>
+                    )}
+                    <Text size="sm">
+                        <Text span fw={600}>
+                            Technical destination:
+                        </Text>{" "}
+                        {card.technicalDestination}
+                    </Text>
+                    <Text size="sm">
+                        <Text span fw={600}>
+                            Adapter:
+                        </Text>{" "}
+                        {card.adapter} (v{card.version})
+                    </Text>
+                    <Text size="sm" mt={4}>
+                        <Text span fw={600}>
+                            Write / publish behavior:
+                        </Text>{" "}
+                        {card.writePublishBehavior}
+                    </Text>
+                    {(artifactPreview.status === "ok" || artifactPreview.status === "conflict") && (
+                        <>
+                            <Text size="sm" mt={4}>
+                                <Text span fw={600}>
+                                    Planned outputs:
+                                </Text>{" "}
+                                {artifactPreview.result.plannedOutputs.join("; ")}
+                            </Text>
+                            {artifactPreview.status === "conflict" && (
+                                <Text size="sm" mt={4}>
+                                    <Text span fw={600}>
+                                        Preflight detail:
+                                    </Text>{" "}
+                                    {artifactPreview.result.message}
+                                </Text>
+                            )}
+                        </>
+                    )}
+                    {card.capabilities.length > 0 && (
+                        <>
+                            <Text size="sm" fw={600} mt={4}>
+                                Capabilities
+                            </Text>
+                            <List size="sm" withPadding>
+                                {card.capabilities.map((capability, index) => (
+                                    <List.Item key={index}>{capability}</List.Item>
+                                ))}
+                            </List>
+                        </>
+                    )}
+                    {card.limits.length > 0 && (
+                        <>
+                            <Text size="sm" fw={600} mt={4}>
+                                Limits
+                            </Text>
+                            <List size="sm" withPadding>
+                                {card.limits.map((limit, index) => (
+                                    <List.Item key={index}>{limit}</List.Item>
+                                ))}
+                            </List>
+                        </>
+                    )}
+                    <Text size="sm" mt={4}>
+                        <Text span fw={600}>
+                            Compatibility:
+                        </Text>{" "}
+                        {card.compatibility}
+                    </Text>
+                </AdvancedDisclosure>
+            </div>
         </div>
     );
 }
@@ -1639,10 +1687,21 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                     const artifactPreview: ArtifactPreviewRunView =
                                         (card.artifactTarget !== undefined ? artifactPreviews[card.artifactTarget] : undefined) ?? {status: "loading"};
                                     const addedToProjects = artifactBuildRun.status === "ok" && addedToProjectPaths.has(artifactBuildRun.result.outputPath);
+                                    let recoveryRequested = false;
+                                    if (card.kind === "outcomeLibrary") {
+                                        recoveryRequested = recoveryRequest !== undefined && (typeof recoveryRequest.generation === "string" || typeof recoveryRequest.maxOutcomeSpaceSize === "string" || typeof recoveryRequest.libraryId === "string");
+                                    } else if (card.artifactTarget !== undefined) {
+                                        recoveryRequested = recoveryRequest?.target === card.artifactTarget;
+                                    } else if (card.deploymentTarget !== undefined) {
+                                        recoveryRequested = recoveryRequest?.targetId === card.deploymentTarget.id;
+                                    }
+
                                     return (
                                         <TargetCard
                                             key={card.id}
                                             card={card}
+                                            initiallyOpened={kind === "buildArtifact" && card.id === groupCards.find((candidate) => candidate.supported)?.id}
+                                            recoveryRequested={recoveryRequested}
                                             defaultModeName={defaultModeName}
                                             outcomeLibraryRun={outcomeLibraryRun}
                                             outcomeLibraryPreflight={outcomeLibraryPreflight}

@@ -14,6 +14,9 @@ body,
    letting individual tables and code blocks own their local scrolling. */
 .studio-app-main {
     min-width: 0;
+    /* Resize the content column immediately: interpolating the desktop rail padding
+       leaves phone controls narrower than their labels during the transition. */
+    transition-property: none;
 }
 
 .studio-app-header,
@@ -199,7 +202,8 @@ body,
     }
 
     .studio-app-main {
-        padding-block: var(--mantine-spacing-sm);
+        padding-block-start: calc(var(--app-shell-header-offset, 0px) + var(--mantine-spacing-sm));
+        padding-block-end: var(--mantine-spacing-sm);
     }
 
     .studio-page {
