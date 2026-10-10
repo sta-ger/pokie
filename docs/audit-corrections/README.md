@@ -1299,3 +1299,54 @@ Accordingly the six corrective repros, five fresh persona smokes, image/focus
 disposition, packed-asset comparison, and closeout/drain record remain
 **not reached** on this candidate. Historic candidate handoffs were not reused
 or relabelled. Controller release lifecycle remains explicitly pending.
+
+### P9-11 guided action clipping repair (rendered acceptance pending)
+
+Finding `a37cc502590dc7cd` was traced from the authenticated terminal receipt
+above on clean task HEAD `46be83ca`, whose product parent is `be9f91ef`.
+The saved logs still hash to the recorded digests, and the assigned external
+driver still matches the committed driver (`cf508409…0209`). No frozen input,
+transcript, image, receipt, prior-step document or attempt budget was replaced.
+
+The failure identifies the button, not a particular descendant. Source tracing
+of that exact native control finds a concrete content-clipping path: Mantine's
+loading CSS translates its inner label down by 100%, and its mounted exit
+loader translates up by 200% for 150ms after `loading` becomes false. Thus an
+enabled, validated button can still contain an escaping loader. P910 measures
+descendant element/text rectangles and local ancestors, so a contained outer
+button and `overflow: false` cannot establish content containment.
+
+[Production CSS](../../cli/studio-client/src/global.css) now keeps this guided
+Create/Save action's label and loader in place, with opacity transitions. The
+loader override also wins against Mantine's inline exit transform and remains
+active after the loading attribute disappears. It changes no shared Button
+default or QuickActions layout. The same ID serves a new starter, loaded game,
+and recovered draft through validation, saving and workspace opening. Native
+disabled/busy semantics, accessible labels/descriptions and synchronous
+Overview navigation remain on their existing paths. Home's guarded retained
+opening and error/retry lifecycle are unchanged.
+
+| Accumulated finding / immutable obligation | Correction and closure authority |
+| --- | --- |
+| Home clipping `a37cc502590dc7cd` | Scoped production animation correction; responsive regression checks actual Mantine child selectors, busy/enabled semantics, computed rules and inline exit precedence. jsdom checks do not prove viewport geometry; authenticated P910 remains mandatory. |
+| Overview clipping `9db9d1fb13cebec3`; opening guard/error `462cae8cd3be8df7` | Guided creation and routed Home/opening regressions retain retired editor DOM, Stay/Leave for dirty form/JSON, operation confirmation, failed request and successful retry. |
+| Source/recovery identity `f7014303e1a68ec0`; late callbacks/save guard `45fafbdbee49e426` | Guided-build and Build panel regressions retain replacement isolation, source/JSON disabled paths, delayed responses and deferred-save guard ownership. Optional real source identity in Build/PAR export remains unchanged. |
+| Missing itineraries `4244816bdd6f6e3c`, `5cafd64253cf60ae`; rendered contracts `706091c10ac6f4a8`, `416ccfa43f20caa3` | Driver/closeout regressions retain exact coverage IDs and action classification, native Paytable arrows, original dependent Stake/borrowed manifest, deterministic inputs, rendered rare metrics, separate launch environment, four graphic sheets and cleanup. No driver or collector assertion is weakened. |
+| Help `0b244d51149b68d1`, `935084382c9fc051`; inventory `8d3fc6b430185879` | Previously corrected shared help adapter and exact Simulation/Replay/WASM inventory remain intact with their prior whole-file authorities. No CLI boundary changes in this repair. |
+| Six repros, five independent personas, P909/P910, presentation/focus and resource drainage | Original freezes, retained observations and bounded image collection remain immutable. Controller must bind every required affected proof to the new production candidate and execute both whole browser files with rendered cases; no skipped case is closure. |
+| Normal candidate and single release lifecycle | CSS is a Vite bundle input served by Studio and carried in the normal archive/install. Root typecheck includes Studio once; production bundle/build/pack/install, official gates, exact integration/push/publication and Drive round-trip remain controller-owned and pending. Wider roadmap gaps remain unchanged. |
+
+Permitted foreground checks for the correction:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/common/responsive.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintBuildPanel.test.tsx tests/cli/studio-client/src/components/home/HomePage.test.tsx tests/cli/studio-client/src/openProjectGuard.test.tsx tests/scripts/p9-11-rendered-driver.test.mjs tests/scripts/p9-11-corrective-closeout.test.mjs
+npm run typecheck
+```
+
+The bounded whole-file run passed **8 suites / 217 tests**. Existing shared
+opening fixtures emitted React `act` warnings while passing. Root typecheck
+exited zero, including the Studio compiler once. Commit-hook outcomes are
+recorded in the committed worker report.
+This implementation handoff does not complete P9-11 or the campaign;
+current-candidate rendered geometry, independent image disposition, authenticated
+packed closeout and the controller release lifecycle remain pending.

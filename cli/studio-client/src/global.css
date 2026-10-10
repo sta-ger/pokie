@@ -369,3 +369,18 @@ body,
     scroll-margin-block-end: 8px;
     scroll-margin-inline: 8px;
 }
+
+/* The guided action stays in place while validation/save/open changes its busy
+   state. Mantine slides the label below the clipped button and slides its loader
+   above it on exit, including after the action is enabled again. Fade these
+   contents in place so neither transition escapes the control on resize. */
+#blueprint-create-game .mantine-Button-inner {
+    transform: none;
+    transition-property: opacity;
+}
+
+#blueprint-create-game .mantine-Button-loader {
+    /* Mantine supplies its enter/exit transforms and transition inline. */
+    transform: translate(-50%, -50%) !important;
+    transition-property: opacity !important;
+}
