@@ -1006,3 +1006,56 @@ spacing, controls and status consistency on Home, the project Build/Export
 form and a terminal job card. No P0, P1 or material P2 remains in this affected
 matrix. This is a visual disposition based on the recorded surfaces, not an
 automated-execution-only approval.
+
+## Post-review observation prerequisite and desktop regression alignment
+
+The saved `post_review_full_gate` diagnostic on base
+`8b1b939912d07f73ff5aa457bb9a0c7e811832bb` is from the controller's
+`authenticated independent observation prerequisite`, return code 1:
+`Browser regression requires candidate-bound independent frozen observations.`
+It supplies no Jest assertion failure or new product finding. Historical
+record paths and visual dispositions above do not authenticate a receipt for
+the current gate. This implementation worker cannot manufacture that receipt,
+read runtime harnesses outside its authorized worktree, or rerun independent
+collection, production builds or official gates. The prerequisite remains
+explicitly pending with the controller.
+
+Source tracing did identify a contradiction with the latest saved affected
+visual reassessment: its six contained tabs fit on one row at 900px, but the
+P910 rendered test still required multiple rows at that desktop width.
+`SectionedFormEditor` retains `flexWrap: "wrap"`; the required behavior is
+that all six tabs fit their owning list and remain reachable. The shared
+rendered section assertion now permits one or more desktop rows while retaining
+the exact six labels, computed wrapping and every tab's containment measurement.
+Phone presentation still requires multiple rows. Focused contract coverage in
+the same allowed file accepts both contained desktop layouts and rejects
+clipping, missing Bets, nowrap, zero rows and a single phone row. These fixtures
+test assertion behavior and are not independent visual evidence. Native arrow
+traversal, validation status, creation, Build/Export disabled/conflict/recovery,
+sentinel preservation and real running/completed job checks remain intact.
+
+| Whole-step requirement / accumulated closure | Current evidence and remaining authority |
+| --- | --- |
+| Independent cold visual judgment of real compact/smaller surfaces | Historical records above preserved; current gate's candidate-bound authentication remains controller-owned and pending. No new observation or screenshot is claimed. |
+| Material layout, hierarchy, selector, style, hidden-content and focus findings | Existing shared product corrections and recorded independent dispositions preserved. The current test now agrees with the saved contained 900px result; phone reflow and all existing geometry/keyboard/workflow safeguards remain required. |
+| Clean affected rendered retest and bounded evidence | Historical rendered evidence preserved unchanged. Current-candidate authenticated complete rendered run and independent disposition remain pending; no images added or prior evidence pruned. |
+| Independent post-review full gate passes | Unverified. A local helper pass with an explicit rendered skip does not discharge the controller prerequisite or prove this gate green. |
+
+Permitted foreground command:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
+```
+
+The final correction run exited zero: one suite, six passed checks, one explicit
+rendered skip without `P910_FROZEN_OBSERVATIONS`. The first new contract-test
+run failed because Jest's truncated diff named the missing `Bets` rather than
+the `labels` key; the diagnostic expectation was corrected and the entire
+allowed file rerun. The unchanged registration
+contract still enables the complete rendered test for any supplied opt-in and
+rejects missing/unreadable/empty records before browser startup. No fallback
+receipt, automatic historical locator or prerequisite bypass was added.
+Only this document and the allowed test file changed; the test's consumers are
+its existing Node/ts-jest lane and the changed-file ESLint commit hook, with no
+production compiler or bundle inputs changed. No parent-review test, build,
+packaging, independent browser rerun or official gate was executed.

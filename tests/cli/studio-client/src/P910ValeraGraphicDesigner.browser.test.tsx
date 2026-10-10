@@ -23,6 +23,40 @@ type RenderedStyles = {
     primaryColorFilled: string;
 };
 
+type RenderedSections = {labels: string[]; wrap: string; contained: boolean; rows: number};
+
+function assertRenderedSections(sections: RenderedSections, small: boolean): void {
+    expect(sections).toEqual({
+        labels: ['Game basics', 'Layout', 'Symbols', 'Reels', 'Paytable', 'Bets'],
+        wrap: 'wrap',
+        contained: true,
+        rows: expect.any(Number),
+    });
+    expect(sections.rows).toBeGreaterThan(small ? 1 : 0);
+}
+
+it("accepts contained desktop tabs on one or more rows while requiring phone reflow", () => {
+    // The saved 900px visual retest accepted one contained row. Row count alone
+    // is not desktop overflow; preserve exact labels, wrapping and measured bounds.
+    const sections: RenderedSections = {
+        labels: ['Game basics', 'Layout', 'Symbols', 'Reels', 'Paytable', 'Bets'],
+        wrap: 'wrap',
+        contained: true,
+        rows: 1,
+    };
+    assertRenderedSections(sections, false);
+    assertRenderedSections({...sections, rows: 2}, false);
+    assertRenderedSections({...sections, rows: 2}, true);
+    expect(() => assertRenderedSections(sections, true)).toThrow();
+    expect(() => assertRenderedSections({...sections, rows: 0}, false)).toThrow();
+    for (const small of [false, true]) {
+        const reflowed = {...sections, rows: 2};
+        expect(() => assertRenderedSections({...reflowed, contained: false}, small)).toThrow('contained');
+        expect(() => assertRenderedSections({...reflowed, wrap: 'nowrap'}, small)).toThrow('wrap');
+        expect(() => assertRenderedSections({...reflowed, labels: sections.labels.slice(0, -1)}, small)).toThrow('Bets');
+    }
+});
+
 function assertRenderedStyles(styles: RenderedStyles): void {
     // An inline-block Button computes to block when it is a flex/grid item (Home's
     // QuickActions and project action groups). Standalone buttons retain inline-block.
@@ -414,7 +448,7 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             await viewport(width, height);
             await styles();
             await measure(`Home ${width}x${height}`);
-            const sections = await evaluate<{labels: string[]; wrap: string; contained: boolean; rows: number}>(`(() => {
+            const sections = await evaluate<RenderedSections>(`(() => {
                 const list = document.querySelector('[role="tablist"][aria-label="Game design sections"]');
                 if (!list) throw new Error('Missing game design sections');
                 const bounds = list.getBoundingClientRect();
@@ -430,12 +464,9 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                     rows: new Set(tabs.map(tab => Math.round(tab.getBoundingClientRect().top))).size,
                 };
             })()`);
-            expect(sections.labels).toEqual(['Game basics', 'Layout', 'Symbols', 'Reels', 'Paytable', 'Bets']);
+            assertRenderedSections(sections, small);
             await until(() => evaluate<boolean>(`Array.from(document.querySelectorAll('[role="tablist"][aria-label="Game design sections"] [role="tab"]'))
                 .every(tab => tab.querySelector('.mantine-VisuallyHidden-root')?.textContent.trim() === 'valid')`), 'accessible validation status on all six sections');
-            expect(sections.wrap).toBe('wrap');
-            expect(sections.contained).toBe(true);
-            if (width === 900 || small) expect(sections.rows).toBeGreaterThan(1);
             if (width === 900) {
                 const list = "document.querySelector('[role=tablist][aria-label=\"Game design sections\"]')";
                 // StatusBadge contributes validation text to the tab's accessible name; match
