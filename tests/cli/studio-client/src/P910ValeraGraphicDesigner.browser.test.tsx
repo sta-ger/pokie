@@ -152,7 +152,7 @@ it("rejects missing, unreadable and empty frozen records before browser startup"
     }
 });
 
-renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home, Build/Export and real running/terminal cards at two widths", async () => {
+renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home including the 900px finding, Build/Export and real running/terminal cards", async () => {
     await assertFrozenObservations(process.env.P910_FROZEN_OBSERVATIONS);
     const candidate = process.cwd();
     const overallDeadline = Date.now() + 180_000;
@@ -361,10 +361,43 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home, Bui
             const local = path.join(candidate, 'dist/cli/studio-client', reference.replace(/^\//, ''));
             expect(Buffer.from(await response.arrayBuffer())).toEqual(await fs.readFile(local));
         }
-        for (const [width, height] of [[1100, 800], [390, 844]]) {
+        // Include the frozen finding's exact desktop width: the 260px rail is still present.
+        // This additional affected Home check creates no screenshots or full-gallery collection.
+        for (const [width, height] of [[1100, 800], [900, 700], [390, 844]]) {
             await viewport(width, height);
             await styles();
             await measure(`Home ${width}x${height}`);
+            const sections = await evaluate<{labels: string[]; wrap: string; contained: boolean; rows: number}>(`(() => {
+                const list = document.querySelector('[role="tablist"][aria-label="Game design sections"]');
+                if (!list) throw new Error('Missing game design sections');
+                const bounds = list.getBoundingClientRect();
+                const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+                return {
+                    labels: tabs.map(tab => tab.querySelector('.mantine-Tabs-tabLabel').textContent),
+                    wrap: getComputedStyle(list).flexWrap,
+                    contained: tabs.every(tab => {
+                        const r = tab.getBoundingClientRect();
+                        return r.width > 0 && r.left >= bounds.left - 1 && r.right <= bounds.right + 1
+                            && r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1;
+                    }),
+                    rows: new Set(tabs.map(tab => Math.round(tab.getBoundingClientRect().top))).size,
+                };
+            })()`);
+            expect(sections.labels).toEqual(['Game basics', 'Layout', 'Symbols', 'Reels', 'Paytable', 'Bets']);
+            expect(sections.wrap).toBe('wrap');
+            expect(sections.contained).toBe(true);
+            if (width === 900 || small) expect(sections.rows).toBeGreaterThan(1);
+            if (width === 900) {
+                const list = "document.querySelector('[role=tablist][aria-label=\"Game design sections\"]')";
+                await focus(button("Game basics", list));
+                for (let index = 0; index < 5; index++) await key("ArrowRight", "ArrowRight", 39);
+                expect(await evaluate<boolean>(`document.activeElement === (${button("Bets", list)})
+                    && document.activeElement.getAttribute('aria-selected') === 'true'`)).toBe(true);
+                await measure('Home Bets 900x700');
+                await key("ArrowRight", "ArrowRight", 39);
+                expect(await evaluate<boolean>(`document.activeElement === (${button("Game basics", list)})
+                    && document.activeElement.getAttribute('aria-selected') === 'true'`)).toBe(true);
+            }
             await focus(button("Create game"));
             if (small) {
                 await activate("document.getElementById('studio-navigation-toggle')");

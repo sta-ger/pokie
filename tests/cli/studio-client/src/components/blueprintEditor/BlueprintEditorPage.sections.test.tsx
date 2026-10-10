@@ -98,6 +98,20 @@ function okValidateFetch(): FetchLike {
 }
 
 describe("Guided Design Game: sectioned layout", () => {
+    it("keeps all six sections in a wrapping tablist outside intrinsic-width scroll content", () => {
+        renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
+
+        const tablist = screen.getByRole("tablist", {name: "Game design sections"});
+        expect(tablist).toHaveStyle({flexWrap: "wrap"});
+        expect(tablist.closest(".mantine-ScrollArea-root")).toBeNull();
+        const tabs = within(tablist).getAllByRole("tab");
+        expect(tabs).toHaveLength(6);
+        ["Game basics", "Layout", "Symbols", "Reels", "Paytable", "Bets"].forEach((label, index) => {
+            expect(tabs[index]).toHaveAccessibleName(new RegExp(label));
+            expect(tabs[index]).toBeEnabled();
+        });
+    });
+
     it("explains required metadata and the recommended default reel mode in their authoring sections", () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
@@ -243,5 +257,14 @@ describe("Guided Design Game: sectioned layout", () => {
 
         fireEvent.keyDown(layoutTab, {key: "ArrowRight"});
         expect(sectionTab(/Symbols/)).toHaveAttribute("aria-selected", "true");
+
+        // Wrapping changes presentation only: the roving tab order still reaches the last
+        // required editor section and returns to the first without moving focus into a panel.
+        for (const [from, to] of [["Symbols", "Reels"], ["Reels", "Paytable"], ["Paytable", "Bets"], ["Bets", "Game basics"]]) {
+            fireEvent.keyDown(sectionTab(from), {key: "ArrowRight"});
+            expect(sectionTab(to)).toHaveAttribute("aria-selected", "true");
+            expect(sectionTab(to)).toHaveFocus();
+            expect(document.getElementById(sectionTab(to).getAttribute("aria-controls") ?? "")).toBeVisible();
+        }
     }, 60000);
 });

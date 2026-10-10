@@ -219,3 +219,54 @@ and smaller Build/Export `3-observation.png`
 (`d2bce1d4ed3106ab21732d49d1dd9c223721257985c6054ebf0c7f08b617ea0e`).
 They are siblings of the frozen record above. No full viewport/status gallery
 was collected.
+
+## P9-VALERA-GRAPHIC-01 — implementation correction, rendered closure pending
+
+Read both saved JSON records and verified their SHA-256 values against the
+independent collection table above. Their observations and all three screenshots
+remain unchanged. Current pre-correction HEAD `464bbd8b` differs from the observed
+candidate only by the appended independent assessment, so the observed product
+defect is still present in its source.
+
+The exact saved geometry is `Bets` x=890.484375, width=95.015625: its right edge
+is 985.5px in the 900×700 viewport. Source tracing reaches Home's guided
+`BlueprintEditorPage` → `SectionedFormEditor`. That shared editor explicitly
+overrides Mantine's wrapping tablist with `flexWrap: "nowrap"` inside a
+`ScrollArea`; the installed ScrollArea content uses `display: table` and
+`min-width: 100%`. The six tabs therefore retain their intrinsic single-row
+width instead of fitting the 593px main column beside the 260px rail. The
+persisted project's `GameModelSections` uses a separate presentation, consistent
+with the frozen observation that this defect did not repeat there.
+
+The correction removes that intrinsic-width scroll wrapper and explicitly wraps
+the same semantic tablist in its available editor column. All six labels,
+validation badges, real panels, lazy mounting, retained drafts, and native
+roving keyboard navigation remain in place. No capabilities or technical
+information are removed, and no global clipping or shell redesign is added.
+
+| Whole-step acceptance / accumulated finding | Current closure evidence |
+| --- | --- |
+| Independent cold visual judgment before source/history | Preserved frozen initial record and chronological transcript above; the collector reached Home, a created project's Game Model and Build/Export, and Running/Completed project-open cards at 1439×956 and 900×700. No P0/P1 or other material visual finding was recorded. |
+| P9-VALERA-GRAPHIC-01: Bets clipped at 900×700 | Shared-cause wrapping correction in `SectionedFormEditor`; focused section tests check exactly all six enabled tabs, absence of the intrinsic-width ScrollArea ancestor, navigation through Bets and back, visible controlled panels, retained edits, validation badges and save/open behavior. Product correction committed in the commit containing this section; independent disposition remains open. |
+| Failure/disabled path and preserved creation semantics | Complete `BlueprintEditorPage.guidedProgress.test.tsx` covers disabled Create during loading/invalid designs, recovery after edits, and saving/opening through the real native control. |
+| Clean affected production rerender | Controller-owned `P910ValeraGraphicDesigner.browser.test.tsx` now includes the exact 900×700 Home case alongside its existing compact/phone Home checks. It requires all six labels, wrapping, tab bounds inside their owning list and multiple rows at 900px/phone width; native arrow keys reach Bets, measure that active form and return to basics at 900px. Existing production asset/style identity, Build/Export conflict/recovery and actual running/terminal job checks remain. Execution and independent visual disposition are pending the controller's fresh build and isolated clean-state retest; no browser run is claimed here. |
+| Bounded immutable evidence | Existing three screenshots and frozen history retained; implementation adds zero screenshots. At most one supplementary affected retest screenshot/contact sheet can be retained within the four-image limit. No full-gallery collection or prior-step cleanup. |
+
+Permitted implementation checks:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedProgress.test.tsx tests/cli/studio-client/src/components/common/responsive.test.tsx
+npm run typecheck
+```
+
+The focused run passed three suites / 40 tests (19.201s). Its section workflow
+suite also emitted React `act(...)` warnings for asynchronous Home updates;
+there were no assertion failures. `npm run typecheck` exited zero, covering the
+production Studio compiler once. The section regression is consumed by the workflow Jest lane,
+the automatic-validation/responsive files by the component lane, and changed
+TypeScript by the clone-installed ESLint commit hook. The changed production
+component is also consumed by Vite's Studio bundle through `build-studio-client`
+and `build-cli`; these build boundaries and the complete browser regression
+remain controller-owned under the bounded implementer policy. No production
+build, packaging, independent browser rerun or official gate ran in this worker.
+This correction handoff does not claim the roadmap's final visual closeout.
