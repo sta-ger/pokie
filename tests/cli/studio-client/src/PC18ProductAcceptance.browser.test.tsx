@@ -1,4 +1,4 @@
-import {act, screen, waitFor, within} from "@testing-library/react";
+import {act, cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import http from "http";
@@ -68,6 +68,7 @@ describe("PC-18 Studio product acceptance", () => {
             await waitFor(() => expect(router.state.location.pathname).toBe(`/project/${encodeURIComponent(second)}/simulation`));
             expect(screen.queryByRole("heading", {name: "First PC-18 Slot"})).not.toBeInTheDocument();
         } finally {
+            cleanup();
             await server.stop();
             fs.rmSync(studioRoot, {recursive: true, force: true});
             fs.rmSync(workDir, {recursive: true, force: true});
@@ -140,6 +141,7 @@ describe("PC-18 Studio product acceptance", () => {
             const build = within(stakeCard!).getByRole("button", {name: "Build"});
             await waitFor(() => expect(build).toBeEnabled());
         } finally {
+            cleanup();
             prepare.mockRestore();
             await server.stop();
             fs.rmSync(studioRoot, {recursive: true, force: true});

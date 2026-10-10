@@ -1,4 +1,4 @@
-import {screen, waitFor, within} from "@testing-library/react";
+import {cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createLocalJsonExternalDeploymentTarget, STUDIO_OPERATION} from "pokie";
 import fs from "fs";
@@ -103,6 +103,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
     });
 
     afterEach(async () => {
+        cleanup();
         if (server !== undefined && !packageServerStopped) await server.stop();
         for (const additionalServer of additionalServers.splice(0)) await additionalServer.stop();
         fs.rmSync(studioRoot, {recursive: true, force: true});
@@ -531,6 +532,16 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         expect(fs.readFileSync(savedBlueprintPath)).toEqual(savedBlueprintBytes);
 
         await user.click(screen.getByRole("button", {name: "Close project"}));
+        // The common job observer can still show the just-published PAR job
+        // as active. Follow the public close confirmation before importing.
+        await waitFor(() => expect(
+            designApp.router.state.location.pathname === "/home/projects" || screen.queryByRole("dialog", {name: "Please confirm"}) !== null,
+        ).toBe(true));
+        const closeConfirmation = screen.queryByRole("dialog", {name: "Please confirm"});
+        if (closeConfirmation !== null) {
+            expect(closeConfirmation).toBeVisible();
+            await user.click(within(closeConfirmation).getByRole("button", {name: "Confirm"}));
+        }
         await waitFor(() => expect(designApp.router.state.location.pathname).toBe("/home/projects"));
         await user.click(await screen.findByRole("button", {name: "Start a game"}));
         await screen.findByRole("heading", {name: "Design Your Game"});

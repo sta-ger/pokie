@@ -868,3 +868,37 @@ for a promise brace style error and warned about the recovery dependency
 expression. Explicit stable deployment aliases and multiline braces corrected
 these. The final Export/Deploy whole-file rerun passed 59 tests and the final
 root typecheck exited zero. The commit hook remains enabled.
+
+## Retained PC14 / PC18 gate regression correction
+
+The complete saved failing set was reproduced together on `3da941df` through
+`npm run test:targeted`. PC14 published the recovered PAR workbook but then
+waited for Home while the public Close project confirmation remained open.
+PC18 timed out during server shutdown with its dashboard still mounted.
+
+PC14 now waits for either the Home route or the visible confirmation, activates
+the dialog's public Confirm control when required, and retains the final Home
+route assertion before continuing PAR import. Both suites unmount their UI
+before stopping Studio so mounted job observers cannot keep shutdown requests
+alive. No timeout, visibility check, disclosure activation, publication,
+conflict, remount or provenance assertion was removed or relaxed.
+
+The final foreground run exited zero: two suites / three tests, no skips:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/PC18ProductAcceptance.browser.test.tsx tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx
+```
+
+React asynchronous-update and duplicate Certification evidence key warnings
+remain visible. Only the saved failing files were executed; the controller
+retains the complete reviewer matrix. Existing request-identity recovery,
+remote Needs attention / retry handling, native generator/PAR runner preparation,
+tab wrapping, visible-content geometry and native keyboard corrections remain
+unchanged. Frozen observations, screenshots, transcripts and completed-step
+evidence were preserved. Complete current-asset P910 execution and independent
+visual disposition remain pending for the controller; no production build,
+packaging, official gate, broad P8 campaign or replacement collection ran.
+
+`npm run typecheck` also exited zero, including the Studio compiler once.
+Changed tests consume the existing Jest workflow boundary and required
+changed-TypeScript ESLint hook; no production bundling input changed.
