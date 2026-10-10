@@ -259,6 +259,41 @@ npm run test:targeted -- tests/cli/studio-client/src/components/blueprintEditor/
 npm run typecheck
 ```
 
+## 2026-10-10 independent rerun — candidate audit-source finding
+
+This section records the new candidate-bound cold collection and its
+post-freeze dependent regression. It does not reclassify historical findings.
+
+| Item | Actual record |
+| --- | --- |
+| Candidate / HEAD | `e6014f496ac833b34a2e98c262ce4e81e9d2343f` / `e6014f496ac833b34a2e98c262ce4e81e9d2343f` |
+| Fresh interactive collection | `2026-10-10T02:51:24.054Z` to its frozen boundary; fresh app config/Documents and browser profile under the assigned P9-10 harness |
+| Frozen initial record | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/frozen-initial.json` — SHA-256 `71c30329d173a999b17b16fb43314260864bd76ff2bed3aa04fb11145bb0d37b` |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/transcript.json` — SHA-256 `4dfde7c64da45db2a689e99d87412e41db638936b79941fbf5d179445c975d46` |
+| Initial coverage | Home/Design form at 1439×956, created-project Overview with completed `project-open-materialization` card, and Build/Export at 1439×956 and 800×700; three bounded runtime screenshots retained beside the records |
+
+The independent visual assessment found no P0/P1/material-P2 defect: the
+smaller Build/Export column reflowed text and controls without observed clipping
+or overlap, and the operation card distinguished terminal status and duration.
+
+After the freeze, the complete required file was invoked with
+`P910_FROZEN_OBSERVATIONS` set to the frozen record:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
+```
+
+The rendered case failed deterministically before the public journey could
+proceed. At 900×700 its candidate-owned focus helper rejected the enabled
+`Create game` control with `Keyboard cannot reach focused control inside
+viewport`; the captured rendered state had focus in the `Game id` input and
+showed the enabled control. The failure is at
+`P910ValeraGraphicDesigner.browser.test.tsx:327` while resolving the exact
+button-text selector. This is a P1 audit-source defect, not a product visual
+finding or a transient browser-driver timeout. No product code or test was
+modified by this verifier. The correction lane must repair the candidate
+runner's focus/reachability expectation and rerun the preserved frozen record.
+
 The focused run passed three suites / 40 tests (19.201s). Its section workflow
 suite also emitted React `act(...)` warnings for asynchronous Home updates;
 there were no assertion failures. `npm run typecheck` exited zero, covering the
