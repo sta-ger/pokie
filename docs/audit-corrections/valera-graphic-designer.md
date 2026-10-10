@@ -688,8 +688,8 @@ HEAD were both `d89c3307be5eb97c2cf0763bc19551b55818c133`.
 
 | Item | Current evidence |
 | --- | --- |
-| Frozen initial observation | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json` — SHA-256 `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
-| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/transcript.json` — SHA-256 `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
+| Frozen initial observation | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-db34e91dd96c06e0/frozen-initial.json` — SHA-256 `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-db34e91dd96c06e0/transcript.json` — SHA-256 `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
 | Collection | Fresh interactive application and browser profiles, 2026-10-10T03:22:29.150Z–03:25:01.563Z; Home, saved project, completed `project-open-materialization` card, Build/Export, and Game Model at 1439×956 and 1024×700 |
 | Screenshots (runtime only) | `1-observation.png` `eb1833d3d73ca8c1943e48263cb15db301b741ffc3b254aa93967ca1668389c4`; `2-observation.png` `7ff5f3ee1c4f4f4345eb29113c6945f2be5ccee78cc1548e65289f5361a5d839`; `3-observation.png` `6241d723284de72e704dd94c6be78c5800cc4c57bf61935a69e167ed5bd3dbf2` |
 
@@ -905,15 +905,17 @@ changed-TypeScript ESLint hook; no production bundling input changed.
 
 ## 2026-10-10 controller-owned P9-10 rendered verification — passed
 
-This final bounded rerun is for candidate
-`589e30d024b528abc955cf54e4738259b08eca29`. Its HEAD matched that identity,
-and the frozen collector candidate `d89c3307be5eb97c2cf0763bc19551b55818c133`
-is an ancestor. The independent cold record was preserved, not replaced:
+This final bounded rerun is for product candidate
+`589e30d024b528abc955cf54e4738259b08eca29`. The current evidence-only HEAD
+is its clean descendant and changes only this document; the frozen collector
+candidate `d89c3307be5eb97c2cf0763bc19551b55818c133` is an ancestor. The
+independent cold record was preserved byte-for-byte in the assigned harness,
+not replaced:
 
 | Retained record | Absolute locator and SHA-256 |
 | --- | --- |
-| Frozen initial observations | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json` — `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
-| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/transcript.json` — `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
+| Frozen initial observations | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-db34e91dd96c06e0/frozen-initial.json` — `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-db34e91dd96c06e0/transcript.json` — `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
 
 `npm run build-cli` prepared the candidate production assets once. The served
 CLI entry SHA-256 was `ed89a858789e02acbfc66d0fb4a950f0a48678ac9ee530f399d43fc9f9103c83`;
