@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
+import {visibleContentOverflows} from "./visibleContentGeometry";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -360,16 +361,14 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             const result = await evaluate<{overflow: boolean; count: number; failures: string[]}>(`(() => {
                 const root = (${scope});
                 if (!root) throw new Error('Missing measured surface');
+                const contentOverflows = (${visibleContentOverflows.toString()});
                 const elements = Array.from(root.querySelectorAll('input,button,select,textarea,label,[data-job-detail],.mantine-Fieldset-legend'))
                     .filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
                 const failures = elements.filter(e => {
                     const r = e.getBoundingClientRect();
                     if (r.width <= 0 || r.left < -1 || r.right > innerWidth + 1) return true;
                     if (e.matches('button,label,[data-job-detail],.mantine-Fieldset-legend')) {
-                        const range = document.createRange();
-                        range.selectNodeContents(e);
-                        const content = range.getBoundingClientRect();
-                        if (content.left < r.left - 1 || content.right > r.right + 1 || content.bottom > r.bottom + 1) return true;
+                        if (contentOverflows(e)) return true;
                     }
                     // Detect clipping by any local ancestor as well as document overflow.
                     for (let p = e.parentElement; p; p = p.parentElement) {
@@ -441,6 +440,8 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 };
             })()`);
             expect(sections.labels).toEqual(['Game basics', 'Layout', 'Symbols', 'Reels', 'Paytable', 'Bets']);
+            await until(() => evaluate<boolean>(`Array.from(document.querySelectorAll('[role="tablist"][aria-label="Game design sections"] [role="tab"]'))
+                .every(tab => tab.querySelector('.mantine-VisuallyHidden-root')?.textContent.trim() === 'valid')`), 'accessible validation status on all six sections');
             expect(sections.wrap).toBe('wrap');
             expect(sections.contained).toBe(true);
             if (width === 900 || small) expect(sections.rows).toBeGreaterThan(1);

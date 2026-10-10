@@ -520,3 +520,68 @@ The candidate-bound harness receipts are runtime-only:
 `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-6d4568a3c9593b96/post-freeze-run.json`
 and `post-freeze-result.json` (exit `1`, no signal). The run used no additional
 Studio launch and retained no generated project/output tree.
+
+## Visible-content geometry repair — controller rendered confirmation pending
+
+Finding `0f8d50097d40f6a7` was traced on clean HEAD
+`5498766e7ca13cd4a3cbc785a233883a2277d671`. Read the supplied frozen initial
+record, chronological transcript and both post-freeze receipts. The initial
+record and transcript still match the hashes recorded above; the run receipt
+hash is `331f3026ad632c029e274d51674a0345db9ad4121661cdf36bd26f8c1ef99a69`
+and the failed result hash is
+`c026fc59bca451ec7c49007ea0755486cb921504a0b2f859527ce6f521f74c1d`.
+All prior observations, screenshots and completed-step evidence remain intact.
+
+The current audit still selected each entire visible button with a Range.
+Home → guided BlueprintEditorPage → SectionedFormEditor supplies StatusBadge
+as each tab's right section. Its visible success icon is accompanied by a
+Mantine VisuallyHidden sibling containing `valid`. The installed stylesheet
+clips that absolutely positioned sibling to zero, but Range geometry includes
+its text. This traces the saved six-tab rejection without launching another
+browser or treating it as a product-layout finding.
+
+`visibleContentGeometry.ts` now supplies the audit's self-contained geometry
+function, serialized into the real DevTools evaluation. It excludes
+VisuallyHidden and CSS-hidden subtrees, checks visible descendant boxes and
+individual text-line rectangles against all four control bounds, and retains
+decorative `aria-hidden` icons/counts in the measurement. Neither accessibility
+text nor product presentation changes. The browser additionally waits for all
+six tabs' accessible validation text; the component contract verifies their
+actual accessible names before and after measurement.
+
+Audited every `measure()` consumer: Home basics at 1100×800, 900×700 and
+390×844; the selected Bets form at 900×700; Build/Export conflict and recovered
+ready states; running and completed common job cards at both workflow widths.
+Document overflow, owning-tablist containment, clipping ancestors, native
+keyboard/focus assertions, persisted project creation, destination sentinel
+preservation, retained-report recovery, report retrieval and cleanup remain
+in the same production-browser journey.
+
+| Whole-step requirement / accumulated finding | Correction evidence and remaining authority |
+| --- | --- |
+| Independent cold judgment of real Home, project/model/build and job states on compact/smaller viewports | Supplied frozen observations and chronology preserved. Source-aware checks do not replace this visual judgment. |
+| `4a58ccd4ec9f8a24`: Bets overflow | Shared wrapping correction, exact six-section regression and recorded clean 900×700 supplementary visual retest retained. |
+| `285d0e8a87d8b14f`: validated tab lookup | Scoped visible-label lookup and native traversal retained; complete eight-test section suite passes with accessible status text present. |
+| Earlier rendered-style rejection | Both legitimate computed Button displays and seven diagnostic style clauses retained; complete audit helper checks pass. |
+| `ccb894ddb9ea1e2d`: Browse and retained Simulation Review | Scoped `Browse…` and native `simulation-configure` activation remain before destination recovery and Rounds, including the second iteration. |
+| `0f8d50097d40f6a7`: hidden status geometry | Shared audit measurement excludes nonvisual subtrees while checking visible labels/badges. Six new contract cases cover all six actual validated tabs, accessible names, overflowing decorative badges, glyph overflow for every measured content category, wrapped lines and all four bounds. |
+| Clean production rerender and no unresolved material finding | Full post-freeze browser execution and independent disposition remain controller-owned and pending on this correction SHA. The saved failed run's unreached project/build/simulation rows are not claimed as passes. |
+| Bounded immutable evidence | No screenshot, replacement transcript, gallery or evidence cleanup added. |
+
+Permitted foreground checks passed:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/visibleContentGeometry.test.tsx tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx
+npm run typecheck
+```
+
+Three suites / 19 tests passed, with one explicit rendered skip because no
+controller freeze opt-in was supplied. Existing section-suite asynchronous Home
+updates emitted React `act(...)` warnings. Two earlier runs exposed new jsdom
+fixture errors (unavailable DOMRect constructor and recursively replaced Range
+factory); both were corrected before the final green run. Supplied rectangles
+test the selection/rejection contract, not actual rendered visual quality.
+Root typecheck exited zero and invoked the Studio compiler once. Changed test
+code is consumed by the existing ts-jest lanes and the changed-file ESLint
+commit hook; no production source or bundle input changed. Production builds,
+independent browser execution, packaging and official gates were not run here.
