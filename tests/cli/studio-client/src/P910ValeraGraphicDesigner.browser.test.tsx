@@ -5,6 +5,7 @@ import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
 import {visibleContentOverflows} from "./visibleContentGeometry";
+import {observeKeyboardTarget, reachKeyboardTarget, type KeyboardTargetState} from "./nativeKeyboardFocus";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -302,29 +303,12 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
         // the target and reads its observable state; it never clicks or focuses the target for us.
         const focus = async (expression: string) => {
             await until(() => evaluate<boolean>(`Boolean(${expression})`), `keyboard target: ${expression}`);
-            for (let tabs = 0; tabs < 100; tabs++) {
-                // Modal initialization can move focus after Tab, and responsive layout can move
-                // a focused control after Chromium's scroll. Observe both after rendering, then
-                // continue native navigation instead of waiting for lost focus to return itself.
-                const state = await evaluate<string>(`new Promise(resolve => {
-                    if (document.activeElement !== (${expression})) {resolve('seek'); return;}
-                    requestAnimationFrame(() => requestAnimationFrame(() => {
-                        const e = (${expression});
-                        if (!e || document.activeElement !== e) {resolve('seek'); return;}
-                        const r = e.getBoundingClientRect();
-                        resolve(r.left >= 0 && r.right <= innerWidth+1 && r.top >= 0 && r.bottom <= innerHeight+1 ? 'ready' : 'clipped');
-                    }));
-                })`);
-                if (state === "ready") {
-                    expect(await evaluate<boolean>("document.activeElement.matches(':focus-visible')")).toBe(true);
-                    return;
-                }
-                await key("Tab", "Tab", 9);
-                // Re-enter a clipped target through the native tab order so the browser scrolls
-                // it into the settled layout. Never focus or scroll a control through DOM APIs.
-                if (state === "clipped") await key("Tab", "Tab", 9, shiftModifier);
-            }
-            throw new Error(`Keyboard cannot reach focused control inside viewport: ${expression}`);
+            await reachKeyboardTarget(
+                () => evaluate<KeyboardTargetState>(`(${observeKeyboardTarget.toString()})(() => (${expression}))`),
+                backward => key("Tab", "Tab", 9, backward ? shiftModifier : 0),
+                expression,
+            );
+            expect(await evaluate<boolean>("document.activeElement.matches(':focus-visible')")).toBe(true);
         };
         const activate = async (expression: string) => {
             await focus(expression);

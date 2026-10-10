@@ -620,3 +620,61 @@ Root typecheck exited zero and invoked the Studio compiler once. Changed test
 code is consumed by the existing ts-jest lanes and the changed-file ESLint
 commit hook; no production source or bundle input changed. Production builds,
 independent browser execution, packaging and official gates were not run here.
+
+## Convergence correction — native focus observation, controller closure pending
+
+Read the saved finding on HEAD `16a75f80927963a831b459064b5de40aff7c7c7d`
+and the complete supplied frozen record and transcript. Their SHA-256 values
+remain `71c30329d173a999b17b16fb43314260864bd76ff2bed3aa04fb11145bb0d37b`
+and `4dfde7c64da45db2a689e99d87412e41db638936b79941fbf5d179445c975d46`.
+The transcript records an enabled Create game at x=276, y=228.28125,
+139×36px (rounded), followed by actual saved-project creation. It contradicts
+classifying that control as intrinsically unreachable. The saved required run
+instead exhausted the candidate helper's 100 attempts at 900×700, with focus
+in Game id. No new browser observation or visual verdict is claimed here.
+
+Tracing the exact current-HEAD path reaches the six-section arrow traversal,
+its return to Game basics, then `focus(button("Create game"))`. The helper
+immediately resolves every non-target observation without a rendering frame,
+always sends forward Tab, and only waits for rendering when it happens to see
+the target already focused. Create game precedes Game basics in DOM order.
+This can exhaust its attempt count while searching through unrelated controls
+without settled observations. Its clipped-target recovery also sends forward
+and reverse Tab without observing the intervening render.
+
+The same focus path now uses `nativeKeyboardFocus.ts`: every observation waits
+for two rendering frames, resolves the current target anew, and reads focus and
+bounds together. Native Shift+Tab seeks preceding controls; native Tab seeks
+following controls. Resize recovery observes the intervening render before
+re-entering the focused control. Positive dimensions, four viewport bounds
+(the same 1px tolerance as the other geometry checks), the bounded failure,
+`:focus-visible`, and native Enter activation remain required. There are no
+DOM focus/scroll calls, pointer bypasses or disabled-control activations.
+
+| Whole-step requirement / accumulated finding | Final source contract and closure authority |
+| --- | --- |
+| Cold Home, project/model/build and job assessment at compact/smaller widths | The original and latest authenticated freezes, chronology and bounded screenshots remain unchanged. The latest collector actually created the project and inspected Build/Export and a completed project-open card; these observations are not substituted for the required scripted running/completed simulations. |
+| `4a58ccd4ec9f8a24`: clipped Bets at 900px | Existing shared wrapping fix and recorded affected clean visual retest retained. The browser requires exactly six contained tabs, multiple rows at 900px/phone width, native traversal to Bets and back, and measured visible content. |
+| `285d0e8a87d8b14f`: validated tab selectors | The Game design sections tablist and each `.mantine-Tabs-tabLabel` identify the actual tab. All six accessible `valid` names remain asserted; the new native regression traverses each actual Mantine tab and returns to Create game without removing StatusBadge text. |
+| Earlier computed-style rejection | All seven named asset/style clauses and both valid computed Button displays remain required. |
+| `ccb894ddb9ea1e2d`: Browse and retained Review | Build scope is the actual `artifact-build-tsPackage` control's owning artifact-build form. PathInput renders `Browse…`; its label associates Output directory with the input through `htmlFor`. Simulation's stable `simulation-configure` is activated before Rounds in both iterations. On remount, SimulationTab derives Review from retained report state; native Configure restores the real form. |
+| `0f8d50097d40f6a7`: nonvisual status geometry | The existing self-contained visible-content measurement still excludes VisuallyHidden subtrees while measuring visible boxes and individual text lines, including decorative badges. Document overflow, clipping ancestors, validation labels and tab containment checks remain. |
+| `c73df4a0d712e3b9`: Create game focus rejection | One shared audit focus path observes every seek after rendering, chooses native direction from actual DOM order, and settles resize re-entry. Ten focused tests cover serialization through a separate VM context, delayed seeks, the exact six validated tabs, Create activation, resize re-entry, all four clipped bounds, zero dimensions and missing/disabled controls. Supplied rectangles test the helper contract, not visual quality. |
+| Saved creation, occupied destination and recovery | Create remains the actual enabled native Button invoking managed save/open. The production journey still requires the Overview route, an existing project under its isolated Documents root, disabled Build with associated invalid input, unchanged sentinel bytes, and a new ready destination. Neither the focus correction nor tests manufacture these outcomes. |
+| Both real simulations and report retrieval | Configure → labelled Rounds → Run Simulation remains native keyboard activation. `useSimulationPoll.run` clears the prior terminal receipt before attaching the new job. Each running identity must match the actual simulation region's accessible label; Cancel is scoped to that region. The same region must contain a completed JobResultCard before its actual Download anchor is focused and its nonempty report fetched. These selectors match JobCard, JobProgressCard, JobResultCard and StudioSimulationService; retained results are preserved. |
+| Candidate/assets, cleanup and screenshot budget | Existing fresh-asset and served-byte checks, owned job cancellation/drain, cooperative browser/Studio cleanup and removal of only the owned temporary root remain. No screenshot, transcript, checkpoint, replacement freeze or evidence cleanup was added. |
+| Complete P910 execution and independent material-finding disposition | Still mandatory and controller-owned on the committed correction. This worker did not run the post-freeze file, count skipped rendered cases as closure, rebuild production assets or claim unreached workflow rows passed. Final roadmap closeout remains pending that execution and independent visual disposition. |
+
+Permitted foreground checks passed:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/nativeKeyboardFocus.test.tsx
+npm run typecheck
+```
+
+The targeted suite passed all 10 cases without skips. Root typecheck passed,
+including the Studio compiler once. Changed audit/helper files are consumed by
+the controller's complete Node-environment P910 Jest run, the new component
+contract suite, and the changed-file ESLint commit hook. No production source
+or generated barrel changed; production builds, packaging, the saved full
+verification matrix and official gates remain controller-owned.
