@@ -238,6 +238,37 @@ width instead of fitting the 593px main column beside the 260px rail. The
 persisted project's `GameModelSections` uses a separate presentation, consistent
 with the frozen observation that this defect did not repeat there.
 
+## 2026-10-10 independent cold collection — current candidate pass
+
+This is a new, isolated observation of candidate
+`c87010885ecd1236964330a31b82e207741c6cc4`; older findings above are retained
+history and are not asserted as current defects. Before freezing, the collector
+read no product source, history, prior evidence, or review material.
+
+| Item | Actual record |
+| --- | --- |
+| Collection interval | 2026-10-10T09:09:54.948Z through the frozen initial record |
+| Viewports | 1439×956 compact desktop; 1024×768 smaller desktop |
+| Frozen initial record | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-cdc3da75a0c48869/run-2026-10-10T09-09-54-947Z/frozen-initial.json` (`0d589d88871b41a85a18ebc41ddb489fde09fdf50b1cf91376df9d0111e2bb1a`) |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-cdc3da75a0c48869/run-2026-10-10T09-09-54-947Z/transcript.json` (`ff7bacd895af5812ca5e24f42dfe0cb208ab91f1b4f49b6f5e075d6992f6b4dd`) |
+
+The interactive sequence inspected the validated Home starter form, activated
+the visible `Create game` action once, retained its local saving/pending state,
+then observed its matching `project-open-materialization · Completed` card.
+It also inspected the real Build/Export form at both viewports. In the rendered
+screens and controls, the navigation, field grid, status labels, cards and
+actions remained aligned and legible; no clipping or horizontal overflow was
+observed. The long resolved path wraps at 1024px but stays contained and
+secondary. No P0, P1, or material P2 visual finding was observed.
+
+Three representative screenshots remain in the runtime harness only (not
+committed): `1-observation.png` (`80b98e51e6b3795467042eadab123c3d74d77f63157d0a49c8a8469338916e51`),
+`2-observation.png` (`2270dcaa263b0f82efc404f7e9f5ca53b536f46fe3e107229c4f9ef71e2c1b95`),
+and `3-observation.png` (`fdc49b48713150b53cb98f8f7d244617135fe5e4ca79f0f218eb1bacc4651d48`).
+The harness enforced its three-image budget; the terminal card is nevertheless
+preserved as a chronological rendered observation in the transcript. This was
+a bounded initial pass, not a Cartesian screen/status gallery.
+
 The correction removes that intrinsic-width scroll wrapper and explicitly wraps
 the same semantic tablist in its available editor column. All six labels,
 validation badges, real panels, lazy mounting, retained drafts, and native
