@@ -497,3 +497,42 @@ and the deferred controller browser test was neither inspected nor run. This is
 still **inconclusive, driver-limited and not approved** pending alternate
 publication plus active-work confirmation/focus and visible-focus viewport
 proof.
+
+## Independent recovery continuation — 2026-10-10 (evidence descendant `bea21e02`)
+
+This bounded supplementary continuation kept candidate
+`c576bcebaa50d61b2681e151e7ebe97b3a591326`, the frozen profile, and the
+immutable initial chronology. The initial frozen observation and its sibling
+transcript remain hash-matched:
+
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/frozen-initial.json`
+  (`sha256:75c3c93cd9dc96edae5bce4be4ea11a66c90d68f08a34e8ffb6b1a74184dae6a`).
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/transcript.json`
+  (`sha256:33233992ec2388b0339d19781757afff902dc9b41c91114cd9238d0bfe7ec3a3`).
+
+The new supplementary transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-10T00-06-30-719Z/transcript.json`
+(`sha256:86fe768cf410d63cbfbb615608c73a477363e9f0c4d66ebe289f8c2dac9ca1e4`).
+No screenshot was added, so the initial three-screenshot bound is unchanged.
+
+The retained original **Starter Slot** reopened with its completed simulation
+and downloadable report; the preserved earlier supplement remains the evidence
+that **Second Slot** has no leaked original-project simulation/result. The
+TypeScript Game Package card retained its local occupied-destination recovery
+state. Its scoped `Output directory (optional)` accepted
+`/tmp/p9-valera-alternate-20261010`, rendered `Ready to build`, and one Build
+then rendered `Built to /tmp/p9-valera-alternate-20261010.` with an
+`artifact-build · Completed` terminal record. The existing occupied `tsPackage`
+and the alternate output each contained six files and 17,534 bytes at the final
+inspection. This adds the missing alternate-publication observation without
+replaying simulation, generation, or project creation.
+
+The retained simulation was terminal before this continuation, so no active-work
+confirmation decline/focus-return branch could be reached without replaying the
+already evidenced operation. The rendered transport measured a focused
+`Output directory (optional)` input with `focusVisible=true` at 1439 × 956, but
+does not establish keyboard confirmation focus return or smaller-viewport focus
+geometry. Studio and Chromium drained after close. No product P0/P1/material-P2
+was observed; the deferred controller browser test was not inspected or run.
+The overall browser criterion remains **not reached**, pending only the
+unreached active-work-confirmation and keyboard/focus-at-smaller-width proof.
