@@ -407,9 +407,9 @@ function TargetCard({
 
     return (
         <div
+            className="studio-output-choice"
             data-pokie-lifecycle-card={card.kind === "outcomeLibrary" ? OUTCOME_LIBRARY_TRANSACTION.cardId : undefined}
             data-pokie-lifecycle-form={lifecycleForm}
-            style={{marginBottom: "1rem", paddingBottom: "1rem", borderBottom: "1px solid var(--mantine-color-default-border)"}}
         >
             <Group justify="space-between" align="center" wrap="wrap" gap="xs">
                 <Group gap="xs" wrap="wrap">
@@ -417,7 +417,7 @@ function TargetCard({
                     <Badge size="sm" color={card.locality === "local" ? "blue" : "grape"} variant="light">
                         {card.locality === "local" ? "This computer" : "Remote"}
                     </Badge>
-                    <Text size="xs" c="dimmed">{summaryStatus}</Text>
+                    <Text className="studio-output-status" data-status={summaryStatus} size="xs" c="dimmed">{summaryStatus}</Text>
                 </Group>
                 <Button
                     id={`export-configure-${card.id}`}
@@ -692,7 +692,7 @@ function TargetCard({
                                 <Text size="sm" fw={600} c={artifactPreview.status === "ok" ? "teal" : "red"}>
                                     {artifactPreview.status === "ok" ? "Ready to build" : "Choose a different destination"}
                                 </Text>
-                                <Text size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
+                                <Text className="studio-technical-text" size="sm">Resolved absolute path: {artifactPreview.result.destination}</Text>
                                 <AdvancedDisclosure label="Build plan and provenance">
                                     <Text size="sm">Target: {card.label}</Text>
                                     <Text size="sm">Selected destination: {artifactDestination.trim() || "Default destination"}</Text>
@@ -795,6 +795,7 @@ function TargetCard({
                         {artifactBuildRun.status === "error" && <ErrorState message={artifactBuildRun.message} />}
                         {artifactBuildRun.status === "ok" && (
                             <div
+                                className="studio-operation-result"
                                 role="status"
                                 aria-live="polite"
                                 tabIndex={-1}
@@ -811,7 +812,8 @@ function TargetCard({
                                 data-pokie-lifecycle-result-output={artifactBuildRun.result.outputPath}
                                 data-pokie-lifecycle-terminal="completed"
                             >
-                                <Text size="sm" mt={4}>
+                                <Text size="sm" fw={600}>Build completed</Text>
+                                <Text className="studio-technical-text" size="sm" mt={4}>
                                     Built to {artifactBuildRun.result.outputPath}.
                                     {artifactBuildRun.result.importedBlueprintPath !== undefined && ` Imported Blueprint: ${artifactBuildRun.result.importedBlueprintPath}.`}
                                     {artifactBuildRun.result.conversionEvidencePath !== undefined && ` Conversion evidence: ${artifactBuildRun.result.conversionEvidencePath}.`}

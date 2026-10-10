@@ -169,7 +169,7 @@ export function HomePage() {
         >
             <DesignNavigationGuardProvider value={navigationGuard}>
                 <Stack className="studio-page" gap="lg">
-                    <Text size="sm" c="dimmed">
+                    <Text className="studio-intro" size="sm" c="dimmed">
                         POKIE is a slot-game logic framework for JavaScript/TypeScript developers and game-math authors.
                         Studio lets producers design, validate, and play games locally. Validation is structural;
                         simulation estimates game math. Local artifacts do not deploy a game or certify it for real-money use.

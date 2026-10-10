@@ -380,12 +380,12 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 const root = (${scope});
                 if (!root) throw new Error('Missing measured surface');
                 const contentOverflows = (${visibleContentOverflows.toString()});
-                const elements = Array.from(root.querySelectorAll('input,button,select,textarea,label,[data-job-detail],.mantine-Fieldset-legend'))
+                const elements = Array.from(root.querySelectorAll('input,button,select,textarea,label,[data-job-detail],.mantine-Fieldset-legend,.studio-technical-text,.studio-metadata td'))
                     .filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
                 const failures = elements.filter(e => {
                     const r = e.getBoundingClientRect();
                     if (r.width <= 0 || r.left < -1 || r.right > innerWidth + 1) return true;
-                    if (e.matches('button,label,[data-job-detail],.mantine-Fieldset-legend')) {
+                    if (e.matches('button,label,[data-job-detail],.mantine-Fieldset-legend,.studio-technical-text,.studio-metadata td')) {
                         if (contentOverflows(e)) return true;
                     }
                     // Detect clipping by any local ancestor as well as document overflow.
@@ -467,6 +467,21 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             assertRenderedSections(sections, small);
             await until(() => evaluate<boolean>(`Array.from(document.querySelectorAll('[role="tablist"][aria-label="Game design sections"] [role="tab"]'))
                 .every(tab => tab.querySelector('.mantine-VisuallyHidden-root')?.textContent.trim() === 'valid')`), 'accessible validation status on all six sections');
+            // The frozen finish finding is corrected in the shared production theme
+            // and surfaces. These checks establish that the intended assets rendered;
+            // the independent designer still owns the visual quality disposition.
+            const presentation = await evaluate<{headingSize: number; headingWeight: string; distinctSection: boolean}>(`(() => {
+                const heading = getComputedStyle(document.getElementById('design-game-heading'));
+                const main = getComputedStyle(document.querySelector('.studio-app-main'));
+                const section = getComputedStyle(Array.from(document.querySelectorAll('#home-design-panel .studio-section'))
+                    .find(e => e.getClientRects().length));
+                return {headingSize: parseFloat(heading.fontSize), headingWeight: heading.fontWeight,
+                    distinctSection: section.backgroundColor !== main.backgroundColor && section.backgroundColor !== 'rgba(0, 0, 0, 0)'};
+            })()`);
+            expect(presentation.headingSize).toBeGreaterThan(0);
+            expect(presentation.headingSize).toBeLessThanOrEqual(24);
+            expect(presentation.headingWeight).toBe('600');
+            expect(presentation.distinctSection).toBe(true);
             if (width === 900) {
                 const list = "document.querySelector('[role=tablist][aria-label=\"Game design sections\"]')";
                 // StatusBadge contributes validation text to the tab's accessible name; match
@@ -494,6 +509,7 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
         const projectRoot = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
         expect(projectRoot.startsWith(documents + path.sep)).toBe(true);
         await fs.access(projectRoot);
+        await measure('Saved project overview');
         const occupied = path.join(workspace, 'occupied-' + 'long-destination-'.repeat(6));
         await fs.mkdir(occupied);
         await fs.writeFile(path.join(occupied, 'sentinel.txt'), 'preserve');
@@ -515,6 +531,15 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             await until(() => evaluate<boolean>(`(${scope})?.innerText.includes('Ready to build') === true`), "ready destination");
             await focus(button("Build", scope));
             await measure(`Build ready ${width}x${height}`, scope);
+            expect(await evaluate<boolean>(`(() => {
+                const path = (${scope}).querySelector('.studio-technical-text');
+                const status = Array.from((${scope}).querySelectorAll('.mantine-Text-root'))
+                    .find(e => e.textContent === 'Ready to build');
+                return Boolean(path && status && path.getClientRects().length
+                    && path.textContent.includes('Resolved absolute path:')
+                    && parseFloat(getComputedStyle(path).fontSize) < parseFloat(getComputedStyle(status).fontSize)
+                    && getComputedStyle(path).overflowWrap === 'anywhere');
+            })()`)).toBe(true);
             expect(await fs.readFile(path.join(occupied, 'sentinel.txt'), 'utf8')).toBe('preserve');
             await navigate("Simulation");
             // Returning after a completed run restores Review. Enter Configure through its

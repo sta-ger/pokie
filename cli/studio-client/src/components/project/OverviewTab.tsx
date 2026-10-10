@@ -99,7 +99,7 @@ export function OverviewTab({
                     onAction={onOpenPlay}
                 />
             )}
-            <Table withRowBorders={false} mb="md">
+            <Table className="studio-metadata" aria-label="Project facts" withRowBorders={false} mb="md">
                 <Table.Tbody>
                     <Table.Tr>
                         <Table.Th>ID</Table.Th>
@@ -119,7 +119,7 @@ export function OverviewTab({
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Location</Table.Th>
-                        <Table.Td style={{overflowWrap: "anywhere"}}>{header.projectRoot}</Table.Td>
+                        <Table.Td className="studio-technical-text" style={{overflowWrap: "anywhere"}}>{header.projectRoot}</Table.Td>
                     </Table.Tr>
                     <Table.Tr>
                         <Table.Th>Editable</Table.Th>

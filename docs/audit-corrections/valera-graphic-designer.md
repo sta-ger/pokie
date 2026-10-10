@@ -1059,3 +1059,94 @@ Only this document and the allowed test file changed; the test's consumers are
 its existing Node/ts-jest lane and the changed-file ESLint commit hook, with no
 production compiler or bundle inputs changed. No parent-review test, build,
 packaging, independent browser rerun or official gate was executed.
+
+## Shared presentation correction after the 05:44 cold collection
+
+Review fingerprint `764e1b10c0a3c85b` / material key
+`P9-VALERA-GRAPHIC:sha256:787a35445c3c39e1` supersedes the earlier clean visual
+disposition for the current candidate. This correction starts at
+`daa1a3e34b45fb29adc04055c24af4cc4c12f6c9`. The new independent freeze reports
+a P1 professional-finish defect across Home, project overview and Build/Export,
+despite successful creation/build actions and no visible overflow at 900×700.
+The finding remains open for independent affected rerender and disposition.
+
+Read the supplied frozen record and chronological transcript, inspected the
+supplied Home and smaller Build screenshots, and traced that exact presentation
+on the starting product source before editing. The retained run directory is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-bd79a936ef2de058/run-2026-10-10T05-44-07-127Z`.
+
+| Preserved supplied artifact | SHA-256 |
+| --- | --- |
+| `frozen-initial.json` | `bc181f55ffb228a69d4bfdc0dd9b112285b2665b61b48774ae67aa1b804cf910` |
+| `transcript.json` | `c72a979a7e3f2533fcbb5e5180e3696d7b4afc71a3dc49c228685ad54afdbf06` |
+| `1-observation.png` | `57331a50fa48f8f380189d51bf16b8f52b5efd337e015ac3c665454b15cab45d` |
+| `3-observation.png` | `450a0b90460ef807db58d2dc90e6ad063ec87c27839cdf6e42c40c6d98ffa029` |
+
+The initial questions were recorded at 05:45:13.877Z, before the frozen visual
+assessment at 05:46:35.496Z. The transcript then explicitly accounts for the
+starting commit's test/document-only delta. Neither this source-aware diagnosis
+nor the new component fixtures replace that independent chronology. No retained
+artifact was rewritten or removed; no observation or screenshot was collected.
+
+The shared theme previously delegated heading sizes, label weight and body
+density to defaults, with heavy headings on the same white canvas as outlined
+sections and controls. Overview facts had no distinct metadata treatment. The
+resolved destination and completed build path used ordinary body text directly
+beside readiness, submission and terminal information. The saved Home region
+also had a native black focus frame around the entire editor.
+
+The correction gives the shared theme an explicit body/supporting/heading scale
+and moderate label/heading weight. Home and saved projects use a quiet canvas,
+white semantic fieldset cards, softer secondary buttons, contained active tabs
+and consistent keyboard focus rings. Section actions can wrap with their legend.
+Overview retains all six facts in a named metadata table. Full project,
+destination and output paths use readable wrapping monospace blocks; completed
+builds have a separate summary and result panel. Output summaries retain their
+literal states with consistent status treatment. Running and terminal job cards
+keep their live-region semantics, actions, full request/provenance disclosures
+and failure/recovery explanations; timing and technical detail have supporting
+visual weight. Light and dark colors use the existing automatic color scheme.
+No technical information, field, native control, validation badge or capability
+was removed. No writer, resolver, request default or submission callback changed.
+
+| Accumulated requirement / finding | Candidate closure and remaining authority |
+| --- | --- |
+| `4a58ccd4ec9f8a24`: clipped six-step row | Shared tab wrapping remains. P910 requires all six labels, contained bounds, desktop one-or-more rows, phone reflow, and native traversal to Bets and back. |
+| `285d0e8a87d8b14f`: validated-tab selectors | Existing tablist/visible-label lookup and all six hidden accessible `valid` statuses remain unchanged. |
+| `ccb894ddb9ea1e2d`: Browse and retained Simulation Review | Scoped actual Browse… control and native `simulation-configure` activation before Rounds remain in both iterations. |
+| `0f8d50097d40f6a7`: nonvisual status geometry | Existing visible-content helper remains unchanged. Geometry coverage now also measures visible technical paths and metadata values; real clipping/overflow assertions remain strict. |
+| `c73df4a0d712e3b9`: native Create game reachability | Existing settled native Tab/Enter helper, focus-visible assertions, immediate resizing and phone header clearance remain unchanged. Shared focus treatment preserves visible keyboard focus. |
+| `ae1a1cd6af46fe4a`: disclosure/recovery/remote transport and executable consumers | Request identity still reopens each owning form; remote `runError` still produces Needs attention. The maintained library/PC14/PC18 and generator/PAR runner disclosure corrections remain unchanged. No bypass or implicit submission was added. |
+| `764e1b10c0a3c85b`: unfinished shared hierarchy | Theme, shared sections, output choices, metadata, path and terminal styling corrected together. New focused component tests exercise actual production components, conflict-disabled Build, recovery to ready, explicit build, terminal receipt retention, disabled Cancel, terminal focus, metadata and technical disclosures. Independent visual approval remains pending. |
+| Whole-step cold judgment, compact/smaller Home/form/job coverage and bounded images | Supplied authentic freeze/transcript and three-image collection preserved. Existing historical evidence is unchanged. No new gallery or synthetic observations. Controller must rerender affected surfaces from clean state within the screenshot budget. |
+| Current-candidate machine provenance and test-only delta | Controller must bind the final correction SHA, served production assets and affected visual disposition to the preserved freeze, accounting for both retained and current executable test deltas. This document is not a machine-owned receipt. |
+| Authentic `P910_FROZEN_OBSERVATIONS` and complete deferred P910 execution | Prerequisite registration/validation remains unchanged. Complete file remains mandatory after controller authentication/build. No rendered skip, fixture observation, narrow helper run or ordinary component pass is counted as rendered closure. |
+
+P910 additionally measures the actual saved Overview after project creation,
+checks the rendered Home heading scale and distinct section/canvas surfaces,
+and checks destination text's supporting size and wrapping within the real
+configured build form. All original native actions, sentinel preservation,
+disabled/conflict recovery, both real simulation runs, running/completed job
+assertions, report retrieval, served-byte/freshness checks and cleanup remain.
+These asset/geometry assertions do not substitute for graphic-design judgment.
+
+Permitted foreground checks for this correction:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx
+npm run typecheck
+```
+
+The focused new suite passed four tests with no skips. Root typecheck passed and
+invoked the Studio compiler once. The preserved focused reviewer matrix and
+complete post-freeze P910 file were not rerun in this implementation worker.
+The changed TypeScript commit remains subject to the installed ESLint hook.
+
+Consuming boundaries: root/Studio TypeScript, production Vite/CSS bundling,
+component Jest, Node-environment complete P910, and changed-file ESLint. The
+explicit controller-owned production boundary is `npm run build-studio-client`
+(also consumed by `build-cli`); no build, packaging, official gate or independent
+browser execution ran here. Build freshness is deliberately required by P910
+after these source changes. Independent clean visual closure and current-SHA
+machine provenance remain pending; this is a committed product-correction
+handoff, not completion of P9-10.

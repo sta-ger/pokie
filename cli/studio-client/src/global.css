@@ -14,6 +14,7 @@ body,
    letting individual tables and code blocks own their local scrolling. */
 .studio-app-main {
     min-width: 0;
+    background: light-dark(#f4f6fa, var(--mantine-color-dark-8));
     /* Resize the content column immediately: interpolating the desktop rail padding
        leaves phone controls narrower than their labels during the transition. */
     transition-property: none;
@@ -50,6 +51,7 @@ body,
 }
 
 .studio-page {
+    --mantine-color-dimmed: light-dark(#64748b, #adb5bd);
     width: min(100%, 76rem);
     min-width: 0;
     margin-inline: auto;
@@ -57,6 +59,129 @@ body,
 
 .studio-page > * {
     min-width: 0;
+}
+
+/* One scale and surface rhythm across the starter editor, saved project and
+   output forms. Native fieldsets, legends and button variants keep their jobs. */
+.studio-page .mantine-Title-root {
+    margin-bottom: var(--mantine-spacing-xs);
+    letter-spacing: -0.02em;
+}
+
+.studio-intro {
+    max-width: 85ch;
+    padding-block: var(--mantine-spacing-xs);
+}
+
+.studio-section {
+    padding: var(--mantine-spacing-md);
+    background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+    border-color: light-dark(#e4e9f1, var(--mantine-color-dark-4));
+    box-shadow: 0 2px 5px light-dark(#24304408, #00000020);
+}
+
+.studio-section .mantine-Fieldset-legend {
+    font-size: var(--mantine-font-size-sm);
+    font-weight: 600;
+    padding-inline: var(--mantine-spacing-xs);
+}
+
+.studio-page .mantine-Button-root[data-variant="default"]:not(:disabled):not([data-disabled]) {
+    background: light-dark(#edf1f7, var(--mantine-color-dark-6));
+    border-color: transparent;
+    color: var(--mantine-color-text);
+}
+
+.studio-page .mantine-Button-root[data-variant="default"]:hover:not(:disabled) {
+    background: light-dark(#e0e7f1, var(--mantine-color-dark-5));
+}
+
+.studio-page .mantine-Tabs-list {
+    gap: 4px;
+    margin-bottom: var(--mantine-spacing-sm);
+}
+
+.studio-page .mantine-Tabs-tab[data-active] {
+    background: light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-6));
+}
+
+/* Programmatic region focus must not draw a black frame around a whole editor.
+   Keyboard focus retains the same explicit ring as controls and disclosures. */
+.studio-page [role="region"][tabindex="-1"]:focus {
+    outline: none;
+}
+
+.studio-page :where(button, a, summary, [role="region"][tabindex="-1"]):focus-visible {
+    outline: 2px solid var(--mantine-primary-color-filled);
+    outline-offset: 3px;
+}
+
+.studio-output-choice {
+    min-width: 0;
+    margin-bottom: var(--mantine-spacing-sm);
+    padding: var(--mantine-spacing-sm);
+    background: light-dark(#f4f6fa, var(--mantine-color-dark-8));
+    border-radius: var(--mantine-radius-md);
+}
+
+.studio-output-status {
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: var(--mantine-radius-sm);
+    background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-6));
+}
+
+.studio-output-status:is([data-status="Ready"], [data-status="Built"], [data-status="Completed"], [data-status="Compatible"], [data-status="Published"]) {
+    color: light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-3));
+}
+
+.studio-output-status[data-status="Running"] {
+    color: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-3));
+}
+
+.studio-output-status:is([data-status="Needs attention"], [data-status="Destination conflict"]) {
+    color: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-3));
+}
+
+.studio-technical-text {
+    max-width: 100%;
+    min-width: 0;
+    margin-block: var(--mantine-spacing-xs);
+    padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+    border-radius: var(--mantine-radius-sm);
+    background: light-dark(#edf1f7, var(--mantine-color-dark-6));
+    color: light-dark(#475569, var(--mantine-color-gray-4));
+    font-family: var(--mantine-font-family-monospace);
+    font-size: var(--mantine-font-size-xs);
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.studio-operation-result {
+    margin-top: var(--mantine-spacing-sm);
+    padding: var(--mantine-spacing-sm);
+    border-inline-start: 3px solid var(--mantine-color-teal-6);
+    border-radius: var(--mantine-radius-sm);
+    background: light-dark(var(--mantine-color-teal-0), var(--mantine-color-dark-6));
+}
+
+.studio-metadata {
+    table-layout: fixed;
+    background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+    border-radius: var(--mantine-radius-md);
+}
+
+.studio-metadata th {
+    width: 30%;
+    font-size: var(--mantine-font-size-xs);
+    font-weight: 500;
+    color: var(--mantine-color-dimmed);
+}
+
+.studio-metadata :where(th, td) {
+    padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+    vertical-align: top;
 }
 
 .studio-page :where(p, span, td, th, pre, summary) {
@@ -69,6 +194,32 @@ body,
 
 .studio-job-card {
     overflow: hidden;
+    padding: var(--mantine-spacing-md);
+    border: 1px solid var(--mantine-color-default-border);
+    border-radius: var(--mantine-radius-md);
+}
+
+.studio-job-card .mantine-Alert-title {
+    font-size: var(--mantine-font-size-sm);
+    font-weight: 600;
+}
+
+.studio-job-details {
+    margin-top: 4px;
+    font-size: var(--mantine-font-size-xs);
+}
+
+.studio-job-details summary {
+    cursor: pointer;
+    color: var(--mantine-color-dimmed);
+    padding-block: 4px;
+}
+
+.studio-job-details .mantine-Text-root {
+    padding: var(--mantine-spacing-xs);
+    background: light-dark(#edf1f7, var(--mantine-color-dark-6));
+    border-radius: var(--mantine-radius-sm);
+    font-family: var(--mantine-font-family-monospace);
 }
 
 .studio-job-card [data-job-detail] {
