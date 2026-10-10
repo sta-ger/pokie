@@ -818,3 +818,53 @@ Final root `npm run typecheck` exited zero and included the Studio compiler.
 The first commit attempt was rejected by the installed ESLint hook for nested
 ternaries/indentation in the new presentation logic. These were replaced with
 explicit branches; the hook remains enabled for the retry.
+
+
+## Disclosure migration review correction
+
+Review fingerprint: `ae1a1cd6af46fe4a`; base candidate:
+`be3c9b9326d9b02039992787a17b8782a3c5f510`.
+The saved review was traced against this source before editing. A matching
+boolean hid consecutive retained requests behind a manually collapsed form;
+remote `runError` was absent from operation/summary classification. The
+ordinary workflow consumers and maintained packed runner also accessed forms
+before their new public Configure controls were activated.
+
+| Accumulated requirement | Candidate correction / remaining verification |
+| --- | --- |
+| Frozen 900px editor overflow | Existing shared tab wrapping and responsive layout corrections retained. Independent affected visual disposition remains pending. |
+| Validated Game basics / Bets lookup | Existing tablist-scoped visible-label selectors retained, including native keyboard assertions. Complete P910 execution pending. |
+| Browse and retained Simulation Review | Existing scoped Browse… selector and explicit native Simulation Configure activation retained. Complete P910 execution pending. |
+| Hidden status-text geometry and native Create game focus | Existing visible-text geometry and keyboard focus helpers retained. Complete P910 execution pending. |
+| Repeated recovery and user-controlled collapse | Owning cards receive the immutable request identity; recovery and operation opening effects are separate. Artifact, generator and remote cases select two retained same-target jobs, collapse between requests, restore the selected fields/options and assert zero submissions. Unrelated destination updates leave the collapsed form closed. |
+| Remote rejection and explicit retry | Transport errors contribute to Needs attention and operation handling. Both compatibility and publication rejection cases preserve a visible collapsed summary, then verify explicit recheck, duplicate-submit prevention, Running, Compatible and Published states. Recovery reconstruction uses stable deployment dependencies so ordinary run updates do not clear the result. |
+| Ordinary workflow consumers | Library durability, PC18 generator/Stake and PC14 remote/Stake/PAR use public disclosure controls. PC14 scopes Stake to its existing lifecycle card. Original publication, conflict, remount and provenance assertions remain. Library teardown now unmounts before server shutdown; mounted pollers previously caused its cleanup hook to time out and contaminated the following case. |
+| Packed generator / PAR preparation | One helper opens each named disclosure through the existing native keyboard activation boundary before preparation. Real Chromium fixture coverage verifies trusted activation and rejects missing, hidden, unreachable and unrevealed forms; already-open forms are retained. Existing preflight, form-field and visibility checks remain. |
+| Immutable observation and full visual acceptance | Earlier document content, frozen observations, screenshots, transcripts and completed-step evidence are unchanged. No replacement collection, production build, packaging, broad P8 campaign or official gate ran. Full current-asset P910 execution and independent visual closure remain pending for the controller. |
+
+Permitted focused checks (whole files):
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.exportDeploy.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx tests/scripts/p8-05-valera-devtools-events.test.mjs
+npm run test:targeted -- tests/cli/studio-client/src/components/project/ProjectDashboardPage.libraryDurability.test.tsx
+npm run typecheck
+```
+
+Export/Deploy passed 59 tests and native runner helpers passed 17 tests in the
+combined run. Library durability initially failed its mounted-poller cleanup;
+after explicit cleanup, its complete file passed both substantive cases.
+Initial new assertion failures were corrected to open Advanced generation
+controls and expect classified transport copy. React asynchronous update
+warnings remain visible in the output. The controller retains independent
+execution of the complete reviewer matrix, including PC14 and PC18; this worker
+does not claim those two suites or rendered visual acceptance passed.
+The standalone Studio typecheck was rejected before execution by the bounded
+command policy; the permitted root typecheck includes that compiler.
+
+Root `npm run typecheck` exited zero, including the Studio compiler.
+
+The first correction commit attempt was rejected by the required ESLint hook
+for a promise brace style error and warned about the recovery dependency
+expression. Explicit stable deployment aliases and multiline braces corrected
+these. The final Export/Deploy whole-file rerun passed 59 tests and the final
+root typecheck exited zero. The commit hook remains enabled.

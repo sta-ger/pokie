@@ -288,7 +288,7 @@ function toArtifactPreviewRunView(view: StudioArtifactPreviewView): ArtifactPrev
 function TargetCard({
     card,
     initiallyOpened,
-    recoveryRequested,
+    recoveryRequest,
     defaultModeName,
     outcomeLibraryRun,
     outcomeLibraryPreflight,
@@ -316,7 +316,7 @@ function TargetCard({
 }: {
     card: ExportDeployTargetCard;
     initiallyOpened: boolean;
-    recoveryRequested: boolean;
+    recoveryRequest?: Readonly<Record<string, unknown>>;
     defaultModeName: string;
     outcomeLibraryRun: OutcomeLibraryRunView;
     outcomeLibraryPreflight: OutcomeLibraryPreflightView;
@@ -367,16 +367,19 @@ function TargetCard({
         else if (artifactPreview.status === "loading") summaryStatus = "Checking";
         else summaryStatus = "Needs attention";
     } else if (isActiveTarget) {
-        hasOperation = deployment.runLoading || deployment.runResult !== undefined;
+        hasOperation = deployment.runLoading || deployment.runResult !== undefined || deployment.runError !== undefined;
         operationPending = deployment.runLoading;
-        if (deployment.runResult?.ok === false) summaryStatus = "Needs attention";
+        if (deployment.runError !== undefined || deployment.runResult?.ok === false) summaryStatus = "Needs attention";
         else if (deployment.runResult?.ok === true) summaryStatus = deployment.runResult.publish ? "Published" : "Compatible";
     }
     if (!card.supported) summaryStatus = "Unavailable";
     else if (operationPending) summaryStatus = "Running";
     useEffect(() => {
-        if (hasOperation || recoveryRequested) setOpened(true);
-    }, [hasOperation, recoveryRequested]);
+        if (hasOperation) setOpened(true);
+    }, [hasOperation]);
+    useEffect(() => {
+        if (recoveryRequest !== undefined) setOpened(true);
+    }, [recoveryRequest]);
 
     const previewedOk = isActiveTarget && deployment.runResult?.ok === true && deployment.runResult.publish === false;
     const canBuildArtifact = artifactPreview.status === "ok" && artifactBuildRun.status !== "running";
@@ -1092,7 +1095,8 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
 }) {
     const fetchImpl = useStudioApi();
     const openAndNavigate = useOpenProject();
-    const deploymentTargets = deployment.targetsView.status === "loaded" ? deployment.targetsView.targets : [];
+    const {targetsView: deploymentTargetsView, selectTarget: selectDeploymentTarget} = deployment;
+    const deploymentTargets = deploymentTargetsView.status === "loaded" ? deploymentTargetsView.targets : [];
     const defaultModeName = resolveDefaultModeName(deployment.projectModesView);
 
     const [outcomeLibraryRun, setOutcomeLibraryRun] = useState<OutcomeLibraryRunView>({status: "idle"});
@@ -1285,11 +1289,11 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
         // Deployment never auto-publishes from a retained record.  Re-select
         // its exact target so the user can inspect the regenerated plan and
         // explicitly choose Check or Publish again.
-        if (typeof recoveryRequest.targetId === "string" && deployment.targetsView.status === "loaded") {
-            const target = deployment.targetsView.targets.find((candidate) => candidate.id === recoveryRequest.targetId);
-            if (target !== undefined) deployment.selectTarget(target);
+        if (typeof recoveryRequest.targetId === "string" && deploymentTargetsView.status === "loaded") {
+            const target = deploymentTargetsView.targets.find((candidate) => candidate.id === recoveryRequest.targetId);
+            if (target !== undefined) selectDeploymentTarget(target);
         }
-    }, [deployment, recoveryRequest]);
+    }, [selectDeploymentTarget, deploymentTargetsView, recoveryRequest]);
     // A completed Outcome Library publication changes the canonical input the
     // Stake projection is allowed to reuse.  Refresh its server-owned
     // prepared operation before enabling the follow-on Build action; retaining
@@ -1701,7 +1705,7 @@ export function ExportDeployTab({capabilities: _capabilities, deployment, recove
                                             key={card.id}
                                             card={card}
                                             initiallyOpened={kind === "buildArtifact" && card.id === groupCards.find((candidate) => candidate.supported)?.id}
-                                            recoveryRequested={recoveryRequested}
+                                            recoveryRequest={recoveryRequested ? recoveryRequest : undefined}
                                             defaultModeName={defaultModeName}
                                             outcomeLibraryRun={outcomeLibraryRun}
                                             outcomeLibraryPreflight={outcomeLibraryPreflight}

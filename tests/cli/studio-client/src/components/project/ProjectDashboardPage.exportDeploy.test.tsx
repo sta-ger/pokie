@@ -322,6 +322,55 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(screen.getByLabelText("Coverage seed")).toHaveValue("retained-seed");
     });
 
+    it.each([
+        {operation: "artifact-build", card: "TypeScript Game Package", requests: [{target: "tsPackage", outDir: "first-package"}, {target: "tsPackage", outDir: "second-package"}], field: "Output directory (optional)"},
+        {operation: "outcome-library-generation", card: "Outcome library generator", requests: [{generation: "exact", libraryId: "first-library", outDir: "first-library"}, {generation: "bounded", libraryId: "second-library", outDir: "second-library", sample: {sampleSize: "11", seed: "second-seed"}}], field: "Output destination"},
+        {operation: "deployment", card: "Remote delivery", requests: [{targetId: "acme-rgs-v2"}, {targetId: "acme-rgs-v2"}], field: undefined},
+    ])("reopens $operation for consecutive same-target retained requests after manual collapse without submitting", async ({operation, card, requests, field}) => {
+        const user = userEvent.setup();
+        const writes: string[] = [];
+        const jobs = requests.map((request, index) => ({
+            id: `retained-${index}`, projectId: "/games/a", operation, request, conflictKey: `retained-${index}`,
+            status: "failed", createdAt: index + 1, recovery: {action: "retry", reason: "Inspect and submit again."},
+        }));
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/artifacts/targets": () => ({ok: true, status: 200, body: [...BASE_ROUTES["/api/project/artifacts/targets"]().body as unknown[], {target: "wasm", supported: true, state: "supported", unsupportedNotes: []}]}),
+            "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs}}),
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [{id: "acme-rgs-v2", version: "1.0.0", requirements: {}, capabilities: []}]}),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            if (init?.method === "POST" && !url.includes("/preview") && !url.includes("/estimate")) writes.push(url);
+            return fetchImplFrom(routes)(url, init);
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+        for (let index = 0; index < jobs.length; index++) {
+            const retained = await screen.findByRole("region", {name: `${operation} job retained-${index}`});
+            await user.click(within(retained).getByRole("button", {name: "Retry"}));
+            const toggle = await screen.findByRole("button", {name: `Hide options for ${card}`});
+            const form = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+            expect(form).toBeVisible();
+            if (operation === "outcome-library-generation") {
+                const advanced = within(form).queryByRole("button", {name: "Show Advanced generation controls"});
+                if (advanced !== null) await user.click(advanced);
+            }
+            if (field !== undefined) expect(within(form).getByRole("textbox", {name: field})).toHaveValue(requests[index].outDir);
+            if (operation === "outcome-library-generation" && index === 1) {
+                expect(within(form).getByLabelText("Library identity")).toHaveValue("second-library");
+                expect(within(form).getByLabelText("Coverage seed")).toHaveValue("second-seed");
+                expect(within(form).getByRole("button", {name: "Conditional bounded"})).toHaveAttribute("data-variant", "filled");
+            }
+            await user.click(toggle);
+            expect(form).not.toBeVisible();
+            expect(toggle).toHaveAttribute("aria-expanded", "false");
+            // Unrelated form/preflight renders must not undo the user's collapse.
+            await configureOutput("artifact-wasm");
+            fireEvent.change(screen.getByRole("textbox", {name: "Output file (optional)"}), {target: {value: `unrelated-${index}`}});
+            expect(form).not.toBeVisible();
+            expect(writes).toEqual([]);
+        }
+    });
+
     it("gets the fresh preflight from server defaults without sending empty generation fields", async () => {
         const user = userEvent.setup();
         let initialPreflightRequest: unknown;
@@ -990,6 +1039,71 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
         expect(await screen.findByText("Compatible -- ready to publish.")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: "Publish"})).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Preview artifacts"})).not.toBeInTheDocument();
+    });
+
+    it.each([false, true])("keeps remote transport rejection actionable when collapsed and retries explicitly (publish: %s)", async (rejectPublication) => {
+        const user = userEvent.setup();
+        const submitted: boolean[] = [];
+        let finishRun: (() => void) | undefined;
+        const routes = {
+            ...BASE_ROUTES,
+            "/api/project/deployment/targets": () => ({ok: true, status: 200, body: [{id: "acme-rgs-v2", version: "1.0.0", requirements: {}, capabilities: []}]}),
+        };
+        const fetchImpl: FetchLike = (url, init) => {
+            if (url.split("?")[0] !== "/api/project/deployment/runs") return fetchImplFrom(routes)(url, init);
+            const publish = JSON.parse(init?.body ?? "{}").publish as boolean;
+            submitted.push(publish);
+            if (submitted.length === (rejectPublication ? 2 : 1)) return Promise.reject(new Error("Failed to fetch"));
+            const response = {ok: true, status: 200, json: () => Promise.resolve({
+                targetId: "acme-rgs-v2", publish, stages: [], descriptorIssues: [], compatibilityIssues: [], projectionIssues: [],
+                generation: {artifacts: [], issues: []}, artifactIssues: [], diagnostic: {ok: true, checks: []}, delivery: {delivered: publish},
+            })};
+            if (rejectPublication && submitted.length === 1) return Promise.resolve(response);
+            return new Promise((resolve) => {
+                finishRun = () => resolve(response);
+            });
+        };
+        renderRoutedApp({fetchImpl, initialEntries: ["/project/exportDeploy"]});
+        const toggle = await screen.findByRole("button", {name: "Configure Remote delivery"});
+        const card = toggle.closest('div[style*="margin-bottom"]')!;
+        const form = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+        await user.click(toggle);
+        await user.click(within(form).getByRole("button", {name: "Check compatibility"}));
+        if (rejectPublication) {
+            await within(form).findByText("Compatible -- ready to publish.");
+            await user.click(within(form).getByRole("button", {name: "Publish"}));
+        }
+        expect(await within(form).findByText(/The remote deployment couldn't reach the Studio server/)).toBeVisible();
+        expect(within(card).getByText("Needs attention")).toBeVisible();
+        await user.click(toggle);
+        expect(form).not.toBeVisible();
+        expect(within(card).getByText("Needs attention")).toBeVisible();
+        const beforeRetry = submitted.length;
+        await user.click(toggle);
+        expect(submitted).toHaveLength(beforeRetry);
+        // A rejected publication clears stale compatibility; retry the public check first.
+        expect(within(form).queryByRole("button", {name: "Publish"})).not.toBeInTheDocument();
+        await user.click(within(form).getByRole("button", {name: "Check compatibility"}));
+        expect(within(card).getByText("Running")).toBeVisible();
+        expect(toggle).toBeDisabled();
+        expect(within(form).queryByText(/The remote deployment couldn't reach the Studio server/)).not.toBeInTheDocument();
+        await user.click(within(form).getByRole("button", {name: "Check compatibility"}));
+        expect(submitted).toHaveLength(beforeRetry + 1);
+        await act(() => finishRun!());
+        expect(await within(form).findByText("Compatible -- ready to publish.")).toBeVisible();
+        expect(within(card).getByText("Compatible", {exact: true})).toBeVisible();
+        expect(toggle).toBeEnabled();
+        await user.click(within(form).getByRole("button", {name: "Publish"}));
+        expect(within(card).getByText("Running")).toBeVisible();
+        expect(toggle).toBeDisabled();
+        await act(() => finishRun!());
+        expect(await within(form).findByText("Published.")).toBeVisible();
+        expect(within(card).getByText("Published", {exact: true})).toBeVisible();
+        expect(toggle).toBeEnabled();
+        await user.click(toggle);
+        expect(form).not.toBeVisible();
+        expect(within(card).getByText("Published", {exact: true})).toBeVisible();
+        expect(submitted).toEqual(rejectPublication ? [false, true, false, true] : [false, false, true]);
     });
 
     it("does not locally gate remote compatibility on registry-derived library readiness", async () => {

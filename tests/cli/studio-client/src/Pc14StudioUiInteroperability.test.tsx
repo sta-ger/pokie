@@ -130,6 +130,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // Build/Export alone would not establish either owner's workflow.
         const remoteDeploymentSection = (await screen.findByText("Remote delivery")).closest("fieldset");
         expect(remoteDeploymentSection).not.toBeNull();
+        await user.click(within(remoteDeploymentSection!).getByRole("button", {name: "Configure Remote delivery"}));
         const checkCompatibility = within(remoteDeploymentSection!).getByRole("button", {name: "Check compatibility"});
         await waitFor(() => expect(checkCompatibility).toBeEnabled());
         await user.click(checkCompatibility);
@@ -265,9 +266,11 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         // output and recovery rather than only the server-side Stake service.
         await user.click(screen.getByRole("button", {name: "Build/Export"}));
         const stakeHeading = await screen.findByText("Stake Engine export");
-        const stakeCard = stakeHeading.closest("div")?.parentElement;
+        const stakeCard = stakeHeading.closest('[data-pokie-lifecycle-form="artifact-build"]');
         expect(stakeCard).not.toBeNull();
         const stake = within(stakeCard!);
+        const stakeConfigure = stake.queryByRole("button", {name: "Configure Stake Engine export"});
+        if (stakeConfigure !== null) await user.click(stakeConfigure);
         const stakeDestination = stake.getByRole("textbox", {name: "Output directory (optional)"});
         const occupiedStakePath = path.join(workDir, "occupied-stake");
         fs.mkdirSync(occupiedStakePath);
@@ -506,6 +509,7 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         const parCard = parHeading.closest("[data-pokie-lifecycle-form=artifact-build]") as HTMLElement;
         expect(parCard).not.toBeNull();
         const par = within(parCard);
+        await user.click(par.getByRole("button", {name: "Configure PAR sheet (.xlsx)"}));
         const parExportInput = par.getByRole("textbox", {name: "Output file (optional)"});
         const occupiedParPath = path.join(workDir, "occupied.par.xlsx");
         fs.writeFileSync(occupiedParPath, "caller-owned PAR destination");

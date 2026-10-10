@@ -44,6 +44,33 @@ export function recordP805RenderedApiResponse(api, entry) {
 const now = () => new Date().toISOString();
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const fail = (message) => { throw new Error(`P8-05 Valera browser audit is invalid: ${message}`); };
+// Reveal the named public Build/Export form before reading or editing it.
+// Keep the runner on the product's disclosure path and require its visible result.
+export async function ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, cardId, label, observation) {
+    const controlId = `export-configure-${cardId}`;
+    const readState = () => evaluate(`(() => {
+        const control = document.getElementById(${JSON.stringify(controlId)});
+        const visible = (item) => item instanceof HTMLElement && !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length) && getComputedStyle(item).visibility !== 'hidden';
+        if (!(control instanceof HTMLButtonElement) || !visible(control) || control.disabled) return false;
+        const expanded = control.getAttribute('aria-expanded');
+        const name = control.getAttribute('aria-label');
+        if (name !== (expanded === 'true' ? 'Hide options for ' : 'Configure ') + ${JSON.stringify(label)}) return false;
+        const panel = document.getElementById(control.getAttribute('aria-controls'));
+        if (!(panel instanceof HTMLElement)) return false;
+        return {expanded, revealed:visible(panel)};
+    })()`);
+    const state = await waitFor(readState, `${observation} named ${label} disclosure`);
+    if (state.expanded === 'false') {
+        const control = await focusRenderedControl('button', `(item, name) => item.id === ${JSON.stringify(controlId)} && name === ${JSON.stringify(`Configure ${label}`)}`);
+        if (!control?.keyboardFocused || control.stableControlId !== controlId) fail(`${observation} ${label} Configure control is unreachable`);
+        const activation = await activateFocusedControl('precondition', control, 'keyboard');
+        if (!hasP805NativeActivation(activation, controlId)) fail(`${observation} ${label} Configure lacks native activation`);
+    } else if (state.expanded !== 'true') fail(`${observation} ${label} disclosure has no expanded state`);
+    await waitFor(async () => {
+        const next = await readState();
+        return next?.expanded === 'true' && next.revealed ? next : false;
+    }, `${observation} revealed ${label} form`);
+}
 const P805_ACTIVE_JOB_STATUSES = new Set(["queued", "running"]);
 const P805_OUTCOME_LIBRARY_ACTIVE_JOB_STATUSES = new Set(["queued", "running", "cancelling", "pending"]);
 class OutcomeLibraryTerminalBoundaryError extends Error {
@@ -2520,6 +2547,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return {state:'ready', status, controlId:control.id, cardLabel:[...card.querySelectorAll('*')].find((item) => item.textContent?.trim() === 'Outcome library generator')?.textContent?.trim() ?? null, enabled:true, disabled:false};
         })()`);
         const requireOutcomeLibraryCard = async (observation) => {
+            await ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, "outcome-library", "Outcome library generator", observation);
             let state = await outcomeLibraryCardState();
             // The route and its navigation receipt can render before the
             // Build/Export card subtree has committed.  In particular the
@@ -2562,6 +2590,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 return {formState, outcomeLibraryPreflight:preflight};
             }
             if (body === "artifact-build") {
+                await ensureP805ExportDisclosure({evaluate, focusRenderedControl, activateFocusedControl, waitFor}, "artifact-parWorkbook", "PAR sheet (.xlsx)", observation);
                 const configured = await waitFor(
                     () => setLifecycleField("artifact-build-destination", path.join(context.workspace, `P8-05 ${observation} ${viewport}.xlsx`)),
                     `${observation} product-owned artifact destination`,
