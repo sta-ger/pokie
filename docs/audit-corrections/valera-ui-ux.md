@@ -450,3 +450,50 @@ success, or action-local error. The selection was not resent and no unrelated
 defect under the action-correlation contract; it leaves the remaining recovery
 actions driver-limited. Studio and Chromium drained after close. No product
 code, test, generated output, browser profile, or screenshot was committed.
+
+## Independent recovery continuation — 2026-10-10 (evidence descendant `f147c67f`)
+
+This supplementary continuation preserved the same authenticated candidate
+`c576bcebaa50d61b2681e151e7ebe97b3a591326`, frozen profile, and immutable
+initial chronology. The initial freeze and sibling transcript remain
+hash-matched:
+
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/frozen-initial.json`
+  (`sha256:75c3c93cd9dc96edae5bce4be4ea11a66c90d68f08a34e8ffb6b1a74184dae6a`)
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-10-47-552Z/transcript.json`
+  (`sha256:33233992ec2388b0339d19781757afff902dc9b41c91114cd9238d0bfe7ec3a3`)
+
+The continuation transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-09-7914868593b69db3/run-2026-10-09T23-57-36-889Z/transcript.json`
+(`sha256:e4b0a50a625b685a1aba9004b73fe439bf1b3fcd5f3b94836a2124597c0012e9`).
+No screenshot was added beyond the initial three.
+
+Using the distinct rows' own rendered `Open` controls (rather than selecting
+a row), the verifier opened **Second Slot**, which showed only its own project
+opening operations and no Starter Slot simulation/result. It then reopened
+**Starter Slot** and observed the retained completed simulation and its
+downloadable report. This completes the previously driver-limited
+distinct-project/reopen observation without replaying creation, play,
+simulation, or generation.
+
+For the outstanding destination branch, the TypeScript Game Package default
+destination was initially absent. One public Build completed there; its
+six-file manifest had SHA-256
+`e9a42bfc6abedabdeba40a0f3df90a31175de55b34e287eb696030e7ce87a890`.
+One subsequent Build rendered the card-local message that the directory already
+exists and is not empty and instructed the user to choose another `--out` path;
+the same six-file manifest hash and count remained afterward. Thus the occupied
+output was measured before and after the rendered recovery failure. The two
+enabled `Output directory (optional)` inputs on this page have indistinguishable
+rendered labels. The neutral transport rejected the requested TypeScript field
+as non-unique, so it did not type into either, did not submit an alternate
+publication, and did not fabricate that result.
+
+The retained job was already terminal, so the required active-work confirmation
+decline/focus-return branch was not replayed. The text transport also does not
+expose visible focus; no unsupported focus/geometry claim is made. Studio and
+Chromium drained on close. No P0/P1/material-P2 product defect was observed,
+and the deferred controller browser test was neither inspected nor run. This is
+still **inconclusive, driver-limited and not approved** pending alternate
+publication plus active-work confirmation/focus and visible-focus viewport
+proof.
