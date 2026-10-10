@@ -740,3 +740,41 @@ P909/P910 execution, image review, official release/packaging, post-merge
 checks, develop integration/push/publication, Drive round-trip and controller
 cleanup/completion receipts remain **pending controller execution**. The
 controller must install and pin the new driver bytes before collecting them.
+
+### 2026-10-10 P9-11 exact-candidate corrective closeout finding
+
+The controller-authenticated normal delivery for candidate
+`a54db9890a70b0f6ecb1cfe73eafa85b56c08bab` produced archive
+`pokie-1.3.0.tgz` with SHA-256
+`0d4a7fc50984b2f7c06a430fae7f86cdb582d3c640a0e345d0d138c20038d3fa` and
+installed it before collection. The final pinned rendered driver was
+`sha256:89af0427062f2848c328c42bcb59c325d91ca604361156da23b3cedae501da07`.
+
+The first final closeout attempt exposed a driver-only unsaved-draft confirmation
+after opening the external Stake export. The persistent driver was repaired and
+the controller's inspection-only delivery then independently reached the exact
+installed Studio Overview and rendered the rare-event table. That inspection is
+diagnostic only, not acceptance evidence.
+
+The subsequently admitted consolidated closeout passed and drained the first
+four public corrective rows (`node-wasm-first-subsequent`,
+`serialized-zero-replay`, `bounded-long-state`, and `stake-uint64-total`),
+including the latter's rendered Studio observation. It then stopped at the
+`canonical-cli` row: the installed public command `pokie certification --help`
+printed certification usage but exited `1`. The public consumer is
+[`scripts/p9-11-corrective-scenarios.mjs`](../../scripts/p9-11-corrective-scenarios.mjs)
+at its recursive nested-help call; the candidate producer boundary is
+[`cli/commands/CertificationCommand.ts`](../../cli/commands/CertificationCommand.ts),
+where `run()` only rejects an empty argv before parsing and does not treat
+top-level `--help` as help success. Commander consequently reports the parent
+missing-command path instead of the command's `isCommanderHelpDisplay` success
+path. This is a candidate-owned offline CLI defect, not a controller receipt,
+browser-driver, or network failure.
+
+Bounded runtime evidence (not committed) is retained at:
+
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-bcb0e775c099475e/controller-candidates/a54db9890a70b0f6ecb1cfe73eafa85b56c08bab-89af0427062f2848c328c42bcb59c325d91ca604361156da23b3cedae501da07/output/handoff.json`
+- `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-bcb0e775c099475e/final-closeout-a54db9890a70b0f6ecb1cfe73eafa85b56c08bab-89af0427062f2848c328c42bcb59c325d91ca604361156da23b3cedae501da07/failed.json`
+
+All remaining closeout/persona/P909/P910 rows are not reached. No official
+gate, publication, acceptance, or rendered action correlation is claimed.
