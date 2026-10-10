@@ -1250,36 +1250,3 @@ work. No P910 test (including its ordinary cases), build, packaging, official
 gate, browser or collector was executed here; no prior evidence was modified
 or removed. This correction is an implementation handoff, not closure of
 P9-VALERA-GRAPHIC or completion of P9-10.
-
-## Evidence-locator finalization
-
-This is a locator-only correction. It does not alter the independent visual
-assessment, its passed disposition, the criterion result, product code, tests,
-screenshots, or any runtime artifact.
-
-The product candidate remains
-`87dced9de711d85f99cf9d5686da888793e8bffd`. The commit containing this note
-is an evidence-only descendant; it must not replace that product identity.
-The immutable cold collection required by the dependent P910 gate is retained
-in its original assigned harness, with these exact absolute locators and
-verified SHA-256 values:
-
-| Record | Absolute locator | SHA-256 |
-| --- | --- | --- |
-| Frozen initial observations | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json` | `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
-| Chronological sibling transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/transcript.json` | `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
-
-Both absolute locators are retained verbatim in the verification report's
-`evidence_paths`. They are the authentic interactive pair: their record names
-candidate `d89c3307be5eb97c2cf0763bc19551b55818c133`, which is an ancestor of
-the product candidate above, and their embedded run/profile locations match.
-They preserve chronology for the dependent P910 gate; they are not a new
-observation, a replacement record, or a current product finding.
-
-The current-candidate reassessment remains retained separately in the assigned
-`P9-10-f716245f44151706` harness; its transcript hash is
-`6b14e86586a5f90092832595759d291aadecc261bbd1e7f00a5d81f10813d945` and its
-single bounded screenshot hash is
-`80b98e51e6b3795467042eadab123c3d74d77f63157d0a49c8a8469338916e51`. Together
-with the three frozen images, that remains within the four-image budget. No
-runtime payload is committed by this note.
