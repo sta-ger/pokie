@@ -902,3 +902,45 @@ packaging, official gate, broad P8 campaign or replacement collection ran.
 `npm run typecheck` also exited zero, including the Studio compiler once.
 Changed tests consume the existing Jest workflow boundary and required
 changed-TypeScript ESLint hook; no production bundling input changed.
+
+## 2026-10-10 controller-owned P9-10 rendered verification — passed
+
+This final bounded rerun is for candidate
+`589e30d024b528abc955cf54e4738259b08eca29`. Its HEAD matched that identity,
+and the frozen collector candidate `d89c3307be5eb97c2cf0763bc19551b55818c133`
+is an ancestor. The independent cold record was preserved, not replaced:
+
+| Retained record | Absolute locator and SHA-256 |
+| --- | --- |
+| Frozen initial observations | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/frozen-initial.json` — `8b8e6f4ac928f885d982fdbf2b0ec644d61807e7ed972f3505d3418349d1f31e` |
+| Chronological transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-c0dab507cb01ddea/run-2026-10-10T03-22-29-149Z/transcript.json` — `6bb362f677eb91e4e9518897c537c3ba11b5a8c807af22ae20f683cbb25c20d0` |
+
+`npm run build-cli` prepared the candidate production assets once. The served
+CLI entry SHA-256 was `ed89a858789e02acbfc66d0fb4a950f0a48678ac9ee530f399d43fc9f9103c83`;
+its Studio index SHA-256 was
+`d1a8386be7ebbf3673f7cad6d0e39a6a3979c25013a8f493d39b972afa3d6932`.
+The candidate-bound harness then ran exactly the complete P910 file with the
+authenticated frozen path from `2026-10-10T04:39:19.101Z` through
+`2026-10-10T04:39:58.887Z`; its result was exit `0` and no signal:
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-db34e91dd96c06e0/post-freeze-run.json`
+and sibling `post-freeze-result.json` (SHA-256
+`b327724c72b06b6cf82194c391cc777ed1156f2809a94974dc846d4f2756fd9d` and
+`36fc3464b2dd7b0a34131c313f3dbbc4bc3b67037ac2b73f534c1f5a941206f0`).
+
+The complete rendered case therefore reached native validated-tab traversal
+and resize checks on Home (1100×800, 900×700 and 390×844), saved-project
+creation, Build/Export's occupied sentinel validation and ready-destination
+recovery, both 500000-round Simulation Configure iterations, the action-local
+Running and Completed cards, and nonempty report retrieval. It also checked
+the compact and smaller Build forms/card surfaces for visible-control,
+ancestor-clipping and document-width overflow. The test's `finally` block
+cancelled/drained any owned live jobs, closed Chromium and Studio, and removed
+its isolated fixture root; exit zero confirms that cleanup completed. No new
+screenshots were retained, so the existing three-image bounded collection is
+unchanged.
+
+The pre-correction frozen P1 hierarchy/phone-layout concern is closed by this
+fresh current-asset rerender: no P0, P1 or material P2 remained in the reached
+Home, project/model/build or job-card presentation. This conclusion is limited
+to the required P9-10 matrix and does not recast older historical findings as
+current failures.
