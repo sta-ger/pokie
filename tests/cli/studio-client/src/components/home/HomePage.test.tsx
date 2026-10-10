@@ -217,6 +217,14 @@ describe("HomePage", () => {
             blueprint, sourcePath: "/games/recovered.blueprint.json", outDir: "/games/recovered-package",
         });
         expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(0);
+        await user.click(screen.getByRole("button", {name: "Choose a different start"}));
+        await user.click(await screen.findByRole("button", {name: "Discard", exact: true}));
+        await user.click(screen.getByRole("button", {name: "Use the starter game"}));
+        await waitFor(() => expect(screen.getByLabelText("Output directory (optional)")).toHaveValue(""));
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+        await screen.findByDisplayValue("Recovered");
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue("/games/recovered-package");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1);
     });
 
     it("recovers the retained PAR export draft without publishing through Home", async () => {
@@ -243,6 +251,44 @@ describe("HomePage", () => {
         expect(screen.queryByLabelText("Export to path")).not.toBeInTheDocument();
         expect(screen.getByLabelText("Output directory (optional)")).toHaveValue("");
         expect(calls.filter((call) => call.url === "/api/home/blueprints/par-export")).toHaveLength(0);
+    });
+
+    it.each(["form", "JSON"])("confirms retained recovery before replacing dirty %s and preserves the draft and storage on Stay", async (mode) => {
+        const user = userEvent.setup();
+        const blueprint = {manifest: {id: "B", name: "Recovered B", version: "1.0.0"}, reels: 3, rows: 1, symbols: ["A"], paytable: {A: {3: 5}}};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: [{
+                id: "retained", projectId: "design:draft:B", operation: "design-build", request: {blueprint, destinationPath: "/games/B"},
+                conflictKey: "design-destination:/games/B", status: "recovery-required", createdAt: 1,
+                recovery: {action: "rebuild", reason: "Inspect the captured draft."},
+            }]}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+        });
+        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        if (mode === "JSON") {
+            await user.click(screen.getByRole("radio", {name: "JSON"}));
+            fireEvent.change(screen.getByLabelText("Blueprint JSON"), {target: {value: "unfinished JSON"}});
+        } else {
+            fireEvent.change(screen.getByLabelText("Game name"), {target: {value: "Unsaved A"}});
+            fireEvent.blur(screen.getByLabelText("Game name"));
+        }
+        const stored = window.sessionStorage.getItem("pokie-studio:design-draft:v1");
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+        await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?");
+        await user.click(screen.getByRole("button", {name: "Stay"}));
+        expect(router.state.location.state).toBeNull();
+        expect(screen.getByLabelText(mode === "JSON" ? "Blueprint JSON" : "Game name")).toHaveValue(mode === "JSON" ? "unfinished JSON" : "Unsaved A");
+        expect(window.sessionStorage.getItem("pokie-studio:design-draft:v1")).toBe(stored);
+        expect(screen.queryByText(/Recovered the draft for the previous artifact destination/)).not.toBeInTheDocument();
+        await user.click(screen.getByRole("button", {name: "Rebuild"}));
+        await screen.findByText("You have unsaved changes in Design Game. Leave and lose them?");
+        await user.click(screen.getByRole("button", {name: "Leave"}));
+        expect(await screen.findByText(/Recovered the draft for the previous artifact destination/)).toHaveTextContent("/games/B");
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue("/games/B");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build" || call.url === "/api/home/blueprints/par-export")).toHaveLength(0);
+        expect(JSON.parse(window.sessionStorage.getItem("pokie-studio:design-draft:v1")!).blueprint).toEqual(blueprint);
     });
 
     it("defaults to Design Game and switches between tabs, keeping aria-current on the active one", async () => {

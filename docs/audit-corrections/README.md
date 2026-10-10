@@ -441,3 +441,40 @@ warnings but pass. The Studio production bundle (`npm run build-studio-client`),
 normal build/pack/install, independent browser/CLI closeout and official gates
 were not run by this bounded worker; they remain controller-owned checks on
 the committed SHA. No prior evidence was rewritten, removed or recollected.
+
+### P9-11 Design draft identity and recovery isolation repair
+
+Review of `b4e4bb5ff3da5c732b54c74e276564fe5f1c1ca3` (finding
+`f7014303e1a68ec0`) found fabricated unsaved-source provenance and recovery that
+could discard dirty content or inherit another draft's state. The prior
+reachability observations and all completed-step evidence above remain intact.
+
+Design build and PAR export now use a content-bound durable draft identity when
+no source file was supplied, while publication receives no source path. A valid
+unsaved design named `blueprint` previews and builds into its missing or empty
+default directory. Real source paths retain their safety and provenance contracts.
+Home confirms dirty recovery before its route transition; standalone editor and
+stored-draft recovery also confirm before replacement. Cancellation preserves
+form/JSON content and the recovery slot. Recovery invalidates prior source and
+Load/Save responses, removes previous drift, overwrite authority and unrelated
+PAR provenance, and retains unsaved status. Its destination belongs to the
+recovered draft and clears on New/Load; selecting the same retained job again
+reconstructs it without publishing automatically.
+
+| Saved failure | Current product regression authority |
+| --- | --- |
+| Unsaved `blueprint` source-self failure and fabricated provenance, including sibling PAR export | [Real HTTP default, durable request/provenance, real-source/internal guards and occupancy race](../../tests/cli/studio/StudioDestinationWorkflow.integration.test.ts); [existing publication and registration rollback contracts](../../tests/cli/studio/blueprint/StudioBlueprintService.test.ts). |
+| Dirty form/JSON silently replaced by retained recovery | [Routed cancellation/confirmation and retained storage](../../tests/cli/studio-client/src/components/home/HomePage.test.tsx); [standalone job/stored-draft cancellation](../../tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx); [existing navigation guard contracts](../../tests/cli/studio-client/src/designNavigationGuard.test.tsx). |
+| Recovery inherits old source drift, late responses, overwrite/PAR authority or destination | [Drift, outstanding source/Load/Save/managed-save responses, exact save payload and New/Load destination reset](../../tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx); routed same-job recovery after New in Home's regression above. |
+
+The bounded worker ran these five whole files together through `test:targeted`
+(136 tests passed), root `npm run typecheck` (including the Studio compiler once),
+and the clone's changed-file ESLint commit hook. Earlier new-test assertions were
+corrected for existing API payloads, preview diagnostics and modal visibility
+before the passing run. Existing navigation tests emit React `act` warnings.
+The source correction is handed off in its `[P9-11]` commit; it does not provide
+new packed-candidate or rendered receipts. The six exact-candidate corrective
+repros, five isolated persona final smokes and authenticated P909/P910 obligations,
+production bundle/build/package boundaries, release/integration/push/publication,
+Drive round-trip and campaign completion remain pending controller-owned work,
+as indexed above. Prior loader/producer/drainage corrections remain unchanged.

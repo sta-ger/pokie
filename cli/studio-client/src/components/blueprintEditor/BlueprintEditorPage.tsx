@@ -110,6 +110,7 @@ export function BlueprintEditorPage({
     initialParSheetPath,
     recoverParImport = false,
     recoveryRequest,
+    recoveryGuardedByNavigation = false,
     initialBuildOutDir,
     onDirtyChange,
     onManagedProjectSaved,
@@ -121,6 +122,8 @@ export function BlueprintEditorPage({
     /** A retained job restores its path for inspection but must not re-run Import automatically. */
     recoverParImport?: boolean;
     recoveryRequest?: Readonly<Record<string, unknown>>;
+    /** Home blocks recovery route transitions before replacing a dirty mounted draft. */
+    recoveryGuardedByNavigation?: boolean;
     /** Only Design build recovery supplies a package destination; PAR recovery uses a file path. */
     initialBuildOutDir?: string;
     onDirtyChange?: (dirty: boolean) => void;
@@ -135,9 +138,12 @@ export function BlueprintEditorPage({
     // Design Game opens on a real, immediately playable Recommended Project. The raw editor remains
     // intentionally blank when used outside this guided entry point.
     const editor = useBlueprintEditor(guided ? createRecommendedBlueprint() : undefined);
-    const loadRecoveredBlueprint = editor.loadFrom;
     const [mode, setMode] = useState<BlueprintMode>("form");
     const [blueprintPath, setBlueprintPath] = useState<string>();
+    const [recoveredDestination, setRecoveredDestination] = useState<string>();
+    const [buildOutDir, setBuildOutDir] = useState<string>();
+    // A replacement invalidates pending Load/Save responses as well as source observers.
+    const draftIdentityRef = useRef(0);
     const [overwriteConfirmedForPath, setOverwriteConfirmedForPath] = useState<string>();
     const [loadView, setLoadView] = useState<BlueprintLoadView>({status: "idle"});
     const [saveView, setSaveView] = useState<BlueprintSaveView>({status: "idle"});
@@ -604,6 +610,31 @@ export function BlueprintEditorPage({
         }
     }, [editor.state.revision]);
 
+    const resetDraftIdentity = (): void => {
+        draftIdentityRef.current += 1;
+        workspaceOpenRequestIdRef.current += 1;
+        if (guidedSaveTimerRef.current !== undefined) clearTimeout(guidedSaveTimerRef.current);
+        sourceVersionRef.current = undefined;
+        sourceCheckPausedRef.current = false;
+        setSourceDrift(undefined);
+        completedValidationRef.current = undefined;
+        validateRequestIdRef.current += 1;
+        setOverwriteConfirmedForPath(undefined);
+        setLoadView({status: "idle"});
+        setSaveView({status: "idle"});
+        setManagedSaveView({status: "idle"});
+        setWorkspaceOpenPending(false);
+        setWorkspaceOpenError(undefined);
+        setShowManagedConflictComparison(false);
+        setValidationView({status: "idle"});
+        setBuiltSnapshot(undefined);
+        setImportedFromParSheetPath(undefined);
+        setParConversionEvidence(undefined);
+        importedParBlueprintRevisionRef.current = undefined;
+        setBuildOutDir(undefined);
+        setRecoveredDestination(undefined);
+    };
+
     // New -> Blank: the New flow's minimal option (see NewBlueprintDialog's own doc comment) -- same
     // wholesale-replace bookkeeping New always did, now reached through the dialog's dirty-confirm gate
     // instead of directly from the "New Blueprint" button. `setValidationView` here is set explicitly
@@ -613,6 +644,7 @@ export function BlueprintEditorPage({
     // blueprint this one has nothing to do with (see builtSnapshot's own doc comment).
     const handleChooseBlank = (): void => {
         const snapshot = captureReplaceSnapshot();
+        resetDraftIdentity();
         const revisionBeforeReplace = editor.state.revision;
         nextFormGenerationIsClean.current = true;
         editor.newBlueprint();
@@ -644,6 +676,7 @@ export function BlueprintEditorPage({
     // handleChooseBlank's own.
     const handleUseRandomBlueprint = (blueprint: unknown): void => {
         const snapshot = captureReplaceSnapshot();
+        resetDraftIdentity();
         const revisionBeforeReplace = editor.state.revision;
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(blueprint);
@@ -670,6 +703,7 @@ export function BlueprintEditorPage({
         if (!undoSnapshot) {
             return;
         }
+        resetDraftIdentity();
         nextFormGenerationIsClean.current = undoSnapshot.wasClean;
         editor.loadFrom(undoSnapshot.blueprint);
         setBlueprintPath(undoSnapshot.path);
@@ -692,11 +726,13 @@ export function BlueprintEditorPage({
         if (!loadGuard.begin()) {
             return;
         }
+        const draftIdentity = draftIdentityRef.current;
         setLoadView({status: "loading"});
         loadBlueprint(fetchImpl, path)
             .then((result) => {
-                setLoadView(describeLoadResult(result));
+                if (draftIdentity !== draftIdentityRef.current) return;
                 if (result.status === "ok") {
+                    resetDraftIdentity();
                     nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
                     setBlueprintPath(result.path);
@@ -719,8 +755,11 @@ export function BlueprintEditorPage({
                     // see sourceDrift's own doc comment.
                     setSourceDrift(undefined);
                 }
+                setLoadView(describeLoadResult(result));
             })
-            .catch((error: unknown) => setLoadView({status: "error", message: errorMessage(error)}))
+            .catch((error: unknown) => {
+                if (draftIdentity === draftIdentityRef.current) setLoadView({status: "error", message: errorMessage(error)});
+            })
             .finally(() => loadGuard.end());
     };
 
@@ -735,11 +774,21 @@ export function BlueprintEditorPage({
         if (!persistedDraft) {
             return;
         }
-        importedParBlueprintRevisionRef.current = editor.state.revision + 1;
-        editor.loadFrom(persistedDraft.blueprint);
-        setImportedFromParSheetPath(persistedDraft.importedFromParSheetPath);
-        setParConversionEvidence(persistedDraft.conversionEvidence as ParSheetConversionEvidence | undefined);
-        setDraftRecoveryDismissed(true);
+        const restore = (): void => {
+            resetDraftIdentity();
+            nextFormGenerationIsClean.current = false;
+            importedParBlueprintRevisionRef.current = editor.getCurrentState().revision + 1;
+            editor.loadFrom(persistedDraft.blueprint);
+            setBlueprintPath(undefined);
+            setImportedFromParSheetPath(persistedDraft.importedFromParSheetPath);
+            setParConversionEvidence(persistedDraft.conversionEvidence as ParSheetConversionEvidence | undefined);
+            setDraftRecoveryDismissed(true);
+        };
+        if (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty) {
+            confirm("Restore the retained draft? The unsaved design and unapplied JSON edits will be replaced.", restore);
+        } else {
+            restore();
+        }
     };
 
     const handleDiscardDraft = (): void => {
@@ -753,6 +802,7 @@ export function BlueprintEditorPage({
     // BlueprintBuildPanel `sourcePath` going forward. `overwriteConfirmedForPath` resets since this isn't
     // a JSON path Save has ever confirmed overwriting.
     const handleApplyImportedBlueprint = (importedBlueprint: unknown, sourcePath: string, conversionEvidence: ParSheetConversionEvidence): void => {
+        resetDraftIdentity();
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(importedBlueprint);
         setBlueprintPath(sourcePath);
@@ -816,12 +866,31 @@ export function BlueprintEditorPage({
     }, [initialPath, recoveryRequest]);
 
     useEffect(() => {
-        if (recoveryRequest?.blueprint === undefined) return;
-        nextFormGenerationIsClean.current = true;
-        loadRecoveredBlueprint(recoveryRequest.blueprint);
-        setBlueprintPath(typeof recoveryRequest.sourcePath === "string" ? recoveryRequest.sourcePath : undefined);
-        setBuiltSnapshot(undefined);
-    }, [loadRecoveredBlueprint, recoveryRequest]);
+        if (recoveryRequest?.blueprint === undefined) return undefined;
+        let cancelled = false;
+        const replaceDraft = (): void => {
+            if (cancelled) return;
+            resetDraftIdentity();
+            // Captured job content is a recoverable draft, not a confirmed disk baseline.
+            nextFormGenerationIsClean.current = false;
+            editor.loadFrom(recoveryRequest.blueprint);
+            setBlueprintPath(typeof recoveryRequest.sourcePath === "string" ? recoveryRequest.sourcePath : undefined);
+            setBuildOutDir(initialBuildOutDir);
+            setRecoveredDestination(typeof recoveryRequest.destinationPath === "string" ? recoveryRequest.destinationPath : undefined);
+            setUndoSnapshot(undefined);
+            setDraftRecoveryDismissed(true);
+        };
+        if (!recoveryGuardedByNavigation && (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty)) {
+            confirm("Recover this Design job? The unsaved design and unapplied JSON edits will be replaced.", replaceDraft);
+        } else {
+            replaceDraft();
+        }
+        return () => {
+            cancelled = true;
+        };
+        // The recovery request identifies one replacement; edits while a confirmation is open must not retrigger it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
 
     const runSave = (path: string, overwrite: boolean): void => {
         if (!saveGuard.begin()) {
@@ -830,10 +899,12 @@ export function BlueprintEditorPage({
         // Captured now, at request-send time -- so a further edit made while this save is in flight can
         // never get attributed as "saved" by markClean below once the response actually arrives.
         const savedRevision = editor.state.revision;
+        const draftIdentity = draftIdentityRef.current;
         setSaveView({status: "loading"});
         const expectedHash = sourceVersionRef.current?.path === path ? sourceVersionRef.current.hash : undefined;
         saveBlueprint(fetchImpl, path, editor.state.blueprint, overwrite, expectedHash)
             .then((result) => {
+                if (draftIdentity !== draftIdentityRef.current) return;
                 setSaveView(describeSaveResult(result));
                 if (result.status === "ok") {
                     setBlueprintPath(result.path);
@@ -848,7 +919,9 @@ export function BlueprintEditorPage({
                     setSourceDrift(undefined);
                 }
             })
-            .catch((error: unknown) => setSaveView({status: "error", message: errorMessage(error)}))
+            .catch((error: unknown) => {
+                if (draftIdentity === draftIdentityRef.current) setSaveView({status: "error", message: errorMessage(error)});
+            })
             .finally(() => saveGuard.end());
     };
 
@@ -867,6 +940,7 @@ export function BlueprintEditorPage({
         // A retry begins a new Workspace-open lifecycle too, so an older open request cannot reconcile
         // this attempt's UI after it settles.
         workspaceOpenRequestIdRef.current += 1;
+        const draftIdentity = draftIdentityRef.current;
         setWorkspaceOpenError(undefined);
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
@@ -890,6 +964,7 @@ export function BlueprintEditorPage({
             }));
         request
             .then(({raw, view}) => {
+                if (draftIdentity !== draftIdentityRef.current) return;
                 setManagedSaveView(view);
                 if (view.status === "ok" && raw.status === "ok") {
                     setBlueprintPath(view.path);
@@ -942,7 +1017,9 @@ export function BlueprintEditorPage({
                         });
                 }
             })
-            .catch((error: unknown) => setManagedSaveView({status: "error", message: errorMessage(error)}))
+            .catch((error: unknown) => {
+                if (draftIdentity === draftIdentityRef.current) setManagedSaveView({status: "error", message: errorMessage(error)});
+            })
             .finally(() => saveGuard.end());
     };
 
@@ -1057,9 +1134,9 @@ export function BlueprintEditorPage({
                 />
             )}
 
-            {guided && recoveryRequest?.blueprint !== undefined && typeof recoveryRequest.destinationPath === "string" && (
+            {guided && recoveredDestination !== undefined && (
                 <Text size="sm" mb="sm" style={{overflowWrap: "anywhere"}}>
-                    Recovered the draft for the previous artifact destination: {recoveryRequest.destinationPath}.
+                    Recovered the draft for the previous artifact destination: {recoveredDestination}.
                     Save this design and open its workspace to build or export again in Build/Export.
                     No artifact was published by this recovery.
                 </Text>
@@ -1281,7 +1358,7 @@ export function BlueprintEditorPage({
                     key={`build-${editor.formGeneration}`}
                     blueprint={blueprint}
                     sourcePath={blueprintPath}
-                    initialOutDir={initialBuildOutDir}
+                    initialOutDir={buildOutDir}
                     builtSnapshot={builtSnapshot}
                     onBuilt={handleBuilt}
                     onRestoreBuilt={handleRestoreBuilt}

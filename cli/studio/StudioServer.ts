@@ -2087,13 +2087,13 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
+        const sourcePath = validated.sourcePath === undefined ? undefined : this.canonicalPathIdentity(validated.sourcePath);
         const destinationPath = this.canonicalPathIdentity(validated.path);
         const blueprintHash = this.blueprintRequestIdentity(validated.blueprint);
         const recovery = {action: "rebuild", reason: "PAR export publication is not resumable after restart. Export the captured source to the captured destination again."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath ?? `draft:${blueprintHash}`}`, operation: "design-par-export", request: {sourcePath, destinationPath, overwrite: validated.overwrite, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Writing workbook", unit: "worksheets", current: "indeterminate", total: "indeterminate", message: "Writing the PAR workbook to its staging destination."},
                 reattachedResponse: (job) => ({statusCode: 409, body: {status: "conflict", path: destinationPath, error: "PAR export is already in progress.", activeJobId: job.id, reattached: true}}),
             },
@@ -2130,7 +2130,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const sourcePath = this.canonicalPathIdentity(validated.sourcePath ?? "blueprint");
+        const sourcePath = validated.sourcePath === undefined ? undefined : this.canonicalPathIdentity(validated.sourcePath);
         // Resolve the omitted destination through the same preview as the editor.
         // Passing undefined to the canonical identity helper loses the manifest-id default.
         const preview = this.blueprintService.previewBuild(validated.blueprint, validated.outDir, validated.sourcePath);
@@ -2143,7 +2143,7 @@ export class StudioServer implements StudioServerHandling {
         const recovery = {action: "rebuild", reason: "Design build publication is not resumable after restart. Rebuild the captured source and destination."} as const;
         const execution = await this.executeCommonOperation(
             res, {
-                projectId: `design:${sourcePath}`, operation: "design-build", request: {sourcePath, destinationPath, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
+                projectId: `design:${sourcePath ?? `draft:${blueprintHash}`}`, operation: "design-build", request: {sourcePath, destinationPath, blueprint: validated.blueprint, blueprintHash}, conflictKey: `design-destination:${destinationPath}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Building package", unit: "package files", current: "indeterminate", total: "indeterminate", message: "Generating the Design package in its staging destination."},
                 // buildBlueprint treats non-2xx as a transport failure.  An
                 // in-flight exact request is still a normal StudioBuildResult.

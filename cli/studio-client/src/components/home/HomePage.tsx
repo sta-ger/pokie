@@ -128,13 +128,13 @@ export function HomePage() {
             return;
         }
         if (job.operation === "design-par-import" && typeof job.request.path === "string") {
-            navigate("/home/design", {state: {initialParSheetPath: job.request.path, recoverParImport: true, recoveryRequest: job.request}});
+            navigate("/home/design", {state: {initialParSheetPath: job.request.path, recoverParImport: true, recoveryRequest: {...job.request}}});
             return;
         }
         if ((job.operation === "design-build" || job.operation === "design-par-export") && (job.request.blueprint !== undefined || typeof job.request.sourcePath === "string")) {
             navigate("/home/design", {state: {
                 initialBlueprintPath: typeof job.request.sourcePath === "string" ? job.request.sourcePath : undefined,
-                recoveryRequest: job.request,
+                recoveryRequest: {...job.request},
                 initialBuildOutDir: job.operation === "design-build" && typeof job.request.destinationPath === "string" ? job.request.destinationPath : undefined,
             }});
         }
@@ -185,6 +185,7 @@ export function HomePage() {
                             initialParSheetPath={initialParSheetPath}
                             recoverParImport={location.state?.recoverParImport}
                             recoveryRequest={location.state?.recoveryRequest}
+                            recoveryGuardedByNavigation
                             initialBuildOutDir={location.state?.initialBuildOutDir}
                             onDirtyChange={setIsDesignDirty}
                             isVisible={activeTab === "design"}

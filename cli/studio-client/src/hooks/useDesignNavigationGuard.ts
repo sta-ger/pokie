@@ -73,7 +73,11 @@ export function useDesignNavigationGuard(isDirty: boolean): DesignNavigationGuar
             suppressNextBlockRef.current = false;
             return false;
         }
-        if (!isDirty || !leavingHome) {
+        // Recovery replaces the mounted Home draft even though the route stays inside Home.
+        const nextState = nextLocation.state as {recoveryRequest?: unknown} | null;
+        const currentState = currentLocation.state as {recoveryRequest?: unknown} | null;
+        const replacingDraft = nextState?.recoveryRequest !== undefined && nextState.recoveryRequest !== currentState?.recoveryRequest;
+        if (!isDirty || (!leavingHome && !replacingDraft)) {
             return false;
         }
         return true;
