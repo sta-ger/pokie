@@ -1187,3 +1187,66 @@ corrections remain intact. Current-candidate clean rendered visual disposition,
 authenticated browser evidence and the preserved independent gate matrix remain
 controller-owned and pending. These component/interoperability passes do not
 close the open visual finding or constitute independent visual approval.
+
+## Keyboard region focus correction — independent visual closure pending
+
+Review fingerprint: `4e394aa498bcbc34`; inspected base:
+`b8dd18590f395583a8719ebe7e8f8ef765f18f12`.
+The saved review and the existing frozen-finding/closure records above were
+read before editing. The prior committed correction is progress; its visual
+acceptance remains unproven on the current product.
+
+Source tracing reproduced the shared cause: the region `:focus` suppression
+had specificity (0,4,0), exceeding the control/region `:focus-visible` rule's
+(0,2,0). Suppression now requires `:focus:not(:focus-visible)`, making the two
+rules mutually exclusive. Both rules also cover a focusable `.studio-page`
+itself: ProjectDashboardPage places its region attributes on that page element,
+whereas Home editor/Projects, simulation and common job regions are descendants.
+Non-keyboard region focus still receives `outline: none`; keyboard-visible
+regions receive the explicit 2px primary-color outline with a 3px offset.
+
+The consumer audit covered Home's retained editor/Projects panels and jobs,
+project route/tab focus, common project/history jobs, Simulation's disappearing
+control fallback, and JobCard's stable active-to-terminal focus owner. Native
+editor section tabs retain their roving focus and accessible validation text.
+Shared button/link/summary focus treatment still spans forms, disclosures,
+Browse, navigation and job actions. No focus handler, mount lifetime, form
+commit, job observer, submission, persistence boundary or public entry point
+changed. The production path remains `pokie [projectRoot]` -> StudioCommand ->
+StudioServer -> built main.tsx/Mantine/global.css -> Home/project routes.
+
+| Acceptance / accumulated finding | Final artifact contract and remaining authority |
+| --- | --- |
+| `4e394aa498bcbc34`: keyboard-visible region outline | Exclusive suppression and explicit restoration cover descendant and page-owning regions. responsive.test.tsx loads production focus rules, checks suppression cannot match keyboard focus, and checks computed outline/offset. StudioPresentation checks the real retained job, Home editor/Projects and project region focus with those rules. |
+| Job terminal focus and action continuity | Native user-event Tab reaches Cancel; cancelling disables it without invoking cancellation. The completed result preserves the same region identity, focus, computed outline, full path and request/result disclosures before native Tab reaches Download. P910 now requires that exact region to own focus after native Cancel focus, with computed solid outline, width >=2px, nontransparent color and nonnegative offset before moving to Download, at both existing job viewports. |
+| Editor/project focus and unsolicited frame | Home section and project Build/Export keyboard activation preserve their region focus and explicit computed outline. The suppression contract retains the non-focus-visible path; jsdom does not model native pointer modality. P910 additionally checks native Home editor/Projects and desktop project region focus under the full production cascade. |
+| `4a58ccd4ec9f8a24`: clipped Bets | Existing shared wrapping, exact six labels, desktop containment and phone reflow remain; saved affected observations are preserved. |
+| `285d0e8a87d8b14f`: validated tab selectors | Tablist-scoped visible-label selectors, accessible valid status and native arrow traversal remain. |
+| `ccb894ddb9ea1e2d`: Browse / retained Simulation Review | Scoped Browse… and explicit native Configure before Rounds remain in both iterations. |
+| `0f8d50097d40f6a7`: hidden status geometry | Existing visible-content geometry helper and actual clipping/overflow checks remain. |
+| `c73df4a0d712e3b9`: Create game reachability | Settled native Tab/Enter, actual enabled controls, immediate viewport resizing and phone header clearance remain. |
+| `ae1a1cd6af46fe4a`: disclosure, repeated recovery, remote failures and consumers | Request identity reopening, visible Needs attention on runError, explicit submission/retry and migrated library/PC14/PC18/native-runner disclosure consumers remain. The later card-selector and close-confirmation corrections are preserved. |
+| `764e1b10c0a3c85b`: shared professional finish | Theme, section, metadata, full technical path and terminal hierarchy corrections remain. Prior images show the preceding product; independent affected visual approval is still pending. |
+| Immutable whole-step visual assessment, current candidate provenance and deferred gate | Controller must reassess the affected current-product Home/form/project/job surfaces from isolated clean state using the preserved authentic freeze and existing at-most-four screenshot/contact-sheet budget. No restart of cold exploration or replacement evidence is authorized by this repair. Authenticated current-product images and disposition of every material finding are required before closure, followed by the complete deferred P910 file with P910_FROZEN_OBSERVATIONS and the preserved whole-file gate. |
+
+Only the two permitted ordinary suites ran in the foreground:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/common/responsive.test.tsx tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx
+```
+
+Final result: two suites / 32 tests passed, no skips. The initial regression
+rejected the old unconditional suppression. Test scaffolding was corrected to
+use the production `.studio-page` job ancestor and jsdom's supported native Tab
+sequence. Component computed-style checks load the production focus rules
+verbatim, excluding unrelated light-dark() rules unsupported by jsdom; only the
+deferred real-browser check proves the full rendered cascade and resolved color.
+
+Consuming boundaries are the ordinary Jest/ts-jest lane, changed-file ESLint
+commit hook, deferred Node/Chromium P910 lane, and Vite's production CSS bundle
+via main.tsx. No production TypeScript changed. Production build/freshness,
+independent rendered reassessment and official verification remain controller
+work. No P910 test (including its ordinary cases), build, packaging, official
+gate, browser or collector was executed here; no prior evidence was modified
+or removed. This correction is an implementation handoff, not closure of
+P9-VALERA-GRAPHIC or completion of P9-10.

@@ -1,14 +1,26 @@
 import {MantineProvider, Text, TextInput} from "@mantine/core";
-import {fireEvent, render, screen, within} from "@testing-library/react";
+import {fireEvent, render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {readFileSync} from "node:fs";
+import {join} from "node:path";
+import {parse} from "postcss";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import {AdvancedDisclosure} from "../../../../../../cli/studio-client/src/components/common/AdvancedDisclosure";
 import {JobCard} from "../../../../../../cli/studio-client/src/components/common/JobCard";
 import {OverviewTab} from "../../../../../../cli/studio-client/src/components/project/OverviewTab";
 import {theme} from "../../../../../../cli/studio-client/src/theme";
 import {renderRoutedApp} from "../../testUtils/renderRoutedApp";
+import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 
 const LONG_PATH = `/games/${"long-project-location/".repeat(12)}package`;
+// Load the actual focus selectors/declarations, without jsdom's unsupported
+// light-dark() presentation rules. The deferred browser checks the full cascade.
+const focusStyle = document.createElement("style");
+parse(readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8")).walkRules(rule => {
+    if (rule.selector.includes(":focus")) focusStyle.textContent += rule.toString();
+});
+beforeEach(() => document.head.append(focusStyle));
+afterEach(() => focusStyle.remove());
 
 it("keeps section semantics and the same editable field across technical disclosure changes", async () => {
     const user = userEvent.setup();
@@ -54,26 +66,60 @@ it("keeps all project facts, the full location and the primary Play action in di
     expect(screen.getByRole("group", {name: "Validation"})).toHaveClass("studio-section");
 });
 
-it("keeps disabled cancellation, terminal focus, full output paths and retained technical disclosures", () => {
+it("keeps disabled cancellation, keyboard terminal focus, full output paths and retained technical disclosures", async () => {
+    const user = userEvent.setup();
     const job = {id: "presentation-job", projectId: "/games/starter", operation: "simulation", request: {rounds: 500000},
         conflictKey: "simulation", status: "running" as const, createdAt: 1};
     const cancel = jest.fn();
-    const {rerender} = render(<MantineProvider theme={theme}><JobCard job={job} onCancel={cancel} /></MantineProvider>);
+    const {rerender} = render(<MantineProvider theme={theme}><div className="studio-page"><JobCard job={job} onCancel={cancel} /></div></MantineProvider>);
     const control = screen.getByRole("button", {name: "Cancel"});
-    control.focus();
-    rerender(<MantineProvider theme={theme}><JobCard job={{...job, status: "cancelling"}} onCancel={cancel} /></MantineProvider>);
+    const region = screen.getByRole("region", {name: "simulation job presentation-job"});
+    await user.tab();
+    expect(control).toHaveFocus();
+    rerender(<MantineProvider theme={theme}><div className="studio-page"><JobCard job={{...job, status: "cancelling"}} onCancel={cancel} /></div></MantineProvider>);
     expect(screen.getByRole("button", {name: "Cancel"})).toBeDisabled();
     fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
     expect(cancel).not.toHaveBeenCalled();
-    rerender(<MantineProvider theme={theme}><JobCard job={{...job, status: "completed", durationMs: 100,
-        result: {summary: "Simulation completed", outputs: [{label: "Report", path: LONG_PATH}], detail: {rounds: 500000}}}} /></MantineProvider>);
-    expect(screen.getByRole("region", {name: "simulation job presentation-job"})).toHaveFocus();
+    rerender(<MantineProvider theme={theme}><div className="studio-page"><JobCard job={{...job, status: "completed", durationMs: 100,
+        result: {summary: "Simulation completed", outputs: [{label: "Report", path: LONG_PATH},
+            {label: "JSON", downloadPath: "/api/project/reports/presentation-job"}], detail: {rounds: 500000}}}} /></div></MantineProvider>);
+    expect(screen.getByRole("region", {name: "simulation job presentation-job"})).toBe(region);
+    expect(region).toHaveFocus();
+    expect(getComputedStyle(region).outline).toBe("2px solid var(--mantine-primary-color-filled)");
+    expect(getComputedStyle(region).outlineOffset).toBe("3px");
     expect(screen.getByRole("status")).toHaveClass("studio-job-card");
     expect(screen.getByText(`Report: ${LONG_PATH}`)).toHaveClass("studio-technical-text");
     const request = screen.getByText("Inspect retained request").closest("details")!;
     expect(request).not.toHaveAttribute("open");
     expect(request).toHaveTextContent('"rounds":500000');
     expect(screen.getByText("Inspect operation result")).toBeVisible();
+    await user.tab();
+    expect(screen.getByRole("link", {name: "Download JSON"})).toHaveFocus();
+});
+
+it("keeps Home editor and Projects region focus after keyboard section activation", async () => {
+    const user = userEvent.setup();
+    const {fetchImpl} = createRoutedFakeFetch({
+        "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+        "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+        "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+    });
+    const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/home/projects"]});
+    try {
+        const nav = within(screen.getByRole("navigation", {name: "Sections"}));
+        nav.getByRole("button", {name: "Start a game"}).focus();
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(document.getElementById("home-design-panel")).toHaveFocus());
+        expect(document.getElementById("home-design-panel")).toHaveAttribute("tabindex", "-1");
+        expect(getComputedStyle(document.getElementById("home-design-panel")!).outline).toBe("2px solid var(--mantine-primary-color-filled)");
+        nav.getByRole("button", {name: "Projects"}).focus();
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(document.getElementById("home-projects-panel")).toHaveFocus());
+        expect(getComputedStyle(document.getElementById("home-projects-panel")!).outline).toBe("2px solid var(--mantine-primary-color-filled)");
+        expect(document.getElementById("home-design-panel")).not.toBeVisible();
+    } finally {
+        rendered.unmount();
+    }
 });
 
 it("keeps build preflight, conflict recovery and the same completed receipt across output collapse", async () => {
@@ -105,7 +151,11 @@ it("keeps build preflight, conflict recovery and the same completed receipt acro
     const rendered = renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
     try {
         await screen.findByRole("heading", {name: "A"});
-        await user.click(screen.getByRole("button", {name: "Build/Export"}));
+        screen.getByRole("button", {name: "Build/Export"}).focus();
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(screen.getByRole("region", {name: "A"})).toHaveFocus());
+        expect(screen.getByRole("region", {name: "A"})).toHaveClass("studio-page");
+        expect(getComputedStyle(screen.getByRole("region", {name: "A"})).outline).toBe("2px solid var(--mantine-primary-color-filled)");
         const toggle = await screen.findByRole("button", {name: "Hide options for TypeScript Game Package"});
         const choice = toggle.closest(".studio-output-choice") as HTMLElement;
         const input = within(choice).getByRole("textbox", {name: "Output directory (optional)"});

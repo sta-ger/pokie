@@ -105,12 +105,14 @@ body,
     background: light-dark(var(--mantine-color-indigo-0), var(--mantine-color-dark-6));
 }
 
-/* Programmatic region focus must not draw a black frame around a whole editor.
-   Keyboard focus retains the same explicit ring as controls and disclosures. */
-.studio-page [role="region"][tabindex="-1"]:focus {
+/* Region focus without keyboard visibility must not frame a whole editor.
+   Include the project page itself as well as nested Home/workflow/job regions. */
+.studio-page[role="region"][tabindex="-1"]:focus:not(:focus-visible),
+.studio-page [role="region"][tabindex="-1"]:focus:not(:focus-visible) {
     outline: none;
 }
 
+.studio-page[role="region"][tabindex="-1"]:focus-visible,
 .studio-page :where(button, a, summary, [role="region"][tabindex="-1"]):focus-visible {
     outline: 2px solid var(--mantine-primary-color-filled);
     outline-offset: 3px;

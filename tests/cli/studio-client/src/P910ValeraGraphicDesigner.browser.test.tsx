@@ -344,6 +344,35 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             );
             expect(await evaluate<boolean>("document.activeElement.matches(':focus-visible')")).toBe(true);
         };
+        const regionFocus = async (expression: string) => {
+            await until(() => evaluate<boolean>(`Boolean(${expression}) && document.activeElement === (${expression})`), `keyboard region focus: ${expression}`);
+            const indicator = await evaluate<{
+                ownsFocus: boolean; focusVisible: boolean; visible: boolean;
+                outlineStyle: string; outlineWidth: number; outlineColor: string; outlineOffset: number;
+            }>(`(() => {
+                const region = (${expression});
+                if (!region) throw new Error('Missing focus region');
+                const style = getComputedStyle(region);
+                const bounds = region.getBoundingClientRect();
+                return {
+                    ownsFocus: document.activeElement === region,
+                    focusVisible: region.matches(':focus-visible'),
+                    visible: style.display !== 'none' && style.visibility === 'visible' && bounds.width > 0 && bounds.height > 0,
+                    outlineStyle: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth),
+                    outlineColor: style.outlineColor, outlineOffset: parseFloat(style.outlineOffset),
+                };
+            })()`);
+            // Matching :focus-visible does not establish a painted indicator:
+            // a more specific outline:none can still win the actual cascade.
+            expect(indicator).toEqual({
+                ownsFocus: true, focusVisible: true, visible: true,
+                outlineStyle: 'solid', outlineWidth: expect.any(Number),
+                outlineColor: expect.stringMatching(/\S/), outlineOffset: expect.any(Number),
+            });
+            expect(indicator.outlineWidth).toBeGreaterThanOrEqual(2);
+            expect(indicator.outlineOffset).toBeGreaterThanOrEqual(0);
+            expect(indicator.outlineColor).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0(?:\.0+)?\))$/);
+        };
         const activate = async (expression: string) => {
             await focus(expression);
             await key("Enter", "Enter", 13);
@@ -495,6 +524,11 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 await key("ArrowRight", "ArrowRight", 39);
                 expect(await evaluate<boolean>(`document.activeElement === (${tab("Game basics")})
                     && document.activeElement.getAttribute('aria-selected') === 'true'`)).toBe(true);
+                const navigation = "document.querySelector('nav[aria-label=\"Sections\"]')";
+                await activate(button("Projects", navigation));
+                await regionFocus("document.getElementById('home-projects-panel')");
+                await activate(button("Start a game", navigation));
+                await regionFocus("document.getElementById('home-design-panel')");
             }
             await focus(button("Create game"));
             if (small) {
@@ -516,6 +550,7 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
         for (const [width, height] of [[1100, 800], [390, 844]]) {
             await viewport(width, height);
             await navigate("Build/Export");
+            if (!small) await regionFocus("document.querySelector('.studio-page[role=region]')");
             const configure = "document.getElementById('export-configure-artifact-tsPackage')";
             await until(() => evaluate<boolean>(`Boolean(${configure})`), "TypeScript output choice");
             if (await evaluate<boolean>(`(${configure}).getAttribute('aria-expanded') === 'false'`)) await activate(configure);
@@ -560,6 +595,9 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             // Let this bounded real operation finish. No artificial delays or fabricated states.
             await until(async () => (await job(id)).status === 'completed', 'real terminal simulation');
             await until(() => evaluate<boolean>(`Boolean((${region})?.querySelector('[data-pokie-lifecycle-terminal=completed]'))`), 'common terminal card');
+            // Cancel was reached through native Tab. Before navigating to any
+            // terminal action, the same retained region must own visible focus.
+            await regionFocus(region);
             await measure(`Terminal job ${width}x${height}`, region);
             const download = `Array.from((${region}).querySelectorAll('a')).find(e=>e.textContent.includes('Download'))`;
             await focus(download);
