@@ -389,13 +389,16 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
             if (width === 900 || small) expect(sections.rows).toBeGreaterThan(1);
             if (width === 900) {
                 const list = "document.querySelector('[role=tablist][aria-label=\"Game design sections\"]')";
-                await focus(button("Game basics", list));
+                // StatusBadge contributes validation text to the tab's accessible name; match
+                // its visible label within the section tablist instead of whole-button text.
+                const tab = (label: string) => `Array.from((${list})?.querySelectorAll('[role="tab"]') ?? []).find(e => e.querySelector('.mantine-Tabs-tabLabel')?.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
+                await focus(tab("Game basics"));
                 for (let index = 0; index < 5; index++) await key("ArrowRight", "ArrowRight", 39);
-                expect(await evaluate<boolean>(`document.activeElement === (${button("Bets", list)})
+                expect(await evaluate<boolean>(`document.activeElement === (${tab("Bets")})
                     && document.activeElement.getAttribute('aria-selected') === 'true'`)).toBe(true);
                 await measure('Home Bets 900x700');
                 await key("ArrowRight", "ArrowRight", 39);
-                expect(await evaluate<boolean>(`document.activeElement === (${button("Game basics", list)})
+                expect(await evaluate<boolean>(`document.activeElement === (${tab("Game basics")})
                     && document.activeElement.getAttribute('aria-selected') === 'true'`)).toBe(true);
             }
             await focus(button("Create game"));

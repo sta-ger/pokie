@@ -243,8 +243,16 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
     }, 60000);
 
-    it("switches the active section with arrow-key keyboard navigation", () => {
+    it("switches validated sections with arrow-key keyboard navigation", async () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
+
+        await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
+        const tablist = screen.getByRole("tablist", {name: "Game design sections"});
+        for (const label of ["Game basics", "Bets"]) {
+            const tab = within(tablist).getByRole("tab", {name: `${label} valid`});
+            expect(tab.querySelector(".mantine-Tabs-tabLabel")).toHaveTextContent(label);
+            expect(tab.textContent?.trim()).not.toBe(label);
+        }
 
         const basicsTab = sectionTab(/Game basics/);
         fireEvent.click(basicsTab);

@@ -270,3 +270,49 @@ and `build-cli`; these build boundaries and the complete browser regression
 remain controller-owned under the bounded implementer policy. No production
 build, packaging, independent browser rerun or official gate ran in this worker.
 This correction handoff does not claim the roadmap's final visual closeout.
+
+## Validated section-tab lookup repair — rendered closure pending
+
+Reviewer finding `285d0e8a87d8b14f` was traced on `9f246625`: the browser
+regression's exact whole-button text comparison cannot match `Game basics` or
+`Bets` after validation. Production `StatusBadge` adds the hidden accessible
+text `valid` beside the visible label. The preceding compact-width `Create
+game` readiness wait makes this validated state relevant to the 900×700 case.
+The production accessibility behavior remains unchanged.
+
+The 900×700 regression now locates only role=tab controls within the `Game
+design sections` tablist, matching `.mantine-Tabs-tabLabel` text. Initial native
+Tab focus and both active-element assertions use this lookup. Native arrow
+keys, selected-state assertions, six-label/wrapping/contained-geometry checks,
+Bets form measurement, and downstream creation, Build/Export and real job
+workflows remain in the same rendered journey.
+
+The existing section workflow regression now waits for successful validation
+before keyboard traversal. It confirms both production tab accessible names
+include `valid`, their visible labels remain separately identifiable, and their
+whole-button text differs from those labels. It retains navigation through Bets
+and back, visible controlled panels, validation-error badges, retained edits,
+and save/open coverage across the complete eight-test suite.
+
+| Acceptance / accumulated finding | Repair evidence and remaining authority |
+| --- | --- |
+| Validated Game basics and Bets lookup | Scoped role=tab / visible-label lookup used for initial focus and both native-navigation assertions; complete section workflow suite passes with production hidden validation text present. |
+| P9-VALERA-GRAPHIC-01 responsive overflow | Existing shared `SectionedFormEditor` wrapping correction and all browser geometry assertions retained. Independent clean rendered disposition remains open. |
+| Whole-step independent assessment and evidence budget | Frozen initial assessment, chronology and three screenshots above remain unchanged. No new screenshot, observation or replacement evidence was created. |
+| Clean affected production rerender | Complete P910 browser execution remains controller-owned after freeze authentication and production asset build, with fresh browser/server state. Neither focused component checks nor this selector repair close visual acceptance. |
+
+Permitted foreground verification:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.sections.test.tsx
+```
+
+One suite / eight tests passed (9.428s); existing asynchronous Home updates
+emitted React `act(...)` warnings, with no assertion failures. Only test files
+and this append-only current-step note changed. Their execution boundary is the
+Jest component/workflow configuration and clone-installed changed-file ESLint
+commit hook; no production compiler, bundle, shared callback or public entry
+point changed. Home's guided editor remains the only `SectionedFormEditor`
+consumer through `BlueprintEditorPage`; persisted project editing uses the
+separate `GameModelSections` presentation. No production build, browser rerun,
+official gate, packaging check or independent collection ran in this worker.
