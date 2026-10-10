@@ -115,10 +115,45 @@ it("loads the shared Studio test setup without supplying a simulated browser DOM
     expect(typeof window).toBe("undefined");
 });
 
-it("measures styled Home, Build/Export and real running/terminal cards at two widths", async () => {
-    const frozen = process.env.P910_FROZEN_OBSERVATIONS;
+// Pre-review changed tests run before the controller's cold collection. Only the rendered
+// retest depends on that collection; never invent a record or start it before the freeze.
+function renderedTestFor(frozen: string | undefined): typeof it {
+    return frozen === undefined ? it.skip : it;
+}
+
+async function assertFrozenObservations(frozen: string | undefined): Promise<void> {
     if (frozen === undefined) throw new Error("Controller must freeze independent P9-10 observations first and provide P910_FROZEN_OBSERVATIONS.");
-    expect((await fs.readFile(frozen, "utf8")).trim().length).toBeGreaterThan(0);
+    if ((await fs.readFile(frozen, "utf8")).trim().length === 0) throw new Error("P910_FROZEN_OBSERVATIONS must point to a nonempty frozen record.");
+}
+
+it("defers only the rendered retest until the controller supplies a frozen record", () => {
+    expect(renderedTestFor(undefined)).toBe(it.skip);
+    // Invalid opt-ins must execute and fail validation, rather than silently skip.
+    for (const frozen of ["", " ", "/missing-frozen-record", "frozen-record.md"]) {
+        expect(renderedTestFor(frozen)).toBe(it);
+    }
+});
+
+it("rejects missing, unreadable and empty frozen records before browser startup", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), ".p910-freeze-contract-"));
+    try {
+        await expect(assertFrozenObservations(undefined)).rejects.toThrow("Controller must freeze independent P9-10 observations first");
+        await expect(assertFrozenObservations(path.join(root, "missing.md"))).rejects.toThrow();
+        const record = path.join(root, "fixture.md");
+        for (const contents of ["", " \n\t"]) {
+            await fs.writeFile(record, contents);
+            await expect(assertFrozenObservations(record)).rejects.toThrow("nonempty frozen record");
+        }
+        // This filesystem fixture tests the prerequisite only; it is never used as visual evidence.
+        await fs.writeFile(record, "Fixture record for validation only.");
+        await expect(assertFrozenObservations(record)).resolves.toBeUndefined();
+    } finally {
+        await fs.rm(root, {recursive: true, force: true});
+    }
+});
+
+renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home, Build/Export and real running/terminal cards at two widths", async () => {
+    await assertFrozenObservations(process.env.P910_FROZEN_OBSERVATIONS);
     const candidate = process.cwd();
     const overallDeadline = Date.now() + 180_000;
     const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);

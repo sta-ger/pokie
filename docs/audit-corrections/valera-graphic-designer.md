@@ -70,8 +70,12 @@ The controller runs it after cold observations are frozen, with
 npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
 ```
 
-The script fails rather than skipping missing observations, candidate assets,
-styles, Chromium, startup, real transitions or measured geometry. It checks
+Before the controller supplies `P910_FROZEN_OBSERVATIONS`, only the rendered
+retest is explicitly skipped. The asset-provenance, Node-environment and freeze
+prerequisite regressions still run in the pre-review changed-tests gate. Once
+the variable is supplied, the rendered retest fails on unreadable/empty records,
+missing candidate assets, styles, Chromium, startup, real transitions or measured
+geometry. No fallback observations or build/source UI are supplied. It checks
 frontend inputs recursively (including CSS and theme), Vite/PostCSS configs,
 HTML, package/lock inputs and installed Mantine styles against built index and
 referenced JS/CSS timestamps. It compares actually served asset bytes with disk
@@ -131,3 +135,39 @@ command policy before Jest started; it is not a pass. No workaround was used.
 No browser regression, production build, official gate, packaging smoke or
 cold collection ran in this implementation worker. Those pending machine-owned
 results do not constitute a product failure or close this roadmap step.
+
+## Pre-review gate correction
+
+The saved changed-tests failure was reproduced with the complete permitted
+file: two checks passed and the rendered test failed before any process started
+because the controller had not yet supplied `P910_FROZEN_OBSERVATIONS`. The
+pre-review gate precedes the independent freeze; requiring that later receipt
+at this earlier gate prevented the candidate from reaching cold collection.
+
+Only rendered-test registration now depends on the explicit freeze receipt.
+Absent receipt means an observable Jest skip, not visual approval. Supplied
+receipts always enable the full existing production-browser journey, including
+all geometry, asset identity, keyboard, disabled/conflict, running and terminal
+assertions. Missing files and empty records still fail before browser startup.
+Focused tests cover both registration branches and actual filesystem validation;
+their temporary record is a fixture, never an independent observation.
+Registration depends only on the explicit controller variable, with no
+`npm_lifecycle_*`, `npm_package_*`, `INIT_CWD` or `TMPDIR` prerequisite.
+
+| Acceptance/closure requirement | Correction evidence and remaining authority |
+| --- | --- |
+| Pre-review changed-tests can run before the freeze | Complete named file passes with four checks and one explicit rendered skip when the receipt is absent. Controller reruns its own gate. |
+| Post-freeze rendered checks retain strict failures | Registration and filesystem regressions reject invalid opt-ins; the entire existing rendered body remains required when the receipt is supplied. Production build and complete browser execution remain controller-owned. |
+| Independent graphic-designer assessment and bounded screenshots | Still pending cold collection; zero screenshots or observations fabricated. |
+| Shared-cause correction and clean rendered retest of every material visual finding | Still pending frozen findings; this gate correction does not assert product visual approval or close P9-10. |
+
+Correction verification uses only:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/P910ValeraGraphicDesigner.browser.test.tsx
+```
+
+The corrected run exits zero: four passed, one skipped. The changed TypeScript
+is consumed by this Jest lane and the changed-file ESLint pre-commit hook; no
+production source/compiler boundary changed. No production build, independent
+browser rerun, parent-review matrix or official gate ran in this worker.
