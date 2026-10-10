@@ -958,3 +958,51 @@ The preceding reassessment remains incomplete: a repaired driver must still
 reach the rendered `project-open-materialization` card, then collect the clean
 Build/Export and 900px affected visual observations. No product error, visual
 regression, screenshot, or new material disposition is claimed by this cleanup.
+
+## 2026-10-10 independent affected visual reassessment — passed
+
+Product identity remains `e0ca3eab465db602b48e210a1288f97aab46ffa5`; the
+evidence commit is its clean descendant. The retained cold-start freeze was
+read before this retest and remains byte-identical:
+
+| Record | Absolute path | SHA-256 |
+| --- | --- | --- |
+| Frozen initial observations | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/frozen-initial.json` | `71c30329d173a999b17b16fb43314260864bd76ff2bed3aa04fb11145bb0d37b` |
+| Chronological initial transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-50970d93eae15a30/run-2026-10-10T02-51-24-054Z/transcript.json` | `4dfde7c64da45db2a689e99d87412e41db638936b79941fbf5d179445c975d46` |
+| Fresh affected retest transcript | `/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-10-614bfb8c7db80194/retest-2026-10-10T05-20-42-946Z/transcript.json` | `e0a1bf90ed4e501811e91a95a368aa08f883cb56b7f2cbbae275d7c1ac932c9b` |
+
+The fresh run used separate Studio config and Documents roots and a separate
+browser profile, then drove the candidate CLI with `node ./dist/cli/pokie.js
+--no-open`. It assessed Home and the saved-project Build/Export surface at
+1439×869 and 900×700; it created the project through the visible `Create game`
+control and ran the visible Simulation flow once. The action-local simulation
+state went from enabled `Run Simulation`, through its rendered queued/running
+state, to `Simulation completed — 500000/500000 rounds`; its same operation
+card then reported `simulation · Completed` in 6652ms.
+
+The independent visual disposition is that the frozen Build/Export hierarchy
+P1 is closed on this candidate. At both sizes, the page puts its ready status
+and short purpose before the output choices; the initially open TypeScript
+package form keeps destination, readiness and Build together, while secondary
+targets remain compact disclosures. Borders and spacing separate the technical
+groups without turning the page into a wall of equal-weight controls. Labels,
+status wording and controls stayed readable and consistent. At 900px the
+document client width was 885px with no horizontal overflow, and the retained
+representative screenshot is
+`build-export-900x700-affected-retest.png` (`24caced01d58379590b2870e4f72333c7e2882d092f0854234f140057ccf17d1`,
+105376 bytes), beside that retest transcript.
+
+The affected Home form also has no remaining responsive clipping: at 900px the
+six visible steps ended with `Bets` at x=780.484375, right=853.5, within the
+885px client width and 900px viewport. The compact Home retained clear left
+navigation, explanatory copy, primary creation control, type hierarchy and
+labeled fields. The previous harness expected two tab rows and stopped when
+this now-contained one-row presentation was observed; that was a driver
+assertion error, not a product failure. One new representative screenshot was
+retained; no gallery or generated project/output payload was committed.
+
+Conclusion: actual rendered observations cover hierarchy, density, typography,
+spacing, controls and status consistency on Home, the project Build/Export
+form and a terminal job card. No P0, P1 or material P2 remains in this affected
+matrix. This is a visual disposition based on the recorded surfaces, not an
+automated-execution-only approval.
