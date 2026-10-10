@@ -5,7 +5,7 @@
 import {spawn} from "node:child_process";
 import {createHash} from "node:crypto";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
-import {inflateSync} from "node:zlib";
+import {deflateSync, inflateSync} from "node:zlib";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 
@@ -26,7 +26,18 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 export const button = (label, scope = "document") => `Array.from((${scope})?.querySelectorAll('button,a,[role=tab]') ?? []).find(e => e.getClientRects().length && (e.textContent.trim() === ${q(label)} || e.getAttribute('aria-label') === ${q(label)}))`;
 export const input = (label, scope = "document") => `Array.from((${scope})?.querySelectorAll('input,textarea') ?? []).find(e => e.getClientRects().length && ([...(e.labels ?? [])].some(l => l.textContent.trim().startsWith(${q(label)})) || e.getAttribute('aria-label') === ${q(label)}))`;
 const card = target => `document.getElementById(${q(`artifact-build-${target}`)})?.closest('[data-pokie-lifecycle-form=artifact-build]')`;
+export const generatorScope = "document.querySelector('[data-pokie-lifecycle-form=outcome-library]')";
 const ownResult = (scope = "document") => `(${scope})?.querySelector('[data-pokie-lifecycle-result-job][data-pokie-lifecycle-terminal=completed]')`;
+
+export const renderedStakeExpression = `(() => {const table=document.querySelector('[data-testid=outcome-source-mode-table]');return table ? {headers:Array.from(table.querySelectorAll('thead th')).map(e=>e.textContent.trim()), rows:Array.from(table.querySelectorAll('tbody tr')).map(row=>Array.from(row.querySelectorAll('td')).map(e=>e.textContent.trim()))} : null;})()`;
+export function assertRenderedStake(rendered, analysis, modeName) {
+    const row = rendered?.rows?.find(row => row[0] === modeName);
+    for (const [label, key] of [['RTP','rtp'],['Hit frequency','hitFrequency']]) {
+        const index = rendered?.headers?.indexOf(label), value = row?.[index];
+        const number = typeof value === 'string' && value.endsWith('%') ? Number(value.slice(0,-1)) / 100 : NaN;
+        requireObserved(Number.isFinite(number) && number > 0 && Math.abs(number / analysis[key] - 1) <= 0.005, `rendered Overview ${label} missing/zero/incorrect`);
+    }
+}
 
 /** Runs precisely one itinerary. Dependencies perform real native input, CDP
  * observations, disk readback and public CLI/HTTP calls in controller execution.
@@ -65,6 +76,50 @@ export async function runItinerary(request, s) {
         requireObserved(job.id === terminal.id && job.status === "completed", `${target}: persisted job differs from rendered terminal`);
         return {...terminal, job};
     };
+    const generateLibrary = async () => {
+        const toggle = `(${generatorScope})?.querySelector('button[aria-expanded]')`;
+        await see(`Boolean(${toggle})`, "public Outcome Library generator available");
+        if (await s.evaluate(`(${toggle}).getAttribute('aria-expanded') === 'false'`)) await s.activate(toggle);
+        await s.activate("document.getElementById('outcome-library-generation-sampled')");
+        await s.fill(input("Sample size", generatorScope), "5000");
+        await s.activate(button("Show Advanced generation controls", generatorScope));
+        const seed = `p911-${request.id}-library`;
+        await s.fill(input("Coverage seed", generatorScope), seed);
+        const submittedAt = s.mark();
+        await s.activate("document.getElementById('outcome-library-generate')");
+        const accepted = await s.response('/api/project/outcome-libraries/generate/jobs', submittedAt);
+        requireObserved(s.requests('/api/project/outcome-libraries/generate/jobs', submittedAt).length === 1, "generator duplicate submission");
+        requireObserved(accepted.request?.generation === 'sampled' && Number(accepted.request.sample?.sampleSize) === 5000 && accepted.request.sample?.seed === seed, "generator submitted inputs differ");
+        const id = accepted.body.job?.id;
+        requireObserved(id, "generator accepted without job identity");
+        await see(`(${ownResult(generatorScope)})?.getAttribute('data-pokie-lifecycle-result-job') === ${q(id)}`, "generator own completed terminal");
+        const job = await s.get(`/api/project/outcome-libraries/generate/jobs/${encodeURIComponent(id)}`);
+        const output = await s.evaluate(`(${button("Inspect library", generatorScope)})?.getAttribute('data-pokie-lifecycle-artifact-output')`);
+        requireObserved(job.id === id && job.status === 'completed' && job.result?.status === 'ok' && output && job.result.resolvedBundleDir === output, "generator terminal/output differs from persisted result");
+        const manifest = JSON.parse(await s.read(path.join(output,'manifest.json')));
+        const mode = manifest.modes?.find(mode => mode.modeName === accepted.request.mode);
+        requireObserved(mode?.generator?.seed === seed && Number(mode.generator.sampledRawCount) === 5000 && mode.generator.strategy === 'bounded-coverage', "generator persisted inputs differ");
+        return {id, output, job, accepted, manifest, text:await text(generatorScope)};
+    };
+    const simulationInputs = {seed:`p911-${request.id}-simulation`, rounds:500000, workers:1};
+    const submitSimulation = async () => {
+        await s.fill(input("Rounds"), String(simulationInputs.rounds));
+        await s.activate(button("Show advanced details (seed, workers)"));
+        await s.fill(input("Seed (optional)"), simulationInputs.seed);
+        await s.fill(input("Workers"), String(simulationInputs.workers));
+        const submittedAt = s.mark();
+        await s.activate(button("Run Simulation"));
+        const accepted = await s.response('/api/project/simulations', submittedAt);
+        requireObserved(s.requests('/api/project/simulations', submittedAt).length === 1, "simulation duplicate submission");
+        requireObserved(Object.entries(simulationInputs).every(([key,value]) => accepted.request?.[key] === value), "simulation submitted inputs differ");
+        requireObserved(accepted.body.id, "simulation accepted without identity");
+        return {submittedAt, accepted, id:accepted.body.id};
+    };
+    const simulationResult = async (id, terminal) => {
+        const report = await s.get(`/api/project/reports/${encodeURIComponent(id)}`);
+        requireObserved(Object.entries(simulationInputs).every(([key,value]) => terminal.request?.[key] === value && report.report?.[key] === value), "simulation persisted inputs/result differ");
+        return report;
+    };
     const reopen = async project => {
         await s.activate(button("Close project"));
         await see("location.hash.includes('/home/projects')", "closed project Projects transition");
@@ -91,10 +146,10 @@ export async function runItinerary(request, s) {
             requireObserved(prior.candidateId === request.candidateId && prior.profileId === request.profileId, "Stake public/rendered profile mismatch");
             const publicAnalysis = prior.observations?.find(entry => entry.analysis)?.analysis;
             requireObserved(Object.keys(moments).every(key => publicAnalysis?.[key] === analysis[key]), "public/Studio Stake analysis differs");
-            await s.navigate("Build/Export");
-            const observed = await text();
-            await record("stake.recognized-studio", observed, {context});
-            fields = {studioAnalysis:analysis};
+            const rendered = await s.evaluate(renderedStakeExpression);
+            assertRenderedStake(rendered, analysis, context.report.modes[0].modeName);
+            await record("stake.recognized-studio", await text(), {context, rendered});
+            fields = {studioAnalysis:analysis, renderedStake:rendered};
             break;
         }
         case "occupied-destination": {
@@ -166,12 +221,20 @@ export async function runItinerary(request, s) {
             await openCard("stakeAdapter");
             await see(`Boolean(${button("Build", stakeScope)}) && !(${button("Build", stakeScope)}).disabled`, "initial dependent Stake plan ready");
             const initial = await s.latestPreview("stakeAdapter");
-            requireObserved(initial.stakePreflight?.route === "generate", "fresh Stake plan should generate prerequisite");
-            const outcome = await build("outcomeLibrary");
+            requireObserved(initial.preparedOperationId && initial.stakePreflight?.route === "generate", "fresh Stake plan should generate prerequisite");
+            const outcome = await generateLibrary();
             const manifest = path.join(outcome.output, "manifest.json"), manifestBefore = hash(await s.read(manifest));
             await see(`Boolean(${button("Build", stakeScope)}) && !(${button("Build", stakeScope)}).disabled`, "dependent Stake replacement plan ready");
-            const refreshed = await s.until(async () => {const value = await s.latestPreview("stakeAdapter"); return value.stakePreflight?.route === "reuse" && value.preparedOperationId !== initial.preparedOperationId ? value : false;}, "Stake generate plan refreshed to reuse");
-            await record("programmer.stake-plan-refresh", await text(stakeScope), {initial, refreshed});
+            const generatedPlan = await s.until(async () => {const value=await s.latestPreview("stakeAdapter");return value.preparedOperationId !== initial.preparedOperationId ? value : false;}, "Blueprint Stake plan refreshed after generator completion");
+            // Configurable generation has its own provenance/policy. Open the
+            // actual library rather than pretending it is the Blueprint's
+            // automatic managed prerequisite.
+            await s.activate(button("Inspect library", generatorScope));
+            await see(`location.hash.endsWith('/overview') && decodeURIComponent(location.hash.split('/')[2]) === ${q(outcome.output)} && document.body.innerText.includes('Draw an outcome')`, "programmer generated library opened");
+            await s.navigate("Build/Export");
+            await openCard("stakeAdapter");
+            const refreshed = await s.until(async () => {const value=await s.latestPreview("stakeAdapter");return value.stakePreflight?.route === "publish" && value.plan?.source?.kind === "outcomeLibrary" && value.plan.source.canonicalLocation === outcome.output && value.preparedOperationId !== generatedPlan.preparedOperationId ? value : false;}, "opened library owns refreshed Stake publication plan");
+            await record("programmer.stake-plan-refresh", await text(stakeScope), {initial, generatedPlan, refreshed});
             const buildAt = s.mark();
             const stake = await build("stakeAdapter");
             const submissions = s.requests("/api/project/artifacts/build", buildAt).filter(entry => entry.request?.target === "stakeAdapter");
@@ -179,13 +242,13 @@ export async function runItinerary(request, s) {
             await record("programmer.one-build-terminal", stake.text, {stake, submissions});
             const buildResult = await s.get(`/api/project/artifacts/build/${encodeURIComponent(stake.id)}`);
             const provenance = buildResult.result?.stakePrerequisiteProvenance;
-            requireObserved(provenance?.route === "reuse" && provenance.disposition === "borrowed" && provenance.selectedPrerequisiteLocation === outcome.output, "Stake did not borrow the completed prerequisite");
+            requireObserved(buildResult.result?.status === "ok" && buildResult.result.outputPath === stake.output && provenance?.route === "publish" && provenance.disposition === "none" && buildResult.result?.plan?.source?.kind === "outcomeLibrary" && buildResult.result.plan.source.canonicalLocation === outcome.output, "Stake publication did not consume the opened library as its borrowed source");
             await s.read(path.join(stake.output, "pokie-manifest.json"));
-            await record("programmer.borrowed-prerequisite", stake.text, {provenance});
+            await record("programmer.borrowed-prerequisite", stake.text, {provenance, borrowedSource:buildResult.result.plan.source});
             const manifestAfter = hash(await s.read(manifest));
             requireObserved(manifestAfter === manifestBefore, "borrowed manifest changed");
             await record("programmer.prerequisite-unchanged", "Outcome Library manifest SHA-256 unchanged across one completed Stake build", {manifestBefore, manifestAfter});
-            fields = {handoff:{buildSubmissions:submissions.length, terminal:stake.job.status, borrowedPrerequisite:provenance.selectedPrerequisiteLocation, manifestBefore, manifestAfter}};
+            fields = {handoff:{buildSubmissions:submissions.length, terminal:stake.job.status, borrowedPrerequisite:buildResult.result.plan.source.canonicalLocation, manifestBefore, manifestAfter}};
             break;
         }
         case "mathematician": {
@@ -194,15 +257,15 @@ export async function runItinerary(request, s) {
             const par = await build("parWorkbook");
             requireObserved((await s.read(par.output)).length > 0, "saved-model PAR workbook missing");
             await record("mathematician.saved-model-par", par.text, {savedPath, par});
-            const library = await build("outcomeLibrary");
-            await s.activate(button("Open as Project", card("outcomeLibrary")));
+            const library = await generateLibrary();
+            await s.activate(button("Inspect library", generatorScope));
             await see("location.hash.endsWith('/overview') && document.body.innerText.includes('Draw an outcome')", "native library Overview");
             await s.fill(input("Seed (optional)"), "p911-mathematician");
             const drawAt = s.mark();
             await s.activate(button("Draw an outcome"));
             const draw = await s.response("/api/project/outcome-source/sample", drawAt);
             const recordId = draw.body.replayId;
-            requireObserved(recordId && draw.body.replay?.seed, "draw omitted recorded replay identity/seed");
+            requireObserved(recordId && draw.request?.seed === "p911-mathematician" && draw.body.replay?.seed === "p911-mathematician", "draw omitted recorded replay identity/seed");
             await see("document.body.innerText.includes('Saved in Replay Recent')", "draw durable replay message");
             await s.navigate("Replay");
             const list = await s.get("/api/project/replays"), row = list.find(entry => entry.id === recordId);
@@ -240,32 +303,40 @@ export async function runItinerary(request, s) {
             requireObserved(validated.valid === true, "saved producer design structurally invalid");
             await record("producer.structural-validity", await text(), {validated});
             await s.activate(button("Open Play"));
+            const playInputs = {seed:"p911-producer-play", bet:1};
+            await s.activate(button("Show advanced details (seed)"));
+            await s.fill(input("Seed (optional)"), playInputs.seed);
             const sessionAt = s.mark();
             await s.activate(button("New Play session"));
-            const session = (await s.response("/api/project/play/session", sessionAt)).body.session;
+            const sessionResponse = await s.response("/api/project/play/session", sessionAt);
+            const session = sessionResponse.body.session;
+            requireObserved(s.requests('/api/project/play/session', sessionAt).length === 1, "Play duplicate session submission");
+            requireObserved(sessionResponse.request?.seed === playInputs.seed && session?.bet === playInputs.bet, "Play submitted seed/session bet differs");
+            await see("document.querySelector('.player-bet-current')?.textContent === 'Bet: 1'", "explicit Play bet ready");
             const spinAt = s.mark();
             await s.activate(button("Spin"));
-            const spin = (await s.response(`/api/project/play/sessions/${encodeURIComponent(session.sessionId)}/spin`, spinAt)).body;
+            const spinResponse = await s.response(`/api/project/play/sessions/${encodeURIComponent(session.sessionId)}/spin`, spinAt);
+            const spin = spinResponse.body;
+            requireObserved(s.requests(`/api/project/play/sessions/${encodeURIComponent(session.sessionId)}/spin`, spinAt).length === 1, "Play duplicate Spin submission");
+            requireObserved(spinResponse.request?.bet === playInputs.bet && spin.session?.bet === playInputs.bet && spin.session?.studioSeed === playInputs.seed, "Play submitted bet/recorded seed differs");
+            const recordedRound = (await s.get('/api/project/rounds')).find(row => row.sessionId === session.sessionId && row.studioRound === 1);
+            requireObserved(recordedRound?.studioSeed === playInputs.seed && recordedRound.bet === playInputs.bet && recordedRound.win === spin.session.win && recordedRound.credits === spin.session.credits, "Play retained round differs from submitted inputs/result");
             requireObserved(spin.status === "ok" && spin.session.studioRound === 1 && spin.session.debug?.artifact?.screen?.length, "producer round did not settle");
             await see("document.body.innerText.includes('Round complete')", "rendered settled round");
             const play = {sequence:spin.session.studioRound, settled:true, creditsBefore:session.credits, creditsAfter:spin.session.credits, stake:spin.session.bet, payout:spin.session.win};
             requireObserved(Object.values(play).every(value => typeof value === "boolean" || Number.isFinite(value)) && play.creditsAfter === play.creditsBefore - play.stake + play.payout, "settled round accounting mismatch");
             await s.image("producer-settled-round");
-            await record("producer.settled-round", await text(), {session, spin});
+            await record("producer.settled-round", await text(), {playInputs, sessionResponse, spinResponse, recordedRound});
             await s.navigate("Overview");
             await see(`Boolean(${button("Open Play")})`, "useful saved-project next action");
             await record("producer.next-actions-local-limits", limits + "\n" + await text());
-            fields = {design:{structuralValid:validated.valid, savedPath}, play, limitations:{deployment:"local-only", certification:"not-certified"}};
+            fields = {design:{structuralValid:validated.valid, savedPath}, play:{...play, ...playInputs}, limitations:{deployment:"local-only", certification:"not-certified"}};
             break;
         }
         case "ui-ux": {
             const {savedPath} = await create();
             await s.navigate("Simulation");
-            await s.fill(input("Rounds"), "500000");
-            const submittedAt = s.mark();
-            await s.activate(button("Run Simulation"));
-            const accepted = await s.response("/api/project/simulations", submittedAt), id = accepted.body.id;
-            requireObserved(id, "simulation accepted without identity");
+            const {submittedAt, accepted, id} = await submitSimulation();
             await see(`document.querySelector('[data-pokie-lifecycle-result-job]')?.getAttribute('data-pokie-lifecycle-result-job') === ${q(id)}`, "accepted durable simulation card");
             await s.until(async () => {const job = await s.get(`/api/project/jobs/${encodeURIComponent(id)}`); return job.status === 'running' && job.progress?.current > 0;}, "real simulation progress before reload");
             await s.reload();
@@ -281,9 +352,8 @@ export async function runItinerary(request, s) {
             await record("ui-ux.no-duplicate", "One public simulation POST and one persisted job after reload and reconnection", {jobs, submissions});
             const terminal = await s.until(async () => {const job = await s.get(`/api/project/jobs/${encodeURIComponent(id)}`); return job.status === "completed" ? job : false;}, "same bounded simulation completed");
             await see(`Boolean(document.querySelector('[data-pokie-lifecycle-result-job=${q(id)}][data-pokie-lifecycle-terminal=completed]')) && document.body.innerText.includes('Open full report')`, "rendered terminal/report next action");
-            const report = await s.get(`/api/project/reports/${encodeURIComponent(id)}`);
-            requireObserved(report.report?.rounds === 500000, "completed report inaccessible or wrong workload");
-            await record("ui-ux.terminal-result", await text(), {terminal, report});
+            const report = await simulationResult(id, terminal);
+            await record("ui-ux.terminal-result", await text(), {simulationInputs, accepted, terminal, report});
             await s.focus("document.getElementById('simulation-configure')");
             const geometry = await s.focusGeometry("document.getElementById('simulation-configure')");
             requireObserved(geometry.focused && geometry.insideViewport, "recovery next-action focus outside settled viewport");
@@ -298,47 +368,84 @@ export async function runItinerary(request, s) {
             const restored = await s.get(`/api/project/jobs/${encodeURIComponent(id)}`);
             requireObserved(restored.status === "completed", "original project lost terminal job");
             await record("ui-ux.project-isolation", await text(), {secondPath:second.savedPath, secondJobs, restored});
-            fields = {job:{id, reloadedId, reconnectedId, submissions, terminal:terminal.status, resultAccessible:true}};
+            fields = {simulationInputs, job:{id, reloadedId, reconnectedId, submissions, terminal:terminal.status, resultAccessible:true}};
             break;
         }
         case "graphic-designer": {
-            await s.viewport(1100, 800);
-            await s.image("graphic-home");
+            const viewports = [[1100,800],[900,700],[390,844]];
+            const homePanels = [], projectPanels = [];
             const basics = "Array.from(document.querySelectorAll('[role=tab]')).find(e => e.textContent.startsWith('Game basics') && e.getClientRects().length)";
-            await s.focus(basics);
-            await s.key("ArrowRight", "ArrowRight", 39);
-            await see("document.activeElement?.getAttribute('role') === 'tab' && document.activeElement?.getAttribute('aria-selected') === 'true' && !document.activeElement?.textContent.startsWith('Game basics')", "native design section keyboard transition");
-            await record("graphic.native-keyboard", await text(), {homeFocus:await s.focusGeometry("document.activeElement")});
+            for (const [width,height] of viewports) {
+                await s.viewport(width,height);
+                await s.focus(basics);
+                await s.key("ArrowRight", "ArrowRight", 39);
+                await see("document.activeElement?.getAttribute('role') === 'tab' && document.activeElement?.getAttribute('aria-selected') === 'true' && !document.activeElement?.textContent.startsWith('Game basics')", "native design section keyboard transition");
+                const homeFocus = await s.focusGeometry("document.activeElement");
+                requireObserved(homeFocus.focused && homeFocus.insideViewport, "Home keyboard focus clipped");
+                homePanels.push(await s.capture({surface:"Home sections", homeFocus}));
+                await s.key("ArrowLeft", "ArrowLeft", 37);
+                await see("document.activeElement?.textContent.startsWith('Game basics') && document.activeElement?.getAttribute('aria-selected') === 'true'", "native roving tab returns to Game basics before resize");
+            }
+            await record("graphic.native-keyboard", await text(), {viewports, observations:homePanels.map(({bytes,...panel}) => panel)});
+            await s.activate(button("Show advanced options (file and JSON tools)"));
+            const homeBuild = "Array.from(document.querySelectorAll('fieldset')).find(e => e.querySelector('legend')?.textContent === 'Build')";
+            for (const [width,height] of viewports) {
+                await s.viewport(width,height);
+                await s.focus(input("Output directory", homeBuild));
+                const geometry = await s.focusGeometry(input("Output directory", homeBuild));
+                requireObserved(geometry.focused && geometry.insideViewport, "expanded Home build form focus clipped");
+                await see(`Boolean(${button("Build Preview", homeBuild)}) && Boolean(${button("Build Package", homeBuild)})`, "expanded Home Design build controls");
+                homePanels.push(await s.capture({surface:"Expanded Home Design build", geometry}));
+            }
+            const homeImage = await s.image("graphic-home-design", homePanels);
+            await s.viewport(1100,800);
             await create();
-            await s.image("graphic-project");
+            for (const [width,height] of viewports) {
+                await s.viewport(width,height);
+                await s.focus(button("Open Play"));
+                projectPanels.push(await s.capture({surface:"Project Overview"}));
+            }
             await s.navigate("Build/Export");
             await openCard("tsPackage");
-            await see(`Boolean(${button("Build", card("tsPackage"))})`, "public build presentation");
-            await s.image("graphic-build");
+            for (const [width,height] of viewports) {
+                await s.viewport(width,height);
+                await s.focus(button("Build", card("tsPackage")));
+                projectPanels.push(await s.capture({surface:"Project Build/Export"}));
+            }
+            const projectImage = await s.image("graphic-project-build", projectPanels);
+            await s.viewport(1100,800);
             await s.navigate("Simulation");
-            await s.fill(input("Rounds"), "500000");
-            const submittedAt = s.mark();
-            await s.activate(button("Run Simulation"));
-            const id = (await s.response("/api/project/simulations", submittedAt)).body.id;
-            requireObserved(id, "graphic simulation identity missing");
+            const {accepted, id} = await submitSimulation();
             const region = `Array.from(document.querySelectorAll('[role=region]')).find(e => e.getAttribute('aria-label') === ${q(`simulation job ${id}`)})`;
             await see(`Boolean((${region})?.querySelector('.studio-job-card')) && (${region}).innerText.includes('Running')`, "running common job card");
             const object = await s.keepObject(region);
             await s.focus(button("Cancel", region));
             const runningBounds = await s.focusGeometry(button("Cancel", region));
             requireObserved(runningBounds.focused && runningBounds.insideViewport, "running native Cancel focus clipped");
-            await s.image("graphic-running-job");
-            await record("graphic.home-project-build-job", await text(region), {runningBounds, id});
-            await s.until(async () => (await s.get(`/api/project/jobs/${encodeURIComponent(id)}`)).status === "completed", "real bounded terminal simulation");
+            const runningImage = await s.image("graphic-running-job", [await s.capture({surface:"Running job", runningBounds, id})]);
+            await record("graphic.home-project-build-job", await text(region), {homeImage, projectImage, runningImage, runningBounds, id, simulationInputs, accepted});
+            const terminal = await s.until(async () => {const job=await s.get(`/api/project/jobs/${encodeURIComponent(id)}`);return job.status === "completed" ? job : false;}, "real bounded terminal simulation");
+            const report = await simulationResult(id, terminal);
             await s.settle(region, id); // Review, report, Recent runs AND bounds.
             requireObserved(await s.sameObject(object, region), "common card replaced on terminal transition");
             const focus = await s.focusGeometry(region);
             requireObserved(focus.focused && focus.insideViewport, "same card lost focus or moved outside settled viewport");
-            await record("graphic.same-common-card-focus", await text(region), {runningBounds, terminalBounds:focus});
-            const imageReceipt = await s.image("graphic-settled-common-card");
-            const painted = await s.painted(imageReceipt, focus);
+            await record("graphic.same-common-card-focus", await text(region), {runningBounds, terminalBounds:focus, terminal, report});
+            const terminalPanels = [await s.capture({surface:"Settled common card", focus, id}, region)];
+            // Capture transition-local geometry/pixels BEFORE resizing. Resize
+            // observes ownership only; it never refocuses the terminal region.
+            for (const [width,height] of [[390,844]]) {
+                await s.viewport(width,height);
+                await s.settle(region,id);
+                const resizedFocus = await s.focusGeometry(region);
+                requireObserved(resizedFocus.focused && resizedFocus.insideViewport && await s.sameObject(object,region), "resized common card lost focus or clipped");
+                terminalPanels.push(await s.capture({surface:"Settled common card", focus:resizedFocus, id}, region));
+            }
+            requireObserved(terminalPanels.every(panel => panel.focus.focused && panel.focus.insideViewport), "capture-local settled focus lost/clipped");
+            const imageReceipt = await s.image("graphic-settled-common-card", terminalPanels);
+            const painted = (await Promise.all(terminalPanels.map((panel,index) => s.painted(imageReceipt,panel.focus,index)))).every(Boolean);
             requireObserved(painted, "settled screenshot has no painted focus outline");
-            await record("graphic.painted-outline-settled", "Retained PNG contains the focused common card outline after Review, report and Recent runs settle", {imageReceipt, focus});
+            await record("graphic.painted-outline-settled", "Retained contact sheet contains the focused common card outline after Review, report and Recent runs settle at compact and phone viewports", {imageReceipt, focus});
             const before = await s.focusGeometry(region);
             await s.settle(region, id);
             const after = await s.focusGeometry(region);
@@ -354,7 +461,7 @@ export async function runItinerary(request, s) {
 
 /** Actual PNG pixels, not computed CSS alone. Chromium screenshots are bounded
  * non-interlaced 8-bit RGB/RGBA; other encodings fail instead of claiming paint. */
-export function paintedOutline(bytes, geometry) {
+export function decodePng(bytes) {
     requireObserved(bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), "focus image is not PNG");
     let width, height, channels, interlace, bits, compressed = [];
     for (let at = 8; at + 12 <= bytes.length;) {
@@ -363,7 +470,7 @@ export function paintedOutline(bytes, geometry) {
         if (type === "IDAT") compressed.push(data);
         at += size + 12;
     }
-    requireObserved(width > 0 && height > 0 && width * height <= 4_000_000 && bits === 8 && channels && !interlace, "unsupported/big focus PNG");
+    requireObserved(width > 0 && height > 0 && width * height <= 5_000_000 && bits === 8 && channels && !interlace, "unsupported/big focus PNG");
     const stride = width * channels, raw = inflateSync(Buffer.concat(compressed), {maxOutputLength:(stride + 1) * height});
     requireObserved(raw.length === (stride + 1) * height, "truncated focus PNG");
     const pixels = Buffer.alloc(stride * height);
@@ -377,6 +484,11 @@ export function paintedOutline(bytes, geometry) {
             pixels[at] = (raw[y * (stride + 1) + 1 + x] + predictor) & 255;
         }
     }
+    return {width, height, channels, pixels};
+}
+
+export function paintedOutline(bytes, geometry) {
+    const {width, height, channels, pixels} = decodePng(bytes);
     const color = geometry.outlineColor?.match(/\d+(?:\.\d+)?/g)?.map(Number);
     if (!color || color.length < 3 || (color.length === 4 && color[3] === 0) || geometry.outlineWidth < 1) return false;
     const rect = geometry.rect, inset = geometry.outlineOffset + geometry.outlineWidth / 2;
@@ -388,6 +500,36 @@ export function paintedOutline(bytes, geometry) {
         const x = Math.floor(px), y = Math.floor(py);
         return x >= 0 && x < width && y >= 0 && y < height && color.slice(0,3).every((channel, i) => Math.abs(pixels[(y * width + x) * channels + i] - channel) <= 12);
     }).length >= 2;
+}
+
+/** Lossless horizontal sheet. Panels stay in memory until this one retained
+ * PNG is written; offsets and viewport/route/geometry accompany its receipt. */
+export function contactSheet(panels) {
+    requireObserved(panels.length > 0 && panels.length <= 6, 'invalid contact sheet panel count');
+    const decoded = panels.map(panel => decodePng(panel.bytes));
+    const width = decoded.reduce((sum,panel) => sum + panel.width, 0) + (panels.length-1)*16;
+    const height = Math.max(...decoded.map(panel => panel.height));
+    requireObserved(width*height <= 5_000_000, 'contact sheet exceeds pixel budget');
+    const raw = Buffer.alloc((width*3+1)*height,255), metadata = [];
+    for (let y=0;y<height;y++) raw[y*(width*3+1)]=0;
+    let offsetX=0;
+    decoded.forEach((panel,index) => {
+        for(let y=0;y<panel.height;y++) for(let x=0;x<panel.width;x++) {
+            const source=(y*panel.width+x)*panel.channels, dest=y*(width*3+1)+1+(offsetX+x)*3;
+            panel.pixels.copy(raw,dest,source,source+3);
+        }
+        const {bytes, ...observation} = panels[index];
+        metadata.push({...observation, offsetX, offsetY:0, width:panel.width, height:panel.height});
+        offsetX+=panel.width+16;
+    });
+    const chunk = (name,data) => {
+        const bytes=Buffer.alloc(data.length+12); bytes.writeUInt32BE(data.length); bytes.write(name,4); data.copy(bytes,8);
+        let crc=0xffffffff;
+        for(const value of bytes.subarray(4,8+data.length)) {crc^=value; for(let bit=0;bit<8;bit++) crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+        bytes.writeUInt32BE((crc^0xffffffff)>>>0,8+data.length); return bytes;
+    };
+    const ihdr=Buffer.alloc(13); ihdr.writeUInt32BE(width); ihdr.writeUInt32BE(height,4); ihdr[8]=8; ihdr[9]=2;
+    return {bytes:Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]), panels:metadata};
 }
 
 /** Tiny bounded CDP transport with read-only event receipts and native input. */
@@ -432,6 +574,19 @@ export async function drainDriverChild(entry, {alive, signal, now = Date.now, wa
     await entry.completion;
 }
 
+export async function navigateSurface(label, {evaluate, activate, until}) {
+    const names={"Your projects":"Projects"};
+    const target=button(names[label] ?? label, "document.getElementById('studio-navigation-panel')");
+    const collapsedMobile = await evaluate("(() => {const toggle=document.getElementById('studio-navigation-toggle');return Boolean(toggle?.getClientRects().length && getComputedStyle(toggle).visibility !== 'hidden' && toggle.getAttribute('aria-expanded') === 'false');})()");
+    if (collapsedMobile || !await evaluate(`Boolean(${target})`)) {
+        await activate(button("Toggle navigation"));
+        await until(() => evaluate(`Boolean(${target})`), `revealed navigation ${label}`);
+    }
+    await activate(target);
+    const routes={"Start a game":"/home/design", "Your projects":"/home/projects", "Build/Export":"/exportDeploy", Simulation:"/simulation", Replay:"/replay", Overview:"/overview"};
+    if(routes[label]) await until(() => evaluate(`location.hash.endsWith(${q(routes[label])})`), `navigation ${label}`);
+}
+
 export async function reloadPage(cdp, until) {
     const {frameTree:{frame}} = await cdp.send('Page.getFrameTree');
     const after = cdp.events.length;
@@ -440,7 +595,7 @@ export async function reloadPage(cdp, until) {
         && event.params.name === 'load' && event.params.frameId === frame.id && event.params.loaderId !== frame.loaderId), 'new main-frame loader completed after reload');
 }
 
-export async function main(args) {
+export async function main(args, helpers = {}) {
     if (args.length === 1 && args[0] === "--describe") {
         process.stdout.write(`${JSON.stringify({schemaVersion:1, kind:"verifier-driver-capabilities", coverage:COVERAGE})}\n`);
         return;
@@ -453,8 +608,8 @@ export async function main(args) {
         && JSON.stringify(request.coverage) === JSON.stringify(COVERAGE[request.id]), "incomplete/stale authenticated closeout request");
     // Neutral controller-owned display/profile helpers already used by current.mjs.
     // Only the offline command and imports in contract tests bypass their loading.
-    const {createStudioApplicationProfile} = await import("/home/stager/Work/sta-ger/agents/infra/verifier-application-profile.mjs");
-    const {createVerifierBrowserContext} = await import("/home/stager/Work/sta-ger/agents/infra/verifier-browser-context.mjs");
+    const {createStudioApplicationProfile} = helpers.createStudioApplicationProfile ? helpers : await import("/home/stager/Work/sta-ger/agents/infra/verifier-application-profile.mjs");
+    const {createVerifierBrowserContext} = helpers.createVerifierBrowserContext ? helpers : await import("/home/stager/Work/sta-ger/agents/infra/verifier-browser-context.mjs");
     const run = path.join(request.profileRoot, "rendered-driver");
     await mkdir(run);
     const profile = await createStudioApplicationProfile(run);
@@ -483,11 +638,14 @@ export async function main(args) {
     const signalGroup = (pid, signal) => {try {process.kill(-pid, signal);} catch (error) {if (error.code !== "ESRCH") throw error;}};
     try {
         context = await createVerifierBrowserContext(path.join(run, "display"), {browser:"/usr/bin/chromium-browser"});
-        const env = {...process.env, ...context.env, ...profile.env, HOME:path.join(request.profileRoot,"home"), XDG_DATA_HOME:path.join(request.profileRoot,"data"), XDG_CACHE_HOME:path.join(request.profileRoot,"cache"), TMPDIR:request.profileRoot};
-        const studio = launch(request.bin, ["--no-open", "--port", "0"], env);
+        const studioEnv = {...process.env, ...profile.env, HOME:path.join(request.profileRoot,"home"), XDG_DATA_HOME:path.join(request.profileRoot,"data"), XDG_CACHE_HOME:path.join(request.profileRoot,"cache"), TMPDIR:request.profileRoot};
+        // Snap/display launch requirements belong to the helper; browser storage
+        // isolation comes from its fresh user-data-dir, never application HOME.
+        const browserEnv = {...process.env, ...context.env};
+        const studio = launch(request.bin, ["--no-open", "--port", "0"], studioEnv);
         const origin = await until(() => studio.stdout.match(/POKIE Studio listening on (http:\/\/[^\s]+)/)?.[1], "installed Studio readiness");
         transcript.studio = {bin:request.bin, origin};
-        launch(context.browser, ["--no-sandbox", "--disable-dev-shm-usage", "--window-size=1440,1100", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${path.join(request.profileRoot,"browser")}`, "--no-first-run", "--no-default-browser-check", origin], env);
+        launch(context.browser, ["--no-sandbox", "--disable-dev-shm-usage", "--window-size=1440,1100", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${path.join(request.profileRoot,"browser")}`, `--disk-cache-dir=${path.join(request.profileRoot,"browser-cache")}`, "--no-first-run", "--no-default-browser-check", origin], browserEnv);
         const port = await until(async () => {try {return (await readFile(path.join(request.profileRoot,"browser/DevToolsActivePort"),"utf8")).split("\n")[0];} catch (error) {if (error.code === "ENOENT") return false; throw error;}}, "fresh browser CDP port");
         const target = await until(async () => (await fetch(`http://127.0.0.1:${port}/json/list`, {signal:AbortSignal.timeout(3000)}).then(r => r.json())).find(page => page.type === "page" && page.url.startsWith(origin)), "installed Studio CDP page");
         cdp = await connectCdp(target.webSocketDebuggerUrl, deadline);
@@ -538,28 +696,37 @@ export async function main(args) {
             await writeFile(file, bytes, {flag:"wx"});
             transcript.actions.push({id, observed, raw}); return {path:file, sha256:hash(bytes)};
         };
-        const image = async name => {
+        const capture = async (observation, focusExpression) => {
+            // Two frames settle responsive layout before reading local geometry.
+            await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+            const focus = focusExpression ? await focusGeometry(focusExpression) : undefined;
             const screenshot = await cdp.send("Page.captureScreenshot", {format:"png", captureBeyondViewport:false});
-            const bytes = Buffer.from(screenshot.data,"base64"), file = path.join(path.dirname(resultPath), `${request.id}.${name}.png`);
-            await writeFile(file, bytes, {flag:"wx"});
-            const reference = {path:file, sha256:hash(bytes)}; transcript.images.push(reference); return reference;
+            return {bytes:Buffer.from(screenshot.data,"base64"), ...observation, ...(focus ? {focus} : {}), ...await evaluate("({viewport:{width:innerWidth,height:innerHeight},route:location.hash})")};
+        };
+        const image = async (name, panels) => {
+            if (request.id === 'graphic-designer') requireObserved(transcript.images.length < 4, 'graphic image budget exceeded');
+            const sheet = contactSheet(panels ?? [await capture({surface:name})]);
+            const file = path.join(path.dirname(resultPath), `${request.id}.${name}.png`);
+            await writeFile(file, sheet.bytes, {flag:"wx"});
+            const reference = {path:file, sha256:hash(sheet.bytes), panels:sheet.panels}; transcript.images.push(reference); return reference;
         };
         const focusGeometry = expression => evaluate(`(() => {const e=${expression};if(!e)return {};const r=e.getBoundingClientRect(),s=getComputedStyle(e),w=parseFloat(s.outlineWidth)||0,o=parseFloat(s.outlineOffset)||0,inset=w+o,header=document.querySelector('.mantine-AppShell-header')?.getBoundingClientRect().bottom??0;return {focused:document.activeElement===e,rect:{x:r.x,y:r.y,width:r.width,height:r.height},viewport:{width:innerWidth,height:innerHeight,header},outlineColor:s.outlineColor,outlineWidth:w,outlineOffset:o,insideViewport:r.width>0&&r.left-inset>=0&&r.right+inset<=innerWidth&&r.top-inset>=header&&(r.height+inset*2>innerHeight-header?r.top+inset<innerHeight:r.bottom+inset<=innerHeight)};})()`);
         const surface = {
-            resultPath, until, evaluate, activate, focus, fill, key, get, requests, response, receipt, image, focusGeometry,
+            resultPath, until, evaluate, activate, focus, fill, key, get, requests, response, receipt, image, capture, focusGeometry,
             mark:() => cdp.events.length, read:readFile, write:(file, bytes) => writeFile(file,bytes,{flag:"wx"}), mkdir:directory => mkdir(directory),
-            navigate:async label => {
-                const names = {"Your projects":"Projects"};
-                await activate(button(names[label] ?? label, "document.getElementById('studio-navigation-panel')"));
-                const routes = {"Start a game":"/home/design", "Your projects":"/home/projects", "Build/Export":"/exportDeploy", Simulation:"/simulation", Replay:"/replay", Overview:"/overview"};
-                if (routes[label]) await until(() => evaluate(`location.hash.endsWith(${q(routes[label])})`), `navigation ${label}`);
-            },
+            navigate:label => navigateSurface(label, {evaluate, activate, until}),
             reload,
             offline:offline => cdp.send("Network.emulateNetworkConditions", {offline, latency:0, downloadThroughput:-1, uploadThroughput:-1}),
-            viewport:(width,height) => cdp.send("Emulation.setDeviceMetricsOverride", {width, height, deviceScaleFactor:1, mobile:false}),
+            viewport:async (width,height) => {
+                await cdp.send("Emulation.setDeviceMetricsOverride", {width, height, deviceScaleFactor:1, mobile:false});
+                await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+            },
             keepObject:async expression => (await cdp.send("Runtime.evaluate", {expression})).result.objectId,
             sameObject:async (objectId, expression) => (await cdp.send("Runtime.callFunctionOn", {objectId, functionDeclaration:`function(){return this === (${expression});}`, returnByValue:true})).result.value,
-            painted:async (reference, geometry) => paintedOutline(await readFile(reference.path), geometry),
+            painted:async (reference, geometry, index=0) => {
+                const panel=reference.panels[index];
+                return paintedOutline(await readFile(reference.path), {...geometry, rect:{...geometry.rect,x:geometry.rect.x+panel.offsetX,y:geometry.rect.y+panel.offsetY}});
+            },
             latestPreview:async target => {
                 const entry = requests("/api/project/artifacts/preview").filter(entry => entry.request.target === target).at(-1);
                 if (!entry) return {};
@@ -571,7 +738,7 @@ export async function main(args) {
                 return {status:response.status, body:await response.json(), request:body};
             },
             cli:async argv => {
-                const entry = launch(request.bin, argv, env);
+                const entry = launch(request.bin, argv, studioEnv);
                 await until(() => entry.closed, `public CLI ${argv.join(' ')}`);
                 requireObserved(entry.exitCode === 0 && !entry.signal && !entry.stderr.trim(), `public CLI failed: ${entry.stderr}`);
                 const observation = {argv:[request.bin,...argv], stdout:entry.stdout, stderr:entry.stderr, exitCode:entry.exitCode}; transcript.commands.push(observation); return observation;

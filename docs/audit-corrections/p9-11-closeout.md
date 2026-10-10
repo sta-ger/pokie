@@ -318,3 +318,58 @@ the scenario deadline. Cleanup failure prevents a successful result file; the
 outer signed closeout supplies complete descendant/resource receipts. None of
 these implementation mechanics closes an original frozen P909/P910 obligation
 or a release/publication/Drive acceptance row without its actual controller run.
+
+
+## Current-Studio driver repair handoff
+
+Finding `706091c10ac6f4a8` supersedes the earlier source-aware claim that an
+ordinary Blueprint Outcome artifact card supplies these itineraries. Studio
+intentionally exposes one configurable generator for runnable sources. Both
+persona routes now submit that generator once, authenticate its own terminal
+and saved sample provenance, and open its output using **Inspect library**.
+Programmer retains both the post-generation Blueprint operation refresh and
+the opened library's new prepared Stake operation. One native-library Stake
+Build consumes the identified source without modifying its manifest. Its
+public `publish`/`none` provenance is retained accurately, rather than being
+mistaken for the separate automatic managed `reuse`/`borrowed` policy. No
+artifact card or alternate submission route was introduced.
+
+Browser launch uses the helper's environment, including required launcher
+HOME; Studio storage uses the isolated application profile. Chromium user-data
+and disk-cache paths are unique per persona. Play and both simulations record
+explicit inputs, actual submitted bodies, and read-back results. Overview
+presentation success requires the actual table's nonzero rare-event values.
+
+Graphic collection has exactly four image/contact-sheet writes. The Home
+sheet includes sections and the expanded Design Build form at 1100×800,
+900×700 and 390×844. The project sheet includes Overview and Build/Export at
+the same sizes. The third image captures the running common JobCard. The
+fourth retains settled focus at 1100×800 before resize and at 390×844 after
+settling, without changing focus ownership. Panel metadata binds viewport,
+route, local geometry and sheet offset; paint checks use retained PNG pixels.
+The controller must independently review readability and visual quality.
+These assertions do not grant visual acceptance or replace frozen P909/P910
+observations.
+
+The directly affected whole files passed together (62 tests); root typecheck
+also passed, including the Studio compiler once:
+
+```sh
+npm run test:targeted -- tests/scripts/p9-11-rendered-driver.test.mjs tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeStakeHandoff.test.tsx
+npm run typecheck
+```
+
+The startup negative tests launch bounded fixture executables through the real
+`main` boundary and remove their temporary records; they do not launch the
+controller's browser or establish acceptance. Other tests execute selectors
+against explicit DOM states and a real Studio HTTP generator/Stake workflow,
+not a universally successful evaluation stub. See the current
+[finding-to-proof ledger](README.md#p9-11-current-studio-rendered-driver-correction).
+
+The controller must install/pin these exact committed bytes at its existing
+persistent driver boundary, deliver the normal shared candidate, run independent
+retests/collection and review the four graphic sheets. Exact-candidate six-repro
+and five-persona evidence, original authenticated P909/P910 execution, official
+release/packaging, exact integration/push/publication, Drive and full external
+cleanup receipts remain pending. This is an implementation work handoff;
+neither P9-11 nor the campaign is marked complete by it.

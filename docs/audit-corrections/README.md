@@ -671,3 +671,43 @@ its new SHA-256 pin and run its admission/normal producer once. No external
 driver, pin, delivery, archive, installation or receipt was edited or fabricated
 by this worker. See the [controller installation boundary](p9-11-closeout.md#p9-11-rendered-adapter-installation).
 This implementation handoff does not mark P9-11 or the campaign complete.
+
+
+### P9-11 current-Studio rendered driver correction
+
+Reviewer finding `706091c10ac6f4a8` / `sha256:609cbdcd048a9523` was traced
+against `3c0661a0274d16892db0500736ee7c1dd0ac15e8`. The preceding adapter
+implementation entry describes that historical implementation, not runnable
+acceptance. This correction supersedes its obsolete Outcome-card route and
+five-image collection contract; retained observations and completed-step
+artifacts are unchanged.
+
+| Failed row | Corrected implementation and focused proof | Acceptance still pending |
+| --- | --- | --- |
+| Programmer/mathematician absent Outcome artifact controls | Both use the configurable generator, explicit sample/seed, its own completed job and manifest readback, then **Inspect library**. No Blueprint Outcome registry card is restored. The real-service Outcome-to-Stake test now follows these controls and reaches its own successful Stake terminal. | Same-candidate independent persona smokes. |
+| Refreshed Stake plan and borrowed manifest | The Blueprint's prepared operation refreshes after generation. Inspect opens the exact generated library; its new Stake plan binds that source and is submitted once. Native-library conversion truthfully reports `route: publish`, `disposition: none` (no managed prerequisite allocation). Its plan identifies the caller-owned library consumed read-only, and the original manifest hash remains unchanged. This does not claim configurable samples satisfy the different automatic managed-library policy or relabel `publish` as `reuse`. Existing managed-reuse regression authorities are unchanged. | Independent action-local source/operation/output and manifest receipts. |
+| Browser launcher HOME overwritten | Studio receives persona HOME/XDG/Documents; Chromium retains the controller helper's launch environment and has persona-specific user-data and disk-cache directories. Real executable startup fixtures exercise `main`, readiness, environment/argv, stale-request rejection, bounded failure and drainage. | Actual controller browser launch and collection. |
+| Uncontrolled Play/simulation inputs | Explicit Play seed/bet and simulation seed/rounds/workers are checked against actual POST bodies. Play checks recorded round provenance/accounting; both simulations check durable job requests and report inputs. Generator input checks also reach the saved manifest. | Installed-candidate results and retained receipts. |
+| API-only rare-event presentation assertion | Actual Overview table headers/mode/cells must contain positive, numerically matching RTP and hit-frequency percentages before `stake.recognized-studio` is recorded. Correct API metrics cannot mask missing/zero/wrong rendered values. | Independent recognized-source Overview observation. |
+| Missing expanded Home form, viewports and excessive graphic images | Four lossless contact sheets: Home sections plus expanded Design Build at 1100×800, 900×700, 390×844; project Overview plus Build/Export at those sizes; running job; settled common card at 1100×800 and 390×844. Panel-local route/viewport/bounds and offsets accompany images. Native roving tabs return before resize, phone navigation opens normally, and the first settled focus observation is retained before resize without refocusing the card. Both settled panels require actual outline pixels. | Independent image inspection and authenticated original P910 execution; no visual approval inferred from tests. |
+| Permissive DOM/describe-only tests | DOM-backed itineraries reject absent/disabled controls, wrong inputs, persisted/rendered-value failures and incomplete exact action/classification coverage. Executable startup uses real short-lived test children; the HTTP component test uses a real generated runtime, generator, planner, writer and persisted jobs. | Controller's independent reviewer matrix and exact-candidate execution. |
+
+Permitted foreground verification passed **2 whole suites / 62 tests**, and
+root typecheck passed (including the Studio compiler once):
+
+```sh
+npm run test:targeted -- tests/scripts/p9-11-rendered-driver.test.mjs tests/cli/studio-client/src/components/project/ProjectDashboardPage.outcomeStakeHandoff.test.tsx
+npm run typecheck
+```
+
+Test fixtures are implementation checks, removed after use, never independent
+verification transcripts. The worker ran no real browser collector, candidate
+build/pack, official gate, publication or external-harness mutation. Earlier
+producer/authentication, native packaging loaders, descendant drainage,
+source-identity and guarded draft-replacement corrections remain unchanged.
+All six exact public repros, five isolated final smokes, authenticated original
+P909/P910 obligations and image judgment still require the controller's pinned
+normal candidate. Release/packaging, post-merge checks, integration/push,
+publication, Drive read-back and campaign completion remain controller-owned
+and pending. The [installation boundary](p9-11-closeout.md#p9-11-rendered-adapter-installation)
+requires a new pin for this committed driver before that collection.
