@@ -154,6 +154,48 @@ controller collection. Release, exact integration/push/publication, Drive
 round-trip and campaign completion remain pending as well. No completed-step
 report, image, transcript, checkpoint or receipt was rewritten or removed.
 
+### P9-11 changed-tests candidate-delivery prerequisite repair
+
+The saved independent changed-tests failure reached P909's production asset
+selector with retained frozen observations but without a shared candidate
+handoff. It selected checkout assets and failed on missing
+`dist/cli/studio-client/index.html`. Frozen historical observations alone do
+not deliver the current candidate; the pre-review gate does not build Studio.
+
+The [P909 regression](../../tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx)
+now registers its rendered retest when the controller supplies either P9 handoff
+field, or explicitly sets `P909_RENDERED_RETEST=1` for a normal standalone
+checkout build. The controller must still supply the separate nonempty
+`P909_FROZEN_OBSERVATIONS` record. Missing candidate delivery defers only the
+rendered case. Supplied empty, partial or invalid delivery executes and fails;
+missing built assets, corrupt handoff pins and invalid frozen records never
+fall back to a build, another candidate or a successful browser observation.
+The existing real keyboard/reload/reconnect/cancellation/reopening/destination
+assertions, source freshness checks and bounded cleanup remain intact.
+
+The permitted whole-file command is:
+
+```sh
+npm run test:targeted -- tests/cli/studio-client/src/P909ValeraRecovery.browser.test.tsx
+```
+
+It passed with **3 tests passed / 1 rendered test skipped**. Always-running
+contracts compare explicit npm-wrapper and direct-launch caller contexts,
+including retained-history-only context; verify malformed opt-ins run rather
+than skip; and exercise the real candidate selector's missing CLI/HTML,
+standalone access and corrupt/partial pin paths. Temporary records/assets are
+prerequisite fixtures only and are removed in `finally`. They are not browser
+or persona acceptance evidence. This correction changes test orchestration
+and the current-step index only, with no production compiler/bundle boundary.
+
+The controller must rerun its preserved changed-tests matrix and supply the
+normal authenticated candidate plus frozen input for the mandatory P909
+rendered rerun (or explicitly opt into a normally built standalone candidate).
+Direct Jest gate execution, six exact-candidate repros, five independent final
+smokes, release/packaging, integration/push/publication and Drive round-trip
+remain pending controller authority. No historical receipt was altered; this
+bounded gate repair does not complete P9-11 or the campaign.
+
 ### 2026-10-10 P9-11 evidence-locator correction
 
 This evidence-only finalization retains the preceding P9-11 verdict unchanged:
