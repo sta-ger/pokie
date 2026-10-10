@@ -61,7 +61,7 @@ async function expectActiveSection(name: string): Promise<void> {
 jest.setTimeout(120000);
 
 describe("HomePage", () => {
-    it("keeps advanced Home tools on design import/save and hands artifact publication to the workspace", async () => {
+    it("exposes draft package publication from fresh Home advanced options without a retained job", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
@@ -73,13 +73,54 @@ describe("HomePage", () => {
         await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
         expect(await screen.findByText("PAR Sheet Import")).toBeVisible();
         expect(screen.getByRole("button", {name: "Import", exact: true})).toBeVisible();
-        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", {name: "Build Preview"})).not.toBeInTheDocument();
-        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Build Preview"})).toBeVisible();
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue("");
         expect(screen.queryByLabelText("Export to path")).not.toBeInTheDocument();
-        expect(screen.getByText(/Build packages and export PAR sheets/)).toBeVisible();
+        expect(screen.getByText(/Build Package exports the current/)).toBeVisible();
         expect(screen.getByText(/POKIE is a slot-game logic framework/)).toBeVisible();
         expect(calls.filter((call) => call.url === "/api/home/blueprints/build" || call.url === "/api/home/blueprints/par-export")).toEqual([]);
+    });
+
+    it("rejects a fresh draft's occupied destination and builds the edited destination without saving or opening", async () => {
+        const user = userEvent.setup();
+        const manifest = {id: "starter-slot", name: "Starter Slot", version: "0.1.0"};
+        const {fetchImpl, calls} = createRoutedFakeFetch({
+            "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
+            "/api/home/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
+            "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
+            "/api/home/blueprints/build-preview": (call) => {
+                const {outDir} = JSON.parse(call.init?.body ?? "{}");
+                return {ok: true, status: 200, body: {
+                    status: "ok", projectRoot: outDir, destinationHasContent: outDir === "/games/occupied",
+                    destinationState: outDir === "/games/occupied" ? "occupied" : "missing",
+                    manifest, reels: 5, rows: 3, symbolsCount: 8, warnings: [], expectedFiles: [],
+                    createFiles: [], updateFiles: [], deleteFiles: [], blueprintHash: "draft",
+                }};
+            },
+            "/api/home/blueprints/build": () => ({ok: true, status: 201, body: {
+                status: "ok", projectRoot: "/games/fresh", manifest, warnings: [], createdFiles: ["dist/index.js"],
+                buildInfo: {blueprintHash: "draft", generatedAt: "2026-10-10T00:00:00.000Z"},
+            }}),
+        });
+        renderRoutedApp({fetchImpl, initialEntries: ["/home/design"]});
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        const field = screen.getByLabelText("Output directory (optional)");
+        await user.type(field, "/games/occupied");
+        await user.click(screen.getByRole("button", {name: "Build Preview"}));
+        expect(await screen.findByText(/already has content.*Choose a new or empty output directory/)).toBeVisible();
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
+        await user.clear(field);
+        await user.type(field, "/games/fresh");
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/Last built/)).toHaveTextContent("/games/fresh");
+        const builds = calls.filter((call) => call.url === "/api/home/blueprints/build");
+        expect(builds).toHaveLength(1);
+        expect(JSON.parse(builds[0].init!.body!)).toMatchObject({outDir: "/games/fresh", blueprint: {manifest}});
+        expect(JSON.parse(builds[0].init!.body!)).not.toHaveProperty("sourcePath");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed" || call.url === "/api/home/projects/open")).toHaveLength(0);
     });
 
     it("keeps retained project-opening recovery visible on Projects and invokes its captured open action", async () => {
@@ -137,7 +178,7 @@ describe("HomePage", () => {
         expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/par-import")?.init?.body ?? "{}")).toEqual({path: "/games/retained.par.xlsx"});
     });
 
-    it("recovers the retained Design build draft and hands publication to its saved workspace", async () => {
+    it("recovers the retained Design build draft and destination, then builds only on explicit submission", async () => {
         const user = userEvent.setup();
         const blueprint = {manifest: {id: "recovered", name: "Recovered", version: "1.0.0"}, reels: 3, rows: 3, symbols: ["A"], paytable: {A: {3: 5}}};
         const {fetchImpl, calls} = createRoutedFakeFetch({
@@ -166,9 +207,16 @@ describe("HomePage", () => {
 
         expect(await screen.findByText(/Recovered the draft for the previous artifact destination/)).toHaveTextContent("/games/recovered-package");
         expect(screen.getByLabelText("Game name")).toHaveValue("Recovered");
-        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
-        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(0);
-        await waitFor(() => expect(screen.getByRole("button", {name: "Create game"})).toBeEnabled());
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue("/games/recovered-package");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build-preview" || call.url === "/api/home/blueprints/build")).toHaveLength(0);
+        await waitFor(() => expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled());
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(await screen.findByText(/Last built/)).toHaveTextContent("/games/recovered-package");
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(1);
+        expect(JSON.parse(calls.find((call) => call.url === "/api/home/blueprints/build")!.init!.body!)).toEqual({
+            blueprint, sourcePath: "/games/recovered.blueprint.json", outDir: "/games/recovered-package",
+        });
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/save-managed")).toHaveLength(0);
     });
 
     it("recovers the retained PAR export draft without publishing through Home", async () => {
@@ -193,6 +241,7 @@ describe("HomePage", () => {
         expect(await screen.findByText(/Recovered the draft for the previous artifact destination/)).toHaveTextContent("/games/recovered.par.xlsx");
         expect(screen.getByLabelText("Game name")).toHaveValue("Recovered");
         expect(screen.queryByLabelText("Export to path")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Output directory (optional)")).toHaveValue("");
         expect(calls.filter((call) => call.url === "/api/home/blueprints/par-export")).toHaveLength(0);
     });
 

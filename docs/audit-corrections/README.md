@@ -390,3 +390,54 @@ Property-based tests and golden-output snapshots are implemented, as the immutab
 [historical v1.3 closeout](../v1.3-closeout-report.md#below-priority-infrastructure-gaps--resolved) records.
 The maintained CLI “What's next” summary now reflects that history. Earlier campaign evidence and the closeout
 are retained unchanged; this register does not retroactively change their candidate identities or conclusions.
+
+
+### P9-11 guided Design package reachability repair (independent retest pending)
+
+The saved destination-producer finding and its transcript locator above are
+preserved. Source tracing on task HEAD `a7ec4d73de2b2e10b09eaa8cdf26c285f8006562`
+confirmed the exact defect before editing: Home always selected `guided`, and
+`!guided` excluded the build panel even after opening advanced options. Create
+game still saves and opens Overview; that project-opening job could not create
+the required Design build recovery record.
+
+Home → Start a game → Show advanced options now mounts the existing
+BlueprintBuildPanel with its editable/browsable destination, Build Preview and
+Build Package. A fresh validated draft can produce a Design package without a
+saved source or retained job. The same panel handles retained Design build
+recovery, restores its captured output directory, and requires explicit
+submission. PAR export recovery restores its draft without putting a workbook
+file path into the package output directory. The primary Create game path and
+workspace Build/Export remain available.
+
+The traced production path is editor → existing API client → StudioServer's
+build-preview/build handlers → StudioBlueprintService's prepared planner and
+GamePackageGenerator. No alternate writer or job producer was introduced.
+Guided publication requires current successful validation, applied JSON, no
+source drift and no pending save/open; Preview stays read-only. The server
+retains structural validation, source/internal-directory and occupied-output
+protection, cancellation, registration rollback and durable Home job ownership.
+The real HTTP regression publishes the fresh draft, reads its completed
+`design-build` job and exact captured request, rejects repeat publication without
+changing package bytes, and publishes a new destination.
+
+| Accumulated finding / immutable acceptance row | Current correction authority and remaining proof |
+| --- | --- |
+| Missing fresh producer and retained Design build recovery | [Routed Home controls, occupied-path/new-path result and explicit recovery](../../tests/cli/studio-client/src/components/home/HomePage.test.tsx); [guided invalid/error/JSON/source-drift guards](../../tests/cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage.guidedBuild.test.tsx); [real HTTP sentinel/race and persisted job](../../tests/cli/studio/StudioDestinationWorkflow.integration.test.ts). Product correction implemented; installed rendered `destination.design-build` and subsequent exact coverage remain pending controller collection. |
+| Shared-candidate CommonJS import and packaging descendant/stdio drainage | Existing native loader branches and launch ownership preserved; [closeout cleanup and failure-receipt regressions](../../tests/scripts/p9-11-corrective-closeout.test.mjs) pass. Both real packaging suites remain controller-owned consuming boundaries. |
+| Missing authenticated producer handoff | Existing producer integration preserved; [producer delivery/pin/reuse/failure contract](../../tests/scripts/p9-11-produce-candidate.test.mjs) passes. Prior authenticated delivery remains historical; these changed product bytes require a new exact-candidate delivery. |
+| All six public corrective repros on one normally built/packed candidate | Existing six-row index and exact action coverage above remain authoritative. Local destination regressions pass; all six installed-candidate proofs remain pending the new controller candidate. No historical runtime/Stake/canonical receipt is relabelled. |
+| Five independent personas, initial observations, affected retests and P909/P910 | All original documents and dispositions preserved. Five isolated final smokes and authenticated P909/P910 obligations remain pending controller execution. |
+| Inspectable images, transition-local focus bounds, served assets and cleanup | Existing closeout action-versus-finding/image/asset/drain validators preserved and focused contract tests pass. Actual independently inspected rendered receipts remain pending. |
+| Single release/packaging boundary, integration/push/publication and Drive round-trip | Controller-owned and pending. Wider roadmap gaps retain their previous truthful status; this implementation report does not complete the campaign. |
+
+Foreground checks: routed Home, BlueprintBuildPanel, guided creation, sectioned
+editor, guided build safety and real HTTP destination suites all pass on the
+final source; producer and closeout contract suites pass. Root `npm run typecheck`
+passes and includes `typecheck-studio-client` once. Initial new-test fixture
+mistakes (starter version and a raw-error display expectation) were corrected
+before the passing results. Existing sectioned-editor tests emit React `act`
+warnings but pass. The Studio production bundle (`npm run build-studio-client`),
+normal build/pack/install, independent browser/CLI closeout and official gates
+were not run by this bounded worker; they remain controller-owned checks on
+the committed SHA. No prior evidence was rewritten, removed or recollected.

@@ -110,6 +110,7 @@ export function BlueprintEditorPage({
     initialParSheetPath,
     recoverParImport = false,
     recoveryRequest,
+    initialBuildOutDir,
     onDirtyChange,
     onManagedProjectSaved,
     isVisible = true,
@@ -120,6 +121,8 @@ export function BlueprintEditorPage({
     /** A retained job restores its path for inspection but must not re-run Import automatically. */
     recoverParImport?: boolean;
     recoveryRequest?: Readonly<Record<string, unknown>>;
+    /** Only Design build recovery supplies a package destination; PAR recovery uses a file path. */
+    initialBuildOutDir?: string;
     onDirtyChange?: (dirty: boolean) => void;
     onManagedProjectSaved?: (registeredProject?: StudioProjectRegistryView) => void;
     isVisible?: boolean;
@@ -1024,6 +1027,10 @@ export function BlueprintEditorPage({
             buildBlockedMessage = "Reload or save the changed source before building.";
         } else if (jsonDraftDirty) {
             buildBlockedMessage = "Apply or discard the JSON edit before building.";
+        } else if (validationView.status === "invalid") {
+            buildBlockedMessage = "Fix the validation errors above before building.";
+        } else if (managedSaveView.status === "loading" || workspaceOpenPending) {
+            buildBlockedMessage = "Wait for this design to finish saving and opening before building.";
         }
     }
 
@@ -1260,10 +1267,11 @@ export function BlueprintEditorPage({
             <GameModelPreviewPanel key={`gamemodel-${editor.formGeneration}`} blueprint={blueprint} />
             <Collapse expanded={!guided || advancedOpened}>
                 {guided && <Text size="sm" c="dimmed" mb="sm">
-                    Create game saves this design and opens its workspace. Build packages and export PAR sheets
-                    from the workspace’s Build/Export section after saving. Saving does not mean an artifact was built.
+                    Create game saves this design and opens its workspace. Build Package exports the current
+                    validated draft to a new or empty directory without saving it. Export PAR sheets from the
+                    workspace’s Build/Export section after saving. Saving does not mean an artifact was built.
                 </Text>}
-                {!guided && <BlueprintBuildPanel
+                <BlueprintBuildPanel
                     // Same reasoning as BlueprintJsonPanel above -- Output directory/Build Preview/current
                     // build-attempt status are this panel's own local, transient state and would otherwise
                     // survive a wholesale replace, showing a stale in-flight/error status for a blueprint
@@ -1273,13 +1281,13 @@ export function BlueprintEditorPage({
                     key={`build-${editor.formGeneration}`}
                     blueprint={blueprint}
                     sourcePath={blueprintPath}
-                    initialOutDir={recoveryRequest?.blueprint !== undefined && typeof recoveryRequest.destinationPath === "string" ? recoveryRequest.destinationPath : undefined}
+                    initialOutDir={initialBuildOutDir}
                     builtSnapshot={builtSnapshot}
                     onBuilt={handleBuilt}
                     onRestoreBuilt={handleRestoreBuilt}
-                    blocked={guided ? validationView.status !== "ok" || sourceDrift !== undefined || jsonDraftDirty : validationView.status === "invalid"}
+                    blocked={guided ? validationView.status !== "ok" || sourceDrift !== undefined || jsonDraftDirty || guidedActionPending : validationView.status === "invalid"}
                     blockedMessage={buildBlockedMessage}
-                />}
+                />
             </Collapse>
         </div>
     );

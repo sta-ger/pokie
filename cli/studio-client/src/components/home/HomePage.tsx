@@ -80,7 +80,7 @@ export function HomePage() {
         }
     }, [navigate, tab]);
 
-    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoverParImport?: boolean; recoveryRequest?: Readonly<Record<string, unknown>>}};
+    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoverParImport?: boolean; recoveryRequest?: Readonly<Record<string, unknown>>; initialBuildOutDir?: string}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
     const initialParSheetPath = location.state?.initialParSheetPath;
 
@@ -132,7 +132,11 @@ export function HomePage() {
             return;
         }
         if ((job.operation === "design-build" || job.operation === "design-par-export") && (job.request.blueprint !== undefined || typeof job.request.sourcePath === "string")) {
-            navigate("/home/design", {state: {initialBlueprintPath: typeof job.request.sourcePath === "string" ? job.request.sourcePath : undefined, recoveryRequest: job.request}});
+            navigate("/home/design", {state: {
+                initialBlueprintPath: typeof job.request.sourcePath === "string" ? job.request.sourcePath : undefined,
+                recoveryRequest: job.request,
+                initialBuildOutDir: job.operation === "design-build" && typeof job.request.destinationPath === "string" ? job.request.destinationPath : undefined,
+            }});
         }
     };
 
@@ -181,6 +185,7 @@ export function HomePage() {
                             initialParSheetPath={initialParSheetPath}
                             recoverParImport={location.state?.recoverParImport}
                             recoveryRequest={location.state?.recoveryRequest}
+                            initialBuildOutDir={location.state?.initialBuildOutDir}
                             onDirtyChange={setIsDesignDirty}
                             isVisible={activeTab === "design"}
                             onManagedProjectSaved={(registeredProject) => {

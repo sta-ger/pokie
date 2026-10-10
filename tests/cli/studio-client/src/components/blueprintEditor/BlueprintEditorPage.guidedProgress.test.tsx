@@ -127,6 +127,8 @@ describe("Guided Design Game: automatic validation", () => {
         create.addEventListener("click", () => activations.push(create.getAttribute("data-pokie-validation-state")!));
         await waitFor(() => expect(finishValidation).toBeDefined());
         expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
         await user.click(create);
         expect(activations).toEqual([]);
         await act(() => finishValidation?.());
@@ -138,6 +140,9 @@ describe("Guided Design Game: automatic validation", () => {
         expect(create).toBeDisabled();
         expect(create).toHaveAttribute("aria-busy", "true");
         expect(create).toHaveAccessibleDescription("Studio is saving your game before opening its workspace.");
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build-preview" || call.url === "/api/home/blueprints/build")).toHaveLength(0);
         await user.click(create);
         expect(activations).toEqual(["ok"]);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
@@ -157,13 +162,17 @@ describe("Guided Design Game: automatic validation", () => {
         expect(saved.blueprint).toEqual(validated.blueprint);
     });
 
-    it("does not expose the removed Configure-to-Validate-to-Build workflow", async () => {
+    it("keeps the primary creation flow simple and makes package tools available on disclosure", async () => {
+        const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
 
         expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /Build Package|Build/})).not.toBeInTheDocument();
         expect(screen.queryByRole("list", {name: "Progress"})).not.toBeInTheDocument();
         await screen.findByText("Valid — no issues found.");
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Build Preview"})).toBeVisible();
     });
 
     it("withdraws rendered ok readiness when focusing Create commits a changed field", async () => {

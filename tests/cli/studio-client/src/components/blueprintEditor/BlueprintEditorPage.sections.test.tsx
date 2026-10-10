@@ -139,7 +139,7 @@ describe("Guided Design Game: sectioned layout", () => {
         // ready automatically and the one primary action persists and opens its managed project.
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
         expect(screen.queryByText("Validate", {selector: "button"})).not.toBeInTheDocument();
-        expect(screen.queryByText("Build Package", {selector: "button"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
 
         // No section shows an error/warning badge after a clean validate (StatusBadge renders nothing
         // for a "neutral"/"success" tone -- only a digit for "error"/"warning"). Domain-level tone
@@ -228,12 +228,12 @@ describe("Guided Design Game: sectioned layout", () => {
         expect(screen.getAllByText(/blueprint-manifest-invalid-id/)).toHaveLength(2);
     }, 60000);
 
-    it("revalidates a section edit automatically without exposing the removed package-build controls", async () => {
+    it("revalidates a section edit automatically while package tools stay behind advanced options", async () => {
         renderRoutedApp({fetchImpl: okValidateFetch(), initialEntries: ["/home/design"]});
 
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
         expect(screen.queryByText("Validate", {selector: "button"})).not.toBeInTheDocument();
-        expect(screen.queryByText("Build Package", {selector: "button"})).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
         expect(screen.queryByText("Compare built blueprint", {selector: "button"})).not.toBeInTheDocument();
 
         // Fields commit on blur. The new revision is checked in the background and remains eligible for

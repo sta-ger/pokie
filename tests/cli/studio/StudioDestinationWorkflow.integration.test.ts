@@ -121,6 +121,30 @@ describe("Studio destination HTTP workflow", () => {
         expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(contents);
     });
 
+    it("retains a fresh unsaved Design build as a Home job with its exact draft and recoverable destination", async () => {
+        const destination = path.join(directory, "fresh-design");
+        expect((await post("/api/home/blueprints/build-preview", {blueprint, outDir: destination})).body).toMatchObject({
+            status: "ok", destinationState: "missing", destinationHasContent: false,
+        });
+        expect((await post("/api/home/blueprints/build", {blueprint, outDir: destination})).body).toMatchObject({
+            status: "ok", projectRoot: destination,
+        });
+        expect(fs.existsSync(path.join(destination, "dist/index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(directory, "blueprint"))).toBe(false);
+        const response = await fetch(`${origin}/api/home/jobs`);
+        const {jobs} = await response.json() as {jobs: Array<Record<string, unknown>>};
+        expect(jobs).toHaveLength(1);
+        expect(jobs[0]).toMatchObject({
+            operation: "design-build", status: "completed",
+            request: {blueprint, sourcePath: path.join(directory, "blueprint"), destinationPath: destination},
+            result: {outputs: [{path: destination}]},
+        });
+        const packageBytes = fs.readFileSync(path.join(destination, "package.json"));
+        expect((await post("/api/home/blueprints/build", {blueprint, outDir: destination})).body.status).toBe("error");
+        expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(packageBytes);
+        expect((await post("/api/home/blueprints/build", {blueprint, outDir: "fresh-design-retry"})).body.status).toBe("ok");
+    });
+
     it("refuses file targets, legacy PAR overwrite, and WASM sidecar/companion conflicts", async () => {
         const source = path.join(directory, "blueprint.json");
         fs.writeFileSync(source, JSON.stringify(blueprint));
