@@ -210,6 +210,41 @@ served-asset binding, and full cleanup closeout remain not reached pending a
 new controller pin for the repaired driver. No candidate product defect was
 observed or inferred.
 
+### 2026-10-10 P9-11 controller-delivery recovery: rendered-driver boundary
+
+The exact product identity remains `3cddf327fe4c9aa9310f578bc9a59f71bea0c67a`;
+this clean evidence descendant has HEAD
+`d98fe27499ae7bc17fa94ea609327a581bcc6d26`. The controller rebound the one
+existing normal archive/install (archive SHA-256
+`36361323e16e1952be188a24a99f931d7de6531e2c755195eb3e5aa0b4d2aaf3`) to
+the repaired persistent driver without rebuilding or installing again. Four
+bounded closeout runs were made with fresh application and browser profiles.
+The installed public `node-wasm-first-subsequent`, `serialized-zero-replay`,
+`bounded-long-state`, and `stake-uint64-total` subcommands passed with owned
+children drained on each run.
+
+The earlier CDP-bootstrap observation is superseded: the final run reached a
+real Studio transition. `Create game` was enabled on the starter-design page,
+rendered its saving/opening pending state, then settled once at the new
+project's Overview with `project-open-materialization · Completed`. The
+independently inspected terminal screenshot is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-94e3b3bca933a5b9/closeout-2026-10-10T13-30-00Z/stake-uint64-total-create-game.png`
+(SHA-256 `429bca23588c5a85080766e4a5f45b318b6984d9b5ded5986934de27d76344e4`);
+the compact transition transcript is beside it at
+`stake-uint64-total.rendered.transcript.json` (SHA-256
+`5f638dcfce4142adb997fe9154de4fab6f920d68e14ec92bc9596552f3b1b219`). The
+final closeout failure receipt is `failed.json` in that same directory
+(SHA-256 `132881d044c284bd0cf7ea2f4cc7c9eddb4b2acdbd01898088065c3ea308a252`).
+
+No product defect was observed in this reached transition. The closeout remains
+incomplete because the supplied current driver has no implemented,
+action-local itinerary from that Overview into the required Stake recognition,
+occupied-destination recovery, or five persona rows. It stopped before
+claiming any of those outcomes; no action receipt, focus judgment, or campaign
+acceptance was synthesized. The next verifier-owned repair is to add those
+visible, per-request journeys to the same driver, pin it through the controller
+handoff, and continue only from the first missing rendered row.
+
 Reviewed against the P9-05 task base `aeec51e8ee09df6f6ef8b2273120fa61ae794822` and its focused correction.
 Observed implementation, historical agreement/deferral, and release scope are separate columns. Documenting
 an outstanding finding does not close it or introduce a milestone to implement all these directions.
