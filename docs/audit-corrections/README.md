@@ -26,6 +26,21 @@ checks, UInt64 Stake analytics, canonical CLI, and occupied-destination
 recovery; the rendered rows contain their action-local receipts and no
 findings.
 
+Collection used the authenticated external driver
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-e55cfffeb5c8ef54/current.mjs`,
+SHA-256 `e59b0016e731e759bd9068f130cd02cfef44aa74b689194f240297f803686338`.
+It did **not** use the repository driver at evidence-only descendant
+`7118490f402a7320b36b01d63c747cd975e24e0e`. Reviewer finding
+`ccfb6d8d71bd8c14` identified workflow repairs present only in that external
+driver. The current source correction brings those transitions into the
+[portable driver](../../scripts/p9-11-rendered-driver.mjs): separate selected
+replay submission, matching generation preflight/token, refresh-safe disclosures,
+visible dirty-Design confirmation and settled Home/desktop/mobile navigation.
+[Installation and closure ledger](p9-11-closeout.md#verified-driver-source-reconciliation)
+distinguishes the retained passing collection from the corrected source and its
+future controller pin. Focused fixture results prove implementation contracts;
+they do not relabel the retained external collection as a run of these new bytes.
+
 I independently inspected the final rendered Graphic Designer contact sheets,
 not merely the driver metadata: Home Design, project Overview/Build-Export,
 and settled common-card sheets respectively have SHA-256
@@ -39,6 +54,12 @@ and 390×844 viewports; no focus theft or material visual defect was observed.
 Runtime profiles, images, transcripts, and receipts remain uncommitted under
 the assigned harness. Controller release/publication/Drive lifecycle remains
 explicitly pending and is not claimed by this closeout.
+
+The accepted product, P909/P910, persona and visual proofs above remain intact
+on their recorded candidate. This driver/documentation repair changes no product
+bundle and requires no cold exploration, repeated passing browser suites,
+repackaging or official gate in the implementer clone. The controller retains
+the independent driver/handoff test matrix and release lifecycle obligations.
 
 P9-11 implementation baseline: `bd86dced40a10f6212518b14db951d03c7fb744f`.
 Immutable campaign brief: `27dfbbbd2ef5279d13929ad878c30b00d0ec40e9c4d40553a19284b8416c6a5c`.

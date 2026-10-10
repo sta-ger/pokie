@@ -286,23 +286,24 @@ implemented itineraries, matching `P911_RENDERED_COVERAGE`; admission is not
 action evidence. The focused regression exercises every branch and rejects
 partial coverage and failed observations.
 
-The controller installs this file's exact committed bytes at the existing
-`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-9a681260c6a73825/current.mjs`
-boundary, preserving retained transcripts and preflight records, then computes
-the new driver SHA-256 and invokes its existing authenticated
-`controller-candidate-handoff` admission against that path/pin. The worker must
-not modify that external harness. Do not reuse the old Stake-only pin or issue
-a delivery that names the unrepaired external file. The producer configuration
-pins this installed replacement and the exact committed candidate; the normal
-archive/install producer, packaging consumers and sequential closeout retain
-their existing contracts. No admission receipt, fixture or source-aware test
-replaces the controller's independent collection.
+The original installation handoff named
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-9a681260c6a73825/current.mjs`.
+That historical location and its receipts remain unchanged. Current passing
+collection used a later external adapter with additional repairs; the
+[current reconciliation below](#verified-driver-source-reconciliation) identifies
+its exact path/pin and the corrected committed implementation. Future controller
+installation must pin the actual installed bytes and authenticate that path/pin
+through `controller-candidate-handoff`. The worker must not modify the external
+harness or reuse a historical pin for different bytes. Existing producer,
+packaging-consumer and closeout identity contracts remain required. No admission
+receipt, fixture or source-aware test replaces independent collection.
 
 The driver accepts only the consumer's absolute authenticated request/result
 paths, verifies its own byte pin and exact requested coverage before launching,
 uses an OS-assigned fresh CDP port, and isolates browser/application/workspace
-state under the supplied profile. Input uses native Tab/Enter/typing; DOM/CDP
-inspection locates targets and observes results without invoking React handlers
+state under the supplied profile. Input uses native Tab/Enter/typing and design
+tab arrows, plus a hit-tested native pointer action for mobile section navigation.
+DOM/CDP inspection locates targets and observes results without invoking React handlers
 or fabricating DOM state. Public HTTP calls observe persisted state and exercise
 the actual Design preview/publication race. Public CLI smoke calls use only the
 supplied installed bin. Served HTML/JS/CSS hashes come from actual fetched
@@ -446,3 +447,60 @@ instruction's controller-owned packaging exception, not a passed packaging
 test or a fabricated acceptance receipt. Only the two `.mjs` readers/runners,
 their `.mjs` regression and these current-step documents changed; no TypeScript
 compiler or browser bundle consumes changed production files in this packet.
+
+## Verified driver source reconciliation
+
+Reviewer finding `ccfb6d8d71bd8c14` was traced on task baseline
+`7118490f402a7320b36b01d63c747cd975e24e0e` against the read-only authenticated
+reference at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-e55cfffeb5c8ef54/current.mjs`.
+Its bytes rehash to
+`e59b0016e731e759bd9068f130cd02cfef44aa74b689194f240297f803686338`.
+That external implementation supplied the passing collection indexed in the
+[current README entry](README.md#2026-10-10-authenticated-p9-11-corrective-closeout).
+The repository implementation at the baseline did not reproduce those bytes or
+all their transitions. The current correction repairs the portable single file;
+operation/navigation helpers live in that file, so installation adds no new
+external module dependency. The existing profile/display helpers remain unchanged.
+
+| Accumulated driver divergence | Current implementation and focused closure |
+| --- | --- |
+| Selection incorrectly counted as comparison | Load the selected record, wait for its enabled Reproduce action, activate it once, assert the rendered exact-match terminal and exactly one actual `/api/project/replays` POST. Fixtures separate loading from comparison and reject disabled, missing, duplicated or nonterminal submission. |
+| Stale generation preflight | Mark before editing; wait for the successful response matching base/sampled/5000 and the deterministic coverage seed, a nonempty token and rendered ready controls. Submit once; assert HTTP 202, matching inputs/token, own rendered/persisted job and manifest. Stale, failed, absent-token and drifted-token fixtures fail. Both generator callers remain covered. |
+| Refreshed disclosures disappear | Null-safe bounded state observation waits for a current disclosure, activates a collapsed control once and observes expansion. Open disclosures are preserved; missing/replaced controls cannot become success. Both artifact cards and the public generator use this helper. |
+| Dirty Design holds an Open | Follow the visible Leave confirmation once for the already-activated opening; await its requested project result without reissuing Open. Both recognized Stake opening and same-project replay reopening are covered. |
+| Transient navigation absence/phone drawer | Home uses its actual section ID; desktop waits for the actual project ID without activating a hidden toggle. Phone opens a visible collapsed drawer once, or retains an open drawer, then scrolls/hit-tests one native pointer action. Route, selected NavLink and the project's own rendered terminal must all agree. Delayed, missing and occluded fixtures cannot fabricate reachability. |
+| Prior keyboard, dependent Stake, determinism, presentation, images and cleanup findings | Preserve Paytable arrows/native focus, original Blueprint dependent Stake submission/borrowed manifest, explicit seeds/bet/rounds/workers, rendered rare percentages, four image/contact-sheet budget, isolated browser launch environment, PNG paint checks and bounded drainage. Whole-file driver/closeout regressions retain exact coverage/action classification and failure contracts. |
+
+The changed driver is consumed directly by native Node offline admission and
+controller CDP collection, then authenticated by the existing producer,
+candidate reader and closeout. It changes no TypeScript, generated package or
+Vite input. No compiler/build/packaging command is required in this bounded
+repair. The directly affected whole-file command passed **2 suites / 122 tests**, exit 0:
+
+```sh
+npm run test:targeted -- tests/scripts/p9-11-rendered-driver.test.mjs tests/scripts/p9-11-corrective-closeout.test.mjs
+```
+
+The controller must independently review these new driver bytes and pin the
+actual installed file for any future handoff. The existing accepted aggregate
+`3be5fee19f4b345a04c5b05e44052c5d2f9008099ba6aec92092dd864cd72d0e`, P909/P910
+receipt `227aae219f12178099ab504a`, archive, served assets, isolated profiles,
+action/process receipts and four independently reviewed graphic sheets remain
+at their original locations and attributed to their original product candidate
+`b932e86c0113d0219a82362b392d6123ca0780f6` and external driver. No receipt is
+rewritten or relabelled as a run of this corrected source. Accepted product,
+browser and visual proofs are reused; this repair requests no new cold
+exploration, repeated passing browser suites, repackaging or official gates.
+
+For immutable criterion 1, the retained normal-candidate six-repro proof and
+unsupported-capability register remain authoritative. For criterion 2, the five
+retained independent cold observations, affected retests, isolated final smokes
+and current accepted P909/P910/image disposition remain authoritative; prior
+pending paragraphs above are chronological records superseded by the current
+README entry. For criterion 3, official release/packaging lifecycle, exact
+integration/push/publication, Drive round-trip and campaign completion remain
+controller-owned and pending. The controller retains its independent three-file
+driver/closeout/producer matrix. This implementation commit closes the assigned
+source-parity repair, not the campaign state machine; all external and completed
+prerequisite evidence remains unchanged.

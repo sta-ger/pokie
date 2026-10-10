@@ -8,7 +8,7 @@ import path from "node:path";
 import {createRequire} from "node:module";
 import {deflateSync} from "node:zlib";
 import {afterEach, test} from "@jest/globals";
-import {COVERAGE, runItinerary, button, input, paintedOutline, drainDriverChild, reloadPage, main, renderedStakeExpression, assertRenderedStake, contactSheet, decodePng, navigateSurface, focusNativeTarget} from "../../scripts/p9-11-rendered-driver.mjs";
+import {COVERAGE, runItinerary, button, input, paintedOutline, drainDriverChild, reloadPage, main, renderedStakeExpression, assertRenderedStake, contactSheet, decodePng, navigateSurface, focusNativeTarget, openDisclosure, waitGenerationPreflight} from "../../scripts/p9-11-rendered-driver.mjs";
 import {P911_RENDERED_COVERAGE, validateActionCoverage} from "../../scripts/p9-11-corrective-closeout.mjs";
 const {JSDOM} = createRequire(import.meta.url)("jsdom");
 
@@ -30,7 +30,7 @@ function surface(id, fault) {
     Object.defineProperty(dom.window.HTMLElement.prototype,'innerText',{get(){return this.textContent;}});
     let prerequisiteDone=false;
     let savedCount=0, currentProject='/fixture/design.json', destination, target, buildCount=0, previews=0, afterReload=false, progressRead=false;
-    let route='home/design', section='Game basics', advanced=false, generatorOpen=false, generationAdvanced=false, generatorDone=false, drawn=false, compared=false, started=false, spun=false, simulation=false, terminal=false, occupiedError=false;
+    let route='home/design', section='Game basics', advanced=false, generatorOpen=false, generationAdvanced=false, generatorDone=false, drawn=false, replayLoaded=false, compared=false, guarded=false, started=false, spun=false, simulation=false, terminal=false, occupiedError=false;
     const opened = new Set(), completed = new Set(), values = new Map(), submissions = [];
     const output = target => `/fixture/${target}`;
     const prerequisiteRoot = '/fixture/profile/workspace/compatible-outcome-library';
@@ -61,11 +61,12 @@ function surface(id, fault) {
         }
         if(route==='exportDeploy') {
             for(const t of ['stakeAdapter','parWorkbook','tsPackage']) html+=`<div data-pokie-lifecycle-form="artifact-build"><button aria-expanded="${opened.has(t)}">Configure ${t}</button><div ${opened.has(t)?'':'hidden'}><button id="artifact-build-${t}">Build</button>${completed.has(t)?result('job-'+t,output(t)):''}</div></div>`;
-            if(fault!=='absent-generator') html+=`<div data-pokie-lifecycle-form="outcome-library"><button aria-expanded="${generatorOpen}">Configure generator</button><div ${generatorOpen?'':'hidden'}><button id="outcome-library-generation-sampled">Sampled</button>${field('Sample size')}<button>Show Advanced generation controls</button><fieldset ${generationAdvanced?'':'hidden'}>${field('Coverage seed')}</fieldset><button id="outcome-library-generate" ${fault==='disabled-generator'?'disabled':''}>Generate sampled outcome library (base)</button>${generatorDone?result('generator-own')+`<button data-pokie-lifecycle-artifact-output="${output('outcomeLibrary')}">Inspect library</button>`:''}</div></div>`;
+            if(fault!=='absent-generator') html+=`<div data-pokie-lifecycle-form="outcome-library"><button aria-expanded="${generatorOpen}">Configure generator</button><div ${generatorOpen?'':'hidden'}><button id="outcome-library-generation-sampled">Sampled</button>${field('Sample size')}<button>Show Advanced generation controls</button><fieldset ${generationAdvanced?'':'hidden'}>${field('Coverage seed')}</fieldset><div data-pokie-lifecycle-preflight="outcome-library" data-pokie-lifecycle-preflight-status="ok"></div><button id="outcome-library-generate" ${fault==='disabled-generator'?'disabled':''}>Generate sampled outcome library (base)</button>${generatorDone?result('generator-own')+`<button data-pokie-lifecycle-artifact-output="${output('outcomeLibrary')}">Inspect library</button>`:''}</div></div>`;
         }
         if(route==='play') html+=`<button>Show advanced details (seed)</button><div ${advanced?'':'hidden'}>${field('Seed (optional)')}</div>${started?'<span class="player-bet-current">Bet: 1</span><button>Spin</button>':'<button>New Play session</button>'}${spun?'Round complete':''}`;
         if(route==='simulation') html+=`${field('Rounds')}<button>Show advanced details (seed, workers)</button><fieldset ${advanced?'':'hidden'}>${field('Seed (optional)')}${field('Workers')}</fieldset><button>Run Simulation</button><button id="simulation-configure">Configure</button>${simulation?`<div role="region" aria-label="simulation job simulation-own"><div class="studio-job-card"></div><div data-pokie-lifecycle-result-job="simulation-own" ${terminal?'data-pokie-lifecycle-terminal="completed"':''}>${terminal?'Completed Open full report':'Running'}<button>Cancel</button></div></div>`:''}`;
-        if(route==='replay') html+=`<li>${row.id} ${row.seed} ${row.modeName} ${row.startedAt}<button>Inspect record ${row.id}</button><button>Reproduce &amp; compare record ${row.id}</button></li>${compared?'Verified -- matches the recorded result':''}`;
+        if(route==='replay') html+=`<li>${row.id} ${row.seed} ${row.modeName} ${row.startedAt}<button>Inspect record ${row.id}</button><button>Reproduce &amp; compare record ${row.id}</button></li>${replayLoaded?`Record ${row.id}<button ${fault==='replay-disabled'?'disabled':''}>Reproduce</button>`:''}${compared?'Verified -- matches the recorded result':''}`;
+        if (guarded) html+='<button id="design-navigation-guard-leave">Leave</button>';
         dom.window.document.body.innerHTML=html;
     };
     render();
@@ -102,12 +103,14 @@ function surface(id, fault) {
             if(label==='Configure generator') generatorOpen=true;
             if(label.startsWith('Configure ')) opened.add(label.split(' ')[1]);
             if(label==='Build') {target=element.id.slice('artifact-build-'.length);completed.add(target);buildCount++;}
-            if(element.id==='outcome-library-generate') {generatorDone=true;buildCount++;submissions.push({route:'/api/project/outcome-libraries/generate/jobs',request:{mode:'base',generation:'sampled',sample:{sampleSize:values.get('Sample size'),seed:fault==='generator-submitted-seed'?'wrong':values.get('Coverage seed')}}});}
+            if(element.id==='outcome-library-generate') {generatorDone=true;buildCount++;submissions.push({route:'/api/project/outcome-libraries/generate/jobs',request:{mode:'base',generation:'sampled',sample:{sampleSize:values.get('Sample size'),seed:fault==='generator-submitted-seed'?'wrong':values.get('Coverage seed')},preflightToken:fault==='token-drift'?'stale-token':'matching-token'}});}
             if(label==='Inspect library') {currentProject=output('outcomeLibrary');route='overview';}
             if(label==='Draw an outcome') {drawn=true;submissions.push({route:'/api/project/outcome-source/sample',request:{seed:values.get('Seed (optional)')}});}
-            if(label.startsWith('Reproduce & compare')) compared=true;
+            if(label.startsWith('Reproduce & compare')) replayLoaded=true;
+            if(label==='Reproduce') {if(fault!=='comparison-missing')submissions.push({route:'/api/project/replays',request:{recordId:row.id}});compared=fault!=='comparison-terminal';}
             if(label==='Close project') route='home/projects';
-            if(label==='Open') {route='overview';currentProject=id==='mathematician'?output('outcomeLibrary'):'/fixture/design.json';}
+            if(label==='Open') {if(fault==='dirty-guard') guarded=true;else {submissions.push({route:'/api/home/projects/open'});route='overview';currentProject=id==='mathematician'?output('outcomeLibrary'):'/fixture/design.json';}}
+            if(label==='Leave') {submissions.push({route:'/api/home/projects/open'});guarded=false;route='overview';currentProject=id==='mathematician'?output('outcomeLibrary'):'/fixture/design.json';}
             if(label==='Build Package') {occupiedError=destination.endsWith('occupied');if(!occupiedError)completed.add('design');}
             if(label==='Run Simulation') {simulation=true;submissions.push({route:'/api/project/simulations',request:tamper(simInputs())});}
             render();
@@ -117,22 +120,29 @@ function surface(id, fault) {
             await s.focus(expression);
             values.set(element.getAttribute('aria-label'),value);element.value=value;
             if(expression.includes('Output directory')) destination=value;
+            if(['Sample size','Coverage seed'].includes(element.getAttribute('aria-label'))) {
+                submissions.push({route:'/api/project/outcome-libraries/generate/estimate',request:{mode:'base',generation:'sampled',sample:{sampleSize:values.get('Sample size'),seed:values.get('Coverage seed')}}});
+            }
         },
         evaluate:async expression => dom.window.eval(expression),
-        until:async (fn,message) => {const value=await fn();assert.ok(value,`fixture boundary did not satisfy ${message}`);return value;},
+        until:async (fn,message) => {for(let attempt=0;attempt<6;attempt++){const value=await fn();if(value)return value;}assert.fail(`fixture boundary did not satisfy ${message}`);},
+        preflight:async (route,after,matchesRequest,renderedReady,label) => waitGenerationPreflight({
+            readResponse:async () => {const entry=submissions.slice(after).filter(e=>e.route===route).at(-1);return entry ? {...entry,request:fault==='stale-preflight'?{...entry.request,sample:{...entry.request.sample,seed:'previous-seed'}}:entry.request,status:200,body:{status:fault==='failed-preflight'?'conflict':'ok',preflightToken:fault==='missing-token'?undefined:'matching-token'}} : null;},
+            matchesRequest, renderedReady, until:s.until, label,
+        }),
         mark:() => submissions.length,
         requests:(route,after=0) => {
             if(route==='/api/home/blueprints/build')return fault==='occupied-submit'?[{request:{}}]:[];
             if(route==='/api/project/artifacts/build')return [{request:{target:'stakeAdapter',preparedOperationId:fault==='stale-plan'?'initial':'refreshed'}}];
             const matches=submissions.slice(after).filter(entry=>entry.route===route);
-            return fault==='duplicate'?matches.concat(matches):matches;
+            return fault==='duplicate' || (fault==='comparison-duplicate' && route==='/api/project/replays') ? matches.concat(matches):matches;
         },
         response:async route => {
             const request=submissions.findLast(entry=>entry.route===route)?.request;
             if(route==='/api/home/blueprints/build-preview')return {status:200,request:{blueprint:{manifest:{id:'tiny'}},outDir:destination},body:{status:'ok',projectRoot:destination,destinationHasContent:destination.endsWith('occupied')}};
             if(route==='/api/home/blueprints/build')return {status:201,body:{status:'ok',projectRoot:fault==='publication'?'/wrong':destination}};
             if(route==='/api/project/outcome-source/sample')return {request,body:{replayId:row.id,replay:{seed:row.seed}}};
-            if(route==='/api/project/outcome-libraries/generate/jobs')return {request,body:{job:{id:'generator-own'}}};
+            if(route==='/api/project/outcome-libraries/generate/jobs')return {status:202,request,body:{job:{id:'generator-own'}}};
             if(route==='/api/project/simulations')return {request,body:{id:'simulation-own'}};
             if(route==='/api/project/play/session')return {request,body:{session:{sessionId:'session-own',credits:1000,bet:1}}};
             return {request,body:{status:'ok',session:{studioRound:1,studioSeed:'p911-producer-play',credits:fault==='accounting'?1000:1001,bet:1,win:2,debug:{artifact:{screen:[['A']]}}}}};
@@ -202,6 +212,17 @@ for (const id of Object.keys(P911_RENDERED_COVERAGE)) {
             assert.equal(result.handoff.sourcePath,'/fixture/design.json');
             assert.equal(result.handoff.route,'reuse');
         }
+        if (id==='mathematician') {
+            const selection=f.activations.findIndex(e=>e.includes('Reproduce & compare record'));
+            const comparison=f.activations.findIndex(e=>e.includes('=== "Reproduce"'));
+            assert.ok(selection>=0 && comparison>selection);
+            assert.equal(f.submissions.filter(e=>e.route==='/api/project/replays').length,1);
+            assert.equal(f.receipts.find(e=>e.key==='mathematician.selected-exact-comparison').raw.comparisonSubmissions,1);
+        }
+        if (id==='mathematician' || id==='programmer') {
+            const generated=f.submissions.filter(e=>e.route==='/api/project/outcome-libraries/generate/jobs');
+            assert.equal(generated.length,1);assert.equal(generated[0].request.preflightToken,'matching-token');
+        }
         if (id==='occupied-destination') assert.equal(f.activations.filter(e=>e.includes('=== "Build Package"')).length,2);
         if (id==='graphic-designer') {
             assert.deepEqual(f.images.map(image=>image.name),['graphic-home-design','graphic-project-build','graphic-running-job','graphic-settled-common-card']);
@@ -215,8 +236,8 @@ for (const id of Object.keys(P911_RENDERED_COVERAGE)) {
 for (const [id, faults] of Object.entries({
     'stake-uint64-total':['rare-moment','rendered-zero','rendered-missing'],
     'occupied-destination':['occupied-submit','publication','race'],
-    programmer:['direct-publish','project-switch','sibling-terminal','prerequisite-terminal','prerequisite-output','terminal','stale-plan','borrowed','manifest','absent-generator','disabled-generator','generator-terminal','generator-output','generator-persisted-seed','generator-submitted-seed'],
-    mathematician:['replay-provenance','absent-generator','generator-output'],
+    programmer:['direct-publish','project-switch','sibling-terminal','prerequisite-terminal','prerequisite-output','terminal','stale-plan','borrowed','manifest','absent-generator','disabled-generator','generator-terminal','generator-output','generator-persisted-seed','generator-submitted-seed','stale-preflight','failed-preflight','missing-token','token-drift'],
+    mathematician:['replay-provenance','absent-generator','generator-output','replay-disabled','comparison-terminal','comparison-duplicate','comparison-missing'],
     producer:['tab-only','wrong-panel','accounting','invalid-design','submitted-seed','submitted-bet','recorded-seed'],
     'ui-ux':['duplicate','isolation','clipped','submitted-seed','submitted-workers','submitted-rounds','persisted-seed','report-seed'],
     'graphic-designer':['duplicate','replaced-card','focus-theft','unpainted','clipped','submitted-seed','submitted-workers','persisted-seed','report-seed'],
@@ -253,6 +274,68 @@ test('occupied and race sentinels are read again, never accepted from a saved ha
             return value;
         };
         await assert.rejects(runItinerary(f.request,f.s), /sentinel/);
+    }
+});
+
+test('selecting a replay only loads its contract; one separate native action compares it', async () => {
+    const f=surface('mathematician'), activate=f.s.activate;
+    f.s.activate=async expression=>{
+        await activate(expression);
+        if(expression.includes('Reproduce & compare record')) {
+            assert.ok(f.dom.window.document.body.textContent.includes('Record record-own'));
+            assert.ok(!f.dom.window.document.body.textContent.includes('Verified -- matches'));
+            assert.equal(f.submissions.filter(e=>e.route==='/api/project/replays').length,0);
+        }
+    };
+    await runItinerary(f.request,f.s);
+    assert.equal(f.submissions.filter(e=>e.route==='/api/project/replays').length,1);
+});
+
+test('matching preflight waits past stale responses and rendered loading before returning its token', async () => {
+    const inputs={mode:'base',generation:'sampled',sample:{sampleSize:'5000',seed:'selected'}};
+    const good={request:inputs,status:200,body:{status:'ok',preflightToken:'matching-token'}};
+    const observations=[null,{...good,request:{...inputs,sample:{...inputs.sample,seed:'old'}}},good,good];
+    let probes=0;
+    const accepted=await waitGenerationPreflight({
+        readResponse:async()=>observations[probes++],matchesRequest:request=>JSON.stringify(request)===JSON.stringify(inputs),
+        renderedReady:async()=>probes===4,label:'matching sampled inputs',
+        until:async (fn,label,timeout)=>{assert.equal(timeout,8000);for(let i=0;i<4;i++){const value=await fn();if(value)return value;}assert.fail(label);},
+    });
+    assert.equal(probes,4);assert.equal(accepted.body.preflightToken,'matching-token');
+});
+
+test('stale or failed preflight prevents any generation submission even with an enabled button', async () => {
+    for(const id of ['programmer','mathematician']) for(const fault of ['stale-preflight','failed-preflight','missing-token']) {
+        const f=surface(id,fault);
+        await assert.rejects(runItinerary(f.request,f.s),/preflight/);
+        assert.equal(f.submissions.filter(e=>e.route==='/api/project/outcome-libraries/generate/jobs').length,0);
+    }
+});
+
+test('refresh-safe disclosures wait for absent and replaced controls and never toggle an open card', async () => {
+    for(const initiallyOpen of [false,true]) {
+        let reads=0,activations=0,expanded=initiallyOpen;
+        await openDisclosure({
+            readExpanded:async()=>++reads===1 || reads===3 ? null : String(expanded),
+            activate:async()=>{activations++;expanded=true;},label:'refreshed card',
+            until:async (fn,label,timeout)=>{assert.equal(timeout,8000);for(let i=0;i<6;i++){const value=await fn();if(value)return value;}assert.fail(label);},
+        });
+        assert.equal(activations,initiallyOpen?0:1);assert.ok(reads>=4);
+    }
+    await assert.rejects(openDisclosure({readExpanded:async()=>null,activate:async()=>assert.fail('absent disclosure activated'),until:surface('producer').s.until,label:'missing'}),/disclosure available/);
+});
+
+test('visible dirty-Design confirmation completes the activated Open without a duplicate opening', async () => {
+    for(const id of ['stake-uint64-total','mathematician']) {
+        const f=surface(id,'dirty-guard'), activate=f.s.activate;
+        f.s.activate=async expression=>{
+            if(expression.includes('design-navigation-guard-leave')) assert.equal(f.submissions.filter(e=>e.route==='/api/home/projects/open').length,0);
+            await activate(expression);
+        };
+        await runItinerary(f.request,f.s);
+        assert.equal(f.activations.filter(e=>e.includes('design-navigation-guard-leave')).length,1);
+        assert.equal(f.submissions.filter(e=>e.route==='/api/home/projects/open').length,1);
+        assert.equal(f.dom.window.document.getElementById('design-navigation-guard-leave'),null);
     }
 });
 
@@ -404,19 +487,102 @@ test('contact sheets retain exact pixels and panel-local geometry without additi
 });
 
 
-test('phone navigation reveals the actual collapsed navigation before activating the requested route', async () => {
-    const dom=new JSDOM('<button id="studio-navigation-toggle" aria-expanded="false" aria-label="Toggle navigation">Menu</button><nav id="studio-navigation-panel" hidden><button>Build/Export</button></nav>',{url:'http://fixture/#/project/fixture/overview',runScripts:'outside-only'});
+function navigationFixture({home=false, mobile=false, delayed=false}={}) {
+    const dom=new JSDOM(`<button id="studio-navigation-toggle" aria-expanded="${mobile?'false':'true'}" ${mobile?'':'hidden'}>Menu</button><nav id="studio-navigation-panel" ${mobile?'inert hidden':''}></nav>`,{url:'http://fixture/#/'+(home?'home/projects':'project/fixture/overview'),runScripts:'outside-only'});
     windows.push(dom.window);
+    const document=dom.window.document, controlId=home?'home-tab:design':'project-tab:exportDeploy';
     Object.defineProperty(dom.window.HTMLElement.prototype,'getClientRects',{value:function(){return this.closest('[hidden]')?[]:[{}];}});
-    const activated=[];
-    await navigateSurface('Build/Export',{
-        evaluate:async expression=>dom.window.eval(expression),
-        activate:async expression=>{const element=dom.window.eval(expression);assert.ok(element?.getClientRects().length);activated.push(element.textContent);if(element.textContent==='Menu'){dom.window.document.querySelector('nav').hidden=false;element.setAttribute('aria-expanded','true');}else {dom.window.location.hash='/project/fixture/exportDeploy';dom.window.document.body.insertAdjacentHTML('beforeend','<div data-pokie-lifecycle-result-control="project-tab:exportDeploy" data-pokie-lifecycle-terminal="rendered"></div>');}},
-        until:async fn=>assert.ok(await fn()),
+    Object.defineProperty(dom.window.HTMLElement.prototype,'getBoundingClientRect',{value:()=>({left:20,top:80,width:120,height:30})});
+    dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+    document.elementFromPoint=()=>document.getElementById(controlId);
+    let attempts=0, rendered=false;
+    const addTarget=()=>document.querySelector('nav').insertAdjacentHTML('beforeend',`<button id="${controlId}" aria-current="false">${home?'Start a game':'Build/Export'} <span>Available</span></button>`);
+    if(!delayed)addTarget();
+    const activated=[],clicked=[],keys=[];
+    document.addEventListener('click',event=>{
+        activated.push(event.target.id);
+        if(event.target.id==='studio-navigation-toggle') {
+            const nav=document.querySelector('nav');nav.hidden=false;nav.removeAttribute('inert');event.target.setAttribute('aria-expanded','true');
+        } else {
+            dom.window.location.hash=home?'/home/design':'/project/fixture/exportDeploy';
+            event.target.setAttribute('aria-current','page');
+        }
     });
-    assert.deepEqual(activated,['Menu','Build/Export']);
+    const boundary={
+        evaluate:async expression=>dom.window.eval(expression),
+        until:async (fn,message)=>{
+            for(let i=0;i<8;i++) {
+                const value=await fn();if(value)return value;
+                if(++attempts===2 && delayed)addTarget();
+                // Route and selected NavLink alone do not mean the page settled.
+                if(!home && !rendered && dom.window.location.hash.endsWith('/exportDeploy')) {
+                    document.body.insertAdjacentHTML('beforeend',`<div data-pokie-lifecycle-result-control="${controlId}" data-pokie-lifecycle-terminal="loading"></div>`);
+                    rendered=true;
+                } else if(rendered) document.querySelector('[data-pokie-lifecycle-terminal]').setAttribute('data-pokie-lifecycle-terminal','rendered');
+            }
+            assert.fail(`navigation deadline: ${message}`);
+        },
+        key:async key=>{
+            keys.push(key);
+            if(key==='Enter')document.activeElement.click();
+            if(key==='Tab') {
+                const stops=[...document.querySelectorAll('button')].filter(e=>e.getClientRects().length&&!e.closest('[inert]'));
+                stops[(stops.indexOf(document.activeElement)+1)%stops.length]?.focus();
+            }
+        },
+        activate:async expression=>{await focusNativeTarget(expression,boundary);await boundary.key('Enter');},
+        click:async (x,y)=>{clicked.push({x,y});document.elementFromPoint(x,y).click();},
+    };
+    return {dom,boundary,activated,clicked,keys,controlId};
+}
+
+test('settled desktop and Home navigation wait for delayed real controls without a hidden drawer fallback', async () => {
+    for(const home of [false,true]) {
+        const f=navigationFixture({home,delayed:true});
+        await navigateSurface(home?'Start a game':'Build/Export',f.boundary);
+        assert.deepEqual(f.activated,[f.controlId]);
+        assert.deepEqual(f.clicked,[]);
+        assert.ok(f.keys.includes('Tab') && f.keys.includes('Enter'));
+        assert.equal(f.dom.window.document.activeElement.id,f.controlId);
+    }
 });
 
+test('phone navigation opens one native drawer and hit-tests one visible target before awaiting its rendered terminal', async () => {
+    const f=navigationFixture({mobile:true,delayed:true});
+    await navigateSurface('Build/Export',f.boundary);
+    assert.deepEqual(f.activated,['studio-navigation-toggle',f.controlId]);
+    assert.deepEqual(f.clicked,[{x:80,y:95}]);
+    assert.ok(f.keys.includes('Tab') && f.keys.includes('Enter'));
+    assert.equal(f.dom.window.document.querySelector('[data-pokie-lifecycle-terminal]').getAttribute('data-pokie-lifecycle-terminal'),'rendered');
+});
+
+test('an already open phone drawer uses one hit-tested action without toggling it closed', async () => {
+    const f=navigationFixture({mobile:true});
+    const document=f.dom.window.document;
+    document.getElementById('studio-navigation-toggle').setAttribute('aria-expanded','true');
+    document.querySelector('nav').hidden=false;document.querySelector('nav').removeAttribute('inert');
+    await navigateSurface('Build/Export',f.boundary);
+    assert.deepEqual(f.activated,[f.controlId]);assert.equal(f.clicked.length,1);
+    assert.deepEqual(f.keys,[]);
+});
+
+test('phone Home sections use their actual control after revealing the responsive drawer', async () => {
+    const f=navigationFixture({home:true,mobile:true,delayed:true});
+    await navigateSurface('Start a game',f.boundary);
+    assert.deepEqual(f.activated,['studio-navigation-toggle',f.controlId]);
+    assert.equal(f.clicked.length,1);
+    assert.ok(f.dom.window.location.hash.endsWith('/home/design'));
+    assert.equal(f.dom.window.document.getElementById(f.controlId).getAttribute('aria-current'),'page');
+});
+
+test('missing desktop controls and occluded mobile targets cannot be accepted as reachable', async () => {
+    const desktop=navigationFixture();desktop.dom.window.document.getElementById(desktop.controlId).remove();
+    await assert.rejects(navigateSurface('Build/Export',desktop.boundary),/navigation deadline/);
+    assert.deepEqual(desktop.activated,[]);
+    const mobile=navigationFixture({mobile:true});mobile.dom.window.document.elementFromPoint=()=>mobile.dom.window.document.body;
+    await assert.rejects(navigateSurface('Build/Export',mobile.boundary),/navigation deadline/);
+    assert.deepEqual(mobile.activated,['studio-navigation-toggle']);assert.deepEqual(mobile.clicked,[]);
+});
 
 test('saved Overview requires its own rendered terminal and no retained Home editor', async () => {
     for (const fault of ['uncommitted-overview','retained-editor']) {
@@ -426,22 +592,16 @@ test('saved Overview requires its own rendered terminal and no retained Home edi
     }
 });
 
-test('a changed hash alone cannot authorize measuring a project navigation', async () => {
-    const dom=new JSDOM('<nav id="studio-navigation-panel"><button>Overview</button></nav>',{url:'http://fixture/#/project/fixture/exportDeploy',runScripts:'outside-only'});
-    windows.push(dom.window);
-    Object.defineProperty(dom.window.HTMLElement.prototype,'getClientRects',{value:function(){return [{}];}});
-    let probes=0;
-    await navigateSurface('Overview',{
-        evaluate:async expression=>dom.window.eval(expression),
-        activate:async ()=>{dom.window.location.hash='/project/fixture/overview';},
-        until:async fn=>{
-            probes++;
-            assert.equal(await fn(),false);
-            dom.window.document.body.insertAdjacentHTML('beforeend','<div data-pokie-lifecycle-result-control="project-tab:overview" data-pokie-lifecycle-terminal="loading"></div>');
-            assert.equal(await fn(),false);
-            dom.window.document.querySelector('[data-pokie-lifecycle-terminal]').setAttribute('data-pokie-lifecycle-terminal','rendered');
-            assert.equal(await fn(),true);
-        },
-    });
-    assert.equal(probes,1);
+test('a changed hash and selected NavLink cannot authorize measuring a project navigation', async () => {
+    const f=navigationFixture();
+    f.boundary.until=async (fn,message)=>{
+        if(!message.startsWith('Project navigation'))return fn();
+        assert.equal(await fn(),false);
+        const document=f.dom.window.document;
+        document.body.insertAdjacentHTML('beforeend',`<div data-pokie-lifecycle-result-control="${f.controlId}" data-pokie-lifecycle-terminal="loading"></div>`);
+        assert.equal(await fn(),false);
+        document.querySelector('[data-pokie-lifecycle-terminal]').setAttribute('data-pokie-lifecycle-terminal','rendered');
+        assert.equal(await fn(),true);
+    };
+    await navigateSurface('Build/Export',f.boundary);
 });

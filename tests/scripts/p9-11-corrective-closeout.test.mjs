@@ -70,6 +70,19 @@ test("later regression cannot be hidden by a passed earlier action", () => {
     assert.throws(() => validateActionCoverage("occupied-destination", destination), /race/);
 });
 
+test("selected and reopened replay provenance cannot substitute for an actual exact comparison", () => {
+    for (const exactComparison of [undefined, false, "loaded"]) {
+        const result = rendered("mathematician");
+        result.replay.exactComparison = exactComparison;
+        assert.throws(() => validateActionCoverage("mathematician", result), /selected durable replay provenance mismatch/);
+    }
+    for (const classification of ["finding", "unreached", "blocked"]) {
+        const result = rendered("mathematician");
+        result.actions.find(action => action.id === "mathematician.selected-exact-comparison").classification = classification;
+        assert.throws(() => validateActionCoverage("mathematician", result), /mathematician.selected-exact-comparison/);
+    }
+});
+
 test("numeric proof rejects lost rare probabilities, totals and inconsistent deviation", () => {
     const p = 2 ** -64, mode = {totalWeight:"18446744073709551616", hitFrequency:p, maxWinProbability:p, rtp:2 * p, variance:4 * p * (1 - p), standardDeviation:2 ** -31};
     assertRareP911Metrics(mode);

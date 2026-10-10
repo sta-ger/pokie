@@ -29,6 +29,29 @@ const card = target => `document.getElementById(${q(`artifact-build-${target}`)}
 export const generatorScope = "document.querySelector('[data-pokie-lifecycle-form=outcome-library]')";
 const ownResult = (scope = "document") => `(${scope})?.querySelector('[data-pokie-lifecycle-result-job][data-pokie-lifecycle-terminal=completed]')`;
 
+// Refreshes may temporarily remove disclosures. Observe their current state
+// before one activation; never dereference an old node or toggle an open card.
+export async function openDisclosure({readExpanded, activate, until, label}) {
+    const state = await until(async () => {
+        const value = await readExpanded();
+        return value === "true" || value === "false" ? value : false;
+    }, `${label}: disclosure available`, 8000);
+    if (state === "false") await activate();
+    await until(async () => await readExpanded() === "true", `${label}: disclosure expanded`, 8000);
+}
+
+export async function waitGenerationPreflight({readResponse, matchesRequest, renderedReady, until, label}) {
+    return until(async () => {
+        const response = await readResponse();
+        if (!response || !matchesRequest(response.request)) return false;
+        // A pending/stale success cannot authorize a different set of edits.
+        requireObserved(response.status === 200 && response.body?.status === "ok"
+            && typeof response.body.preflightToken === "string" && response.body.preflightToken,
+        `${label}: matching preflight failed or missing token`);
+        return await renderedReady() ? response : false;
+    }, label, 8000);
+}
+
 export async function focusNativeTarget(expression, {until, evaluate, key}) {
     await until(() => evaluate(`Boolean((${expression}) && !(${expression}).disabled && (${expression}).getClientRects().length)`), `enabled native target ${expression}`, 12000);
     for (let index = 0; index < 240; index++) {
@@ -73,8 +96,13 @@ export async function runItinerary(request, s) {
     };
     const openCard = async target => {
         const toggle = `(${card(target)})?.querySelector('button[aria-expanded]')`;
-        await see(`Boolean(${toggle})`, `${target}: artifact card available`);
-        if (await s.evaluate(`(${toggle}).getAttribute('aria-expanded') === 'false'`)) await s.activate(toggle);
+        // A navigation-triggered artifact-plan refresh can briefly remove the
+        // card. Observe that local control and its disclosure state again.
+        await see(`Boolean(${toggle})`, `${target}: artifact card available after refresh`);
+        await openDisclosure({
+            readExpanded: () => s.evaluate(`(${toggle}) ? (${toggle}).getAttribute('aria-expanded') : null`),
+            activate: () => s.activate(toggle), until:s.until, label:`${target}: artifact card`,
+        });
     };
     const build = async target => {
         await openCard(target);
@@ -89,17 +117,32 @@ export async function runItinerary(request, s) {
     const generateLibrary = async () => {
         const toggle = `(${generatorScope})?.querySelector('button[aria-expanded]')`;
         await see(`Boolean(${toggle})`, "public Outcome Library generator available");
-        if (await s.evaluate(`(${toggle}).getAttribute('aria-expanded') === 'false'`)) await s.activate(toggle);
+        await openDisclosure({
+            readExpanded: () => s.evaluate(`(${toggle}) ? (${toggle}).getAttribute('aria-expanded') : null`),
+            activate: () => s.activate(toggle), until:s.until, label:"Outcome Library generator",
+        });
+        // Every edit invalidates the immutable preflight token.  Mark before
+        // the first edit, then accept only the preflight whose request carries
+        // the visible sampled inputs; an enabled button from an earlier
+        // preflight must never be used to submit this operation.
+        const editedAt = s.mark();
         await s.activate("document.getElementById('outcome-library-generation-sampled')");
         await s.fill(input("Sample size", generatorScope), "5000");
         await s.activate(button("Show Advanced generation controls", generatorScope));
         const seed = `p911-${request.id}-library`;
         await s.fill(input("Coverage seed", generatorScope), seed);
+        const preflight = await s.preflight(
+            "/api/project/outcome-libraries/generate/estimate", editedAt,
+            body => body?.mode === "base" && body.generation === "sampled"
+                && body.sample?.sampleSize === "5000" && body.sample?.seed === seed,
+            () => s.evaluate(`document.querySelector('[data-pokie-lifecycle-preflight=outcome-library][data-pokie-lifecycle-preflight-status=ok]')?.getClientRects().length > 0 && Boolean(document.getElementById('outcome-library-generate')?.getClientRects().length) && !document.getElementById('outcome-library-generate').disabled`),
+            "sampled Outcome Library generation preflight",
+        );
         const submittedAt = s.mark();
         await s.activate("document.getElementById('outcome-library-generate')");
         const accepted = await s.response('/api/project/outcome-libraries/generate/jobs', submittedAt);
         requireObserved(s.requests('/api/project/outcome-libraries/generate/jobs', submittedAt).length === 1, "generator duplicate submission");
-        requireObserved(accepted.request?.generation === 'sampled' && Number(accepted.request.sample?.sampleSize) === 5000 && accepted.request.sample?.seed === seed, "generator submitted inputs differ");
+        requireObserved(accepted.status === 202 && accepted.request?.generation === 'sampled' && Number(accepted.request.sample?.sampleSize) === 5000 && accepted.request.sample?.seed === seed && accepted.request.preflightToken === preflight.body?.preflightToken, "generator submitted inputs differ or preflight token drifted");
         const id = accepted.body.job?.id;
         requireObserved(id, "generator accepted without job identity");
         await see(`(${ownResult(generatorScope)})?.getAttribute('data-pokie-lifecycle-result-job') === ${q(id)}`, "generator own completed terminal");
@@ -109,7 +152,7 @@ export async function runItinerary(request, s) {
         const manifest = JSON.parse(await s.read(path.join(output,'manifest.json')));
         const mode = manifest.modes?.find(mode => mode.modeName === accepted.request.mode);
         requireObserved(mode?.generator?.seed === seed && Number(mode.generator.sampledRawCount) === 5000 && mode.generator.strategy === 'bounded-coverage', "generator persisted inputs differ");
-        return {id, output, job, accepted, manifest, text:await text(generatorScope)};
+        return {id, output, job, accepted, preflight, manifest, text:await text(generatorScope)};
     };
     const simulationInputs = {seed:`p911-${request.id}-simulation`, rounds:500000, workers:1};
     const submitSimulation = async () => {
@@ -130,12 +173,20 @@ export async function runItinerary(request, s) {
         requireObserved(Object.entries(simulationInputs).every(([key,value]) => terminal.request?.[key] === value && report.report?.[key] === value), "simulation persisted inputs/result differ");
         return report;
     };
+    // An Open action from Home may legitimately be held by the visible
+    // dirty-Design guard.  This accepts that guard exactly once for the
+    // already-activated Open; it never issues a second Open request.
+    const awaitOpenedProject = async (terminal, message) => {
+        const state = await s.until(() => s.evaluate(`(${terminal}) ? "terminal" : Boolean(document.getElementById('design-navigation-guard-leave')?.getClientRects().length) ? "guard" : ""`), `${message} acceptance`, 8000);
+        if (state === "guard") await s.activate("document.getElementById('design-navigation-guard-leave')");
+        await see(terminal, message);
+    };
     const reopen = async project => {
         await s.activate(button("Close project"));
         await see("location.hash.includes('/home/projects')", "closed project Projects transition");
         const scope = `Array.from(document.querySelectorAll('.project-registry-entry')).find(e => e.innerText.includes(${q(project)}))`;
         await s.activate(button("Open", scope));
-        await see(`location.hash.endsWith('/overview') && decodeURIComponent(location.hash.split('/')[2]) === ${q(project)}`, "same project reopened");
+        await awaitOpenedProject(`location.hash.endsWith('/overview') && decodeURIComponent(location.hash.split('/')[2]) === ${q(project)}`, "same project reopened");
     };
     let fields = {};
     switch (request.id) {
@@ -146,7 +197,7 @@ export async function runItinerary(request, s) {
             await see("/Found a (?:Game export|Stake Engine export)/.test(document.body.innerText)", "recognized Stake source");
             await s.activate(button("Add to projects"));
             await s.activate(button("Open", "Array.from(document.querySelectorAll('.project-registry-entry')).find(e => e.innerText.includes('rare-stake'))"));
-            await see("location.hash.endsWith('/overview') && document.body.innerText.includes('Game export')", "recognized-source Overview");
+            await awaitOpenedProject("location.hash.endsWith('/overview') && document.body.innerText.includes('Game export')", "recognized-source Overview");
             const context = await s.get("/api/project/context");
             const analysis = context.report?.modes?.[0]?.analysis;
             const moments = {hitFrequency:2 ** -64, maxWinProbability:2 ** -64, rtp:2 ** -63, variance:2 ** -62, standardDeviation:2 ** -31};
@@ -292,9 +343,15 @@ export async function runItinerary(request, s) {
             const replayRow = `(${button(`Inspect record ${recordId}`)})?.closest('li')`;
             await see(`(${replayRow})?.innerText.includes(${q(recordId)}) && (${replayRow})?.innerText.includes(${q(row.seed)}) && (${replayRow})?.innerText.includes(${q(row.modeName)}) && (${replayRow})?.innerText.includes(${q(row.startedAt)})`, "unambiguous rendered replay row provenance");
             await record("mathematician.replay-row-provenance", await text(), {row, draw});
+            // Selection only loads the retained artifact's comparison contract.
+            // The separate visible Reproduce action sends the actual request.
             await s.activate(button(`Reproduce & compare record ${recordId}`));
+            await see(`document.body.innerText.includes(${q(`Record ${recordId}`)}) && Boolean(${button("Reproduce")}) && !(${button("Reproduce")}).disabled`, "selected replay loaded with its visible Reproduce action");
+            const reproduceAt = s.mark();
+            await s.activate(button("Reproduce"));
             await see("document.body.innerText.includes('Verified -- matches the recorded result')", "selected exact replay comparison");
-            await record("mathematician.selected-exact-comparison", await text(), {recordId});
+            requireObserved(s.requests("/api/project/replays", reproduceAt).length === 1, "selected replay comparison duplicate or missing submission");
+            await record("mathematician.selected-exact-comparison", await text(), {recordId, comparisonSubmissions:s.requests("/api/project/replays", reproduceAt).length});
             await reopen(library.output);
             await s.navigate("Replay");
             await s.activate(button(`Inspect record ${recordId}`));
@@ -596,23 +653,43 @@ export async function drainDriverChild(entry, {alive, signal, now = Date.now, wa
     await entry.completion;
 }
 
-export async function navigateSurface(label, {evaluate, activate, until}) {
-    const names={"Your projects":"Projects"};
-    const target=button(names[label] ?? label, "document.getElementById('studio-navigation-panel')");
-    const collapsedMobile = await evaluate("(() => {const toggle=document.getElementById('studio-navigation-toggle');return Boolean(toggle?.getClientRects().length && getComputedStyle(toggle).visibility !== 'hidden' && toggle.getAttribute('aria-expanded') === 'false');})()");
-    if (collapsedMobile || !await evaluate(`Boolean(${target})`)) {
-        await activate(button("Toggle navigation"));
-        await until(() => evaluate(`Boolean(${target})`), `revealed navigation ${label}`);
-    }
-    await activate(target);
-    const routes={"Start a game":"/home/design", "Your projects":"/home/projects", "Build/Export":"/exportDeploy", Simulation:"/simulation", Replay:"/replay", Overview:"/overview"};
-    if(routes[label]) {
-        const tab = routes[label].slice(1);
-        const rendered = tab.startsWith("home/")
-            ? `Boolean((${target})?.getAttribute('aria-current') === 'page')`
-            : `Boolean(document.querySelector(${q(`[data-pokie-lifecycle-result-control="project-tab:${tab}"][data-pokie-lifecycle-terminal="rendered"]`)}))`;
-        await until(() => evaluate(`location.hash.endsWith(${q(routes[label])}) && ${rendered}`), `navigation ${label}`);
-    }
+// This function runs inside the rendered page. It resolves one visible native
+// control after the drawer transition, scrolls it and verifies its hit target.
+export function renderedNavigationPoint(controlId) {
+    const element = document.getElementById(controlId);
+    if (!element || element.disabled || !element.getClientRects().length || element.closest('[inert]')) return null;
+    element.scrollIntoView({block:"nearest", inline:"nearest"});
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return rect.width > 0 && rect.height > 0 && x >= 0 && x < innerWidth && y >= 0 && y < innerHeight
+        && (hit === element || element.contains(hit)) ? {x, y} : null;
+}
+
+export async function navigateSurface(label, {evaluate, activate, click, until}) {
+    const homeRoutes={"Start a game":"design", "Your projects":"projects", Projects:"projects"};
+    const projectRoutes={"Build/Export":"exportDeploy", Simulation:"simulation", Replay:"replay", Overview:"overview"};
+    const home=Boolean(homeRoutes[label]), route=homeRoutes[label] ?? projectRoutes[label];
+    requireObserved(route, `unknown navigation ${label}`);
+    // Section labels include Mantine decoration; the native control's public
+    // identity is stable, including after the Close project transition.
+    const controlId=`${home ? "home" : "project"}-tab:${route}`;
+    const target=`document.getElementById(${q(controlId)})`;
+    const mobileState="(() => {const e=document.getElementById('studio-navigation-toggle');return e?.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' ? (e.getAttribute('aria-expanded') === 'false' ? 'drawer' : 'mobile') : '';})()";
+    const state=await until(async () => {
+        const mobile=await evaluate(mobileState);
+        if (mobile) return mobile;
+        return await evaluate(`Boolean((${target})?.getClientRects().length && !(${target}).disabled && !(${target}).closest('[inert]'))`) ? "visible" : false;
+    }, `reachable navigation ${label}`, 8000);
+    if (state === "drawer" || state === "mobile") {
+        if (state === "drawer") await activate("document.getElementById('studio-navigation-toggle')");
+        // Native pointer input handles the refreshed mobile drawer; desktop and
+        // all other form/keyboard coverage retain sequential Tab/Enter input.
+        const point=await until(() => evaluate(`(${renderedNavigationPoint.toString()})(${q(controlId)})`), `revealed navigation ${label}`, 8000);
+        await click(point.x, point.y);
+    } else await activate(target);
+    const rendered=home ? "true" : `Boolean(document.querySelector(${q(`[data-pokie-lifecycle-result-control="${controlId}"][data-pokie-lifecycle-terminal="rendered"]`)}))`;
+    await until(() => evaluate(`location.hash.endsWith(${q(home ? `/home/${route}` : `/${route}`)}) && (${target})?.getAttribute('aria-current') === 'page' && ${rendered}`), `${home ? "Home" : "Project"} navigation ${label}`, 8000);
 }
 
 export async function reloadPage(cdp, until) {
@@ -691,6 +768,11 @@ export async function main(args, helpers = {}) {
             await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key, code, windowsVirtualKeyCode, modifiers, ...(key === "Enter" ? {text:"\r"} : {})});
             await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key, code, windowsVirtualKeyCode, modifiers});
         };
+        const click = async (x, y) => {
+            requireObserved(Number.isFinite(x) && Number.isFinite(y), "rendered action coordinate missing");
+            await cdp.send("Input.dispatchMouseEvent", {type:"mousePressed", x, y, button:"left", clickCount:1});
+            await cdp.send("Input.dispatchMouseEvent", {type:"mouseReleased", x, y, button:"left", clickCount:1});
+        };
         const focus = expression => focusNativeTarget(expression, {until, evaluate, key});
         const activate = async expression => {await focus(expression); await key("Enter", "Enter", 13);};
         const fill = async (expression, value) => {
@@ -735,7 +817,7 @@ export async function main(args, helpers = {}) {
         const surface = {
             resultPath, until, evaluate, activate, focus, fill, key, get, requests, response, receipt, image, capture, focusGeometry,
             mark:() => cdp.events.length, read:readFile, write:(file, bytes) => writeFile(file,bytes,{flag:"wx"}), mkdir:directory => mkdir(directory),
-            navigate:label => navigateSurface(label, {evaluate, activate, until}),
+            navigate:label => navigateSurface(label, {evaluate, activate, click, until}),
             reload,
             offline:offline => cdp.send("Network.emulateNetworkConditions", {offline, latency:0, downloadThroughput:-1, uploadThroughput:-1}),
             viewport:async (width,height) => {
@@ -754,6 +836,17 @@ export async function main(args, helpers = {}) {
                 if (!cdp.events.some(event => event.method === "Network.loadingFinished" && event.params.requestId === entry.requestId)) return {};
                 const response = await cdp.send("Network.getResponseBody", {requestId:entry.requestId}); return JSON.parse(response.body);
             },
+            preflight:async (route, after, matchesRequest, renderedReady, label) => waitGenerationPreflight({
+                readResponse:async () => {
+                    const entry = requests(route, after).at(-1);
+                    if (!entry || !cdp.events.some(event => event.method === "Network.loadingFinished" && event.params.requestId === entry.requestId)) return null;
+                    const received = cdp.events.find(event => event.method === "Network.responseReceived" && event.params.requestId === entry.requestId);
+                    if (!received) return null;
+                    const body = await cdp.send("Network.getResponseBody", {requestId:entry.requestId});
+                    return {...entry, status:received.params.response.status, body:JSON.parse(body.base64Encoded ? Buffer.from(body.body,"base64").toString() : body.body)};
+                },
+                matchesRequest, renderedReady, label, until,
+            }),
             post:async (route, body) => {
                 const response = await fetch(new URL(route,origin), {method:"POST", headers:{Origin:origin,"Content-Type":"application/json"}, body:JSON.stringify(body), signal:AbortSignal.timeout(Math.min(10000,Math.max(1,deadline-Date.now())))});
                 return {status:response.status, body:await response.json(), request:body};
