@@ -32,6 +32,19 @@ function codesOf(issues: {code: string}[]): string[] {
 describe("GameBlueprintValidator", () => {
     const validator = new GameBlueprintValidator();
 
+    it("accepts finite fractional/scientific stakes and keeps duplicate-bet warnings", () => {
+        expect(validator.validate({...validBlueprint(), availableBets: [1, 0.01, 0.1, 1.5, 1e-7]})).toEqual([]);
+        expect(validator.validate({...validBlueprint(), availableBets: [0.01, 0.01]})).toEqual([
+            expect.objectContaining({code: "blueprint-availablebets-duplicate", severity: "warning"}),
+        ]);
+    });
+
+    it.each([[], ["0.01"], [null], [0], [-0.01], [NaN], [Infinity], [-Infinity]].map(availableBets => ({availableBets})))("rejects invalid available bets $availableBets", ({availableBets}) => {
+        expect(validator.validate({...validBlueprint(), availableBets})).toContainEqual(
+            expect.objectContaining({code: "blueprint-availablebets-invalid", severity: "error"}),
+        );
+    });
+
     it("returns no issues for a well-formed blueprint", () => {
         expect(validator.validate(validBlueprint())).toEqual([]);
     });

@@ -17,8 +17,8 @@ export async function createProductionParityFixture(directory: string, blueprint
     const loaded = await loadPokieGameRuntime(generated.projectRoot, (entry) => require(entry));
     const source = path.join(directory, "parity.blueprint.json");
     const artifact = path.join(directory, "parity.wasm");
-    fs.writeFileSync(source, JSON.stringify(blueprint));
     try {
+        fs.writeFileSync(source, JSON.stringify(blueprint));
         await new WasmArtifactBuilder("1.3.0").build({type: "blueprint", rootPath: source, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "P9-01"}, artifact);
         return {...loaded, artifact, projectRoot: generated.projectRoot};
     } catch (error) {

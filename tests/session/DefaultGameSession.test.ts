@@ -1,4 +1,5 @@
 import {GameSession, GameSessionConfig} from "pokie";
+import {FRACTIONAL_BET_STAKES} from "../fixtures/math/FractionalBetFixture.js";
 import {
     createCustomConfigForTestProperInitialValues,
     createCustomConfigForWrongBetTest,
@@ -10,6 +11,25 @@ import {
 } from "./DefaultGameSessionTestCases.js";
 
 describe("GenericGameSession", () => {
+    it("selects fractional/scientific bets exactly and preserves unavailable-bet fallback", () => {
+        const config = new GameSessionConfig();
+        config.setAvailableBets(FRACTIONAL_BET_STAKES);
+        const session = new GameSession(config);
+        for (const bet of FRACTIONAL_BET_STAKES) {
+            session.setBet(bet);
+            expect(session.getBet()).toBe(bet);
+            const credits = session.getCreditsAmount();
+            session.play();
+            expect(session.getCreditsAmount()).toBe(credits - bet);
+        }
+        session.setBet(99);
+        expect(session.getBet()).toBe(FRACTIONAL_BET_STAKES[0]);
+        session.setCreditsAmount(0);
+        expect(session.canPlayNextGame()).toBe(false);
+        session.play();
+        expect(session.getCreditsAmount()).toBe(0);
+    });
+
     it("creates a new session", () => {
         const conf = new GameSessionConfig();
         const sess = new GameSession(conf);
