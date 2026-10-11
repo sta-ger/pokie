@@ -10,7 +10,7 @@ automatically rewritten: rebuild packages and generate fresh outcome artifacts.
 | Evidence boundary | Current status |
 | --- | --- |
 | P10-01/P10-02 implementation regressions | Recorded in the two linked documents; source-bound execution, not installed proof |
-| P10-03 runner support | Focused commands below; hermetic lifecycle tests and existing source-bound regression support |
+| P10-03 runner support | [Candidate-reader focused verification](p10-03-candidate-reader-targeted-verification.md) records the machine-owned three-file result on `6a150cd2c3efbf40d67f3625298f181a37e44bd2`; hermetic lifecycle tests and existing source-bound regression support remain retained |
 | Independent installed candidate | **Passed**: [P10-03 independent installed rerun](p10-03-independent-installed-rerun.md) authenticated and exercised one normally built, packed and isolated installation of `a9a0ead57276d8c7ebb06b7c0369b9f66000068f` |
 | Official release and packaging | **Pending controller** `check:release`, which includes normal packaging smoke |
 | Develop publication and Drive round-trip | **Pending controller lifecycle**; no local commit constitutes publication |
