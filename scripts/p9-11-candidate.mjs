@@ -35,6 +35,7 @@ const tooling = new Set([
     // P10-03 retained-candidate delta: installed receipt plus bounded gate regression.
     "docs/math-contract-corrections/README.md",
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
+    "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
