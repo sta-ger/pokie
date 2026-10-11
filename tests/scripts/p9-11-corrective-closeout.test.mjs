@@ -120,20 +120,23 @@ test("dependent handoff rejects direct publication, project switches, stale subm
 });
 
 
-test("shared selector retains the authenticated archive/install through committed tooling repair and installed-receipt addition and modification", async () => {
+test("shared selector retains the authenticated archive/install through committed tooling repair and receipt/finalization addition and modification", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-tooling-descendant-"));
     try {
         const fixture = await candidateFixture(directory), original = await selectRetained(fixture);
-        const installedReceipt = "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md";
-        assert.equal(await exists(path.join(fixture.repository, installedReceipt)), false);
+        const addedEvidence = [
+            "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
+            "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
+        ];
+        for (const file of addedEvidence) assert.equal(await exists(path.join(fixture.repository, file)), false);
         const retainedPaths = [fixture.reference.path, fixture.handoff.archivePath,
             fixture.handoff.buildReceipt.path, fixture.handoff.installReceipt.path, fixture.handoff.browserDriver.path,
             ...original.projection.entries.map(entry => path.join(original.packageRoot, entry.path))];
         const retainedBytes = await Promise.all(retainedPaths.map(file => readFile(file)));
         const reviewedId = await commitP911ToolingDescendant(fixture);
         let selected = await selectRetained(fixture);
-        assert.equal(execFileSync("git", ["diff", "--name-only", "--diff-filter=A", original.candidateId, reviewedId],
-            {cwd:fixture.repository, encoding:"utf8"}).trim(), installedReceipt);
+        assert.deepEqual(execFileSync("git", ["diff", "--name-only", "--diff-filter=A", original.candidateId, reviewedId],
+            {cwd:fixture.repository, encoding:"utf8"}).trim().split("\n"), addedEvidence);
         assert.notEqual(reviewedId, original.candidateId);
         assert.deepEqual(selected.equivalence, {
             candidateId:original.candidateId, candidateTreeId:original.candidateTreeId, reviewedId,
@@ -146,6 +149,7 @@ test("shared selector retains the authenticated archive/install through committe
             "docs/audit-corrections/README.md",
             "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
             "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
+            "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
             "tests/scripts/p9-11-corrective-closeout.test.mjs",
@@ -153,15 +157,17 @@ test("shared selector retains the authenticated archive/install through committe
         assert.deepEqual({...selected, equivalence:original.equivalence}, original);
         assert.equal(selected.consumedArchiveSha256, fixture.handoff.archiveSha256);
         assert.deepEqual(await Promise.all(retainedPaths.map(file => readFile(file))), retainedBytes);
-        await writeFile(path.join(fixture.repository, installedReceipt), "Updated installed receipt fixture; original candidate identity retained.\n");
-        const modifiedId = commitFixture(fixture.repository);
-        assert.equal(execFileSync("git", ["diff", "--name-only", "--diff-filter=M", reviewedId, modifiedId],
-            {cwd:fixture.repository, encoding:"utf8"}).trim(), installedReceipt);
-        const modified = await selectRetained(fixture);
-        assert.deepEqual(modified, {...selected, equivalence:{...selected.equivalence, reviewedId:modifiedId}});
-        assert.deepEqual({...modified, equivalence:original.equivalence}, original);
-        assert.deepEqual(await Promise.all(retainedPaths.map(file => readFile(file))), retainedBytes);
-        selected = modified;
+        for (const file of ["docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md", ...addedEvidence]) {
+            await writeFile(path.join(fixture.repository, file), "Updated evidence fixture; original candidate identity retained.\n");
+            const modifiedId = commitFixture(fixture.repository);
+            assert.equal(execFileSync("git", ["diff", "--name-only", "--diff-filter=M", selected.equivalence.reviewedId, modifiedId],
+                {cwd:fixture.repository, encoding:"utf8"}).trim(), file);
+            const modified = await selectRetained(fixture);
+            assert.deepEqual(modified, {...selected, equivalence:{...selected.equivalence, reviewedId:modifiedId}});
+            assert.deepEqual({...modified, equivalence:original.equivalence}, original);
+            assert.deepEqual(await Promise.all(retainedPaths.map(file => readFile(file))), retainedBytes);
+            selected = modified;
+        }
         assert.equal(await exists(path.join(fixture.repository, "dist")), false);
         assert.equal(await exists(path.join(fixture.repository, "node_modules")), false);
         await assert.rejects(selectRetained({...fixture, reference:{...fixture.reference, sha256:"b".repeat(64)}}), /receipt digest mismatch/);
@@ -193,6 +199,7 @@ test.each([
     "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification-extra.md",
     "docs/math-contract-corrections/p10-03-b6024422-installed-rerun-extra.md",
+    "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization-extra.md",
     "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.extra.test.tsx",
     "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",
