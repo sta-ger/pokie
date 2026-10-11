@@ -5,6 +5,7 @@ import {
     BetModesConfig,
     estimateExactOutcomeSpaceSize,
     GameBlueprint,
+    GameBlueprintValidator,
     GamePackageGenerator,
     createStreamingExactWeightedOutcomes,
     ExactEnumerationCheckpoint,
@@ -31,12 +32,63 @@ import type {WeightedOutcomeInput} from "../../../src/weightedoutcome/buildWeigh
 import fs from "fs";
 import os from "os";
 import path from "path";
+import ts from "typescript";
 
 function outcomeById(outcomes: readonly {id: string; weight: number; artifact: {screen?: unknown}}[], weight: number) {
     return outcomes.filter((outcome) => outcome.weight === weight);
 }
 
 describe("generateExactWeightedOutcomeLibrary", () => {
+    it("enumerates only authored five-scatter feature events in generated CJS and compiled TS", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-freegames-exact-"));
+        const loaded: Awaited<ReturnType<typeof loadPokieGameRuntime>>[] = [];
+        try {
+            const blueprint: GameBlueprint = {
+                manifest: {id: "authored-freegames-exact", name: "Authored Free Games", version: "1.0.0"},
+                reels: 5, rows: 1, symbols: ["A", "S"], wilds: [], scatters: ["S"], availableBets: [1],
+                paylines: [[0, 0, 0, 0, 0]], reelStrips: [["S"], ["S"], ["S"], ["S", "A"], ["S", "A"]],
+                paytable: {A: {5: 5}, S: {3: 0, 5: 2}},
+                mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {5: 2}}},
+            };
+            expect(new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error")).toEqual([]);
+            const generated = new GamePackageGenerator("1.3.0").generate(blueprint, directory);
+            const source = fs.readFileSync(path.join(generated.projectRoot, "src/index.ts"), "utf8");
+            const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}, reportDiagnostics: true});
+            expect(compiled.diagnostics).toEqual([]);
+            const typedPath = path.join(generated.projectRoot, "dist", "typed-freegames.js");
+            fs.writeFileSync(typedPath, compiled.outputText);
+            for (const useTypedEntry of [false, true]) {
+                const runtime = await loadPokieGameRuntime(generated.projectRoot, entry => require(useTypedEntry ? typedPath : entry));
+                loaded.push(runtime);
+                const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({libraryId: "authored-freegames", game: runtime.game, pokieVersion: "1.3.0"});
+                expect(diagnostics.totalOutcomeSpaceSize).toBe(4);
+                expect(library.outcomes).toHaveLength(4);
+                const screens = new Set<string>();
+                for (const {weight, artifact} of library.outcomes) {
+                    const symbols = artifact.screen.map(reel => reel[0]).join("");
+                    screens.add(symbols);
+                    const triggered = symbols === "SSSSS";
+                    const events = triggered ? [{type: "freeGamesTriggered", data: {count: 2}}] : [];
+                    expect(weight).toBe(1);
+                    expect(artifact.stake).toBe(1);
+                    expect(artifact.totalWin).toBe(triggered ? 2 : 0);
+                    expect(artifact.wins).toHaveLength(triggered ? 1 : 0);
+                    expect(artifact.featureEvents).toEqual(triggered ? events : undefined);
+                    expect(artifact.steps.map(step => step.featureEvents)).toEqual([triggered ? events : undefined]);
+                    expect(artifact.steps.flatMap(step => step.wins)).toEqual(artifact.wins);
+                }
+                expect(screens).toEqual(new Set(["SSSSS", "SSSSA", "SSSAS", "SSSAA"]));
+                expect(new WeightedOutcomeLibraryAnalyzer().analyze(library)).toMatchObject({totalWeight: 4, rtp: 0.5, hitFrequency: 0.25, maxWin: 2});
+            }
+        } finally {
+            try {
+                await Promise.all(loaded.map(runtime => runtime.release()));
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        }
+    });
+
     it.each((["missing-symbol", "zero", "missing-count"] as const).flatMap(kind => FRACTIONAL_BET_STAKES.map(bet => [kind, bet] as const)))("enumerates every authored %s artifact at runtime stake %s", async (kind, bet) => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-exact-"));
         let loaded: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined;

@@ -105,6 +105,69 @@ free-game behavior remain covered. Ante still changes stake cost, not payout
 multipliers; a buy-feature purchase is one-shot and consumes its first forced
 spin, with later free spins retaining the authoritative table.
 
+## Free-game award boundary: reviewer repair
+
+Two regressions were reproduced on the reviewed candidate `5dad3937` after
+monetary scatter payouts became independent of feature grants:
+
+- **P10-02-FG-INITIAL:** create a direct `VideoSlotWithFreeGamesConfig`, set three
+  reels, one row, and three literal `["S"]` strips, then construct a session.
+  Its display is S/S/S, but no round has played: win and freeGamesSum are zero.
+  The candidate reported wonFreeGamesNumber=10, serialized that initial award,
+  and made PlayFreeGamesStrategy stop before the first play. The corrected
+  initial award is zero; after an actual triggering round it is 10, including
+  when monetary scatter payouts are omitted or explicitly zero.
+- **P10-02-FG-OMISSION:** the following complete, validated Blueprint paid zero
+  on S/S/S/A/A but granted 10 unauthored free games. Its corrected result is zero
+  money, zero grants, no winning components, and credits 1000 -> 999 at bet 1.
+  Five landed S symbols still pay 2 and grant the authored two free games.
+
+```json
+{
+  "manifest": {"id": "authored-freegames", "name": "Authored Free Games", "version": "1.0.0"},
+  "reels": 5,
+  "rows": 1,
+  "symbols": ["A", "S"],
+  "wilds": [],
+  "scatters": ["S"],
+  "paylines": [[0, 0, 0, 0, 0]],
+  "availableBets": [1],
+  "reelStrips": [["S"], ["S"], ["S"], ["A"], ["A"]],
+  "paytable": {"A": {"5": 5}, "S": {"3": 0, "5": 2}},
+  "mechanics": {"freeGames": {"scatterSymbol": "S", "awardsByCount": {"5": 2}}}
+}
+```
+
+The session now captures landed-scatter grants after base play and before
+free-game bookkeeping, and the getter reports that completed round's grant.
+It does not evaluate the constructor's display screen. An insufficient-credit
+play preserves the last result and RNG state without processing another grant;
+a later completed nontriggering round reports zero. Constructor and spin draws
+remain one per reel. State capture optionally includes a positive
+`wonFreeGamesNumber`, so restoring a played round does not infer an award from
+the fresh display screen. Legacy states lacking this field restore the report
+as zero while retaining their free-game counters and RNG continuation.
+
+The generated shared CJS/TS template now constructs
+`new VideoSlotWithFreeGamesConfig(config, {})` before applying only
+`mechanics.freeGames.awardsByCount` to its authored scatter symbol. Omitted
+counts and other scatter symbols return zero. Direct callers omitting the
+second constructor argument retain S/3=10, S/4=15 and S/5=20; explicitly supplied
+maps are detached from their callers, including symbol keys. This is the same
+empty assembly boundary used for monetary paytables, without enumerating and
+zero-filling every absent count.
+
+Regressions execute the literal fixture through actual generated CJS and
+compiled emitted TS, including their exact-session entrypoints. A tiny exact
+variant replaces the last two strips with `["S","A"]`: SSSAA, SSSAS and SSSSA
+have zero win and no `featureEvents`; SSSSS alone pays 2 and emits exactly
+`[{"type":"freeGamesTriggered","data":{"count":2}}]` at both artifact and
+step level. All four records have unit weight and stake 1, so RTP is 2/4.
+Configured grants with omitted/zero money also retain subsequent free spins
+and base/ante/buyFeature wrapper behavior. Seeded restore, literal-screen replay,
+initial serialization, simulation stopping and insufficient-credit paths are
+covered without removing existing monetary regressions.
+
 ## Validation, adapters, display and persistence
 
 Validation admits finite nonnegative multipliers. Negative, nonnumeric and
@@ -175,9 +238,14 @@ replay and rejected-command immutability checks remain. Ways, clusters, free gam
 and bet modes remain outside the supported WASM subset; see
 [the compatibility boundary](../wasm-compatibility-boundary.md).
 
-Implementation verification uses only the twenty targeted files named by the
-P10-02 scope and `npm run typecheck` (including the Studio compiler once). Existing
+The original implementation verification used the twenty targeted files named by
+the P10-02 scope and `npm run typecheck` (including the Studio compiler once). Existing
 atomic package publication/conflict/cleanup, exact cancellation/resume/source
 mismatch, managed rollback, P10-01 fractional and P9 seed/golden/replay tests are
 retained and run. No packaging campaign or official gate was launched. The
-runtime correction and its bounded regressions form one reviewable commit.
+runtime correction and its bounded regressions formed one reviewable commit.
+The reviewer repair runs only the six directly changed test suites (generated
+packages, free-game session/config, serialization, free-game strategy and exact
+enumeration) and root typecheck. The complete reviewer matrix, golden/replay
+reruns and official/packaging gates remain controller-owned; this repair does
+not claim to have rerun them. The correction is a separate reviewable commit.

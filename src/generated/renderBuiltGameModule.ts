@@ -123,7 +123,7 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
 
     const freeGamesWrapCode = freeGames
         ? `
-    const freeGamesConfig = new VideoSlotWithFreeGamesConfig(config);
+    const freeGamesConfig = new VideoSlotWithFreeGamesConfig(config, {});
     const freeGamesMechanic = blueprint.mechanics && blueprint.mechanics.freeGames;
     if (freeGamesMechanic) {
         for (const [count, awarded] of Object.entries(freeGamesMechanic.awardsByCount)) {

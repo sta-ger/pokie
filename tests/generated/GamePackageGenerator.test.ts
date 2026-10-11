@@ -8,14 +8,17 @@ import {
     BUILT_PACKAGE_FILES,
     computeGameBlueprintHash,
     GameBlueprint,
+    GameBlueprintValidator,
     GamePackageGenerator,
     loadPokieGameRuntime,
     generateWeightedOutcomeLibrary,
     PokieGame,
+    ReplayRecorder,
     SymbolsCombination,
     SymbolsCombinationsGenerating,
     VideoSlotSessionHandling,
     VideoSlotWithFreeGamesSessionHandling,
+    VideoSlotWithFreeGamesSessionState,
     VideoSlotSessionSerializer,
     VideoSlotWithBetModesSession,
 } from "pokie";
@@ -147,6 +150,8 @@ describe("GamePackageGenerator", () => {
             const session = game.createSession({seed: "0"}) as VideoSlotWithFreeGamesSessionHandling & {getStakeAmount(): number};
             session.setBet(0.01);
             const before = session.getCreditsAmount();
+            expect(session.getWonFreeGamesNumber()).toBe(0);
+            expect(session.getFreeGamesSum()).toBe(0);
             session.play();
             expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
             expect(Object.keys(session.getWinningScatters())).toHaveLength(kind === "positive" ? 1 : 0);
@@ -160,6 +165,76 @@ describe("GamePackageGenerator", () => {
             expect(session.getFreeGamesSum()).toBe(4);
             expect(session.getCreditsAmount()).toBe(beforeFree);
             expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+        }
+    });
+
+    it.each([
+        ["omitted three-scatter grant", ["S", "S", "S", "A", "A"], "S", 0, 0],
+        ["omitted four-scatter grant", ["S", "S", "S", "S", "A"], "S", 0, 0],
+        ["authored five-scatter grant", ["S", "S", "S", "S", "S"], "S", 2, 2],
+        ["unconfigured scatter symbol", ["S", "S", "S", "T", "A"], "T", 0, 0],
+    ] as const)("keeps %s authoritative through generated CJS and compiled TS", async (_name, symbols, scatterSymbol, win, grant) => {
+        const blueprint = buildBlueprint({
+            reels: 5, rows: 1, symbols: scatterSymbol === "S" ? ["A", "S"] : ["A", "S", "T"], wilds: [], scatters: scatterSymbol === "S" ? ["S"] : ["S", "T"], availableBets: [1],
+            paylines: [[0, 0, 0, 0, 0]], reelStrips: symbols.map(symbol => [symbol]),
+            paytable: {A: {5: 5}, S: {3: 0, 5: 2}},
+            mechanics: {freeGames: {scatterSymbol, awardsByCount: {5: 2}}},
+        });
+        // The supplied S/S/S/A/A reproduction passes the existing reachability rules.
+        if (_name === "omitted three-scatter grant") {
+            expect(new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error")).toEqual([]);
+        }
+        const screen = symbols.map(symbol => [symbol]);
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            for (const raw of [game.createSession({seed: "0"}), game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)})]) {
+                const session = raw as VideoSlotWithFreeGamesSessionHandling;
+                session.play();
+                expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+                expect(session.getWinAmount()).toBe(win);
+                expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(win ? 1 : 0);
+                expect(session.getWonFreeGamesNumber()).toBe(grant);
+                expect(session.getFreeGamesSum()).toBe(grant);
+                expect(session.getCreditsAmount()).toBe(999 + win);
+                expect(session.getFreeGamesForScatters("S", 3)).toBe(0);
+                expect(session.getFreeGamesForScatters("S", 4)).toBe(0);
+                expect(session.getFreeGamesForScatters(scatterSymbol, 5)).toBe(2);
+                expect(session.getFreeGamesForScatters(scatterSymbol === "S" ? "T" : "S", 5)).toBe(0);
+            }
+            const replay = new ReplayRecorder().record({game, seed: "0", round: 2});
+            expect(replay.screen).toEqual(screen);
+            expect(replay.totalBet).toBe(grant ? 1 : 2);
+            expect(replay.totalWin).toBe(2 * win);
+        }
+    });
+
+    it.each([undefined, 0])("preserves explicit grants with scatter money %s through base, ante and buyFeature wrappers", async multiplier => {
+        const blueprint = buildBlueprint({
+            rows: 1, symbols: ["A", "S"], scatters: ["S"], availableBets: [1],
+            reelStrips: [["S"], ["S"], ["S"]], paylines: [[0, 0, 0]],
+            paytable: multiplier === undefined ? {A: {3: 5}} : {A: {3: 5}, S: {3: multiplier}},
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 2}}},
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 1.5}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 2}],
+        });
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            for (const factory of [() => game.createSession({seed: "0"}), () => game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix([["S"], ["S"], ["S"]])})]) {
+                for (const [mode, stake] of [["base", 1], ["ante", 1.5], ["buy", 100]] as const) {
+                    const session = factory() as VideoSlotWithBetModesSession;
+                    session.setBetMode(mode);
+                    const before = session.getCreditsAmount();
+                    session.play();
+                    const expectedSum = mode === "buy" ? 4 : 2;
+                    expect(session.toSessionState().base as VideoSlotWithFreeGamesSessionState).toMatchObject({freeGamesSum: expectedSum, freeGamesNum: mode === "buy" ? 1 : 0, wonFreeGamesNumber: 2});
+                    expect(session.getWinAmount()).toBe(0);
+                    expect(session.getWinningScatters()).toEqual({});
+                    expect(session.getCreditsAmount()).toBe(before - stake);
+                    expect(session.getStakeAmount()).toBe(0);
+                    expect(session.getBetModeId()).toBe(mode === "buy" ? "base" : mode);
+                    const beforeFree = session.getCreditsAmount();
+                    session.play();
+                    expect(session.getCreditsAmount()).toBe(beforeFree);
+                    expect(session.toSessionState().base as VideoSlotWithFreeGamesSessionState).toMatchObject({freeGamesSum: expectedSum + 2, freeGamesNum: mode === "buy" ? 2 : 1, wonFreeGamesNumber: 2});
+                }
+            }
         }
     });
 

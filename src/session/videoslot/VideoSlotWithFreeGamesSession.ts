@@ -29,6 +29,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     private freeGamesNum = 0;
     private freeGamesSum = 0;
     private freeBank = 0;
+    private wonFreeGamesNumber = 0;
 
     constructor(
         config: VideoSlotWithFreeGamesConfigRepresenting<T> = new VideoSlotWithFreeGamesConfig<T>(),
@@ -47,18 +48,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public getWonFreeGamesNumber(): number {
-        let rv = 0;
-        // Feature grants depend on landed scatters, independently of monetary payouts.
-        for (const symbolId of this.config.getScatterSymbols()) {
-            const freeGamesForScatters = this.config.getFreeGamesForScatters(
-                symbolId,
-                SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(this.getSymbolsCombination().toMatrix(), symbolId).length,
-            );
-            if (freeGamesForScatters > 0) {
-                rv += freeGamesForScatters;
-            }
-        }
-        return rv;
+        return this.wonFreeGamesNumber;
     }
 
     public getFreeGamesNum(): number {
@@ -91,6 +81,9 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             freeGamesSum: this.freeGamesSum,
             freeGamesBank: this.freeBank,
         };
+        if (this.wonFreeGamesNumber > 0) {
+            state.wonFreeGamesNumber = this.wonFreeGamesNumber;
+        }
         if (this.supportsSessionStateCapture(this.baseSession)) {
             state.base = this.baseSession.toSessionState();
         }
@@ -101,6 +94,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         this.freeGamesNum = value.freeGamesNum;
         this.freeGamesSum = value.freeGamesSum;
         this.freeBank = value.freeGamesBank;
+        this.wonFreeGamesNumber = value.wonFreeGamesNumber ?? 0;
         if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) {
             this.baseSession.fromSessionState(value.base);
         }
@@ -130,6 +124,9 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             this.baseSession.setCreditsAmount(this.baseSession.getBet());
         }
         this.baseSession.play();
+        // Capture the played screen before round bookkeeping consumes its award. The constructor's
+        // display screen and insufficient-credit no-ops never create or reprocess a grant.
+        this.wonFreeGamesNumber = this.determineWonFreeGamesNumber();
         this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
     }
 
@@ -151,6 +148,20 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
 
     private hasUnfinishedFreeGames(): boolean {
         return this.freeGamesSum > 0 && this.freeGamesNum < this.freeGamesSum;
+    }
+
+    private determineWonFreeGamesNumber(): number {
+        let wonFreeGamesNumber = 0;
+        // Feature grants depend on landed scatters, independently of monetary payouts.
+        const matrix = this.getSymbolsCombination().toMatrix();
+        for (const symbolId of this.config.getScatterSymbols()) {
+            const grant = this.config.getFreeGamesForScatters(
+                symbolId,
+                SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(matrix, symbolId).length,
+            );
+            if (grant > 0) wonFreeGamesNumber += grant;
+        }
+        return wonFreeGamesNumber;
     }
 
     private supportsSessionStateCapture(session: VideoSlotSessionHandling<T>): session is VideoSlotSessionHandling<T> & ConvertableToSessionState<unknown> {
