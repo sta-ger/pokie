@@ -25,6 +25,7 @@ export const P911_TOOLING_DESCENDANT_PATHS = [
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
     "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
     "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
+    "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
@@ -56,7 +57,8 @@ export async function candidateFixture(directory) {
         await mkdir(path.dirname(path.join(repository, file)), {recursive:true});
         // These evidence documents are first recorded after the original candidate.
         if (file === "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md"
-            || file === "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md") continue;
+            || file === "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md"
+            || file === "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md") continue;
         await writeFile(path.join(repository, file), "// Original tooling fixture; never executed.\n");
     }
     execFileSync("git", ["init", "--quiet"], {cwd:repository});

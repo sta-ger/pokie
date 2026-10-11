@@ -126,6 +126,7 @@ test("shared selector retains the authenticated archive/install through committe
         const fixture = await candidateFixture(directory), original = await selectRetained(fixture);
         const addedEvidence = [
             "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
+            "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md",
             "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
         ];
         for (const file of addedEvidence) assert.equal(await exists(path.join(fixture.repository, file)), false);
@@ -150,6 +151,7 @@ test("shared selector retains the authenticated archive/install through committe
             "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
             "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
             "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
+            "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
             "tests/scripts/p9-11-corrective-closeout.test.mjs",
@@ -200,6 +202,7 @@ test.each([
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification-extra.md",
     "docs/math-contract-corrections/p10-03-b6024422-installed-rerun-extra.md",
     "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization-extra.md",
+    "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun-extra.md",
     "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.extra.test.tsx",
     "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",

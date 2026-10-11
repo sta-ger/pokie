@@ -37,6 +37,7 @@ const tooling = new Set([
     "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
     "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
     "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
+    "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
