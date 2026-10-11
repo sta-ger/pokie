@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
+import {productionStudioCandidate} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -55,17 +56,89 @@ it("loads the shared Studio test setup without supplying a simulated browser DOM
     expect(typeof window).toBe("undefined");
 });
 
-it("retains bounded real work through keyboard reload, reconnect, cancellation, project reopening and destination recovery", async () => {
-    const frozen = process.env.P909_FROZEN_OBSERVATIONS;
+// Frozen history alone does not deliver a current production candidate. The
+// changed-tests gate runs before that delivery; the controller opts into the
+// rendered retest with its handoff or P909_RENDERED_RETEST=1 for a normal
+// standalone build. Even empty/partial opt-ins execute and fail validation.
+function renderedTestFor(environment: NodeJS.ProcessEnv): typeof it {
+    return ["POKIE_P911_CANDIDATE_HANDOFF", "POKIE_P911_CANDIDATE_HANDOFF_SHA256", "P909_RENDERED_RETEST"]
+        .some((key) => environment[key] !== undefined) ? it : it.skip;
+}
+
+async function renderedCandidate(environment: NodeJS.ProcessEnv, repository: string): ReturnType<typeof productionStudioCandidate> {
+    if (environment.P909_RENDERED_RETEST !== undefined && environment.P909_RENDERED_RETEST !== "1") {
+        throw new Error("P909_RENDERED_RETEST must be 1 for standalone rendered collection.");
+    }
+    const frozen = environment.P909_FROZEN_OBSERVATIONS;
     if (frozen === undefined) throw new Error("Controller must freeze independent P9-09 observations first and provide P909_FROZEN_OBSERVATIONS.");
-    expect((await fs.readFile(frozen, "utf8")).trim().length).toBeGreaterThan(0);
+    if ((await fs.readFile(frozen, "utf8")).trim().length === 0) throw new Error("P909_FROZEN_OBSERVATIONS must point to a nonempty frozen record.");
+    if ((environment.POKIE_P911_CANDIDATE_HANDOFF !== undefined || environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256 !== undefined)
+        && (!environment.POKIE_P911_CANDIDATE_HANDOFF || !environment.POKIE_P911_CANDIDATE_HANDOFF_SHA256)) {
+        throw new Error("P9-11 candidate: absolute receipt path and externally pinned digest required");
+    }
+    return productionStudioCandidate(environment, repository);
+}
+
+it("requires explicit candidate delivery under both npm and direct Jest launchers", () => {
+    const contexts = [{}, Object.fromEntries([
+        ["npm_lifecycle_event", "test:targeted"], ["npm_lifecycle_script", "fixture launcher"],
+        ["npm_package_json", "/fixture/package.json"], ["npm_package_name", "fixture"],
+        ["INIT_CWD", "/fixture"], ["TMPDIR", "/fixture/tmp"],
+    ])];
+    for (const context of contexts) {
+        expect(renderedTestFor(context)).toBe(it.skip);
+        // Historical observations may be retained in a pre-build gate.
+        expect(renderedTestFor({...context, P909_FROZEN_OBSERVATIONS: "retained-history.md"})).toBe(it.skip);
+        for (const key of ["POKIE_P911_CANDIDATE_HANDOFF", "POKIE_P911_CANDIDATE_HANDOFF_SHA256", "P909_RENDERED_RETEST"]) {
+            for (const value of ["", " ", "missing", "1"]) {
+                expect(renderedTestFor({...context, [key]: value})).toBe(it);
+            }
+        }
+    }
+});
+
+it("rejects invalid collection prerequisites and missing production assets before browser startup", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), ".p909-prerequisite-"));
+    try {
+        const environment = {P909_RENDERED_RETEST: "1"};
+        await expect(renderedCandidate({...environment, P909_RENDERED_RETEST: ""}, root)).rejects.toThrow("must be 1");
+        await expect(renderedCandidate(environment, root)).rejects.toThrow("Controller must freeze");
+        await expect(renderedCandidate({...environment, P909_FROZEN_OBSERVATIONS: path.join(root, "missing.md")}, root)).rejects.toThrow("ENOENT");
+        const frozen = path.join(root, "fixture.md");
+        const ready = {...environment, P909_FROZEN_OBSERVATIONS: frozen};
+        for (const contents of ["", " \n\t"]) {
+            await fs.writeFile(frozen, contents);
+            await expect(renderedCandidate(ready, root)).rejects.toThrow("nonempty frozen record");
+        }
+        // Prerequisite fixture only: never used for rendered acceptance.
+        await fs.writeFile(frozen, "Fixture record for validation only.");
+        await expect(renderedCandidate(ready, root)).rejects.toThrow("ENOENT");
+        const bin = path.join(root, "dist/cli/pokie.js");
+        await fs.mkdir(path.dirname(bin), {recursive: true});
+        await fs.writeFile(bin, "fixture: CLI access only");
+        await expect(renderedCandidate(ready, root)).rejects.toThrow("ENOENT");
+        await fs.mkdir(path.join(root, "dist/cli/studio-client"));
+        await fs.writeFile(path.join(root, "dist/cli/studio-client/index.html"), "fixture: asset access only");
+        await expect(renderedCandidate(ready, root)).resolves.toEqual({packageRoot: root, bin, authenticated: false});
+        // Local assets cannot rescue a malformed shared delivery.
+        await expect(renderedCandidate({...ready, POKIE_P911_CANDIDATE_HANDOFF: ""}, root)).rejects.toThrow("externally pinned digest");
+        await expect(renderedCandidate({...ready, POKIE_P911_CANDIDATE_HANDOFF: frozen}, root)).rejects.toThrow("externally pinned digest");
+        await expect(renderedCandidate({...ready, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, root)).rejects.toThrow("externally pinned digest");
+        await expect(renderedCandidate({...ready, POKIE_P911_CANDIDATE_HANDOFF: frozen,
+            POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, root)).rejects.toThrow("digest mismatch");
+    } finally {
+        await fs.rm(root, {recursive: true, force: true});
+    }
+});
+
+renderedTestFor(process.env)("retains bounded real work through keyboard reload, reconnect, cancellation, project reopening and destination recovery", async () => {
     const candidate = process.cwd();
     const overallDeadline = Date.now() + 180_000;
     const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
-    // These exact assets are served by the production CLI. No fallback to mocked or source UI.
-    await fs.access(path.join(candidate, "dist/cli/pokie.js"));
-    await fs.access(path.join(candidate, "dist/cli/studio-client/index.html"));
+    // The normal shared installation is authenticated against source/archive hashes.
+    // Standalone collection still requires controller-built checkout assets.
+    const production = await renderedCandidate(process.env, candidate);
     // Reject stale dist rather than silently testing another candidate. The controller builds
     // these assets; this regression never invokes a compiler, packaging or a source UI loader.
     const newestSource = async (directory: string): Promise<number> => {
@@ -77,9 +150,11 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
         }));
         return Math.max(0, ...times);
     };
-    expect((await fs.stat(path.join(candidate, "dist/cli/studio-client/index.html"))).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio-client/src")));
-    expect((await fs.stat(path.join(candidate, "dist/cli/pokie.js"))).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio")));
-    const assets = path.join(candidate, "dist/cli/studio-client/assets");
+    if (!production.authenticated) {
+        expect((await fs.stat(path.join(candidate, "dist/cli/studio-client/index.html"))).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio-client/src")));
+        expect((await fs.stat(production.bin)).mtimeMs).toBeGreaterThanOrEqual(await newestSource(path.join(candidate, "cli/studio")));
+    }
+    const assets = path.join(production.packageRoot, "dist/cli/studio-client/assets");
     const bundle = (await Promise.all((await fs.readdir(assets)).filter((name) => name.endsWith(".js")).map((name) => fs.readFile(path.join(assets, name), "utf8")))).join("\n");
     expect(bundle).toContain("Reattach to retained work");
     // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
@@ -105,7 +180,7 @@ it("retains bounded real work through keyboard reload, reconnect, cancellation, 
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [path.join(candidate, "dist/cli/pokie.js"), "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [production.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
             env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],

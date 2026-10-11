@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {cleanup, screen, waitFor} from "@testing-library/react";
 import fs from "fs";
 import http from "http";
 import os from "os";
@@ -70,6 +70,8 @@ describe("Studio readiness convergence (browser, real Studio HTTP)", () => {
     });
 
     afterEach(async () => {
+        // Stop rendered polling before draining the HTTP listener.
+        cleanup();
         await server.stop();
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});

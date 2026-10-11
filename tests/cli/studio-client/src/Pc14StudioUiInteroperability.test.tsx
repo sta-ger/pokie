@@ -168,12 +168,15 @@ describe("PC-14 Studio UI real-artifact interoperability", () => {
         await user.clear(rounds);
         await user.type(rounds, "2");
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-        // Mantine exposes the step number and description as part of the
-        // accessible name ("3 Review See results"), so match the user-facing
-        // action instead of assuming the button contains only its label.
-        const viewResults = await screen.findByRole("button", {name: /View results/}, {}, {timeout: 30000});
-        await user.click(viewResults);
+        // Completion automatically opens Review, replacing the Run step's
+        // transient "View results" control. Wait for the loaded summary's
+        // stable action, then inspect the real report through its disclosure.
+        const openFullReport = await screen.findByRole("button", {name: "Open full report"}, {timeout: 30000});
+        expect(screen.getByRole("button", {name: /Review See results/})).toHaveAttribute("aria-current", "step");
         expect(screen.getAllByRole("cell", {name: /%/}).length).toBeGreaterThan(0);
+        await user.click(openFullReport);
+        expect(within(await screen.findByRole("row", {name: "Requested rounds 2"})).getByRole("cell", {name: "2"})).toBeVisible();
+        expect(within(screen.getByRole("row", {name: "Actual rounds 2"})).getByRole("cell", {name: "2"})).toBeVisible();
         await user.click(screen.getByRole("button", {name: /Export Download report/}));
         await screen.findByRole("link", {name: /Download JSON/i});
 

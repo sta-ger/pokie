@@ -580,7 +580,7 @@ describe("BlueprintBuildPanel", () => {
                 return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(buildOkBody())});
             }
             return new Promise((resolve) => {
-                finish = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}); 
+                finish = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
             });
         };
         function SourceHarness() {
@@ -591,10 +591,73 @@ describe("BlueprintBuildPanel", () => {
         await user.click(screen.getByRole("button", {name: "Build Package"}));
         await user.click(screen.getByRole("button", {name: "Change source"}));
         await act(() => {
-            finish(previewOkBody({destinationHasContent: false})); 
+            finish(previewOkBody({destinationHasContent: false}));
         });
         expect(builds).toEqual([]);
         expect(screen.queryByText(/Destination:/)).not.toBeInTheDocument();
+    });
+
+    it.each([
+        ["preview", "unmount"], ["build", "unmount"],
+        ["preview", "draft replacement"], ["build", "draft replacement"],
+    ])("invalidates a pending %s continuation on %s without cancelling submitted work", async (operation, lifecycle) => {
+        let finish!: (body: unknown) => void;
+        const onBuilt = jest.fn();
+        const isCurrentDraft = jest.fn(() => true);
+        const base = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: previewOkBody({destinationHasContent: false})}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: buildOkBody()}),
+        });
+        const fetchImpl: FetchLike = (url, init) => base.fetchImpl(url, init).then((response) => url === `/api/home/blueprints/${operation === "preview" ? "build-preview" : "build"}`
+            ? {...response, json: () => new Promise((resolve) => {
+                finish = resolve;
+            })}
+            : response);
+        const view = renderWithProviders(<BlueprintBuildPanel blueprint={blueprint} onBuilt={onBuilt} isCurrentDraft={isCurrentDraft} />, {fetchImpl});
+        fireEvent.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(finish).toBeDefined());
+        if (lifecycle === "unmount") view.unmount();
+        else isCurrentDraft.mockReturnValue(false); // Replacement is synchronous; cleanup can follow later.
+        await act(async () => {
+            finish(operation === "preview" ? previewOkBody({destinationHasContent: false}) : buildOkBody());
+            await Promise.resolve();
+        });
+        expect(base.calls.filter((call) => call.url === "/api/home/blueprints/build")).toHaveLength(operation === "preview" ? 0 : 1);
+        expect(base.calls.some((call) => call.url.includes("cancel"))).toBe(false);
+        expect(onBuilt).not.toHaveBeenCalled();
+    });
+
+    it("retains the submitted snapshot and compares subsequent edits within the same draft", async () => {
+        let finish!: (body: unknown) => void;
+        const base = createRoutedFakeFetch({
+            "/api/home/blueprints/build-preview": () => ({ok: true, status: 200, body: previewOkBody({destinationHasContent: false})}),
+            "/api/home/blueprints/build": () => ({ok: true, status: 200, body: {}}),
+        });
+        const fetchImpl: FetchLike = (url, init) => base.fetchImpl(url, init).then((response) => url === "/api/home/blueprints/build"
+            ? {...response, json: () => new Promise((resolve) => {
+                finish = resolve;
+            })}
+            : response);
+        function Harness() {
+            const [current, setCurrent] = useState<Record<string, unknown>>(blueprint);
+            const [snapshot, setSnapshot] = useState<import("../../../../../../cli/studio-client/src/domain/interpret/Home").BuiltBlueprintSnapshot>();
+            return <>
+                <button onClick={() => setCurrent(otherBlueprint)}>Edit draft</button>
+                <BlueprintBuildPanel blueprint={current} builtSnapshot={snapshot} onBuilt={setSnapshot} />
+            </>;
+        }
+        renderWithProviders(<Harness />, {fetchImpl});
+        fireEvent.click(screen.getByRole("button", {name: "Build Package"}));
+        await waitFor(() => expect(finish).toBeDefined());
+        fireEvent.click(screen.getByRole("button", {name: "Edit draft"}));
+        await act(async () => {
+            finish(buildOkBody());
+            await Promise.resolve();
+        });
+        expect(screen.getByText(/Last built/)).toHaveTextContent("Sample Slot");
+        expect(screen.getByText(/Unbuilt changes/)).toBeVisible();
+        expect(screen.getByRole("button", {name: "Restore built blueprint"})).toBeEnabled();
+        expect(JSON.parse(base.calls.find((call) => call.url === "/api/home/blueprints/build")!.init!.body!).blueprint).toEqual(blueprint);
     });
 
     it("coalesces duplicate Build clicks while the preview is pending", async () => {
@@ -606,7 +669,7 @@ describe("BlueprintBuildPanel", () => {
             if (url === "/api/home/blueprints/build-preview") {
                 previews++;
                 return new Promise((resolve) => {
-                    finish = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)}); 
+                    finish = (body) => resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
                 });
             }
             if (url === "/api/home/blueprints/build") {

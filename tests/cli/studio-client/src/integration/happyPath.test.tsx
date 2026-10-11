@@ -212,7 +212,7 @@ describe("Studio happy path: recommended model -> create project -> simulate -> 
         await waitFor(() => expect(screen.getByText("Valid — no issues found.")).toBeInTheDocument());
         expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
-        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Output directory (optional)")).not.toBeVisible();
 
         // 3. Create atomically persists/registers the managed Blueprint Project and opens its Workspace.
         await user.click(screen.getByRole("button", {name: "Create game"}));

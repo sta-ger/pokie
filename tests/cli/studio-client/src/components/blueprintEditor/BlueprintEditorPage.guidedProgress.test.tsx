@@ -123,10 +123,19 @@ describe("Guided Design Game: automatic validation", () => {
         });
         const {router} = renderRoutedApp({fetchImpl: deferredFetch, initialEntries: ["/home/design"]});
         const create = screen.getByRole("button", {name: "Create game"});
+        const entrySurfaces: boolean[] = [];
+        const unsubscribe = router.subscribe((state) => {
+            if (state.location.pathname === "/project/%2Fgames%2Fstarter/overview") {
+                entrySurfaces.push(document.getElementById("home-design-panel") === null
+                    && document.getElementById("blueprint-create-game") === null);
+            }
+        });
         const activations: string[] = [];
         create.addEventListener("click", () => activations.push(create.getAttribute("data-pokie-validation-state")!));
         await waitFor(() => expect(finishValidation).toBeDefined());
         expect(create).toHaveAttribute("data-pokie-validation-state", "loading");
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
         await user.click(create);
         expect(activations).toEqual([]);
         await act(() => finishValidation?.());
@@ -138,6 +147,9 @@ describe("Guided Design Game: automatic validation", () => {
         expect(create).toBeDisabled();
         expect(create).toHaveAttribute("aria-busy", "true");
         expect(create).toHaveAccessibleDescription("Studio is saving your game before opening its workspace.");
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeDisabled();
+        await user.click(screen.getByRole("button", {name: "Build Package"}));
+        expect(calls.filter((call) => call.url === "/api/home/blueprints/build-preview" || call.url === "/api/home/blueprints/build")).toHaveLength(0);
         await user.click(create);
         expect(activations).toEqual(["ok"]);
         expect(calls.filter((call) => call.url === "/api/home/projects/open")).toHaveLength(0);
@@ -145,6 +157,9 @@ describe("Guided Design Game: automatic validation", () => {
             await finishSave?.();
         });
         await screen.findByRole("heading", {name: "Starter Slot"});
+        unsubscribe();
+        expect(entrySurfaces.length).toBeGreaterThan(0);
+        expect(entrySurfaces.every(Boolean)).toBe(true);
         expect(activations).toEqual(["ok"]);
         expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fstarter/overview");
         expect(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]')).toBeVisible();
@@ -157,13 +172,17 @@ describe("Guided Design Game: automatic validation", () => {
         expect(saved.blueprint).toEqual(validated.blueprint);
     });
 
-    it("does not expose the removed Configure-to-Validate-to-Build workflow", async () => {
+    it("keeps the primary creation flow simple and makes package tools available on disclosure", async () => {
+        const user = userEvent.setup();
         renderRoutedApp({fetchImpl: fetchWithValidateResult({status: "ok", warnings: []}), initialEntries: ["/home/design"]});
 
         expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: /Build Package|Build/})).not.toBeInTheDocument();
         expect(screen.queryByRole("list", {name: "Progress"})).not.toBeInTheDocument();
         await screen.findByText("Valid — no issues found.");
+        await user.click(screen.getByRole("button", {name: "Show advanced options (file and JSON tools)"}));
+        expect(screen.getByRole("button", {name: "Build Package"})).toBeEnabled();
+        expect(screen.getByRole("button", {name: "Build Preview"})).toBeVisible();
     });
 
     it("withdraws rendered ok readiness when focusing Create commits a changed field", async () => {

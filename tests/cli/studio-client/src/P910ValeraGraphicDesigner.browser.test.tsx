@@ -6,6 +6,7 @@ import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
 import {visibleContentOverflows} from "./visibleContentGeometry";
 import {observeKeyboardTarget, reachKeyboardTarget, type KeyboardTargetState} from "./nativeKeyboardFocus";
+import {productionStudioCandidate} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -251,10 +252,10 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
     const overallDeadline = Date.now() + 180_000;
     const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
-    // These exact assets are served by the production CLI. No fallback to mocked or source UI.
-    await fs.access(path.join(candidate, "dist/cli/pokie.js"));
-    await fs.access(path.join(candidate, "dist/cli/studio-client/index.html"));
-    await assertFreshAssets(candidate);
+    const production = await productionStudioCandidate(process.env, candidate);
+    // Archive hashes bind installed JS/CSS and build inputs. Timestamps only
+    // establish freshness for standalone controller-built checkout assets.
+    if (!production.authenticated) await assertFreshAssets(candidate);
     // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
     // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
     const root = await fs.mkdtemp(path.join(candidate, ".p910-graphic-"));
@@ -278,7 +279,7 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [path.join(candidate, "dist/cli/pokie.js"), "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [production.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
             env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],
@@ -465,14 +466,14 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
         };
         await until(() => evaluate<boolean>("document.body.innerText.includes('POKIE is a slot-game logic framework')"), "public Home");
         // Verify served bytes, not just the presence of a hashed filename in local dist.
-        const html = await fs.readFile(path.join(candidate, "dist/cli/studio-client/index.html"), "utf8");
+        const html = await fs.readFile(path.join(production.packageRoot, "dist/cli/studio-client/index.html"), "utf8");
         const references = [...html.matchAll(/(?:src|href)="([^"?]+\.(?:js|css))"/g)].map((match) => match[1]);
         expect(references.some((reference) => reference.endsWith('.css'))).toBe(true);
         expect(references.some((reference) => reference.endsWith('.js'))).toBe(true);
         for (const reference of references) {
             const response = await fetch(new URL(reference, origin), {signal: AbortSignal.timeout(5_000)});
             expect(response.ok).toBe(true);
-            const local = path.join(candidate, 'dist/cli/studio-client', reference.replace(/^\//, ''));
+            const local = path.join(production.packageRoot, 'dist/cli/studio-client', reference.replace(/^\//, ''));
             expect(Buffer.from(await response.arrayBuffer())).toEqual(await fs.readFile(local));
         }
         // Include the frozen finding's exact desktop width: the 260px rail is still present.
@@ -541,12 +542,32 @@ renderedTestFor(process.env.P910_FROZEN_OBSERVATIONS)("measures styled Home incl
                 expect(await evaluate<boolean>("document.activeElement?.id === 'studio-navigation-toggle' && document.getElementById('studio-navigation-panel').inert")).toBe(true);
             }
         }
+        // Reproduce the saved expanded-Home transition before leaving Design.
+        // Once reached, retain the same native focus through both 200ms collapses
+        // and the destination hint; no retry, refocus or scripted scroll follows.
+        await activate(button("Show advanced options (file and JSON tools)"));
+        const homeBuild = "Array.from(document.querySelectorAll('fieldset')).find(e => e.querySelector('legend')?.textContent === 'Build')";
+        const output = inputFor("Output directory", homeBuild);
+        for (const [width, height] of [[1100, 800], [900, 700], [390, 844]]) {
+            await viewport(width, height);
+            await focus(output);
+            await evaluate("new Promise(resolve => setTimeout(resolve, 300))");
+            expect(await evaluate<boolean>(`(() => {
+                const e = (${output}), r = e.getBoundingClientRect();
+                const top = Math.max(0, document.querySelector('.mantine-AppShell-header')?.getBoundingClientRect().bottom ?? 0);
+                return document.activeElement === e && e.matches(':focus-visible') && r.top >= top
+                    && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth;
+            })()`)).toBe(true);
+            await measure(`Expanded Home Build ${width}x${height}`, homeBuild);
+        }
         await viewport(1100, 800);
         await activate(button("Create game"));
-        await until(() => evaluate<boolean>("location.hash.endsWith('/overview') && document.body.innerText.includes('Valid — no issues found.')"), "real saved starter project");
+        await until(() => evaluate<boolean>(`location.hash.endsWith('/overview') && document.body.innerText.includes('Valid — no issues found.')
+            && Boolean(document.querySelector('[data-pokie-lifecycle-result-control="project-tab:overview"][data-pokie-lifecycle-terminal="rendered"]'))`), "real saved starter project");
         const projectRoot = await evaluate<string>("decodeURIComponent(location.hash.split('/')[2])");
         expect(projectRoot.startsWith(documents + path.sep)).toBe(true);
         await fs.access(projectRoot);
+        expect(await evaluate<boolean>("document.getElementById('home-design-panel') === null && document.getElementById('blueprint-create-game') === null")).toBe(true);
         await measure('Saved project overview');
         const occupied = path.join(workspace, 'occupied-' + 'long-destination-'.repeat(6));
         await fs.mkdir(occupied);

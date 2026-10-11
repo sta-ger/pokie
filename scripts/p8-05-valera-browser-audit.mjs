@@ -498,6 +498,51 @@ async function waitFor(predicate, label, timeout = 30000) {
         await wait(125);
     }
 }
+export async function reloadP805Page(cdp, timeout = 30_000) {
+    const {frameTree:{frame}} = await cdp.send("Page.getFrameTree");
+    await cdp.send("Page.setLifecycleEventsEnabled", {enabled:true});
+    const cursor = cdp.events.length;
+    await cdp.send("Page.reload", {ignoreCache:true});
+    // readyState may still describe the old document when Page.reload returns.
+    // Require the replacement loader before interpreting restored controls.
+    await waitFor(() => cdp.events.slice(cursor).some((event) => event.method === "Page.lifecycleEvent"
+        && event.params.name === "load" && event.params.frameId === frame.id
+        && event.params.loaderId !== frame.loaderId), "new main-frame loader after reload", timeout);
+}
+
+export async function readP805RenderedResponse(cdp, cursor, pathname, accept, label, timeout = 30_000) {
+    let lastObservation = "no matching response";
+    try {
+        return await waitFor(async () => {
+            // Reload/restart can leave an old response whose body expired.
+            // Later rendered polls must remain eligible for the same job.
+            const events = cdp.events.slice(cursor).filter((value) => value.method === "Network.responseReceived"
+                && new URL(value.params.response.url).pathname === pathname).reverse();
+            for (const event of events) {
+                let timer;
+                try {
+                    const body = await Promise.race([
+                        cdp.send("Network.getResponseBody", {requestId:event.params.requestId}),
+                        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("response-body deadline exceeded")), 1_250); }),
+                    ]);
+                    const payload = JSON.parse(body.body || "{}");
+                    lastObservation = `HTTP ${event.params.response.status}, job ${payload?.id ?? "list"}, status ${payload?.status ?? "list"}`;
+                    if (accept(payload)) return {event, payload};
+                } catch (error) { lastObservation = String(error); }
+                finally { clearTimeout(timer); }
+            }
+            return false;
+        }, label, timeout);
+    } catch (error) { throw new Error(`${error.message}; ${pathname}: ${lastObservation}`, {cause:error}); }
+}
+
+export function readP805RenderedJobDiscovery(cdp, cursor, jobId, label, timeout = 30_000) {
+    return readP805RenderedResponse(cdp, cursor, "/api/project/jobs", (payload) => {
+        const jobs = Array.isArray(payload) ? payload : payload?.jobs;
+        return Array.isArray(jobs) && jobs.some((job) => job?.id === jobId);
+    }, label, timeout);
+}
+
 function descendants(pid) { const listing = process.platform === "win32" ? "" : (spawnSync("ps", ["-eo", "pid=,ppid=,pgid="], {encoding:"utf8"}).stdout || ""), processes = new Map(); let rootGroup; for (const line of listing.split("\n")) { const match = /^\s*(\d+)\s+(\d+)\s+(\d+)/.exec(line); if (match) { const details = {parent:Number(match[2]), group:Number(match[3])}; processes.set(Number(match[1]), details); if (Number(match[1]) === pid && details.group === pid) rootGroup = details.group; } } const owned = new Map(); if (Number.isInteger(pid) && pid > 0) owned.set(pid, processIdentity(pid)); let changed = true; while (changed) { changed = false; for (const [child, details] of processes) if ((owned.has(details.parent) || (rootGroup !== undefined && details.group === rootGroup)) && !owned.has(child)) { owned.set(child, processIdentity(child)); changed = true; } } return owned; }
 export function createP805OwnedProcessRecord(label, child, ownerOptions, spawnedAt = now()) {
     const spawned = descendants(child?.pid);
@@ -567,6 +612,19 @@ export async function createP805TupleSupervisor(options, tuple, nonce, services 
     };
 }
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
+export const P805_DEVTOOLS_OBSERVATION_EVENTS = Object.freeze([
+    // Required by the new-document reload/restart boundary.
+    "Page.lifecycleEvent",
+    "Network.requestWillBeSent",
+    "Network.responseReceived",
+    // One completion per response binds getResponseBody to the fully
+    // received bytes. Keep this boundary while dropping dataReceived.
+    "Network.loadingFinished",
+    "Network.loadingFailed",
+    "Runtime.exceptionThrown",
+    "Log.entryAdded",
+]);
+
 export async function connectP805Devtools(devtools, initialUrl = "about:blank") {
     // Creating a target at the live URL starts automatic validation before
     // this socket can collect it. Instrument the blank target first, including
@@ -581,16 +639,7 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
     // packed whole-file workflow into the very performance regression it is
     // intended to detect.  Keep the machine-observable events that bind a
     // browser action to its request/result and those needed for diagnostics.
-    const retainedEvents = new Set([
-        "Network.requestWillBeSent",
-        "Network.responseReceived",
-        // One completion per response binds getResponseBody to the fully
-        // received bytes. Keep this boundary while dropping dataReceived.
-        "Network.loadingFinished",
-        "Network.loadingFailed",
-        "Runtime.exceptionThrown",
-        "Log.entryAdded",
-    ]);
+    const retainedEvents = new Set(P805_DEVTOOLS_OBSERVATION_EVENTS);
     socket.on("message", (raw) => {
         // Do this inexpensive envelope check before JSON.parse.  Chromium
         // continues to emit high-volume unneeded protocol notifications while
@@ -2317,7 +2366,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (transaction.confirmation.required) transaction.confirmation.state = "confirmed";
             api.push(entry); return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor, transaction};
         };
-        const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202]) => {
+        const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202], workers) => {
             await navigateProjectTab(projectBaseRoute, "simulation", observation);
             await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.endsWith('/simulation')"), `${observation} rendered simulation route`);
             // A server-side validation diagnostic intentionally leaves a
@@ -2328,6 +2377,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), `${observation} rendered simulation form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setLifecycleField("simulation-rounds", String(rounds)), `${observation} rendered simulation rounds`)) fail(`Studio did not accept simulation rounds for ${observation}`);
+            if (workers !== undefined) {
+                const disclosure = await focusRenderedControl("button", "(_item, name) => name === 'Show advanced details (seed, workers)'");
+                if (disclosure?.keyboardFocused) await pressEnter();
+                await waitFor(() => evaluate("[...document.querySelectorAll('label')].some(label => label.textContent.replaceAll('*', '').trim() === 'Workers' && document.getElementById(label.htmlFor)?.getClientRects().length)"), `${observation} visible Workers field`);
+                if (!await setScreenField("Workers", String(workers))) fail(`${observation} did not set its rendered Workers field`);
+            }
             const control = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation, expectedStateClass:"editable-submission"});
             const formState = await captureRenderedEditableFormState("simulation", observation, control.stableControlId, undefined, expectedStatuses.includes(400) === false);
             const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations", formState, stateClass:"editable-submission", control});
@@ -2411,7 +2466,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:accessibleName(item), keyboardFocused:true, enabled:true, disabled:false} : null;
         })()`);
         const setScreenField = async (label, value) => evaluate(`(() => {
-            const label = [...document.querySelectorAll('label')].find((item) => item.textContent?.trim() === ${JSON.stringify(label)});
+            const label = [...document.querySelectorAll('label')].find((item) => item.textContent?.replaceAll('*', '').trim() === ${JSON.stringify(label)});
             // Mantine associates some composite inputs through their input
             // name rather than a label htmlFor.  Read that relationship from
             // the rendered form; do not invent a runner-only control id.
@@ -3170,12 +3225,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // genuine cancellation path into a completed-job race.
         const retryProbeRounds = 500_000;
         const activeReload = await startRenderedSimulation(createdProjectBaseRoute, "active-job reload", reloadProbeRounds), reloadCursor = cdp.events.length;
-        await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await waitFor(async () => { const event = cdp.events.slice(reloadCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
+        await reloadP805Page(cdp); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "active project reload/reconnect"); const reloadJobs = await readP805RenderedJobDiscovery(cdp, reloadCursor, activeReload.payload.id, "rendered active-job reload discovery"), jobs = Array.isArray(reloadJobs.payload) ? reloadJobs.payload : reloadJobs.payload?.jobs; api.push({path:"/api/project/jobs", method:"GET", status:reloadJobs.event.params.response.status, payload:reloadJobs.payload, browserRequestId:reloadJobs.event.params.requestId, initiator:"rendered-reload", recovery:"reload"}); if (!Array.isArray(jobs) || !jobs.some((job) => job?.id === activeReload.payload.id)) fail("Studio reload did not discover the active durable job through its rendered recovery path");
         // A running job intentionally disables sibling tab navigation. The
         // reload restored the real public Simulation screen, so no route
         // adapter may intervene before the rendered Cancel control owns its
         // request.
-        const recoveryNavigationCursor = cdp.events.length;
+        const recoveryNavigationCursor = reloadCursor;
         await waitFor(() => evaluate("location.hash.endsWith('/simulation')"), "active-job reload Simulation recovery screen");
         // An active job deliberately replaces the Configure form, including
         // its "Run Simulation" label, with the Run-step progress surface.
@@ -3188,14 +3243,10 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         // durable id.  Waiting for that rendered hook request closes the
         // reload race where a visible transition frame could receive a modal
         // confirmation before the reattached cancel callback had its id.
-        const restoredSimulation = await waitFor(async () => {
-            const event = cdp.events.slice(recoveryNavigationCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`);
-            if (!event) return false;
-            try {
-                const body = await readBrowserResponseBody(event.params.requestId, "active-job reload restored simulation"), payload = JSON.parse(body.body || "{}");
-                return ["queued", "running", "cancelling"].includes(payload?.status) ? {event, payload} : false;
-            } catch { return false; }
-        }, "active-job reload restored Simulation poll");
+        const restoredSimulation = await readP805RenderedResponse(cdp, recoveryNavigationCursor,
+            `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`,
+            (payload) => payload?.id === activeReload.payload.id && ["queued", "running", "cancelling"].includes(payload?.status),
+            "active-job reload restored Simulation poll");
         api.push({observation:"active-job reload", method:"GET", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, status:restoredSimulation.event.params.response.status, payload:restoredSimulation.payload, browserRequestId:restoredSimulation.event.params.requestId, initiator:"rendered-reload-simulation"});
         await wait(250);
         const activeReloadCancellation = await activateRenderedTransaction({lifecycle:"recovery", operation:"simulation-cancel", observation:"active-job reload", cursor:cdp.events.length, method:"DELETE", path:`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, confirmation:true, stateClass:"recovery-operation"}); if (activeReloadCancellation.response.status !== 200 || activeReloadCancellation.entry.path !== `/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`) fail("Studio did not clean up the active reload job through its rendered control"); const activeReloadTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(activeReload.payload.id)}`, "active-job reload", activeReload.cursor, ["cancelled"], [activeReload.transaction, activeReloadCancellation.transaction]);
@@ -3249,12 +3300,32 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         }
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[recoveryViewport], deviceScaleFactor:1});
         await waitFor(() => evaluate(`window.innerWidth === ${viewportDimensions[recoveryViewport].width} && document.readyState === 'complete'`), `${recoveryViewport} compound workflow state`);
-        // The browser form correctly blocks its own minimum-value error, so
-        // use the first value above Studio's durable-job server limit.  This
-        // keeps the error workflow an actual valid DOM submission whose 400
-        // diagnostic belongs to the rendered request, rather than a native
-        // validation bubble with no public request receipt.
-        const failure = await startRenderedSimulation(projectBaseRoute, "actionable simulation failure", simulationRoundLimit + 1, [400]), simulation = await startRenderedSimulation(projectBaseRoute, "successful simulation", 1); if (failure.response.status !== 400 || simulation.response.status !== 202 || typeof simulation.payload?.id !== "string") fail("Studio did not demonstrate an actionable rendered simulation failure and successful rendered job creation"); const simulationId = simulation.payload.id, simulationTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(simulationId)}`, "successful simulation", simulation.cursor, ["completed"], simulation.transaction); timings.simulationMs = Date.now() - simulation.transaction.startedAtMs;
+        // Oversized rounds are now a local field rejection: preserve that
+        // boundary without inventing a request from a disabled button.
+        await navigateProjectTab(projectBaseRoute, "simulation", "oversized-round rejection");
+        await ensureSimulationConfigure("oversized-round rejection");
+        const rejectionCursor = cdp.events.length;
+        await waitFor(() => setLifecycleField("simulation-rounds", String(simulationRoundLimit + 1)), "oversized rendered Rounds");
+        const roundsRejection = await waitFor(() => evaluate(`(() => {
+            const field = document.querySelector('[data-pokie-lifecycle-field="simulation-rounds"]');
+            const control = document.getElementById('simulation-run');
+            const message = 'Rounds must be a positive integer between 1 and 2,000,000.';
+            if (!(field instanceof HTMLInputElement) || field.getAttribute('aria-invalid') !== 'true'
+                || !(control instanceof HTMLButtonElement) || !control.disabled || !document.body.innerText.includes(message)) return false;
+            return {classification:'local-field-rejection', rounds:Number(field.value.replaceAll(',', '')), disabled:true, message};
+        })()`), "oversized Rounds field diagnostic and disabled Run");
+        roundsRejection.requestCount = cdp.events.slice(rejectionCursor).filter((event) => event.method === "Network.requestWillBeSent"
+            && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/project/simulations").length;
+        if (roundsRejection.requestCount !== 0) fail("oversized Rounds queued work despite the local field rejection");
+        // Workers above the server limit remains a valid rendered form
+        // submission. Keep its real 400 separate from local Rounds rejection,
+        // then correct Workers on the same form for a successful simulation.
+        const failure = await startRenderedSimulation(projectBaseRoute, "actionable simulation failure", 1, [400], 33);
+        if (failure.response.status !== 400 || !failure.payload?.error?.includes('"workers"')) fail("Studio did not reject the rendered invalid Workers request");
+        const simulation = await startRenderedSimulation(projectBaseRoute, "successful simulation", 1, [202], 1);
+        if (simulation.response.status !== 202 || typeof simulation.payload?.id !== "string") fail("Studio did not accept the corrected rendered simulation");
+        const simulationId = simulation.payload.id, simulationTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(simulationId)}`, "successful simulation", simulation.cursor, ["completed"], simulation.transaction); timings.simulationMs = Date.now() - simulation.transaction.startedAtMs;
+
         const replay = await startRenderedReplay(projectBaseRoute, "successful replay");
         const replayTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replay.payload.id)}`, "successful replay", replay.cursor, ["completed"], replay.transaction);
         if (!replayTerminal.descriptor) fail("Replay produced no valid artifact for rendered loading");
@@ -3408,7 +3479,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             }
         }, "post-loss durable nonterminal simulation job before restart reconciliation");
         abruptStudioLosses.add(studio);
-        const priorStudio = studio, restartDrain = await settleChild(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart", 90_000); const restartRecoveryCursor = cdp.events.length; await cdp.send("Page.reload", {ignoreCache:true}); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "Studio server restart recovery"); const restartedProjectBaseRoute = (await evaluate("location.hash")).replace(/\/[^/]+$/, ""); await navigateProjectTab(restartedProjectBaseRoute, "simulation", "restart recovery"); const restartJobs = await waitFor(async () => { const event = cdp.events.slice(restartRecoveryCursor).find((value) => value.method === "Network.responseReceived" && new URL(value.params.response.url).pathname === "/api/project/jobs"); if (!event) return false; try { const body = await cdp.send("Network.getResponseBody", {requestId:event.params.requestId}), payload = JSON.parse(body.body || "{}"); return {event, payload}; } catch { return false; } }, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id && job?.status === "recovery-required"), restartRecovered = restartTerminal !== undefined; if (!restartRecovered) fail("Studio restart did not discover the durable simulation recovery-required terminal"); const restartRendered = await waitFor(() => evaluate(`(()=>{const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')==='simulation-run'&&item.getAttribute('data-pokie-lifecycle-result-operation')==='simulation'&&item.getAttribute('data-pokie-lifecycle-result-state')==='editable-submission'&&item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-request-id')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-terminal')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-captured-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-durable-status')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-recovery')==='restart-reconciled'&&item.getAttribute('data-pokie-lifecycle-result-executor')==='unavailable-after-restart'); if(!(result instanceof HTMLElement))return false; return {resultControlId:result.getAttribute('data-pokie-lifecycle-result-control'),resultOperation:result.getAttribute('data-pokie-lifecycle-result-operation'),resultStateClass:result.getAttribute('data-pokie-lifecycle-result-state'),resultReceipt:result.getAttribute('data-pokie-lifecycle-result-receipt'),capturedJobId:result.getAttribute('data-pokie-lifecycle-result-captured-job'),resultJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'),resultRequestId:result.getAttribute('data-pokie-lifecycle-result-request-id'),resultTerminal:result.getAttribute('data-pokie-lifecycle-result-durable-status'),resultRecovery:result.getAttribute('data-pokie-lifecycle-result-recovery'),resultExecutor:result.getAttribute('data-pokie-lifecycle-result-executor'),renderedTerminal:true,postRestartReplacementState:{capturedControlId:${JSON.stringify(restartJob.transaction.control.stableControlId)},captureKey:${JSON.stringify(restartJob.transaction.pointerActivations[0].captureKey)},controlState:'replaced-after-restart',currentControlId:document.getElementById('simulation-run') instanceof HTMLElement?'simulation-run':null,capturedControlConnected:false}}})()`), "rendered restart recovery terminal"), restartScreenshot = await captureScreenshot(), restartScreenshotEvidenceId = await save("screenshot", `${recoveryViewport}-restart-recovery.png`, Buffer.from(restartScreenshot.data, "base64"), [options.tuple?.observation ?? "restart recovery"]); timings.restartRecoveryMs = Date.now() - restartRecoveryStartedAt; const restartReceipt = {operation:"simulation", controlId:restartJob.transaction.control.stableControlId, stateClass:restartJob.transaction.stateClass, capturedJobId:restartJob.payload.id, transaction:restartJob.transaction, terminal:{status:restartTerminal.status, jobId:restartTerminal.id, resultSha256:digest(JSON.stringify(restartTerminal)), causedByRequestId:restartJob.transaction.request.browserRequestId}, rendered:restartRendered, timing:{elapsedMs:timings.restartRecoveryMs}, evidence:{screenshotEvidenceId:restartScreenshotEvidenceId}, ownedProcessDrain:restartDrain}; api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation, unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered && restartTerminal.status === "recovery-required" && restartRendered.renderedTerminal === true}; if (!Object.values(recovery).every(Boolean)) fail(`Studio recovery controls did not produce measured results: ${JSON.stringify(recovery)}`);
+        const priorStudio = studio, restartDrain = await settleChild(priorStudio); studio = startStudio(); await waitFor(async () => { try { return (await fetch(`${origin}/api/health`)).ok; } catch { return false; } }, "Studio server restart", 90_000); const restartRecoveryCursor = cdp.events.length; await reloadP805Page(cdp); await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.includes('/project/')"), "Studio server restart recovery"); const restartedProjectBaseRoute = (await evaluate("location.hash")).replace(/\/[^/]+$/, ""); await navigateProjectTab(restartedProjectBaseRoute, "simulation", "restart recovery"); const restartJobs = await readP805RenderedJobDiscovery(cdp, restartRecoveryCursor, restartJob.payload.id, "rendered restart job recovery"), restartList = Array.isArray(restartJobs.payload) ? restartJobs.payload : restartJobs.payload?.jobs ?? [], restartTerminal = restartList.find((job) => job?.id === restartJob.payload.id && job?.status === "recovery-required"), restartRecovered = restartTerminal !== undefined; if (!restartRecovered) fail("Studio restart did not discover the durable simulation recovery-required terminal"); const restartRendered = await waitFor(() => evaluate(`(()=>{const result=[...document.querySelectorAll('[data-pokie-lifecycle-result="simulation"]')].find((item)=>item instanceof HTMLElement&&item.getAttribute('data-pokie-lifecycle-result-control')==='simulation-run'&&item.getAttribute('data-pokie-lifecycle-result-operation')==='simulation'&&item.getAttribute('data-pokie-lifecycle-result-state')==='editable-submission'&&item.getAttribute('data-pokie-lifecycle-result-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-request-id')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-terminal')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-receipt')==='durable-terminal'&&item.getAttribute('data-pokie-lifecycle-result-durable-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-captured-job')===${JSON.stringify(restartJob.payload.id)}&&item.getAttribute('data-pokie-lifecycle-result-durable-status')==='recovery-required'&&item.getAttribute('data-pokie-lifecycle-result-recovery')==='restart-reconciled'&&item.getAttribute('data-pokie-lifecycle-result-executor')==='unavailable-after-restart'); if(!(result instanceof HTMLElement))return false; return {resultControlId:result.getAttribute('data-pokie-lifecycle-result-control'),resultOperation:result.getAttribute('data-pokie-lifecycle-result-operation'),resultStateClass:result.getAttribute('data-pokie-lifecycle-result-state'),resultReceipt:result.getAttribute('data-pokie-lifecycle-result-receipt'),capturedJobId:result.getAttribute('data-pokie-lifecycle-result-captured-job'),resultJobId:result.getAttribute('data-pokie-lifecycle-result-durable-job'),resultRequestId:result.getAttribute('data-pokie-lifecycle-result-request-id'),resultTerminal:result.getAttribute('data-pokie-lifecycle-result-durable-status'),resultRecovery:result.getAttribute('data-pokie-lifecycle-result-recovery'),resultExecutor:result.getAttribute('data-pokie-lifecycle-result-executor'),renderedTerminal:true,postRestartReplacementState:{capturedControlId:${JSON.stringify(restartJob.transaction.control.stableControlId)},captureKey:${JSON.stringify(restartJob.transaction.pointerActivations[0].captureKey)},controlState:'replaced-after-restart',currentControlId:document.getElementById('simulation-run') instanceof HTMLElement?'simulation-run':null,capturedControlConnected:false}}})()`), "rendered restart recovery terminal"), restartScreenshot = await captureScreenshot(), restartScreenshotEvidenceId = await save("screenshot", `${recoveryViewport}-restart-recovery.png`, Buffer.from(restartScreenshot.data, "base64"), [options.tuple?.observation ?? "restart recovery"]); timings.restartRecoveryMs = Date.now() - restartRecoveryStartedAt; const restartReceipt = {operation:"simulation", controlId:restartJob.transaction.control.stableControlId, stateClass:restartJob.transaction.stateClass, capturedJobId:restartJob.payload.id, transaction:restartJob.transaction, terminal:{status:restartTerminal.status, jobId:restartTerminal.id, resultSha256:digest(JSON.stringify(restartTerminal)), causedByRequestId:restartJob.transaction.request.browserRequestId}, rendered:restartRendered, timing:{elapsedMs:timings.restartRecoveryMs}, evidence:{screenshotEvidenceId:restartScreenshotEvidenceId}, ownedProcessDrain:restartDrain}; api.push({path:"/api/project/jobs", method:"GET", status:restartJobs.event.params.response.status, payload:restartJobs.payload, browserRequestId:restartJobs.event.params.requestId, initiator:"rendered-restart", recovery:"restart"}); const recovery = {reloadReconnect:activeReloadTerminal.status === "cancelled" && jobs.some((job) => job?.id === activeReload.payload.id), projectSwitch:recoveryBefore !== recoveryAfter, staleResponseIsolation, unsavedWorkProtection:unsavedWork.preserved === true, serverRestart:restartDrain.processTreeDrained && restartDrain.resourcesDrained && restartRecovered && restartTerminal.status === "recovery-required" && restartRendered.renderedTerminal === true}; if (!Object.values(recovery).every(Boolean)) fail(`Studio recovery controls did not produce measured results: ${JSON.stringify(recovery)}`);
         if (JSON.stringify(restartTerminal.request) !== JSON.stringify(preCrashJob.request)) fail("Studio restart recovery did not retain the captured durable simulation request");
         restartReceipt.terminal.operation = restartTerminal.operation;
         restartReceipt.terminal.request = restartTerminal.request;
@@ -3427,7 +3498,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 durableJob: restartDrain.postLossJob,
             },
         };
-        const observations = options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", viewport:recoveryViewport, replayArtifacts:{valid:replayArtifactValid, invalid:replayFailure, recovered:replayArtifactInspection}, recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:projectSwitchReceipt.staleResponse, projectSwitchReceipt, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal, receipt:restartReceipt}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
+        const observations = options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", viewport:recoveryViewport, roundsRejection, replayArtifacts:{valid:replayArtifactValid, invalid:replayFailure, recovered:replayArtifactInspection}, recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:projectSwitchReceipt.staleResponse, projectSwitchReceipt, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal, receipt:restartReceipt}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
         let workflowScope;
         if (options.tuple) {
             const bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, completeWorkflow:true}), observations);

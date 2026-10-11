@@ -1,4 +1,4 @@
-import {Stack, Text, Title} from "@mantine/core";
+import {Alert, Stack, Text, Title} from "@mantine/core";
 import {useDocumentTitle} from "@mantine/hooks";
 import {useEffect, useRef, useState} from "react";
 import {useLocation, useNavigate, useParams} from "react-router-dom";
@@ -16,6 +16,7 @@ import {useHomeSourceJobs} from "../../hooks/useHomeSourceJobs";
 import {JobCard} from "../common/JobCard";
 import {JobObservationNotice} from "../common/JobObservationNotice";
 import {useOpenProject} from "../../hooks/useOpenProject";
+import {errorMessage} from "../../domain/errorMessage";
 
 export type HomeTab = "design" | "projects";
 
@@ -65,6 +66,18 @@ function describeJobOutputAction(result: StudioOpenFolderView, success: string):
 // the given blueprint. `location.state?.initialParSheetPath` is the same idea for Projects' own "Import
 // Project" -> PAR sheet routing (see ProjectsPanel's `handleGoToDesignGame`).
 export function HomePage() {
+    // The provider must be above every hook that opens a project, including Home's own
+    // retained-job Retry. Wrapping only its rendered JobCard cannot guard that hook's context.
+    const [isDesignDirty, setIsDesignDirty] = useState(false);
+    const navigationGuard = useDesignNavigationGuard(isDesignDirty);
+    return (
+        <DesignNavigationGuardProvider value={navigationGuard}>
+            <HomePageContent onDirtyChange={setIsDesignDirty} />
+        </DesignNavigationGuardProvider>
+    );
+}
+
+function HomePageContent({onDirtyChange}: {onDirtyChange: (dirty: boolean) => void}) {
     const fetchImpl = useStudioApi();
     const navigate = useNavigate();
     const {tab} = useParams<{tab: string}>();
@@ -80,7 +93,7 @@ export function HomePage() {
         }
     }, [navigate, tab]);
 
-    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoverParImport?: boolean; recoveryRequest?: Readonly<Record<string, unknown>>}};
+    const location = useLocation() as {state?: {initialBlueprintPath?: string; initialParSheetPath?: string; recoverParImport?: boolean; recoveryRequest?: Readonly<Record<string, unknown>>; initialBuildOutDir?: string}};
     const initialBlueprintPath = location.state?.initialBlueprintPath;
     const initialParSheetPath = location.state?.initialParSheetPath;
 
@@ -92,15 +105,10 @@ export function HomePage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
-    // Fed by the guided BlueprintEditorPage instance's own onDirtyChange -- reactive state (not a ref)
-    // since useDesignNavigationGuard's beforeunload effect needs to actually see it change to
-    // attach/detach the listener; only flips true/false on New/Load/Save/Build, not per keystroke, so
-    // this doesn't cause excess re-renders.
-    const [isDesignDirty, setIsDesignDirty] = useState(false);
     const [projectRegistryVersion, setProjectRegistryVersion] = useState(0);
     const [justSavedManagedProject, setJustSavedManagedProject] = useState<StudioProjectRegistryView | undefined>(undefined);
-    const navigationGuard = useDesignNavigationGuard(isDesignDirty);
     const openAndNavigate = useOpenProject();
+    const [recoveryOpeningError, setRecoveryOpeningError] = useState<string>();
     const [jobOutputNotice, setJobOutputNotice] = useState<string>();
     const [jobOutputActionsUnavailableReason, setJobOutputActionsUnavailableReason] = useState<string>();
     // Home does not have a current project identity.  The server therefore returns only Design and
@@ -124,15 +132,23 @@ export function HomePage() {
         // owning workflow with its captured source so the user can inspect
         // the reconstructed operation and explicitly submit it again.
         if (job.operation === "project-open-materialization" && typeof job.request.sourcePath === "string") {
-            openAndNavigate(job.request.sourcePath).catch(() => undefined);
+            const sourcePath = job.request.sourcePath;
+            setRecoveryOpeningError(undefined);
+            openAndNavigate(sourcePath).catch((error: unknown) => {
+                setRecoveryOpeningError(`Couldn't reopen the retained project. ${errorMessage(error)} Retry this job to reopen "${sourcePath}".`);
+            });
             return;
         }
         if (job.operation === "design-par-import" && typeof job.request.path === "string") {
-            navigate("/home/design", {state: {initialParSheetPath: job.request.path, recoverParImport: true, recoveryRequest: job.request}});
+            navigate("/home/design", {state: {initialParSheetPath: job.request.path, recoverParImport: true, recoveryRequest: {...job.request}}});
             return;
         }
         if ((job.operation === "design-build" || job.operation === "design-par-export") && (job.request.blueprint !== undefined || typeof job.request.sourcePath === "string")) {
-            navigate("/home/design", {state: {initialBlueprintPath: typeof job.request.sourcePath === "string" ? job.request.sourcePath : undefined, recoveryRequest: job.request}});
+            navigate("/home/design", {state: {
+                initialBlueprintPath: typeof job.request.sourcePath === "string" ? job.request.sourcePath : undefined,
+                recoveryRequest: {...job.request},
+                initialBuildOutDir: job.operation === "design-build" && typeof job.request.destinationPath === "string" ? job.request.destinationPath : undefined,
+            }});
         }
     };
 
@@ -141,6 +157,7 @@ export function HomePage() {
             <Title order={3}>Home jobs</Title>
             <Text size="sm" c="dimmed">Retained Design and project-opening work stays visible on every Home section after a reload. Cancel active work or reconstruct a server-supported recovery.</Text>
             <JobObservationNotice connectionError={homeJobs.connectionError} actionError={homeJobs.actionError} onReattach={homeJobs.refresh} />
+            {recoveryOpeningError !== undefined && <Alert role="alert" color="red">{recoveryOpeningError}</Alert>}
             {homeJobs.jobs.map((job) =>
                 <JobCard key={job.id} job={job} cancellationPending={homeJobs.pendingIds.includes(job.id)} onCancel={homeJobs.cancel} onRecover={homeJobs.recover} onRecoveryAction={handleHomeRecoveryAction} onOpenOutput={(outputPath) => {
                     openOutputFolder(fetchImpl, outputPath).then((result) => {
@@ -167,51 +184,51 @@ export function HomePage() {
             }} />}
             breadcrumbs={[]}
         >
-            <DesignNavigationGuardProvider value={navigationGuard}>
-                <Stack className="studio-page" gap="lg">
-                    <Text className="studio-intro" size="sm" c="dimmed">
-                        POKIE is a slot-game logic framework for JavaScript/TypeScript developers and game-math authors.
-                        Studio lets producers design, validate, and play games locally. Validation is structural;
-                        simulation estimates game math. Local artifacts do not deploy a game or certify it for real-money use.
-                    </Text>
-                    <div id="home-design-panel" ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
-                        <BlueprintEditorPage
-                            guided
-                            initialPath={initialBlueprintPath}
-                            initialParSheetPath={initialParSheetPath}
-                            recoverParImport={location.state?.recoverParImport}
-                            recoveryRequest={location.state?.recoveryRequest}
-                            onDirtyChange={setIsDesignDirty}
-                            isVisible={activeTab === "design"}
-                            onManagedProjectSaved={(registeredProject) => {
-                                setJustSavedManagedProject(registeredProject);
-                                setProjectRegistryVersion((version) => version + 1);
-                            }}
+            <Stack className="studio-page" gap="lg">
+                <Text className="studio-intro" size="sm" c="dimmed">
+                    POKIE is a slot-game logic framework for JavaScript/TypeScript developers and game-math authors.
+                    Studio lets producers design, validate, and play games locally. Validation is structural;
+                    simulation estimates game math. Local artifacts do not deploy a game or certify it for real-money use.
+                </Text>
+                <div id="home-design-panel" ref={designRef} role="region" aria-labelledby="design-game-heading" tabIndex={-1} style={{display: activeTab === "design" ? undefined : "none"}}>
+                    <BlueprintEditorPage
+                        guided
+                        initialPath={initialBlueprintPath}
+                        initialParSheetPath={initialParSheetPath}
+                        recoverParImport={location.state?.recoverParImport}
+                        recoveryRequest={location.state?.recoveryRequest}
+                        recoveryGuardedByNavigation
+                        initialBuildOutDir={location.state?.initialBuildOutDir}
+                        onDirtyChange={onDirtyChange}
+                        isVisible={activeTab === "design"}
+                        onManagedProjectSaved={(registeredProject) => {
+                            setJustSavedManagedProject(registeredProject);
+                            setProjectRegistryVersion((version) => version + 1);
+                        }}
+                    />
+                </div>
+
+                <div id="home-projects-panel" ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
+                    <Stack gap="md">
+                        <Title id="projects-heading" order={2}>Projects</Title>
+                        <Text c="dimmed" size="sm">
+                            Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it.
+                        </Text>
+                        <Text c="dimmed" size="sm">
+                            New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea.
+                        </Text>
+                        <ProjectsPanel
+                            registryVersion={projectRegistryVersion}
+                            registeredProject={justSavedManagedProject}
+                            isVisible={activeTab === "projects"}
                         />
-                    </div>
+                    </Stack>
+                </div>
 
-                    <div id="home-projects-panel" ref={projectsRef} role="region" aria-labelledby="projects-heading" tabIndex={-1} style={{display: activeTab === "projects" ? undefined : "none"}}>
-                        <Stack gap="md">
-                            <Title id="projects-heading" order={2}>Projects</Title>
-                            <Text c="dimmed" size="sm">
-                                Return to a game you already started, or add a game you made elsewhere. Open a game to play, test, and export it.
-                            </Text>
-                            <Text c="dimmed" size="sm">
-                                New here? Go to Start a game to begin with a ready-to-edit starter, a blank design, or a generated idea.
-                            </Text>
-                            <ProjectsPanel
-                                registryVersion={projectRegistryVersion}
-                                registeredProject={justSavedManagedProject}
-                                isVisible={activeTab === "projects"}
-                            />
-                        </Stack>
-                    </div>
+                {homeJobsPanel}
 
-                    {homeJobsPanel}
-
-                    <DocumentationLinks />
-                </Stack>
-            </DesignNavigationGuardProvider>
+                <DocumentationLinks />
+            </Stack>
         </AppShellLayout>
     );
 }

@@ -167,6 +167,7 @@ export function BlueprintBuildPanel({
     initialOutDir,
     builtSnapshot,
     onBuilt,
+    isCurrentDraft,
     onRestoreBuilt,
     blocked = false,
     blockedMessage = "Fix the validation errors above before building.",
@@ -184,6 +185,8 @@ export function BlueprintBuildPanel({
     // (no unsaved-changes warning) the moment it happened to build successfully -- see
     // BlueprintEditorPage's own cleanRevisionRef doc comment.
     onBuilt?: (snapshot: BuiltBlueprintSnapshot) => void;
+    // Event-time draft identity also invalidates continuations before the remount cleanup runs.
+    isCurrentDraft?: () => boolean;
     // Wholesale-replaces the draft with the exact blueprint that produced `builtSnapshot` -- both
     // "Restore built blueprint" and "Discard unbuilt changes" in BuiltBlueprintSummary call this same one
     // operation, gated behind the same confirm below.
@@ -236,6 +239,16 @@ export function BlueprintBuildPanel({
     // an identity comparison alone can't tell apart two concurrent requests sharing the exact same
     // identity (e.g. Build Preview clicked, then Build Package clicked before it settles).
     const requestSeq = useRequestSequence();
+    const invalidatePreview = requestSeq.next;
+    const panelActiveRef = useRef(false);
+    useEffect(() => {
+        panelActiveRef.current = true;
+        return () => {
+            panelActiveRef.current = false;
+            invalidatePreview();
+            previewedRequest.current = undefined;
+        };
+    }, [invalidatePreview]);
     // The live {blueprint, sourcePath, outDir} this render actually holds -- kept in a ref (rather than
     // read fresh from props/state inside an old response's callback) because that callback closure was
     // captured at the render where its request was issued, so its own `blueprint`/`sourcePath`/`outDir`
@@ -268,6 +281,8 @@ export function BlueprintBuildPanel({
         currentBlockedRef.current = blocked;
     }, [blocked]);
 
+    const isActiveDraft = (): boolean => panelActiveRef.current && (isCurrentDraft?.() ?? true);
+
     const isCurrentIdentity = (identity: {blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined}): boolean => {
         const current = currentIdentityRef.current;
         return current.blueprintJson === identity.blueprintJson && current.sourcePath === identity.sourcePath && current.outDir === identity.outDir;
@@ -278,10 +293,10 @@ export function BlueprintBuildPanel({
     // AND the editor/form still holds the exact values this response describes (isCurrentIdentity) --
     // either one alone misses a real staleness case the other catches.
     const isFreshResponse = (seq: number, identity: {blueprintJson: string; sourcePath: string | undefined; outDir: string | undefined}): boolean =>
-        requestSeq.isLatest(seq) && isCurrentIdentity(identity);
+        isActiveDraft() && requestSeq.isLatest(seq) && isCurrentIdentity(identity);
 
     const runPreview = (): void => {
-        if (!previewGuard.begin()) {
+        if (!isActiveDraft() || !previewGuard.begin()) {
             return;
         }
         const resolvedOutDir = outDir.trim() || undefined;
@@ -306,16 +321,19 @@ export function BlueprintBuildPanel({
     };
 
     const runBuild = (): void => {
-        if (blocked || buildGuard.isBlocked()) return;
+        if (!isActiveDraft() || blocked || buildGuard.isBlocked()) return;
         const resolvedOutDir = outDir.trim() || undefined;
         const identity = {blueprintJson: JSON.stringify(blueprint), sourcePath, outDir: resolvedOutDir};
         const doBuild = (): void => {
-            if (!buildGuard.begin()) {
+            if (!isActiveDraft() || !buildGuard.begin()) {
                 return;
             }
             setResult({status: "loading"});
             buildBlueprint(fetchImpl, blueprint, resolvedOutDir, sourcePath)
                 .then((view) => {
+                    // Publication already belongs to a durable job. Let it settle, but never
+                    // attach its result to a replacement panel/draft or revalidate that draft.
+                    if (!isActiveDraft()) return;
                     setResult(withOutDirResultError(describeBuildResult(view)));
                     if (view.status === "ok") {
                         previewedRequest.current = undefined;
@@ -334,7 +352,9 @@ export function BlueprintBuildPanel({
                         });
                     }
                 })
-                .catch((error: unknown) => setResult({status: "error", message: describeOutDirFailure(errorMessage(error))}))
+                .catch((error: unknown) => {
+                    if (isActiveDraft()) setResult({status: "error", message: describeOutDirFailure(errorMessage(error))});
+                })
                 .finally(() => buildGuard.end());
         };
 

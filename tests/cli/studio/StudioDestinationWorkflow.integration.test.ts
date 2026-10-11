@@ -121,6 +121,82 @@ describe("Studio destination HTTP workflow", () => {
         expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(contents);
     });
 
+    it("retains a fresh unsaved Design build as a Home job with its exact draft and recoverable destination", async () => {
+        const destination = path.join(directory, "fresh-design");
+        expect((await post("/api/home/blueprints/build-preview", {blueprint, outDir: destination})).body).toMatchObject({
+            status: "ok", destinationState: "missing", destinationHasContent: false,
+        });
+        expect((await post("/api/home/blueprints/build", {blueprint, outDir: destination})).body).toMatchObject({
+            status: "ok", projectRoot: destination,
+        });
+        expect(fs.existsSync(path.join(destination, "dist/index.js"))).toBe(true);
+        expect(fs.existsSync(path.join(directory, "blueprint"))).toBe(false);
+        const response = await fetch(`${origin}/api/home/jobs`);
+        const {jobs} = await response.json() as {jobs: Array<Record<string, unknown>>};
+        expect(jobs).toHaveLength(1);
+        expect(jobs[0]).toMatchObject({
+            operation: "design-build", status: "completed",
+            request: {blueprint, destinationPath: destination},
+            result: {outputs: [{path: destination}]},
+        });
+        expect(jobs[0].request).not.toHaveProperty("sourcePath");
+        expect(jobs[0].result).not.toHaveProperty("provenance.sourcePath");
+        const packageBytes = fs.readFileSync(path.join(destination, "package.json"));
+        expect((await post("/api/home/blueprints/build", {blueprint, outDir: destination})).body.status).toBe("error");
+        expect(fs.readFileSync(path.join(destination, "package.json"))).toEqual(packageBytes);
+        expect((await post("/api/home/blueprints/build", {blueprint, outDir: "fresh-design-retry"})).body.status).toBe("ok");
+    });
+
+    it.each(["missing", "empty"])("builds an unsaved design named blueprint into its %s default without inventing source provenance", async (state) => {
+        const draft = {...blueprint, manifest: {...blueprint.manifest, id: "blueprint"}};
+        const destination = path.join(directory, "blueprint");
+        if (state === "empty") fs.mkdirSync(destination);
+        expect((await post("/api/home/blueprints/build-preview", {blueprint: draft})).body).toMatchObject({
+            status: "ok", projectRoot: destination, destinationState: state,
+        });
+        const result = await post("/api/home/blueprints/build", {blueprint: draft});
+        expect(result).toMatchObject({status: 201, body: {status: "ok", projectRoot: destination}});
+        expect(result.body.buildInfo).not.toHaveProperty("source");
+        const {jobs} = await (await fetch(`${origin}/api/home/jobs`)).json();
+        expect(jobs[0]).toMatchObject({projectId: expect.stringMatching(/^design:draft:/), request: {blueprint: draft, destinationPath: destination}});
+        expect(jobs[0].request).not.toHaveProperty("sourcePath");
+        expect(jobs[0].result.provenance).not.toHaveProperty("sourcePath");
+    });
+
+    it("exports an unsaved PAR draft without fabricated source provenance", async () => {
+        const destination = path.join(directory, "blueprint");
+        expect(await post("/api/home/blueprints/par-export", {blueprint, path: destination})).toMatchObject({status: 201, body: {status: "ok"}});
+        const {jobs} = await (await fetch(`${origin}/api/home/jobs`)).json();
+        expect(jobs[0]).toMatchObject({projectId: expect.stringMatching(/^design:draft:/), operation: "design-par-export", request: {blueprint, destinationPath: destination}});
+        expect(jobs[0].request).not.toHaveProperty("sourcePath");
+        expect(jobs[0].result.provenance).not.toHaveProperty("sourcePath");
+    });
+
+    it("retains real source identity and source/internal-directory guards in both Design publication handlers", async () => {
+        const source = path.join(directory, "source.json");
+        fs.writeFileSync(source, JSON.stringify(blueprint));
+        const original = fs.readFileSync(source);
+        for (const destination of [source, path.join(directory, "studio", "forbidden")]) {
+            expect((await post("/api/home/blueprints/build-preview", {blueprint, sourcePath: source, outDir: destination})).body).toMatchObject({destinationState: destination === source ? "file" : "unsafe"});
+            expect((await post("/api/home/blueprints/build", {blueprint, sourcePath: source, outDir: destination})).body.status).toBe("error");
+            expect((await post("/api/home/blueprints/par-export", {blueprint, sourcePath: source, path: destination})).body.status).not.toBe("ok");
+        }
+        expect(fs.readFileSync(source)).toEqual(original);
+        expect(fs.existsSync(path.join(directory, "studio", "forbidden"))).toBe(false);
+        for (const [route, destinationField, destination] of [
+            ["build", "outDir", path.join(directory, "real-source-package")],
+            ["par-export", "path", path.join(directory, "real-source.xlsx")],
+        ]) {
+            expect((await post(`/api/home/blueprints/${route}`, {blueprint, sourcePath: source, [destinationField]: destination})).body.status).toBe("ok");
+        }
+        const {jobs} = await (await fetch(`${origin}/api/home/jobs`)).json();
+        const completedJobs = jobs.filter((entry: {status: string}) => entry.status === "completed");
+        expect(completedJobs).toHaveLength(2);
+        for (const job of completedJobs) {
+            expect(job).toMatchObject({projectId: `design:${source}`, request: {sourcePath: source}, result: {provenance: {sourcePath: source}}});
+        }
+    });
+
     it("refuses file targets, legacy PAR overwrite, and WASM sidecar/companion conflicts", async () => {
         const source = path.join(directory, "blueprint.json");
         fs.writeFileSync(source, JSON.stringify(blueprint));

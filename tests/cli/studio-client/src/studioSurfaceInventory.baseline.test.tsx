@@ -28,6 +28,7 @@ const PROJECT_ROUTES = {
             origin: "managed",
         },
     }),
+    "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/my-slot", valid: true}}),
     "/api/project/gameModel": () => ({
         ok: true,
@@ -527,7 +528,7 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(alerts.some((alert) => alert.textContent?.includes("ENOENT"))).toBe(false);
     });
 
-    it("Design Game automatically validates its Recommended starting blueprint without exposing the removed Validate-to-Build flow", async () => {
+    it("Design Game automatically validates its Recommended starting blueprint while package publication stays hidden behind advanced options", async () => {
         const {fetchImpl, calls} = createRoutedFakeFetch({
             "/api/home/projects/registry": () => ({ok: true, status: 200, body: []}),
             "/api/home/blueprints/validate": () => ({ok: true, status: 200, body: {status: "ok", warnings: []}}),
@@ -538,7 +539,7 @@ describe("Scoped path-action error remediation baseline", () => {
         expect(await screen.findByText("Valid — no issues found.")).toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Validate"})).not.toBeInTheDocument();
         expect(screen.queryByRole("button", {name: "Build Package"})).not.toBeInTheDocument();
-        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Output directory (optional)")).not.toBeVisible();
     });
 
 });
@@ -562,9 +563,9 @@ describe("Design Game / Projects: path-field placeholder baseline", () => {
                 expect(field).not.toHaveAttribute("placeholder");
             }
         }
-        // Design Game creates and opens its managed Blueprint Project directly. It no longer exposes
-        // the removed package-build destination field.
-        expect(screen.queryByLabelText("Output directory (optional)")).not.toBeInTheDocument();
+        // The primary Design flow opens its managed project. Draft package publication
+        // remains mounted but hidden behind advanced options.
+        expect(screen.getByLabelText("Output directory (optional)")).not.toBeVisible();
 
         // Unlike every Design Game field above, Projects' own Import Project location field does carry
         // an illustrative placeholder -- it's the one path field in this group meant to be filled with

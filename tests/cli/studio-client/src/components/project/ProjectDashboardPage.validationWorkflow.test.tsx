@@ -10,6 +10,7 @@ const BASE_ROUTES: Record<string, () => {ok: boolean; status: number; body: unkn
         status: 200,
         body: {status: "loaded", projectRoot: "/games/a", game: {id: "a", name: "A", version: "1.0.0"}, type: "blueprint", capabilities: ["blueprint.build"]},
     }),
+    "/api/project/jobs": () => ({ok: true, status: 200, body: {jobs: []}}),
     "/api/project/inspect": () => ({ok: true, status: 200, body: {packageRoot: "/games/a", valid: true, generated: false}}),
     "/api/project/reports": () => ({ok: true, status: 200, body: []}),
     "/api/project/replays": () => ({ok: true, status: 200, body: []}),

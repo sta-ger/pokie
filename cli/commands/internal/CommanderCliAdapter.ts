@@ -25,21 +25,12 @@ export function createCommanderCliCommand(name: string): Command {
     return new Command(name).exitOverride().helpOption("-h, --help", "Display help for this command.").configureOutput(COMMANDER_OUTPUT_CONFIG);
 }
 
-// True exactly when `error` is a CommanderError produced by a genuine "--help"/"-h" request that
-// Commander already fully handled -- it already ran outputHelp() (so the help text is already on
-// stdout via COMMANDER_OUTPUT_CONFIG's own writeOut above) and thrown only because exitOverride()
-// turns its own internal `process.exit(0)` into a throw instead. A caller that sees this true should
-// treat the invocation as a plain success (exit 0) and run no further action/side effect -- never
-// re-translate it through translateCommanderError, whose fallback (a plain Error wrapping Commander's
-// own generic "(outputHelp)" placeholder message) would misrepresent a successful help request as a
-// failure. Deliberately narrower than "any code starting with commander.help": "commander.help" (from
-// Command.prototype.help()) is also how Commander's own auto-triggered "no subcommand given"/"unknown
-// subcommand" fallback reports itself -- but always with exitCode 1 (see Command.prototype._exit's own
-// `{error: true}` callers), and every per-command run() below already reserves that exact combination
-// for its own frozen "missing/unknown subcommand" usage+exit-1 error text via translateCommanderError's
-// unknownCommand/noCommand messages -- this check must never intercept that case.
+// Commander has already rendered successful help when exitOverride throws either
+// helpDisplayed (--help/-h) or help (the advertised "help [command]" entry).
+// The same help code also reports missing/unknown verbs with exitCode 1; retain
+// those command-specific usage failures instead of treating them as success.
 export function isCommanderHelpDisplay(error: unknown): error is CommanderError {
-    return error instanceof CommanderError && error.code === "commander.helpDisplayed";
+    return error instanceof CommanderError && error.exitCode === 0 && (error.code === "commander.helpDisplayed" || error.code === "commander.help");
 }
 
 // The small, per-command set of human-readable messages a translated CommanderError falls back to.

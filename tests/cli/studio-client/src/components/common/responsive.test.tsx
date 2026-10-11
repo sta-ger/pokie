@@ -227,6 +227,57 @@ describe("Stepper wraps onto multiple lines instead of overflowing on a narrow v
 });
 
 describe("Button/action groups wrap instead of overflowing (source + render guard)", () => {
+    it("keeps the guided action label and exiting loader in place through busy and enabled states", () => {
+        const stylesheet = parse(readFileSync(join(__dirname, "../../../../../../cli/studio-client/src/global.css"), "utf8"));
+        const rules: string[] = [];
+        stylesheet.walkRules(rule => {
+            if (!rule.selector.startsWith("#blueprint-create-game ")) return;
+            rules.push(rule.toString());
+            if (rule.selector.endsWith(".mantine-Button-loader")) {
+                // The exit loader remains mounted briefly after loading=false.
+                // Its upstream inline translate(-50%, -200%) must lose too.
+                const declarations = new Map(rule.nodes.filter(node => node.type === "decl")
+                    .map(node => [node.prop, node]));
+                expect(declarations.get("transform")).toMatchObject({value: "translate(-50%, -50%)", important: true});
+                expect(declarations.get("transition-property")).toMatchObject({value: "opacity", important: true});
+                expect(rule.selector).not.toContain("[data-loading]");
+            }
+        });
+        expect(rules).toHaveLength(2);
+        const style = document.createElement("style");
+        style.textContent = rules.join("\n");
+        document.head.append(style);
+        try {
+            const action = (loading: boolean) => <MantineProvider env="test"><QuickActions>
+                <Button id="blueprint-create-game" loading={loading} disabled={loading} aria-busy={loading || undefined}>
+                    Create game
+                </Button>
+                <Button loading={loading}>Sibling action</Button>
+            </QuickActions></MantineProvider>;
+            const {rerender} = render(action(true));
+            const create = screen.getByRole("button", {name: "Create game"});
+            const inner = create.querySelector(".mantine-Button-inner")!;
+            expect(create).toBeDisabled();
+            expect(create).toHaveAttribute("aria-busy", "true");
+            const loader = create.querySelector(".mantine-Button-loader")!;
+            expect(loader).not.toBeNull();
+            expect(getComputedStyle(loader).transform).toBe("translate(-50%, -50%)");
+            expect(getComputedStyle(loader).transitionProperty).toBe("opacity");
+            expect(getComputedStyle(inner).transform).toBe("none");
+            expect(getComputedStyle(inner).transitionProperty).toBe("opacity");
+            expect(getComputedStyle(screen.getByRole("button", {name: "Sibling action"})
+                .querySelector(".mantine-Button-inner")!).transform).not.toBe("none");
+            rerender(action(false));
+            expect(create).toBeEnabled();
+            expect(create).not.toHaveAttribute("aria-busy");
+            expect(create).toHaveAccessibleName("Create game");
+            expect(getComputedStyle(inner).transform).toBe("none");
+            expect(getComputedStyle(inner).transitionProperty).toBe("opacity");
+        } finally {
+            style.remove();
+        }
+    });
+
     it("QuickActions (the shared action-row wrapper) renders a Group with wrap=\"wrap\"", () => {
         renderWithMantine(
             <QuickActions>
