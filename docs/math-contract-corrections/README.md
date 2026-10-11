@@ -11,7 +11,7 @@ automatically rewritten: rebuild packages and generate fresh outcome artifacts.
 | --- | --- |
 | P10-01/P10-02 implementation regressions | Recorded in the two linked documents; source-bound execution, not installed proof |
 | P10-03 runner support | [Candidate-reader focused verification](p10-03-candidate-reader-targeted-verification.md) records the machine-owned three-file result on `6a150cd2c3efbf40d67f3625298f181a37e44bd2`; hermetic lifecycle tests and existing source-bound regression support remain retained |
-| Independent installed candidate | **Passed**: [P10-03 independent installed rerun](p10-03-independent-installed-rerun.md) authenticated and exercised one normally built, packed and isolated installation of `a9a0ead57276d8c7ebb06b7c0369b9f66000068f` |
+| Independent installed candidate | **Passed**: the historical [P10-03 independent installed rerun](p10-03-independent-installed-rerun.md) remains for `a9a0ead57276d8c7ebb06b7c0369b9f66000068f`; the candidate-bound 2026-10-11 receipt below independently authenticates and exercises `5b1513e17e734909447b9520b879dee6b6ae42f3` |
 | Official release and packaging | **Pending controller** `check:release`, which includes normal packaging smoke |
 | Develop publication and Drive round-trip | **Pending controller lifecycle**; no local commit constitutes publication |
 
@@ -113,6 +113,56 @@ installed package completed, but no official gate was launched by this worker.
 Existing invalid/unavailable/unaffordable-command, atomic generation,
 exact cancellation/resume/staging cleanup, serializer/repository/wallet, PAR,
 Studio numeric display and P10-02 free-game regression coverage remain intact.
+
+## P10-03 candidate-bound installed receipt (2026-10-11)
+
+Independent host verification started from the clean candidate
+`5b1513e17e734909447b9520b879dee6b6ae42f3` (tree
+`33db5e293bd3490eaa969a223b6b162be0decb4f`). One normal `npm run build`
+exited 0 (101,871 ms), then one `npm pack --ignore-scripts --pack-destination
+/tmp/p10-independent-GUxnDU` exited 0 (8,118 ms). The resulting `pokie@1.3.0` archive
+had SHA-256 `cf2ba9914fc919badbdbe8cff46a3590b8f9e4b1e36dbf6645a31367ff9dd326`.
+Exactly one isolated installation, outside the candidate checkout, used
+`npm install --prefix /tmp/p10-independent-GUxnDU/installation
+--ignore-scripts --no-audit --no-fund
+/tmp/p10-independent-GUxnDU/pokie-1.3.0.tgz` (exit 0; 10,904 ms).
+
+The installed-only consumer then ran (exit 0; 16,340 ms):
+
+```sh
+node scripts/math-contract-repro.mjs \
+  --candidate /tmp/p10-independent-GUxnDU/candidate.json \
+  --compiler "$PWD/node_modules/typescript/lib/tsc.js" \
+  --output /tmp/p10-independent-GUxnDU/collection
+```
+
+It authenticated the candidate tree, archive and installed bytes before
+resolving installed CJS, ESM, WASM and CLI entries. `result.json` completed all
+12 required records with exit 0 and drained resources: fractional, omitted
+symbol, omitted count, explicit zero and positive-control games in both CJS and
+freshly recompiled generated TypeScript; Node/WASM initial/later replay; and
+exact Outcome Library/report. The complete fixture constructors and assertions
+are the committed `scripts/math-contract-repro.mjs`; executed fixture SHA-256s
+were fractional `3420681487f83a2a3168aa3ab8b6189ae068f3dd6e5067fc746e769606d8eeaa`,
+missing-symbol `20945838bc87b66e5872228def90820022c21efe41485fb10d965756869a8e7c`,
+missing-count `da58af26e50a3a48c94c4260bdb9739ef464f7d11cc5eb0a98ef829d5b282bab`,
+zero `4c7d402bf61624e2b8fe3395f021b21ebc20265cef2ffb8e46cb805bb751c103`,
+positive `b85f01fa785fa9af414e9e3ed78dd56065c1abb3d98f9e9e1de30f504911c2dd`,
+and reachable line game `0ce55b403d6108e16a3cb180aaea9d3c9bcacfbaf3137621cc195a43ebd443e5`.
+
+For both generated formats, available bets remained numeric and actual/expected
+were `0.01 × 5 = 0.05`, `1.5 × 5 = 7.5`, and `1e-7 × 5 = 5e-7`; omitted B/3
+and A/3, and explicit B/3=0, paid exactly 0; authored B/3=2 paid twice stake.
+Amounts used `32 * Number.EPSILON * max(abs(expected), 1e-7)` and separate
+absolute-credit comparison. The one supported line-game session matched normal
+Node/WASM play and initial/later serialized continuation without an RNG rewind.
+The exact public CLI build/report produced eight unit-weight outcomes, only AAA
+winning, total win 5 at stake 1, RTP 0.625 and hit frequency 0.125, with no
+unauthored payout. Bounded retained-runtime checksums: WASM
+`caec0883c51552e26b994517116210d68712252b13ee037f5ccd822912823621`, parity
+checkpoint `91e1db308dbf455a4e98834d8a52b8f7af95da33ea13781b90802ac7c1db4570`,
+Outcome manifest `407450c319e56e0c1fad31cdc3ea907abf288402b859a5c2440137884fc57462`,
+and report `1ff00c65e3759b3e180723a78ffb53672f7e0e1870760de56d2afc2a8416f42c`.
 
 The controller owns one official `check:release` boundary and its normal
 [packaging smoke](../../tests/packaging/npmPackSmoke.test.ts), followed by normal
