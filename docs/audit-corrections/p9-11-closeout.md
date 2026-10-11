@@ -589,3 +589,24 @@ corrected Workers=1 HTTP 202 transaction. The typed receipt covers those fields.
 The complete seven-file command is rerun after this committed coverage repair;
 its terminal outcome is supplied in the work report. Official lifecycle proofs
 remain controller-owned.
+
+
+## Complete gate-correction descendant admission
+
+The [current repair ledger](README.md#p9-11-complete-gate-correction-handoff-repair)
+accounts individually for all eight non-product mismatches since retained
+candidate `2c6979b74672c834748bd0738ac57f766af1461d`. The shared reader admits
+only those additional named paths; its existing source/build protection,
+clean-tree/regular-file checks, external driver pins and archive/install
+integrity checks remain active. Closeout's direct reader and the selector used
+by both packaging consumers and `productionStudioCandidate` share that policy.
+The complete committed fixture also changes the prior driver paths and every
+file modified by this repair, while keeping the original delivery immutable.
+The focused reader/producer suites pass 76 tests, including refusal to produce
+from the admitted descendant. No TypeScript or production-build input changes.
+
+Reuse the accepted archive/install and product/browser/visual receipts with
+their original identities. The repository collector exemption does not bless
+new external driver bytes; their controller-supplied pin remains mandatory.
+Official lifecycle and independent post-commit matrix remain controller-owned
+and pending; this implementation handoff does not complete the campaign.

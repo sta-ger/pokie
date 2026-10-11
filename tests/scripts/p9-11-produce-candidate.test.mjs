@@ -7,7 +7,7 @@ import {pathToFileURL} from "node:url";
 import {test} from "@jest/globals";
 import {produceP911Candidate, runP911Producer} from "../../scripts/p9-11-produce-candidate.mjs";
 import {P911_CAMPAIGN, readPinnedJson, readP911CandidateFromEnvironment} from "../../scripts/p9-11-candidate.mjs";
-import {candidateFixture, commitP911ToolingDescendant} from "../testUtils/createP911CandidateFixture.mjs";
+import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from "../testUtils/createP911CandidateFixture.mjs";
 
 // These fake npm outcomes test the real producer/reader boundary without
 // running controller-owned build/pack/install or claiming browser evidence.
@@ -142,11 +142,12 @@ test("producer requires exact clean HEAD and external fresh output", async () =>
         await writeFile(path.join(f.candidate.repository, "dirty.js"), "dirty");
         await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /dirty/);
         await rm(path.join(f.candidate.repository, "dirty.js"));
-        // The consumer can reuse the original delivery after a driver repair,
+        // The consumer can reuse the original delivery after the full tooling repair,
         // but the producer may never rebuild that source from a descendant.
         const reviewedId = await commitP911ToolingDescendant(f.candidate);
         const retained = nativeRead(f.candidate.reference, {repository:f.candidate.repository});
         assert.equal(retained.equivalence.reviewedId, reviewedId);
+        assert.deepEqual(retained.equivalence.changedEvidenceAndTooling, [...P911_TOOLING_DESCENDANT_PATHS].sort());
         assert.equal(retained.candidateId, f.config.candidateId);
         assert.deepEqual(retained.browserDriver, f.config.browserDriver);
         await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /exact committed candidate HEAD/);

@@ -20,6 +20,16 @@ const tooling = new Set([
     // external controller driver must still authenticate against its own pin.
     "scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs",
     "scripts/p8-05-candidate-package-verifier.mjs",
+    // Reviewed gate corrections affect collection/regressions, not production
+    // build inputs. Keep every exemption named; sibling tests remain protected.
+    "scripts/p8-05-valera-browser-audit.mjs",
+    "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
+    "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
+    "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
+    "tests/cli/studio-client/src/integration/happyPath.test.tsx",
+    "tests/cli/studio-client/src/studioSurfaceInventory.baseline.test.tsx",
     "tests/testUtils/createP911CandidateFixture.mjs",
     "tests/scripts/p9-11-corrective-closeout.test.mjs", "tests/packaging/npmPackSmoke.test.ts", "tests/packaging/P805ValeraProgrammer.test.ts",
 ]);

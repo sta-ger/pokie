@@ -8,7 +8,7 @@ import {test, jest} from "@jest/globals";
 import {P911_SCENARIOS, P911_PERSONAS, P911_RENDERED_COVERAGE, runP911Closeout, validateActionCoverage, settleP911Commands, stopP911Child, spawnP911Child, p911ChildrenDrained, retainP911PackagingReceipt, waitP911Child, runP911Process} from "../../scripts/p9-11-corrective-closeout.mjs";
 import {readPinnedJson, sha256, P911_CAMPAIGN} from "../../scripts/p9-11-candidate.mjs";
 import {assertRareP911Metrics} from "../../scripts/p9-11-corrective-scenarios.mjs";
-import {candidateFixture, commitP911ToolingDescendant} from "../testUtils/createP911CandidateFixture.mjs";
+import {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} from "../testUtils/createP911CandidateFixture.mjs";
 import {spawn} from "node:child_process";
 
 const digest = "a".repeat(64);
@@ -119,7 +119,7 @@ test("dependent handoff rejects direct publication, project switches, stale subm
 });
 
 
-test("shared selector reuses the original authenticated archive/install after a committed driver repair", async () => {
+test("shared selector reuses the original authenticated archive/install after the complete committed tooling repair", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-tooling-descendant-"));
     try {
         const fixture = await candidateFixture(directory), original = await selectRetained(fixture);
@@ -132,7 +132,7 @@ test("shared selector reuses the original authenticated archive/install after a 
         assert.notEqual(reviewedId, original.candidateId);
         assert.deepEqual(selected.equivalence, {
             candidateId:original.candidateId, candidateTreeId:original.candidateTreeId, reviewedId,
-            changedEvidenceAndTooling:["scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs"],
+            changedEvidenceAndTooling:[...P911_TOOLING_DESCENDANT_PATHS].sort(),
         });
         assert.deepEqual({...selected, equivalence:original.equivalence}, original);
         assert.equal(selected.consumedArchiveSha256, fixture.handoff.archiveSha256);
@@ -144,8 +144,15 @@ test("shared selector reuses the original authenticated archive/install after a 
         await writeFile(fixture.handoff.browserDriver.path, "// stale controller driver\n");
         await assert.rejects(selectRetained(fixture), /authenticated controller browser driver required/);
         await writeFile(fixture.handoff.browserDriver.path, retainedBytes[4]);
-        for (const file of ["scripts/p9-11-rendered-driver.mjs", "untracked.js"]) {
-            const target = path.join(fixture.repository, file), tracked = file.startsWith("scripts/");
+        for (const file of [fixture.handoff.archivePath, fixture.handoff.buildReceipt.path, fixture.handoff.installReceipt.path,
+            ...original.projection.entries.map(entry => path.join(original.packageRoot, entry.path))]) {
+            const bytes = await readFile(file);
+            await writeFile(file, "changed retained bytes\n");
+            await assert.rejects(selectRetained(fixture), /archive digest mismatch|receipt digest mismatch|stale installed asset/);
+            await writeFile(file, bytes);
+        }
+        for (const file of [...P911_TOOLING_DESCENDANT_PATHS, "untracked.js"]) {
+            const target = path.join(fixture.repository, file), tracked = file !== "untracked.js";
             const bytes = tracked ? await readFile(target) : undefined;
             await writeFile(target, "// dirty checkout\n");
             await assert.rejects(selectRetained(fixture), /candidate checkout is dirty/);
@@ -158,6 +165,8 @@ test("shared selector reuses the original authenticated archive/install after a 
 test.each([
     "package.json", "package-lock.json", "generate-barrels.js", "tsconfig.prod.json", "src/index.ts", "cli/studio-client/src/global.css",
     "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
+    "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
+    "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",
 ])("tooling descendant does not exempt product/build or unnamed input %s", async (file) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-protected-descendant-"));
     try {
@@ -172,7 +181,7 @@ test.each([
     } finally { await rm(directory, {recursive:true, force:true}); }
 });
 
-test.each(["scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs"])("tooling descendant rejects nonregular entry %s", async (file) => {
+test.each(P911_TOOLING_DESCENDANT_PATHS)("tooling descendant rejects nonregular entry %s", async (file) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-nonregular-descendant-"));
     try {
         const fixture = await candidateFixture(directory);

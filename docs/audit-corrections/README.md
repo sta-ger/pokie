@@ -1505,3 +1505,54 @@ recorded in the committed worker report.
 This implementation handoff does not complete P9-11 or the campaign;
 current-candidate rendered geometry, independent image disposition, authenticated
 packed closeout and the controller release lifecycle remain pending.
+
+
+### P9-11 complete gate-correction handoff repair
+
+Finding `ab0bb5813f7bcb0f` was reproduced on clean `d799a46f`:
+`authenticateP911Tree` rejected accepted candidate
+`2c6979b74672c834748bd0738ac57f766af1461d` as changed product/build inputs.
+The entire committed delta comprised two already permitted current-step evidence
+indexes and these eight non-product paths. Each is now explicitly named in the
+[candidate reader](../../scripts/p9-11-candidate.mjs); no directory/pattern
+exemption is added.
+
+| Reviewed path | Non-product correction since the retained candidate |
+| --- | --- |
+| `scripts/p8-05-valera-browser-audit.mjs` | CDP reload/new-loader discovery, response recovery, retained lifecycle events, and distinct local round rejection/server Workers failure/success collection. This is offline collection tooling, not a packed application/build input. |
+| `tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx` | Collector discovery regression and per-isolated-child rejection/recovery assertions. |
+| `tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx` | Settled Review action and unmount-before-server-drain teardown. |
+| `tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx` | Unmount-before-server-drain teardown. |
+| `tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx` | Explicit empty common-job fixture response. |
+| `tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx` | Explicit empty common-job fixture response. |
+| `tests/cli/studio-client/src/integration/happyPath.test.tsx` | Assert advanced destination remains mounted but hidden. |
+| `tests/cli/studio-client/src/studioSurfaceInventory.baseline.test.tsx` | Empty common-job fixture and hidden advanced destination assertions. |
+
+The [committed-descendant fixture](../../tests/testUtils/createP911CandidateFixture.mjs)
+includes all eight paths, the earlier two-path driver repair, and every file
+changed by this repair (reader, fixture, both script regressions and both current
+P9 indexes). The native environment-selector regression compares before/after
+identities and retained archive/install/receipt/driver bytes. Every named path
+still rejects dirty and committed symlink entries; unnamed siblings, source,
+package/lock/barrel/compiler/Vite inputs remain protected. Changed archives,
+receipts, installed assets and external driver pins fail after the descendant.
+The producer successfully reads the retained delivery, then rejects that complete
+descendant before any npm command/output because its authorization requires
+exact HEAD.
+
+Closeout calls `readP911Candidate` directly. Both packaging consumers and
+`productionStudioCandidate` call `readP911CandidateFromEnvironment`, which
+unconditionally delegates a supplied P9 delivery to that same reader. No
+consumer bypass, fallback or second candidate is introduced. The two directly
+affected whole files passed together: **2 suites / 76 tests**, exit 0:
+
+```sh
+npm run test:targeted -- tests/scripts/p9-11-corrective-closeout.test.mjs tests/scripts/p9-11-produce-candidate.test.mjs
+```
+
+| Immutable criterion / accumulated findings | Retained disposition |
+| --- | --- |
+| Six production repros; CLI help/inventory and destination corrections | The supplied independent review authenticates the retained six-row closeout and original normal archive/install. The final protected-tree comparison must establish unchanged product/build inputs; this repair neither recollects nor relabels those proofs. Unsupported boundaries and the wider status register remain unchanged. |
+| Five independent personas; reachability, deterministic inputs, dependent Stake, recovery, clipping/focus and driver-source corrections | The supplied review accepts the five isolated smokes, authenticated rendered P909/P910 and four inspected graphic images; retained aggregate SHA-256 `7164f9e7582db05597dd4f42a757c59f3f35c50e238d5eff43d53bf46f66847c` and all action/process/profile/cleanup receipts retain their original identities/locations. This worker performs no browser recollection. |
+| Candidate handoff findings `39842817bc1bccc3` and `ab0bb5813f7bcb0f` | Complete explicit non-product delta admitted by the shared reader; byte integrity, clean/regular trees, external pins and producer exact-HEAD protections retained. Synthetic tests are contract evidence, not new product acceptance receipts. |
+| Final release/packaging, exact integration/push/publication, Drive round-trip and campaign completion | Still pending controller execution. The controller retains its independent three-file matrix including `productionStudioCandidate.test.tsx`; that matrix is not claimed as run here. No gate, build, pack, install, publication, completed-step evidence cleanup or campaign-state edit occurs in this repair. |
