@@ -15,7 +15,7 @@ import {VideoSlotWithFreeGamesConfig} from "./VideoSlotWithFreeGamesConfig.js";
 import type {VideoSlotWithFreeGamesConfigRepresenting} from "./VideoSlotWithFreeGamesConfigRepresenting.js";
 import type {VideoSlotWithFreeGamesSessionHandling} from "./VideoSlotWithFreeGamesSessionHandling.js";
 import type {VideoSlotWithFreeGamesSessionState} from "./VideoSlotWithFreeGamesSessionState.js";
-import type {WinningScatterDescribing} from "./WinningScatterDescribing.js";
+import {SymbolsCombinationsAnalyzer} from "./combinations/SymbolsCombinationsAnalyzer.js";
 
 export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = string>
     extends AbstractVideoSlotSessionDecorator<T>
@@ -48,11 +48,11 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
 
     public getWonFreeGamesNumber(): number {
         let rv = 0;
-        const wonScatters = this.getWinningScatters();
-        for (const scatterModel of Object.values<WinningScatterDescribing<T>>(wonScatters)) {
+        // Feature grants depend on landed scatters, independently of monetary payouts.
+        for (const symbolId of this.config.getScatterSymbols()) {
             const freeGamesForScatters = this.config.getFreeGamesForScatters(
-                scatterModel.getSymbolId(),
-                scatterModel.getSymbolsPositions().length,
+                symbolId,
+                SymbolsCombinationsAnalyzer.getScatterSymbolsPositions(this.getSymbolsCombination().toMatrix(), symbolId).length,
             );
             if (freeGamesForScatters > 0) {
                 rv += freeGamesForScatters;

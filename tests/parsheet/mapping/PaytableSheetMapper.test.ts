@@ -3,6 +3,13 @@ import {PaytableSheetMapper} from "../../../src/parsheet/mapping/PaytableSheetMa
 describe("PaytableSheetMapper", () => {
     const mapper = new PaytableSheetMapper();
 
+    it("preserves sparse counts and explicit zero rows", () => {
+        const paytable = {A: {5: 10}, B: {5: 0}};
+        const rows = mapper.toRows(paytable);
+        expect(rows).toEqual([["Symbol", "Matches", "Multiplier"], ["A", 5, 10], ["B", 5, 0]]);
+        expect(mapper.fromRows(rows)).toEqual({value: paytable, issues: []});
+    });
+
     it("maps Symbol/Matches/Multiplier rows to a paytable object", () => {
         const {value, issues} = mapper.fromRows([
             ["Symbol", "Matches", "Multiplier"],

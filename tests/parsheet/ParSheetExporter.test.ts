@@ -1,3 +1,5 @@
+import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
+import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, type VideoSlotSessionHandling} from "pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
@@ -42,6 +44,29 @@ describe("ParSheetExporter", () => {
         await workbook.xlsx.readFile(filePath);
         return workbook.worksheets.map((worksheet) => worksheet.name);
     }
+
+    it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("round-trips and plays the authored %s table through PAR", async kind => {
+        const model = authoritativePaytableBlueprint(kind, 0.1, true);
+        const issues = await new ParSheetExporter("1.3.0").exportToFile(model, filePath);
+        expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
+        const imported = await new ParSheetImporter().importFromFile(filePath);
+        expect(imported.issues.filter(issue => issue.severity === "error")).toEqual([]);
+        expect(imported.blueprint.paytable).toEqual(model.paytable);
+        const built = new GamePackageGenerator("1.3.0").generate(imported.blueprint, dir);
+        const loaded = await loadPokieGameRuntime(built.projectRoot, entry => require(entry));
+        try {
+            const screen = authoritativePaytableBlueprint(kind).reelStrips!.map(strip => [strip[0]]);
+            const session = loaded.game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)}) as VideoSlotSessionHandling;
+            session.setBet(0.1);
+            session.play();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.2 : 0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(kind === "positive" ? 1 : 0);
+            expect(session.getPaytable().getWinAmountForSymbol("B", 3, 0.1)).toBe(kind === "positive" ? 0.2 : 0);
+        } finally {
+            await loaded.release();
+        }
+    });
 
     it("writes every sheet, with no error-level issues, for a fully-populated blueprint", async () => {
         const exporter = new ParSheetExporter("1.3.0");

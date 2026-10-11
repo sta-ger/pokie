@@ -13,9 +13,9 @@ describe("P9-07 payout edits in Blueprint authoring", () => {
             if (url !== "/api/home/blueprints/validate") return fetchImpl(url, init);
             const payout = JSON.parse(init!.body!).blueprint.paytable.Q[3] as number;
             validatedPayouts.push(payout);
-            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(payout > 0
+            return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(payout >= 0
                 ? {status: "ok", warnings: []}
-                : {status: "invalid", errors: [{code: "blueprint-paytable-invalid-multiplier", severity: "error", message: "Payout must be positive.", path: "paytable.Q.3"}], warnings: []})});
+                : {status: "invalid", errors: [{code: "blueprint-paytable-invalid-multiplier", severity: "error", message: "Payout must be nonnegative.", path: "paytable.Q.3"}], warnings: []})});
         };
         renderWithProviders(<BlueprintEditorPage guided />, {fetchImpl: validateFetch});
         const create = screen.getByRole("button", {name: "Create game"});
@@ -24,16 +24,20 @@ describe("P9-07 payout edits in Blueprint authoring", () => {
         const payout = screen.getByLabelText("Q x3 payout");
         await user.clear(payout);
         await waitFor(() => expect(validatedPayouts).toContain(0));
+        await waitFor(() => expect(create).toBeEnabled());
+        await user.type(payout, "-1");
+        await waitFor(() => expect(validatedPayouts).toContain(-1));
         await waitFor(() => expect(create).toHaveAttribute("data-pokie-validation-state", "invalid"));
         expect(create).toBeDisabled();
         // Preserve the guided editor's existing jump to the first error section.
         expect(screen.getByRole("tab", {name: /^Paytable/})).toHaveFocus();
+        await user.clear(payout);
         await user.type(payout, "7");
         expect(create).toBeDisabled();
         await waitFor(() => expect(validatedPayouts.at(-1)).toBe(7));
         await waitFor(() => expect(create).toBeEnabled());
         expect(payout).toHaveFocus();
-        expect(screen.queryByText(/Payout must be positive/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Payout must be nonnegative/)).not.toBeInTheDocument();
     });
 
     it("marks a raw Blueprint payout dirty before blur and carries its current value into JSON", async () => {
@@ -41,7 +45,7 @@ describe("P9-07 payout edits in Blueprint authoring", () => {
         const onDirtyChange = jest.fn();
         const blueprintOnDisk = {
             manifest: {id: "tiny", name: "Tiny", version: "1.0.0"}, reels: 2, rows: 1,
-            symbols: ["A"], paytable: {A: {2: 5}}, availableBets: [1], reelStrips: [["A"], ["A"]],
+            symbols: ["A", "B"], paytable: {A: {2: 0}}, availableBets: [1], reelStrips: [["A"], ["A"]],
         };
         const fetchImpl: FetchLike = (url) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(
             url === "/api/home/blueprints/load"
@@ -50,6 +54,8 @@ describe("P9-07 payout edits in Blueprint authoring", () => {
         )});
         renderWithProviders(<BlueprintEditorPage initialPath="/games/tiny.json" onDirtyChange={onDirtyChange} />, {fetchImpl});
         const payout = await screen.findByLabelText("A x2 payout");
+        expect(screen.queryByLabelText("B x2 payout")).not.toBeInTheDocument();
+        expect(payout).toHaveValue("0");
         onDirtyChange.mockClear();
         await user.clear(payout);
         await user.type(payout, "7");

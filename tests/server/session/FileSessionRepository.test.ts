@@ -1,5 +1,6 @@
+import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
-import {captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "pokie";
+import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, VideoSlotSessionHandling, captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -13,6 +14,34 @@ describe("FileSessionRepository", () => {
 
     afterEach(() => {
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("persists generated %s paytables and round records without implicit awards", async kind => {
+        const model = authoritativePaytableBlueprint(kind, 0.01);
+        const built = new GamePackageGenerator("1.3.0").generate(model, directory);
+        const loaded = await loadPokieGameRuntime(built.projectRoot, entry => require(entry));
+        try {
+            const session = loaded.game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(model.reelStrips!.map(strip => [strip[0]]))}) as VideoSlotSessionHandling;
+            session.setBet(0.01);
+            const serializer = new VideoSlotSessionSerializer();
+            const initial = captureInitialPokieSessionState({seed: "0"}, session, serializer);
+            session.play();
+            const state = captureRoundPokieSessionState({seed: "0"}, session, initial, serializer);
+            const repository = new FileSessionRepository(path.join(directory, "sessions"));
+            await repository.save(kind, state);
+            const restored = await new FileSessionRepository(path.join(directory, "sessions")).load(kind);
+            expect(restored).toEqual(JSON.parse(JSON.stringify(state)));
+            const expectedMap = Object.fromEntries(Object.entries(model.paytable).map(([symbol, payouts]) => [symbol, Object.fromEntries(Object.entries(payouts).map(([count, multiplier]) => [count, multiplier * 0.01]))]));
+            expect(restored?.initialPayload).toMatchObject({bet: 0.01, paytable: {"0.01": expectedMap}});
+            const round = serializer.getRoundData(session);
+            expect(restored?.roundPayload).toEqual(JSON.parse(JSON.stringify(round)));
+            expect(round.totalWin).toBe(kind === "positive" ? 0.02 : 0);
+            expect(round.winningScatters).toBeUndefined();
+            expect(Object.keys(round.winningLines ?? {})).toHaveLength(kind === "positive" ? 1 : 0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(kind === "positive" ? 1 : 0);
+        } finally {
+            await loaded.release();
+        }
     });
 
     it.each(FRACTIONAL_BET_STAKES)("persists actual fractional session bet/win/paytable payloads at stake %s", async (bet) => {

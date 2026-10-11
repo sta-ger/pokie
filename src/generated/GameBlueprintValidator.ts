@@ -691,12 +691,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                         message: `"paytable.${symbolId}" has an invalid match-count key "${times}" (expected an integer between 2 and ${maxMatchCount ?? '"reels"'}).`,
                     });
                 }
-                const multiplierValid = typeof multiplier === "number" && multiplier > 0;
+                const multiplierValid = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier >= 0;
                 if (!multiplierValid) {
                     issues.push({
                         code: "blueprint-paytable-invalid-multiplier",
                         severity: "error",
-                        message: `"paytable.${symbolId}.${times}" must be a positive number.`,
+                        message: `"paytable.${symbolId}.${times}" must be a finite nonnegative number.`,
                     });
                 }
                 if (timesValid && multiplierValid) {
@@ -1453,7 +1453,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     code: "blueprint-symbol-missing-payout",
                     severity: "warning",
                     message: `Symbol "${symbolId}" is listed in "symbols" but has no "paytable" entry and isn't a wild or scatter, so it can never produce a win.`,
-                    suggestion: `Add a "paytable.${symbolId}" entry, or remove "${symbolId}" from "symbols" if it's intentionally unused.`,
+                    suggestion: `Leave it omitted for no award, add an authored "paytable.${symbolId}" entry, or remove "${symbolId}" if unused.`,
                 });
             }
         }
@@ -1495,7 +1495,8 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
                 const timesNumber = Number(times);
                 const timesValid = Number.isInteger(timesNumber) && timesNumber >= 2 && (maxMatchCount === undefined || timesNumber <= maxMatchCount);
-                const multiplierValid = typeof multiplier === "number" && multiplier > 0;
+                // Zero entries are valid authored data, but do not contribute payout economics.
+                const multiplierValid = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0;
                 if (timesValid && multiplierValid) {
                     validPayouts.push({times: timesNumber, multiplier});
                 }
@@ -1520,7 +1521,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     code: "blueprint-paytable-missing-base-payout",
                     severity: "warning",
                     message: `"paytable.${symbolId}" has no 3-of-a-kind payout (only ${validPayouts.map((payout) => payout.times).join(", ")}); most line-pay symbols pay starting at 3 matches.`,
-                    suggestion: `Add a "paytable.${symbolId}.3" entry, or confirm "${symbolId}" is intentionally rarer than a normal 3-of-a-kind win.`,
+                    suggestion: `Leave it omitted for no 3-match award, or add an authored "paytable.${symbolId}.3" entry if intended.`,
                 });
             }
 

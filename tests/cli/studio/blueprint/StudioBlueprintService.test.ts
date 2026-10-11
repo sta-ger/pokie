@@ -1,3 +1,4 @@
+import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../../fixtures/math/AuthoritativePaytableFixture.js";
 import {
     AggregateSimulationRunner,
     BUILT_PACKAGE_FILES,
@@ -6,6 +7,10 @@ import {
     GameBlueprint,
     GameSession,
     materializeReelStrips,
+    Paytable,
+    loadPokieGameRuntime,
+    SymbolsCombination,
+    type VideoSlotSessionHandling,
     ParSheetExporting,
     ParSheetExporter,
     ParSheetImporting,
@@ -58,6 +63,7 @@ function simulateMaterializedBlueprint(blueprint: GameBlueprint): {rtp: number; 
     config.setReelsNumber(blueprint.reels);
     config.setReelsSymbolsNumber(blueprint.rows);
     config.setAvailableSymbols(blueprint.symbols);
+    config.setPaytable(new Paytable(config.getAvailableBets()));
     for (const [symbol, payouts] of Object.entries(blueprint.paytable)) {
         for (const [matches, payout] of Object.entries(payouts)) {
             config.getPaytable().setPayoutForSymbol(symbol, Number(matches), payout);
@@ -89,6 +95,7 @@ function buildExactEnumerationGame(blueprint: GameBlueprint): PokieGame {
     config.setReelsNumber(blueprint.reels);
     config.setReelsSymbolsNumber(blueprint.rows);
     config.setAvailableSymbols(blueprint.symbols);
+    config.setPaytable(new Paytable(config.getAvailableBets()));
     for (const [symbol, payouts] of Object.entries(blueprint.paytable)) {
         for (const [matches, payout] of Object.entries(payouts)) {
             config.getPaytable().setPayoutForSymbol(symbol, Number(matches), payout);
@@ -129,6 +136,46 @@ describe("StudioBlueprintService", () => {
     function createService(): StudioBlueprintService {
         return new StudioBlueprintService("1.2.1", studioRoot, homeService);
     }
+
+    it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("validates, saves, projects and builds authored %s math", async kind => {
+        const service = createService();
+        const model = authoritativePaytableBlueprint(kind, 0.01, true);
+        expect(service.validate(model).status).toBe("ok");
+        const source = path.join(tmpDir, "authored.json");
+        expect(service.save(source, model, false).status).toBe("ok");
+        const reopened = service.load(source);
+        expect(reopened).toMatchObject({status: "ok", blueprint: {paytable: model.paytable}});
+        expect(JSON.parse(fs.readFileSync(source, "utf8")).paytable).toEqual(model.paytable);
+        const projection = service.previewGameModel(model);
+        expect(projection.paytable).toEqual({status: "available", data: Object.entries(model.paytable).flatMap(([symbolId, payouts]) => Object.entries(payouts).map(([count, payout]) => ({symbolId, matchCount: Number(count), payout})))});
+        const destination = path.join(tmpDir, "authored-package");
+        expect(service.previewBuild(model, destination)).toMatchObject({status: "ok"});
+        expect(await service.build(model, destination, source)).toMatchObject({status: "ok"});
+        const loaded = await loadPokieGameRuntime(destination, entry => require(entry));
+        try {
+            const screen = authoritativePaytableBlueprint(kind).reelStrips!.map(strip => [strip[0]]);
+            const session = loaded.game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)}) as VideoSlotSessionHandling;
+            session.setBet(0.01);
+            session.play();
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(kind === "positive" ? 1 : 0);
+            expect(session.getPaytable().toMap()[0.01]).toEqual(Object.fromEntries(Object.entries(model.paytable).map(([symbol, payouts]) => [symbol, Object.fromEntries(Object.entries(payouts).map(([count, payout]) => [count, payout * 0.01]))])));
+        } finally {
+            await loaded.release();
+        }
+    });
+
+    it("keeps reachability rejection and rejects a negative payout before build publication", async () => {
+        const service = createService();
+        expect(service.validate(authoritativePaytableBlueprint("missing-symbol")).status).toBe("invalid");
+        const invalid = {...authoritativePaytableBlueprint("zero", 1, true), paytable: {A: {3: -1}}};
+        const destination = path.join(tmpDir, "preserved-output");
+        fs.mkdirSync(destination);
+        fs.writeFileSync(path.join(destination, "keep.txt"), "keep");
+        expect(service.validate(invalid).status).toBe("invalid");
+        expect(await service.build(invalid, destination)).toMatchObject({status: "invalid"});
+        expect(fs.readFileSync(path.join(destination, "keep.txt"), "utf8")).toBe("keep");
+    });
 
     describe("validate", () => {
         it("returns ok with no warnings for a clean blueprint", () => {
