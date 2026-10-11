@@ -1,3 +1,4 @@
+import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -6,6 +7,10 @@ import {
     ArtifactBuildCancelledError,
     GameBlueprint,
     loadPokieGame,
+    loadPokieGameRuntime,
+    releasePokieGame,
+    SymbolsCombination,
+    type VideoSlotSessionHandling,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     TsPackageArtifactBuilder,
@@ -55,6 +60,33 @@ describe("TsPackageArtifactBuilder", () => {
         fs.rmSync(dir, {recursive: true, force: true});
     });
 
+    it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("validates and builds an authoritative %s package", async kind => {
+        const model = authoritativePaytableBlueprint(kind, 0.01, true);
+        fs.writeFileSync(blueprintPath, JSON.stringify(model));
+        await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd()).build(blueprintProjectOf(blueprintPath), destinationDir);
+        const loaded = await loadPokieGameRuntime(destinationDir, entry => require(entry));
+        try {
+            const screen = authoritativePaytableBlueprint(kind).reelStrips!.map(strip => [strip[0]]);
+            const session = loaded.game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)}) as VideoSlotSessionHandling;
+            session.setBet(0.01);
+            session.play();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+            expect(session.getPaytable().toMap()[0.01]).toEqual(Object.fromEntries(Object.entries(model.paytable).map(([symbol, payouts]) => [symbol, Object.fromEntries(Object.entries(payouts).map(([count, payout]) => [count, payout * 0.01]))])));
+        } finally {
+            await loaded.release();
+        }
+    });
+
+    it("rejects negative authored payouts before publication and preserves destination files", async () => {
+        fs.writeFileSync(blueprintPath, JSON.stringify({...authoritativePaytableBlueprint("zero", 1, true), paytable: {A: {3: -1}}}));
+        fs.mkdirSync(destinationDir);
+        fs.writeFileSync(path.join(destinationDir, "keep.txt"), "keep");
+        await expect(new TsPackageArtifactBuilder("1.3.0").build(blueprintProjectOf(blueprintPath), destinationDir)).rejects.toThrow();
+        expect(fs.readFileSync(path.join(destinationDir, "keep.txt"), "utf8")).toBe("keep");
+        expect(fs.readdirSync(dir).some(entry => entry.startsWith("built-package.tmp-"))).toBe(false);
+    });
+
     it("builds a real, loadable tsPackage from a blueprint file", async () => {
         const builder = new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(process.cwd());
 
@@ -64,7 +96,12 @@ describe("TsPackageArtifactBuilder", () => {
         expect(fs.existsSync(path.join(destinationDir, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(destinationDir, "dist", "index.js"))).toBe(true);
         expect(fs.lstatSync(path.join(destinationDir, "node_modules", "pokie")).isSymbolicLink()).toBe(true);
-        await expect(loadPokieGame(destinationDir)).resolves.toMatchObject({getManifest: expect.any(Function)});
+        const game = await loadPokieGame(destinationDir);
+        try {
+            expect(game).toMatchObject({getManifest: expect.any(Function)});
+        } finally {
+            await releasePokieGame(game);
+        }
     });
 
     it("keeps the supplied current runtime link", async () => {

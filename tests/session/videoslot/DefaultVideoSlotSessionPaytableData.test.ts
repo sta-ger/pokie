@@ -2,6 +2,29 @@ import {Paytable} from "pokie";
 import {FRACTIONAL_BET_STAKES} from "../../fixtures/math/FractionalBetFixture.js";
 
 describe("DefaultVideoSlotSessionPaytableData", () => {
+    it("populates an explicitly empty table without changing constructor convenience awards", () => {
+        const data = new Paytable<string>(FRACTIONAL_BET_STAKES);
+        for (const bet of FRACTIONAL_BET_STAKES) {
+            expect(data.toMap()[bet]).toEqual({});
+            expect(data.getAvailableSymbolsForBet(bet)).toEqual([]);
+            expect(new Paytable([bet], ["A", "B"], [], 5).getWinAmountForSymbol("B", 3, bet)).toBe(bet);
+        }
+        data.setPayoutForSymbol("A", 5, 10);
+        data.setPayoutForSymbol("B", 5, 0);
+        for (const bet of FRACTIONAL_BET_STAKES) {
+            expect(data.toMap()[bet]).toEqual({A: {5: 10 * bet}, B: {5: 0}});
+            expect(data.getNumbersOfSymbolsForBet(bet, "A")).toEqual([5]);
+            expect(data.getWinAmountForSymbol("A", 3, bet)).toBe(0);
+            expect(data.getWinAmountForSymbol("missing", 3, bet)).toBe(0);
+            data.setPayoutForSymbol("A", 5, 2, bet);
+            expect(data.getWinAmountForSymbol("A", 5, bet)).toBe(2 * bet);
+        }
+        const map = data.toMap();
+        const restored = new Paytable<string>([]).fromMap(map);
+        map[1].A[5] = 999;
+        expect(restored.toMap()).toEqual(data.toMap());
+    });
+
     it.each([0.01, 1.5])("reproduces the direct core intake at stake %s", (bet) => {
         const data = new Paytable([bet], ["A"], [], 3);
         data.setPayoutForSymbol("A", 3, 5);

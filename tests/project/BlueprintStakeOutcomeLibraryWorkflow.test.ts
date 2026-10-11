@@ -1,3 +1,4 @@
+import {authoritativePaytableBlueprint, expectAuthoritativeEightOutcomes} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -8,6 +9,9 @@ import {
     loadGameBlueprint,
     ManagedOutcomeProjectService,
     OutcomeLibraryBundleWriter,
+    OutcomeLibraryBundleReader,
+    OutcomeSourceProjectAnalyzer,
+    WeightedOutcomeLibraryAnalyzer,
     PROJECT_TYPE_CAPABILITIES,
     type PokieProject,
 } from "../../src/index.js";
@@ -26,6 +30,41 @@ function runtimeSnapshotsForPackage(packageName: string): string[] {
 }
 
 describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
+    it.each(["missing-symbol", "zero"] as const)("persists and reopens an exact %s Blueprint bundle without implicit awards", async kind => {
+        const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-managed-"));
+        try {
+            const blueprintPath = path.join(workDir, "game.json");
+            fs.writeFileSync(blueprintPath, JSON.stringify(authoritativePaytableBlueprint(kind, 0.01, true)));
+            const source: PokieProject = {type: "blueprint", rootPath: blueprintPath, capabilities: PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "P10-02"};
+            const workflow = new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint);
+            const destination = path.join(workDir, "outcomes");
+            const result = await workflow.resolveOrGenerate(source, destination);
+            expect(result.reused).toBe(false);
+            const reader = new OutcomeLibraryBundleReader();
+            const library = await reader.readLibrary(destination, "base");
+            expectAuthoritativeEightOutcomes(library, 0.01);
+            const expected = new WeightedOutcomeLibraryAnalyzer().analyze(library);
+            expect(expected).toMatchObject({totalWeight: 8, rtp: 5 / 8, hitFrequency: 1 / 8, maxWin: 0.05});
+            expect((await reader.readManifest(destination)).modes[0].analysis).toEqual(expected);
+            const report = await new OutcomeSourceProjectAnalyzer().analyze(result.project);
+            expect(report.issues.filter(issue => issue.severity === "error")).toEqual([]);
+            expect(report.modes).toEqual([{modeName: "base", analysis: expected}]);
+            const before = fs.readFileSync(path.join(destination, "manifest.json"), "utf8");
+            const reopened = await new BlueprintStakeOutcomeLibraryWorkflow("1.3.0", loadGameBlueprint).resolveOrGenerate(source, destination);
+            expect(reopened.reused).toBe(true);
+            expectAuthoritativeEightOutcomes(await reader.readLibrary(reopened.project.rootPath, "base"), 0.01);
+            expect(fs.readFileSync(path.join(destination, "manifest.json"), "utf8")).toBe(before);
+            // Runtime version is part of reuse compatibility even with identical source content.
+            const upgraded = await new BlueprintStakeOutcomeLibraryWorkflow("1.3.1", loadGameBlueprint).resolveOrGenerate(source, path.join(workDir, "upgraded-outcomes"));
+            expect(upgraded.reused).toBe(false);
+            expectAuthoritativeEightOutcomes(await reader.readLibrary(upgraded.project.rootPath, "base"), 0.01);
+            expect(fs.readFileSync(path.join(destination, "manifest.json"), "utf8")).toBe(before);
+
+        } finally {
+            fs.rmSync(workDir, {recursive: true, force: true});
+        }
+    });
+
     it("releases real package snapshots after repeated preflight and compatible-reuse operations", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-workflow-runtime-lease-"));
         const packageRoot = path.join(workDir, "game");

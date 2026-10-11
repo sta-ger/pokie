@@ -10,15 +10,16 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
     private readonly baseConfig: VideoSlotConfig<T>;
     private readonly freeGamesForScattersMap: Record<T, Record<number, number>>;
 
-    constructor(baseConfig = new VideoSlotConfig<T>()) {
+    // Direct callers keep convenience grants by default; authored assembly can pass an empty map.
+    constructor(
+        baseConfig = new VideoSlotConfig<T>(),
+        freeGamesForScattersMap = VideoSlotWithFreeGamesConfig.createFreeGamesForScattersMap() as unknown as Record<T, Record<number, number>>,
+    ) {
         this.baseConfig = baseConfig;
-        // The default scatter symbol ID ("S") is a string literal — safe for the default
-        // `T = string`, but TS can't prove an arbitrary `T` accepts it, hence the cast.
-        this.freeGamesForScattersMap =
-            VideoSlotWithFreeGamesConfig.createFreeGamesForScattersMap() as unknown as Record<
-                T,
-                Record<number, number>
-            >;
+        this.freeGamesForScattersMap = {...freeGamesForScattersMap};
+        for (const symbolId of Reflect.ownKeys(freeGamesForScattersMap) as T[]) {
+            this.freeGamesForScattersMap[symbolId] = {...freeGamesForScattersMap[symbolId]};
+        }
     }
 
     private static createFreeGamesForScattersMap(): Record<string, Record<number, number>> {

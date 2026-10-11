@@ -49,6 +49,7 @@ export type GameBlueprint = {
     paylines?: number[][];
     // symbolId -> matchCount (as a string key, since JSON object keys are always strings) -> bet
     // multiplier, applied across every configured bet — see Paytable.setPayoutForSymbol.
+    /** Complete authored multipliers: omissions pay zero; explicit zero remains an entry. */
     paytable: Record<string, Record<string, number>>;
     // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
     // and symbolWeights. Unchanged since before reelStripGeneration existed.

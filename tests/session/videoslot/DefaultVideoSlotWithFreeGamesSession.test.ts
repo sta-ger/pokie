@@ -1,9 +1,13 @@
 import {
+    Paytable,
+    SeededRandomNumberGenerator,
+    SymbolsSequence,
     SymbolsCombinationsGenerator,
     VideoSlotWinCalculator,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
 } from "pokie";
+import {goldenVideoSlotSymbolsSequences} from "./VideoSlotGoldenTestFixtures.js";
 import {
     createCustomConfigForTestProperInitialValues,
     createCustomConfigForWrongBetTest,
@@ -28,6 +32,87 @@ import {
 } from "./DefaultVideoSlotWithFreeGamesSessionTestCases.js";
 
 describe("VideoSlotWithFreeGamesSession", () => {
+    it.each([undefined, 0])("reports only played-round grants with scatter money %s, preserving no-ops and constructor draws", multiplier => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setAvailableBets([1]);
+        config.setBet(1);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["S"])));
+        const paytable = new Paytable([1]);
+        if (multiplier !== undefined) paytable.setPayoutForSymbol("S", 3, multiplier);
+        config.setPaytable(paytable);
+        const rng = new SeededRandomNumberGenerator("0");
+        const expectedRng = new SeededRandomNumberGenerator("0");
+        const session = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const expectThreeDraws = () => {
+            for (let reel = 0; reel < 3; reel++) expectedRng.getRandomInt(0, 1);
+            expect(rng.toSessionState()).toBe(expectedRng.toSessionState());
+        };
+        expectThreeDraws(); // The constructor still consumes one draw per reel.
+        expect(session.getSymbolsCombination().toMatrix()).toEqual([["S"], ["S"], ["S"]]);
+        expect(session.getWonFreeGamesNumber()).toBe(0);
+        expect(session.getFreeGamesSum()).toBe(0);
+        session.setCreditsAmount(0);
+        const initialState = session.toSessionState();
+        session.play();
+        expect(session.toSessionState()).toEqual(initialState);
+        expect(session.getWonFreeGamesNumber()).toBe(0);
+
+        session.setCreditsAmount(1);
+        session.play();
+        expectThreeDraws();
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinningScatters()).toEqual({});
+        expect(session.getWonFreeGamesNumber()).toBe(10);
+        expect(session.getFreeGamesSum()).toBe(10);
+        expect(session.getCreditsAmount()).toBe(0);
+        session.play(); // Free spins remain playable with no real credits.
+        expectThreeDraws();
+        expect(session.getWonFreeGamesNumber()).toBe(10);
+        expect(session.getFreeGamesNum()).toBe(1);
+        expect(session.getFreeGamesSum()).toBe(20);
+        expect(session.getCreditsAmount()).toBe(0);
+
+        session.setFreeGamesNum(session.getFreeGamesSum());
+        const completedState = session.toSessionState();
+        session.play(); // An unaffordable paid spin must neither clear nor reprocess the last grant.
+        expect(session.toSessionState()).toEqual(completedState);
+        expect(session.getWonFreeGamesNumber()).toBe(10);
+        session.setCreditsAmount(1);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["A"])));
+        session.play();
+        expectThreeDraws();
+        expect(session.getWonFreeGamesNumber()).toBe(0);
+        expect(session.getFreeGamesSum()).toBe(0);
+    });
+
+    it("restores played-round grants and seeded continuation without evaluating a fresh display screen", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        config.setSymbolsSequences(goldenVideoSlotSymbolsSequences());
+        const createSession = () => new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(313)));
+        const live = createSession();
+        live.play();
+        expect(live.getWonFreeGamesNumber()).toBe(10);
+        const state = JSON.parse(JSON.stringify(live.toSessionState()));
+        const restored = createSession().fromSessionState(state);
+        restored.setCreditsAmount(live.getCreditsAmount());
+        expect(restored.getWonFreeGamesNumber()).toBe(10);
+        expect(restored.toSessionState()).toEqual(live.toSessionState());
+        for (let round = 0; round < 12; round++) {
+            live.play();
+            restored.play();
+            expect(restored.getSymbolsCombination().toMatrix()).toEqual(live.getSymbolsCombination().toMatrix());
+            expect(restored.getWonFreeGamesNumber()).toBe(live.getWonFreeGamesNumber());
+            expect(restored.getWinAmount()).toBe(live.getWinAmount());
+            expect(restored.getCreditsAmount()).toBe(live.getCreditsAmount());
+            expect(restored.toSessionState()).toEqual(live.toSessionState());
+        }
+        // Legacy states contain counters/RNG only; they cannot prove a last-round award.
+        restored.fromSessionState({freeGamesNum: 0, freeGamesSum: 0, freeGamesBank: 0});
+        expect(restored.getWonFreeGamesNumber()).toBe(0);
+    });
+
     it("should pass base tests", () => {
         let conf = new VideoSlotWithFreeGamesConfig();
         let sess = new VideoSlotWithFreeGamesSession(

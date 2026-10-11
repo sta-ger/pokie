@@ -1,6 +1,19 @@
-import {PlayFreeGamesStrategy, VideoSlotWithFreeGamesSessionHandling} from "pokie";
+import {PlayFreeGamesStrategy, SymbolsSequence, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession, VideoSlotWithFreeGamesSessionHandling} from "pokie";
 
 describe("PlayFreeGamesStrategy", () => {
+    it("continues past constructor scatters and stops after the first actual triggering round", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["S"])));
+        const session = new VideoSlotWithFreeGamesSession(config);
+        const strategy = new PlayFreeGamesStrategy();
+        expect(strategy.canPlayNextSimulationRound(session)).toBe(true);
+        session.play();
+        expect(session.getWonFreeGamesNumber()).toBe(10);
+        expect(strategy.canPlayNextSimulationRound(session)).toBe(false);
+    });
+
     test("canPlayNextGame", () => {
         let strategy: PlayFreeGamesStrategy;
 

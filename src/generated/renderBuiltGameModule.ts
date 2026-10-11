@@ -40,6 +40,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
     const requireNames = [
         "computeGameBlueprintHash",
         "CustomLinesDefinitions",
+        "Paytable",
         "ReelsSymbolsSequencesGenerator",
         "SeededRandomNumberGenerator",
         "SymbolsCombinationsGenerator",
@@ -122,7 +123,7 @@ ${forcedFeatureEntryHandlerDeclaration}        return new VideoSlotWithBetModesS
 
     const freeGamesWrapCode = freeGames
         ? `
-    const freeGamesConfig = new VideoSlotWithFreeGamesConfig(config);
+    const freeGamesConfig = new VideoSlotWithFreeGamesConfig(config, {});
     const freeGamesMechanic = blueprint.mechanics && blueprint.mechanics.freeGames;
     if (freeGamesMechanic) {
         for (const [count, awarded] of Object.entries(freeGamesMechanic.awardsByCount)) {
@@ -253,13 +254,16 @@ function createConfig(${contextParam}) {
     config.setScatterSymbols(blueprint.scatters || []);
     config.setAvailableSymbols(blueprint.symbols);
 
-    const paytable = config.getPaytable();
+    // A Blueprint is the complete payout definition, independent of hand-authored defaults.
+    const paytable = new Paytable(config.getAvailableBets());
     for (const symbolId of Object.keys(blueprint.paytable)) {
         const payouts = blueprint.paytable[symbolId];
         for (const times of Object.keys(payouts)) {
             paytable.setPayoutForSymbol(symbolId, Number(times), payouts[times]);
         }
     }
+
+    config.setPaytable(paytable);
 
     if (blueprint.paylines) {
         const linesDefinitions = new CustomLinesDefinitions();

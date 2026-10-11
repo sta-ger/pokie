@@ -131,6 +131,30 @@ describe("GameBlueprintValidator", () => {
         expect(issues.filter((issue) => issue.severity === "error")).toEqual([]);
     });
 
+    it("accepts zero without adding missing symbol/count payouts, with truthful warnings", () => {
+        const blueprint = {...validBlueprint(), paytable: {A: {5: 5}, K: {3: 0}}};
+        const before = JSON.stringify(blueprint);
+        const issues = validator.validate(blueprint);
+        expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
+        expect(issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({code: "blueprint-symbol-missing-payout", severity: "warning"}),
+            expect.objectContaining({code: "blueprint-paytable-missing-base-payout", severity: "warning"}),
+        ]));
+        expect(JSON.stringify(blueprint)).toBe(before);
+    });
+
+    it("accepts an all-zero table without claiming it inflates RTP or hit frequency", () => {
+        const issues = validator.validate({...validBlueprint(), paytable: {A: {2: 0, 3: 0}}});
+        expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
+        expect(codesOf(issues)).not.toContain("blueprint-paytable-frequent-low-match");
+        expect(codesOf(issues)).not.toContain("blueprint-paytable-generous-entry-payout");
+    });
+
+    it.each([-1, NaN, Infinity, -Infinity, "0", null])("rejects invalid payout %s", (multiplier) => {
+        const blueprint = {...validBlueprint(), paytable: {A: {3: multiplier}}};
+        expect(codesOf(validator.validate(blueprint))).toContain("blueprint-paytable-invalid-multiplier");
+    });
+
     it("flags an out-of-range match-count and a non-positive multiplier", () => {
         const blueprint = {...validBlueprint(), paytable: {A: {1: 5, 3: -2, 9: 3}}};
 

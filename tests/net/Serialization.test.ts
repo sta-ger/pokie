@@ -6,12 +6,14 @@ import {
     GameSessionConfig,
     GameSessionSerializer,
     SymbolsCombination,
+    SymbolsSequence,
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotSessionSerializer,
     VideoSlotWinCalculator,
     VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesSession,
+    VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSessionSerializer,
 } from "pokie";
 
@@ -178,6 +180,20 @@ describe("VideoSlotSessionSerializer", () => {
 });
 
 describe("VideoSlotWithFreeGamesSessionSerializer", () => {
+    test("serializes zero initial awards for a triggering display screen and the grant after a real round", () => {
+        const config = new VideoSlotWithFreeGamesConfig();
+        config.setReelsNumber(3);
+        config.setReelsSymbolsNumber(1);
+        config.setSymbolsSequences(Array.from({length: 3}, () => new SymbolsSequence().fromArray(["S"])));
+        const session = new VideoSlotWithFreeGamesSession(config);
+        const serializer = new VideoSlotWithFreeGamesSessionSerializer();
+        expect(session.getSymbolsCombination().toMatrix()).toEqual([["S"], ["S"], ["S"]]);
+        expect(roundtripThroughJson(serializer.getInitialData(session))).toMatchObject({wonFreeGamesNumber: 0, freeGamesSum: 0, totalWin: 0});
+        expect(serializer.getRoundData(session).wonFreeGamesNumber).toBe(0);
+        session.play();
+        expect(roundtripThroughJson(serializer.getRoundData(session))).toMatchObject({wonFreeGamesNumber: 10, freeGamesSum: 10});
+    });
+
     test("free-games fields are always-present numbers that roundtrip through JSON unchanged", () => {
         const session = new VideoSlotWithFreeGamesSession();
         session.play();

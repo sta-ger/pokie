@@ -13,6 +13,15 @@ const BASE_BLUEPRINT: GameBlueprint = {
 };
 
 describe("buildGameModelProjection", () => {
+    it("projects authored zeros and missing counts without filling entries", () => {
+        expect(buildGameModelProjection({...BASE_BLUEPRINT, reels: 5, paytable: {A: {5: 10}, B: {5: 0}}}).paytable).toEqual({
+            status: "available", data: [{symbolId: "A", matchCount: 5, payout: 10}, {symbolId: "B", matchCount: 5, payout: 0}],
+        });
+        expect(buildGameModelProjection({...BASE_BLUEPRINT, paytable: {A: {3: 0}}}).paytable).toEqual({
+            status: "available", data: [{symbolId: "A", matchCount: 3, payout: 0}],
+        });
+    });
+
     it("derives every section as \"available\" from a full GameBlueprint, without a caller re-deriving any of it", () => {
         const projection = buildGameModelProjection(BASE_BLUEPRINT);
 

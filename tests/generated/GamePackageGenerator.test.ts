@@ -1,3 +1,4 @@
+import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, amountTolerance, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import ts from "typescript";
 import {RNG_PARITY_BLUEPRINT} from "../fixtures/wasm/createProductionParityFixture.js";
@@ -7,13 +8,19 @@ import {
     BUILT_PACKAGE_FILES,
     computeGameBlueprintHash,
     GameBlueprint,
+    GameBlueprintValidator,
     GamePackageGenerator,
     loadPokieGameRuntime,
     generateWeightedOutcomeLibrary,
     PokieGame,
+    ReplayRecorder,
     SymbolsCombination,
     SymbolsCombinationsGenerating,
     VideoSlotSessionHandling,
+    VideoSlotWithFreeGamesSessionHandling,
+    VideoSlotWithFreeGamesSessionState,
+    VideoSlotSessionSerializer,
+    VideoSlotWithBetModesSession,
 } from "pokie";
 import fs from "fs";
 import os from "os";
@@ -48,8 +55,12 @@ describe("GamePackageGenerator", () => {
         }
     });
 
-    async function loadFractionalEntrypoints(bets: number[], mixed = false): Promise<PokieGame[]> {
-        const result = new GamePackageGenerator("1.3.0").generate(fractionalBetBlueprint(bets, mixed), cwd);
+    function loadFractionalEntrypoints(bets: number[], mixed = false): Promise<PokieGame[]> {
+        return loadGeneratedEntrypoints(fractionalBetBlueprint(bets, mixed));
+    }
+
+    async function loadGeneratedEntrypoints(blueprint: GameBlueprint): Promise<PokieGame[]> {
+        const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);
         const source = fs.readFileSync(path.join(result.projectRoot, "src/index.ts"), "utf8");
         const compiled = ts.transpileModule(source, {
             compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
@@ -64,6 +75,237 @@ describe("GamePackageGenerator", () => {
         fractionalGames.push(typed);
         return [cjs.game, typed.game];
     }
+
+    it.each((["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[]).flatMap(kind => FRACTIONAL_BET_STAKES.map(bet => [kind, bet] as const)))("uses only authored %s awards at stake %s through generated CJS and compiled TS", async (kind, bet) => {
+        const blueprint = authoritativePaytableBlueprint(kind, bet);
+        const screen = blueprint.reelStrips!.map(strip => [strip[0]]);
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const sessions = [game.createSession({seed: "0"}), game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)})];
+            for (const raw of sessions) {
+                const session = raw as VideoSlotSessionHandling;
+                session.setBet(bet);
+                expect(session.getBet()).toBe(bet);
+                const expectedMap = Object.fromEntries(Object.entries(blueprint.paytable).map(([symbol, payouts]) => [symbol, Object.fromEntries(Object.entries(payouts).map(([count, multiplier]) => [count, multiplier * bet]))]));
+                const before = session.getCreditsAmount();
+                session.play();
+                expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+                const expectedWin = kind === "positive" ? 2 * bet : 0;
+                expect(session.getWinAmount()).toBe(expectedWin);
+                expect(session.getPaytable().toMap()).toEqual({[bet]: expectedMap});
+                expect(Object.values(session.getWinningLines())).toHaveLength(expectedWin ? 1 : 0);
+                for (const line of Object.values(session.getWinningLines())) expect(line.getWinAmount()).toBe(expectedWin);
+                expect(session.getWinEvaluationResult().getTotalWin()).toBe(expectedWin);
+                expect(Math.abs(session.getCreditsAmount() - (before - bet + expectedWin))).toBeLessThanOrEqual(amountTolerance(before));
+            }
+        }
+    });
+
+    it.each((["lines", "ways", "clusters"] as const).flatMap(type => (["missing-symbol", "zero", "positive"] as const).map(kind => [type, kind] as const)))("keeps %s monetary wins authoritative for %s", async (type, kind) => {
+        const blueprint = type === "clusters" ? buildBlueprint({
+            reels: 5, rows: 1, availableBets: [0.01], paylines: [[0, 0, 0, 0, 0]], reelStrips: Array.from({length: 5}, () => ["B"]),
+            paytable: kind === "missing-symbol" ? {A: {5: 5}} : {A: {5: 5}, B: {5: kind === "zero" ? 0 : 2}}, winModel: {type, minimumClusterSize: 5},
+        }) : {...authoritativePaytableBlueprint(kind, 0.01), winModel: {type}};
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const session = game.createSession({seed: "0"}) as VideoSlotSessionHandling;
+            session.setBet(0.01);
+            session.play();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(blueprint.reelStrips!.map(strip => [strip[0]]));
+            const wins = session.getWinEvaluationResult().getWinComponents();
+            expect(wins).toHaveLength(kind === "positive" ? 1 : 0);
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+            for (const win of wins) expect(win.getWinAmount()).toBe(0.02);
+            expect(new VideoSlotSessionSerializer().getRoundData(session).totalWin).toBe(session.getWinAmount());
+        }
+    });
+
+    it.each(["missing-count", "zero", "positive"] as const)("keeps wild substitution authoritative for %s", async kind => {
+        const missing = kind === "missing-count";
+        const symbols = missing ? ["A", "W", "A", "B", "B"] : ["A", "W", "A"];
+        const blueprint = buildBlueprint({
+            rows: 1, reels: symbols.length, symbols: ["A", "B", "W"], wilds: ["W"], availableBets: [0.1],
+            reelStrips: symbols.map(symbol => [symbol]), paylines: [symbols.map(() => 0)],
+            paytable: {A: missing ? {5: 10} : {3: kind === "zero" ? 0 : 5}},
+        });
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const session = game.createSession({seed: "0"}) as VideoSlotSessionHandling;
+            session.setBet(0.1);
+            session.play();
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.5 : 0);
+            expect(Object.values(session.getWinningLines())).toHaveLength(kind === "positive" ? 1 : 0);
+            for (const win of Object.values(session.getWinningLines())) {
+                expect(win.getSymbolId()).toBe("A");
+                expect(win.getWildSymbolsPositions()).toEqual([1]);
+            }
+        }
+    });
+
+    it.each(["missing-symbol", "zero", "positive"] as const)("grants free games with %s scatter money and preserves subsequent free spins", async kind => {
+        const blueprint = buildBlueprint({
+            rows: 1, symbols: ["A", "S"], scatters: ["S"], availableBets: [0.01],
+            reelStrips: [["S"], ["S"], ["S"]], paylines: [[0, 0, 0]],
+            paytable: kind === "missing-symbol" ? {A: {3: 5}} : {A: {3: 5}, S: {3: kind === "zero" ? 0 : 2}},
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 2}}},
+        });
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const session = game.createSession({seed: "0"}) as VideoSlotWithFreeGamesSessionHandling & {getStakeAmount(): number};
+            session.setBet(0.01);
+            const before = session.getCreditsAmount();
+            expect(session.getWonFreeGamesNumber()).toBe(0);
+            expect(session.getFreeGamesSum()).toBe(0);
+            session.play();
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+            expect(Object.keys(session.getWinningScatters())).toHaveLength(kind === "positive" ? 1 : 0);
+            expect(session.getWonFreeGamesNumber()).toBe(2);
+            expect(session.getFreeGamesSum()).toBe(2);
+            expect(session.getStakeAmount()).toBe(0);
+            expect(session.getCreditsAmount()).toBeCloseTo(before - 0.01 + session.getWinAmount(), 10);
+            const beforeFree = session.getCreditsAmount();
+            session.play();
+            expect(session.getFreeGamesNum()).toBe(1);
+            expect(session.getFreeGamesSum()).toBe(4);
+            expect(session.getCreditsAmount()).toBe(beforeFree);
+            expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+        }
+    });
+
+    it.each([
+        ["omitted three-scatter grant", ["S", "S", "S", "A", "A"], "S", 0, 0],
+        ["omitted four-scatter grant", ["S", "S", "S", "S", "A"], "S", 0, 0],
+        ["authored five-scatter grant", ["S", "S", "S", "S", "S"], "S", 2, 2],
+        ["unconfigured scatter symbol", ["S", "S", "S", "T", "A"], "T", 0, 0],
+    ] as const)("keeps %s authoritative through generated CJS and compiled TS", async (_name, symbols, scatterSymbol, win, grant) => {
+        const blueprint = buildBlueprint({
+            reels: 5, rows: 1, symbols: scatterSymbol === "S" ? ["A", "S"] : ["A", "S", "T"], wilds: [], scatters: scatterSymbol === "S" ? ["S"] : ["S", "T"], availableBets: [1],
+            paylines: [[0, 0, 0, 0, 0]], reelStrips: symbols.map(symbol => [symbol]),
+            paytable: {A: {5: 5}, S: {3: 0, 5: 2}},
+            mechanics: {freeGames: {scatterSymbol, awardsByCount: {5: 2}}},
+        });
+        // The supplied S/S/S/A/A reproduction passes the existing reachability rules.
+        if (_name === "omitted three-scatter grant") {
+            expect(new GameBlueprintValidator().validate(blueprint).filter(issue => issue.severity === "error")).toEqual([]);
+        }
+        const screen = symbols.map(symbol => [symbol]);
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            for (const raw of [game.createSession({seed: "0"}), game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)})]) {
+                const session = raw as VideoSlotWithFreeGamesSessionHandling;
+                session.play();
+                expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+                expect(session.getWinAmount()).toBe(win);
+                expect(session.getWinEvaluationResult().getWinComponents()).toHaveLength(win ? 1 : 0);
+                expect(session.getWonFreeGamesNumber()).toBe(grant);
+                expect(session.getFreeGamesSum()).toBe(grant);
+                expect(session.getCreditsAmount()).toBe(999 + win);
+                expect(session.getFreeGamesForScatters("S", 3)).toBe(0);
+                expect(session.getFreeGamesForScatters("S", 4)).toBe(0);
+                expect(session.getFreeGamesForScatters(scatterSymbol, 5)).toBe(2);
+                expect(session.getFreeGamesForScatters(scatterSymbol === "S" ? "T" : "S", 5)).toBe(0);
+            }
+            const replay = new ReplayRecorder().record({game, seed: "0", round: 2});
+            expect(replay.screen).toEqual(screen);
+            expect(replay.totalBet).toBe(grant ? 1 : 2);
+            expect(replay.totalWin).toBe(2 * win);
+        }
+    });
+
+    it.each([undefined, 0])("preserves explicit grants with scatter money %s through base, ante and buyFeature wrappers", async multiplier => {
+        const blueprint = buildBlueprint({
+            rows: 1, symbols: ["A", "S"], scatters: ["S"], availableBets: [1],
+            reelStrips: [["S"], ["S"], ["S"]], paylines: [[0, 0, 0]],
+            paytable: multiplier === undefined ? {A: {3: 5}} : {A: {3: 5}, S: {3: multiplier}},
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 2}}},
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "ante", runtimeType: "ante", costMultiplier: 1.5}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 100, forcedFreeGames: 2}],
+        });
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            for (const factory of [() => game.createSession({seed: "0"}), () => game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix([["S"], ["S"], ["S"]])})]) {
+                for (const [mode, stake] of [["base", 1], ["ante", 1.5], ["buy", 100]] as const) {
+                    const session = factory() as VideoSlotWithBetModesSession;
+                    session.setBetMode(mode);
+                    const before = session.getCreditsAmount();
+                    session.play();
+                    const expectedSum = mode === "buy" ? 4 : 2;
+                    expect(session.toSessionState().base as VideoSlotWithFreeGamesSessionState).toMatchObject({freeGamesSum: expectedSum, freeGamesNum: mode === "buy" ? 1 : 0, wonFreeGamesNumber: 2});
+                    expect(session.getWinAmount()).toBe(0);
+                    expect(session.getWinningScatters()).toEqual({});
+                    expect(session.getCreditsAmount()).toBe(before - stake);
+                    expect(session.getStakeAmount()).toBe(0);
+                    expect(session.getBetModeId()).toBe(mode === "buy" ? "base" : mode);
+                    const beforeFree = session.getCreditsAmount();
+                    session.play();
+                    expect(session.getCreditsAmount()).toBe(beforeFree);
+                    expect(session.toSessionState().base as VideoSlotWithFreeGamesSessionState).toMatchObject({freeGamesSum: expectedSum + 2, freeGamesNum: mode === "buy" ? 2 : 1, wonFreeGamesNumber: 2});
+                }
+            }
+        }
+    });
+
+    it("keeps complete mixed-bet keys in an authoritative sparse table", async () => {
+        const blueprint = {...authoritativePaytableBlueprint("missing-count"), availableBets: FRACTIONAL_BET_STAKES};
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const session = game.createSession({seed: "0"}) as VideoSlotSessionHandling;
+            expect(new Set(session.getPaytable().getAvailableBets())).toEqual(new Set(FRACTIONAL_BET_STAKES));
+            for (const bet of FRACTIONAL_BET_STAKES) {
+                session.setBet(bet);
+                session.play();
+                expect(session.getWinAmount()).toBe(0);
+                expect(session.getPaytable().toMap()[bet]).toEqual({A: {5: 10 * bet}, B: {5: 2 * bet}});
+            }
+        }
+    });
+
+    it.each(["ways", "clusters"] as const)("does not fill omitted match counts for %s", async type => {
+        const blueprint = type === "ways" ? {...authoritativePaytableBlueprint("missing-count", 0.1), winModel: {type}} : buildBlueprint({
+            reels: 5, rows: 2, availableBets: [0.1], winModel: {type, minimumClusterSize: 5},
+            reelStrips: Array.from({length: 5}, () => ["A", "B"]), paytable: {A: {6: 10}, B: {6: 2}},
+        });
+        const screen = type === "ways" ? [["A"], ["A"], ["A"], ["B"], ["B"]] : Array.from({length: 5}, () => ["A", "B"]);
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            const session = game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix(screen)}) as VideoSlotSessionHandling;
+            session.setBet(0.1);
+            session.play();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(session.getWinAmount()).toBe(0);
+            expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
+        }
+    });
+
+    it.each(["missing-symbol", "zero", "positive"] as const)("keeps authored %s awards through base, ante, buyFeature and exact mode wrappers", async kind => {
+        const blueprint = {
+            ...authoritativePaytableBlueprint(kind, 0.01), symbols: ["A", "B", "S"], scatters: ["S"],
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {3: 2}}},
+            betModes: [{id: "base", runtimeType: "base" as const, isDefault: true}, {id: "ante", runtimeType: "ante" as const, costMultiplier: 1.5}, {id: "buy", runtimeType: "buyFeature" as const, costMultiplier: 100, forcedFreeGames: 2}],
+        };
+        for (const game of await loadGeneratedEntrypoints(blueprint)) {
+            for (const factory of [() => game.createSession({seed: "0"}), () => game.createExactEnumerationSession!({generateSymbolsCombination: () => new SymbolsCombination<string>().fromMatrix([["B"], ["B"], ["B"]])})]) {
+                for (const mode of ["base", "ante"]) {
+                    const session = factory() as VideoSlotWithBetModesSession;
+                    session.setBet(0.01);
+                    session.setBetMode(mode);
+                    const stake = mode === "ante" ? 0.015 : 0.01;
+                    expect(session.getStakeAmount()).toBe(stake);
+                    const before = session.getCreditsAmount();
+                    session.play();
+                    expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+                    expect(session.getCreditsAmount()).toBeCloseTo(before - stake + session.getWinAmount(), 10);
+                    expect(session.getPaytable().toMap()[0.01]).toEqual(kind === "missing-symbol" ? {A: {3: 0.05}} : {A: {3: 0.05}, B: {3: kind === "zero" ? 0 : 0.02}});
+                }
+                const session = factory() as VideoSlotWithBetModesSession;
+                session.setBet(0.01);
+                session.setBetMode("buy");
+                const before = session.getCreditsAmount();
+                session.play();
+                expect(session.getCreditsAmount()).toBe(before - 1);
+                expect(session.getBetModeId()).toBe("base");
+                // The purchase itself consumes the first of the two forced spins.
+                for (let index = 0; index < 1; index++) {
+                    expect(session.getStakeAmount()).toBe(0);
+                    session.play();
+                    expect(session.getWinAmount()).toBe(kind === "positive" ? 0.02 : 0);
+                }
+                expect(session.getStakeAmount()).toBe(0.01);
+                expect(session.getCreditsAmount()).toBeCloseTo(before - 1 + (kind === "positive" ? 0.04 : 0), 10);
+            }
+        }
+    });
 
     it.each(FRACTIONAL_BET_STAKES)("pays 5 * stake %s through actual generated CJS and compiled TypeScript entrypoints", async (bet) => {
         for (const game of await loadFractionalEntrypoints([bet])) {

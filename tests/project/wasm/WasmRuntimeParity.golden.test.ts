@@ -1,3 +1,4 @@
+import {authoritativePaytableBlueprint} from "../../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, screenMultiplier, amountTolerance} from "../../fixtures/math/FractionalBetFixture.js";
 import fs from "fs";
 import os from "os";
@@ -21,6 +22,53 @@ import {PORTABLE_RUNTIME_ALL_WILD_GOLDEN, PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTA
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("WASM runtime parity golden", () => {
+    it.each((["missing-symbol", "missing-count", "zero", "positive", "scatter-missing", "scatter-zero", "scatter-positive"] as const).flatMap(kind => FRACTIONAL_BET_STAKES.map(bet => [kind, bet] as const)))("matches authored %s Node/WASM awards at stake %s", async (kind, bet) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-authored-wasm-"));
+        let fixture: Awaited<ReturnType<typeof createProductionParityFixture>> | undefined;
+        let runtime: PokieWasmRuntime | undefined;
+        try {
+            const scatter = kind.startsWith("scatter-");
+            const blueprint = scatter ? {
+                ...authoritativePaytableBlueprint("missing-symbol", bet, true), symbols: ["A", "S"], scatters: ["S"],
+                reelStrips: [["A", "S"], ["A", "S"], ["A", "S"]],
+                paytable: kind === "scatter-missing" ? {A: {3: 5}} : {A: {3: 5}, S: {3: kind === "scatter-zero" ? 0 : 2}},
+            } : authoritativePaytableBlueprint(kind as "missing-symbol" | "missing-count" | "zero" | "positive", bet, true);
+            fixture = await createProductionParityFixture(directory, blueprint);
+            runtime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
+            const node = fixture.game.createSession({seed: "0"}) as VideoSlotSession;
+            const wasm = runtime.createSession("0");
+            expect(wasm.serialize().rngState).toBe(node.toSessionState().rngState);
+            for (let index = 0; index < 16; index++) {
+                node.setBet(bet);
+                node.play();
+                const round = await wasm.play({bet});
+                const symbols = node.getSymbolsCombination().toMatrix().map(reel => reel[0]).join("");
+                let multiplier = 0;
+                if (kind === "missing-count") {
+                    if (symbols === "AAAAA") multiplier = 10;
+                    if (symbols === "BBBBB") multiplier = 2;
+                } else if (symbols === "AAA") {
+                    multiplier = 5;
+                } else if ((symbols === "BBB" && kind === "positive") || (symbols === "SSS" && kind === "scatter-positive")) {
+                    multiplier = 2;
+                }
+                expect(round.screen).toEqual(node.getSymbolsCombination().toMatrix());
+                expect(node.getWinAmount()).toBe(multiplier * bet);
+                expect(round.payout).toBe(multiplier * bet);
+                expect(node.getWinEvaluationResult().getWinComponents()).toHaveLength(multiplier ? 1 : 0);
+                expect(Math.abs(round.credits - node.getCreditsAmount())).toBeLessThanOrEqual(amountTolerance(round.creditsBefore));
+                expect(wasm.serialize().rngState).toBe(node.toSessionState().rngState);
+            }
+        } finally {
+            runtime?.dispose();
+            try {
+                await fixture?.release();
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        }
+    });
+
     it.each(FRACTIONAL_BET_STAKES)("preserves generated/WASM stake %s, mixed-strip continuation, replay and rejected-command state", async (bet) => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fractional-wasm-"));
         let fixture: Awaited<ReturnType<typeof createProductionParityFixture>> | undefined;
