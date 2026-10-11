@@ -129,7 +129,10 @@ describe("P8-05 rendered Valera persona evidence", () => {
     it("discovers reload/restart jobs after an expired first response without accepting another job", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
-            import {readP805RenderedJobDiscovery, readP805RenderedResponse, reloadP805Page} from './scripts/p8-05-valera-browser-audit.mjs';
+            import {readP805RenderedJobDiscovery, readP805RenderedResponse, reloadP805Page, P805_DEVTOOLS_OBSERVATION_EVENTS} from './scripts/p8-05-valera-browser-audit.mjs';
+            assert.equal(P805_DEVTOOLS_OBSERVATION_EVENTS.includes('Page.lifecycleEvent'), true);
+            assert.equal(P805_DEVTOOLS_OBSERVATION_EVENTS.includes('Network.responseReceived'), true);
+            assert.equal(P805_DEVTOOLS_OBSERVATION_EVENTS.includes('Network.dataReceived'), false);
             const event = (id) => ({method:'Network.responseReceived', params:{requestId:id, response:{url:'http://localhost/api/project/jobs', status:200}}});
             const reads = [];
             const cdp = {events:[event('before-reload'), event('expired'), event('unrelated')],

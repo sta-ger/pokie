@@ -563,3 +563,9 @@ Simulation poll. That failed attempt is retained in the worker cache. The
 follow-up uses the shared response reader for this poll and requires the new
 main-frame loader for both reload and restart; its failure diagnostic includes
 the observed endpoint/status. A green job-list receipt alone is insufficient.
+
+The next packed attempt exposed that the audit's event-volume filter discarded
+`Page.lifecycleEvent`. The final correction retains this necessary reload
+boundary while continuing to discard high-volume data notifications; the saved
+P805 regression asserts the actual socket-reader event allowlist as well as the
+new-loader predicate. This failed attempt is retained, not labelled passing.

@@ -612,6 +612,19 @@ export async function createP805TupleSupervisor(options, tuple, nonce, services 
     };
 }
 async function responseJson(url, options) { const response = await fetch(url, options); if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return response.json(); }
+export const P805_DEVTOOLS_OBSERVATION_EVENTS = Object.freeze([
+    // Required by the new-document reload/restart boundary.
+    "Page.lifecycleEvent",
+    "Network.requestWillBeSent",
+    "Network.responseReceived",
+    // One completion per response binds getResponseBody to the fully
+    // received bytes. Keep this boundary while dropping dataReceived.
+    "Network.loadingFinished",
+    "Network.loadingFailed",
+    "Runtime.exceptionThrown",
+    "Log.entryAdded",
+]);
+
 export async function connectP805Devtools(devtools, initialUrl = "about:blank") {
     // Creating a target at the live URL starts automatic validation before
     // this socket can collect it. Instrument the blank target first, including
@@ -626,16 +639,7 @@ export async function connectP805Devtools(devtools, initialUrl = "about:blank") 
     // packed whole-file workflow into the very performance regression it is
     // intended to detect.  Keep the machine-observable events that bind a
     // browser action to its request/result and those needed for diagnostics.
-    const retainedEvents = new Set([
-        "Network.requestWillBeSent",
-        "Network.responseReceived",
-        // One completion per response binds getResponseBody to the fully
-        // received bytes. Keep this boundary while dropping dataReceived.
-        "Network.loadingFinished",
-        "Network.loadingFailed",
-        "Runtime.exceptionThrown",
-        "Log.entryAdded",
-    ]);
+    const retainedEvents = new Set(P805_DEVTOOLS_OBSERVATION_EVENTS);
     socket.on("message", (raw) => {
         // Do this inexpensive envelope check before JSON.parse.  Chromium
         // continues to emit high-volume unneeded protocol notifications while
