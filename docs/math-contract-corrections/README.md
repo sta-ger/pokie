@@ -11,7 +11,7 @@ automatically rewritten: rebuild packages and generate fresh outcome artifacts.
 | --- | --- |
 | P10-01/P10-02 implementation regressions | Recorded in the two linked documents; source-bound execution, not installed proof |
 | P10-03 runner support | [Candidate-reader focused verification](p10-03-candidate-reader-targeted-verification.md) records the machine-owned three-file result on `3d769d415039c8f2f3a0f15d9c5ac26747213eff`; hermetic lifecycle tests and existing source-bound regression support remain retained |
-| Independent installed candidate | **Passed**: the current [P10-03 installed rerun](p10-03-b6024422-installed-rerun.md) authenticates and exercises `b602442205d0e028318854f672c57cb911873171`; historical receipts retain their original identities |
+| Independent installed candidate | **Passed**: the [P10-03 installed rerun](p10-03-b6024422-installed-rerun.md) authenticates the installed package, and the [f9e64020 evidence finalization](p10-03-f9e64020-evidence-finalization.md) retains its candidate-equivalence verdict without an invalid runtime locator; historical receipts retain their original identities |
 | Official release and packaging | **Pending controller** `check:release`, which includes normal packaging smoke |
 | Develop publication and Drive round-trip | **Pending controller lifecycle**; no local commit constitutes publication |
 
