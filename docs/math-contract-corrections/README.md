@@ -170,6 +170,65 @@ integration/push to **product develop only**, exact remote SHA verification,
 status publication and matching Drive round-trip. P9 candidate/persona tooling
 and historical PC-20 npm publication are not alternate P10 lifecycles.
 
+## P10-03 current-candidate installed rerun — `9e957f98` (2026-10-11)
+
+The supplied checkout was clean at candidate and HEAD
+`9e957f9889b40f1fd094ebaab94eaaeaea3a7b73` (tree
+`cb88fe39acc5f207f1df8a45618aff798709f72b`). The retained `dd0ce39d` receipt
+was not relabelled: the intervening committed delta changes only its P9
+candidate-tooling/test allow-list and its registration, not packed game/runtime
+inputs. Independent current-candidate authentication nevertheless used one
+normal `npm run build` (exit 0, 100.3 s), one `npm pack --ignore-scripts
+--pack-destination /tmp/p10-03-9e957f98-installed-Bk9atA` (exit 0, 7.716 s),
+and one isolated installation outside this checkout:
+
+```sh
+npm install --prefix /tmp/p10-03-9e957f98-installed-Bk9atA/installation \
+  --ignore-scripts --no-audit --no-fund \
+  /tmp/p10-03-9e957f98-installed-Bk9atA/pokie-1.3.0.tgz
+```
+
+The install exited 0 in 14.291 s. `pokie@1.3.0` archive SHA-256 was
+`cf2ba9914fc919badbdbe8cff46a3590b8f9e4b1e36dbf6645a31367ff9dd326`.
+The installed-only consumer resolved CJS, ESM, WASM and CLI below that one
+installation and ran (exit 0, 16.140 s):
+
+```sh
+node scripts/math-contract-repro.mjs \
+  --candidate /tmp/p10-03-9e957f98-installed-Bk9atA/candidate.json \
+  --compiler "$PWD/node_modules/typescript/lib/tsc.js" \
+  --output /tmp/p10-03-9e957f98-installed-Bk9atA/collection
+```
+
+Its `result.json` SHA-256 is
+`b8595947985784f83ae47164fae7088a213fd02811cb3f4ca1864dc03f37c8c3`; all
+12 CJS/generated-TS, replay/WASM, and exact/report records completed, resources
+drained, and cleanup errors were empty. The complete fixture constructors and
+assertions remain [`math-contract-repro.mjs`](../../scripts/math-contract-repro.mjs);
+the executed fixture checksums were fractional
+`3420681487f83a2a3168aa3ab8b6189ae068f3dd6e5067fc746e769606d8eeaa`,
+omitted-symbol `20945838bc87b66e5872228def90820022c21efe41485fb10d965756869a8e7c`,
+omitted-count `da58af26e50a3a48c94c4260bdb9739ef464f7d11cc5eb0a98ef829d5b282bab`,
+explicit-zero `4c7d402bf61624e2b8fe3395f021b21ebc20265cef2ffb8e46cb805bb751c103`,
+positive `b85f01fa785fa9af414e9e3ed78dd56065c1abb3d98f9e9e1de30f504911c2dd`,
+and reachable line game
+`0ce55b403d6108e16a3cb180aaea9d3c9bcacfbaf3137621cc195a43ebd443e5`.
+Both installed CJS and freshly compiled TypeScript observed `0.01 * 5 = 0.05`,
+`1.5 * 5 = 7.5`, and numeric `1e-7 * 5 = 5e-7`; omitted B/3 and A/3 and
+explicit B/3=0 paid zero, while authored B/3=2 remained correct. All payout
+comparisons used `32 * Number.EPSILON * max(abs(expected), 1e-7)` and a
+separate credit-ledger tolerance. The five generated TypeScript compiles exited
+0 in 1224, 1166, 1205, 1147 and 1141 ms. Installed CLI `tsPackage`, WASM,
+exact Outcome Library, and JSON report commands exited 0 in 1538, 1542, 1736
+and 1490 ms. The one serial session matched Node/WASM normal play and initial/
+later serialization restoration/replay without RNG rewind; its parity checksum
+is `91e1db308dbf455a4e98834d8a52b8f7af95da33ea13781b90802ac7c1db4570`.
+The exact eight-unit-weight report had only AAA winning, total win 5 at stake 1,
+RTP 0.625, hit frequency 0.125 and no report issue; manifest/report checksums
+are `92270d4044cab825031f2057369f38fd313f2ac2c46234cb641c524622419cbc` and
+`3754f3654533206d0a0e3f3ede13b4b71e67fce7765bbd85d39dbed67feccfd1`.
+No generated package, output tree, installation or raw log is committed.
+
 The [audit register](../audit-corrections/README.md), completed P8/P9 states and
 historical evidence remain unchanged. Math Optimization, overscan, full WASM/one
 calculation path, analytics, mechanics, certification, generic diff/reachability
