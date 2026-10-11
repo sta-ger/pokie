@@ -569,3 +569,13 @@ The next packed attempt exposed that the audit's event-volume filter discarded
 boundary while continuing to discard high-volume data notifications; the saved
 P805 regression asserts the actual socket-reader event allowlist as well as the
 new-loader predicate. This failed attempt is retained, not labelled passing.
+
+With reload/cancellation now observed, the packed compound workflow exposed a
+stale invalid-input assumption: oversized rounds are rejected locally and Run
+is disabled, so no 400 submission exists for that control. The correction
+retains a distinct `local-field-rejection` receipt asserting the inline error,
+disabled Run and zero simulation POSTs. Its separate server-failure transaction
+uses a reachable rendered Workers=33 submission (server limit 32), then resets
+Workers=1 and proves successful simulation. Existing request-bound failure
+receipts remain real; no local rejection is relabelled as an API transaction.
+The saved P805 whole-file test asserts both classifications/results.

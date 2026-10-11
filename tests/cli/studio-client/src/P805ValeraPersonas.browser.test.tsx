@@ -437,6 +437,11 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     expect(transaction.request).toEqual(expect.objectContaining({browserRequestId: expect.any(String), method: expect.any(String), path: expect.any(String), status: expect.any(Number), responseSha256: expect.stringMatching(/^[a-f0-9]{64}$/)}));
                     expect(transaction.terminal).toEqual(expect.objectContaining({resultSha256: expect.stringMatching(/^[a-f0-9]{64}$/), source: "rendered-poll", pollPath: expect.any(String), browserRequestId: expect.any(String), causedByRequestId: transaction.request.browserRequestId}));
                 }
+                expect(pageState.roundsRejection).toEqual({
+                    classification: "local-field-rejection", rounds: 2_000_001, disabled: true, requestCount: 0,
+                    message: "Rounds must be a positive integer between 1 and 2,000,000.",
+                });
+                expect(pageState.jobs.actionableFailure.error).toContain('"workers"');
                 // Restart reconciliation is delivered by the durable jobs
                 // list after the original executor is lost, without a poll
                 // response from that executor or another native activation.

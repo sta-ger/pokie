@@ -2366,7 +2366,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             if (transaction.confirmation.required) transaction.confirmation.state = "confirmed";
             api.push(entry); return {response:{status:entry.status, ok:entry.status >= 200 && entry.status < 300}, payload, entry, cursor, transaction};
         };
-        const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202]) => {
+        const startRenderedSimulation = async (projectBaseRoute, observation, rounds, expectedStatuses = [202], workers) => {
             await navigateProjectTab(projectBaseRoute, "simulation", observation);
             await waitFor(() => evaluate("document.readyState === 'complete' && location.hash.endsWith('/simulation')"), `${observation} rendered simulation route`);
             // A server-side validation diagnostic intentionally leaves a
@@ -2377,6 +2377,12 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             await waitFor(() => evaluate("document.body.innerText.includes('Run Simulation')"), `${observation} rendered simulation form`);
             const cursor = cdp.events.length;
             if (!await waitFor(() => setLifecycleField("simulation-rounds", String(rounds)), `${observation} rendered simulation rounds`)) fail(`Studio did not accept simulation rounds for ${observation}`);
+            if (workers !== undefined) {
+                const disclosure = await focusRenderedControl("button", "(_item, name) => name === 'Show advanced details (seed, workers)'");
+                if (disclosure?.keyboardFocused) await pressEnter();
+                await waitFor(() => evaluate("[...document.querySelectorAll('label')].some(label => label.textContent.replaceAll('*', '').trim() === 'Workers' && document.getElementById(label.htmlFor)?.getClientRects().length)"), `${observation} visible Workers field`);
+                if (!await setScreenField("Workers", String(workers))) fail(`${observation} did not set its rendered Workers field`);
+            }
             const control = await renderedTransactionControl({lifecycle:"operation", operation:"simulation", observation, expectedStateClass:"editable-submission"});
             const formState = await captureRenderedEditableFormState("simulation", observation, control.stableControlId, undefined, expectedStatuses.includes(400) === false);
             const started = await activateRenderedTransaction({lifecycle:"operation", operation:"simulation", observation, cursor, method:"POST", path:"/api/project/simulations", formState, stateClass:"editable-submission", control});
@@ -2460,7 +2466,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
             return document.activeElement === item ? {stableControlId:item.id, identityAttribute:'id', accessibleName:accessibleName(item), keyboardFocused:true, enabled:true, disabled:false} : null;
         })()`);
         const setScreenField = async (label, value) => evaluate(`(() => {
-            const label = [...document.querySelectorAll('label')].find((item) => item.textContent?.trim() === ${JSON.stringify(label)});
+            const label = [...document.querySelectorAll('label')].find((item) => item.textContent?.replaceAll('*', '').trim() === ${JSON.stringify(label)});
             // Mantine associates some composite inputs through their input
             // name rather than a label htmlFor.  Read that relationship from
             // the rendered form; do not invent a runner-only control id.
@@ -3294,12 +3300,32 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
         }
         await cdp.send("Emulation.setDeviceMetricsOverride", {...viewportDimensions[recoveryViewport], deviceScaleFactor:1});
         await waitFor(() => evaluate(`window.innerWidth === ${viewportDimensions[recoveryViewport].width} && document.readyState === 'complete'`), `${recoveryViewport} compound workflow state`);
-        // The browser form correctly blocks its own minimum-value error, so
-        // use the first value above Studio's durable-job server limit.  This
-        // keeps the error workflow an actual valid DOM submission whose 400
-        // diagnostic belongs to the rendered request, rather than a native
-        // validation bubble with no public request receipt.
-        const failure = await startRenderedSimulation(projectBaseRoute, "actionable simulation failure", simulationRoundLimit + 1, [400]), simulation = await startRenderedSimulation(projectBaseRoute, "successful simulation", 1); if (failure.response.status !== 400 || simulation.response.status !== 202 || typeof simulation.payload?.id !== "string") fail("Studio did not demonstrate an actionable rendered simulation failure and successful rendered job creation"); const simulationId = simulation.payload.id, simulationTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(simulationId)}`, "successful simulation", simulation.cursor, ["completed"], simulation.transaction); timings.simulationMs = Date.now() - simulation.transaction.startedAtMs;
+        // Oversized rounds are now a local field rejection: preserve that
+        // boundary without inventing a request from a disabled button.
+        await navigateProjectTab(projectBaseRoute, "simulation", "oversized-round rejection");
+        await ensureSimulationConfigure("oversized-round rejection");
+        const rejectionCursor = cdp.events.length;
+        await waitFor(() => setLifecycleField("simulation-rounds", String(simulationRoundLimit + 1)), "oversized rendered Rounds");
+        const roundsRejection = await waitFor(() => evaluate(`(() => {
+            const field = document.querySelector('[data-pokie-lifecycle-field="simulation-rounds"]');
+            const control = document.getElementById('simulation-run');
+            const message = 'Rounds must be a positive integer between 1 and 2,000,000.';
+            if (!(field instanceof HTMLInputElement) || field.getAttribute('aria-invalid') !== 'true'
+                || !(control instanceof HTMLButtonElement) || !control.disabled || !document.body.innerText.includes(message)) return false;
+            return {classification:'local-field-rejection', rounds:Number(field.value.replaceAll(',', '')), disabled:true, message};
+        })()`), "oversized Rounds field diagnostic and disabled Run");
+        roundsRejection.requestCount = cdp.events.slice(rejectionCursor).filter((event) => event.method === "Network.requestWillBeSent"
+            && event.params.request.method === "POST" && new URL(event.params.request.url).pathname === "/api/project/simulations").length;
+        if (roundsRejection.requestCount !== 0) fail("oversized Rounds queued work despite the local field rejection");
+        // Workers above the server limit remains a valid rendered form
+        // submission. Keep its real 400 separate from local Rounds rejection,
+        // then correct Workers on the same form for a successful simulation.
+        const failure = await startRenderedSimulation(projectBaseRoute, "actionable simulation failure", 1, [400], 33);
+        if (failure.response.status !== 400 || !failure.payload?.error?.includes('"workers"')) fail("Studio did not reject the rendered invalid Workers request");
+        const simulation = await startRenderedSimulation(projectBaseRoute, "successful simulation", 1, [202], 1);
+        if (simulation.response.status !== 202 || typeof simulation.payload?.id !== "string") fail("Studio did not accept the corrected rendered simulation");
+        const simulationId = simulation.payload.id, simulationTerminal = await browserTerminal(`/api/project/simulations/${encodeURIComponent(simulationId)}`, "successful simulation", simulation.cursor, ["completed"], simulation.transaction); timings.simulationMs = Date.now() - simulation.transaction.startedAtMs;
+
         const replay = await startRenderedReplay(projectBaseRoute, "successful replay");
         const replayTerminal = await browserTerminal(`/api/project/replays/${encodeURIComponent(replay.payload.id)}`, "successful replay", replay.cursor, ["completed"], replay.transaction);
         if (!replayTerminal.descriptor) fail("Replay produced no valid artifact for rendered loading");
@@ -3472,7 +3498,7 @@ export async function runP805ValeraBrowserAudit(options, dependencies = {}) {
                 durableJob: restartDrain.postLossJob,
             },
         };
-        const observations = options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", viewport:recoveryViewport, replayArtifacts:{valid:replayArtifactValid, invalid:replayFailure, recovered:replayArtifactInspection}, recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:projectSwitchReceipt.staleResponse, projectSwitchReceipt, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal, receipt:restartReceipt}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
+        const observations = options.tuple ? [options.tuple.observation] : P805_REQUIRED_OBSERVATIONS[options.persona]; const recoveryEvidenceId = await save("page-state", "recovery-and-jobs.json", JSON.stringify({kind:"p8-05-runtime-observation", viewport:recoveryViewport, roundsRejection, replayArtifacts:{valid:replayArtifactValid, invalid:replayFailure, recovered:replayArtifactInspection}, recovery, transactions:{projectValidation:validation.transaction, activeReloadStart:activeReload.transaction, activeReloadCancellation:activeReloadCancellation.transaction, simulationFailure:failure.transaction, simulationSuccess:simulation.transaction, replayFailure:replayFailure.transaction, replaySuccess:replay.transaction, replayRecovery:replayArtifactInspection.transaction, cancellableSimulation:cancellable.transaction, cooperativeCancellation:cancelled.transaction, simulationRetry:retry.transaction, restartSimulation:restartJob.transaction}, reload:{activeJobId:activeReload.payload.id, terminal:activeReloadTerminal, discoveredAfterReload:jobs.some((job) => job?.id === activeReload.payload.id)}, staleResponse:projectSwitchReceipt.staleResponse, projectSwitchReceipt, unsavedWork, restart:{activeJobId:restartJob.payload.id, recovered:restartRecovered, terminal:restartTerminal, receipt:restartReceipt}, jobs:{success:simulationTerminal, actionableFailure:failure.payload, cooperativeCancellation:cancelledTerminal, retryWithoutPartialArtifacts:retryTerminal, replayTerminal}, outcomes:{failureStatus:failure.response.status, cancellationStatus:cancelledTerminal.status, retryStatus:retryTerminal.status, cancelledSimulationId:cancellable.payload.id, reports:reports.payload, cancelledReportAbsent:!reports.payload.some((report) => report?.id === cancellable.payload.id)}})); await save("cli-transcript", "packed-cli.txt", transcript.join("\n"), observations); await save("browser-log", "browser.json", JSON.stringify(cdp.events), observations); await save("api-log", "api.json", JSON.stringify(api), observations); await save("error", "errors.txt", errors.join("\n") || "no browser/API/CLI errors observed\n", observations); await save("timing", "timings.json", JSON.stringify(timings), observations); await save("reproduction", "reproduction.md", `Installed packed CLI: ${installedCli}\nPacked package: ${options.packedPackage}\nPersona: ${options.persona}\n`, observations); await save("artifact", "candidate.json", JSON.stringify({candidateId:options.candidateId, candidatePackageSha256:options.candidatePackageSha256, archiveGitHead:installedPackage.gitHead, installedCli, candidatePackageJsonSha256:digest(candidatePackageJsonBytes), installedPackageJsonSha256:digest(installedPackageBytes), declaredCandidateExecutableSha256:options.candidateExecutableSha256, candidateExecutableSha256:candidateExecutable.sha256, candidateExecutableReceiptSha256:options.candidateExecutableReceipt.sha256, candidateExecutableReceiptId:candidateReceipt.receiptId, candidateExecutableReceiptIssuer:candidateReceipt.issuer, candidateExecutableFiles:candidateExecutable.files, candidateTreeManifestCandidateId:candidateTreeManifest.candidateId, candidateTreeManifestSha256:candidateTreeManifest.sha256, candidateTreeObjectId:candidateTreeManifest.tree, candidateTreeManifestFiles:candidateTreeManifest.files.length, packedPackage:options.packedPackage, packedPackageSha256:digest(packageBytes)}), observations);
         let workflowScope;
         if (options.tuple) {
             const bootstrap = tupleBootstrapContract(options.tuple), bootstrapEvidenceId = await save("provenance", "tuple-bootstrap.json", JSON.stringify({kind:"p8-05-single-tuple-bootstrap", tuple:options.tuple, bootstrap, completeWorkflow:true}), observations);
