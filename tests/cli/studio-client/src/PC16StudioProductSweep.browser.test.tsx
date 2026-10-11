@@ -1,4 +1,4 @@
-import {screen, waitFor} from "@testing-library/react";
+import {cleanup, screen, waitFor} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fs from "fs";
 import http from "http";
@@ -72,6 +72,8 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
     });
 
     afterEach(async () => {
+        // Stop rendered polling before draining the HTTP listener.
+        cleanup();
         await server.stop();
         fs.rmSync(studioRoot, {recursive: true, force: true});
         fs.rmSync(workDir, {recursive: true, force: true});
@@ -94,7 +96,8 @@ describe("PC-16 Studio product sweep (browser, real Studio HTTP)", () => {
         await user.clear(rounds);
         await user.type(rounds, "2");
         await user.click(screen.getByRole("button", {name: "Run Simulation"}));
-        await screen.findByRole("button", {name: /View results/}, {}, {timeout: 30000});
+        // Completion opens Review automatically; assert its settled public result.
+        await screen.findByRole("button", {name: "Open full report"}, {}, {timeout: 30000});
         expect(screen.queryByText(/Deployment has moved into Build\/Export/)).not.toBeInTheDocument();
     });
 });

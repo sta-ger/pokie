@@ -531,3 +531,28 @@ visual proofs and accumulated-finding dispositions above. Criterion 3 remains
 pending the controller-owned release, exact integration/push/publication, Drive
 round-trip and campaign state machine. No repackaging, cold exploration or
 official gate is requested by this correction.
+
+
+## Post-review gate correction
+
+The controller's saved `post_review_full_gate` failure names seven executable
+regression files. Their entire set is the implementer's bounded test authority;
+no official gate, independent collection or lifecycle command is authorized here.
+
+| Saved failure | Corrected boundary and check |
+| --- | --- |
+| Replay/validation/unsupported-route assertions select the unrelated connection alert | The three local fixture maps explicitly answer the production common-job list with an empty list. Replay, validation failure/network/retry and capability rejection retain their original assertions. The shared fake-fetch helper still rejects missing routes. |
+| Design/happy-path asserts advanced publication fields are absent | The field remains mounted inside the closed advanced disclosure; assert it is not visible. The primary guided create/open/simulate/report path remains covered, without removing the already accepted advanced publication feature. |
+| PC-16 waits for a superseded Run-step button | Assert the terminal Review action `Open full report`, which is automatically opened on completion of the real HTTP simulation. |
+| Readiness HTTP shutdown exceeds its hook deadline | Unmount the rendered polling consumer before draining the actual Studio server; keep the real server shutdown and fixture deletion awaited. PC-16 uses the same teardown ordering. |
+| Packed reload discovery pins an expired first CDP response | Reload and restart share bounded rendered response discovery that keeps later job-list responses eligible and requires the captured durable job ID. Restored Simulation polling uses the entire reload event window. A focused regression in the saved P805 file proves expired-first recovery, exclusion of old-document events/other jobs, restart discovery and missing-job rejection. |
+
+The precommit seven-file run passed all six UI/HTTP suites (80 tests) and
+correctly rejected the packed test's dirty checkout. The final full-set run must
+consume the committed clean tree, including the focused discovery regression.
+Its exact command/result is recorded in the strict work report. This gate
+correction changes test/collector code only. Existing six production repros,
+five independent initial/affected/final persona observations, unsupported
+boundaries and wider-roadmap statuses remain attributed to their original
+receipts. Controller official gate, packaging boundary, integration, push,
+publication, Drive round-trip and final campaign closure remain pending.

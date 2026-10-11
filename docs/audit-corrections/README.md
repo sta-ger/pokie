@@ -1,5 +1,18 @@
 # P9 correction and reviewed product status register
 
+### P9-11 post-review gate correction
+
+The saved seven-file gate failure is addressed by the
+[gate correction ledger](p9-11-closeout.md#post-review-gate-correction): explicit
+common-job fixtures, hidden advanced publication assertions, settled Simulation
+Review, HTTP consumer teardown, and rendered reload/restart response discovery.
+The correction preserves the original candidate, six-scenario and persona
+receipts above/below at their recorded identities. The complete seven-file
+`npm run test:targeted` run on the committed correction is required before its
+work report; the controller still owns official release/packaging, exact
+integration/push/publication, Drive round-trip and campaign completion. This
+entry is a source/test handoff, not a new independent collection receipt.
+
 ### 2026-10-11 P9-11 exact-candidate corrective closeout
 
 The independent verifier authenticated product candidate

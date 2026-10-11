@@ -126,6 +126,33 @@ describe("P8-05 rendered Valera persona evidence", () => {
         expect(substitutionCoverage).toEqual({acceptedReceipts: 1, aggregatePublished: false, failureKind: "timeout", cleanupKinds: ["success", "timeout"], retainedFailureKinds: {failure: ["success", "failure"], cancellation: ["success", "cancellation"], "spawn-failure": ["success", "spawn-failure"], restart: ["success", "restart"], "detached-descendant": ["success", "success", "detached-descendant"], "cleanup-substitution": ["success", "failure"]}, rejectedReceiptSubstitutions: {missing: true, stale: true, "cross-candidate": true, "cross-persona": true, "cross-viewport": true, duplicate: true, "content-equivalent": true}, pointerSemanticSubstitutionRejected: true, stateClassSubstitutionRejected: true, runtimeSubstitutionRejected: true, retryTerminalSubstitutionRejected: true, retryTerminalJobSubstitutionRejected: true, retryPreDispatchSubstitutionRejected: true});
     });
 
+    it("discovers reload/restart jobs after an expired first response without accepting another job", () => {
+        const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
+            import assert from 'node:assert/strict';
+            import {readP805RenderedJobDiscovery} from './scripts/p8-05-valera-browser-audit.mjs';
+            const event = (id) => ({method:'Network.responseReceived', params:{requestId:id, response:{url:'http://localhost/api/project/jobs', status:200}}});
+            const reads = [];
+            const cdp = {events:[event('before-reload'), event('expired'), event('unrelated')],
+                send:async (method, {requestId}) => {
+                    reads.push(requestId);
+                    if (requestId === 'expired') {
+                        cdp.events.push(event('restored'));
+                        throw new Error('No resource with given identifier found');
+                    }
+                    return {body:JSON.stringify({jobs:[{id:requestId === 'restored' ? 'captured-job' : 'other-job'}]})};
+                }};
+            const discovery = await readP805RenderedJobDiscovery(cdp, 1, 'captured-job', 'reload', 2_000);
+            assert.equal(discovery.event.params.requestId, 'restored');
+            assert.equal(reads.includes('before-reload'), false);
+            assert.equal(reads.includes('expired'), true);
+            const restart = await readP805RenderedJobDiscovery(cdp, 1, 'captured-job', 'restart', 2_000);
+            assert.equal(restart.payload.jobs[0].id, 'captured-job');
+            await assert.rejects(readP805RenderedJobDiscovery({events:[event('unrelated')], send:async () => ({body:'{"jobs":[]}'})}, 0, 'absent', 'missing job', 150), /Timed out waiting for missing job/);
+            process.stdout.write(JSON.stringify({reload:'restored', restart:'captured-job', missing:'rejected'}));
+        `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
+        expect(result).toEqual({reload: "restored", restart: "captured-job", missing: "rejected"});
+    });
+
     it("builds its own candidate package and executes every packed CLI and rendered Studio persona workflow", async () => {
         // This test owns the local candidate.  It deliberately does not accept
         // controller-provided environment receipts, so a green result cannot
