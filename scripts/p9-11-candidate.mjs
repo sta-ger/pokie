@@ -25,6 +25,8 @@ const tooling = new Set([
     "scripts/p8-05-valera-browser-audit.mjs",
     "scripts/p8-04-studio-polish-browser-audit.mjs",
     "tests/cli/studio-client/src/P804StudioPolish.browser.test.tsx",
+    "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
     "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
