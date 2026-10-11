@@ -437,11 +437,6 @@ describe("P8-05 rendered Valera persona evidence", () => {
                     expect(transaction.request).toEqual(expect.objectContaining({browserRequestId: expect.any(String), method: expect.any(String), path: expect.any(String), status: expect.any(Number), responseSha256: expect.stringMatching(/^[a-f0-9]{64}$/)}));
                     expect(transaction.terminal).toEqual(expect.objectContaining({resultSha256: expect.stringMatching(/^[a-f0-9]{64}$/), source: "rendered-poll", pollPath: expect.any(String), browserRequestId: expect.any(String), causedByRequestId: transaction.request.browserRequestId}));
                 }
-                expect(pageState.roundsRejection).toEqual({
-                    classification: "local-field-rejection", rounds: 2_000_001, disabled: true, requestCount: 0,
-                    message: "Rounds must be a positive integer between 1 and 2,000,000.",
-                });
-                expect(pageState.jobs.actionableFailure.error).toContain('"workers"');
                 // Restart reconciliation is delivered by the durable jobs
                 // list after the original executor is lost, without a poll
                 // response from that executor or another native activation.
@@ -644,6 +639,25 @@ describe("P8-05 rendered Valera persona evidence", () => {
                 expect(accepted.receipt.checkpointReceipt.actionSha256).toEqual(expect.any(String));
                 const audit = JSON.parse(auditBytes.toString("utf8")) as {auditId: string; candidateId: string; candidatePackageSha256: string; worker: {pid: number}; rendered: {actions: unknown[]}; checkpointReceipts: Array<{path: string; sha256: string; actionSha256: string}>; cleanup: {evidenceId: string}; packageIdentity: {sharedRuntimeReceiptSha256: string; sharedRuntimeRoot: string}; workflowScope: {bootstrap: Array<{kind: string; purpose: string; publicWorkflow: string; output?: string; evidenceId: string}>}; evidence: Array<{kind: string; path: string}>};
                 expect(audit.packageIdentity).toEqual(expect.objectContaining({sharedRuntimeReceiptSha256: aggregate.runtime.receiptSha256, sharedRuntimeRoot: runtimeReceipt.runtimeRoot}));
+                if (["simulation-success-failure-cancellation", "outcome-library-report-diff-replay", "replay-artifact-success-failure-recovery", "reload-reconnect-recovery-cancellation-project-switch"].includes(child.tuple.observation)) {
+                    const recoveryEvidence = audit.evidence.find((entry) => entry.kind === "page-state" && entry.path.endsWith("recovery-and-jobs.json"));
+                    expect(recoveryEvidence).toBeDefined();
+                    const recovery = JSON.parse((await readOperationArtifact(recoveryEvidence!.path)).toString("utf8")) as {
+                        roundsRejection: {classification: string; rounds: number; disabled: boolean; requestCount: number; message: string};
+                        jobs: {actionableFailure: {error: string}};
+                        transactions: Record<string, {request: {status: number}; formState: {fields: Array<{accessibleName: string; value: string}>}}>;
+                    };
+                    expect(recovery.roundsRejection).toEqual({
+                        classification: "local-field-rejection", rounds: 2_000_001, disabled: true, requestCount: 0,
+                        message: "Rounds must be a positive integer between 1 and 2,000,000.",
+                    });
+                    expect(recovery.jobs.actionableFailure.error).toContain('"workers"');
+                    expect(recovery.transactions.simulationFailure.request.status).toBe(400);
+                    expect(recovery.transactions.simulationSuccess.request.status).toBe(202);
+                    for (const [transaction, workers] of [["simulationFailure", "33"], ["simulationSuccess", "1"]]) {
+                        expect(recovery.transactions[transaction].formState.fields.find((field) => field.accessibleName.startsWith("Workers"))?.value).toBe(workers);
+                    }
+                }
                 expect(audit.candidateId).toBe(candidate);
                 expect(audit.candidatePackageSha256).toBe(packageSha256);
                 expect(audit.checkpointReceipts).toHaveLength(1);

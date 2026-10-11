@@ -547,8 +547,8 @@ no official gate, independent collection or lifecycle command is authorized here
 | Readiness HTTP shutdown exceeds its hook deadline | Unmount the rendered polling consumer before draining the actual Studio server; keep the real server shutdown and fixture deletion awaited. PC-16 uses the same teardown ordering. |
 | Packed reload discovery pins an expired first CDP response | Reload and restart share bounded rendered response discovery that keeps later job-list responses eligible and requires the captured durable job ID. Reload/restart requires a new main-frame loader; restored Simulation polling shares the response reader and uses the entire reload event window. A focused regression in the saved P805 file proves expired-first recovery, exclusion of old-document events/other jobs, restart discovery, same-job active polling, new-loader completion and missing-job rejection. |
 
-The precommit seven-file run passed all six UI/HTTP suites (80 tests) and
-correctly rejected the packed test's dirty checkout. The final full-set run must
+The precommit seven-file run passed all six UI/HTTP suites and the existing packed-contract checks
+(80 passing tests total), and correctly rejected the packed test's dirty checkout. The final full-set run must
 consume the committed clean tree, including the focused discovery regression.
 Its exact command/result is recorded in the strict work report. This gate
 correction changes test/collector code only. Existing six production repros,
@@ -579,3 +579,13 @@ uses a reachable rendered Workers=33 submission (server limit 32), then resets
 Workers=1 and proves successful simulation. Existing request-bound failure
 receipts remain real; no local rejection is relabelled as an API transaction.
 The saved P805 whole-file test asserts both classifications/results.
+
+The complete permitted seven-file run on `229ae878` passed all seven suites and
+82 tests. The final test audit moved the new local/server rejection checks from
+the legacy first-audit branch into the actual isolated-child loop: every one of
+the twelve compound workflow children must retain local oversized-round
+rejection with no POST, the separate Workers=33 HTTP 400 transaction, and the
+corrected Workers=1 HTTP 202 transaction. The typed receipt covers those fields.
+The complete seven-file command is rerun after this committed coverage repair;
+its terminal outcome is supplied in the work report. Official lifecycle proofs
+remain controller-owned.
