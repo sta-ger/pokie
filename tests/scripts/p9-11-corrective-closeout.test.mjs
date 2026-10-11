@@ -119,7 +119,7 @@ test("dependent handoff rejects direct publication, project switches, stale subm
 });
 
 
-test("shared selector reuses the original authenticated archive/install after the complete committed tooling repair", async () => {
+test("shared selector reuses the original authenticated archive/install after the complete committed tooling and interoperability repair", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-tooling-descendant-"));
     try {
         const fixture = await candidateFixture(directory), original = await selectRetained(fixture);
@@ -134,6 +134,15 @@ test("shared selector reuses the original authenticated archive/install after th
             candidateId:original.candidateId, candidateTreeId:original.candidateTreeId, reviewedId,
             changedEvidenceAndTooling:[...P911_TOOLING_DESCENDANT_PATHS].sort(),
         });
+        // Keep the retained-candidate delta and this repair explicit rather
+        // than allowing an omitted fixture path to silently shrink coverage.
+        for (const file of [
+            "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
+            "docs/audit-corrections/README.md",
+            "scripts/p9-11-candidate.mjs",
+            "tests/testUtils/createP911CandidateFixture.mjs",
+            "tests/scripts/p9-11-corrective-closeout.test.mjs",
+        ]) assert.ok(selected.equivalence.changedEvidenceAndTooling.includes(file), `missing committed descendant: ${file}`);
         assert.deepEqual({...selected, equivalence:original.equivalence}, original);
         assert.equal(selected.consumedArchiveSha256, fixture.handoff.archiveSha256);
         assert.deepEqual(await Promise.all(retainedPaths.map(file => readFile(file))), retainedBytes);
@@ -166,6 +175,7 @@ test.each([
     "package.json", "package-lock.json", "generate-barrels.js", "tsconfig.prod.json", "src/index.ts", "cli/studio-client/src/global.css",
     "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
     "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
+    "tests/cli/studio-client/src/Pc14StudioUiInteroperability.extra.test.tsx",
     "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",
 ])("tooling descendant does not exempt product/build or unnamed input %s", async (file) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-protected-descendant-"));

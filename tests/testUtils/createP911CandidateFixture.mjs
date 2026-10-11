@@ -6,12 +6,14 @@ import {P911_CAMPAIGN, sha256} from "../../scripts/p9-11-candidate.mjs";
 import {archiveExecutableManifest} from "../../scripts/p8-05-candidate-package-verifier.mjs";
 const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 // Independent of the reader's allowlist: include the entire reviewed gate
-// delta, the prior driver repair and every file changed by this handoff repair.
+// delta, the prior driver repair, the reviewed interoperability correction and
+// every file changed by this handoff repair.
 export const P911_TOOLING_DESCENDANT_PATHS = [
     "scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs",
     "scripts/p8-05-valera-browser-audit.mjs",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
+    "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
