@@ -178,3 +178,57 @@ supported line-game parity using the existing separate evaluator, as described
 in the [compatibility boundary](../wasm-compatibility-boundary.md). This document
 records the completed P10-03 machine-owned installed evidence, not early campaign
 completion or a claim about wider roadmap coverage.
+
+## P10-03 independent host rerun — candidate `9800c6c8` (2026-10-11)
+
+The supplied candidate HEAD was clean and exactly
+`9800c6c8ab7fc7f79cf13c62009c7dfd23b95622` (tree
+`0bfc2c038ba13cc81c8e6332c174a2f0251a4ffb`) before this evidence-only record.
+One normal `npm run build` (exit 0; 90,645 ms), one
+`npm pack --ignore-scripts --pack-destination /tmp/p10-independent-installed-k0Z50b`
+(exit 0; 7,181 ms), and exactly one isolated
+`npm install --prefix /tmp/p10-independent-installed-k0Z50b/consumer
+--ignore-scripts --no-audit --no-fund
+/tmp/p10-independent-installed-k0Z50b/pokie-1.3.0.tgz` (exit 0; 11,345 ms)
+produced and consumed `pokie@1.3.0` archive SHA-256
+`cf2ba9914fc919badbdbe8cff46a3590b8f9e4b1e36dbf6645a31367ff9dd326`.
+The installation was outside this checkout; authentication compared its packed
+and installed bytes and resolved CJS, ESM, WASM and CLI exclusively beneath that
+consumer's `node_modules/pokie`.
+
+The sole installed-consumer command was:
+
+```sh
+node scripts/math-contract-repro.mjs \
+  --candidate /tmp/p10-independent-installed-k0Z50b/candidate.json \
+  --compiler "$PWD/node_modules/typescript/lib/tsc.js" \
+  --output /tmp/p10-independent-installed-k0Z50b/collection
+```
+
+It exited 0 in 15,386 ms with `result.json` SHA-256
+`ee25df37f44ae40a75e0a36c4cadc8822d41fb1c23d177bfb7b7752768eec450`, all
+12 required records complete, resources drained and no cleanup errors. The
+committed fixture constructor and assertions are
+[`scripts/math-contract-repro.mjs`](../../scripts/math-contract-repro.mjs): all
+five generated CJS and freshly recompiled TS games use numeric
+`[1,0.01,0.1,1.5,1e-7]` bets. Their complete executed JSON input checksums are
+fractional `3420681487f83a2a3168aa3ab8b6189ae068f3dd6e5067fc746e769606d8eeaa`,
+missing-symbol `20945838bc87b66e5872228def90820022c21efe41485fb10d965756869a8e7c`,
+missing-count `da58af26e50a3a48c94c4260bdb9739ef464f7d11cc5eb0a98ef829d5b282bab`,
+zero `4c7d402bf61624e2b8fe3395f021b21ebc20265cef2ffb8e46cb805bb751c103`,
+positive `b85f01fa785fa9af414e9e3ed78dd56065c1abb3d98f9e9e1de30f504911c2dd`,
+and reachable `0ce55b403d6108e16a3cb180aaea9d3c9bcacfbaf3137621cc195a43ebd443e5`.
+Both formats produced 0.05 for 0.01×5 and 7.5 for 1.5×5; scientific `1e-7`
+remained numeric and paid `5e-7`. Omitted B/3 and A/3, plus explicit B/3=0,
+paid exact zero, while B/3=2 paid twice stake. Expected/actual payout tolerance
+was `32 * Number.EPSILON * max(abs(expected), 1e-7)`, with a separately scaled
+credit-ledger comparison.
+
+The same serial installed session checked normal Node/WASM play plus initial and
+later serialized restore/replay without rewinding RNG; its parity checkpoint
+SHA-256 was `91e1db308dbf455a4e98834d8a52b8f7af95da33ea13781b90802ac7c1db4570`.
+The installed CLI created one exact eight-outcome library and report: only AAA
+won, total win 5 at stake 1, RTP 0.625, hit frequency 0.125, and no unauthored
+payout or report error. The report SHA-256 was
+`8513ff2fc740ef025328e2d5b7295300db6fd9afd7e30d4f84e7cde0a386003e`.
+No generated game, bundle, raw log or temporary installation is committed.
