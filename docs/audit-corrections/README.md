@@ -1,5 +1,32 @@
 # P9 correction and reviewed product status register
 
+### 2026-10-11 current P9-11 exact-candidate corrective closeout
+
+The independent verifier started from clean product candidate
+`5cd256cdbc901ce626c06ed7fb77da1742df2201` (tree
+`45e7c6d7333f6e30c1a5a31edfbc286e0fd87cd2`).  The controller authenticated
+one normal production archive/install: `pokie-1.3.0.tgz`
+(`sha256:73901e9d8b33ec98d93d8dce02af97bf018fa6862f6b946fb978fa41c1b06548`)
+with executable projection
+`fc87c3e9e0fdb6714a2d0a397f12d5de8641f4e62b52195a93cb01dd021be372`.
+
+One reviewed closeout reused that delivery at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-7a1ed21fe3e5448c/closeout-attempt-1/checks.json`
+(`sha256:1ff98778f1ae33e0905ecbeae54a440dbe5636295e93e29d3afa10fc3d2e630f`).
+It passed the six corrective public paths and five independent fresh-profile
+persona smokes.  All 12 public/rendered child records ended successfully with
+process-group, process-tree, resource, and stdio drainage; `profilesRemoved`
+is true.  I independently inspected the retained Home, project Build/Export,
+running-job, settled common-card, Play, and Simulation screenshots.  They are
+legible and contained, show their local terminal states, and show the painted
+focus outline at the settled desktop and narrow common card.  No unresolved
+P0, P1, or material P2 defect was observed.
+
+The runtime archive, receipts, logs, profiles, screenshots, and transcripts
+remain outside Git in the assigned harness.  Earlier entries below are retained
+history, not current-candidate findings.  Publication and campaign closeout
+remain controller-owned and are not claimed by this verification.
+
 ### P9-11 post-review gate correction
 
 The saved seven-file gate failure is addressed by the
