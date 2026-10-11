@@ -11,7 +11,7 @@ automatically rewritten: rebuild packages and generate fresh outcome artifacts.
 | --- | --- |
 | P10-01/P10-02 implementation regressions | Recorded in the two linked documents; source-bound execution, not installed proof |
 | P10-03 runner support | Focused commands below; hermetic lifecycle tests and existing source-bound regression support |
-| Independent installed candidate | **Pending controller execution**; no candidate archive/installation was supplied to this worker |
+| Independent installed candidate | **Passed**: [P10-03 independent installed rerun](p10-03-independent-installed-rerun.md) authenticated and exercised one normally built, packed and isolated installation of `a9a0ead57276d8c7ebb06b7c0369b9f66000068f` |
 | Official release and packaging | **Pending controller** `check:release`, which includes normal packaging smoke |
 | Develop publication and Drive round-trip | **Pending controller lifecycle**; no local commit constitutes publication |
 
@@ -42,7 +42,8 @@ resolutions. The controller binds its normal build/install and gate records to
 that same identity. Use an existing TypeScript toolchain with `@types/node`;
 its path, version, executable digest and `--version` output are recorded.
 Generated games link to this one installed POKIE; no registry fallback or
-additional candidate installation is performed.
+additional candidate installation is performed. The P10-03 host result is
+recorded in the [independent installed rerun transcript](p10-03-independent-installed-rerun.md).
 
 The serial collection checks:
 
@@ -85,10 +86,10 @@ released. Assertion, compilation, loading, command, cancellation, cleanup or
 incomplete-result failures produce nonzero exit and a failed result. Existing
 collection directories are never overwritten. The shared installation is never
 removed. An independent failure must be retained alongside at most one affected
-retest; this runner has no automatic retry. No installed result is claimed yet.
-After independent execution, link the actual retained result here and record its
-command, exit code, timing and exact candidate/archive identities, including any
-failure/retest. Preserve each record's original identity if later commits differ.
+retest; this runner has no automatic retry. The P10-03 installed result passed
+without a retest; its command, timings and exact candidate/archive identities
+are retained in the linked transcript. Preserve each record's original identity
+if later commits differ.
 
 Focused implementation checks (not release gates):
 
@@ -107,8 +108,9 @@ The hermetic runner test covers failures, cancellation of an actual owned child,
 resource release, scratch cleanup, evidence preservation and incomplete results.
 Existing generator/adapter/parity/workflow/report tests support the public APIs
 used by the repro. They remain source-bound regressions. No TypeScript product
-files changed in P10-03; no production build or official gate was launched by this
-worker. Existing invalid/unavailable/unaffordable-command, atomic generation,
+files changed in P10-03; the one normal build used to prepare the independent
+installed package completed, but no official gate was launched by this worker.
+Existing invalid/unavailable/unaffordable-command, atomic generation,
 exact cancellation/resume/staging cleanup, serializer/repository/wallet, PAR,
 Studio numeric display and P10-02 free-game regression coverage remain intact.
 
@@ -124,5 +126,5 @@ calculation path, analytics, mechanics, certification, generic diff/reachability
 and other recorded gaps remain outside this release scope. WASM collection is
 supported line-game parity using the existing separate evaluator, as described
 in the [compatibility boundary](../wasm-compatibility-boundary.md). This document
-is a candidate handoff with pending machine-owned evidence, not early campaign
+records the completed P10-03 machine-owned installed evidence, not early campaign
 completion or a claim about wider roadmap coverage.
