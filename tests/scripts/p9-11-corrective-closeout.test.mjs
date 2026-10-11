@@ -139,6 +139,7 @@ test("shared selector reuses the original authenticated archive/install after th
         for (const file of [
             "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
             "docs/audit-corrections/README.md",
+            "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
             "scripts/p9-11-candidate.mjs",
             "tests/testUtils/createP911CandidateFixture.mjs",
             "tests/scripts/p9-11-corrective-closeout.test.mjs",
@@ -174,6 +175,7 @@ test("shared selector reuses the original authenticated archive/install after th
 test.each([
     "package.json", "package-lock.json", "generate-barrels.js", "tsconfig.prod.json", "src/index.ts", "cli/studio-client/src/global.css",
     "scripts/p9-11-rendered-driver-extra.mjs", "tests/scripts/p9-11-other.test.mjs", "docs/audit-corrections/valera-graphic-designer.md",
+    "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification-extra.md",
     "scripts/p8-05-valera-browser-audit-extra.mjs", "tests/cli/studio-client/src/other.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.extra.test.tsx",
     "cli/studio-client/vite.config.ts", "cli/studio-client/tsconfig.json",
