@@ -1,5 +1,43 @@
 # P9 correction and reviewed product status register
 
+### 2026-10-11 P9-11 exact-candidate corrective closeout
+
+The independent verifier authenticated product candidate
+`2c6979b74672c834748bd0738ac57f766af1461d` and this clean evidence-only
+descendant before collection.  The only candidate-to-HEAD change before this
+entry was this evidence register.  The controller-owned normal delivery bound
+the candidate tree `ddea85df796f56b23faee5086e0c0c1326471dfe` to archive
+`pokie-1.3.0.tgz` (`sha256: 73901e9d8b33ec98d93d8dce02af97bf018fa6862f6b946fb978fa41c1b06548`),
+executable projection
+`fc87c3e9e0fdb6714a2d0a397f12d5de8641f4e62b52195a93cb01dd021be372`, and
+the normal build/install receipts.  It also authenticated the persistent
+rendered driver `current.mjs`
+(`sha256: e59b0016e731e759bd9068f130cd02cfef44aa74b689194f240297f803686338`).
+
+One normal controller closeout then completed at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-80efa1ba228ad513/closeout-2026-10-11T00-03-11Z/checks.json`
+(`sha256: 7164f9e7582db05597dd4f42a757c59f3f35c50e238d5eff43d53bf46f66847c`).
+Its six public corrective reproductions (Node/WASM first/subsequent,
+serialized zero replay, bounded long state, UInt64 Stake analysis, canonical
+CLI, and occupied-destination recovery) and all five fresh-profile rendered
+persona smokes (Programmer, Mathematician, Producer, UI/UX, Graphic Designer)
+exited successfully.  Every recorded child has exit code 0 and drained process
+group, process tree, resources, and stdio; `profilesRemoved` is true.  The
+aggregate also binds served HTML, JavaScript, and CSS hashes to the delivered
+production package.
+
+I independently inspected the retained rendered screenshots/contact sheets:
+the Home Design, project Overview/Build-Export, settled common-card focus,
+completed Play, and desktop/mobile completed Simulation surfaces were legible,
+contained, and showed their expected local terminal states.  The common-card
+focus outline was visibly painted in the settled desktop and narrow layouts;
+no material visual defect was observed.  Runtime receipts, images, profiles,
+archives, and logs remain in the assigned harness and are not committed.
+
+This closes the stated P9-11 verification criterion for the exact delivered
+candidate.  Controller-owned publication and wider release lifecycle remain
+outside this verifier's scope and are not claimed here.
+
 ### 2026-10-10 P9-11 supplied-handoff preflight
 
 The verifier authenticated the clean requested product candidate and HEAD
