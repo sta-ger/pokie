@@ -1,3 +1,4 @@
+import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, screenMultiplier, amountTolerance} from "../../fixtures/math/FractionalBetFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -15,11 +16,81 @@ import {Paytable} from "../../../src/session/videoslot/paytable/Paytable.js";
 import {VideoSlotWinCalculator} from "../../../src/session/videoslot/wincalculator/VideoSlotWinCalculator.js";
 import {ReplayRecorder} from "../../../src/replay/ReplayRecorder.js";
 import {SeededPokieWasmHost, instantiatePokieWasm} from "../../../src/wasm/PokieWasmRuntime.js";
-import {BoundedPokieWasmTraceCollector, type PokieWasmRound, type PokieWasmLegacySessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
+import {BoundedPokieWasmTraceCollector, type PokieWasmRound, type PokieWasmLegacySessionState, type PokieWasmRuntime, type PokieWasmSessionState} from "../../../src/wasm/PokieWasmRuntimeApi.js";
 import {PORTABLE_RUNTIME_ALL_WILD_GOLDEN, PORTABLE_RUNTIME_FEATURE_GOLDEN, PORTABLE_RUNTIME_GOLDEN} from "../../fixtures/wasm/portableRuntimeGolden.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("WASM runtime parity golden", () => {
+    it.each(FRACTIONAL_BET_STAKES)("preserves generated/WASM stake %s, mixed-strip continuation, replay and rejected-command state", async (bet) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fractional-wasm-"));
+        let fixture: Awaited<ReturnType<typeof createProductionParityFixture>> | undefined;
+        const runtimes: PokieWasmRuntime[] = [];
+        try {
+            fixture = await createProductionParityFixture(directory, fractionalBetBlueprint([bet], true));
+            const runtime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
+            runtimes.push(runtime);
+            const node = fixture.game.createSession({seed: "0"}) as VideoSlotSession;
+            const wasm = runtime.createSession("0");
+            expect(wasm.serialize().rngState).toEqual(node.toSessionState().rngState);
+            const initial = wasm.serialize();
+            for (const invalid of [NaN, Infinity, -Infinity, 0, -bet, "0.01", 99]) {
+                await expect(wasm.play({bet: invalid})).rejects.toThrow(/bet|unavailable/);
+                expect(wasm.serialize()).toEqual(initial);
+            }
+            const observed: PokieWasmRound[] = [];
+            let checkpoint: PokieWasmSessionState | undefined;
+            let totalWin = 0;
+            for (let index = 0; index < 8; index++) {
+                node.setBet(bet);
+                expect(node.getBet()).toBe(bet);
+                const creditsBefore = node.getCreditsAmount();
+                node.play();
+                const round = await wasm.play({bet});
+                const screen = node.getSymbolsCombination().toMatrix();
+                const payout = screenMultiplier(screen) * bet;
+                expect(round.screen).toEqual(screen);
+                expect(screen).toEqual(FRACTIONAL_MIXED_CONTINUATION[index].screen);
+                expect(node.toSessionState().rngState).toBe(FRACTIONAL_MIXED_CONTINUATION[index].rngState);
+                expect(round.stake).toBe(bet);
+                expect(round.payout).toBe(payout);
+                expect(node.getWinAmount()).toBe(payout);
+                expect(round.creditsBefore).toBe(creditsBefore);
+                expect(Math.abs(round.credits - node.getCreditsAmount())).toBeLessThanOrEqual(amountTolerance(creditsBefore));
+                expect(Math.abs(round.credits - (creditsBefore - bet + payout))).toBeLessThanOrEqual(amountTolerance(creditsBefore));
+                expect(wasm.serialize().rngState).toEqual(node.toSessionState().rngState);
+                totalWin += payout;
+                observed.push(round);
+                if (index === 3) checkpoint = JSON.parse(JSON.stringify(wasm.serialize()));
+            }
+            const restoredRuntime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
+            runtimes.push(restoredRuntime);
+            const restored = restoredRuntime.restoreSession(checkpoint!);
+            for (const expected of observed.slice(4)) expect(await restored.play({bet})).toEqual(expected);
+            expect(restored.serialize()).toEqual(wasm.serialize());
+            const replayRuntime = await loadPokieWasmFileRuntime(fixture.artifact, new SeededPokieWasmHost("0"));
+            runtimes.push(replayRuntime);
+            const replay = await replayRuntime.replay(checkpoint!, Array.from({length: 4}, () => ({bet})));
+            expect(replay.rounds).toEqual(observed.slice(4));
+            expect(replay.stateAfter).toEqual(wasm.serialize());
+            const poor = runtime.createSession("0", {credits: 0});
+            const poorState = poor.serialize();
+            await expect(poor.play({bet})).rejects.toThrow(/insufficient credits/);
+            expect(poor.serialize()).toEqual(poorState);
+            const recording = new ReplayRecorder().record({game: fixture.game, seed: "0", round: 8});
+            expect(recording.screen).toEqual(observed[7].screen);
+            expect(Math.abs(recording.totalBet - 8 * bet)).toBeLessThanOrEqual(amountTolerance(8 * bet));
+            expect(Math.abs(recording.totalWin - totalWin)).toBeLessThanOrEqual(amountTolerance(totalWin));
+            // ReplayRecorder's MAX_SAFE_INTEGER bankroll cannot measure sub-cent credits.
+        } finally {
+            for (const runtime of runtimes) runtime.dispose();
+            try {
+                await fixture?.release();
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        }
+    });
+
     it.each(["0", "wasm-parity-golden", "another-seed"].flatMap((seed) => [2, 3].map((length) => [seed, length] as const)))("matches the actual generated package on first and subsequent rounds for string seed %s and strip length %s", async (seed, length) => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-production-parity-"));
         const fixture = await createProductionParityFixture(directory, {...RNG_PARITY_BLUEPRINT, reelStrips: Array.from({length: 2}, () => Array.from({length}, (_, stop) => stop % 2 === 0 ? "A" : "B"))});

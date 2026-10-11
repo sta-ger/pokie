@@ -1,7 +1,21 @@
+import {PaytableSheetMapper} from "../../../src/parsheet/mapping/PaytableSheetMapper.js";
+import {serializeGameBlueprint} from "../../../cli/studio/blueprint/serializeGameBlueprint.js";
+import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 import {AvailableBetsSheetMapper} from "../../../src/parsheet/mapping/AvailableBetsSheetMapper.js";
 
 describe("AvailableBetsSheetMapper", () => {
     const mapper = new AvailableBetsSheetMapper();
+
+    it("preserves authored PAR and Blueprint paytable multipliers rather than stake-scaled amounts", () => {
+        const blueprint = fractionalBetBlueprint();
+        const paytableMapper = new PaytableSheetMapper();
+        const {value, issues} = paytableMapper.fromRows(paytableMapper.toRows(blueprint.paytable));
+        expect(issues).toEqual([]);
+        expect(value).toEqual({A: {3: 5}, B: {3: 2}});
+        const saved = JSON.parse(serializeGameBlueprint(blueprint));
+        expect(saved.paytable).toEqual(value);
+        expect(saved.availableBets).toEqual([0.01]);
+    });
 
     it("maps Bet rows to an availableBets array", () => {
         const {value, issues} = mapper.fromRows([["Bet"], [1], [2], [5]]);
@@ -35,7 +49,7 @@ describe("AvailableBetsSheetMapper", () => {
     });
 
     it("round-trips toRows -> fromRows back to the original array", () => {
-        const original = [1, 2, 5, 10];
+        const original = [1, 2, 5, 10, 0.01, 0.1, 1.5, 1e-7];
         const {value, issues} = mapper.fromRows(mapper.toRows(original));
 
         expect(issues).toEqual([]);

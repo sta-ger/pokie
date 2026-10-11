@@ -45,7 +45,7 @@ export class Paytable<T extends string | number | symbol = string> implements Pa
     }
 
     public getAvailableBets(): number[] {
-        return Object.keys(this.paytableMap).map((key) => parseInt(key, 10));
+        return Object.keys(this.paytableMap).map((key) => Number(key));
     }
 
     public getNumbersOfSymbolsForBet(bet: number, symbolId: T): number[] {
@@ -65,14 +65,14 @@ export class Paytable<T extends string | number | symbol = string> implements Pa
             this.paytableMap[bet][symbolId][times] = betMultiplier * bet;
         } else {
             Object.keys(this.paytableMap).forEach((bet) => {
-                const intBet = parseInt(bet, 10);
+                const numericBet = Number(bet);
                 if (!this.paytableMap[bet]) {
                     this.paytableMap[bet] = {} as Record<T, Record<number, number>>;
                 }
                 if (!this.paytableMap[bet][symbolId]) {
                     this.paytableMap[bet][symbolId] = {};
                 }
-                this.paytableMap[bet][symbolId][times] = betMultiplier * intBet;
+                this.paytableMap[bet][symbolId][times] = betMultiplier * numericBet;
             });
         }
     }

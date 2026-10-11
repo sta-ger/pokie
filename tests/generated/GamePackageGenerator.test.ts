@@ -1,3 +1,4 @@
+import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, amountTolerance, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import ts from "typescript";
 import {RNG_PARITY_BLUEPRINT} from "../fixtures/wasm/createProductionParityFixture.js";
 import {
@@ -7,6 +8,7 @@ import {
     computeGameBlueprintHash,
     GameBlueprint,
     GamePackageGenerator,
+    loadPokieGameRuntime,
     generateWeightedOutcomeLibrary,
     PokieGame,
     SymbolsCombination,
@@ -31,13 +33,86 @@ function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
 
 describe("GamePackageGenerator", () => {
     let cwd: string;
+    let fractionalGames: Awaited<ReturnType<typeof loadPokieGameRuntime>>[];
 
     beforeEach(() => {
         cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-build-test-"));
+        fractionalGames = [];
     });
 
-    afterEach(() => {
-        fs.rmSync(cwd, {recursive: true, force: true});
+    afterEach(async () => {
+        try {
+            await Promise.all(fractionalGames.map(loaded => loaded.release()));
+        } finally {
+            fs.rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    async function loadFractionalEntrypoints(bets: number[], mixed = false): Promise<PokieGame[]> {
+        const result = new GamePackageGenerator("1.3.0").generate(fractionalBetBlueprint(bets, mixed), cwd);
+        const source = fs.readFileSync(path.join(result.projectRoot, "src/index.ts"), "utf8");
+        const compiled = ts.transpileModule(source, {
+            compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+            reportDiagnostics: true,
+        });
+        expect(compiled.diagnostics).toEqual([]);
+        const compiledPath = path.join(result.projectRoot, "dist", "fractional-typed.js");
+        fs.writeFileSync(compiledPath, compiled.outputText);
+        const cjs = await loadPokieGameRuntime(result.projectRoot, entry => require(entry));
+        fractionalGames.push(cjs);
+        const typed = await loadPokieGameRuntime(result.projectRoot, entry => require(path.join(path.dirname(entry), "fractional-typed.js")));
+        fractionalGames.push(typed);
+        return [cjs.game, typed.game];
+    }
+
+    it.each(FRACTIONAL_BET_STAKES)("pays 5 * stake %s through actual generated CJS and compiled TypeScript entrypoints", async (bet) => {
+        for (const game of await loadFractionalEntrypoints([bet])) {
+            const session = game.createSession({seed: "0"}) as VideoSlotSessionHandling;
+            session.setBet(bet);
+            expect(session.getBet()).toBe(bet);
+            const credits = session.getCreditsAmount();
+            session.play();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual([["A"], ["A"], ["A"]]);
+            expect(session.getWinAmount()).toBe(5 * bet);
+            expect(session.getWinAmount()).toBeGreaterThan(0);
+            expect(Math.abs(session.getCreditsAmount() - (credits - bet + 5 * bet))).toBeLessThanOrEqual(amountTolerance(credits));
+        }
+    });
+
+    it("selects every fractional stake in a multiple-bet generated CJS and compiled TypeScript session", async () => {
+        for (const game of await loadFractionalEntrypoints(FRACTIONAL_BET_STAKES)) {
+            const session = game.createSession({seed: "0"}) as VideoSlotSessionHandling;
+            expect(session.getAvailableBets()).toEqual(FRACTIONAL_BET_STAKES);
+            expect(new Set(session.getPaytable().getAvailableBets())).toEqual(new Set(FRACTIONAL_BET_STAKES));
+            for (const bet of FRACTIONAL_BET_STAKES) {
+                session.setBet(bet);
+                expect(session.getBet()).toBe(bet);
+                const credits = session.getCreditsAmount();
+                session.play();
+                expect(session.getWinAmount()).toBe(5 * bet);
+                expect(Math.abs(session.getCreditsAmount() - (credits - bet + 5 * bet))).toBeLessThanOrEqual(amountTolerance(credits));
+            }
+            session.setBet(99);
+            expect(session.getBet()).toBe(FRACTIONAL_BET_STAKES[0]);
+        }
+    });
+
+    it.each(FRACTIONAL_BET_STAKES)("preserves mixed-strip seeded screens and continuation at stake %s in CJS and compiled TypeScript", async (bet) => {
+        for (const game of await loadFractionalEntrypoints([bet], true)) {
+            const session = game.createSession({seed: "0"}) as VideoSlotSessionHandling & {toSessionState(): {rngState?: unknown}};
+            const observed: unknown[] = [];
+            for (let round = 0; round < 8; round++) {
+                session.setBet(bet);
+                expect(session.getBet()).toBe(bet);
+                const credits = session.getCreditsAmount();
+                session.play();
+                const screen = session.getSymbolsCombination().toMatrix();
+                observed.push({screen, rngState: session.toSessionState().rngState});
+                expect(session.getWinAmount()).toBe(screenMultiplier(screen) * bet);
+                expect(Math.abs(session.getCreditsAmount() - (credits - bet + screenMultiplier(screen) * bet))).toBeLessThanOrEqual(amountTolerance(credits));
+            }
+            expect(observed).toEqual(FRACTIONAL_MIXED_CONTINUATION);
+        }
     });
 
     it("writes the complete canonical package file set (package.json, package-lock.json, tsconfig.json, README.md, src/index.ts, dist/index.js) under ./<manifest.id> by default", () => {

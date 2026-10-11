@@ -1,3 +1,5 @@
+import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
+import {validatePlaySpinRequest} from "../../../cli/studio/runtime/validatePlaySpinRequest.js";
 import {PokieGame} from "../../../src/gamepackage/PokieGame.js";
 import {PokieGameManifest} from "../../../src/gamepackage/PokieGameManifest.js";
 import {IdempotencyRepository} from "../../../src/server/idempotency/IdempotencyRepository.js";
@@ -1396,6 +1398,43 @@ describe("SpinCommandHandler", () => {
     });
 
     describe("bet selection (handle()'s fourth parameter)", () => {
+        it.each(FRACTIONAL_BET_STAKES)("plays and persists a real fractional session at stake %s while blocking unavailable bets without mutation", async (bet) => {
+            const live = fractionalBetSession();
+            const play = jest.spyOn(live, "play");
+            const game: PokieGame = {getManifest: () => manifest, createSession: () => live};
+            const repository = new InMemorySessionRepository();
+            const wallet = new RecordingTransactionalWallet();
+            await repository.save("fractional", {bet: 1, win: 0});
+            await wallet.setBalance("fractional", 1000);
+            const handler = new SpinCommandHandler(game, repository, wallet);
+            handler.primeSession("fractional", live, (await repository.loadVersioned("fractional"))?.version);
+            expect(validatePlaySpinRequest({bet}).bet).toBe(bet);
+            const played = await handler.handle("fractional", undefined, undefined, bet);
+            expect(played).toMatchObject({status: "played", win: 5 * bet});
+            expect(live.getBet()).toBe(bet);
+            expect(play).toHaveBeenCalledTimes(1);
+            const persisted = await repository.loadVersioned("fractional");
+            expect(persisted?.state).toMatchObject({bet, win: 5 * bet});
+            const state = live.toSessionState();
+            const credits = live.getCreditsAmount();
+            const balance = await wallet.getBalance("fractional");
+            const debits = [...wallet.debitCalls];
+            const creditCalls = [...wallet.creditCalls];
+            expect((await handler.handle("fractional", undefined, undefined, 99)).status).toBe("blocked");
+            expect(live.getBet()).toBe(bet);
+            expect(live.toSessionState()).toEqual(state);
+            expect(live.getCreditsAmount()).toBe(credits);
+            expect(play).toHaveBeenCalledTimes(1);
+            expect(wallet.debitCalls).toEqual(debits);
+            expect(wallet.creditCalls).toEqual(creditCalls);
+            expect(await wallet.getBalance("fractional")).toBe(balance);
+            expect(await repository.loadVersioned("fractional")).toEqual(persisted);
+        });
+
+        it.each([NaN, Infinity, -Infinity, "0.01"])("Studio rejects malformed/nonfinite spin bet %s before command execution", (bet) => {
+            expect(() => validatePlaySpinRequest({bet})).toThrow(/finite number/);
+        });
+
         it("applies a caller-supplied bet via session.setBet() before playing, when it's one of the session's own availableBets", async () => {
             const game = createFakeGameWithSelectableBet();
             const sessionRepository = new InMemorySessionRepository();

@@ -1,3 +1,4 @@
+import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../fixtures/math/FractionalBetFixture.js";
 import {
     BetModeDefinition,
     BetModesConfig,
@@ -40,6 +41,30 @@ describe("GameSessionSerializer", () => {
 });
 
 describe("VideoSlotSessionSerializer", () => {
+    test("fractional paytable amounts, selected bets and line wins survive both serializers and JSON", () => {
+        const session = fractionalBetSession();
+        const serializer = new VideoSlotSessionSerializer();
+        const base = new GameSessionSerializer();
+        for (const bet of FRACTIONAL_BET_STAKES) {
+            session.setBet(bet);
+            session.play();
+            expect(session.getBet()).toBe(bet);
+            expect(session.getWinAmount()).toBe(5 * bet);
+            const initial = serializer.getInitialData(session);
+            const round = serializer.getRoundData(session);
+            expect(initial.availableBets).toEqual(FRACTIONAL_BET_STAKES);
+            expect(new Set(session.getPaytable().getAvailableBets())).toEqual(new Set(FRACTIONAL_BET_STAKES));
+            for (const stake of FRACTIONAL_BET_STAKES) expect(initial.paytable[stake].A[3]).toBe(5 * stake);
+            expect(round.bet).toBe(bet);
+            expect(round.totalWin).toBe(5 * bet);
+            expect(Object.values(round.winningLines!)[0].winAmount).toBe(5 * bet);
+            expect(roundtripThroughJson(initial)).toEqual(initial);
+            expect(roundtripThroughJson(round)).toEqual(round);
+            expect(roundtripThroughJson(base.getInitialData(session))).toEqual({credits: session.getCreditsAmount(), bet, availableBets: FRACTIONAL_BET_STAKES});
+            expect(roundtripThroughJson(base.getRoundData(session))).toEqual({credits: session.getCreditsAmount(), bet});
+        }
+    });
+
     function buildWinningSession(availableBets?: number[]): VideoSlotSession {
         const config = new VideoSlotConfig();
         if (availableBets !== undefined) {

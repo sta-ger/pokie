@@ -1,3 +1,4 @@
+import {FRACTIONAL_BET_STAKES, fractionalBetBlueprint, screenMultiplier, amountTolerance} from "../../fixtures/math/FractionalBetFixture.js";
 import {
     BetModeDefinition,
     BetModesConfig,
@@ -18,6 +19,7 @@ import {
     preflightOutcomeLibraryGenerationFromEstimate,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
+    loadPokieGameRuntime,
     VideoSlotSession,
     VideoSlotWithBetModesSession,
 } from "pokie";
@@ -33,6 +35,44 @@ function outcomeById(outcomes: readonly {id: string; weight: number; artifact: {
 }
 
 describe("generateExactWeightedOutcomeLibrary", () => {
+    it.each(FRACTIONAL_BET_STAKES)("enumerates the actual generated single-stake mixed fixture at stake %s", async (bet) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-fractional-exact-"));
+        let loaded: Awaited<ReturnType<typeof loadPokieGameRuntime>> | undefined;
+        try {
+            const result = new GamePackageGenerator("1.3.0").generate(fractionalBetBlueprint([bet], true), directory);
+            loaded = await loadPokieGameRuntime(result.projectRoot, entry => require(entry));
+            expect(loaded.game.createSession({seed: "0"}).getBet()).toBe(bet);
+            // No stake metadata override: the single configured runtime bet is authoritative.
+            const {library, diagnostics} = await generateExactWeightedOutcomeLibrary({libraryId: "fractional-mixed", game: loaded.game, pokieVersion: "1.3.0"});
+            expect(diagnostics.totalOutcomeSpaceSize).toBe(8);
+            expect(diagnostics.sampledRawCount).toBe(8);
+            expect(library.outcomes).toHaveLength(8);
+            expect(library.outcomes.reduce((sum, outcome) => sum + outcome.weight, 0)).toBe(8);
+            const screens = new Set<string>();
+            let totalWin = 0;
+            for (const {artifact, weight} of library.outcomes) {
+                const multiplier = screenMultiplier(artifact.screen!);
+                expect(weight).toBe(1);
+                expect(artifact.stake).toBe(bet);
+                expect(artifact.totalWin).toBe(multiplier * bet);
+                expect(Math.abs(artifact.payoutMultiplier - multiplier)).toBeLessThanOrEqual(amountTolerance(multiplier));
+                screens.add(JSON.stringify(artifact.screen));
+                totalWin += artifact.totalWin;
+            }
+            expect(screens.size).toBe(8);
+            expect(screens.has(JSON.stringify([["A"], ["A"], ["A"]]))).toBe(true);
+            expect(screens.has(JSON.stringify([["B"], ["B"], ["B"]]))).toBe(true);
+            expect(library.outcomes.filter(outcome => outcome.artifact.totalWin === 0)).toHaveLength(6);
+            expect(Math.abs(totalWin - 7 * bet)).toBeLessThanOrEqual(amountTolerance(7 * bet));
+        } finally {
+            try {
+                await loaded?.release();
+            } finally {
+                fs.rmSync(directory, {recursive: true, force: true});
+            }
+        }
+    });
+
     it("estimates the exact reel-stop space upfront without enumerating", () => {
         const estimate = estimateExactOutcomeSpaceSize(buildFixtureGame());
 

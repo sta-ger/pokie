@@ -1,4 +1,5 @@
-import {FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "pokie";
+import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
+import {captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -12,6 +13,23 @@ describe("FileSessionRepository", () => {
 
     afterEach(() => {
         fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    it.each(FRACTIONAL_BET_STAKES)("persists actual fractional session bet/win/paytable payloads at stake %s", async (bet) => {
+        const repository = new FileSessionRepository(directory);
+        const session = fractionalBetSession();
+        session.setBet(bet);
+        const serializer = new VideoSlotSessionSerializer();
+        const initial = captureInitialPokieSessionState({seed: "0"}, session, serializer);
+        session.play();
+        const state = captureRoundPokieSessionState({seed: "0"}, session, initial, serializer);
+        expect(state.bet).toBe(bet);
+        expect(state.win).toBe(5 * bet);
+        await repository.save("fractional", state);
+        const loaded = await new FileSessionRepository(directory).load("fractional");
+        expect(loaded).toEqual(JSON.parse(JSON.stringify(state)));
+        expect(loaded?.initialPayload).toMatchObject({bet, availableBets: FRACTIONAL_BET_STAKES, paytable: {[bet]: {A: {3: 5 * bet}}}});
+        expect(loaded?.roundPayload).toMatchObject({bet, totalWin: 5 * bet});
     });
 
     it("returns undefined for a sessionId that was never saved", async () => {

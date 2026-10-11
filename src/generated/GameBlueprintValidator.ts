@@ -140,12 +140,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             if (
                 !Array.isArray(availableBets) ||
                 availableBets.length === 0 ||
-                !availableBets.every((bet) => typeof bet === "number" && bet > 0)
+                !availableBets.every((bet) => typeof bet === "number" && Number.isFinite(bet) && bet > 0)
             ) {
                 issues.push({
                     code: "blueprint-availablebets-invalid",
                     severity: "error",
-                    message: '"availableBets", if present, must be a non-empty array of positive numbers.',
+                    message: '"availableBets", if present, must be a non-empty array of finite positive numbers.',
                 });
             } else if (new Set(availableBets).size !== availableBets.length) {
                 issues.push({
