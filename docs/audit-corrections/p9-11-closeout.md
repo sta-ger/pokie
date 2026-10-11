@@ -545,7 +545,7 @@ no official gate, independent collection or lifecycle command is authorized here
 | Design/happy-path asserts advanced publication fields are absent | The field remains mounted inside the closed advanced disclosure; assert it is not visible. The primary guided create/open/simulate/report path remains covered, without removing the already accepted advanced publication feature. |
 | PC-16 waits for a superseded Run-step button | Assert the terminal Review action `Open full report`, which is automatically opened on completion of the real HTTP simulation. |
 | Readiness HTTP shutdown exceeds its hook deadline | Unmount the rendered polling consumer before draining the actual Studio server; keep the real server shutdown and fixture deletion awaited. PC-16 uses the same teardown ordering. |
-| Packed reload discovery pins an expired first CDP response | Reload and restart share bounded rendered response discovery that keeps later job-list responses eligible and requires the captured durable job ID. Restored Simulation polling uses the entire reload event window. A focused regression in the saved P805 file proves expired-first recovery, exclusion of old-document events/other jobs, restart discovery and missing-job rejection. |
+| Packed reload discovery pins an expired first CDP response | Reload and restart share bounded rendered response discovery that keeps later job-list responses eligible and requires the captured durable job ID. Reload/restart requires a new main-frame loader; restored Simulation polling shares the response reader and uses the entire reload event window. A focused regression in the saved P805 file proves expired-first recovery, exclusion of old-document events/other jobs, restart discovery, same-job active polling, new-loader completion and missing-job rejection. |
 
 The precommit seven-file run passed all six UI/HTTP suites (80 tests) and
 correctly rejected the packed test's dirty checkout. The final full-set run must
@@ -556,3 +556,10 @@ five independent initial/affected/final persona observations, unsupported
 boundaries and wider-roadmap statuses remain attributed to their original
 receipts. Controller official gate, packaging boundary, integration, push,
 publication, Drive round-trip and final campaign closure remain pending.
+
+The first committed rerun passed the six UI/HTTP suites and the new discovery
+regression, then exposed the same expired-first selection in the restored
+Simulation poll. That failed attempt is retained in the worker cache. The
+follow-up uses the shared response reader for this poll and requires the new
+main-frame loader for both reload and restart; its failure diagnostic includes
+the observed endpoint/status. A green job-list receipt alone is insufficient.

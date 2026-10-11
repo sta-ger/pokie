@@ -129,7 +129,7 @@ describe("P8-05 rendered Valera persona evidence", () => {
     it("discovers reload/restart jobs after an expired first response without accepting another job", () => {
         const result = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
             import assert from 'node:assert/strict';
-            import {readP805RenderedJobDiscovery} from './scripts/p8-05-valera-browser-audit.mjs';
+            import {readP805RenderedJobDiscovery, readP805RenderedResponse, reloadP805Page} from './scripts/p8-05-valera-browser-audit.mjs';
             const event = (id) => ({method:'Network.responseReceived', params:{requestId:id, response:{url:'http://localhost/api/project/jobs', status:200}}});
             const reads = [];
             const cdp = {events:[event('before-reload'), event('expired'), event('unrelated')],
@@ -148,6 +148,23 @@ describe("P8-05 rendered Valera persona evidence", () => {
             const restart = await readP805RenderedJobDiscovery(cdp, 1, 'captured-job', 'restart', 2_000);
             assert.equal(restart.payload.jobs[0].id, 'captured-job');
             await assert.rejects(readP805RenderedJobDiscovery({events:[event('unrelated')], send:async () => ({body:'{"jobs":[]}'})}, 0, 'absent', 'missing job', 150), /Timed out waiting for missing job/);
+            const pollEvents = [event('expired'), event('old-job')].map(value => ({...value, params:{...value.params, response:{url:'http://localhost/api/project/simulations/captured-job', status:200}}}));
+            const poll = {events:pollEvents, send:async (method, {requestId}) => {
+                if (requestId === 'expired') { pollEvents.push({...pollEvents[0], params:{...pollEvents[0].params, requestId:'current'}}); throw new Error('expired'); }
+                return {body:JSON.stringify({id:requestId === 'current' ? 'captured-job' : 'other-job', status:'running'})};
+            }};
+            const restored = await readP805RenderedResponse(poll, 0, '/api/project/simulations/captured-job', value => value.id === 'captured-job' && value.status === 'running', 'restored poll', 2_000);
+            assert.equal(restored.event.params.requestId, 'current');
+            const loader = {events:[], send:async method => {
+                if (method === 'Page.getFrameTree') return {frameTree:{frame:{id:'main', loaderId:'old'}}};
+                if (method === 'Page.reload') {
+                    loader.events.push({method:'Page.lifecycleEvent', params:{name:'load', frameId:'main', loaderId:'old'}});
+                    setTimeout(() => loader.events.push({method:'Page.lifecycleEvent', params:{name:'load', frameId:'main', loaderId:'new'}}), 25);
+                }
+                return {};
+            }};
+            await reloadP805Page(loader, 2_000);
+            assert.equal(loader.events.at(-1).params.loaderId, 'new');
             process.stdout.write(JSON.stringify({reload:'restored', restart:'captured-job', missing:'rejected'}));
         `], {cwd: process.cwd(), encoding: "utf8", stdio: "pipe", timeout: 10_000}));
         expect(result).toEqual({reload: "restored", restart: "captured-job", missing: "rejected"});
