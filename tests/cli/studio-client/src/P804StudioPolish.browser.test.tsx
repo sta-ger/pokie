@@ -2,6 +2,8 @@ import {existsSync, mkdtempSync, readFileSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
+import {pathToFileURL} from "node:url";
+import {constants, runInNewContext, runInThisContext} from "node:vm";
 
 const root = resolve(__dirname, "../../../..");
 const audit = resolve(root, "scripts/p8-04-studio-polish-browser-audit.mjs");
@@ -40,6 +42,7 @@ describe("P8-04 Studio polish browser audit", () => {
             expect(transcript).toContain("WORKFLOW created, registered, and opened a real long-named project");
             expect(transcript).toContain("LIFECYCLE queued/running simulation: visible enabled button action Cancel");
             expect(transcript).toContain("LIFECYCLE simulation cancellation confirmation: visible enabled button action Confirm");
+            expect(transcript).toContain("LIFECYCLE cancelling simulation: primary Cancel is hidden; retained cancellation controls are disabled");
             expect(transcript).toContain("LIFECYCLE cancelling/cancelled simulation: action Cancel is no longer visible");
             expect(transcript).toContain("LIFECYCLE completed simulation report: visible enabled button action Repeat simulation");
             expect(transcript).toContain("WORKFLOW cancelled the rendered simulation");
@@ -59,5 +62,61 @@ describe("P8-04 Studio polish browser audit", () => {
         } finally {
             rmSync(evidence, {recursive: true, force: true});
         }
+    });
+});
+
+
+describe("P8-04 cancellation collection boundaries", () => {
+    type EvaluateControl = (expression: string) => unknown;
+    let helpers: {
+        assertP804CancellingActions: (evaluate: EvaluateControl) => Promise<void>;
+        waitForP804CancellationDialogClosed: (evaluate: EvaluateControl, timeout?: number) => Promise<void>;
+    };
+    const evaluate: EvaluateControl = (expression) => runInNewContext(expression, {document});
+    const renderedButton = (id: string, disabled = false) => {
+        const button = document.createElement("button");
+        button.id = id;
+        button.textContent = "Cancel";
+        button.disabled = disabled;
+        button.getClientRects = () => [{width: 100, height: 30}] as unknown as DOMRectList;
+        document.body.append(button);
+        return button;
+    };
+
+    beforeAll(async () => {
+        helpers = await runInThisContext(`import(${JSON.stringify(pathToFileURL(audit).href)})`, {
+            importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+        }) as typeof helpers;
+    });
+    afterEach(() => document.body.replaceChildren());
+
+    it("allows the retained disabled job-card control during cleanup", async () => {
+        renderedButton("durable-job-cancel", true);
+        await expect(helpers.assertP804CancellingActions(evaluate)).resolves.toBeUndefined();
+    });
+
+    it.each(["simulation-cancel", "durable-job-cancel"])("rejects a retained enabled %s control during cleanup", async (id) => {
+        renderedButton(id);
+        await expect(helpers.assertP804CancellingActions(evaluate)).rejects.toThrow(/Cancel action/);
+    });
+
+    it("rejects a visible primary Cancel even when disabled", async () => {
+        renderedButton("simulation-cancel", true);
+        await expect(helpers.assertP804CancellingActions(evaluate)).rejects.toThrow(/primary Cancel action/);
+    });
+
+    it("waits for the confirmation exit transition without mistaking its dismiss button for a job control", async () => {
+        const dismiss = renderedButton("simulation-cancel-dismiss");
+        let observations = 0;
+        await helpers.waitForP804CancellationDialogClosed((expression) => {
+            if (++observations === 2) dismiss.remove();
+            return evaluate(expression);
+        }, 1_000);
+        expect(observations).toBe(2);
+    });
+
+    it("fails if the confirmation stays open", async () => {
+        renderedButton("simulation-cancel-confirm");
+        await expect(helpers.waitForP804CancellationDialogClosed(evaluate, 0)).rejects.toThrow(/confirmation to close/);
     });
 });

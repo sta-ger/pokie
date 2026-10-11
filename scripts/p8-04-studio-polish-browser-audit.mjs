@@ -151,6 +151,29 @@ async function assertHiddenAction(label, lifecycle) {
     note(`LIFECYCLE ${lifecycle}: action ${label} is no longer visible`);
 }
 
+// Confirmation exit transitions and the durable job card are independent of
+// the primary simulation action. The card retains a disabled Cancel while
+// safe cleanup is active; it must never offer a second enabled cancellation.
+export async function assertP804CancellingActions(evaluateControl) {
+    const controls = await evaluateControl(`(() => {
+        const visible = (node) => node && node.getClientRects().length > 0;
+        const primary = document.getElementById("simulation-cancel");
+        const cancels = [...document.querySelectorAll("button,a,[role=button]")].filter((node) =>
+            (node.textContent?.trim() === "Cancel" || node.getAttribute("aria-label") === "Cancel") && visible(node));
+        return {primaryVisible: Boolean(visible(primary)), enabledCancels: cancels.filter((node) => !node.disabled).length};
+    })()`);
+    assert.equal(controls.primaryVisible, false, "cancelling simulation must remove its primary Cancel action");
+    assert.equal(controls.enabledCancels, 0, "cancelling simulation must not offer an enabled Cancel action");
+}
+
+export async function waitForP804CancellationDialogClosed(evaluateControl, timeout = 5_000) {
+    await waitFor(() => evaluateControl(`(() =>
+        ["simulation-cancel-confirm", "simulation-cancel-dismiss"].every((id) => {
+            const node = document.getElementById(id);
+            return !node || node.getClientRects().length === 0;
+        }))()`), "simulation cancellation confirmation to close", timeout);
+}
+
 async function fillField(label, value) {
     const point = await evaluate(`(() => {
         const wanted = ${JSON.stringify(label)};
@@ -251,7 +274,9 @@ async function runAndCancelSimulation() {
     await assertVisibleAction("Confirm", "simulation cancellation confirmation");
     await clickText("Confirm");
     await waitFor(async () => (await bodyIncludes("cancelling —")) || (await bodyIncludes("cancelled —")), "rendered cancelling or cancelled simulation", 120_000);
-    await assertHiddenAction("Cancel", "cancelling/cancelled simulation");
+    await waitForP804CancellationDialogClosed(evaluate);
+    await assertP804CancellingActions(evaluate);
+    note("LIFECYCLE cancelling simulation: primary Cancel is hidden; retained cancellation controls are disabled");
     if (await bodyIncludes("cancelling —")) {
         await capture("compact-simulation-cancelling.png", "Compact 1024×768 cancellation requested; cleanup remains active");
     }
@@ -260,6 +285,13 @@ async function runAndCancelSimulation() {
     } catch (error) {
         throw new Error(`${error instanceof Error ? error.message : String(error)}\nRendered cancellation state: ${await evaluate("document.body.innerText")}`);
     }
+    // The common durable-job observer may settle one interval after the
+    // simulation workflow. Keep the global absence assertion at its terminal
+    // boundary, after both rendered views have observed cleanup.
+    await waitFor(() => evaluate(`![...document.querySelectorAll("button,a,[role=button]")].some((node) =>
+        (node.textContent?.trim() === "Cancel" || node.getAttribute("aria-label") === "Cancel") && node.getClientRects().length > 0)`),
+    "terminal cancellation controls to disappear", 5_000);
+    await assertHiddenAction("Cancel", "cancelling/cancelled simulation");
     await capture("compact-simulation-cancelled.png", "Compact 1024×768 real cancelled simulation result");
     note("WORKFLOW cancelled the rendered simulation through its confirmation and waited for the server terminal state.");
 }

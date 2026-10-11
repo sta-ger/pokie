@@ -23,6 +23,9 @@ const tooling = new Set([
     // Reviewed gate corrections affect collection/regressions, not production
     // build inputs. Keep every exemption named; sibling tests remain protected.
     "scripts/p8-05-valera-browser-audit.mjs",
+    "scripts/p8-04-studio-polish-browser-audit.mjs",
+    "tests/cli/studio-client/src/P804StudioPolish.browser.test.tsx",
+    "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
