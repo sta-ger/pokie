@@ -1556,3 +1556,28 @@ npm run test:targeted -- tests/scripts/p9-11-corrective-closeout.test.mjs tests/
 | Five independent personas; reachability, deterministic inputs, dependent Stake, recovery, clipping/focus and driver-source corrections | The supplied review accepts the five isolated smokes, authenticated rendered P909/P910 and four inspected graphic images; retained aggregate SHA-256 `7164f9e7582db05597dd4f42a757c59f3f35c50e238d5eff43d53bf46f66847c` and all action/process/profile/cleanup receipts retain their original identities/locations. This worker performs no browser recollection. |
 | Candidate handoff findings `39842817bc1bccc3` and `ab0bb5813f7bcb0f` | Complete explicit non-product delta admitted by the shared reader; byte integrity, clean/regular trees, external pins and producer exact-HEAD protections retained. Synthetic tests are contract evidence, not new product acceptance receipts. |
 | Final release/packaging, exact integration/push/publication, Drive round-trip and campaign completion | Still pending controller execution. The controller retains its independent three-file matrix including `productionStudioCandidate.test.tsx`; that matrix is not claimed as run here. No gate, build, pack, install, publication, completed-step evidence cleanup or campaign-state edit occurs in this repair. |
+
+### 2026-10-11 P9-11 exact-candidate corrective closeout
+
+The independent verifier authenticated clean product candidate
+`ee8d93aabacfc5803144a15e7845e1f962c8603c` and the controller-owned normal
+delivery: archive SHA-256
+`73901e9d8b33ec98d93d8dce02af97bf018fa6862f6b946fb978fa41c1b06548`,
+executable projection SHA-256
+`fc87c3e9e0fdb6714a2d0a397f12d5de8641f4e62b52195a93cb01dd021be372`, and
+pinned rendered-driver SHA-256
+`e59b0016e731e759bd9068f130cd02cfef44aa74b689194f240297f803686338`.
+The one reviewed closeout at
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/P9-11-165615df35fc0505/closeout-2026-10-11-ee8d93aa/checks.json`
+passed its six corrective reproductions and the five independent fresh-profile
+persona smokes. Its 12 public/rendered child records each exited 0 with process
+group, process tree, resource, and stdio drainage; `profilesRemoved` is true.
+
+I independently inspected the four retained Graphic Designer sheets in that
+run: Home Design and project Build/Export are contained at desktop and narrow
+layouts; the job sheet shows the local running state; and the settled
+desktop/mobile sheet shows the completed simulation plus a visibly painted
+focus outline on the same common operation card. No unresolved P0, P1, or
+material P2 finding was observed. Runtime profiles, archives, logs, receipts,
+and images remain in the assigned harness and are not committed. Controller
+publication and campaign lifecycle remain outside this verifier's criterion.
