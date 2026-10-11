@@ -32,6 +32,9 @@ const tooling = new Set([
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
+    // P10-03 retained-candidate delta: installed receipt plus bounded gate regression.
+    "docs/math-contract-corrections/README.md",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
     "tests/cli/studio-client/src/integration/happyPath.test.tsx",
