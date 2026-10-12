@@ -11,6 +11,9 @@ module.exports = {
     getManifest() {
         return {id: PC_12_FREE_GAMES_FIXTURE_ID, name: "PC-12 Deterministic Free Games Fixture", version: "1.0.0"};
     },
+    getSessionStateSchema() {
+        return {kind: "free-games", base: {kind: "seeded-video-slot"}};
+    },
     createSession() {
         // PC-12 compares a named deterministic fixture round. Studio's optional UI seed is not
         // part of this fixture's identity, so every prepared session starts at that same contract.

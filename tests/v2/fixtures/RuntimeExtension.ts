@@ -1,6 +1,6 @@
 import {
     VideoSlotConfig, VideoSlotSession, VideoSlotWinCalculator,
-    SymbolsCombinationsGenerator, SeededRandomNumberGenerator,
+    SymbolsCombinationsGenerator, SeededRandomNumberGenerator, ReelsSymbolsSequencesGenerator,
     InMemorySessionRepository, InMemoryWallet, SpinCommandHandler,
     captureInitialPokieSessionState, resolveGameSessionIdentity,
     type PokieGame, type RepositoryCommandHandling, type SpinCommandResult,
@@ -43,8 +43,9 @@ export function extensionGame(): PokieGame {
     return {
         getManifest: () => ({id: "consumer", name: "Consumer extension", version: "1"}),
         getSessionCompatibility: () => ({version: "math-1", stateSchemaVersion: "1"}),
+        getSessionStateSchema: () => ({kind: "seeded-video-slot"}),
         createSession: context => {
-            const config = new VideoSlotConfig();
+            const config = new VideoSlotConfig(undefined, new ReelsSymbolsSequencesGenerator(new SeededRandomNumberGenerator(context?.seed ?? 7)));
             const session = new VideoSlotSession(config,
                 new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(context?.seed ?? 7)),
                 new ConsumerWinCalculator(config));

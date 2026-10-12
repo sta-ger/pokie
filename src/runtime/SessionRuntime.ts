@@ -52,7 +52,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         let executed = false;
         let invalidated = false;
         const rollback = (): boolean => {
-            if (executed) return false;
+            if (executed || invalidated) return false;
             invalidated = true;
             try {
                 if (previousMode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(previousMode);

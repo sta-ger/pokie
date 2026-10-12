@@ -10,6 +10,9 @@ export const ${className}Game: PokieGame = {
     getManifest() {
         return manifest;
     },
+    getSessionStateSchema() {
+        return {kind: "seeded-video-slot"};
+    },
     createSession(context?: PokieGameContext) {
         return create${className}Session(context);
     },

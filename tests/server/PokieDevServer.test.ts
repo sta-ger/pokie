@@ -29,6 +29,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
+const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "validateSessionState"> = {
+    getSessionStateSchema: () => ({kind: "custom"}),
+    validateSessionState: value => {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid fixture state");
+    },
+};
+
 function createFakeSession(): GameSessionHandling & SessionStateRestoring & ConvertableToSessionState<{round: number}> & BuildableFromSessionState<{round: number}> & {getSymbolsCombination(): {toMatrix(): string[][]}} {
     let credits = 1000;
     const bet = 5;
@@ -68,6 +75,7 @@ function createFakeSession(): GameSessionHandling & SessionStateRestoring & Conv
 function createFakeGame(manifest: PokieGameManifest): PokieGame & {createdWith?: unknown} {
     return {
         getManifest: () => manifest,
+        ...fixtureCodec,
         createSession(context) {
             this.createdWith = context;
             return createFakeSession();
@@ -106,6 +114,7 @@ function createFakeSessionWithSelectableBet(): GameSessionHandling & {getSymbols
 function createFakeGameWithSelectableBet(manifest: PokieGameManifest): PokieGame {
     return {
         getManifest: () => manifest,
+        ...fixtureCodec,
         createSession: () => createFakeSessionWithSelectableBet(),
     };
 }
@@ -128,6 +137,7 @@ function createCustomSerializerWithRoundOnlyField(): GameSessionSerializing {
 function createFakeGameWithCustomSerializer(manifest: PokieGameManifest): PokieGame {
     return {
         getManifest: () => manifest,
+        ...fixtureCodec,
         createSession: () => createFakeSession(),
         getSessionSerializer: () => createCustomSerializerWithRoundOnlyField(),
     };
@@ -194,6 +204,7 @@ function createFakeFreeGamesSession(initialCredits = 0): FakeFreeGamesSession {
 function createFakeFreeGamesGame(manifest: PokieGameManifest): PokieGame & {lastSession?: FakeFreeGamesSession} {
     return {
         getManifest: () => manifest,
+        ...fixtureCodec,
         createSession() {
             const session = createFakeFreeGamesSession();
             this.lastSession = session;
@@ -207,6 +218,7 @@ function createRealFreeGamesGame(
 ): PokieGame & {lastSession?: VideoSlotWithFreeGamesSession} {
     return {
         getManifest: () => manifest,
+        ...fixtureCodec,
         createSession() {
             // Durable continuation requires an explicit seeded generator and reproducible model.
             // Distinct symbols on each reel keep these wallet tests free of wins/scatter grants.
@@ -1218,6 +1230,7 @@ function createCustomSerializerWithDebugData(): GameSessionSerializing {
 function createFakeGameWithDebugSerializer(manifest: PokieGameManifest): PokieGame {
     return {
         getManifest: () => manifest,
+        ...fixtureCodec,
         createSession: () => createFakeSession(),
         getSessionSerializer: () => createCustomSerializerWithDebugData(),
     };
@@ -1842,6 +1855,8 @@ describe("PokieDevServer canonical rejection codes (controller-owned HTTP lane)"
     it.each([
         ["incompatible", "incompatible-state", 409],
         ["corrupt", "corrupt-state", 409],
+        ["forged-schema", "corrupt-state", 409],
+        ["missing-validator", "corrupt-state", 409],
         ["absent", "not-found", 404],
         ["invalid", "invalid-command", 400],
     ])("translates %s without publishing or advancing a round", async (kind, code, expectedStatus) => {
@@ -1856,12 +1871,20 @@ describe("PokieDevServer canonical rejection codes (controller-owned HTTP lane)"
             const stored = (await repository.load(sessionId))!;
             if (kind === "incompatible") stored.identity = {...stored.identity!, compatibilityVersion: "2"};
             if (kind === "corrupt") Reflect.deleteProperty(stored, "featureState");
-            if (kind === "incompatible" || kind === "corrupt") await repository.save(sessionId, stored);
+            if (kind === "forged-schema") stored.stateSchema = {kind: "base"};
+            if (kind === "missing-validator") Reflect.deleteProperty(game, "validateSessionState");
+            if (["incompatible", "corrupt", "forged-schema"].includes(kind)) await repository.save(sessionId, stored);
             const before = await repository.loadVersioned(sessionId);
             const response = await postJson(`${baseUrl}/sessions/${kind === "absent" ? "missing" : sessionId}/spin`, kind === "invalid" ? {bet: -1} : undefined);
             expect(response.status).toBe(expectedStatus);
             expect(response.body.code).toBe(code);
             expect(response.body).not.toHaveProperty("win");
+            if (["incompatible", "corrupt", "forged-schema", "missing-validator", "absent"].includes(kind)) {
+                const read = await getJson(`${baseUrl}/sessions/${kind === "absent" ? "missing" : sessionId}`);
+                expect(read.status).toBe(expectedStatus);
+                expect(read.body.code).toBe(code);
+                expect(read.body).not.toHaveProperty("win");
+            }
             expect(await repository.loadVersioned(sessionId)).toEqual(before);
         } finally {
             await server.stop();

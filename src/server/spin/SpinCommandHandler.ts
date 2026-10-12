@@ -1,3 +1,4 @@
+import {validateOperationRecord, validateRetryResult} from "../../runtime/internal/validateRecoveryData.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import {RuntimeCommandError, type RuntimeFailureCode} from "../../runtime/RuntimeCommandError.js";
 import {validateSessionCommand} from "../../runtime/SessionCommand.js";
@@ -227,7 +228,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         this.reconciliationService =
             legacyReconciliationService ??
             reconciliationService ??
-            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment);
+            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game);
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
         this.pokieVersion = pokieVersion;
@@ -262,8 +263,12 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         if (invalid !== undefined) return Promise.reject(new Error(invalid));
         return this.enqueue(sessionId, async () => {
             const pending = await this.operationLog.load(sessionId, requestId);
-            const rejected = pending === undefined ? undefined : this.validatePendingState(pending);
-            if (pending !== undefined && rejected !== undefined) return {status: "manual-recovery-required", sessionId, requestId,
+            if (pending === undefined) return this.reconciliationService.reconcileOne(sessionId, requestId);
+            const {state} = await this.loadState(sessionId);
+            const cached = await this.readRetryResult(sessionId, requestId);
+            const rejected = validatePersistedSession(state, this.game) ?? this.validatePendingState(pending, sessionId, requestId!) ??
+                (cached === undefined ? undefined : validateRetryResult(cached, this.game, sessionId, requestId));
+            if (rejected !== undefined) return {status: "manual-recovery-required", sessionId, requestId,
                 reason: `${rejected.status}: ${rejected.reason}`, record: pending};
             return this.reconciliationService.reconcileOne(sessionId, requestId);
         });
@@ -361,10 +366,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         if (requestId !== undefined) {
             const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                if (cached.status === "played") {
-                    const invalid = validatePersistedSession(cached.state, this.game);
-                    if (invalid !== undefined) return {...invalid, sessionId};
-                }
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId);
+                if (invalid !== undefined) return {...invalid, sessionId};
                 return cloneSessionData(cached);
             }
         }
@@ -375,7 +378,26 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             reason: state.commandCapabilities!.modes === undefined ? "Session does not support bet mode selection." :
                 `Session does not support bet mode "${mode}" (available modes: ${state.commandCapabilities!.modes.join(", ")}).`};
 
-        // A caller-declared precondition, checked before anything else mutates: if the repository is
+        const pending = requestId === undefined ? undefined : await this.readPendingAttempt(sessionId, requestId);
+        if (pending !== undefined) {
+            const invalid = this.validatePendingState(pending, sessionId, requestId!);
+            if (invalid !== undefined) return {...invalid, sessionId};
+        }
+
+        if (expectedVersion !== undefined && version !== undefined && version !== expectedVersion &&
+            pending?.capturedResult === undefined) return {status: "conflict", sessionId,
+            reason: `Session "${sessionId}" version mismatch: expected version ${expectedVersion}, but the current version is ${version}.`};
+
+        if (requestId !== undefined) {
+            if (pending !== undefined) {
+                const recovered = await this.reconcilePendingAttempt(sessionId, requestId);
+                if (recovered !== undefined) return cloneSessionData(recovered);
+                if (pending.checkpoint !== "compensated" && pending.checkpoint !== "started") {
+                    return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode);
+                }
+            }
+        }
+        // A caller-declared precondition for a genuinely new round: if the repository is
         // versioned and the caller expected a different version than what's actually stored, this is
         // already stale — reject immediately rather than spinning against state the caller didn't
         // expect. Nothing has been applied yet (no wallet transaction, no play()), so there's nothing
@@ -386,12 +408,6 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 sessionId,
                 reason: `Session "${sessionId}" version mismatch: expected version ${expectedVersion}, but the current version is ${version}.`,
             };
-        }
-
-        const pending = requestId === undefined ? undefined : await this.readPendingAttempt(sessionId, requestId);
-        if (pending !== undefined) {
-            const invalid = this.validatePendingState(pending);
-            if (invalid !== undefined) return {...invalid, sessionId};
         }
 
         // `live-only` is an explicit promise made by a newly captured record:
@@ -414,15 +430,6 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         }
         const selectionError = new SessionRuntime(resolvedSession.session).validateSelection({kind: "spin", bet, mode});
         if (selectionError !== undefined) return {status: "invalid-command", sessionId, reason: selectionError};
-        if (requestId !== undefined) {
-            if (pending !== undefined) {
-                const recovered = await this.reconcilePendingAttempt(sessionId, requestId);
-                if (recovered !== undefined) return cloneSessionData(recovered);
-                if (pending.checkpoint !== "compensated" && pending.checkpoint !== "started") {
-                    return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode);
-                }
-            }
-        }
         let balanceBeforePlay: number;
         try {
             balanceBeforePlay = await this.wallet.getBalance(sessionId);
@@ -500,9 +507,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         }
     }
 
-    private validatePendingState(record: SpinOperationRecord): ReturnType<typeof validatePersistedSession> {
-        if (record.capturedResult === undefined) return undefined;
-        return validatePersistedSession(record.capturedResult.previousState, this.game) ?? validatePersistedSession(record.capturedResult.newState, this.game);
+    private validatePendingState(record: SpinOperationRecord, sessionId: string, requestId: string): ReturnType<typeof validatePersistedSession> {
+        return validateOperationRecord(record, this.game, sessionId, requestId);
     }
 
     private async reconcilePendingAttempt(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
@@ -511,11 +517,12 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             return undefined;
         }
 
-        const rejected = this.validatePendingState(pending);
+        const rejected = this.validatePendingState(pending, sessionId, requestId!);
         if (rejected !== undefined) return {...rejected, sessionId};
         const outcome = await this.reconciliationService.reconcileOne(sessionId, requestId);
         if (outcome.status === "resumed") {
-            return outcome.result;
+            const invalid = validateRetryResult(outcome.result, this.game, sessionId, requestId);
+            return invalid === undefined ? outcome.result : {...invalid, sessionId};
         }
         if (outcome.status === "manual-recovery-required" || outcome.status === "deferred") {
             return {status: "recovery-required", sessionId, requestId, reason: outcome.reason};
@@ -527,7 +534,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             // spin.
             const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                return cached;
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId);
+                return invalid === undefined ? cached : {...invalid, sessionId};
             }
         }
         // "reversed"/"no-action-needed" (or the defensive fallback above): wallet and session are clean
@@ -635,6 +643,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             newState.credits = newBalance;
+            const invalidState = validatePersistedSession(newState, this.game);
+            if (invalidState !== undefined) throw new Error(invalidState.reason);
             failureCode = "storage-error";
             await checkpoint({
                 checkpoint: "settled",

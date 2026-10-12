@@ -37,7 +37,7 @@ function reconciliationServiceWithZeroQuiescence(
 ): SpinReconciliationService {
     // structurallyOwned: true (exclusiveStartupAuthority is irrelevant once that's granted — it short-
     // circuits first, see SpinReconciliationService's own withOwnership()), minimumQuiescenceMs: 0.
-    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true, undefined, 0);
+    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true, undefined, 0, undefined, undefined, createInstrumentedGame().game);
 }
 
 // End-to-end reconciliation/retry recovery coverage for SpinCommandHandler: what happens to a *retried*
@@ -51,8 +51,15 @@ function reconciliationServiceWithZeroQuiescence(
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
+const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "validateSessionState"> = {
+    getSessionStateSchema: () => ({kind: "custom"}),
+    validateSessionState: value => {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid fixture state");
+    },
+};
+
 function fixtureState(bet: number, executionState: "live-only" | "durably-restorable" = "durably-restorable"): PokieSessionState {
-    return {identity: resolveGameSessionIdentity({getManifest: () => manifest, createSession: () => createFakeSession({createSessionCalls: 0, playCalls: 0})}),
+    return {identity: resolveGameSessionIdentity({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSession({createSessionCalls: 0, playCalls: 0})}),
         bet, win: 0, credits: 1000, stateSchema: {kind: "custom"}, commandCapabilities: {bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}, executionState, ...(executionState === "live-only" ? {} : {featureState: {round: 0}})};
 }
 
@@ -91,7 +98,7 @@ function createFakeSession(stats: FakeGameStats): GameSessionHandling {
 function createInstrumentedGame(): {game: PokieGame; stats: FakeGameStats} {
     const stats: FakeGameStats = {createSessionCalls: 0, playCalls: 0};
     const game: PokieGame = {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCodec,
         createSession: () => {
             stats.createSessionCalls++;
             return createFakeSession(stats);
@@ -251,7 +258,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
 
         expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
         expect(stats.playCalls).toBe(2); // exactly one NEW play — reconciling the old attempt never itself plays
-        expect(stats.createSessionCalls).toBe(3); // validate before recovery, then reconstruct the recovered authoritative record
+        expect(stats.createSessionCalls).toBe(2); // validate without construction, then construct only the new round
         await expect(wallet.getBalance("session-1")).resolves.toBe(995); // reversed to 1000, then genuinely re-debited 5
         await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
     });
@@ -546,7 +553,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
 
         expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
         expect(stats.playCalls).toBe(1); // CRITICAL: never re-played despite the idempotency store having nothing
-        expect(stats.createSessionCalls).toBe(2); // reconstruction validates state; recovery never plays a new round
+        expect(stats.createSessionCalls).toBe(1); // completed recovery needs neither construction nor play
     });
 
     it("reconciliation racing a live in-flight handle() call for the same session is serialized via the same per-session queue, never concurrent", async () => {

@@ -1,7 +1,8 @@
 import type {GameSessionHandling} from "./GameSessionHandling.js";
 
 export type SessionStateSchema =
-    | {readonly kind: "base" | "seeded-video-slot" | "custom"}
+    | {readonly kind: "base" | "custom"}
+    | {readonly kind: "seeded-video-slot"; readonly reels?: number; readonly symbols?: readonly (string | number)[]}
     | {readonly kind: "free-games" | "bet-modes"; readonly base: SessionStateSchema};
 
 /** Explicit promise that the codec covers every collaborator influencing future rounds. */

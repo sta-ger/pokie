@@ -44,6 +44,9 @@ module.exports = {
     getManifest() {
         return {id: "playable-game-with-serializer", name: "Playable Game With Serializer", version: "1.0.0"};
     },
+    getSessionStateSchema() {
+        return {kind: "seeded-video-slot"};
+    },
     createSession(context) {
         const config = new VideoSlotConfig();
         config.setSymbolsSequences(buildFixedSymbolsSequences(config));

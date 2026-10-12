@@ -18,6 +18,9 @@ const game: PokieGame = {
     getManifest() {
         return manifest;
     },
+    getSessionStateSchema() {
+        return {kind: "seeded-video-slot"};
+    },
     createSession(context?: PokieGameContext) {
         const seedRng = context && context.seed !== undefined ? new SeededRandomNumberGenerator(context.seed) : undefined;
         // VideoSlotConfig's own default reel-strip content (this scaffold sets no symbols/reelStrips of

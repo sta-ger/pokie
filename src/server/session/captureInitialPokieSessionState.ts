@@ -32,7 +32,12 @@ export function captureInitialPokieSessionState(
     game: PokieGame | undefined = undefined,
 ): PokieSessionState {
     const state = captureBaseSessionState(context, session);
-    if (game !== undefined) state.identity = resolveGameSessionIdentity(game);
+    if (game !== undefined) {
+        state.identity = resolveGameSessionIdentity(game);
+        // Existing createSession packages can remain playable with a primed live object, but a
+        // session-level codec alone cannot authorize reconstruction from an untrusted record.
+        if (game.getSessionStateSchema === undefined) state.executionState = "live-only";
+    }
 
     if (serializer !== undefined) {
         state.initialPayload = serializer.getInitialData(session) as unknown as Record<string, unknown>;

@@ -208,13 +208,27 @@ Simulation (including aggregate/worker execution), replay, Studio scenario spins
 this boundary. They need neither a repository nor wallet transactions. Exact enumeration replaces only the
 combinations generator; session math still owns wins, paid stakes and free-game grants. Existing cancellation,
 worker shutdown and runtime lease ownership remain with the calling tool, between settled rounds.
+Studio package replay consumes this boundary's returned stake and win for its totals. A prepared command's
+first rollback is terminal: later rollback or execute calls cannot change a subsequently settled command.
 
 For repository sessions, `SpinCommandHandler` implements `RepositoryCommandHandling`. Its `execute()` accepts
 `RepositoryCommand` (the same command plus `sessionId`, optional `requestId` and `expectedVersion`) and returns
 `SpinCommandResult` after settlement and persistence. The positional `handle()` delegates to the same dispatcher and retains its legacy operational-error rejection behavior. `execute()` returns typed operational failures (`storage-error`, `settlement-error`, `execution-error`) after compensation; `handle()` rejects with the original exception object. Custom adapters can use `RuntimeCommandError` to retain a classified primary cause. Wallet
 settlement, queuing, idempotency, compensation and reconciliation stay in this adapter. `primeSession()` is an
 optimization: save a complete initial record first and pass its committed revision. An unversioned repository
-cannot authorize reuse of a live-only cache; durable sessions reconstruct on every command.
+cannot authorize reuse of a live-only cache; durable sessions reconstruct on every new command.
+The selected game's `getSessionStateSchema()` declares the codec before reconstruction. For example,
+`{kind: "seeded-video-slot"}` restores the built-in RNG and resolved reel strips; optional `reels` and
+`symbols` constrain the reconstructed model. Composed free-games/bet-mode schemas declare their nested
+`base`. A custom schema also requires `PokieGame.validateSessionState(state, context)`, and its session
+must capture and restore the complete model and executable state. Packages without a declaration can
+keep a primed live session but cannot promise durable reconstruction. See [serialization](serialization.md).
+
+Syntactically valid retries validate the current record and the complete retained result before returning
+it. Already-computed retries can recover without a live executable object, including live-only sessions;
+new rounds still require that object or complete durable state. Unsupported bet/mode selections reject
+before pending recovery writes. Revision conflicts reject new rounds; completed retries return their
+original settled result even when the caller repeats its original revision.
 
 ```ts
 import {

@@ -64,6 +64,7 @@ export function captureRoundPokieSessionState(
     const state = captureBaseSessionState(context, session);
     state.capturePolicy = capturePolicy;
     state.identity = previousState.identity;
+    if (previousState.executionState === "live-only") state.executionState = "live-only";
 
     if (previousState.initialPayload !== undefined) {
         state.initialPayload = previousState.initialPayload;

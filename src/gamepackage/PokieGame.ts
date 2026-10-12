@@ -1,3 +1,4 @@
+import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
 import type {GameSessionSerializing} from "../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {SymbolsCombinationsGenerating} from "../session/videoslot/combinations/SymbolsCombinationsGenerating.js";
@@ -8,6 +9,9 @@ import type {PokieGameManifest} from "./PokieGameManifest.js";
 
 export interface PokieGame {
     getManifest(): PokieGameManifest;
+
+    /** Authoritative codec declaration, resolved without constructing a session. Required for durable recovery. */
+    getSessionStateSchema?(): SessionStateSchema;
 
     /** Hand-authored compatibility promise; defaults to manifest.version / state schema "1". */
     /** Nonmutating validation for a custom executable state codec, before construction or recovery. */

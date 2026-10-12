@@ -1,4 +1,4 @@
-import {FetchLike} from "../../../cli/client/apiClient.js";
+import {SessionCommandError, FetchLike} from "../../../cli/client/apiClient.js";
 import {ensureSession} from "../../../cli/client/sessionFlow.js";
 import {loadSessionId, StorageLike} from "../../../cli/client/sessionStorage.js";
 
@@ -19,6 +19,21 @@ function createInMemoryStorage(initial?: string): StorageLike {
 }
 
 describe("ensureSession", () => {
+    it.each(["corrupt-state", "incompatible-state", "restoration-unsupported", "storage-error"])("retains the selected identifier and never creates a replacement on %s", async code => {
+        for (const preferred of [undefined, "preferred-session"]) {
+            const storage = createInMemoryStorage("stored-session");
+            const fetchImpl = jest.fn<ReturnType<FetchLike>, Parameters<FetchLike>>(() => Promise.resolve({
+                ok: false, status: code === "storage-error" ? 500 : 409, json: () => Promise.resolve({code, error: "Restore rejected"}),
+            }));
+            const failure = await ensureSession(fetchImpl, storage, "http://api.test", preferred).catch(error => error as SessionCommandError);
+            expect(failure).toBeInstanceOf(SessionCommandError);
+            expect(failure).toMatchObject({code});
+            expect(fetchImpl).toHaveBeenCalledTimes(1);
+            expect(fetchImpl).toHaveBeenCalledWith(`http://api.test/sessions/${preferred ?? "stored-session"}`);
+            expect(loadSessionId(storage)).toBe("stored-session");
+        }
+    });
+
     it("creates and saves a new session when storage has no sessionId yet", async () => {
         const storage = createInMemoryStorage();
         let createCalls = 0;

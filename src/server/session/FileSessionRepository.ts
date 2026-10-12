@@ -201,7 +201,8 @@ function assertValidSessionState(value: unknown): asserts value is PokieSessionS
     if (value.screen !== undefined && (!Array.isArray(value.screen) || !value.screen.every(Array.isArray))) {
         throw new Error("Session state.screen must be an array of reels when present.");
     }
-    if (value.executionState === "durably-restorable") validateExecutableState(value.featureState, value.stateSchema as PokieSessionState["stateSchema"]);
+    // Storage has no selected game. Only its runtime can authorize and validate a custom codec.
+    if (value.executionState === "durably-restorable" && (value.stateSchema as PokieSessionState["stateSchema"])?.kind !== "custom") validateExecutableState(value.featureState);
     if (value.credits !== undefined && (typeof value.credits !== "number" || !Number.isFinite(value.credits) || value.credits < 0)) throw new Error("Session credits must be finite and non-negative.");
     if (value.executionState !== undefined && value.executionState !== "durably-restorable" && value.executionState !== "live-only") throw new Error("Invalid restoration capability.");
 }

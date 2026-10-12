@@ -3,7 +3,7 @@ import {
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
-    determineStakeAmount,
+    executeSessionCommand,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     hasDeclaredCanonicalWasmOperation,
@@ -445,11 +445,10 @@ export class StudioReplayExecutionService {
                             stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
                         }
 
-                        const stake = determineStakeAmount(session, session.getBet());
-                        totalBet += stake;
-                        session.play();
-                        totalWin += session.getWinAmount();
-                        playerCredits = playerCredits - stake + session.getWinAmount();
+                        const result = executeSessionCommand(session);
+                        totalBet += result.stake;
+                        totalWin += result.win;
+                        playerCredits = playerCredits - result.stake + result.win;
 
                         if (isFinalPlay) {
                             stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);

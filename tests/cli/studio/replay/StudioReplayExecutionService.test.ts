@@ -11,6 +11,7 @@ import {
     ProjectTargetResolver,
     REPLAY_OPERATION,
     ReplayRecorder,
+    SessionRuntime,
     WinEvaluationResult,
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
@@ -530,9 +531,13 @@ describe("StudioReplayExecutionService", () => {
     });
 
     it("runs a small replay to completion and produces the full descriptor", async () => {
+        const game = createSeedAwareFakeGame(manifest);
+        const session = game.createSession({seed: "demo"});
+        game.createSession = () => session;
+        const execution = jest.spyOn(SessionRuntime.prototype, "execute");
         const service = new StudioReplayExecutionService(
             new InMemoryStudioReplayRepository(),
-            () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+            () => Promise.resolve(game),
         );
 
         const result = service.start("/a", {round: 5, seed: "demo"});
@@ -541,6 +546,12 @@ describe("StudioReplayExecutionService", () => {
         }
         const job = await waitForTerminal(service, "/a", result.job.id);
 
+        const accounting = execution.mock.results.flatMap((entry, index) => Reflect.get(execution.mock.contexts[index], "session") === session
+            ? [entry.value as {stake: number; win: number}] : []);
+        expect(accounting).toHaveLength(5);
+        expect(job.descriptor?.totalBet).toBe(accounting.reduce((sum, result) => sum + result.stake, 0));
+        expect(job.descriptor?.totalWin).toBe(accounting.reduce((sum, result) => sum + result.win, 0));
+        execution.mockRestore();
         expect(job.status).toBe("completed");
         expect(job.completedRounds).toBe(5);
         expect(job.descriptor?.game).toEqual(manifest);

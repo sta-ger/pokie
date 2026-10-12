@@ -33,6 +33,10 @@ implements SymbolsCombinationsGenerating<T> {
         return [...this.lastStopPositions];
     }
 
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
     public isRandomStateRestorable(): boolean {
         return this.constructor === SymbolsCombinationsGenerator && this.rng.constructor === SeededRandomNumberGenerator;
     }

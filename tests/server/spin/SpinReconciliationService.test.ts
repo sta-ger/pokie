@@ -1,3 +1,4 @@
+import {GameSession, type PokieGame, resolveGameSessionIdentity} from "@fromstan/pokie";
 import {IdempotencyRepository} from "../../../src/server/idempotency/IdempotencyRepository.js";
 import {InMemoryIdempotencyRepository} from "../../../src/server/idempotency/InMemoryIdempotencyRepository.js";
 import {PokieSessionState} from "../../../src/server/session/PokieSessionState.js";
@@ -13,6 +14,16 @@ import {SpinReconciliationService} from "../../../src/server/spin/SpinReconcilia
 import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
 import {WalletTransactionInspecting} from "../../../src/server/wallet/WalletTransactionInspecting.js";
 import {WalletTransactionStatus} from "../../../src/server/wallet/WalletTransactionStatus.js";
+
+const fixtureGame: PokieGame = {
+    getManifest: () => ({id: "reconciliation", name: "Reconciliation", version: "1"}),
+    getSessionStateSchema: () => ({kind: "base"}),
+    createSession: () => new GameSession(),
+};
+
+function createReconciler(...args: ConstructorParameters<typeof SpinReconciliationService>): SpinReconciliationService {
+    return new SpinReconciliationService(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], fixtureGame);
+}
 
 // A minimal TransactionalWalletPort with no WalletTransactionInspecting at all — the "reconciliation
 // can't ask the wallet directly" baseline every no-inspection manual-recovery test needs.
@@ -69,7 +80,7 @@ class FakeInspectableWallet implements TransactionalWalletPort, WalletTransactio
 class FakeSessionRepository implements SessionRepository {
     public readonly saveCalls: {sessionId: string; state: PokieSessionState}[] = [];
     public load(): Promise<PokieSessionState | undefined> {
-        return Promise.resolve(undefined);
+        return Promise.resolve(previousState);
     }
     public save(sessionId: string, state: PokieSessionState): Promise<void> {
         this.saveCalls.push({sessionId, state});
@@ -82,13 +93,13 @@ class FakeVersionedSessionRepository implements VersionedSessionRepository {
     public conflictOnNextSaveVersioned = false;
 
     public load(): Promise<PokieSessionState | undefined> {
-        return Promise.resolve(undefined);
+        return Promise.resolve(previousState);
     }
     public save(): Promise<void> {
         return Promise.resolve();
     }
     public loadVersioned(): Promise<{state: PokieSessionState; version: number} | undefined> {
-        return Promise.resolve(undefined);
+        return Promise.resolve({state: previousState, version: 1});
     }
     public saveVersioned(sessionId: string, state: PokieSessionState, expectedVersion: number): Promise<number> {
         if (this.conflictOnNextSaveVersioned) {
@@ -164,11 +175,12 @@ function authorizedService(
     idempotencyRepository: IdempotencyRepository<SpinCommandResult>,
     operationLog: SpinOperationLog,
 ): SpinReconciliationService {
-    return new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+    return createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 }
 
-const previousState: PokieSessionState = {bet: 5, win: 0};
-const newState: PokieSessionState = {bet: 5, win: 20};
+const previousState: PokieSessionState = {identity: resolveGameSessionIdentity(fixtureGame), stateSchema: {kind: "base"},
+    executionState: "durably-restorable", featureState: {}, commandCapabilities: {bets: [5]}, bet: 5, win: 0, credits: 1000};
+const newState: PokieSessionState = {...previousState, win: 20, credits: 995};
 
 // Every fixture record defaults to a comfortably-quiescent "updatedAt" (an hour in the past) so ordinary
 // tests aren't accidentally subject to SpinReconciliationService's own quiescence window (see the
@@ -209,7 +221,7 @@ describe("SpinReconciliationService", () => {
             const wallet = new FakeNonInspectingWallet();
             const sessionRepository = new FakeSessionRepository();
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
-            const cached: SpinCommandResult = {status: "played", sessionId: "session-1", requestId: "request-1", state: newState, credits: 995, win: 20};
+            const cached: SpinCommandResult = {status: "played", sessionId: "session-1", requestId: "request-1", state: newState, previousState, credits: 995, win: 20};
             await idempotencyRepository.save("session-1", "request-1", cached);
             const operationLog = new InMemorySpinOperationLog();
             // Fresh updatedAt — "committed" is terminal, so it's never subject to the quiescence window
@@ -571,7 +583,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog(); // supports leasing — deliberately not what's missing here
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog); // no authority granted at all
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog); // no authority granted at all
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -590,7 +602,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog();
             await operationLog.record(baseRecord("settled", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -606,7 +618,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new PlainNonLeasingOperationLog();
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -621,7 +633,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new PlainNonLeasingOperationLog(); // no leasing support
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true); // structurallyOwned: false, exclusiveStartupAuthority: true
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, false, true); // structurallyOwned: false, exclusiveStartupAuthority: true
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -635,7 +647,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new InMemorySpinOperationLog(); // supports SpinOperationLeasing
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -654,7 +666,7 @@ describe("SpinReconciliationService", () => {
             await operationLog.record(baseRecord("debited"));
             // Simulates a different reconciler currently working this exact record.
             await expect(operationLog.tryClaimForReconciliation("session-1", "request-1", 60_000)).resolves.toBeDefined();
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -670,7 +682,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new PlainNonLeasingOperationLog();
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, true);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -704,7 +716,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new RenewalFailingLeasingOperationLog();
             await operationLog.record(baseRecord("debited"));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -721,7 +733,7 @@ describe("SpinReconciliationService", () => {
             const idempotencyRepository = new InMemoryIdempotencyRepository<SpinCommandResult>();
             const operationLog = new RenewalFailingLeasingOperationLog();
             await operationLog.record(baseRecord("settled", {capturedResult: {previousState, newState, win: 20, credits: 995}}));
-            const service = new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
+            const service = createReconciler(wallet, sessionRepository, idempotencyRepository, operationLog, false, true);
 
             const outcome = await service.reconcileOne("session-1", "request-1");
 
@@ -778,7 +790,7 @@ describe("SpinReconciliationService", () => {
             const recordedAt = new Date(2026, 0, 1, 12, 0, 0);
             await operationLog.record(baseRecord("debited", {updatedAt: recordedAt.toISOString()}));
             const justPastQuiescence = new Date(recordedAt.getTime() + 5_000);
-            const service = new SpinReconciliationService(
+            const service = createReconciler(
                 wallet,
                 sessionRepository,
                 idempotencyRepository,
@@ -806,7 +818,7 @@ describe("SpinReconciliationService", () => {
             // 60s window; "now" is only 5s after updatedAt — still inside the window despite being past
             // the library's own 30s default, proving the configured value (not the default) is what's honored.
             const stillWithinConfiguredWindow = new Date(recordedAt.getTime() + 5_000);
-            const service = new SpinReconciliationService(
+            const service = createReconciler(
                 wallet,
                 sessionRepository,
                 idempotencyRepository,
