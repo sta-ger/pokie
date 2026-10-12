@@ -145,6 +145,11 @@ it.each(["cancelled", "failed"] as const)("keeps Home's %s job and indicator thr
         const region = await screen.findByRole("region", {name: "design-build job home-focus"});
         const geometry = layout.place(region, 100);
         try {
+            // jsdom has no layout: model the browser moving the card into view
+            // after scrollIntoView, including when a later Home render follows.
+            layout.scroll.mockImplementation(function (this: Element) {
+                if (this === region) geometry.moveTo(100);
+            });
             within(region).getByRole("button", {name: "Cancel"}).focus();
             if (status === "cancelled") await user.keyboard("{Enter}");
             else terminal = true;
@@ -158,8 +163,14 @@ it.each(["cancelled", "failed"] as const)("keeps Home's %s job and indicator thr
             expect(region).toHaveFocus();
             expect(layout.scroll).toHaveBeenCalledTimes(1);
             expect(layout.scroll.mock.instances[0]).toBe(region);
+            expect(region.getBoundingClientRect().top).toBe(100);
+            await layout.expand(region.closest(".studio-page")!);
+            expect(layout.scroll).toHaveBeenCalledTimes(1);
             await user.tab();
             expect(within(region).getByRole("link", {name: "Download Result"})).toHaveFocus();
+            geometry.moveTo(994.75);
+            await layout.expand(region.closest(".studio-page")!);
+            expect(layout.scroll).toHaveBeenCalledTimes(1);
             expect(calls.filter(call => call.url.endsWith("/cancel"))).toHaveLength(status === "cancelled" ? 1 : 0);
         } finally {
             geometry.restore();

@@ -1,9 +1,10 @@
 /** @jest-environment node */
-import {spawn, type ChildProcess} from "node:child_process";
+import {execFileSync, spawn, type ChildProcess} from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {pathToFileURL} from "node:url";
 import {constants, runInThisContext} from "node:vm";
+import {productionStudioCandidate} from "./productionStudioCandidate";
 
 type Devtools = {
     events: Array<{method: string; params: {requestId?: string; response?: {url: string; status: number}}}>;
@@ -55,17 +56,55 @@ it("loads the shared Studio test setup without supplying a simulated browser DOM
     expect(typeof window).toBe("undefined");
 });
 
+it("retains the authenticated installed candidate across the complete gate-test correction", async () => {
+    const root = await fs.mkdtemp(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/p908-candidate-"));
+    try {
+        const fixtureUrl = pathToFileURL(path.join(process.cwd(), "tests/testUtils/createP911CandidateFixture.mjs")).href;
+        const {candidateFixture, commitP911ToolingDescendant, P911_TOOLING_DESCENDANT_PATHS} = await runInThisContext(`import(${JSON.stringify(fixtureUrl)})`, {
+            importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+        }) as {
+            candidateFixture: (directory: string) => Promise<{repository: string; reference: {path: string; sha256: string}; handoff: {installationRoot: string; browserDriver: {path: string}}}>;
+            commitP911ToolingDescendant: (fixture: {repository: string}) => Promise<string>;
+            P911_TOOLING_DESCENDANT_PATHS: string[];
+        };
+        const fixture = await candidateFixture(root);
+        expect(P911_TOOLING_DESCENDANT_PATHS).toEqual(expect.arrayContaining([
+            "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+            "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
+            "scripts/p9-11-candidate.mjs",
+            "tests/testUtils/createP911CandidateFixture.mjs",
+        ]));
+        await commitP911ToolingDescendant(fixture);
+        const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
+        const installed = await productionStudioCandidate(environment, fixture.repository);
+        expect(installed.authenticated).toBe(true);
+        expect(installed.packageRoot).toBe(path.join(fixture.handoff.installationRoot, "node_modules/pokie"));
+        await expect(fs.access(path.join(fixture.repository, "dist"))).rejects.toThrow("ENOENT");
+        await expect(productionStudioCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, fixture.repository)).rejects.toThrow("receipt digest mismatch");
+        const driver = await fs.readFile(fixture.handoff.browserDriver.path);
+        await fs.writeFile(fixture.handoff.browserDriver.path, "changed external driver");
+        await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("authenticated controller browser driver required");
+        await fs.writeFile(fixture.handoff.browserDriver.path, driver);
+        await fs.mkdir(path.join(fixture.repository, "cli/studio-client/src"), {recursive: true});
+        await fs.writeFile(path.join(fixture.repository, "cli/studio-client/src/changed.ts"), "// Product input must remain protected.\n");
+        execFileSync("git", ["add", "."], {cwd: fixture.repository});
+        execFileSync("git", ["-c", "user.name=sta-ger", "-c", "user.email=pascaldelger@gmail.com", "commit", "--quiet", "-m", "fixture changed product"], {cwd: fixture.repository});
+        await expect(productionStudioCandidate(environment, fixture.repository)).rejects.toThrow("product/build inputs changed; affected proofs must be rerun");
+    } finally {
+        await fs.rm(root, {recursive: true, force: true});
+    }
+});
+
 it("saves an edited design, validates and plays it, then builds and reopens its real local package", async () => {
-    const candidate = process.cwd();
+    const repository = process.cwd();
     const overallDeadline = Date.now() + 180_000;
     const until = (check: () => Promise<boolean>, label: string) => waitUntil(check, label, overallDeadline);
     const remaining = () => Math.max(1, Math.min(30_000, overallDeadline - Date.now()));
     // These exact assets are served by the production CLI. No fallback to mocked or source UI.
-    await fs.access(path.join(candidate, "dist/cli/pokie.js"));
-    await fs.access(path.join(candidate, "dist/cli/studio-client/index.html"));
+    const candidate = await productionStudioCandidate(process.env, repository);
     // Managed projects reject destinations beneath node_modules. Keep all owned fixture state
     // in this worktree, outside the npm wrapper's TMPDIR, and remove it in finally.
-    const root = await fs.mkdtemp(path.join(candidate, ".p908-producer-"));
+    const root = await fs.mkdtemp(path.join(repository, ".p908-producer-"));
     let studio: ChildProcess | undefined;
     let browser: ChildProcess | undefined;
     let devtools: Devtools | undefined;
@@ -85,7 +124,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
                 Reflect.deleteProperty(studioEnvironment, key);
             }
         }
-        studio = spawn(process.execPath, [path.join(candidate, "dist/cli/pokie.js"), "--no-open", "--port", "0"], {
+        studio = spawn(process.execPath, [candidate.bin, "--no-open", "--port", "0"], {
             cwd: workspace,
             env: {...studioEnvironment, XDG_DOCUMENTS_DIR: documents, XDG_DATA_HOME: path.join(root, "data"), XDG_CONFIG_HOME: path.join(root, "config"), TMPDIR: cache, NPM_CONFIG_CACHE: path.join(root, "npm-cache")},
             stdio: ["ignore", "pipe", "pipe"],
@@ -120,7 +159,7 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         }, "fresh Chromium profile");
         const port = (await fs.readFile(portFile, "utf8")).split("\n")[0];
         // Reuse only the existing transport, never its scripted persona/audit runner.
-        const transportUrl = pathToFileURL(path.join(candidate, "scripts/p8-05-valera-browser-audit.mjs")).href;
+        const transportUrl = pathToFileURL(path.join(repository, "scripts/p8-05-valera-browser-audit.mjs")).href;
         // ts-jest compiles this component lane to CommonJS. Preserve a native ESM import for
         // the .mjs transport instead of letting it become Jest's require(fileURL).
         const transport = await runInThisContext(`import(${JSON.stringify(transportUrl)})`, {
@@ -138,7 +177,25 @@ it("saves an edited design, validates and plays it, then builds and reopens its 
         const button = (label: string, scope = "document") => `Array.from((${scope})?.querySelectorAll('button') ?? []).find(e => e.textContent.trim() === ${JSON.stringify(label)} && e.getClientRects().length && !e.disabled)`;
         const click = async (expression: string) => {
             await until(() => evaluate<boolean>(`Boolean(${expression})`), `available control: ${expression}`);
-            const point = await evaluate<{x: number; y: number}>(`(() => {const e = ${expression}; e.scrollIntoView({block:'center'}); const r=e.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+            let point: {x: number; y: number} | undefined;
+            // Validation and disclosure transitions can move or disable a control
+            // after it first appears. Dispatch once, only at a settled, hittable target.
+            await until(async () => {
+                point = await evaluate<{x: number; y: number} | undefined>(`(async () => {
+                    const e = ${expression};
+                    if (!e) return;
+                    e.scrollIntoView({block:'center', behavior:'instant'});
+                    const before = e.getBoundingClientRect();
+                    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                    if (${expression} !== e || !e.isConnected || e.disabled || e.getAttribute('aria-busy') === 'true') return;
+                    const r = e.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0 || ['x', 'y', 'width', 'height'].some(key => Math.abs(before[key] - r[key]) > 0.1)) return;
+                    const point = {x:r.x+r.width/2, y:r.y+r.height/2};
+                    if (!e.contains(document.elementFromPoint(point.x, point.y))) return;
+                    return point;
+                })()`);
+                return point !== undefined;
+            }, `settled pointer target: ${expression}`);
             await bounded(connection.send("Input.dispatchMouseEvent", {type: "mousePressed", ...point, button: "left", clickCount: 1}), "pointer press");
             await bounded(connection.send("Input.dispatchMouseEvent", {type: "mouseReleased", ...point, button: "left", clickCount: 1}), "pointer release");
         };

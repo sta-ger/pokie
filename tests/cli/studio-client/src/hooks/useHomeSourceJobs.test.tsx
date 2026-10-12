@@ -52,16 +52,47 @@ describe("useHomeSourceJobs", () => {
             if (url === "/api/home/jobs/design-job/cancel" && init?.method === "POST") return Promise.resolve({ok: true, status: 202, json: () => Promise.resolve(designJob("cancelling"))});
             throw new Error(`Unexpected request ${url}`);
         };
+        // Discovery deliberately repeats every 500 ms, including for retained
+        // terminals. Own that clock so scheduler load cannot add a stray GET.
+        jest.useFakeTimers();
         const first = renderHook(() => useHomeSourceJobs(fetchImpl));
-        await waitFor(() => expect(first.result.current.jobs).toEqual([expect.objectContaining({id: "design-job", status: "completed"})]));
-        first.unmount();
+        let unmountSecond: (() => void) | undefined;
+        try {
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(first.result.current.jobs).toEqual([expect.objectContaining({id: "design-job", status: "completed"})]);
+            first.unmount();
 
-        const second = renderHook(() => useHomeSourceJobs(fetchImpl));
-        await waitFor(() => expect(second.result.current.jobs).toEqual([expect.objectContaining({id: "design-job", status: "completed"})]));
-        act(() => second.result.current.cancel("design-job"));
-        await waitFor(() => expect(second.result.current.pendingIds).toEqual([]));
-        expect(second.result.current.jobs[0]).toEqual(expect.objectContaining({status: "completed"}));
-        expect(calls).toEqual(["GET /api/home/jobs", "GET /api/home/jobs", "POST /api/home/jobs/design-job/cancel"]);
+            const second = renderHook(() => useHomeSourceJobs(fetchImpl));
+            unmountSecond = second.unmount;
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(second.result.current.jobs).toEqual([expect.objectContaining({id: "design-job", status: "completed"})]);
+            expect(calls).toEqual(["GET /api/home/jobs", "GET /api/home/jobs"]);
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(500);
+            });
+            expect(calls).toEqual(["GET /api/home/jobs", "GET /api/home/jobs", "GET /api/home/jobs"]);
+            await act(async () => {
+                second.result.current.cancel("design-job");
+                await Promise.resolve();
+            });
+            expect(second.result.current.pendingIds).toEqual([]);
+            expect(second.result.current.jobs[0]).toEqual(expect.objectContaining({status: "completed"}));
+            expect(calls).toEqual(["GET /api/home/jobs", "GET /api/home/jobs", "GET /api/home/jobs", "POST /api/home/jobs/design-job/cancel"]);
+            second.unmount();
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(500);
+            });
+            expect(calls).toHaveLength(4);
+            expect(jest.getTimerCount()).toBe(0);
+        } finally {
+            first.unmount();
+            unmountSecond?.();
+            jest.useRealTimers();
+        }
     });
 });
 

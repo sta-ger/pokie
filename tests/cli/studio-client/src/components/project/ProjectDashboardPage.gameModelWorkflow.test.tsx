@@ -1,4 +1,4 @@
-import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
+import {act, cleanup, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type {FetchLike} from "../../../../../../cli/studio-client/src/api/apiClient";
 import type {GameModelProjection} from "../../../../../../cli/studio-client/src/api/types";
@@ -208,49 +208,66 @@ describe("ProjectDashboardPage - Game Model tab", () => {
     });
 
     it.each([false, true])("holds the Game Model route and projection until fresh loading context renders terminally (failure=%s)", async (failedRefresh) => {
-        const user = userEvent.setup();
-        let refreshRequested = false;
-        let loadingPublished = false;
-        let resolveContext: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
-        const routes = createRoutedFakeFetch({
-            ...BASE_ROUTES,
-            "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
-        });
-        const fetchImpl: FetchLike = (url, init) => {
-            if (url === "/api/project/context" && refreshRequested) {
-                if (!loadingPublished) {
-                    loadingPublished = true;
-                    return Promise.resolve(jsonResponse({status: "loading", projectRoot: "/games/a"}));
+        jest.useFakeTimers();
+        try {
+            const user = userEvent.setup({advanceTimers: jest.advanceTimersByTime});
+            let refreshRequested = false;
+            let loadingPublished = false;
+            let resolveContext: ((response: ReturnType<typeof jsonResponse>) => void) | undefined;
+            const routes = createRoutedFakeFetch({
+                ...BASE_ROUTES,
+                "/api/project/gameModel": () => ({ok: true, status: 200, body: createLargeGameModelProjection()}),
+            });
+            const fetchImpl: FetchLike = (url, init) => {
+                if (url === "/api/project/context" && refreshRequested) {
+                    if (!loadingPublished) {
+                        loadingPublished = true;
+                        return Promise.resolve(jsonResponse({status: "loading", projectRoot: "/games/a"}));
+                    }
+                    return new Promise((resolve) => {
+                        resolveContext = resolve;
+                    });
                 }
-                return new Promise((resolve) => {
-                    resolveContext = resolve;
-                });
-            }
-            return routes.fetchImpl(url, init);
-        };
-        const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/overview"], strictMode: true});
-        await screen.findByRole("heading", {name: "A"});
-        refreshRequested = true;
-        await user.click(screen.getByRole("button", {name: "Game Model"}));
-        await waitFor(() => expect(resolveContext).toBeDefined());
-        expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
-        expect(routes.calls.filter((call) => call.url.startsWith("/api/project/gameModel"))).toHaveLength(0);
-        expect(screen.queryByRole("tab", {name: "Full strips"})).not.toBeInTheDocument();
-
-        refreshRequested = false;
-        const terminalContext = failedRefresh
-            ? {status: "error", projectRoot: "/games/a", error: "Fresh context unavailable"}
-            : BASE_ROUTES["/api/project/context"]({url: "/api/project/context"}).body;
-        await act(() => Promise.resolve(resolveContext!(jsonResponse(terminalContext))));
-        if (failedRefresh) {
-            expect(await screen.findByText(/Fresh context unavailable/)).toBeInTheDocument();
+                return routes.fetchImpl(url, init);
+            };
+            const {router} = renderRoutedApp({fetchImpl, initialEntries: ["/project/%2Fgames%2Fa/overview"], strictMode: true});
+            await screen.findByRole("heading", {name: "A"});
+            refreshRequested = true;
+            await user.click(screen.getByRole("button", {name: "Game Model"}));
+            // Exercise the real loading-context poll without competing wall-clock timers.
+            // The response stays pending after the poll, so navigation must still be held.
+            expect(loadingPublished).toBe(true);
+            expect(resolveContext).toBeUndefined();
+            await act(async () => {
+                await jest.advanceTimersByTimeAsync(500);
+            });
+            expect(resolveContext).toBeDefined();
             expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
             expect(routes.calls.filter((call) => call.url.startsWith("/api/project/gameModel"))).toHaveLength(0);
-        } else {
-            await screen.findByRole("button", {name: "Refresh"});
-            expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/gameModel");
-            await user.click(screen.getByRole("tab", {name: "Full strips"}));
-            expect(await screen.findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
+            expect(screen.queryByRole("tab", {name: "Full strips"})).not.toBeInTheDocument();
+
+            refreshRequested = false;
+            const terminalContext = failedRefresh
+                ? {status: "error", projectRoot: "/games/a", error: "Fresh context unavailable"}
+                : BASE_ROUTES["/api/project/context"]({url: "/api/project/context"}).body;
+            await act(() => Promise.resolve(resolveContext!(jsonResponse(terminalContext))));
+            if (failedRefresh) {
+                expect(await screen.findByText(/Fresh context unavailable/)).toBeInTheDocument();
+                expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/overview");
+                expect(routes.calls.filter((call) => call.url.startsWith("/api/project/gameModel"))).toHaveLength(0);
+            } else {
+                const refresh = await screen.findByRole("button", {name: "Refresh"});
+                await waitFor(() => expect(refresh).toBeEnabled());
+                expect(router.state.location.pathname).toBe("/project/%2Fgames%2Fa/gameModel");
+                const reels = sectionFieldset("Reels");
+                const reelTabs = within(reels).getByRole("tablist");
+                await user.click(within(reelTabs).getByRole("tab", {name: "Full strips"}));
+                expect(await within(reels).findAllByText("Showing positions 0–99 of 300.")).toHaveLength(6);
+            }
+        } finally {
+            // Cancel the dashboard's polling before restoring real timers for sibling tests.
+            cleanup();
+            jest.useRealTimers();
         }
     });
 

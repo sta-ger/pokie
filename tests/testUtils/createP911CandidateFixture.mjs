@@ -11,10 +11,22 @@ const json = (file, value) => writeFile(file, `${JSON.stringify(value)}\n`);
 export const P911_TOOLING_DESCENDANT_PATHS = [
     "scripts/p9-11-rendered-driver.mjs", "tests/scripts/p9-11-rendered-driver.test.mjs",
     "scripts/p8-05-valera-browser-audit.mjs",
+    "scripts/p8-04-studio-polish-browser-audit.mjs",
+    "tests/cli/studio-client/src/P804StudioPolish.browser.test.tsx",
+    "tests/cli/studio-client/src/P908ValeraProducer.browser.test.tsx",
+    "tests/cli/studio-client/src/components/common/StudioPresentation.test.tsx",
+    "tests/cli/studio-client/src/hooks/useHomeSourceJobs.test.tsx",
     "tests/cli/studio-client/src/P805ValeraPersonas.browser.test.tsx",
     "tests/cli/studio-client/src/PC16StudioProductSweep.browser.test.tsx",
     "tests/cli/studio-client/src/Pc14StudioUiInteroperability.test.tsx",
     "tests/cli/studio-client/src/StudioReadinessConvergence.test.tsx",
+    // P10-03 retained-candidate delta: installed receipt plus bounded gate regression.
+    "docs/math-contract-corrections/README.md",
+    "docs/math-contract-corrections/p10-03-candidate-reader-targeted-verification.md",
+    "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md",
+    "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md",
+    "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md",
+    "tests/cli/studio-client/src/components/project/ProjectDashboardPage.gameModelWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.replayWorkflow.test.tsx",
     "tests/cli/studio-client/src/components/project/ProjectDashboardPage.validationWorkflow.test.tsx",
     "tests/cli/studio-client/src/integration/happyPath.test.tsx",
@@ -43,6 +55,10 @@ export async function candidateFixture(directory) {
     await json(path.join(repository, "package.json"), declaration);
     for (const file of P911_TOOLING_DESCENDANT_PATHS) {
         await mkdir(path.dirname(path.join(repository, file)), {recursive:true});
+        // These evidence documents are first recorded after the original candidate.
+        if (file === "docs/math-contract-corrections/p10-03-b6024422-installed-rerun.md"
+            || file === "docs/math-contract-corrections/p10-03-f9e64020-evidence-finalization.md"
+            || file === "docs/math-contract-corrections/p10-03-dd0ce39d-installed-rerun.md") continue;
         await writeFile(path.join(repository, file), "// Original tooling fixture; never executed.\n");
     }
     execFileSync("git", ["init", "--quiet"], {cwd:repository});
