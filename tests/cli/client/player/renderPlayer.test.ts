@@ -419,14 +419,16 @@ describe("canonical Player source reachability", () => {
     it("publishes the canonical Player barrel", () => {
         const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
             version: string;
-            exports: Record<string, {types: string; default: string}>;
+            exports: Record<string, {import: {types: string; default: string}}>;
             files: string[];
         };
         const exportedPlayer = packageJson.exports["./client/player"];
 
         expect(exportedPlayer).toEqual({
-            types: "./dist/cli/client/player/index.d.ts",
-            default: "./dist/cli/client/player/index.js",
+            import: {
+                types: "./dist/cli/client/player/index.d.ts",
+                default: "./dist/cli/client/player/index.js",
+            },
         });
         expect(packageJson.files).toContain("dist/");
         expect(canonicalPlayer.renderPlayerRound).toBe(renderPlayerRound);

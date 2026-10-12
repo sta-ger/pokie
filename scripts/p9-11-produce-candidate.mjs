@@ -79,7 +79,7 @@ export async function produceP911Candidate(config, dependencies = {}) {
         const archive = await readFile(archivePath), projection = await archiveExecutableManifest(archive);
         const declaration = JSON.parse(execFileSync("git", ["show", `${config.candidateId}:package.json`], {cwd:repository, encoding:"utf8", timeout:10_000}));
         const {gitHead, ...packedDeclaration} = projection.packageJson;
-        if (declaration.name !== "pokie" || JSON.stringify(declaration) !== JSON.stringify(packedDeclaration)
+        if (!["pokie", "@fromstan/pokie"].includes(declaration.name) || JSON.stringify(declaration) !== JSON.stringify(packedDeclaration)
             || gitHead !== undefined && gitHead !== config.candidateId) fail("packed package differs from committed candidate");
         const binding = {candidateId:config.candidateId, candidateTreeId:config.candidateTreeId,
             archiveSha256:sha256(archive), executableSha256:projection.sha256, issuer:config.issuer, exitCode:0, resourcesDrained:true};

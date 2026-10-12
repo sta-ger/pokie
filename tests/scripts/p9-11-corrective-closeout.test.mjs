@@ -246,10 +246,15 @@ test("pinned real file/archive reader rejects candidate, stale assets, extra ass
         `], {encoding:"utf8", timeout:5000, stdio:["ignore", "pipe", "pipe"]}));
         const candidate = await verify();
         assert.equal(candidate.candidateId, fixture.handoff.candidateId);
-        assert.equal(candidate.resolutions.pokie, path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
-        assert.equal(candidate.esmResolutions.pokie, path.join(candidate.packageRoot, "dist/esm/index.js"));
+        assert.equal(candidate.resolutions["@fromstan/pokie"], path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
+        assert.equal(candidate.esmResolutions["@fromstan/pokie"], path.join(candidate.packageRoot, "dist/esm/index.js"));
         for (const name of ["@fromstan/pokie/browser", "@fromstan/pokie/wasm", "@fromstan/pokie/client/player"]) {
-            assert.equal(candidate.esmResolutions[name], candidate.resolutions[name]);
+            assert.equal(candidate.esmResolutions[name], path.join(candidate.packageRoot, {
+                "@fromstan/pokie/browser":"dist/esm/browser.js",
+                "@fromstan/pokie/wasm":"dist/esm/wasm.js",
+                "@fromstan/pokie/client/player":"dist/cli/player.js",
+            }[name]));
+            assert.equal(candidate.resolutions[name], undefined);
         }
         await assert.rejects(readPinnedJson({...fixture.reference, sha256:"b".repeat(64)}), /digest mismatch/);
         const archive = await readFile(fixture.handoff.archivePath);
@@ -262,7 +267,7 @@ test("pinned real file/archive reader rejects candidate, stale assets, extra ass
         await writeFile(fixture.handoff.buildReceipt.path, build);
         const extra = path.join(candidate.packageRoot, "dist/obsolete.js"); await writeFile(extra, "obsolete");
         await assert.rejects(verify(), /unexpected installed/); await rm(extra);
-        await writeFile(candidate.resolutions["pokie"], "stale");
+        await writeFile(candidate.resolutions["@fromstan/pokie"], "stale");
         await assert.rejects(verify(), /stale installed/);
         await writeFile(path.join(fixture.repository, "product.js"), "changed");
         execFileSync("git", ["add", "product.js"], {cwd:fixture.repository});

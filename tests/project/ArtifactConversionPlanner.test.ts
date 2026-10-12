@@ -38,12 +38,12 @@ describe("ArtifactConversionPlanner", () => {
         try {
             fs.mkdirSync(cache, {recursive: true});
             fs.mkdirSync(path.dirname(executableDependency), {recursive: true});
-            fs.mkdirSync(path.join(packageRoot, "node_modules"), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "@fromstan"), {recursive: true});
             fs.writeFileSync(path.join(packageRoot, "index.js"), "export default 1;");
             fs.writeFileSync(executableDependency, "module.exports = 1;");
             fs.writeFileSync(path.join(cache, "jest"), "first");
             fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "@fromstan", "pokie"), "dir");
-            const options = {ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "@fromstan", "@fromstan/pokie", "node_modules", ".cache")]};
+            const options = {ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "@fromstan", "pokie", "node_modules", ".cache")]};
             const prepared = computeArtifactInputBindingHash([packageRoot], options);
 
             fs.writeFileSync(path.join(cache, "jest"), "second");
@@ -64,7 +64,7 @@ describe("ArtifactConversionPlanner", () => {
         try {
             fs.mkdirSync(path.dirname(entry), {recursive: true});
             fs.mkdirSync(path.dirname(runtimeFile), {recursive: true});
-            fs.mkdirSync(path.join(packageRoot, "node_modules"), {recursive: true});
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "@fromstan"), {recursive: true});
             fs.writeFileSync(path.join(packageRoot, "package.json"), '{"pokie":{"entry":"./dist/index.js"}}');
             fs.writeFileSync(entry, "module.exports = {version: 1};");
             fs.writeFileSync(runtimeFile, "module.exports = {runtime: 1};");

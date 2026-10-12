@@ -13,6 +13,7 @@ import {
     comparePlayerRegions,
     comparePlayerScreenshots,
     exactCandidateConsumerManifest,
+    scopedCandidateImports,
     desktopViewport,
     narrowViewport,
     pc12FixtureId,
@@ -94,9 +95,16 @@ test("PC-12 browser parity provisions an isolated exact candidate consumer befor
     const manifest = exactCandidateConsumerManifest({dependencies: {"@fromstan/pokie": "^1.3.0", vite: "4.3.9"}}, "/tmp/pokie-1.3.0.tgz");
     assert.equal(manifest.dependencies["@fromstan/pokie"], "file:/tmp/pokie-1.3.0.tgz");
     assert.equal(manifest.dependencies.vite, "4.3.9");
+    const legacy = exactCandidateConsumerManifest({dependencies: {pokie: "^1.3.0", vite: "4.3.9"}}, "/tmp/candidate.tgz");
+    assert.equal(legacy.dependencies.pokie, undefined);
+    assert.equal(legacy.dependencies["@fromstan/pokie"], "file:/tmp/candidate.tgz");
+    const source = `import {renderPlayerRound} from "pokie/client/player"; import 'pokie/browser'; const runtime = require('pokie'); const wasm = import('pokie/wasm'); const schema = 'pokie.round';`;
+    assert.equal(scopedCandidateImports(source), `import {renderPlayerRound} from "@fromstan/pokie/client/player"; import '@fromstan/pokie/browser'; const runtime = require('@fromstan/pokie'); const wasm = import('@fromstan/pokie/wasm'); const schema = 'pokie.round';`);
+    assert.equal(scopedCandidateImports(scopedCandidateImports(source)), scopedCandidateImports(source));
     assert.doesNotThrow(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/@fromstan/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
     assert.doesNotThrow(() => assertExactCandidatePlayerExport("file:///tmp/isolated/node_modules/@fromstan/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
     assert.throws(() => assertExactCandidatePlayerExport("/workspace/dist/cli/client/player/index.js", "/tmp/isolated"), /isolated candidate install/);
+    assert.throws(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"), /isolated candidate install/);
 });
 
 test("PC-12 browser parity launches Studio through the public implicit-project form", () => {
