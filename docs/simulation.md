@@ -200,7 +200,7 @@ stats.rtpConfidenceInterval95;
 
 ## Parallel simulation (workers)
 
-`ParallelSimulationRunner` is a public part of the `pokie` package itself — importable directly from `"pokie"` like
+`ParallelSimulationRunner` is a public part of the `@fromstan/pokie` package itself — importable directly from `"@fromstan/pokie"` like
 any other class, with no CLI or Studio involved — that splits a large run across real `worker_threads`, using the
 exact same `AggregateSimulationRunner`/`SimulationAccumulator`/`SimulationStatistics` calculation path as the
 single-threaded run. Parallelism only changes *how* the rounds are distributed and merged, never the underlying

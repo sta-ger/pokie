@@ -1,5 +1,6 @@
 import {execFile, spawn, type ChildProcessWithoutNullStreams} from "child_process";
 import fs from "fs";
+import {isDeepStrictEqual} from "node:util";
 import path from "path";
 import {PackageJsonLike, withLocalPokieDependency} from "@fromstan/pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
@@ -205,17 +206,10 @@ function packageNameFromLockKey(key: string): string | undefined {
     return segments[0]?.startsWith("@") ? `${segments[0]}/${segments[1]}` : segments[0];
 }
 
-// Real `npm install` resolves a `file:` spec (what every name in withLocalPokieDependencyClosure's
-// closure -- and "pokie" itself, via withLocalPokieDependency -- is rewritten to) as a symlink by
-// default, recorded in package-lock.json as a `{"resolved": "<relative path>", "link": true}` entry
-// under its own "node_modules/<name>" key, plus a *second*, separate top-level entry (keyed by that
-// same relative path) carrying the linked target's real package.json metadata -- confirmed against a
-// real `npm install` of this exact mechanism's own output, not guessed from documentation. Neither
-// entry is ever produced any other way (an ordinary registry/git resolution never sets "link" or uses
-// a bare relative-path key), so sweeping every "link": true entry whose own name is in `taintedNames`
-// -- together with the target entry it points at -- removes exactly and only what this transient
-// rewrite added, leaving every other (genuinely portable, registry-resolved) lockfile entry untouched.
-function stripLocalPokieLockEntries(packages: Record<string, unknown>, taintedNames: ReadonlySet<string>): void {
+// npm records a local file dependency as a node_modules link and a separate target metadata
+// entry. Strip only changed links in this invocation's rewritten dependency closure. Preserve
+// authored links and target entries from the pre-install snapshot, including same-name links.
+function stripLocalPokieLockEntries(packages: Record<string, unknown>, taintedNames: ReadonlySet<string>, originalPackages: Record<string, unknown>): void {
     const targetKeysToRemove = new Set<string>();
     for (const [key, rawEntry] of Object.entries(packages)) {
         if (key === "") {
@@ -225,15 +219,18 @@ function stripLocalPokieLockEntries(packages: Record<string, unknown>, taintedNa
         if (name === undefined || !taintedNames.has(name)) {
             continue;
         }
+        if (!rawEntry || typeof rawEntry !== "object") continue;
         const entry = rawEntry as {link?: unknown; resolved?: unknown};
-        if (entry.link !== true || typeof entry.resolved !== "string") {
+        if (entry.link !== true || typeof entry.resolved !== "string" || isDeepStrictEqual(rawEntry, originalPackages[key])) {
             continue;
         }
         targetKeysToRemove.add(entry.resolved);
-        Reflect.deleteProperty(packages, key);
+        if (key in originalPackages) packages[key] = originalPackages[key];
+        else Reflect.deleteProperty(packages, key);
     }
     for (const targetKey of targetKeysToRemove) {
-        Reflect.deleteProperty(packages, targetKey);
+        if (targetKey in originalPackages) packages[targetKey] = originalPackages[targetKey];
+        else Reflect.deleteProperty(packages, targetKey);
     }
 }
 
@@ -256,27 +253,33 @@ function restorePortableLockRoot(packages: Record<string, unknown>, originalPack
     }
 }
 
-// Undoes, inside the just-written package-lock.json, exactly what resolving the transient `file:`
-// rewrite above left behind -- the counterpart to restoring package.json itself. Run whenever "npm install"
-// settles, including cancellation and failure. Remove an incomplete JSON write for a clean retry. A project with
-// "package-lock=false" (no lockfile at all) is left exactly as-is.
-function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJsonLike, taintedNames: ReadonlySet<string>): void {
+// Only normalize invocation-written metadata. A rejected install restores the exact pre-install
+// bytes (even malformed JSON); no pre-existing authored link is swept by a successful install.
+function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJsonLike, taintedNames: ReadonlySet<string>, originalLock: Buffer | undefined, failed: boolean): void {
     const lockPath = path.join(cwd, "package-lock.json");
-    if (!fs.existsSync(lockPath)) {
+    if (failed) {
+        if (originalLock !== undefined) fs.writeFileSync(lockPath, originalLock);
+        else fs.rmSync(lockPath, {force: true});
         return;
     }
+    if (!fs.existsSync(lockPath)) return;
+    const current = fs.readFileSync(lockPath);
+    if (originalLock?.equals(current)) return;
     let lockfile: {packages?: Record<string, unknown>};
     try {
-        lockfile = JSON.parse(fs.readFileSync(lockPath, "utf-8"));
+        lockfile = JSON.parse(current.toString("utf8"));
+        if (!lockfile || typeof lockfile !== "object") throw new Error("Invalid lockfile");
     } catch {
-        // A torn npm write cannot be made portable. Remove it so a retry re-resolves metadata.
-        fs.rmSync(lockPath);
+        if (originalLock !== undefined) fs.writeFileSync(lockPath, originalLock);
+        else fs.rmSync(lockPath);
         return;
     }
-    if (!lockfile.packages) {
-        return;
-    }
-    stripLocalPokieLockEntries(lockfile.packages, taintedNames);
+    if (!lockfile.packages) return;
+    let originalPackages: Record<string, unknown> = {};
+    try {
+        originalPackages = originalLock ? JSON.parse(originalLock.toString("utf8"))?.packages ?? {} : {};
+    } catch { /* Authored malformed bytes need no parsed overlay. */ }
+    stripLocalPokieLockEntries(lockfile.packages, taintedNames, originalPackages);
     restorePortableLockRoot(lockfile.packages, originalPackageJson);
     fs.writeFileSync(lockPath, `${JSON.stringify(lockfile, null, 2)}\n`);
 }
@@ -332,17 +335,34 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
         const packageJsonPath = path.join(cwd, "package.json");
         const original = fs.readFileSync(packageJsonPath, "utf-8");
         const packageJson = JSON.parse(original) as PackageJsonLike;
+        const lockPath = path.join(cwd, "package-lock.json");
+        const originalLock = fs.existsSync(lockPath) ? fs.readFileSync(lockPath) : undefined;
         const closure = resolveLocalPokieDependencyClosure(pokiePackageRoot);
         const withPokie = withLocalPokieDependency(packageJson, pokiePackageRoot);
         const patched = withLocalPokieDependencyClosure(withPokie, closure);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patched, null, 4)}\n`);
+        let failed = false;
+        let installError: unknown;
+        let result: Awaited<ReturnType<PackageCommandRunning>> | undefined;
         try {
-            return await base(command, args, cwd, options);
-        } finally {
-            fs.writeFileSync(packageJsonPath, original);
-            const taintedNames = new Set(["@fromstan/pokie", ...closure.map((entry) => entry.name)]);
-            restorePersistedPackageLock(cwd, packageJson, taintedNames);
+            result = await base(command, args, cwd, options);
+        } catch (error) {
+            failed = true;
+            installError = error;
         }
+        try {
+            try {
+                fs.writeFileSync(packageJsonPath, original);
+            } finally {
+                const taintedNames = new Set(["@fromstan/pokie", ...closure.map((entry) => entry.name)]);
+                restorePersistedPackageLock(cwd, packageJson, taintedNames, originalLock, failed);
+            }
+        } catch (error) {
+            // Preserve the delegated install's original error, including cancellation.
+            if (!failed) throw error;
+        }
+        if (failed) throw installError;
+        return result!;
     };
 }
 

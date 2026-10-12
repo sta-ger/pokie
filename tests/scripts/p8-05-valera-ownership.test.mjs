@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import {test} from "@jest/globals";
 import {exerciseP805TupleSupervisor} from "./p805-tuple-supervisor-contract.mjs";
-import {createP805OwnedProcessRecord, installP805PackedRuntime} from "../../scripts/p8-05-valera-browser-audit.mjs";
+import {createP805OwnedProcessRecord, installP805PackedRuntime, p805CandidatePackageRoot} from "../../scripts/p8-05-valera-browser-audit.mjs";
 import {projectP805RenderedTupleEvidence} from "../../scripts/p8-05-product-readiness-controller.mjs";
 import {P805_PERSONAS, P805_REQUIRED_OBSERVATIONS} from "../../scripts/p8-05-product-readiness-campaign.mjs";
 import {registerPc20OwnedResource} from "../../scripts/pc-20-release-completion.mjs";
@@ -237,3 +237,11 @@ test("controller projects every accepted tuple action instead of a persona aggre
     projected[0].accessibility.namedRegions.push("mutated-by-consumer");
     assert.equal(JSON.stringify({ledger, tupleAudits}), original, "handoff consumers cannot mutate accepted tuple data through aliases");
 });
+
+for (const name of ["@fromstan/pokie", "pokie"]) {
+    test(`P8-05 installed paths follow the authenticated ${name} manifest`, () => {
+        const installation = path.join(os.tmpdir(), "owned-runtime");
+        assert.equal(p805CandidatePackageRoot(installation, {name}), path.join(installation, "node_modules", name));
+        assert.throws(() => p805CandidatePackageRoot(installation, {name: "../borrowed"}), /authenticated candidate package identity/);
+    });
+}

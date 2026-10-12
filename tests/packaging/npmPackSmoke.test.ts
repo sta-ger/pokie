@@ -121,6 +121,7 @@ async function buildPackageForSmoke(): Promise<void> {
         runInParallel(node, [tsc, "--project", "cli/studio-client/tsconfig.json", "--noEmit"]),
         runInParallel(node, [vite, "build", "--config", "cli/studio-client/vite.config.ts"]),
     ]);
+    run(node, [path.join(REPO_ROOT, "tests/testUtils/stageRuntimeLocation.mjs"), "esm", "cjs", "src"]);
     run(node, [shx, "cp", "cli/client/index.html", "cli/client/style.css", "dist/cli/client/"]);
     run(node, [shx, "test", "-f", "dist/cli/studio-client/index.html"]);
     run(node, [shx, "chmod", "+x", "dist/cli/pokie.js"]);

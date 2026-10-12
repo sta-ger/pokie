@@ -284,9 +284,13 @@ describe("CLI command coverage (offline end-to-end, through the built CLI execut
         // exact compiled dist/cli/pokie.js every command below is spawned from.
         ensureCompiledTestOutput({
             repositoryRoot: REPO_ROOT,
-            outputPaths: [path.join(REPO_ROOT, "dist", "cli", "pokie.js")],
+            outputPaths: [path.join(REPO_ROOT, "dist", "cli", "pokie.js"), path.join(REPO_ROOT, "dist/src/gamepackage/internal/runtimeLocation.mjs")],
             lockName: "compiled-cli",
-            command: [path.join(REPO_ROOT, "node_modules", ".bin", "tsc"), "--project", "tsconfig.cli.json"],
+            command: [process.execPath, "-e", `
+                const {execFileSync} = require('node:child_process');
+                execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--project', 'tsconfig.cli.json'], {stdio:'inherit'});
+                execFileSync(process.execPath, ['tests/testUtils/stageRuntimeLocation.mjs', 'src'], {stdio:'inherit'});
+            `],
             forceRebuild: true,
         });
 

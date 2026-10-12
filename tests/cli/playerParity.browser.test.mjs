@@ -5,6 +5,7 @@ import {resolve} from "node:path";
 import {tmpdir} from "node:os";
 import {deflateSync} from "node:zlib";
 import {test} from "@jest/globals";
+import {stageRuntimeLocation} from "../testUtils/stageRuntimeLocation.mjs";
 import {
     canonicalPlayerComparisonKeys,
     canonicalPlayerSelector,
@@ -73,6 +74,7 @@ async function prepareFixtureBrowserRuntime() {
     runRuntimeCompiler(["write-cjs-package-json.js"]);
     runRuntimeCompiler([resolve(process.cwd(), "node_modules/typescript/bin/tsc"), "--project", "tsconfig.cli.json"]);
     runRuntimeCompiler([resolve(process.cwd(), "node_modules/typescript/bin/tsc"), "--project", "tsconfig.client.json"]);
+    stageRuntimeLocation(process.cwd(), process.cwd(), ["esm", "cjs", "src"]);
     runRuntimeCompiler([resolve(process.cwd(), "node_modules/vite/bin/vite.js"), "build", "--config", "cli/studio-client/vite.config.ts"]);
 }
 

@@ -84,7 +84,7 @@ POKIE goes well beyond classic paylines:
   use the same explicit seed and round count to [compare WASM simulation and replay](docs/cli.md#wasm-quick-start).
   `npx --package @fromstan/pokie pokie serve <packageRoot>` starts a local/dev JSON
   HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx --package @fromstan/pokie pokie client
-  <packageRoot>` serves the POKIE browser client for a running `pokie serve`; `npx
+  <packageRoot>` serves the POKIE browser client for a running `pokie serve`; `npx --package @fromstan/pokie
   pokie dev <packageRoot>` runs both together, opening a browser — all optionally as a JSON
   file/machine-readable output; `npx --package @fromstan/pokie pokie .` launches **POKIE Studio**, a
   local web app GUI for create/build/inspect/validate/sim/report/replay, opening a browser — its own Play tab

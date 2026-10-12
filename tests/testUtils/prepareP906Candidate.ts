@@ -9,7 +9,7 @@ import {ensureCompiledTestOutput} from "./ensureCompiledTestOutput.js";
 export function compileP906Candidate(repositoryRoot: string): void {
     ensureCompiledTestOutput({
         repositoryRoot,
-        outputPaths: ["dist/cli/pokie.js", "dist/esm/index.js", "dist/cjs/index.js", "dist/cli/studio-client/index.html", "dist/src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"].map((entry) => path.join(repositoryRoot, entry)),
+        outputPaths: ["dist/cli/pokie.js", "dist/esm/index.js", "dist/cjs/index.js", "dist/cli/studio-client/index.html", "dist/src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", ...["esm", "cjs", "src"].map(tree => `dist/${tree}/gamepackage/internal/runtimeLocation.mjs`)].map((entry) => path.join(repositoryRoot, entry)),
         lockName: "canonical-artifact-cli",
         forceRebuild: true,
         executionTimeoutMs: 120_000,
@@ -23,7 +23,7 @@ export function compileP906Candidate(repositoryRoot: string): void {
             run(['node_modules/typescript/bin/tsc','--project','tsconfig.cli.json']);
             for(const format of ['esm','cjs','src'])
                 fs.copyFileSync('src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs','dist/'+format+'/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs');
-            for (const tree of ['dist/esm', 'dist/cjs', 'dist/src']) { fs.mkdirSync(tree + '/gamepackage/internal', {recursive:true}); fs.copyFileSync('src/gamepackage/internal/runtimeLocation.mjs', tree + '/gamepackage/internal/runtimeLocation.mjs'); }
+            run(['tests/testUtils/stageRuntimeLocation.mjs','esm','cjs','src']);
             run(['node_modules/vite/bin/vite.js','build','--config','cli/studio-client/vite.config.ts']);
         `],
     });

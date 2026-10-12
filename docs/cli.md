@@ -320,7 +320,7 @@ actually built the mechanics (`"default-line-pay"` or `"random-variant"`) — to
 
 #### `SlotGameNameGenerator` / `RandomGameBlueprintGenerator`
 
-Both are ordinary, standalone exports from `"pokie"` — useful outside the CLI too (tooling, tests, generating
+Both are ordinary, standalone exports from `"@fromstan/pokie"` — useful outside the CLI too (tooling, tests, generating
 several candidate games to pick from):
 
 ```ts
@@ -548,7 +548,7 @@ handling](#conflict-handling-an-existing---out-destination) below) — and write
   hash/provenance metadata is embedded, so re-running `pokie build` on an unchanged blueprint always regenerates
   byte-identical files. `dist/index.js` is written directly, not compiled from `src/index.ts`, so the package is
   locally loadable through the CLI/Studio runtime link without a compile step; `src/index.ts` is typed (`GameBlueprint`
-  imported from `pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
+  imported from `@fromstan/pokie`) so a real `npm run build`, if you ever run one, reproduces an equivalent `dist/index.js`.
 
 The built package carries no metadata of its own about where it came from — no embedded blueprint copy, no
 build-info file, no `src/generated` nesting — so a later source edit or rebuild never has to reconcile against,

@@ -86,12 +86,17 @@ export function comparePlayerRegions(studio, examples) {
     }
 }
 
-export function exactCandidateConsumerManifest(manifest, candidateArchive) {
+function scopedCandidateConsumerManifest(manifest, dependencySpec) {
     const {pokie: legacyDependency, ...dependencies} = manifest.dependencies ?? {};
     return {
         ...manifest,
-        dependencies: {...dependencies, "@fromstan/pokie": `file:${candidateArchive}`},
+        private: true,
+        dependencies: {...dependencies, "@fromstan/pokie": dependencySpec},
     };
+}
+
+export function exactCandidateConsumerManifest(manifest, candidateArchive) {
+    return scopedCandidateConsumerManifest(manifest, `file:${candidateArchive}`);
 }
 
 // The separately maintained examples checkout may still use the historical
@@ -111,6 +116,20 @@ async function scopeCandidateConsumerImports(directory) {
             if (scoped !== source) await writeFile(file, scoped);
         }
     }
+}
+
+// Both source checks and the browser install adapt the same disposable consumer.
+export async function adaptPc12CandidateConsumer(examplesRoot, consumerRoot, dependencySpec) {
+    await cp(examplesRoot, consumerRoot, {
+        recursive: true,
+        filter: (source) => ![".git", "dist", "node_modules"].includes(basename(source)),
+    });
+    await scopeCandidateConsumerImports(consumerRoot);
+    const manifest = JSON.parse(await readFile(resolve(consumerRoot, "package.json"), "utf8"));
+    const adapted = scopedCandidateConsumerManifest(manifest, dependencySpec);
+    await writeFile(resolve(consumerRoot, "package.json"), `${JSON.stringify(adapted, null, 2)}\n`);
+    await rm(resolve(consumerRoot, "package-lock.json"), {force: true});
+    return consumerRoot;
 }
 
 export function assertExactCandidatePlayerExport(resolvedExport, consumerRoot) {
@@ -273,14 +292,7 @@ async function prepareExactCandidateConsumer(examplesRoot, staging) {
     const packed = JSON.parse(await runCommand("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", staging], {cwd: root}));
     const candidateArchive = resolve(staging, packed[0].filename);
     const consumerRoot = resolve(staging, "pokie-examples");
-    await cp(examplesRoot, consumerRoot, {
-        recursive: true,
-        filter: (source) => ![".git", "dist", "node_modules"].includes(basename(source)),
-    });
-    await scopeCandidateConsumerImports(consumerRoot);
-    const manifest = JSON.parse(await readFile(resolve(consumerRoot, "package.json"), "utf8"));
-    await writeFile(resolve(consumerRoot, "package.json"), `${JSON.stringify(exactCandidateConsumerManifest(manifest, candidateArchive), null, 2)}\n`);
-    await rm(resolve(consumerRoot, "package-lock.json"), {force: true});
+    await adaptPc12CandidateConsumer(examplesRoot, consumerRoot, `file:${candidateArchive}`);
     await runCommand("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], {cwd: consumerRoot});
     const resolvedExport = (await runCommand(process.execPath, ["--input-type=module", "--eval", "process.stdout.write(import.meta.resolve('@fromstan/pokie/client/player'))"], {cwd: consumerRoot})).trim();
     assertExactCandidatePlayerExport(resolvedExport, consumerRoot);

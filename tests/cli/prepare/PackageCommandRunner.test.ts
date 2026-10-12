@@ -140,7 +140,7 @@ describe("withLocalPokieInstall", () => {
         expect(readPackageJson(projectDir)).toEqual({name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
     });
 
-    it.each(["failure", "cancellation"])("restores scoped lock metadata after install %s without removing unrelated links", async outcome => {
+    it.each(["failure", "cancellation"])("removes invocation-created scoped lock metadata after install %s", async outcome => {
         const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0", other: "^1"}};
         writePackageJson(projectDir, original);
         const error = new Error(outcome);
@@ -156,11 +156,51 @@ describe("withLocalPokieInstall", () => {
         });
         await expect(runner("npm", ["install"], projectDir, {signal: controller.signal})).rejects.toBe(error);
         expect(readPackageJson(projectDir)).toEqual(original);
-        const lock = readPackageLock(projectDir);
-        expect(lock.packages[""]).toMatchObject({dependencies: original.dependencies});
-        expect(lock.packages["node_modules/@fromstan/pokie"]).toBeUndefined();
-        expect(lock.packages["../../opt/pokie-checkout"]).toBeUndefined();
-        expect(lock.packages["node_modules/other"]).toBeDefined();
+        expect(fs.existsSync(path.join(projectDir, "package-lock.json"))).toBe(false);
+    });
+
+    it.each(["failure", "cancellation"])("preserves original lock bytes/existence after %s, including early and partial writes", async outcome => {
+        const originalPackage = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}};
+        const lockPath = path.join(projectDir, "package-lock.json");
+        for (const bytes of [Buffer.from('{ "packages": {} }\n\n'), Buffer.from('{malformed\n'), undefined]) {
+            for (const mutation of ["untouched", "torn", "deleted"]) {
+                writePackageJson(projectDir, originalPackage);
+                fs.rmSync(lockPath, {force: true});
+                if (bytes) fs.writeFileSync(lockPath, bytes);
+                const error = new Error(outcome);
+                const controller = new AbortController();
+                const runner = withLocalPokieInstall("/opt/pokie-checkout", () => {
+                    if (mutation === "torn") fs.writeFileSync(lockPath, '{"packages":');
+                    if (mutation === "deleted") fs.rmSync(lockPath, {force: true});
+                    if (outcome === "cancellation") controller.abort();
+                    return Promise.reject(error);
+                });
+                await expect(runner("npm", ["install"], projectDir, {signal: controller.signal})).rejects.toBe(error);
+                expect(readPackageJson(projectDir)).toEqual(originalPackage);
+                if (bytes) expect(fs.readFileSync(lockPath)).toEqual(bytes);
+                else expect(fs.existsSync(lockPath)).toBe(false);
+            }
+        }
+    });
+
+    it("does not mask the original install rejection if cleanup fails", async () => {
+        writePackageJson(projectDir, {dependencies: {"@fromstan/pokie": "^1.3.0"}});
+        const error = new Error("original install error");
+        const runner = withLocalPokieInstall("/opt/pokie-checkout", () => {
+            fs.mkdirSync(path.join(projectDir, "package-lock.json"));
+            return Promise.reject(error);
+        });
+        await expect(runner("npm", ["install"], projectDir)).rejects.toBe(error);
+        expect(readPackageJson(projectDir).dependencies).toEqual({"@fromstan/pokie": "^1.3.0"});
+    });
+
+    it("preserves an authored scoped link when a successful install writes other metadata", async () => {
+        writePackageJson(projectDir, {dependencies: {"@fromstan/pokie": "file:../authored"}});
+        const originalLock = {packages: {"": {dependencies: {"@fromstan/pokie": "file:../authored"}}, ...fileLinkLockEntries("@fromstan/pokie", "../authored")}};
+        writePackageLock(projectDir, originalLock);
+        const runner = withLocalPokieInstall("/opt/pokie-checkout", createLockWritingBase({...originalLock, requires: true}));
+        await runner("npm", ["install"], projectDir);
+        expect(readPackageLock(projectDir).packages).toEqual(originalLock.packages);
     });
 
     it("removes a torn lock write after failed install and restores the authored package", async () => {

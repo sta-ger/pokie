@@ -1,8 +1,10 @@
 /**
  * @jest-environment jsdom
  */
-import {existsSync, readFileSync} from "node:fs";
+import {existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync} from "node:fs";
 import {resolve} from "node:path";
+import {execFileSync} from "node:child_process";
+import {pathToFileURL} from "node:url";
 import * as canonicalPlayer from "../../../../cli/client/player/index.js";
 import {
     applyPersistentHighlights,
@@ -37,10 +39,27 @@ import {
 // pokie-examples is a separately checked-out companion project.  The canonical-player
 // reachability assertions below run whenever that companion is provided, while this
 // repository's standalone test suite remains runnable from an isolated worktree.
-const pokieExamplesRoot = process.env.POKIE_EXAMPLES_PATH
-    ? resolve(process.env.POKIE_EXAMPLES_PATH)
-    : resolve(process.cwd(), "..", "pokie-examples");
-const pokieExamplesAvailable = existsSync(pokieExamplesRoot);
+function adaptExamplesCandidate(original: string, candidate: string, spec: string): string {
+    execFileSync(process.execPath, ["--input-type=module", "--eval", `
+        import {adaptPc12CandidateConsumer} from ${JSON.stringify(pathToFileURL(resolve(process.cwd(), "scripts/pc-12-player-parity-browser.mjs")).href)};
+        await adaptPc12CandidateConsumer(...process.argv.slice(1));
+    `, original, candidate, spec], {timeout: 10_000});
+    return candidate;
+}
+
+const suppliedExamples = process.env.POKIE_EXAMPLES_PATH;
+const pokieExamplesAvailable = suppliedExamples !== undefined && existsSync(suppliedExamples);
+let pokieExamplesRoot: string;
+let examplesStaging: string;
+beforeAll(() => {
+    if (!pokieExamplesAvailable) return;
+    examplesStaging = mkdtempSync(resolve(process.cwd(), "node_modules/.cache/pokie-tmp/player-examples-"));
+    const version = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")).version;
+    pokieExamplesRoot = adaptExamplesCandidate(resolve(suppliedExamples!), resolve(examplesStaging, "candidate"), `^${version}`);
+});
+afterAll(() => {
+    if (examplesStaging) rmSync(examplesStaging, {recursive: true, force: true});
+});
 
 // The one place this repo's own fast Jest environment renders the canonical player's DOM half --
 // videoSlotRoundView.test.ts already covers the pure derive* functions this module is built on top
@@ -363,6 +382,29 @@ describe("renderPlayerRound", () => {
 });
 
 describe("canonical Player source reachability", () => {
+    it("adapts a legacy companion only in an owned candidate copy", () => {
+        const staging = mkdtempSync(resolve(process.cwd(), "node_modules/.cache/pokie-tmp/player-adaptation-"));
+        const original = resolve(staging, "original"), 
+            candidate = resolve(staging, "candidate");
+        const ui = 'import {renderPlayerRound} from "pokie/client/player"; const schema = "pokie.round";';
+        const manifest = JSON.stringify({private: true, dependencies: {pokie: "^1.3.0", vite: "4.3.9"}});
+        try {
+            mkdirSync(resolve(original, "src/ui"), {recursive: true});
+            writeFileSync(resolve(original, "src/ui/ui.ts"), ui);
+            writeFileSync(resolve(original, "package.json"), manifest);
+            writeFileSync(resolve(original, "package-lock.json"), "original lock bytes");
+            adaptExamplesCandidate(original, candidate, "^1.3.0");
+            expect(readFileSync(resolve(candidate, "src/ui/ui.ts"), "utf8")).toBe(ui.replace('"pokie/client/player"', '"@fromstan/pokie/client/player"'));
+            expect(JSON.parse(readFileSync(resolve(candidate, "package.json"), "utf8")).dependencies).toEqual({"@fromstan/pokie": "^1.3.0", vite: "4.3.9"});
+            expect(existsSync(resolve(candidate, "package-lock.json"))).toBe(false);
+            expect(readFileSync(resolve(original, "package.json"), "utf8")).toBe(manifest);
+            expect(readFileSync(resolve(original, "src/ui/ui.ts"), "utf8")).toBe(ui);
+            expect(readFileSync(resolve(original, "package-lock.json"), "utf8")).toBe("original lock bytes");
+        } finally {
+            rmSync(staging, {recursive: true, force: true}); 
+        }
+    });
+
     it("makes the dev client and Studio invoke the barrel's single round entrypoint", () => {
         const devClient = readFileSync(resolve(process.cwd(), "cli/client/main.ts"), "utf8");
         const studio = readFileSync(

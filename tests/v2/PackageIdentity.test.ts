@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
 import ts from "typescript";
+import {linkFixtureRuntime} from "../cli/fixtures/ensureFixturesCanRequirePokie.js";
 import {buildPackageJsonPatch} from "../../src/gamepackage/buildPackageJsonPatch.js";
 import {GamePackageCreator} from "../../cli/scaffold/GamePackageCreator.js";
 import {GamePackageGenerator} from "../../src/generated/GamePackageGenerator.js";
@@ -13,6 +14,9 @@ const root = path.resolve(__dirname, "../..");
 const identity = "@fromstan/pokie";
 const metadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const tempRoot = path.join(root, "node_modules/.cache/pokie-tmp");
+
+// Includes prose package guidance and commands split over whitespace/newlines.
+const staleDeliveryIdentity = /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*(?:\(\s*)?)[`"']+pokie(?:[`"']|\/)|\bnpx\s+(?:--?[\w-]+(?:=[^\s`]+)?\s+)*pokie\b|\bnpm\s+(?:install|i)\s+(?:--?[\w-]+(?:=[^\s`]+)?\s+)*pokie\b|github\.com\/sta-ger\/pokie(?![-\w])|npmjs\.com\/package\/pokie\b|node_modules\/pokie\b/;
 
 function fixtureDirectory(): string {
     fs.mkdirSync(tempRoot, {recursive: true});
@@ -42,6 +46,7 @@ function nativeRuntimeFixture(directory: string): void {
             const target = path.join(packageRoot, destination, path.relative(path.join(root, sourceRoot), file));
             fs.mkdirSync(path.dirname(target), {recursive: true});
             const source = fs.readFileSync(file, "utf8");
+            if (file.endsWith("runtimeLocation.mjs")) continue;
             if (file.endsWith(".mjs")) fs.writeFileSync(target, source);
             else {
                 fs.writeFileSync(target.replace(/\.ts$/, ".js"), ts.transpileModule(source, {fileName: file, compilerOptions: {module, target: ts.ScriptTarget.ES2020, esModuleInterop: true}}).outputText);
@@ -49,6 +54,7 @@ function nativeRuntimeFixture(directory: string): void {
             }
         }
     }
+    execFileSync(process.execPath, [path.join(root, "tests/testUtils/stageRuntimeLocation.mjs"), "--output-root", packageRoot, "esm", "cjs"], {cwd: root});
     // Execute the maintained metadata writer in the fixture, not a production build.
     execFileSync(process.execPath, [path.join(root, "write-cjs-package-json.js")], {cwd: packageRoot});
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "v2c01-private-consumer", private: true, type: "module", dependencies: {[identity]: `^${metadata.version}`}}));
@@ -77,6 +83,17 @@ describe("V2C-01 delivery identity", () => {
         const directory = fixtureDirectory();
         try {
             nativeRuntimeFixture(directory);
+            const runtimeRoot = path.join(directory, "node_modules", identity);
+            const fixtureModules = path.join(directory, "fixtures/node_modules");
+            linkFixtureRuntime(runtimeRoot, fixtureModules);
+            expect(fs.realpathSync(path.join(fixtureModules, identity))).toBe(runtimeRoot);
+            expect(fs.existsSync(path.join(fixtureModules, "pokie"))).toBe(false);
+            // Replace a stale scoped link through the same atomic repair used by real worker fixtures.
+            fs.unlinkSync(path.join(fixtureModules, identity));
+            fs.symlinkSync(path.join(directory, "missing-runtime"), path.join(fixtureModules, identity), "dir");
+            linkFixtureRuntime(runtimeRoot, fixtureModules);
+            fs.writeFileSync(path.join(directory, "fixtures/consumer.cjs"), "const runtime = require('@fromstan/pokie'); console.log(typeof runtime.loadPokieGameRuntime);");
+            expect(execFileSync(process.execPath, [path.join(directory, "fixtures/consumer.cjs")], {encoding: "utf8"})).toBe("function\n");
             const manifest = {id: "private-slot", name: "Private slot", version: "0.1.0"};
             const scaffold = new GamePackageCreator(metadata.version).create(directory, "private-slot");
             expect(JSON.parse(fs.readFileSync(path.join(scaffold.projectRoot, "package.json"), "utf8")).dependencies).toEqual({[identity]: `^${metadata.version}`});
@@ -98,7 +115,7 @@ describe("V2C-01 delivery identity", () => {
             const consumer = `
                 import assert from 'node:assert/strict';
                 import {createRequire} from 'node:module';
-                import {SeededRandomNumberGenerator as ESM, loadPokieGame, releasePokieGame} from '${identity}';
+                import {SeededRandomNumberGenerator as ESM, loadPokieGame, releasePokieGame, loadPokieGameRuntime} from '${identity}';
                 import {SeededRandomNumberGenerator as Browser} from '${identity}/browser';
                 import {instantiatePokieWasm} from '${identity}/wasm';
                 import * as player from '${identity}/client/player';
@@ -115,6 +132,9 @@ describe("V2C-01 delivery identity", () => {
                     const exports = require(file); const game = exports.default ?? exports;
                     assert.equal(game.getManifest().id, 'private-slot'); assert.ok(game.createSession({seed:'native'}));
                 }
+                const loaded = await loadPokieGameRuntime('./generated');
+                try { assert.equal(loaded.game.getManifest().id, 'private-slot'); assert.ok(loaded.game.createSession({seed:'generated-native'})); }
+                finally { await loaded.release(); }
                 const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
                 const isolated = fs.mkdtempSync(path.join(os.tmpdir(), 'v2c01-external-'));
                 try {
@@ -234,10 +254,25 @@ describe("V2C-01 delivery identity", () => {
         expect(fs.readFileSync(path.join(root, ".github/workflows/publish.yml"), "utf8")).not.toMatch(/workflow_dispatch|npm publish|secrets\./);
     });
 
+    it.each([
+        'npx\n  pokie dev ./game', 'npx --yes\n pokie dev ./game', 'npm install\n  -g pokie', 'npm i --global\n pokie', 'npm install --save-dev pokie',
+        'exports from `"pokie"`', 'GameBlueprint imported from `pokie`',
+        'import {Game} from "pokie";', "const p = require('pokie/browser');", "void import('pokie/wasm');",
+    ])("detects stale maintained guidance: %s", text => {
+        expect(staleDeliveryIdentity.test(text)).toBe(true);
+    });
+
+    it.each([
+        'npx --package @fromstan/pokie pokie dev ./game', 'from "@fromstan/pokie"',
+        'pokie.entry .pokie pokie-manifest.json pokie.state.v2', 'https://github.com/sta-ger/pokie-examples',
+    ])("preserves product contracts and explicit scoped launch guidance: %s", text => {
+        expect(staleDeliveryIdentity.test(text)).toBe(false);
+    });
+
     it("classifies maintained delivery text separately from immutable history and product contracts", () => {
         const maintained = [path.join(root, "README.md"), ...metadata.files.filter((name: string) => name.startsWith("docs/")).map((name: string) => path.join(root, name)), ...["src", "cli", "examples"].flatMap(name => files(path.join(root, name)))];
-        const stale = /(?:from\s*|require\(\s*|import\(\s*)["']pokie(?:["']|\/)|npx pokie\b|npm (?:install|i)(?: -g)? pokie\b|github\.com\/sta-ger\/pokie(?![-\w])|npmjs\.com\/package\/pokie\b|node_modules\/pokie\b/;
-        expect(maintained.filter(file => (/\.(?:ts|tsx|js|mjs|md|html|json)$/).test(file) && stale.test(fs.readFileSync(file, "utf8")))).toEqual([]);
+
+        expect(maintained.filter(file => (/\.(?:ts|tsx|js|mjs|md|html|json)$/).test(file) && staleDeliveryIdentity.test(fs.readFileSync(file, "utf8")))).toEqual([]);
         expect(fs.readFileSync(path.join(root, "docs/pokie-phase4-inventory.md"), "utf8")).toContain("sta-ger/pokie-examples");
         expect(fs.readFileSync(path.join(root, "src/wasm/PokieWasmCanonicalModule.ts"), "utf8")).toContain('POKIE_WASM_IMPORT_MODULE = "pokie"');
         expect(buildPackageJsonPatch({}, metadata.version).pokie).toEqual({entry: "./dist/index.js"});
