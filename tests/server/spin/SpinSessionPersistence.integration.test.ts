@@ -172,7 +172,9 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
         expect(paidRound.status).toBe("played");
         if (paidRound.status !== "played") throw new Error("Expected a settled paid round after feature completion.");
         expect(paidRound.state.featureState).toMatchObject({freeGamesNum: 0, freeGamesBank: 0});
-        expect(paidRound.credits).toBe(paidRound.previousState.credits! - paidRound.state.bet + paidRound.win);
+        const previousCredits = paidRound.previousState?.credits;
+        if (previousCredits === undefined) throw new Error("Expected persisted credits before the paid round.");
+        expect(paidRound.credits).toBe(previousCredits - paidRound.state.bet + paidRound.win);
         expect(await alternatingRepository.load("alternating")).toEqual(await continuousRepository.load("continuous"));
     });
 });
