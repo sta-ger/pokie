@@ -440,6 +440,9 @@ describe("V2C-02 canonical runtime contracts", () => {
     it("strictly compiles a real ESM/CJS consumer against freshly emitted package declarations and export conditions", () => {
         const directory = fs.mkdtempSync(path.join(root, "node_modules/.cache/pokie-tmp/v2c02-consumer-"));
         try {
+            // Give the consumer its own package scope so NodeNext cannot self-reference
+            // the enclosing checkout instead of the freshly emitted dependency below.
+            fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({name: "v2c02-consumer", private: true, type: "module"}));
             const packageRoot = path.join(directory, "node_modules/@fromstan/pokie");
             fs.mkdirSync(packageRoot, {recursive: true});
             const metadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -458,7 +461,10 @@ describe("V2C-02 canonical runtime contracts", () => {
                 const consumer = ts.createProgram([file], {strict: true, noEmit: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"]});
                 expect(ts.getPreEmitDiagnostics(consumer).map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n"))).toEqual([]);
                 const resolved = ts.resolveModuleName("@fromstan/pokie", file, consumer.getCompilerOptions(), ts.sys, undefined, undefined, extension === "mts" ? ts.ModuleKind.ESNext : ts.ModuleKind.CommonJS);
-                expect(resolved.resolvedModule?.resolvedFileName).toBe(path.join(packageRoot, `dist/${extension === "mts" ? "esm" : "cjs"}/index.d.ts`));
+                const declaration = path.join(packageRoot, `dist/${extension === "mts" ? "esm" : "cjs"}/index.d.ts`);
+                expect(resolved.resolvedModule?.resolvedFileName).toBe(declaration);
+                expect(consumer.getSourceFile(declaration)).toBeDefined();
+                expect(consumer.getSourceFiles().some(source => source.fileName.startsWith(path.join(root, "dist") + path.sep))).toBe(false);
             }
         } finally {
             fs.rmSync(directory, {recursive: true, force: true});
