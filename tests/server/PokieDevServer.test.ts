@@ -218,7 +218,7 @@ function createRealFreeGamesGame(
 ): PokieGame & {lastSession?: VideoSlotWithFreeGamesSession} {
     return {
         getManifest: () => manifest,
-        ...fixtureCodec,
+        getSessionStateSchema: () => ({kind: "free-games", base: {kind: "seeded-video-slot", reels: 5, symbols: ["A", "K", "Q", "J", "10", "9", "W", "S"]}}),
         createSession() {
             // Durable continuation requires an explicit seeded generator and reproducible model.
             // Distinct symbols on each reel keep these wallet tests free of wins/scatter grants.
