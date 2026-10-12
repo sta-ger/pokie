@@ -1,5 +1,6 @@
+import {VideoSlotConfig} from "../VideoSlotConfig.js";
+import {VideoSlotWithFreeGamesConfig} from "../VideoSlotWithFreeGamesConfig.js";
 import {ClusterWinCalculator} from "./ClusterWinCalculator.js";
-import {ValueWinCalculator} from "./ValueWinCalculator.js";
 import {WaysWinCalculator} from "./WaysWinCalculator.js";
 import {SumAllEnabledWinAggregationPolicy} from "../winevaluation/SumAllEnabledWinAggregationPolicy.js";
 import {SelectedEvaluatorGroupWinAggregationPolicy} from "../winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
@@ -84,15 +85,21 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
         );
     }
 
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
     public isStatelessForSessionRestoration(): boolean {
         const policy = this.options.aggregationPolicy;
         const policySupported = policy === undefined || [ErrorOnIncompatibleWinAggregationPolicy, SumAllEnabledWinAggregationPolicy,
             SelectedEvaluatorGroupWinAggregationPolicy, HighestWinOnlyAggregationPolicy].some(kind => policy.constructor === kind);
-        return this.constructor === VideoSlotWinCalculator && this.lineWinCalculator.constructor === LineWinCalculator &&
-            this.scatterWinCalculator.constructor === ScatterWinCalculator && this.options.multiplierResolver === undefined && policySupported &&
-            (this.clusterWinCalculator === undefined || (this.clusterWinCalculator instanceof ClusterWinCalculator && this.clusterWinCalculator.isStatelessForSessionRestoration())) &&
-            (this.valueWinCalculator === undefined || this.valueWinCalculator.constructor === ValueWinCalculator) &&
-            (this.waysWinCalculator === undefined || (this.waysWinCalculator instanceof WaysWinCalculator && this.waysWinCalculator.isStatelessForSessionRestoration()));
+        return this.constructor === VideoSlotWinCalculator &&
+            (this.config instanceof VideoSlotConfig || this.config instanceof VideoSlotWithFreeGamesConfig) && this.config.isResolvedForSessionRestoration() &&
+            this.lineWinCalculator instanceof LineWinCalculator && this.lineWinCalculator.constructor === LineWinCalculator && this.lineWinCalculator.usesConfig(this.config) &&
+            this.scatterWinCalculator instanceof ScatterWinCalculator && this.scatterWinCalculator.constructor === ScatterWinCalculator && this.scatterWinCalculator.usesConfig(this.config) && this.options.multiplierResolver === undefined && policySupported &&
+            (this.clusterWinCalculator === undefined || (this.clusterWinCalculator instanceof ClusterWinCalculator && this.clusterWinCalculator.usesConfig(this.config) && this.clusterWinCalculator.isStatelessForSessionRestoration())) &&
+            this.valueWinCalculator === undefined &&
+            (this.waysWinCalculator === undefined || (this.waysWinCalculator instanceof WaysWinCalculator && this.waysWinCalculator.usesConfig(this.config) && this.waysWinCalculator.isStatelessForSessionRestoration()));
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): void {

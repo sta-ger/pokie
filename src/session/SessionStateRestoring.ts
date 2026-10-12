@@ -5,7 +5,11 @@ export type SessionStateSchema =
     | {readonly kind: "seeded-video-slot"; readonly reels?: number; readonly symbols?: readonly (string | number)[]}
     | {readonly kind: "free-games" | "bet-modes"; readonly base: SessionStateSchema};
 
-/** Explicit promise that the codec covers every collaborator influencing future rounds. */
+/** Explicit promise that the codec covers every collaborator influencing future rounds,
+ * including resolved configuration, paytables, feature grants and nested calculator dependencies.
+ * Built-in certification recognizes only supported resolved data; custom collaborators need
+ * a complete capture/restore codec even when their containing calculator is a built-in class.
+ */
 export interface SessionStateRestoring {
     isSessionStateRestorable(): boolean;
     validateSessionState(state: unknown): void;

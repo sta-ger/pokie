@@ -48,33 +48,28 @@ export function validatePersistedSession(value: unknown, game: PokieGame): {stat
     }
     if (!isSnapshotData(state)) return {status: "corrupt-state", reason: "Session contains nonfinite, cyclic or nonserializable snapshot data."};
     try {
-        if (state.executionState === "durably-restorable") {
-            if (state.stateSchema === undefined) throw new Error("Required executable state schema is missing.");
-            const schema = game.getSessionStateSchema?.();
-            if (schema === undefined) return {status: "incompatible-state", reason: "Selected game does not declare an authoritative executable state codec."};
+        const schema = game.getSessionStateSchema?.();
+        if (schema !== undefined) {
+            // Capability markers and missing snapshots cannot choose a weaker codec.
             if (!sessionStateSchemasMatch(schema, state.stateSchema)) throw new Error("Stored executable schema does not match the selected game codec.");
-            validateExecutableState(state.featureState, schema, game.validateSessionState === undefined ? undefined : value => game.validateSessionState!(value, state.context));
-            if (schema.kind !== "custom") game.validateSessionState?.(state.featureState, state.context);
-            if (state.stateSchema.kind === "bet-modes" && !state.commandCapabilities?.modes?.includes((state.featureState as {betModeId: string}).betModeId)) {
+            const validator = state.executionState === "live-only" ? game.validateLiveSessionState ?? game.validateSessionState : game.validateSessionState;
+            validateExecutableState(state.featureState, schema,
+                validator === undefined ? undefined : value => Reflect.apply(validator, game, [value, state.context]), state.executionState === "live-only" && game.validateLiveSessionState !== undefined);
+            if (schema.kind !== "custom" && validator !== undefined) Reflect.apply(validator, game, [state.featureState, state.context]);
+            if (schema.kind === "bet-modes" && !capabilities.modes?.includes((state.featureState as {betModeId: string}).betModeId)) {
                 throw new Error("Persisted bet mode is not supported by the resolved model.");
             }
+        } else {
+            if (state.executionState === "durably-restorable") return {status: "incompatible-state", reason: "Selected game does not declare an authoritative executable state codec."};
+            // Legacy packages with no executable codec retain observable live-only envelopes.
+            // They cannot authorize reconstruction or selection from this metadata.
+            if (state.featureState !== undefined) validateExecutableState(state.featureState);
+            game.validateLiveSessionState?.(state.featureState, state.context);
         }
-        if (state.executionState === "live-only" && state.featureState !== undefined) {
-            const schema = game.getSessionStateSchema?.();
-            if (schema !== undefined) {
-                if (!sessionStateSchemasMatch(schema, state.stateSchema)) throw new Error("Stored executable schema does not match the selected game codec.");
-                // Live-only collaborators can expose partial snapshots. Their game validator owns them.
-                if (schema.kind === "custom") validateExecutableState(state.featureState, schema, game.validateSessionState === undefined ? undefined : value => game.validateSessionState!(value, state.context));
-                else {
-                    validateExecutableState(state.featureState);
-                    game.validateSessionState?.(state.featureState, state.context);
-                }
-            } else {
-                // A package without a declared codec stays live-only. It cannot authorize an
-                // executable snapshot for reconstruction; partial observable envelopes still
-                // receive nonmutating structural validation before publication.
-                validateExecutableState(state.featureState);
-            }
+        const authority = game.getSessionCommandCapabilities?.(state.context);
+        if (authority === undefined) return {status: "incompatible-state", reason: "Selected game does not declare authoritative command capabilities."};
+        if (!supportsSelections(authority.bets, capabilities.bets) || !supportsSelections(authority.modes, capabilities.modes)) {
+            throw new Error("Stored command capabilities do not match the selected game model.");
         }
     } catch (error) {
         return {status: "corrupt-state", reason: error instanceof Error ? error.message : String(error)};
@@ -92,4 +87,9 @@ function isSnapshotData(value: unknown, parents = new Set<object>(), depth = 0):
     const valid = Object.values(value).every(child => isSnapshotData(child, parents, depth + 1));
     parents.delete(value);
     return valid;
+}
+
+function supportsSelections<T extends string | number>(expected: readonly T[] | undefined, actual: readonly T[] | undefined): boolean {
+    if (actual === undefined) return true;
+    return Array.isArray(expected) && new Set(actual).size === actual.length && actual.every(selection => expected.includes(selection));
 }

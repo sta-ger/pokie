@@ -222,12 +222,22 @@ The selected game's `getSessionStateSchema()` declares the codec before reconstr
 `symbols` constrain the reconstructed model. Composed free-games/bet-mode schemas declare their nested
 `base`. A custom schema also requires `PokieGame.validateSessionState(state, context)`, and its session
 must capture and restore the complete model and executable state. Packages without a declaration can
-keep a primed live session but cannot promise durable reconstruction. See [serialization](serialization.md).
+keep a primed live session but cannot promise durable reconstruction. Repository commands also require
+`getSessionCommandCapabilities(context)`, a nonmutating declaration of the selected model's supported
+`bets` and optional executable `modes`. It must resolve without constructing a session or consuming RNG.
+Persisted capabilities may restrict that declared set, but cannot add selections. Generated games and
+scaffolds supply this declaration; hand-authored packages supply it alongside their compatibility promise.
+Direct constructors and `SessionRuntime` do not require these repository declarations. See [serialization](serialization.md).
 
 Syntactically valid retries validate the current record and the complete retained result before returning
 it. Already-computed retries can recover without a live executable object, including live-only sessions;
 new rounds still require that object or complete durable state. Unsupported bet/mode selections reject
-before pending recovery writes. Revision conflicts reject new rounds; completed retries return their
+before pending recovery writes. Schema matching applies to live-only records even when `featureState`
+is absent. A game explicitly supplies `validateLiveSessionState` to authorize partial state. Generated/scaffolded
+policies accept `{}` for an unseeded generator and require the complete seeded snapshot when a seed is supplied. They validate any captured RNG/reels, required feature counters and nested envelopes. A custom codec
+always runs its selected-game validator. `validateLiveSessionState(state, context)` can explicitly validate
+a partial snapshot, including an intentionally absent snapshot; it grants no reconstruction
+authority. Completed retries use this same policy and return retained accounting without constructing a session. Revision conflicts reject new rounds; completed retries return their
 original settled result even when the caller repeats its original revision.
 
 ```ts

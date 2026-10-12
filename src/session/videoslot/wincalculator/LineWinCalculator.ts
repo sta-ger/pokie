@@ -12,6 +12,10 @@ export class LineWinCalculator<T extends string | number | symbol = string> impl
         this.config = config;
     }
 
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
     public calculateWinningLines(
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,

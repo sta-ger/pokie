@@ -12,6 +12,10 @@ export class ScatterWinCalculator<T extends string | number | symbol = string> i
         this.config = config;
     }
 
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
     public calculateWinningScatters(
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,

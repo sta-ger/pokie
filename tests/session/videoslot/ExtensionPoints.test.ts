@@ -1,5 +1,7 @@
 import {
     AbstractVideoSlotSessionDecorator,
+    Paytable, SeededRandomNumberGenerator, LineWinCalculator, ScatterWinCalculator, ClusterWinCalculator, WaysWinCalculator,
+    VideoSlotWithBetModesSession, captureInitialPokieSessionState, VideoSlotSessionHandling, SessionStateRestoring,
     ClusterWinCalculating,
     FreeGamesRoundHandling,
     GameSessionConfig,
@@ -35,6 +37,54 @@ import {
 } from "@fromstan/pokie";
 
 describe("ExtensionPoints", () => {
+    test.each(["paytable", "config", "lines", "patterns", "sequence", "nested-line", "nested-scatter", "nested-cluster", "nested-ways", "calculator-config", "free-config"])("does not certify hidden state in %s collaborators", collaborator => {
+        class CountingPaytable extends Paytable {
+            public calls = 0;
+            public override getWinAmountForSymbol(symbol: string, count: number, bet: number): number {
+                return super.getWinAmountForSymbol(symbol, count, bet) + ++this.calls;
+            }
+        }
+        class CountingConfig extends VideoSlotConfig {
+            public calls = 0;
+            public override getPaytable(): Paytable {
+                this.calls++;
+                return super.getPaytable() as Paytable;
+            }
+        }
+        class CountingFreeConfig extends VideoSlotWithFreeGamesConfig {
+            public calls = 0;
+            public override getFreeGamesForScatters(symbol: string, count: number): number {
+                return super.getFreeGamesForScatters(symbol, count) + ++this.calls;
+            }
+        }
+        class CountingPatterns extends LeftToRightLinesPatterns {}
+        class CountingSequence extends SymbolsSequence {}
+        const config = collaborator === "config" ? new CountingConfig() : new VideoSlotConfig();
+        const hidden = new VideoSlotConfig();
+        hidden.setPaytable(new CountingPaytable(hidden.getAvailableBets()));
+        if (collaborator === "paytable") config.setPaytable(new CountingPaytable(config.getAvailableBets()));
+        if (collaborator === "lines") config.setLinesDefinitions({getLinesIds: () => ["0"], getLineDefinition: () => [0, 0, 0, 0, 0]});
+        if (collaborator === "patterns") config.setLinesPatterns(new CountingPatterns(5));
+        if (collaborator === "sequence") config.setSymbolsSequences(config.getSymbolsSequences().map(strip => new CountingSequence().fromArray(strip.getSymbols(0, strip.getSize()))));
+        const calculator = new VideoSlotWinCalculator(collaborator === "calculator-config" ? hidden : config,
+            new LineWinCalculator(collaborator === "nested-line" ? hidden : config),
+            new ScatterWinCalculator(collaborator === "nested-scatter" ? hidden : config),
+            collaborator === "nested-cluster" ? new ClusterWinCalculator(hidden) : undefined,
+            undefined, collaborator === "nested-ways" ? new WaysWinCalculator(hidden) : undefined);
+        let session: VideoSlotSessionHandling & SessionStateRestoring = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)), calculator);
+        expect(calculator.isStatelessForSessionRestoration()).toBe(collaborator === "free-config");
+        if (collaborator === "free-config") {
+            const free = new CountingFreeConfig(config);
+            // The base codec is complete, but this outer configuration owns another counter.
+            session = new VideoSlotWithFreeGamesSession(free, undefined, undefined, session);
+        }
+        expect(session.isSessionStateRestorable()).toBe(false);
+        expect(captureInitialPokieSessionState(undefined, session).executionState).toBe("live-only");
+        const modes = new VideoSlotWithBetModesSession(session);
+        expect(modes.isSessionStateRestorable()).toBe(false);
+        expect(captureInitialPokieSessionState(undefined, modes).executionState).toBe("live-only");
+    });
+
     test("VideoSlotWinCalculator delegates to injected LineWinCalculating/ScatterWinCalculating", () => {
         const fixedLine = new WinningLine(42, [0, 0, 0], [1, 1, 1], "0", [0, 1, 2], [], "A");
         const fixedScatter = new WinningScatter("S", [[0, 0]], 7);

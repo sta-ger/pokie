@@ -76,6 +76,10 @@ import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/O
 import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 import {REPO_ROOT} from "../../testUtils/offlinePokieDependencyOverride.js";
 
+const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
+    getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
+};
+
 const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
@@ -206,7 +210,7 @@ function rejectingMaterializer(message: string): ProjectMaterializing & {calls: 
 
 function createFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: () => {
             throw new Error("not used by these tests");
         },
@@ -241,7 +245,7 @@ function createPlayableSession(): GameSessionHandling {
 
 function createPlayableFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: () => createPlayableSession(),
     };
 }
@@ -250,7 +254,7 @@ function createPlayableFakeGame(manifest: PokieGameManifest): PokieGame {
 // round % 5 === 4 is an unstaked (free games) round.
 function createFreeGamesAwareFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: () => {
             let credits = 1000;
             const bet = 1;
@@ -292,7 +296,7 @@ function hashSeed(seed: string | undefined): number {
 // differently) — used for the Replay reproducibility tests.
 function createSeedAwareFakeGame(manifest: PokieGameManifest): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: (context) => {
             const seedValue = hashSeed(context?.seed === undefined ? undefined : String(context.seed));
             let credits = 1000;
@@ -328,7 +332,7 @@ function createSeedAwareFakeGame(manifest: PokieGameManifest): PokieGame {
 // No getSymbolsCombination() at all — screen should come back null.
 function createFakeGameWithoutScreen(manifest: PokieGameManifest): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: () => {
             let credits = 1000;
             const bet = 1;
@@ -6235,7 +6239,7 @@ describe("StudioServer", () => {
         // run through rather than either winning trivially on the first attempt or exhausting a large bound.
         function createWinsOnThirdRoundGame(): PokieGame {
             return {
-                getManifest: () => manifest,
+                getManifest: () => manifest, ...fixtureCommandAuthority,
                 createSession: () => {
                     let credits = 1000;
                     const bet = 1;
@@ -6268,7 +6272,7 @@ describe("StudioServer", () => {
         // StudioPlayService.findFreeGames()'s own feature-detection recognizes it as free-games-capable.
         function createTriggersFreeGamesOnThirdRoundGame(): PokieGame {
             return {
-                getManifest: () => manifest,
+                getManifest: () => manifest, ...fixtureCommandAuthority,
                 createSession: () => {
                     let credits = 1000;
                     const bet = 1;

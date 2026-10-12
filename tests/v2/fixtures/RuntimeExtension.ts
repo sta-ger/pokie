@@ -43,6 +43,7 @@ export function extensionGame(): PokieGame {
     return {
         getManifest: () => ({id: "consumer", name: "Consumer extension", version: "1"}),
         getSessionCompatibility: () => ({version: "math-1", stateSchemaVersion: "1"}),
+        getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}),
         getSessionStateSchema: () => ({kind: "seeded-video-slot"}),
         createSession: context => {
             const config = new VideoSlotConfig(undefined, new ReelsSymbolsSequencesGenerator(new SeededRandomNumberGenerator(context?.seed ?? 7)));

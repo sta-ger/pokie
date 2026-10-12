@@ -51,8 +51,12 @@ function reconciliationServiceWithZeroQuiescence(
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
-const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "validateSessionState"> = {
+const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
     getSessionStateSchema: () => ({kind: "custom"}),
+    getSessionCommandCapabilities: () => ({bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}),
+    validateLiveSessionState: value => {
+        if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value))) throw new Error("Invalid live fixture state");
+    },
     validateSessionState: value => {
         if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid fixture state");
     },

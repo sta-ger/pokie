@@ -1,8 +1,10 @@
 import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
 /** Validate the built-in state envelopes without constructing a session or drawing randomness.
  * Custom codecs additionally validate their opaque payload in PokieGame.validateSessionState.
+ * The built-in live-only partial policy permits an absent RNG/reel pair, while preserving model
+ * constraints, feature counters and nested envelopes. It never authorizes reconstruction.
  */
-export function validateExecutableState(value: unknown, schema?: SessionStateSchema, customValidator?: (state: unknown) => void): void {
+export function validateExecutableState(value: unknown, schema?: SessionStateSchema, customValidator?: (state: unknown) => void, partial = false): void {
     if (schema !== undefined && (typeof schema !== "object" || schema === null ||
         !["base", "seeded-video-slot", "free-games", "bet-modes", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
     if (schema?.kind === "custom") {
@@ -13,10 +15,11 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Executable state must be an object.");
     const state = value as Record<string, unknown>;
     if (schema?.kind === "base" && Object.keys(state).length !== 0) throw new Error("Base-game state must be empty.");
-    if (schema?.kind === "seeded-video-slot" && state.rngState === undefined) throw new Error("Required seeded RNG snapshot is missing.");
-    if (schema?.kind === "seeded-video-slot" && (!Array.isArray(state.reelStrips) || state.reelStrips.length === 0 ||
+    if (partial && schema?.kind === "seeded-video-slot" && (state.rngState === undefined) !== (state.reelStrips === undefined)) throw new Error("Partial seeded state must omit RNG and reels together.");
+    if (!partial && schema?.kind === "seeded-video-slot" && state.rngState === undefined) throw new Error("Required seeded RNG snapshot is missing.");
+    if (schema?.kind === "seeded-video-slot" && (!partial || state.reelStrips !== undefined) && (!Array.isArray(state.reelStrips) || state.reelStrips.length === 0 ||
         !state.reelStrips.every(strip => Array.isArray(strip) && strip.length > 0 && strip.every(symbol => typeof symbol === "string" || (typeof symbol === "number" && Number.isFinite(symbol)))))) throw new Error("Required resolved reel strips are missing or invalid.");
-    if (schema?.kind === "seeded-video-slot") {
+    if (schema?.kind === "seeded-video-slot" && state.reelStrips !== undefined) {
         const strips = state.reelStrips as (string | number)[][];
         if ((schema.reels !== undefined && strips.length !== schema.reels) ||
             (schema.symbols !== undefined && !strips.every(strip => strip.every(symbol => schema.symbols!.includes(symbol))))) throw new Error("Resolved reel strips do not match the selected model.");
@@ -38,5 +41,5 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if ("betModeId" in state && (typeof state.betModeId !== "string" || !state.betModeId || state.base === undefined)) throw new Error("Invalid bet-mode state.");
     if (state.base !== undefined) validateExecutableState(state.base,
-        schema?.kind === "free-games" || schema?.kind === "bet-modes" ? schema.base : undefined, customValidator);
+        schema?.kind === "free-games" || schema?.kind === "bet-modes" ? schema.base : undefined, customValidator, partial);
 }

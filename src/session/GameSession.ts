@@ -1,3 +1,5 @@
+import {VideoSlotConfig} from "./videoslot/VideoSlotConfig.js";
+import {VideoSlotWithFreeGamesConfig} from "./videoslot/VideoSlotWithFreeGamesConfig.js";
 import type {SessionStateRestoring} from "./SessionStateRestoring.js";
 import {GameSessionConfig} from "./GameSessionConfig.js";
 import type {GameSessionConfigRepresenting} from "./GameSessionConfigRepresenting.js";
@@ -25,8 +27,14 @@ export class GameSession implements GameSessionHandling, SessionStateRestoring {
         return {kind: "base"};
     }
 
+    public usesConfig(config: GameSessionConfigRepresenting): boolean {
+        return this.config === config;
+    }
+
     public isSessionStateRestorable(): boolean {
-        return this.constructor === GameSession && this.winCalculator.constructor === NoWinAmount;
+        const resolved = this.config.constructor === GameSessionConfig ||
+            ((this.config instanceof VideoSlotConfig || this.config instanceof VideoSlotWithFreeGamesConfig) && this.config.isResolvedForSessionRestoration());
+        return this.constructor === GameSession && resolved && this.winCalculator.constructor === NoWinAmount;
     }
 
     public toSessionState(): Record<string, never> {

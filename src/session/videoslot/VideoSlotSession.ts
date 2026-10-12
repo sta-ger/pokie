@@ -145,7 +145,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return this.constructor === VideoSlotSession && generator.isRandomStateRestorable?.() === true &&
             this.combinationsGenerator instanceof SymbolsCombinationsGenerator && this.combinationsGenerator.usesConfig(this.config) &&
             this.getSymbolsSequences().every(strip => strip.getSymbols(0, strip.getSize()).every(symbol => typeof symbol === "string" || (typeof symbol === "number" && Number.isFinite(symbol)))) &&
-            this.baseSession.constructor === GameSession && this.winCalculator instanceof VideoSlotWinCalculator && this.winCalculator.isStatelessForSessionRestoration();
+            this.baseSession instanceof GameSession && this.baseSession.usesConfig(this.config) && this.baseSession.isSessionStateRestorable() &&
+            this.winCalculator instanceof VideoSlotWinCalculator && this.winCalculator.usesConfig(this.config) && this.winCalculator.isStatelessForSessionRestoration();
     }
 
     public toSessionState(): {rngState?: unknown; reelStrips?: T[][]} {

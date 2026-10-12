@@ -372,11 +372,14 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             }
         }
 
-        if (bet !== undefined && !state.commandCapabilities!.bets.includes(bet)) return {status: "invalid-command", sessionId,
-            reason: `Session does not support bet ${bet} (available bets: ${state.commandCapabilities!.bets.join(", ")}).`};
-        if (mode !== undefined && !state.commandCapabilities!.modes?.includes(mode)) return {status: "invalid-command", sessionId,
-            reason: state.commandCapabilities!.modes === undefined ? "Session does not support bet mode selection." :
-                `Session does not support bet mode "${mode}" (available modes: ${state.commandCapabilities!.modes.join(", ")}).`};
+        const capabilities = this.game.getSessionCommandCapabilities!(state.context);
+        if ((bet !== undefined || mode !== undefined) && capabilities === undefined) return {status: "invalid-command", sessionId,
+            reason: "Selected game must declare command capabilities before a selection can authorize recovery."};
+        if (bet !== undefined && (!capabilities!.bets.includes(bet) || !state.commandCapabilities!.bets.includes(bet))) return {status: "invalid-command", sessionId,
+            reason: `Session does not support bet ${bet} (available bets: ${capabilities!.bets.join(", ")}).`};
+        if (mode !== undefined && (!capabilities!.modes?.includes(mode) || !state.commandCapabilities!.modes?.includes(mode))) return {status: "invalid-command", sessionId,
+            reason: capabilities!.modes === undefined ? "Session does not support bet mode selection." :
+                `Session does not support bet mode "${mode}" (available modes: ${capabilities!.modes.join(", ")}).`};
 
         const pending = requestId === undefined ? undefined : await this.readPendingAttempt(sessionId, requestId);
         if (pending !== undefined) {

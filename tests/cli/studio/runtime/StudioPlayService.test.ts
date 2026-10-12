@@ -35,6 +35,10 @@ import {
 } from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
+const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
+    getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
+};
+
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
 function wasmProject(
@@ -134,7 +138,7 @@ function createFakeVideoSlotSession(seed: string | number | undefined): GameSess
 }
 
 function createFakeVideoSlotGame(): PokieGame {
-    return {getManifest: () => manifest, createSession: (context) => createFakeVideoSlotSession(context?.seed)};
+    return {getManifest: () => manifest, ...fixtureCommandAuthority, createSession: (context) => createFakeVideoSlotSession(context?.seed)};
 }
 
 function fakeLoadVideoSlotGame(): (packageRoot: string) => Promise<PokieGame> {
@@ -147,7 +151,7 @@ function fakeLoadVideoSlotGame(): (packageRoot: string) => Promise<PokieGame> {
 function fakeLoadGameWithStaleSerializedWin(): (packageRoot: string) => Promise<PokieGame> {
     return () =>
         Promise.resolve({
-            getManifest: () => manifest,
+            getManifest: () => manifest, ...fixtureCommandAuthority,
             createSession: () => {
                 const session = createFakeVideoSlotSession(undefined);
                 return {...session, getWinAmount: () => 7};
@@ -280,7 +284,7 @@ function buildFreeGamesLibraryModeInput(modeName: string, libraryId: string): Ou
 // capture can't build a RoundArtifact and must report roundArtifactUnavailableReason instead.
 function createFakeNonVideoSlotGame(): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: () => {
             let credits = 1000;
             const bet = 1;
@@ -649,7 +653,7 @@ describe("StudioPlayService", () => {
         session.setBetMode = (mode) => {
             selectedMode = mode;
         };
-        const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+        const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
         const created = await service.newSession("/fake/project");
         if (created.status !== "ok") {
             throw new Error("expected ok");
@@ -1044,7 +1048,7 @@ describe("StudioPlayService", () => {
     describe("findAnyWin / findSymbolWin / findFreeGames", () => {
         it("findAnyWin returns the very first round when it already wins, driving the engine's own PlayUntilAnyWinStrategy against the live session", async () => {
             const {session} = createControllableVideoSlotSession(() => "A");
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1061,7 +1065,7 @@ describe("StudioPlayService", () => {
 
         it("findAnyWin repeats real, authoritative spins -- never a client-side calculation -- until one actually wins", async () => {
             const {session, getAttempts} = createControllableVideoSlotSession((attempt) => (attempt >= 4 ? "A" : undefined));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1081,7 +1085,7 @@ describe("StudioPlayService", () => {
 
         it("retains the matching settled round when progress cancels before publishing scenario success", async () => {
             const {session, getAttempts} = createControllableVideoSlotSession(() => "A");
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") throw new Error("expected ok");
             const controller = new AbortController();
@@ -1092,7 +1096,7 @@ describe("StudioPlayService", () => {
 
         it("does not publish a matching scenario result after progress supersedes its session", async () => {
             const {session, getAttempts} = createControllableVideoSlotSession(() => "A");
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") throw new Error("expected ok");
             expect(await service.findAnyWin(created.session.sessionId, {onProgress: () => service.reset()})).toEqual({status: "not-found"});
@@ -1101,7 +1105,7 @@ describe("StudioPlayService", () => {
 
         it("reports every settled search attempt through the optional durable-progress hook", async () => {
             const {session} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "A" : undefined));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}), undefined, "unknown", undefined, undefined, 5);
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}), undefined, "unknown", undefined, undefined, 5);
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") throw new Error("expected ok");
             const progress = jest.fn();
@@ -1116,7 +1120,7 @@ describe("StudioPlayService", () => {
             // maxFindScenarioSpins is overridden to a small bound (the 6th constructor argument) so this
             // exercises the real "search exhausted" path without waiting out thousands of real spins.
             const service = new StudioPlayService(
-                () => Promise.resolve({getManifest: () => manifest, createSession: () => session}),
+                () => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}),
                 undefined,
                 undefined,
                 undefined,
@@ -1141,7 +1145,7 @@ describe("StudioPlayService", () => {
 
         it("findSymbolWin stops on the first real spin that actually wins the requested symbol, not just any win", async () => {
             const {session, getAttempts} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "K" : undefined));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1189,7 +1193,7 @@ describe("StudioPlayService", () => {
 
         it("findFreeGames returns the very first round when it already triggers free games, driving the engine's own PlayFreeGamesStrategy against the live session", async () => {
             const {session} = createControllableFreeGamesSession(() => 3);
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1206,7 +1210,7 @@ describe("StudioPlayService", () => {
 
         it("findFreeGames repeats real, authoritative spins -- never a client-side calculation -- until one actually triggers free games", async () => {
             const {session, getAttempts} = createControllableFreeGamesSession((attempt) => (attempt >= 4 ? 3 : 0));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1402,7 +1406,7 @@ describe("StudioPlayService canonical error propagation", () => {
         let version = "1";
         const session = createFakeVideoSlotSession(undefined);
         const play = jest.spyOn(session, "play");
-        const game: PokieGame = {getManifest: () => ({...manifest, version}), createSession: () => session};
+        const game: PokieGame = {getManifest: () => ({...manifest, version}), ...fixtureCommandAuthority, createSession: () => session};
         const service = new StudioPlayService(() => Promise.resolve(game));
         const created = await service.newSession("/fake/project");
         if (created.status !== "ok") throw new Error("Could not create fixture session");

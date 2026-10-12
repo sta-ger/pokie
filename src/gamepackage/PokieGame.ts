@@ -13,6 +13,14 @@ export interface PokieGame {
     /** Authoritative codec declaration, resolved without constructing a session. Required for durable recovery. */
     getSessionStateSchema?(): SessionStateSchema;
 
+    /** Nonmutating selected-model authority, resolved without creating a session or drawing RNG.
+     * Required for repository execution/recovery; persisted sessions may restrict these selections.
+     */
+    getSessionCommandCapabilities?(context?: PokieGameContext): {readonly bets: readonly number[]; readonly modes?: readonly string[]};
+
+    /** Explicit partial-snapshot policy for live-only collaborators; never authorizes reconstruction. */
+    validateLiveSessionState?(state: unknown, context?: PokieGameContext): void;
+
     /** Hand-authored compatibility promise; defaults to manifest.version / state schema "1". */
     /** Nonmutating validation for a custom executable state codec, before construction or recovery. */
     validateSessionState?(state: unknown, context?: PokieGameContext): void;

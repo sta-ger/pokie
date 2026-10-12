@@ -18,6 +18,7 @@ import {WalletTransactionStatus} from "../../../src/server/wallet/WalletTransact
 const fixtureGame: PokieGame = {
     getManifest: () => ({id: "reconciliation", name: "Reconciliation", version: "1"}),
     getSessionStateSchema: () => ({kind: "base"}),
+    getSessionCommandCapabilities: () => ({bets: [5]}),
     createSession: () => new GameSession(),
 };
 

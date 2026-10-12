@@ -82,7 +82,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public isSessionStateRestorable(): boolean {
-        return this.constructor === VideoSlotWithFreeGamesSession && isSessionStateRestorable(this.baseSession) && this.freeGamesRoundHandler.constructor === FreeGamesRoundHandler;
+        return this.constructor === VideoSlotWithFreeGamesSession && this.config instanceof VideoSlotWithFreeGamesConfig && this.config.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession) && this.freeGamesRoundHandler.constructor === FreeGamesRoundHandler;
     }
 
     public toSessionState(): VideoSlotWithFreeGamesSessionState {

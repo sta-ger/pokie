@@ -29,8 +29,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "validateSessionState"> = {
+const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
     getSessionStateSchema: () => ({kind: "custom"}),
+    getSessionCommandCapabilities: () => ({bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}),
+    validateLiveSessionState: value => {
+        if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value))) throw new Error("Invalid live fixture state");
+    },
     validateSessionState: value => {
         if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid fixture state");
     },
@@ -218,6 +222,7 @@ function createRealFreeGamesGame(
 ): PokieGame & {lastSession?: VideoSlotWithFreeGamesSession} {
     return {
         getManifest: () => manifest,
+        getSessionCommandCapabilities: () => ({bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]}),
         getSessionStateSchema: () => ({kind: "free-games", base: {kind: "seeded-video-slot", reels: 5, symbols: ["A", "K", "Q", "J", "10", "9", "W", "S"]}}),
         createSession() {
             // Durable continuation requires an explicit seeded generator and reproducible model.
@@ -1857,10 +1862,16 @@ describe("PokieDevServer canonical rejection codes (controller-owned HTTP lane)"
         ["corrupt", "corrupt-state", 409],
         ["forged-schema", "corrupt-state", 409],
         ["missing-validator", "corrupt-state", 409],
+        ["live-schema-downgrade", "corrupt-state", 409],
+        ["live-seeded-downgrade", "corrupt-state", 409],
+        ["live-missing-custom-state", "corrupt-state", 409],
+        ["forged-bets", "corrupt-state", 409],
+        ["forged-modes", "corrupt-state", 409],
         ["absent", "not-found", 404],
         ["invalid", "invalid-command", 400],
     ])("translates %s without publishing or advancing a round", async (kind, code, expectedStatus) => {
-        const game = createFakeGame({id: "canonical-http", name: "Canonical HTTP", version: "1"});
+        const manifest = {id: "canonical-http", name: "Canonical HTTP", version: "1"};
+        const game: PokieGame = kind === "live-seeded-downgrade" ? createRealFreeGamesGame(manifest) : createFakeGame(manifest);
         const repository = new InMemorySessionRepository();
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
         try {
@@ -1873,19 +1884,37 @@ describe("PokieDevServer canonical rejection codes (controller-owned HTTP lane)"
             if (kind === "corrupt") Reflect.deleteProperty(stored, "featureState");
             if (kind === "forged-schema") stored.stateSchema = {kind: "base"};
             if (kind === "missing-validator") Reflect.deleteProperty(game, "validateSessionState");
-            if (["incompatible", "corrupt", "forged-schema"].includes(kind)) await repository.save(sessionId, stored);
+            if (kind === "live-schema-downgrade" || kind === "live-seeded-downgrade" || kind === "live-missing-custom-state") {
+                stored.executionState = "live-only";
+                Reflect.deleteProperty(stored, "featureState");
+                if (kind === "live-seeded-downgrade") stored.stateSchema = {kind: "custom"};
+                else if (kind === "live-schema-downgrade") stored.stateSchema = {kind: "base"};
+                else Reflect.deleteProperty(game, "validateLiveSessionState");
+            }
+            if (kind === "forged-bets") stored.commandCapabilities = {bets: [5, 999]};
+            if (kind === "forged-modes") stored.commandCapabilities = {bets: [5], modes: ["forged"]};
+            if (["incompatible", "corrupt", "forged-schema", "live-schema-downgrade", "live-seeded-downgrade", "live-missing-custom-state", "forged-bets", "forged-modes"].includes(kind)) await repository.save(sessionId, stored);
             const before = await repository.loadVersioned(sessionId);
+            const construct = jest.spyOn(game, "createSession"),
+                save = jest.spyOn(repository, "saveVersioned");
+            const walletWrites = [jest.spyOn(InMemoryWallet.prototype, "debit"), jest.spyOn(InMemoryWallet.prototype, "credit"), jest.spyOn(InMemoryWallet.prototype, "reverse")];
             const response = await postJson(`${baseUrl}/sessions/${kind === "absent" ? "missing" : sessionId}/spin`, kind === "invalid" ? {bet: -1} : undefined);
             expect(response.status).toBe(expectedStatus);
             expect(response.body.code).toBe(code);
             expect(response.body).not.toHaveProperty("win");
-            if (["incompatible", "corrupt", "forged-schema", "missing-validator", "absent"].includes(kind)) {
+            if (["incompatible", "corrupt", "forged-schema", "missing-validator", "absent", "live-schema-downgrade", "live-seeded-downgrade", "live-missing-custom-state", "forged-bets", "forged-modes"].includes(kind)) {
                 const read = await getJson(`${baseUrl}/sessions/${kind === "absent" ? "missing" : sessionId}`);
                 expect(read.status).toBe(expectedStatus);
                 expect(read.body.code).toBe(code);
                 expect(read.body).not.toHaveProperty("win");
             }
             expect(await repository.loadVersioned(sessionId)).toEqual(before);
+            expect(construct).not.toHaveBeenCalled();
+            expect(save).not.toHaveBeenCalled();
+            walletWrites.forEach(spy => {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore();
+            });
         } finally {
             await server.stop();
         }

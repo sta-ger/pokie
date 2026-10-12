@@ -24,8 +24,12 @@ import {WinEvaluationResult} from "../../../src/session/videoslot/winevaluation/
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
-const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "validateSessionState"> = {
+const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
     getSessionStateSchema: () => ({kind: "custom"}),
+    getSessionCommandCapabilities: () => ({bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}),
+    validateLiveSessionState: value => {
+        if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value))) throw new Error("Invalid live fixture state");
+    },
     validateSessionState: value => {
         if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid fixture state");
     },
@@ -623,8 +627,8 @@ describe("SpinCommandHandler", () => {
             delete: () => Promise.resolve(),
             listIncomplete: () => Promise.resolve([]),
         };
-        const handler = new SpinCommandHandler({getManifest: () => manifest, getSessionStateSchema: () => ({kind: "base"}), createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
-        await repository.save("checkpoint-rollback", fixtureState(1, "live-only"));
+        const handler = new SpinCommandHandler({getManifest: () => manifest, getSessionStateSchema: () => ({kind: "base"}), getSessionCommandCapabilities: () => ({bets: config.getAvailableBets()}), createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
+        await repository.save("checkpoint-rollback", {...fixtureState(1, "live-only"), stateSchema: {kind: "base"}, featureState: {}, commandCapabilities: {bets: [1, 2]}});
         await wallet.setBalance("checkpoint-rollback", 10);
         handler.primeSession("checkpoint-rollback", live, (await repository.loadVersioned("checkpoint-rollback"))?.version);
 
@@ -661,8 +665,8 @@ describe("SpinCommandHandler", () => {
             delete: deleteAttempted,
             listIncomplete: () => Promise.resolve([]),
         };
-        const handler = new SpinCommandHandler({getManifest: () => manifest, getSessionStateSchema: () => ({kind: "base"}), createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
-        await repository.save("stake-read-failure", fixtureState(1, "live-only"));
+        const handler = new SpinCommandHandler({getManifest: () => manifest, getSessionStateSchema: () => ({kind: "base"}), getSessionCommandCapabilities: () => ({bets: config.getAvailableBets()}), createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
+        await repository.save("stake-read-failure", {...fixtureState(1, "live-only"), stateSchema: {kind: "base"}, featureState: {}, commandCapabilities: {bets: [1, 2]}});
         await wallet.setBalance("stake-read-failure", 10);
         handler.primeSession("stake-read-failure", live, (await repository.loadVersioned("stake-read-failure"))?.version);
 
@@ -1421,7 +1425,7 @@ describe("SpinCommandHandler", () => {
         it.each(FRACTIONAL_BET_STAKES)("plays and persists a real fractional session at stake %s while blocking unavailable bets without mutation", async (bet) => {
             const live = fractionalBetSession();
             const play = jest.spyOn(live, "play");
-            const game: PokieGame = {getManifest: () => manifest, getSessionStateSchema: () => ({kind: "seeded-video-slot"}), createSession: () => live};
+            const game: PokieGame = {getManifest: () => manifest, getSessionStateSchema: () => ({kind: "seeded-video-slot"}), getSessionCommandCapabilities: () => ({bets: live.getAvailableBets()}), createSession: () => live};
             const repository = new InMemorySessionRepository();
             const wallet = new RecordingTransactionalWallet();
             await repository.save("fractional", {...fixtureState(1), stateSchema: live.getSessionStateSchema(), featureState: live.toSessionState(), commandCapabilities: {bets: live.getAvailableBets()}});

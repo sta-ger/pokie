@@ -48,6 +48,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
         "VideoSlotConfig",
         "VideoSlotSession",
         "VideoSlotSessionSerializer",
+        "validateExecutableState",
     ];
     if (winModel.type === "ways" || winModel.type === "clusters") {
         requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
@@ -296,6 +297,12 @@ module.exports = {
     },
     getSessionStateSchema() {
         return ${JSON.stringify(stateSchema)};
+    },
+    getSessionCommandCapabilities() {
+        return ${JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(stateSchema.kind === "bet-modes" ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})})};
+    },
+    validateLiveSessionState(${format === "ts" ? "state: unknown" : "state"}, ${contextParam}) {
+        validateExecutableState(state, ${JSON.stringify(stateSchema)}, undefined, context?.seed === undefined);
     },
     createSession(${contextParam}) {
 ${createSessionBody}    },

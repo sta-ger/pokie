@@ -1,3 +1,5 @@
+import {VideoSlotConfig} from "../VideoSlotConfig.js";
+import {VideoSlotWithFreeGamesConfig} from "../VideoSlotWithFreeGamesConfig.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
 import type {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 import {WaysAnalyzer} from "../combinations/WaysAnalyzer.js";
@@ -19,8 +21,13 @@ export class WaysWinCalculator<T extends string | number | symbol = string> impl
         this.waysAnalyzer = waysAnalyzer;
     }
 
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
     public isStatelessForSessionRestoration(): boolean {
-        return this.constructor === WaysWinCalculator && this.waysAnalyzer.constructor === WaysAnalyzer;
+        return this.constructor === WaysWinCalculator &&
+            (this.config instanceof VideoSlotConfig || this.config instanceof VideoSlotWithFreeGamesConfig) && this.config.isResolvedForSessionRestoration() && this.waysAnalyzer.constructor === WaysAnalyzer;
     }
 
     public calculateWinningWays(

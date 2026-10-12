@@ -280,6 +280,12 @@ model dimensions and the symbol alphabet. Generated games declare these constrai
 Custom schemas require the selected game's nonmutating `validateSessionState(state, context)`; a missing
 validator rejects even if the record claims `{kind: "custom"}`. Records without identity are rejected as `incompatible-state`;
 this workflow does not migrate historical snapshots or silently reset them.
+`getSessionCommandCapabilities(context)` additionally declares the supported model selections without
+construction or RNG draws. Repository validation requires this authority, including for HTTP reads,
+cached results and direct reconciliation. Persisted capability lists may restrict the declared set but may
+never expand it; the current bet and captured mode must belong to those lists. Missing authority is
+`incompatible-state`; forged selections are `corrupt-state`. Initial creation and direct session callers
+retain their constructor defaults; a hand-authored repository game declares its existing bets/modes explicitly.
 
 Capture initial state with the game as the fifth argument to `captureInitialPokieSessionState`. The record
 owns the construction context (including numeric versus string seeds), resolved model identity, nominal bet,
@@ -294,7 +300,7 @@ round, and never replay earlier rounds. Public serializers do not expose `featur
 
 | Composition | Automatic durable restoration |
 | --- | --- |
-| Plain `GameSession` with `NoWinAmount` | Complete base bet/credits, empty codec |
+| Plain `GameSession` with supported resolved config and `NoWinAmount` | Complete base bet/credits, empty codec |
 | `VideoSlotSession` with built-in seeded generator bound to its config, stateless calculator and base session | Resolved JSON symbol reels, seeded RNG, bet and credits |
 | Built-in free-games decorator around that session | Nested resolved reels/RNG, counters, bank and last grant |
 | Built-in bet-mode decorator around a supported base | Nested base and selected mode |
@@ -309,8 +315,27 @@ and custom decorators must make their own complete-state promise; inheriting an 
 insufficient. A game without a game-level schema declaration remains playable with a primed live session,
 but its new captures are `live-only`. Seeded base state requires both its RNG snapshot and resolved reels;
 free and mode state require nested base state. Unserializable symbols and generators bound to another
-configuration do not receive the built-in restoration promise.
+configuration do not receive the built-in restoration promise. Automatic configuration certification
+requires exact built-in `GameSessionConfig`, `VideoSlotConfig` or `VideoSlotWithFreeGamesConfig` compositions,
+with built-in paytables, paylines/patterns and resolved symbol sequences. It checks the outer free-game
+configuration as well as its base. Built-in line/scatter/cluster/ways calculators must use the session's
+certified configuration; class identity alone does not certify their injected dependencies. Custom paytables,
+configuration subclasses and calculators with untracked value maps or callbacks stay live-only. Their
+live execution and injection semantics remain available. A complete custom session codec can explicitly
+capture these collaborators' state, validate it through the selected game and restore it before the next round.
 Invalid counters, nonfinite/negative banks and invalid seeded RNG snapshots are rejected.
+
+Partial state requires the selected game's explicit `validateLiveSessionState` policy; the marker alone does
+not relax required fields or schema matching. Generated/scaffolded policies require complete RNG/reels when
+a seed is supplied and allow a partial object for unseeded play. Built-in video-slot partial state is an object
+that may omit RNG/reels together (an unseeded capture is `{}`), while any fields present remain validated
+against the selected schema. Free-game and bet-mode envelopes still require their counters/selection and
+nested base object. An absent built-in feature snapshot is corrupt. Custom state always invokes the game's
+validator, including when absent. A game may explicitly provide `validateLiveSessionState(state, context)`
+for its partial snapshot; otherwise `validateSessionState` applies. Neither a partial snapshot nor a
+live-only marker authorizes reconstruction. Games without an executable codec can retain observable-only
+live records and construction-free completed retries, with declared command authority and structural
+snapshot checks. New rounds after loss of the live object remain unsupported.
 
 Versioned caches bind to both the committed revision and detached record bytes. Alternating handlers
 reconstruct after another writer advances the record. In-memory repositories and retry results detach
