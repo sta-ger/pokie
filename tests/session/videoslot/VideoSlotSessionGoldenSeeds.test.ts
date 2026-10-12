@@ -5,7 +5,7 @@ import {
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotWinCalculator,
-} from "pokie";
+} from "@fromstan/pokie";
 import {goldenVideoSlotSymbolsSequences} from "./VideoSlotGoldenTestFixtures.js";
 
 // Pins the exact screen and win for a handful of known seeds against the fixed reel strips in

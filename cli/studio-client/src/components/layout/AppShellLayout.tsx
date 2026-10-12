@@ -107,12 +107,12 @@ export function AppShellLayout({
                         />
                         {breadcrumbs.length === 0 ? (
                             <BrandLink onHomeClick={onHomeClick} underline="never" c="inherit">
-                                <Title order={3}>POKIE Studio</Title>
+                                <Title order={3}>FromStan/POKIE Studio</Title>
                             </BrandLink>
                         ) : (
                             <Breadcrumbs className="studio-app-breadcrumbs">
                                 <BrandLink onHomeClick={onHomeClick} underline="hover" size="sm" fw={700}>
-                                    POKIE Studio
+                                    FromStan/POKIE Studio
                                 </BrandLink>
                                 {breadcrumbs.map((crumb, index) =>
                                     crumb.onClick ? (

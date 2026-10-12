@@ -1,4 +1,4 @@
-import type {ReplayDescriptor} from "pokie";
+import type {ReplayDescriptor} from "@fromstan/pokie";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 

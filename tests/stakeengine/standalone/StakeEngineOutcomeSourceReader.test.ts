@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
-import {StakeEngineExportModeInput, StakeEngineExporter, StakeEngineOutcomeSourceReader, StakeEngineStandaloneAnalyzer} from "pokie";
+import {StakeEngineExportModeInput, StakeEngineExporter, StakeEngineOutcomeSourceReader, StakeEngineStandaloneAnalyzer} from "@fromstan/pokie";
 import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary} from "../StakeEngineTestFixtures.js";
 
 function writeIndexJson(dir: string, modes: readonly {name: string; cost: number; events: string; weights: string}[]): void {

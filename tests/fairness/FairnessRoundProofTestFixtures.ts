@@ -5,7 +5,7 @@ import {
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriteResult,
     OutcomeLibraryBundleWriter,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 export const FAIRNESS_TEST_POKIE_VERSION = "1.3.0";

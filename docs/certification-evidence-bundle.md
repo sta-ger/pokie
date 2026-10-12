@@ -177,7 +177,7 @@ doesn't hash to its own `evidenceContentHash`, say) aborts the publish exactly l
 bundle is never made visible at `outDir`.
 
 ```ts
-import {CertificationEvidenceBundleBuilder} from "pokie";
+import {CertificationEvidenceBundleBuilder} from "@fromstan/pokie";
 
 const builder = new CertificationEvidenceBundleBuilder(pokieVersion);
 const result = await builder.buildFromBundle(
@@ -285,7 +285,7 @@ See [CLI](cli.md#pokie-certification-build-bundledir-configjson) for full option
 ## Programmatic usage
 
 ```ts
-import {CertificationEvidenceBundleBuilder, CertificationEvidenceBundleValidator, CertificationEvidenceBundleVerifier} from "pokie";
+import {CertificationEvidenceBundleBuilder, CertificationEvidenceBundleValidator, CertificationEvidenceBundleVerifier} from "@fromstan/pokie";
 
 const builder = new CertificationEvidenceBundleBuilder(pokieVersion);
 const result = await builder.buildFromBundle(

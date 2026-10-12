@@ -1,4 +1,4 @@
-import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "pokie";
+import {loadPokieGame, PokieClientServer, PokieClientServerHandling, PokieDevServer, PokieDevServerHandling, ReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -58,7 +58,7 @@ describe("CLI workflow (integration): pokie build output passes validate/sim/rep
         expect(fs.existsSync(path.join(outDir, "README.md"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "src", "index.ts"))).toBe(true);
         expect(fs.existsSync(path.join(outDir, "dist", "index.js"))).toBe(true);
-        expect(fs.lstatSync(path.join(outDir, "node_modules", "pokie")).isSymbolicLink()).toBe(true);
+        expect(fs.lstatSync(path.join(outDir, "node_modules", "@fromstan", "pokie")).isSymbolicLink()).toBe(true);
         // No blueprint/build-info/creation-seed metadata of any kind is left in a newly built package.
         expect(fs.readdirSync(path.join(outDir, "src"))).toEqual(["index.ts"]);
         await expect(loadPokieGame(outDir)).resolves.toMatchObject({getManifest: expect.any(Function)});

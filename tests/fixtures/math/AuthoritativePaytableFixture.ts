@@ -1,4 +1,4 @@
-import type {GameBlueprint, WeightedOutcomeLibrary} from "pokie";
+import type {GameBlueprint, WeightedOutcomeLibrary} from "@fromstan/pokie";
 
 export type AuthoredAwardCase = "missing-symbol" | "missing-count" | "zero" | "positive";
 

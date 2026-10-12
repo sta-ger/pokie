@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, StakeEngineManifest, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, StakeEngineManifest, ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/project/stakeengine/export's own DTO — mirrors the planner's no-overwrite destination
 // contract exactly. A conflict is terminal for this prepared plan; callers must choose a new output

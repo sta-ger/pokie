@@ -1,4 +1,4 @@
-import {ReelStrip, RequiredSequenceConstraint, ViolationCountReelStripScorer} from "pokie";
+import {ReelStrip, RequiredSequenceConstraint, ViolationCountReelStripScorer} from "@fromstan/pokie";
 
 describe("RequiredSequenceConstraint", () => {
     test("is silent when the sequence occurs at least the default minimum of 1 time", () => {

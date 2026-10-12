@@ -11,7 +11,7 @@ import {
     WASM_RUNTIME_PLAY_CAPABILITY,
     WASM_RUNTIME_REPLAY_CAPABILITY,
     WASM_PRODUCT_CONTRACT,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
@@ -130,7 +130,7 @@ export class InspectCommand implements CliCommandHandling {
         }
     }
 
-    private async printWasmManifest(project: PokieProject): Promise<import("pokie").PokieWasmComponentManifest> {
+    private async printWasmManifest(project: PokieProject): Promise<import("@fromstan/pokie").PokieWasmComponentManifest> {
         const manifestRead = await readWasmComponentManifest(project);
         if (!manifestRead.supported) {
             throw new Error(manifestRead.diagnostic.message);

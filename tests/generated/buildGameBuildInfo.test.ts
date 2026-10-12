@@ -1,4 +1,4 @@
-import {buildGameBuildInfo, computeGameBlueprintHash, GameBlueprint} from "pokie";
+import {buildGameBuildInfo, computeGameBlueprintHash, GameBlueprint} from "@fromstan/pokie";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {

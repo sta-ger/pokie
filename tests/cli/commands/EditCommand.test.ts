@@ -1,4 +1,4 @@
-import {GameBlueprint, GameBlueprintValidating, PokieProject, PROJECT_TYPE_CAPABILITIES, ProjectResolving, ValidationIssue} from "pokie";
+import {GameBlueprint, GameBlueprintValidating, PokieProject, PROJECT_TYPE_CAPABILITIES, ProjectResolving, ValidationIssue} from "@fromstan/pokie";
 import {EditCommand} from "../../../cli/commands/EditCommand.js";
 import {GameBlueprintWizarding, GameBlueprintWizardOptions} from "../../../cli/wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";

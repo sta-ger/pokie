@@ -1,4 +1,4 @@
-import {SimulationAccumulator, SimulationConvergenceChecker} from "pokie";
+import {SimulationAccumulator, SimulationConvergenceChecker} from "@fromstan/pokie";
 
 function accumulatorWithZeroVariance(rounds: number): SimulationAccumulator {
     const accumulator = new SimulationAccumulator();

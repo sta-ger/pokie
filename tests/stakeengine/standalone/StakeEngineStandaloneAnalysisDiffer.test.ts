@@ -4,7 +4,7 @@ import {
     type StakeEngineOutcomeSourceReadResult,
     type StakeEngineStandaloneAnalysis,
     type StakeEngineStandaloneModeAnalysis,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function buildMode(modeName: string, overrides: Partial<StakeEngineStandaloneModeAnalysis> = {}): StakeEngineStandaloneModeAnalysis {
     return {

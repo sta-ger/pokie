@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameManifest} from "pokie";
+import type {ArtifactConversionPlan, OutcomeLibraryGenerationStrategy, PokieGameManifest} from "@fromstan/pokie";
 
 // The Studio Generate step's own "how big is this?" preview -- mirrors "pokie outcomelibrary generate
 // --estimate" exactly (see OutcomeLibraryCommand.executeEstimate): the same estimateExactOutcomeSpaceSize

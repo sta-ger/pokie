@@ -1,4 +1,4 @@
-import {ReelStrip, ReelStripAnalyzer} from "pokie";
+import {ReelStrip, ReelStripAnalyzer} from "@fromstan/pokie";
 
 describe("ReelStripAnalyzer", () => {
     test("analyze reports counts, frequencies, min/max circular distances, and maximum consecutive runs", () => {

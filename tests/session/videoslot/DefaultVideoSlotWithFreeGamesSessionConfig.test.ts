@@ -1,4 +1,4 @@
-import {CustomLinesDefinitions, Paytable, VideoSlotConfig, VideoSlotWithFreeGamesConfig} from "pokie";
+import {CustomLinesDefinitions, Paytable, VideoSlotConfig, VideoSlotWithFreeGamesConfig} from "@fromstan/pokie";
 
 describe("DefaultVideoSlotWithFreeGamesSessionConfig", () => {
     let config: VideoSlotWithFreeGamesConfig;

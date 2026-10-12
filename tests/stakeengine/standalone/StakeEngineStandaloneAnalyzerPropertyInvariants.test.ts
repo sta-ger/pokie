@@ -1,5 +1,5 @@
 import {expectRareMetrics, expectRelative, rareStakeSource, RARE_PROBABILITY} from "./StakeProbabilityTestFixtures.js";
-import {SeededRandomNumberGenerator, StakeEngineEvent, StakeEngineOutcomeSourceReadResult, StakeEngineStandaloneAnalyzer, toCanonicalJson} from "pokie";
+import {SeededRandomNumberGenerator, StakeEngineEvent, StakeEngineOutcomeSourceReadResult, StakeEngineStandaloneAnalyzer, toCanonicalJson} from "@fromstan/pokie";
 
 // StakeEngineStandaloneAnalyzer.test.ts hand-verifies exact statistics for a handful of hand-picked fixtures,
 // including a few uint64-scale ones. This sweeps a bounded, fixed set of seeds through a deterministically

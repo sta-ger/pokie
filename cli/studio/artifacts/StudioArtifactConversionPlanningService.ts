@@ -6,7 +6,7 @@ import {
     type PokieProject,
     ProjectResolving,
     ProjectTargetResolver,
-} from "pokie";
+} from "@fromstan/pokie";
 import path from "path";
 import {createUnresolvedRuntimePlan} from "./createExternalArtifactConversionPlan.js";
 

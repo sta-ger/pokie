@@ -1,5 +1,5 @@
 import {EventEmitter} from "events";
-import {GameBlueprint, WeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryValidator} from "pokie";
+import {GameBlueprint, WeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryValidator} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

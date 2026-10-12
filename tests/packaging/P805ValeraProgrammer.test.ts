@@ -121,7 +121,7 @@ describe("P8-05 Valera Programmer installed public path", () => {
                 runNpm(["install", "--ignore-scripts", "--no-audit", "--no-fund", "--prefix", installation, archive]);
                 launcher = path.join(installation, "node_modules", ".bin", process.platform === "win32" ? "pokie.cmd" : "pokie");
             }
-            const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "pokie", "package.json"), "utf8")) as {gitHead?: string};
+            const installedPackage = JSON.parse(readFileSync(path.join(installation, "node_modules", "@fromstan", "pokie", "package.json"), "utf8")) as {gitHead?: string};
             const run = (...args: string[]) => execFileSync(launcher, args, {encoding: "utf8", stdio: "pipe"});
             const npxLauncher = path.join(path.dirname(path.dirname(process.execPath)), "lib", "node_modules", "npm", "bin", "npx-cli.js");
             const blueprint = path.join(candidateDirectory, "Valera packed blueprint.json");

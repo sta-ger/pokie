@@ -5,7 +5,7 @@ import {
     WeightedOutcomeSelectionError,
     WeightedOutcomeSelector,
     buildWeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 function fixedIntSource(value: number): WeightedOutcomeRandomSource {

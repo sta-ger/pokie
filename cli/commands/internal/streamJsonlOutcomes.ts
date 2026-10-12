@@ -1,6 +1,6 @@
 import fs from "fs";
 import readline from "readline";
-import {WeightedOutcomeInput} from "pokie";
+import {WeightedOutcomeInput} from "@fromstan/pokie";
 
 // Streams "filePath" (one canonical-JSON `{"id": string, "weight": number, "artifact": object}` outcome per
 // line, NOT wrapped in a WeightedOutcomeLibrary object) via Node's readline over a read stream — so

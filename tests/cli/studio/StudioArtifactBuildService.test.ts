@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
-import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "pokie";
+import {ArtifactBuildCancelledError, ArtifactBuilderRegistry, ArtifactConversionPlanner, ManagedOutcomeProjectService, OutcomeLibraryBundleWriter, PROJECT_TYPE_CAPABILITIES, type ArtifactTargetType, type PokieProject, type ProjectResolving, type WeightedOutcomeInput} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {InMemoryStudioProjectRegistry} from "../../../cli/studio/InMemoryStudioProjectRegistry.js";
 import {StudioProjectRegistrationService} from "../../../cli/studio/StudioProjectRegistrationService.js";

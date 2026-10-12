@@ -11,13 +11,13 @@ const staleProductStatusLabels = /\b(preview|experimental|prototype|legacy|depre
 
 describe("POKIE client public presentation", () => {
     it("keeps every public client entry surface free of stale product-status labels", () => {
-        const readmeClientCommand = readme.match(/`npx pokie client\n? {2}<packageRoot>`[^;]+;/)?.[0];
+        const readmeClientCommand = readme.match(/`npx --package @fromstan\/pokie pokie client\n? {2}<packageRoot>`[^;]+;/)?.[0];
         const fallbackTitle = clientHtml.match(/<title>([^<]+)<\/title>/)?.[1];
         const fallbackHeader = clientHtml.match(/<h1 id="game-title">([^<]+)<\/h1>/)?.[1];
         const runtimeGameTitleAssignment = clientMain.match(/elements\.gameTitle\.textContent = ([^;]+);/)?.[1];
 
-        expect(CLIENT_PRODUCT_NAME).toBe("POKIE client");
-        expect(describeClientGameTitle("Fixture Slot")).toBe("Fixture Slot — POKIE client");
+        expect(CLIENT_PRODUCT_NAME).toBe("FromStan/POKIE client");
+        expect(describeClientGameTitle("Fixture Slot")).toBe("Fixture Slot — FromStan/POKIE client");
         expect(readmeClientCommand).toContain("serves the POKIE browser client for a running `pokie serve`");
         expect(fallbackTitle).toBe(CLIENT_PRODUCT_NAME);
         expect(fallbackHeader).toBe(CLIENT_PRODUCT_NAME);

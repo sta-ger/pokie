@@ -7,7 +7,7 @@ import {
     PAR_IMPORT_OPERATION,
     ProjectResolving,
     ProjectTargetResolver,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {ParCommand} from "./ParCommand.js";
 import {StakeEngineCommand} from "./StakeEngineCommand.js";

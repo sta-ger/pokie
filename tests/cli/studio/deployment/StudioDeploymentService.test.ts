@@ -14,7 +14,7 @@ import {
     WeightedOutcomeLibrary,
     WeightedOutcomeLibraryAnalyzer,
     WinEvaluationResult,
-} from "pokie";
+} from "@fromstan/pokie";
 import {StudioDeploymentService as ConfiguredStudioDeploymentService} from "../../../../cli/studio/deployment/StudioDeploymentService.js";
 import type {ValidatedDeploymentRunRequest} from "../../../../cli/studio/deployment/validateDeploymentRunRequest.js";
 import {resolveCurrentBuildModeIds} from "../../../../cli/studio/deployment/resolveCurrentBuildModeIds.js";

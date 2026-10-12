@@ -19,7 +19,7 @@ const COMPILED_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", 
 // stale.
 //
 // Note this is deliberately used as an *explicit override* in these tests, not by exercising
-// ParallelSimulationRunner's own default resolution: under ts-jest, `from "pokie"` resolves straight
+// ParallelSimulationRunner's own default resolution: under ts-jest, `from "@fromstan/pokie"` resolves straight
 // to src/index.ts (never a compiled dist/ output), so the default mechanism itself — which locates a
 // compiled sibling next to a compiled internal/defaultWorkerEntryUrl.js — has no compiled sibling to
 // find there even after this build. The default mechanism is instead verified for real by the npm
@@ -29,7 +29,7 @@ function resolveCompiledWorkerEntryUrl(): URL {
     return pathToFileURL(COMPILED_WORKER_ENTRY);
 }
 
-// The fixture game packages these real-worker tests load each do a bare `require("pokie")` of their
+// The fixture game packages these real-worker tests load each do a bare `require("@fromstan/pokie")` of their
 // own — see ensureFixturesCanRequirePokie.ts for why that otherwise can't resolve inside a real
 // worker_thread.
 ensureFixturesCanRequirePokie();

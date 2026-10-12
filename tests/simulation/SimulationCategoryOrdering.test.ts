@@ -1,4 +1,4 @@
-import {SimulationCategoryOrdering} from "pokie";
+import {SimulationCategoryOrdering} from "@fromstan/pokie";
 
 describe("SimulationCategoryOrdering", () => {
     test("puts base first when present", () => {

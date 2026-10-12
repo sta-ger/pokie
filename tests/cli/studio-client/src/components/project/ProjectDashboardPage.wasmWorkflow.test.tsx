@@ -44,7 +44,7 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
                         artifact: {
                             format: "pokie.wasm.v1",
                             abiVersion: "1.0.0",
-                            adapter: "pokie/wasm",
+                            adapter: "@fromstan/pokie/wasm",
                             bytes: 4096,
                             sha256: "sha256:component-bytes",
                             configurationHash: "sha256:configuration",
@@ -77,7 +77,7 @@ describe("ProjectDashboardPage canonical WASM workflow", () => {
         expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("30 total stop bits across all reels");
         expect(screen.getByText(/separate JavaScript evaluateWinMultiplier/)).toHaveTextContent("Rejects ways, clusters, mechanics.freeGames, and nonempty betModes");
         expect(screen.getByText("Artifact ABI")).toBeInTheDocument();
-        expect(screen.getByText("pokie/wasm")).toBeInTheDocument();
+        expect(screen.getByText("@fromstan/pokie/wasm")).toBeInTheDocument();
         expect(screen.getByText("4096")).toBeInTheDocument();
         expect(screen.getByText("sha256:component-bytes")).toBeInTheDocument();
         expect(screen.getByText("sha256:configuration")).toBeInTheDocument();

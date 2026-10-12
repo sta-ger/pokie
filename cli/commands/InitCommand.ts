@@ -1,7 +1,7 @@
 import {Command} from "commander";
 import fs from "fs";
 import path from "path";
-import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
+import {buildPackageJsonPatch, PackageJsonLike, PokieGamePackageValidating, PokieGamePackageValidator} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {GamePackagePreparationError, GamePackagePreparationPhase} from "../prepare/GamePackagePreparationError.js";
 import {extractNpmStderr, PackageCommandRunning, runPackageCommand} from "../prepare/PackageCommandRunner.js";
@@ -280,7 +280,7 @@ export class InitCommand implements CliCommandHandling {
 
     private printPrepared(scaffold: ScaffoldResult, projectRoot: string): void {
         console.log(`\nGame package "${scaffold.manifest.name}" (id: "${scaffold.manifest.id}") prepared and verified in "${projectRoot}".`);
-        console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "pokie".`);
+        console.log(`Load it anywhere with: loadPokieGame("${projectRoot}") from "@fromstan/pokie".`);
         console.log(`\nNext:`);
         console.log(`  pokie validate ${projectRoot}`);
         console.log(`  pokie sim ${projectRoot} --rounds 10000 --seed demo --out sim.json`);

@@ -1,4 +1,4 @@
-import {computeFairnessServerSeedCommitment, FairnessServerSeedCommitmentValidator} from "pokie";
+import {computeFairnessServerSeedCommitment, FairnessServerSeedCommitmentValidator} from "@fromstan/pokie";
 
 describe("FairnessServerSeedCommitmentValidator", () => {
     const validator = new FairnessServerSeedCommitmentValidator();

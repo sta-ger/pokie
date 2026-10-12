@@ -1,4 +1,4 @@
-import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "pokie";
+import {PokieProject, ProjectResolving, ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";

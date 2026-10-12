@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ArtifactTargetType, BuildProductMatrixCellState} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType, BuildProductMatrixCellState} from "@fromstan/pokie";
 
 // GET /api/project/artifacts/targets' own DTO -- one entry per ArtifactBuilderRegistry.listTargets(),
 // with `supported` already resolved against the active project's own ProjectType (see

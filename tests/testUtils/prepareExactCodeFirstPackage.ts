@@ -19,7 +19,7 @@ const EXACT_MULTI_MODE_GAME_SOURCE = `import {
     VideoSlotSession,
     VideoSlotSessionSerializer,
     VideoSlotWithBetModesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const manifest = {id: "code-first-registry-slot", name: "Code-first Registry Slot", version: "1.0.0"};
 

@@ -1,4 +1,4 @@
-import type {PokieGameManifest} from "pokie";
+import type {PokieGameManifest} from "@fromstan/pokie";
 import type {GamePackagePreparationPhase} from "./GamePackagePreparationError.js";
 
 export type PreparationResult = {

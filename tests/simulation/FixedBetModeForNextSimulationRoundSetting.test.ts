@@ -8,7 +8,7 @@ import {
     VideoSlotSession,
     VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function createPlainFakeSession(): GameSessionHandling {
     return {

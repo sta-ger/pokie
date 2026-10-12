@@ -3,7 +3,7 @@ import {
     type OutcomeLibraryGenerationMode,
     type OutcomeLibraryGenerationSample,
     parsePositiveOutcomeLibraryGenerationDecimal,
-} from "pokie";
+} from "@fromstan/pokie";
 
 export type OutcomeLibraryGenerateBoundedInput = {sampleSize?: unknown; seed?: unknown};
 export type OutcomeLibraryGenerateRequestInput = {

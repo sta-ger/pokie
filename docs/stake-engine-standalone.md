@@ -165,7 +165,7 @@ while one that can fire multiple times per outcome has the latter `>=` the forme
 ## Programmatic usage
 
 ```ts
-import {StakeEngineOutcomeSourceReader, StakeEngineStandaloneAnalyzer} from "pokie";
+import {StakeEngineOutcomeSourceReader, StakeEngineStandaloneAnalyzer} from "@fromstan/pokie";
 
 const readResult = await new StakeEngineOutcomeSourceReader().readFromDirectory("./some-stake-dir");
 
@@ -205,7 +205,7 @@ swings past a constructor-configurable threshold (`DEFAULT_RTP_DELTA_WARNING_THR
 "flag it, don't fail on it" contract `pokie diff` itself uses.
 
 ```ts
-import {StakeEngineStandaloneAnalysisDiffer} from "pokie";
+import {StakeEngineStandaloneAnalysisDiffer} from "@fromstan/pokie";
 
 const diff = new StakeEngineStandaloneAnalysisDiffer().diff(beforeAnalysis, afterAnalysis);
 console.log(diff.perMode.base.warnings);

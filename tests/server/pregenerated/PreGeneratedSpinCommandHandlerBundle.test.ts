@@ -17,7 +17,7 @@ import {
     WeightedOutcomeRandomSource,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {artifactWith} from "../../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 // Ids given in canonical (plain code-point) sort order — jackpot < no-win < small-win — since

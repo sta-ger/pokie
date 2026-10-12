@@ -2,7 +2,7 @@ import {execFileSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {SimulationReport} from "pokie";
+import {SimulationReport} from "@fromstan/pokie";
 import {InitCommand} from "../../cli/commands/InitCommand.js";
 import {GamePackagePreparationError} from "../../cli/prepare/GamePackagePreparationError.js";
 import {PackageCommandRunning, runPackageCommand, withLocalPokieInstall} from "../../cli/prepare/PackageCommandRunner.js";
@@ -115,7 +115,7 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
         };
         expect(pkg.name).toBe("existing-project");
         expect(pkg.description).toBe("a project that predates pokie init");
-        expect(pkg.dependencies?.pokie).toBeDefined();
+        expect(pkg.dependencies?.["@fromstan/pokie"]).toBeDefined();
         expect(fs.readFileSync(path.join(projectRoot, "notes.txt"), "utf-8")).toBe("hand-written notes\n");
         expect(fs.existsSync(path.join(projectRoot, "dist", "index.js"))).toBe(true);
     });
@@ -208,7 +208,7 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
             encoding: "utf-8",
             env: {...process.env, "npm_config_prefix": linkNpmPrefix},
         });
-        linkedPokieRoot = path.join(linkInstallDir, "node_modules", "pokie");
+        linkedPokieRoot = path.join(linkInstallDir, "node_modules", "@fromstan", "pokie");
     });
 
     afterAll(() => {
@@ -246,7 +246,7 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
 
         expect(exitCode).toBe(0);
         expect(packageJsonDuringInstall).toHaveLength(1);
-        expect((JSON.parse(packageJsonDuringInstall[0]) as {dependencies: Record<string, string>}).dependencies.pokie).toBe(
+        expect((JSON.parse(packageJsonDuringInstall[0]) as {dependencies: Record<string, string>}).dependencies["@fromstan/pokie"]).toBe(
             `file:${linkedPokieRoot}`,
         );
 
@@ -255,8 +255,8 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
         };
         // Once "pokie init" has succeeded, the persisted package.json carries none of that -- just the
         // portable version range InitCommand's own merger originally wrote, no absolute host-specific path.
-        expect(pkg.dependencies?.pokie).toBe("^9.9.9");
-        expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
+        expect(pkg.dependencies?.["@fromstan/pokie"]).toBe("^9.9.9");
+        expect(fs.existsSync(path.join(projectRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
         // The persisted package-lock.json this real "npm install" produced carries none of that
         // resolution either -- a real npm install of a `file:` spec records it as a "link": true entry
@@ -265,7 +265,7 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
         const lock = JSON.parse(fs.readFileSync(path.join(projectRoot, "package-lock.json"), "utf-8")) as {
             packages?: Record<string, unknown>;
         };
-        expect(lock.packages?.["node_modules/pokie"]).toBeUndefined();
+        expect(lock.packages?.["node_modules/@fromstan/pokie"]).toBeUndefined();
         for (const key of Object.keys(lock.packages ?? {})) {
             expect(key).not.toContain(linkedPokieRoot);
         }

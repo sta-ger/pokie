@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType} from "@fromstan/pokie";
 
 // POST /api/project/artifacts/preview's own DTO -- the pre-build counterpart to StudioArtifactBuildView
 // (see its own doc comment): the exact same registry-resolved target/destination/sourceType a subsequent

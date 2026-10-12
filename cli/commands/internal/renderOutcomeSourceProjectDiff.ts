@@ -1,5 +1,5 @@
 import {formatAnalysisNumber} from "../../../src/internal/formatAnalysisNumber.js";
-import {OutcomeSourceProjectDiff, OutcomeSourceProjectMetricDiff} from "pokie";
+import {OutcomeSourceProjectDiff, OutcomeSourceProjectMetricDiff} from "@fromstan/pokie";
 
 function formatSigned(value: number, decimals: number): string {
     const rounded = formatAnalysisNumber(value, decimals);

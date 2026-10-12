@@ -1,4 +1,4 @@
-import {WaysWinCalculator, SymbolsCombination, VideoSlotConfig} from "pokie";
+import {WaysWinCalculator, SymbolsCombination, VideoSlotConfig} from "@fromstan/pokie";
 
 describe("WaysWinCalculator", () => {
     test("pays a symbol matching across consecutive reels, scaled by the ways count", () => {

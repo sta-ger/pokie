@@ -4,7 +4,7 @@ import path from "path";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
-import {ArtifactBuilderRegistry, computeBlueprintHash, GameBlueprint, ParSheetImporter, ProjectTargetResolver} from "pokie";
+import {ArtifactBuilderRegistry, computeBlueprintHash, GameBlueprint, ParSheetImporter, ProjectTargetResolver} from "@fromstan/pokie";
 
 // End-to-end round trip for "pokie par export"/"pokie par import": the actual example blueprint
 // shipped in examples/parsheets/ (see also examples/parsheets/README.md), exported to a real .xlsx

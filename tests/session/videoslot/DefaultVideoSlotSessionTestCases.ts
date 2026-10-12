@@ -1,4 +1,4 @@
-import {VideoSlotSessionHandling, VideoSlotConfigRepresenting} from "pokie";
+import {VideoSlotSessionHandling, VideoSlotConfigRepresenting} from "@fromstan/pokie";
 
 export const testDefaultVideoSlotSessionHasProperInitialValues = (
     session: VideoSlotSessionHandling,

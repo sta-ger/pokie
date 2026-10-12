@@ -1,4 +1,4 @@
-import {OutcomeLibraryBundleWriteResult, OutcomeLibraryBundleWriter} from "pokie";
+import {OutcomeLibraryBundleWriteResult, OutcomeLibraryBundleWriter} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 export const CERTIFICATION_TEST_POKIE_VERSION = "1.3.0";

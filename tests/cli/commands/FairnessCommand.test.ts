@@ -8,7 +8,7 @@ import {
     OutcomeLibraryBundleModeIndex,
     OutcomeLibraryBundleReading,
     ValidationIssue,
-} from "pokie";
+} from "@fromstan/pokie";
 import {FairnessCommand} from "../../../cli/commands/FairnessCommand.js";
 
 const PROOF_PATH = "/project/proof.json";

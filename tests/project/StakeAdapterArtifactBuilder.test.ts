@@ -9,7 +9,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     StakeAdapterArtifactBuilder,
     StakeEngineExporter,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../stakeengine/StakeEngineTestFixtures.js";
 

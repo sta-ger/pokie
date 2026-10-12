@@ -8,7 +8,7 @@ import {
     ReelStripGenerationSummary,
     resolveReelStripGeneration,
     writeFileAtomically,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {parseCanonicalNonNegativeInteger} from "./internal/parseCanonicalNonNegativeInteger.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";

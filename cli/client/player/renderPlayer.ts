@@ -20,7 +20,7 @@ type CellElement = HTMLElement & {baseColor: string};
 export const PLAYER_PRESENTATION_STYLE_ID = "pokie-canonical-player-presentation";
 
 const PLAYER_PRESENTATION_CSS = `
-.pokie-player { max-width: 100%; min-width: 0; color: #212529; font-family: system-ui, sans-serif; line-height: normal; }
+.pokie-player { max-width: 100%; min-width: 0; color: #212529; font-family: system-ui, sans-serif; font-size: 1rem; line-height: normal; }
 .pokie-player h2 { margin: 0 0 .5rem; font-size: 1rem; font-weight: 700; line-height: normal; }
 .pokie-player dl { margin: 0 0 1rem; }
 .pokie-player dt { font-weight: 700; }

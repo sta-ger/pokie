@@ -1,4 +1,4 @@
-import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, PokieGameManifest, SimulationAccumulator, SimulationReportBuilder} from "pokie";
+import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, PokieGameManifest, SimulationAccumulator, SimulationReportBuilder} from "@fromstan/pokie";
 import {formatBenchmarkLine, measureBenchmark} from "./support/measureBenchmark.js";
 
 // A large-ish round count so the resulting payout histogram (one bucket per distinct payout ratio --

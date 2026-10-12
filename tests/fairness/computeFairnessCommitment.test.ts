@@ -1,4 +1,4 @@
-import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessServerSeedCommitment, POKIE_FAIRNESS_ALGORITHM_VERSION} from "pokie";
+import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessServerSeedCommitment, POKIE_FAIRNESS_ALGORITHM_VERSION} from "@fromstan/pokie";
 
 describe("computeFairnessCommitment", () => {
     const serverSeedCommitment: FairnessServerSeedCommitment = computeFairnessServerSeedCommitment({serverSeed: "a-secret-server-seed"});

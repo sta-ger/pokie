@@ -1,4 +1,4 @@
-import {AggregateSimulationRunner, GameSession, GameSessionConfig, SimulationAccumulator} from "pokie";
+import {AggregateSimulationRunner, GameSession, GameSessionConfig, SimulationAccumulator} from "@fromstan/pokie";
 
 describe("SimulationAccumulator", () => {
     test("addRound tracks total bet, total payout, rounds, and hit count", () => {

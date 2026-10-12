@@ -1,4 +1,4 @@
-import type {RandomGameBlueprintProvenance} from "pokie";
+import type {RandomGameBlueprintProvenance} from "@fromstan/pokie";
 
 // POST /api/home/blueprints/random's own DTO — a freshly generated GameBlueprint from
 // RandomGameBlueprintGenerator (the exact same generator "pokie build random"/"pokie create --random"

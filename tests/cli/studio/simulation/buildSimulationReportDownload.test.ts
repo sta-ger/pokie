@@ -1,4 +1,4 @@
-import type {SimulationReport} from "pokie";
+import type {SimulationReport} from "@fromstan/pokie";
 import {
     buildSimulationReportDownload,
     isReportDownloadFormat,

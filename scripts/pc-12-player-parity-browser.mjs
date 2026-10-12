@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
 import {createHash} from "node:crypto";
-import {cp, mkdir, mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import {cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises";
 import {inflateSync} from "node:zlib";
 import {basename, dirname, resolve, sep} from "node:path";
 import {tmpdir} from "node:os";
@@ -81,27 +81,67 @@ export function comparePlayerRegions(studio, examples) {
         if (JSON.stringify(comparableStudio[key]) !== JSON.stringify(comparableExamples[key])) differing.push(key);
     }
     if (differing.length > 0) {
-        throw new Error(`Canonical player parity diverged: ${differing.join(", ")}`);
+        const differences = Object.fromEntries(differing.map(key => [key, {studio: comparableStudio[key], examples: comparableExamples[key]}]));
+        throw new Error(`Canonical player parity diverged: ${differing.join(", ")}; ${JSON.stringify(differences)}`);
     }
 }
 
-export function exactCandidateConsumerManifest(manifest, candidateArchive) {
+function scopedCandidateConsumerManifest(manifest, dependencySpec) {
+    const {pokie: legacyDependency, ...dependencies} = manifest.dependencies ?? {};
     return {
         ...manifest,
-        dependencies: {...manifest.dependencies, pokie: `file:${candidateArchive}`},
+        private: true,
+        dependencies: {...dependencies, "@fromstan/pokie": dependencySpec},
     };
 }
 
+export function exactCandidateConsumerManifest(manifest, candidateArchive) {
+    return scopedCandidateConsumerManifest(manifest, `file:${candidateArchive}`);
+}
+
+// The separately maintained examples checkout may still use the historical
+// package name. Adapt only the invocation-owned copy to the scoped candidate;
+// leave the original checkout and its historical identity untouched.
+export function scopedCandidateImports(source) {
+    return source.replace(/((?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["'])pokie(?=\/|["'])/g, "$1@fromstan/pokie");
+}
+
+async function scopeCandidateConsumerImports(directory) {
+    for (const entry of await readdir(directory, {withFileTypes: true})) {
+        const file = resolve(directory, entry.name);
+        if (entry.isDirectory()) await scopeCandidateConsumerImports(file);
+        else if (/\.(?:[cm]?[jt]sx?|html)$/.test(entry.name)) {
+            const source = await readFile(file, "utf8");
+            const scoped = scopedCandidateImports(source);
+            if (scoped !== source) await writeFile(file, scoped);
+        }
+    }
+}
+
+// Both source checks and the browser install adapt the same disposable consumer.
+export async function adaptPc12CandidateConsumer(examplesRoot, consumerRoot, dependencySpec) {
+    await cp(examplesRoot, consumerRoot, {
+        recursive: true,
+        filter: (source) => ![".git", "dist", "node_modules"].includes(basename(source)),
+    });
+    await scopeCandidateConsumerImports(consumerRoot);
+    const manifest = JSON.parse(await readFile(resolve(consumerRoot, "package.json"), "utf8"));
+    const adapted = scopedCandidateConsumerManifest(manifest, dependencySpec);
+    await writeFile(resolve(consumerRoot, "package.json"), `${JSON.stringify(adapted, null, 2)}\n`);
+    await rm(resolve(consumerRoot, "package-lock.json"), {force: true});
+    return consumerRoot;
+}
+
 export function assertExactCandidatePlayerExport(resolvedExport, consumerRoot) {
-    const installedPackage = `${resolve(consumerRoot, "node_modules", "pokie")}${sep}`;
+    const installedPackage = `${resolve(consumerRoot, "node_modules", "@fromstan", "pokie")}${sep}`;
     // import.meta.resolve returns a file URL, whereas path.resolve expects a filesystem path.
     // Keep accepting a path here for the focused contract test and for Node versions that return one.
     const resolvedPath = resolvedExport.startsWith("file:") ? fileURLToPath(resolvedExport) : resolve(resolvedExport);
     assert.ok(
         resolvedPath.startsWith(installedPackage),
-        `pokie/client/player must resolve from the isolated candidate install, received ${resolvedExport}`,
+        `@fromstan/pokie/client/player must resolve from the isolated candidate install, received ${resolvedExport}`,
     );
-    assert.match(resolvedPath, /[\\/]dist[\\/]cli[\\/]client[\\/]player[\\/]index\.js$/, "pokie/client/player must resolve the public player export");
+    assert.match(resolvedPath, /[\\/]dist[\\/]cli[\\/]client[\\/]player[\\/]index\.js$/, "@fromstan/pokie/client/player must resolve the public player export");
 }
 
 function readPngRgba(bytes) {
@@ -252,15 +292,9 @@ async function prepareExactCandidateConsumer(examplesRoot, staging) {
     const packed = JSON.parse(await runCommand("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", staging], {cwd: root}));
     const candidateArchive = resolve(staging, packed[0].filename);
     const consumerRoot = resolve(staging, "pokie-examples");
-    await cp(examplesRoot, consumerRoot, {
-        recursive: true,
-        filter: (source) => ![".git", "dist", "node_modules"].includes(basename(source)),
-    });
-    const manifest = JSON.parse(await readFile(resolve(consumerRoot, "package.json"), "utf8"));
-    await writeFile(resolve(consumerRoot, "package.json"), `${JSON.stringify(exactCandidateConsumerManifest(manifest, candidateArchive), null, 2)}\n`);
-    await rm(resolve(consumerRoot, "package-lock.json"), {force: true});
+    await adaptPc12CandidateConsumer(examplesRoot, consumerRoot, `file:${candidateArchive}`);
     await runCommand("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund"], {cwd: consumerRoot});
-    const resolvedExport = (await runCommand(process.execPath, ["--input-type=module", "--eval", "process.stdout.write(import.meta.resolve('pokie/client/player'))"], {cwd: consumerRoot})).trim();
+    const resolvedExport = (await runCommand(process.execPath, ["--input-type=module", "--eval", "process.stdout.write(import.meta.resolve('@fromstan/pokie/client/player'))"], {cwd: consumerRoot})).trim();
     assertExactCandidatePlayerExport(resolvedExport, consumerRoot);
     return {consumerRoot, candidateArchive, resolvedExport};
 }
@@ -442,6 +476,13 @@ export async function runPlayerParityBrowser() {
             await waitFor(async () => (await evaluate("document.readyState")) === "complete", `page ${url}`);
         };
         const setViewport = async (viewport) => {
+            // Desktop captures temporarily force a 600px player mount. Remove
+            // that verifier-owned geometry before mobile emulation, otherwise
+            // Chromium expands the layout viewport to fit our own override.
+            await evaluate(`(() => {
+                const player = document.querySelector(${JSON.stringify(canonicalPlayerSelector)});
+                if (player) for (const property of ["width", "max-width", "box-sizing"]) player.style.removeProperty(property);
+            })()`);
             await cdp.send("Emulation.setDeviceMetricsOverride", {...viewport, deviceScaleFactor: 1, mobile: viewport.width <= 480});
             const actual = await evaluate("({width: window.innerWidth, height: window.innerHeight})");
             assert.deepEqual(actual, viewport, `Browser must exercise the requested ${viewport.width}x${viewport.height} viewport`);

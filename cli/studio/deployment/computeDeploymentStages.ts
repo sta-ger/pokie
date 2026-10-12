@@ -1,4 +1,4 @@
-import type {ExternalDeploymentResult, ValidationIssue} from "pokie";
+import type {ExternalDeploymentResult, ValidationIssue} from "@fromstan/pokie";
 import type {StudioDeploymentStageSummary} from "./StudioDeploymentStageSummary.js";
 
 function hasError(issues: readonly ValidationIssue[]): boolean {

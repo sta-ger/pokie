@@ -15,7 +15,7 @@ import {
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
     createLocalJsonExternalDeploymentTarget,
-} from "pokie";
+} from "@fromstan/pokie";
 import {preflightAtomicDirectoryPublication, publishDirectoryAtomically} from "../../src/stakeengine/internal/publishDirectoryAtomically.js";
 
 // This file exists specifically because Stake Engine Export (src/stakeengine/) and the External Adapter SDK

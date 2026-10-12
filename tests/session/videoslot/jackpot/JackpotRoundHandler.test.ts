@@ -13,7 +13,7 @@ import {
     type JackpotPoolStatisticsSnapshot,
     type JackpotRoundOutcome,
     type VideoSlotWithJackpotSessionHandling,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // A fully-controllable VideoSlotWithJackpotSessionHandling double: JackpotRoundHandler only ever reads
 // getSymbolsCombination()/getBet()/getCreditsAmount() and the JackpotStateDetermining/Setting getters/

@@ -1,5 +1,5 @@
 import path from "path";
-import {readPokiePackageConfig} from "pokie";
+import {readPokiePackageConfig} from "@fromstan/pokie";
 
 // Walks up from `startDir` to the filesystem root and returns the first directory that is a POKIE game
 // package, or undefined if there is none — this is what makes a bare `pokie` run from anywhere inside a

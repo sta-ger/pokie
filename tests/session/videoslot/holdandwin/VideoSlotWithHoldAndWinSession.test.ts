@@ -14,7 +14,7 @@ import {
     type VideoSlotSessionHandling,
     type VideoSlotWithHoldAndWinSessionState,
     type WinningLineDescribing,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // A scripted, fully-controllable VideoSlotSessionHandling double: play() advances through a fixed sequence
 // of grids (repeating the last one if the script runs out), decrementing credits by the bet and crediting

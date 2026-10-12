@@ -13,7 +13,7 @@ import {
     ReelStripScorer,
     RequiredAdjacencyConstraint,
     RequiredSequenceConstraint,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("ReelStripGenerator", () => {
     test("the same seed always produces the same strip", () => {

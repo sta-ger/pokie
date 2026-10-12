@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {createStudioEntryModuleLoader, createStudioGameLoader} from "../../../cli/studio/loadStudioGame.js";
-import {releasePokieGame} from "pokie";
+import {releasePokieGame} from "@fromstan/pokie";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const fixtureRoot = path.join(__dirname, "..", "fixtures", "playable-game");
@@ -11,7 +11,7 @@ describe("createStudioEntryModuleLoader", () => {
     it("loads a registered package with no local pokie dependency through Studio's own runtime", async () => {
         const entryPath = path.join(fixtureRoot, "index.js");
         const loader = createStudioEntryModuleLoader(REPO_ROOT, () =>
-            Promise.reject(Object.assign(new Error("Cannot find module 'pokie'"), {code: "MODULE_NOT_FOUND"})),
+            Promise.reject(Object.assign(new Error("Cannot find module '@fromstan/pokie'"), {code: "MODULE_NOT_FOUND"})),
         );
 
         const game = await loader(entryPath);
@@ -40,7 +40,7 @@ describe("createStudioEntryModuleLoader", () => {
             fs.writeFileSync(path.join(packageRoot, "lazy.js"), "module.exports = {default: 'lazy-relative-resource'};\n");
             fs.writeFileSync(
                 path.join(packageRoot, "game.js"),
-                "const runtime = require('pokie'); const runtimePath = require.resolve('pokie'); const model = require('./model.js'); module.exports = { getManifest() { return {id: 'studio-cjs', name: model.name, version: typeof runtime.loadPokieGame === 'function' && runtimePath ? '1.0.0' : ''}; }, createSession() { return {name: model.name, async loadResource() { return (await import('./lazy.js')).default.default; }}; }, runtimePath };\n",
+                "const runtime = require('@fromstan/pokie'); const runtimePath = require.resolve('@fromstan/pokie'); const model = require('./model.js'); module.exports = { getManifest() { return {id: 'studio-cjs', name: model.name, version: typeof runtime.loadPokieGame === 'function' && runtimePath ? '1.0.0' : ''}; }, createSession() { return {name: model.name, async loadResource() { return (await import('./lazy.js')).default.default; }}; }, runtimePath };\n",
             );
             const loadGame = createStudioGameLoader(REPO_ROOT);
             before = await loadGame(packageRoot);

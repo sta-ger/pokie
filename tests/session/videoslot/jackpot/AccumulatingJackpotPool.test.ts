@@ -1,4 +1,4 @@
-import {AccumulatingJackpotPool} from "pokie";
+import {AccumulatingJackpotPool} from "@fromstan/pokie";
 
 describe("AccumulatingJackpotPool", () => {
     it("starts at the configured seed value", () => {

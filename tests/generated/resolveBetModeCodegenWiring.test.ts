@@ -1,4 +1,4 @@
-import {BetModeRuntimeSemanticsInvalidError, GameBlueprint, resolveBetModeCodegenWiring} from "pokie";
+import {BetModeRuntimeSemanticsInvalidError, GameBlueprint, resolveBetModeCodegenWiring} from "@fromstan/pokie";
 
 function buildBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {

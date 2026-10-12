@@ -20,7 +20,7 @@ import {
     VideoSlotWinCalculator,
     WASM_MANIFEST_READ_CAPABILITY,
     WinEvaluationResult,
-} from "pokie";
+} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import fs from "fs";

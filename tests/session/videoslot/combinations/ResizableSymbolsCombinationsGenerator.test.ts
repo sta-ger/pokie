@@ -1,4 +1,4 @@
-import {ResizableSymbolsCombinationsGenerator, SeededRandomNumberGenerator, SymbolsSequence, VideoSlotConfig} from "pokie";
+import {ResizableSymbolsCombinationsGenerator, SeededRandomNumberGenerator, SymbolsSequence, VideoSlotConfig} from "@fromstan/pokie";
 
 describe("ResizableSymbolsCombinationsGenerator", () => {
     const availableSymbols: string[] = ["A", "K", "Q", "J", "10", "9"];

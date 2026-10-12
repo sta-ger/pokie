@@ -1,4 +1,4 @@
-import {FallbackSimulationRoundCategoryDeterminer, GameSessionHandling, SimulationRoundCategoryDetermining} from "pokie";
+import {FallbackSimulationRoundCategoryDeterminer, GameSessionHandling, SimulationRoundCategoryDetermining} from "@fromstan/pokie";
 
 function fakeDeterminer(supports: boolean, category: string): SimulationRoundCategoryDetermining {
     return {

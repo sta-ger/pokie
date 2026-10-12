@@ -11,7 +11,7 @@ import {
     VideoSlotSession,
     VideoSlotSessionHandling,
     VideoSlotWinCalculator,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function roundtripThroughJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value));

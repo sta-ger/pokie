@@ -1,4 +1,4 @@
-import {PreGeneratedOutcomeSelection, PreGeneratedOutcomeSelectionValidator, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryHash} from "pokie";
+import {PreGeneratedOutcomeSelection, PreGeneratedOutcomeSelectionValidator, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryHash} from "@fromstan/pokie";
 import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 function buildValidSelection(): PreGeneratedOutcomeSelection<string> {

@@ -1,4 +1,4 @@
-import {SymbolSetHoldAndWinCollector} from "pokie";
+import {SymbolSetHoldAndWinCollector} from "@fromstan/pokie";
 
 describe("SymbolSetHoldAndWinCollector", () => {
     it("collects every occurrence of a configured symbol, each with its own configured effect", () => {

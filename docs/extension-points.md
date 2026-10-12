@@ -39,7 +39,7 @@ every other method on a fairly wide interface. `AbstractVideoSlotSessionDecorato
 written once:
 
 ```ts
-import {AbstractVideoSlotSessionDecorator, VideoSlotSessionHandling} from "pokie";
+import {AbstractVideoSlotSessionDecorator, VideoSlotSessionHandling} from "@fromstan/pokie";
 
 class LoggingSession<T extends string | number | symbol = string> extends AbstractVideoSlotSessionDecorator<T> {
     public override play(): void {

@@ -1,4 +1,4 @@
-import {Paytable} from "pokie";
+import {Paytable} from "@fromstan/pokie";
 import {FRACTIONAL_BET_STAKES} from "../../fixtures/math/FractionalBetFixture.js";
 
 describe("DefaultVideoSlotSessionPaytableData", () => {

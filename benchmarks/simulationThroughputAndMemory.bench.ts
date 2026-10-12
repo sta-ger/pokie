@@ -1,4 +1,4 @@
-import {AggregateSimulationRunner, GameSessionHandling} from "pokie";
+import {AggregateSimulationRunner, GameSessionHandling} from "@fromstan/pokie";
 import {bytesToMebibytes, formatBenchmarkLine, measureBenchmark} from "./support/measureBenchmark.js";
 
 // A representative baseline of AggregateSimulationRunner's own throughput/memory, independent of any

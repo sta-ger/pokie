@@ -24,7 +24,7 @@ function readOwnVersion(): string {
 
 // The running POKIE installation's own root directory -- passed into every
 // createMaterializingRuntimePackageResolver() call (and StudioCommand) as `pokiePackageRoot`, so a
-// materialized Blueprint's own "npm install" can resolve "pokie" against this exact installation (via
+// materialized Blueprint's own "npm install" can resolve "@fromstan/pokie" against this exact installation (via
 // withLocalPokieInstall) instead of a registry. See this file's own ownPackageDir() doc comment for why
 // the same "two levels up from this compiled file" computation is correct across every install mechanism.
 function readOwnPackageRoot(): string {

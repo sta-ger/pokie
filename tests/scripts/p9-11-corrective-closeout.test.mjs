@@ -246,10 +246,15 @@ test("pinned real file/archive reader rejects candidate, stale assets, extra ass
         `], {encoding:"utf8", timeout:5000, stdio:["ignore", "pipe", "pipe"]}));
         const candidate = await verify();
         assert.equal(candidate.candidateId, fixture.handoff.candidateId);
-        assert.equal(candidate.resolutions.pokie, path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
-        assert.equal(candidate.esmResolutions.pokie, path.join(candidate.packageRoot, "dist/esm/index.js"));
-        for (const name of ["pokie/browser", "pokie/wasm", "pokie/client/player"]) {
-            assert.equal(candidate.esmResolutions[name], candidate.resolutions[name]);
+        assert.equal(candidate.resolutions["@fromstan/pokie"], path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
+        assert.equal(candidate.esmResolutions["@fromstan/pokie"], path.join(candidate.packageRoot, "dist/esm/index.js"));
+        for (const name of ["@fromstan/pokie/browser", "@fromstan/pokie/wasm", "@fromstan/pokie/client/player"]) {
+            assert.equal(candidate.esmResolutions[name], path.join(candidate.packageRoot, {
+                "@fromstan/pokie/browser":"dist/esm/browser.js",
+                "@fromstan/pokie/wasm":"dist/esm/wasm.js",
+                "@fromstan/pokie/client/player":"dist/cli/player.js",
+            }[name]));
+            assert.equal(candidate.resolutions[name], undefined);
         }
         await assert.rejects(readPinnedJson({...fixture.reference, sha256:"b".repeat(64)}), /digest mismatch/);
         const archive = await readFile(fixture.handoff.archivePath);
@@ -262,7 +267,7 @@ test("pinned real file/archive reader rejects candidate, stale assets, extra ass
         await writeFile(fixture.handoff.buildReceipt.path, build);
         const extra = path.join(candidate.packageRoot, "dist/obsolete.js"); await writeFile(extra, "obsolete");
         await assert.rejects(verify(), /unexpected installed/); await rm(extra);
-        await writeFile(candidate.resolutions["pokie"], "stale");
+        await writeFile(candidate.resolutions["@fromstan/pokie"], "stale");
         await assert.rejects(verify(), /stale installed/);
         await writeFile(path.join(fixture.repository, "product.js"), "changed");
         execFileSync("git", ["add", "product.js"], {cwd:fixture.repository});
@@ -275,8 +280,8 @@ async function runnerFixture(directory, options = {}) {
     const driver = path.join(directory, "fixture-driver.mjs"); await writeFile(driver, "// fixture driver, never executed\n");
     const image = path.join(directory, "focus.png");
     await writeFile(image, "fixture image; no visual acceptance");
-    const candidate = {candidateId:"a".repeat(40), candidateTreeId:"b".repeat(40), packageName:"pokie", archiveSha256:digest, archivePath:path.join(directory, "archives/candidate.tgz"), executableSha256:digest, installationRoot:path.join(directory, "borrowed-install"),
-        packageRoot:path.join(directory, "borrowed-install/node_modules/pokie"), bin:"/fixture/pokie", packageVersion:"1.3.0", resolutions:{pokie:"/fixture/cjs/index.js"}, esmResolutions:{pokie:"/fixture/esm/index.js"},
+    const candidate = {candidateId:"a".repeat(40), candidateTreeId:"b".repeat(40), packageName:"@fromstan/pokie", archiveSha256:digest, archivePath:path.join(directory, "archives/candidate.tgz"), executableSha256:digest, installationRoot:path.join(directory, "borrowed-install"),
+        packageRoot:path.join(directory, "borrowed-install/node_modules/@fromstan/pokie"), bin:"/fixture/pokie", packageVersion:"1.3.0", resolutions:{"@fromstan/pokie":"/fixture/cjs/index.js"}, esmResolutions:{"@fromstan/pokie":"/fixture/esm/index.js"},
         buildReceipt:{path:"/fixture/build.json", sha256:digest}, installReceipt:{path:"/fixture/install.json", sha256:digest},
         browserDriver:{path:driver, sha256:sha256(await readFile(driver))}, projection:{entries:[{path:"dist/cli/studio-client/index.html", sha256:digest}, {path:"dist/cli/studio-client/assets/app.js", sha256:digest}, {path:"dist/cli/studio-client/assets/app.css", sha256:digest}]}};
     const requests = [], calls = [];
@@ -562,3 +567,44 @@ test("packaging compiler failure aborts and awaits owned sibling process and std
     assert.throws(() => retainP911PackagingReceipt(children, retain), /requires complete/);
     assert.equal(retain.mock.calls.length, 0);
 }, 10000);
+
+for (const packageName of ["@fromstan/pokie", "pokie"]) {
+    test(`P9-11 scenario consumer resolves ${packageName} through native ESM conditions`, async () => {
+        const directory = await mkdtemp(path.join(os.tmpdir(), "p911-native-consumer-"));
+        try {
+            const packageRoot = path.join(directory, "authenticated-package");
+            await mkdir(packageRoot);
+            await json(path.join(packageRoot, "package.json"), {name: packageName, version: "1.3.0", private: true, type: "module", exports: {
+                ".": {import: "./esm.js", require: "./cjs.cjs"},
+                "./browser": packageName === "pokie" ? "./browser.js" : {import: "./browser.js"},
+                "./wasm": packageName === "pokie" ? "./wasm.js" : {import: "./wasm.js"},
+            }});
+            await writeFile(path.join(packageRoot, "esm.js"), "export const identity = 'esm';");
+            await writeFile(path.join(packageRoot, "cjs.cjs"), "exports.identity = 'cjs';");
+            await writeFile(path.join(packageRoot, "browser.js"), "export const identity = 'browser';");
+            await writeFile(path.join(packageRoot, "wasm.js"), "export const identity = 'wasm';");
+            const request = {packageRoot, packageName, packageVersion: "1.3.0", profileRoot: path.join(directory, "profile")};
+            // An older authenticated handoff may omit the name in its scenario request.
+            if (packageName === "pokie") delete request.packageName;
+            const result = execFileSync(process.execPath, ["--input-type=module", "-e", `
+                import assert from 'node:assert/strict';
+                import {createRequire} from 'node:module';
+                import {prepareP911PublicConsumer} from ${JSON.stringify(pathToFileURL(path.resolve("scripts/p9-11-corrective-scenarios.mjs")).href)};
+                const request = ${JSON.stringify(request)};
+                await assert.rejects(prepareP911PublicConsumer({...request, packageName:'invalid'}), /identity/);
+                const consumer = await prepareP911PublicConsumer(request);
+                assert.equal(consumer.packageName, ${JSON.stringify(packageName)});
+                assert.equal(consumer.api.identity, 'cjs'); assert.equal(consumer.esm.identity, 'esm');
+                assert.equal(consumer.browser.identity, 'browser'); assert.equal(consumer.wasm.identity, 'wasm');
+                if (consumer.packageName !== 'pokie') {
+                    const require = createRequire(consumer.workspace + '/consumer.cjs');
+                    assert.throws(() => require.resolve('pokie'), {code:'MODULE_NOT_FOUND'});
+                    assert.throws(() => require.resolve('@fromstan/pokie/wasm'), {code:'ERR_PACKAGE_PATH_NOT_EXPORTED'});
+                }
+                console.log('native scenario consumer PASS');
+            `], {encoding: "utf8", timeout: 10_000});
+            assert.match(result, /native scenario consumer PASS/);
+            assert.equal(await exists(path.join(packageRoot, "node_modules")), false);
+        } finally { await rm(directory, {recursive: true, force: true}); }
+    });
+}

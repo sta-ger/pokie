@@ -176,7 +176,7 @@ export type GamePackageInspectionReport = {
             sha256: string;
             bytes: number;
             abiVersion: string;
-            adapter: "pokie/wasm";
+            adapter: "@fromstan/pokie/wasm";
             configurationHash: string;
         };
     };
@@ -204,7 +204,7 @@ export type PokieGamePackageValidationReport = {
     suggestions: string[];
 };
 
-// GET /api/project/gameModel's own DTO -- mirrors the "pokie" package's own GameModelProjection (see
+// GET /api/project/gameModel's own DTO -- mirrors the "@fromstan/pokie" package's own GameModelProjection (see
 // src/project/GameModelProjection.ts's own doc comment), kept as a separate client-side copy, same
 // convention as every other type in this file. Every section is either "available" (with its own,
 // already-computed `data`) or "unavailable" (with a plain-language `reason`) -- GameModelTab.tsx renders
@@ -283,11 +283,11 @@ export type GameModelProjection = {
     limits: GameModelSection<GameModelLimits>;
 };
 
-// Mirrors the "pokie" package's own ProjectType -- the kinds of on-disk input Studio's Projects registry
+// Mirrors the "@fromstan/pokie" package's own ProjectType -- the kinds of on-disk input Studio's Projects registry
 // resolves "a project" to (see src/project/ProjectType.ts's own doc comment for what each one means).
 export type StudioProjectType = "blueprint" | "tsPackage" | "outcomeLibrary" | "stakeAdapter" | "wasm" | "parWorkbook";
 
-// A capability id is a plain, open string -- same convention as the "pokie" package's own
+// A capability id is a plain, open string -- same convention as the "@fromstan/pokie" package's own
 // ProjectCapability (src/project/ProjectCapability.ts).
 export type StudioProjectCapability = string;
 
@@ -1414,7 +1414,7 @@ export type StudioStakeEngineExportView =
     | {status: "load-error"; error: string; plan: StudioArtifactConversionPlan}
     | StudioStakeEngineExportMigrationView;
 
-// Mirrors the "pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
+// Mirrors the "@fromstan/pokie" package's own ArtifactTargetType -- the closed vocabulary ArtifactBuilderRegistry
 // (and "pokie build <project> --target <target>") builds toward. Studio-client never imports the pokie
 // package directly (see ExportDeployTargets.ts's own top-level doc comment), so this is a plain literal
 // mirror, same convention as StudioProjectType above.

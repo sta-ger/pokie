@@ -288,7 +288,7 @@ describe("deriveBetModeId", () => {
 // counted right-to-left, a Scatter1/Scatter2 pair) -- field names/shapes verified against a real
 // `git clone --branch develop https://github.com/sta-ger/pokie-examples.git` checkout's
 // src/ui/utils.ts (drawWinningLinesList/drawOutcome, which destructure WinningLineNetworkData /
-// WinningScatterNetworkData imported directly from "pokie") and src/games/simple-slot/index.ts
+// WinningScatterNetworkData imported directly from "@fromstan/pokie") and src/games/simple-slot/index.ts
 // (which builds its session via pokie's own VideoSlotSession + VideoSlotSessionSerializer, not a
 // hand-rolled equivalent). This is the strongest proof this worktree can produce that the shared
 // player's derive functions render exactly what a real pokie-examples game already emits, without

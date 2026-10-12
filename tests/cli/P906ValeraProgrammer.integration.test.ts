@@ -2,7 +2,7 @@ import {spawn, spawnSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type {SimulationReport} from "pokie";
+import type {SimulationReport} from "@fromstan/pokie";
 import {compileP906Candidate, prepareP906Candidate} from "../testUtils/prepareP906Candidate.js";
 
 const repositoryRoot = path.resolve(__dirname, "../..");

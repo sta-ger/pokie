@@ -1,4 +1,4 @@
-import {InMemoryWallet, transactionalWalletPortContractTests, TransactionalWalletAdapter, WalletPort} from "pokie";
+import {InMemoryWallet, transactionalWalletPortContractTests, TransactionalWalletAdapter, WalletPort} from "@fromstan/pokie";
 
 // A minimal legacy WalletPort — getBalance/setBalance only, predating debit/credit/reverse
 // entirely — standing in for a consumer's own pre-existing custom implementation.

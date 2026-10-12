@@ -1,4 +1,4 @@
-import {RandomGameBlueprintGenerator} from "pokie";
+import {RandomGameBlueprintGenerator} from "@fromstan/pokie";
 import {formatBenchmarkLine, measureBenchmark} from "./support/measureBenchmark.js";
 
 // A fixed, bounded seed count -- large enough to smooth out JIT warmup/per-call variance, small

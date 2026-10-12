@@ -1,4 +1,4 @@
-import {SimulationReport, SimulationReportDiffer} from "pokie";
+import {SimulationReport, SimulationReportDiffer} from "@fromstan/pokie";
 
 const reproducibility = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

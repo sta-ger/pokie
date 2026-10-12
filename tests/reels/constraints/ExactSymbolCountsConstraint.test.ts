@@ -1,4 +1,4 @@
-import {ExactSymbolCountsConstraint, ReelStrip} from "pokie";
+import {ExactSymbolCountsConstraint, ReelStrip} from "@fromstan/pokie";
 
 describe("ExactSymbolCountsConstraint", () => {
     test("is silent when every symbol's count matches exactly", () => {

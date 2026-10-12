@@ -1,4 +1,4 @@
-import {ReelStrip} from "pokie";
+import {ReelStrip} from "@fromstan/pokie";
 
 describe("ReelStrip", () => {
     test("exposes length, per-position symbols, and per-symbol counts", () => {

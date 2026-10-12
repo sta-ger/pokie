@@ -1,5 +1,5 @@
 import {formatAnalysisNumber} from "../../../src/internal/formatAnalysisNumber.js";
-import {OutcomeSourceProjectReport} from "pokie";
+import {OutcomeSourceProjectReport} from "@fromstan/pokie";
 
 // The one place a resolved "outcomeLibrary"/"stakeAdapter" project's own OutcomeSourceProjectReport (see
 // OutcomeSourceProjectAnalyzer) is turned into human-readable text -- shared by ReportCommand (which reaches

@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
-import {StakeEngineExporter} from "pokie";
+import {StakeEngineExporter} from "@fromstan/pokie";
 import {buildSingleOutcomeStakeEngineLibrary} from "./StakeEngineTestFixtures.js";
 
 // StakeEngineExporter.test.ts already asserts CSV/book/index/manifest contents, but it derives every

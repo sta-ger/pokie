@@ -1,5 +1,5 @@
 import path from "path";
-import type {ArtifactConversionPlan, ArtifactTargetType} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType} from "@fromstan/pokie";
 
 /**
  * Checks the immutable facts an adapter supplied when it prepared a plan.  This

@@ -1,4 +1,4 @@
-import {InMemorySpinOperationLog, SpinOperationRecord} from "pokie";
+import {InMemorySpinOperationLog, SpinOperationRecord} from "@fromstan/pokie";
 
 function recordFor(sessionId: string, requestId: string, checkpoint: SpinOperationRecord["checkpoint"]): SpinOperationRecord {
     const now = new Date().toISOString();

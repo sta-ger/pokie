@@ -14,7 +14,7 @@ import {
     ProjectTargetResolver,
     readWasmComponentManifest,
     SERVE_OPERATION,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolution, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";

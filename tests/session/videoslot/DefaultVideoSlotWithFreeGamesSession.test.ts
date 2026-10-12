@@ -6,7 +6,7 @@ import {
     VideoSlotWinCalculator,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 import {goldenVideoSlotSymbolsSequences} from "./VideoSlotGoldenTestFixtures.js";
 import {
     createCustomConfigForTestProperInitialValues,

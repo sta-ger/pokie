@@ -10,17 +10,17 @@ export function DocumentationLinks() {
             </Title>
             <List size="sm">
                 <List.Item>
-                    <Anchor href="https://github.com/sta-ger/pokie/blob/master/docs/README.md" target="_blank" rel="noreferrer">
+                    <Anchor href="https://github.com/fromstan/pokie/blob/develop/docs/README.md" target="_blank" rel="noreferrer">
                         Docs index
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="https://github.com/sta-ger/pokie/blob/master/docs/getting-started.md" target="_blank" rel="noreferrer">
+                    <Anchor href="https://github.com/fromstan/pokie/blob/develop/docs/getting-started.md" target="_blank" rel="noreferrer">
                         Getting started
                     </Anchor>
                 </List.Item>
                 <List.Item>
-                    <Anchor href="https://github.com/sta-ger/pokie/blob/master/docs/cli.md" target="_blank" rel="noreferrer">
+                    <Anchor href="https://github.com/fromstan/pokie/blob/develop/docs/cli.md" target="_blank" rel="noreferrer">
                         CLI reference
                     </Anchor>
                 </List.Item>

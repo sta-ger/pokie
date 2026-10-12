@@ -254,7 +254,7 @@ behavioral one.
 ## Programmatic usage
 
 ```ts
-import {StakeEngineExporter} from "pokie";
+import {StakeEngineExporter} from "@fromstan/pokie";
 
 const exporter = new StakeEngineExporter(pokieVersion);
 const result = await exporter.exportToDirectory(
@@ -281,7 +281,7 @@ content in memory (the books file streams through Node's native zstd `Transform`
 `readLibrary()`:
 
 ```ts
-import {StakeEngineBundleStreamingExporter} from "pokie";
+import {StakeEngineBundleStreamingExporter} from "@fromstan/pokie";
 
 const exporter = new StakeEngineBundleStreamingExporter(pokieVersion);
 const result = await exporter.exportToDirectory(

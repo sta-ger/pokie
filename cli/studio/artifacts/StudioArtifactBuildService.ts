@@ -19,7 +19,7 @@ import {
     StakeProjectionExportService,
     type PreparedStakeProjectionOperation,
     wasmComponentManifestSidecarPath,
-} from "pokie";
+} from "@fromstan/pokie";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
@@ -669,7 +669,7 @@ export class StudioArtifactBuildService {
 
     private stakePrerequisiteProvenance(
         operation: PreparedStakeProjectionOperation,
-        result: import("pokie").ArtifactBuildResult,
+        result: import("@fromstan/pokie").ArtifactBuildResult,
     ): NonNullable<Extract<StudioArtifactBuildView, {readonly status: "ok"}>["stakePrerequisiteProvenance"]> {
         const source = operation.plan.source.configurationProvenance;
         const ownership = this.managedOutcomeOwnership(result, operation.plan)[0];
@@ -729,7 +729,7 @@ export class StudioArtifactBuildService {
     }
 
     private async rollbackRegistrationFailure(
-        result: import("pokie").ArtifactBuildResult,
+        result: import("@fromstan/pokie").ArtifactBuildResult,
         plan: ArtifactConversionPlan,
         registeredRoots: readonly string[],
         outputDestinationExisted: boolean,
@@ -794,7 +794,7 @@ export class StudioArtifactBuildService {
         }
     }
 
-    private durableManagedRoots(result: import("pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {
+    private durableManagedRoots(result: import("@fromstan/pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {
         const ownership = this.managedOutcomeOwnership(result, plan);
         const transient = new Set(ownership.filter((entry) => entry.disposition === "transient").map((entry) => entry.rootPath));
         return Array.from(new Set([...(result.prerequisiteProjectRoots ?? []), ...(result.managedProjectRoots ?? [])]))
@@ -802,9 +802,9 @@ export class StudioArtifactBuildService {
     }
 
     private managedOutcomeOwnership(
-        result: import("pokie").ArtifactBuildResult,
+        result: import("@fromstan/pokie").ArtifactBuildResult,
         plan: ArtifactConversionPlan,
-    ): readonly import("pokie").ManagedOutcomeProjectOwnership[] {
+    ): readonly import("@fromstan/pokie").ManagedOutcomeProjectOwnership[] {
         if (result.managedOutcomeProjectOwnership !== undefined) return result.managedOutcomeProjectOwnership;
         // Kept only for injected compatibility registries used by extensions.
         const borrowed = plan.steps.some((step) => step.kind === "reuseManagedOutcomeLibrary");

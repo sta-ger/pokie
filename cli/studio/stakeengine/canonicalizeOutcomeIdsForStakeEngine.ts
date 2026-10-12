@@ -1,4 +1,4 @@
-import {buildWeightedOutcomeLibrary, WeightedOutcomeLibrary, WeightedOutcomeLibraryBuildError} from "pokie";
+import {buildWeightedOutcomeLibrary, WeightedOutcomeLibrary, WeightedOutcomeLibraryBuildError} from "@fromstan/pokie";
 
 const CANONICAL_NON_NEGATIVE_INTEGER = /^(0|[1-9]\d*)$/;
 

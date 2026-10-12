@@ -1,4 +1,4 @@
-import {DEV_OPERATION, REPLAY_OPERATION, SERVE_OPERATION, SIM_OPERATION, VALIDATE_OPERATION} from "pokie";
+import {DEV_OPERATION, REPLAY_OPERATION, SERVE_OPERATION, SIM_OPERATION, VALIDATE_OPERATION} from "@fromstan/pokie";
 import {CliCommandHandling} from "./CliCommandHandling.js";
 import {BuildCommand} from "./commands/BuildCommand.js";
 import {CertificationCommand} from "./commands/CertificationCommand.js";
@@ -63,7 +63,7 @@ export function registerCliCommands(options: RegisterCliCommandsOptions): CliCom
         new GenerateCommand(version),
         // withLocalPokieInstall(pokiePackageRoot): the same mechanism createMaterializingRuntimePackageResolver
         // wires into every Blueprint materialization below -- so a freshly scaffolded package's own "npm
-        // install" resolves "pokie" against this exact running installation instead of the registry, even
+        // install" resolves "@fromstan/pokie" against this exact running installation instead of the registry, even
         // when its own version has never been published.
         new ImportCommand(version),
         new InitCommand(version, undefined, withLocalPokieInstall(pokiePackageRoot)),

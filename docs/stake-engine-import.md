@@ -255,7 +255,7 @@ at that point.
 ## Programmatic usage
 
 ```ts
-import {StakeEngineExporter, StakeEngineImporter} from "pokie";
+import {StakeEngineExporter, StakeEngineImporter} from "@fromstan/pokie";
 
 const importResult = await new StakeEngineImporter().importFromDirectory("./stakeengine");
 

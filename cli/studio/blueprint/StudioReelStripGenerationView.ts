@@ -1,4 +1,4 @@
-import type {ReelStripAnalysis, ReelStripGenerationDiagnostic, ValidationIssue} from "pokie";
+import type {ReelStripAnalysis, ReelStripGenerationDiagnostic, ValidationIssue} from "@fromstan/pokie";
 
 // One reel's own entry in POST /api/home/blueprints/reel-strip-generation-preview's response --
 // mirrors that reel's own GameBlueprint.reelStripGeneration[reelIndex] entry: a "literal" reel's exact

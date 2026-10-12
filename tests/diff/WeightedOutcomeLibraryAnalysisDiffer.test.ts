@@ -1,4 +1,4 @@
-import {WeightedOutcomeLibraryAnalysis, WeightedOutcomeLibraryAnalysisDiffer} from "pokie";
+import {WeightedOutcomeLibraryAnalysis, WeightedOutcomeLibraryAnalysisDiffer} from "@fromstan/pokie";
 
 const left: WeightedOutcomeLibraryAnalysis = {
     totalWeight: 100,

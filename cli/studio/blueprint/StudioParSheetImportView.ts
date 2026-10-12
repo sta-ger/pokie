@@ -1,4 +1,4 @@
-import type {ParSheetImportResult, ParSheetProvenance, ValidationIssue} from "pokie";
+import type {ParSheetImportResult, ParSheetProvenance, ValidationIssue} from "@fromstan/pokie";
 
 // The importer keeps parsed Meta provenance beside its structured facts.  Keep
 // the same parsed value in the draft evidence so Apply -> managed save cannot

@@ -1,4 +1,4 @@
-import type {CertificationEvidenceBundleManifest, ValidationIssue} from "pokie";
+import type {CertificationEvidenceBundleManifest, ValidationIssue} from "@fromstan/pokie";
 
 // Mirrors CertificationEvidenceBundleBuilder.buildFromBundle's own "no partial bundle" contract exactly:
 // `manifest` is present iff `errors` is empty. Never re-derived here -- every field comes straight off

@@ -1,4 +1,4 @@
-import type {GameBlueprint} from "pokie";
+import type {GameBlueprint} from "@fromstan/pokie";
 
 // The blank counterpart to createStarterGameBlueprint.ts: the smallest GameBlueprint that still passes
 // GameBlueprintValidator with zero errors or warnings (see createBlankGameBlueprint.test.ts) -- a bare

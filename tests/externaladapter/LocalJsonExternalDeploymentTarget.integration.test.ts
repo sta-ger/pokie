@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ExternalDeploymentModeInput, ExternalDeploymentService, ExternalDeploymentTargetRegistry, createLocalJsonExternalDeploymentTarget} from "pokie";
+import {ExternalDeploymentModeInput, ExternalDeploymentService, ExternalDeploymentTargetRegistry, createLocalJsonExternalDeploymentTarget} from "@fromstan/pokie";
 import {externalAdapterTestLibrary} from "./ExternalAdapterTestFixtures.js";
 
 function sha256Hex(raw: string): string {

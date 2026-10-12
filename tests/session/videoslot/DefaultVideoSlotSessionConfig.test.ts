@@ -1,4 +1,4 @@
-import {VideoSlotConfig, Paytable, PaytableRepresenting} from "pokie";
+import {VideoSlotConfig, Paytable, PaytableRepresenting} from "@fromstan/pokie";
 
 describe("DefaultVideoSlotSessionConfig", () => {
     let config: VideoSlotConfig;

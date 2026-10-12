@@ -25,19 +25,19 @@ Blueprint Project file through an interactive wizard, instead of hand-authoring 
 Try it from the repository root:
 
 ```
-npx pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out /tmp/sample-slot
+npx --package @fromstan/pokie pokie build examples/blueprints/sample-slot.blueprint.json --target tsPackage --out /tmp/sample-slot
 # Optional when moving the package or developing independently:
 # cd /tmp/sample-slot && npm install
-npx pokie inspect /tmp/sample-slot
-npx pokie validate /tmp/sample-slot
+npx --package @fromstan/pokie pokie inspect /tmp/sample-slot
+npx --package @fromstan/pokie pokie validate /tmp/sample-slot
 ```
 
 Or the `reelStripGeneration` example — each *generated* reel's resolved strip is baked straight into the built
 package's `reelStrips`, with no separate record of the generation config (seed, constraints, etc.) that produced it:
 
 ```
-npx pokie build examples/blueprints/generated-reels.blueprint.json --target tsPackage --out /tmp/generated-reels
-npx pokie inspect /tmp/generated-reels
+npx --package @fromstan/pokie pokie build examples/blueprints/generated-reels.blueprint.json --target tsPackage --out /tmp/generated-reels
+npx --package @fromstan/pokie pokie inspect /tmp/generated-reels
 ```
 
 The generated package includes its own `README.md` (what each file is, and the rest of the

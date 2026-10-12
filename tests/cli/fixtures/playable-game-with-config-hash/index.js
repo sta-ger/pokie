@@ -4,7 +4,7 @@ const {
     SymbolsCombinationsGenerator,
     SeededRandomNumberGenerator,
     SymbolsSequence,
-} = require("pokie");
+} = require("@fromstan/pokie");
 
 // FNV-1a: turns any --seed string/number into a 32-bit int for SeededRandomNumberGenerator.
 function hashSeed(seed) {

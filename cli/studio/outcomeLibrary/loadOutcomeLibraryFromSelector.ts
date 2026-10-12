@@ -1,4 +1,4 @@
-import type {OutcomeLibraryBundleReading, StakeEngineImporting, ValidationIssue, WeightedOutcomeLibrary} from "pokie";
+import type {OutcomeLibraryBundleReading, StakeEngineImporting, ValidationIssue, WeightedOutcomeLibrary} from "@fromstan/pokie";
 import {loadWeightedOutcomeLibraryFromProjectFile} from "../deployment/loadWeightedOutcomeLibraryFromProjectFile.js";
 import {resolveProjectDirectory} from "./resolveProjectDirectory.js";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";

@@ -10,7 +10,7 @@ import {
     PokieGame,
     PokieGameManifest,
     DEV_OPERATION,
-} from "pokie";
+} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import fs from "fs";

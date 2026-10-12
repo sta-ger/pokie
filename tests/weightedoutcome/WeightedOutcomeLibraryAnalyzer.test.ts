@@ -1,5 +1,5 @@
 import {expectRelative} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
-import {WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryBuildError, buildWeightedOutcomeLibrary} from "pokie";
+import {WeightedOutcomeLibraryAnalyzer, WeightedOutcomeLibraryBuildError, buildWeightedOutcomeLibrary} from "@fromstan/pokie";
 import {artifactWithTotalWin} from "./WeightedOutcomeTestFixtures.js";
 
 describe("WeightedOutcomeLibraryAnalyzer", () => {

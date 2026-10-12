@@ -1,7 +1,7 @@
 // Keeps the three local-runtime commands' actionable startup/load diagnostics in one place. These
 // commands deliberately expose the same local HTTP workflow, so their recovery guidance must not
 // drift as their individual server wiring evolves.
-import {ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "pokie";
+import {ProjectTargetMalformedError, ProjectTargetUnsupportedError} from "@fromstan/pokie";
 import {RuntimePreparationError} from "../../materialize/RuntimePreparationError.js";
 
 export function describeLocalServerStartError(

@@ -15,7 +15,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     SIM_OPERATION,
     ValidationIssue,
-} from "pokie";
+} from "@fromstan/pokie";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
@@ -220,7 +220,7 @@ describe("BlueprintProjectMaterializer", () => {
 
         const result = await materializer.materialize(blueprintProjectOf(blueprintPath));
 
-        expect(fs.realpathSync(path.join(result.runtimePath, "node_modules", "pokie"))).toBe(
+        expect(fs.realpathSync(path.join(result.runtimePath, "node_modules", "@fromstan", "pokie"))).toBe(
             fs.realpathSync(path.join(__dirname, "..", "..", "..")),
         );
         expect(base.calls).toEqual([]);
@@ -368,7 +368,7 @@ describe("BlueprintProjectMaterializer", () => {
         try {
             const runtimeEntry = path.join(pokiePackageRoot, "dist", "cjs", "index.js");
             fs.mkdirSync(path.dirname(runtimeEntry), {recursive: true});
-            fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "pokie", version: "1.3.0"}));
+            fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "@fromstan/pokie", private: true, version: "1.3.0"}));
             fs.writeFileSync(runtimeEntry, "module.exports = {build: 1};\n");
             const firstIdentity = createLocalRuntimeIdentity(pokiePackageRoot);
             const firstRunner = createRecordingRunner();
@@ -398,7 +398,7 @@ describe("BlueprintProjectMaterializer", () => {
         try {
             const runtimeEntry = path.join(pokiePackageRoot, "dist", "cjs", "index.js");
             fs.mkdirSync(path.dirname(runtimeEntry), {recursive: true});
-            fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "pokie", version: "1.3.0"}));
+            fs.writeFileSync(path.join(pokiePackageRoot, "package.json"), JSON.stringify({name: "@fromstan/pokie", private: true, version: "1.3.0"}));
             fs.writeFileSync(runtimeEntry, "export {};\n");
             const realRead = fs.readFileSync.bind(fs);
             const missing = Object.assign(new Error("gone during read"), {code: "ENOENT"});

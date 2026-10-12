@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, ValidationIssue} from "@fromstan/pokie";
 
 // A per-mode provenance summary read straight off each loaded WeightedOutcomeLibrary — never recomputed
 // or Stake-specific; the same fields StakeEngineManifestModeEntry itself carries, shown *before* a real

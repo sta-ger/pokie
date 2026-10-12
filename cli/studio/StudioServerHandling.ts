@@ -1,4 +1,4 @@
-import type {PokieDevServerAddress} from "pokie";
+import type {PokieDevServerAddress} from "@fromstan/pokie";
 
 export interface StudioServerHandling {
     start(): Promise<PokieDevServerAddress>;

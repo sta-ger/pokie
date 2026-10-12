@@ -1,4 +1,4 @@
-import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "pokie";
+import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

@@ -1,4 +1,4 @@
-import type {FairnessCommitment, FairnessServerSeedCommitment} from "pokie";
+import type {FairnessCommitment, FairnessServerSeedCommitment} from "@fromstan/pokie";
 
 // The Provably Fair tab's "Configure" step -- computes both commit-reveal artifacts a real round would
 // publish in sequence (server seed commitment first, before clientSeed/nonce are even solicited; the

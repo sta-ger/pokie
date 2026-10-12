@@ -11,8 +11,8 @@ Round-trip example for [`pokie import`/`pokie build`](../../docs/cli.md):
 Try it from the repository root:
 
 ```
-npx pokie import examples/parsheets/starter.par.xlsx --out /tmp/starter.blueprint.json
-npx pokie build examples/parsheets/starter.blueprint.json --target parWorkbook --out /tmp/starter.par.xlsx
+npx --package @fromstan/pokie pokie import examples/parsheets/starter.par.xlsx --out /tmp/starter.blueprint.json
+npx --package @fromstan/pokie pokie build examples/parsheets/starter.blueprint.json --target parWorkbook --out /tmp/starter.par.xlsx
 ```
 
 `starter.par.xlsx` retains its recorded historical publication; the second command creates a new workbook. open it in Excel/LibreOffice/Google Sheets to see the

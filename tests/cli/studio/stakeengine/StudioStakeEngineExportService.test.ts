@@ -1,4 +1,4 @@
-import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, StakeEngineExporter, WeightedOutcomeLibrary} from "pokie";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleWriter, StakeEngineExporter, WeightedOutcomeLibrary} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -239,7 +239,7 @@ describe("StudioStakeEngineExportService", () => {
 
     describe("export", () => {
         it("executes the exact prepared project-goal operation and preserves cancellation as a terminal result", async () => {
-            const operation = {source: {type: "blueprint", rootPath: tmpRoot}, destinationPath: path.join(tmpRoot, "stakeengine"), plan: plannedStakeExport} as unknown as import("pokie").PreparedStakeProjectionOperation;
+            const operation = {source: {type: "blueprint", rootPath: tmpRoot}, destinationPath: path.join(tmpRoot, "stakeengine"), plan: plannedStakeExport} as unknown as import("@fromstan/pokie").PreparedStakeProjectionOperation;
             const executeStakeProjection = jest.fn(() => Promise.resolve({status: "cancelled" as const, message: "Artifact build was cancelled.", plan: plannedStakeExport}));
             const projectGoal: StudioStakeProjectGoalExporting = {
                 validateStakeProjection: jest.fn(() => Promise.resolve({plan: plannedStakeExport, operation})),

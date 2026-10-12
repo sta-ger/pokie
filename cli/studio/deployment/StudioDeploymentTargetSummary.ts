@@ -1,4 +1,4 @@
-import type {ExternalDeploymentCapability, ExternalDeploymentRequirements} from "pokie";
+import type {ExternalDeploymentCapability, ExternalDeploymentRequirements} from "@fromstan/pokie";
 
 // GET /api/project/deployment/targets' own DTO — one row per registered ExternalDeploymentTarget.
 // Deliberately omits roundProjector/artifactGenerator/artifactValidator/runtimeAdapter/diagnostic:

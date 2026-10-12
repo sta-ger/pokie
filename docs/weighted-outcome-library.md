@@ -92,7 +92,7 @@ already in that order is flagged as `weighted-outcome-library-outcomes-not-sorte
 gotten that way by bypassing `buildWeightedOutcomeLibrary`.
 
 ```ts
-import {buildWeightedOutcomeLibrary} from "pokie";
+import {buildWeightedOutcomeLibrary} from "@fromstan/pokie";
 
 const library = buildWeightedOutcomeLibrary({
     libraryId: "sample-slot-base-game-v1",

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "pokie";
+import {CertificationEvidenceBundleBuildCancelledError, CertificationEvidenceBundleBuilder, OutcomeLibraryBundleValidating, ValidationIssue} from "@fromstan/pokie";
 import {StudioCertificationService} from "../../../../cli/studio/certification/StudioCertificationService.js";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "../../../certification/CertificationEvidenceBundleTestFixtures.js";
 

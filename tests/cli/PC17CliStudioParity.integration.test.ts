@@ -9,7 +9,7 @@ import {
     BUILD_PRODUCT_MATRIX_TARGETS,
     ProjectTargetResolver,
     ProjectType,
-} from "pokie";
+} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioHomeService} from "../../cli/studio/home/StudioHomeService.js";

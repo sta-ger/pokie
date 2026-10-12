@@ -1,4 +1,4 @@
-import {SecureWeightedOutcomeRandomSource, SeededWeightedOutcomeRandomSource} from "pokie";
+import {SecureWeightedOutcomeRandomSource, SeededWeightedOutcomeRandomSource} from "@fromstan/pokie";
 
 describe("SeededWeightedOutcomeRandomSource", () => {
     it("always returns an integer in [0, exclusiveUpperBound)", () => {

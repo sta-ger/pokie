@@ -2,7 +2,7 @@ import {spawnSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleReader, ParSheetImporter, StakeEngineImporter} from "pokie";
+import {OutcomeLibraryBundleReader, ParSheetImporter, StakeEngineImporter} from "@fromstan/pokie";
 import {dispatch} from "../../cli/dispatch.js";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {ensureCompiledTestOutput} from "../testUtils/ensureCompiledTestOutput.js";
@@ -18,7 +18,7 @@ const blueprint = {
 // to the controller. The existing helper keeps the compiler foreground and owns its lock.
 beforeAll(() => {
     ensureCompiledTestOutput({
-        repositoryRoot: root, outputPaths: [binary], lockName: "canonical-artifact-cli", forceRebuild: true,
+        repositoryRoot: root, outputPaths: [binary, ...["esm", "src"].map(tree => path.join(root, "dist", tree, "gamepackage/internal/runtimeLocation.mjs"))], lockName: "canonical-artifact-cli", forceRebuild: true,
         command: [process.execPath, "-e", `
             const {execFileSync}=require('node:child_process');
             const fs=require('node:fs');
@@ -29,6 +29,7 @@ beforeAll(() => {
                 fs.mkdirSync(require('node:path').dirname(target),{recursive:true});
                 fs.copyFileSync('src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs',target);
             }
+            execFileSync(process.execPath,['tests/testUtils/stageRuntimeLocation.mjs','esm','src'],{stdio:'inherit'});
         `],
     });
 }, 120000);

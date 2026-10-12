@@ -3,7 +3,7 @@ import {
     WEIGHTED_OUTCOME_LIBRARY_SCHEMA_VERSION,
     WeightedOutcomeLibraryBuildError,
     buildWeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 import {
     artifactWith,
     artifactWithTotalWin,

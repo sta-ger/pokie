@@ -14,7 +14,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     WeightedOutcomeRandomSource,
-} from "pokie";
+} from "@fromstan/pokie";
 import {OutcomeSourceCommand} from "../../../cli/commands/OutcomeSourceCommand.js";
 import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";

@@ -1,4 +1,4 @@
-import {SeededRandomNumberGenerator} from "pokie";
+import {SeededRandomNumberGenerator} from "@fromstan/pokie";
 
 describe("SeededRandomNumberGenerator", () => {
     test("stays within the requested [min, max) range", () => {

@@ -32,7 +32,7 @@ import {
     WinningValueDescribing,
     WinningWay,
     WinningWayDescribing,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("ExtensionPoints", () => {
     test("VideoSlotWinCalculator delegates to injected LineWinCalculating/ScatterWinCalculating", () => {

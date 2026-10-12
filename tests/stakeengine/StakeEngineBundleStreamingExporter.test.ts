@@ -20,7 +20,7 @@ import {
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildStakeEngineTestLibrary, stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 function readCsvRows(filePath: string): string[] {

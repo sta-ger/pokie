@@ -1,4 +1,4 @@
-import {InMemorySessionRepository, PokieSessionState, SessionVersionConflictError} from "pokie";
+import {InMemorySessionRepository, PokieSessionState, SessionVersionConflictError} from "@fromstan/pokie";
 
 describe("InMemorySessionRepository", () => {
     it("returns undefined for a sessionId that was never saved", async () => {

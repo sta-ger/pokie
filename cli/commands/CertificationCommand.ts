@@ -16,7 +16,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     ValidationIssue,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";

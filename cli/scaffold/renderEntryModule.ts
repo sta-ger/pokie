@@ -1,4 +1,4 @@
-import {PokieGameManifest} from "pokie";
+import {PokieGameManifest} from "@fromstan/pokie";
 
 export function renderEntryModule(manifest: PokieGameManifest): string {
     return `import {
@@ -10,7 +10,7 @@ export function renderEntryModule(manifest: PokieGameManifest): string {
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotSessionSerializer,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const manifest = ${JSON.stringify(manifest, null, 4)};
 

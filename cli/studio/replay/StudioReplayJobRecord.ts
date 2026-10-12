@@ -1,4 +1,4 @@
-import type {PokieProject, ReplayDescriptor} from "pokie";
+import type {PokieProject, ReplayDescriptor} from "@fromstan/pokie";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 
 // The internal, mutable job record StudioReplayExecutionService/StudioReplayRepository hold —

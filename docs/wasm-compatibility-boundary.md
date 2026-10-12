@@ -3,7 +3,7 @@
 # WASM Compatibility Boundary
 
 POKIE WASM is a first-class, portable artifact target. `pokie build <Blueprint> --target wasm` emits a valid
-`game.wasm` and an integrity-bound `game.wasm.pokie-wasm.json` manifest. The portable `pokie/wasm` runtime
+`game.wasm` and an integrity-bound `game.wasm.pokie-wasm.json` manifest. The portable `@fromstan/pokie/wasm` runtime
 instantiates only standard WebAssembly and receives randomness from its host; Node file loading, Studio state,
 and process concerns stay outside that runtime. POKIE intentionally does **not** promise that an arbitrary
 handwritten Node package can be compiled to WASM: Blueprint is the canonical source, and PAR reaches WASM via
@@ -161,7 +161,7 @@ implementations must themselves return bounded continuation, without growing
 history or queues. The runtime cannot guarantee bounded caller-owned JSON.
 
 `BoundedPokieWasmTraceCollector(capacity)` is exported from the root,
-`pokie/browser`, and `pokie/wasm`. Pass `{trace}` to create/restore/replay or
+`@fromstan/pokie/browser`, and `@fromstan/pokie/wasm`. Pass `{trace}` to create/restore/replay or
 call `session.setTraceCollector(trace)` later. It captures ordered RNG evidence:
 `initialization` (unpaid), `round` (settled paid play), or `replay`, plus sequence
 and per-event draws. It retains the first `capacity` events, drops subsequent

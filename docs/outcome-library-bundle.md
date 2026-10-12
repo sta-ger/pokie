@@ -349,7 +349,7 @@ import {
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleWriter,
     loadWeightedOutcomeLibraryFromBundle,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // "outcomes" can be a plain array or a genuine AsyncIterable (e.g. an async generator reading from a database
 // cursor or a JSONL file) — consumed exactly once, streamed straight to disk.

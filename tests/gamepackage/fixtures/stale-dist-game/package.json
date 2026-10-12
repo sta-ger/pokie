@@ -3,5 +3,6 @@
     "version": "1.0.0",
     "pokie": {
         "entry": "./dist/index.js"
-    }
+    },
+    "private": true
 }

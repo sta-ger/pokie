@@ -14,13 +14,14 @@ const launcher = path.join(repositoryRoot, "dist", "cli", "pokie.js");
 beforeAll(() => {
     ensureCompiledTestOutput({
         repositoryRoot,
-        outputPaths: [launcher],
+        outputPaths: [launcher, ...["esm", "src"].map(tree => path.join(repositoryRoot, "dist", tree, "gamepackage/internal/runtimeLocation.mjs"))],
         lockName: "canonical-artifact-cli",
         forceRebuild: true,
         command: [process.execPath, "-e", `
             const {execFileSync}=require('node:child_process');
             for(const project of ['tsconfig.prod.json','tsconfig.cli.json'])
                 execFileSync(process.execPath,['node_modules/typescript/bin/tsc','--project',project],{stdio:'inherit'});
+            execFileSync(process.execPath,['tests/testUtils/stageRuntimeLocation.mjs','esm','src'],{stdio:'inherit'});
         `],
     });
 }, 120_000);

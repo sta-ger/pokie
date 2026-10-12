@@ -1,4 +1,4 @@
-import {GameSessionSerializer, PokieGame, PokieGameManifest, resolveGameSessionSerializer} from "pokie";
+import {GameSessionSerializer, PokieGame, PokieGameManifest, resolveGameSessionSerializer} from "@fromstan/pokie";
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 

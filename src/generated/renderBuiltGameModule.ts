@@ -8,7 +8,7 @@ import {resolveReelStripGeneration} from "./resolveReelStripGeneration.js";
 // renderBuiltGameModule below) and "src/index.ts" (the same module, typed and re-compilable via the
 // package's own "tsconfig.json"/"npm run build", the exact same canonical shape "pokie create"/"pokie
 // init" scaffold -- see renderBuiltGameModuleSource below). Both share every line of actual game-
-// assembly logic, the "pokie" runtime binding, and the final export statement (computed once here);
+// assembly logic, the "@fromstan/pokie" runtime binding, and the final export statement (computed once here);
 // only a type-only import and a type annotation differ between them -- see the "typeImport"/
 // "blueprintDeclaration" split below.
 //
@@ -189,7 +189,7 @@ ${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     // build" recompiling src/index.ts type-checks cleanly under the package's own strict tsconfig.json
     // (blueprint's dynamically-keyed fields -- paytable, mechanics.freeGames.awardsByCount -- would
     // otherwise fail strict indexing checks against the object literal TypeScript infers for an
-    // unannotated "const blueprint = {...}"). Everything else -- the "pokie" runtime binding itself
+    // unannotated "const blueprint = {...}"). Everything else -- the "@fromstan/pokie" runtime binding itself
     // (still a plain require() destructure, not a typed import: every call it feeds stays untyped
     // "any" either way, so this never depends on "pokie"'s own exported method signatures) and the
     // final "module.exports" -- is byte-identical in both, so a real "npm run build" here reproduces
@@ -197,7 +197,7 @@ ${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     // Built packages compile as CommonJS, while Pokie's package exports separate ESM and CommonJS
     // declarations. Pin the erased type import to the CommonJS condition so Node16 resolution does
     // not reject it as an ESM type import from a CommonJS generated module.
-    const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "pokie" with { "resolution-mode": "require" };\n\n` : "";
+    const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -218,7 +218,7 @@ ${typeImport}// ----------------------------------------------------------------
 // ---------------------------------------------------------------------------
 const {
 ${requireNames.map((name) => `    ${name},`).join("\n")}
-} = require("pokie");
+} = require("@fromstan/pokie");
 
 // ---------------------------------------------------------------------------
 // Blueprint data (embedded verbatim from the source GameBlueprint JSON config)

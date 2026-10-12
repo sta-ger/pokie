@@ -2,7 +2,7 @@ import {
     DEFAULT_GAME_MECHANIC_COMPATIBILITY_CATALOG,
     DefaultGameMechanicCompatibilityPolicy,
     GameMechanicFeature,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("DEFAULT_GAME_MECHANIC_COMPATIBILITY_CATALOG", () => {
     test("never lists paylines and winModel together, except the one entry that also declares reelStrips", () => {

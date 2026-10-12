@@ -6,7 +6,7 @@ import {
     WinningLine,
     HorizontalLines,
     WinningLinesAnalyzer,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("WinningLinesAnalyzer", () => {
     test("allLinesHaveSameSymbolId", () => {

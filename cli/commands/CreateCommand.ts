@@ -8,7 +8,7 @@ import {
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
     SlotGameNameGenerator,
-} from "pokie";
+} from "@fromstan/pokie";
 import {applyBlueprintNameOverride} from "../build/applyBlueprintNameOverride.js";
 import {buildRandomReelStripGeneration} from "../build/buildRandomReelStripGeneration.js";
 import {createBlankGameBlueprint} from "../build/createBlankGameBlueprint.js";

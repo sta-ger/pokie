@@ -17,7 +17,7 @@ import {
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesConfigRepresenting,
     VideoSlotWithFreeGamesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 import {
     testAnteModeChargesTheMultipliedStake,
     testAnteModeGatesCanPlayNextGameOnTheFullCost,

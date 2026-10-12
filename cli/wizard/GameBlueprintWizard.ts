@@ -4,7 +4,7 @@ import {
     type GameBlueprintManifest,
     type GameBlueprintMechanics,
     type SlotGameNameGenerating,
-} from "pokie";
+} from "@fromstan/pokie";
 import {createStarterGameBlueprint} from "../build/createStarterGameBlueprint.js";
 import {deriveManifestDefaults} from "../scaffold/deriveManifestDefaults.js";
 import type {GameBlueprintWizarding, GameBlueprintWizardOptions} from "./GameBlueprintWizarding.js";

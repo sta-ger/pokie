@@ -112,10 +112,10 @@ export class TsPackageArtifactBuilder implements ArtifactBuilder {
 
     private linkRuntime(packageRoot: string, pokiePackageRoot: string): void {
         const nodeModules = path.join(packageRoot, "node_modules");
-        fs.mkdirSync(nodeModules, {recursive: true});
+        fs.mkdirSync(path.join(nodeModules, "@fromstan"), {recursive: true});
         // The CLI/Studio entry point supplies the running POKIE root. This bounded link makes that
         // just-built package executable immediately, before a user has to run npm. It is ignored by
         // npm packing, and a later npm install resolves package.json's released runtime range instead.
-        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "pokie"), "junction");
+        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "@fromstan", "pokie"), "junction");
     }
 }

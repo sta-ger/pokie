@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {BUILT_PACKAGE_FILES} from "pokie";
+import {BUILT_PACKAGE_FILES} from "@fromstan/pokie";
 import {previewBuildDestination} from "../../../cli/studio/previewBuildDestination.js";
 
 const BUILT_FILES = [...BUILT_PACKAGE_FILES].sort();

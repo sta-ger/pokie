@@ -6,7 +6,7 @@ import {
     UnknownBetModeError,
     VideoSlotWithBetModesSession,
     VideoSlotWithFreeGamesSessionHandling,
-} from "pokie";
+} from "@fromstan/pokie";
 
 export const testDefaultBetModeBehavesLikeThePlainSession = (
     session: VideoSlotWithBetModesSession<string>,

@@ -87,7 +87,7 @@ export function readP911CandidateFromEnvironment(environment, options) {
 export async function readP911Candidate(reference, {repository = root} = {}) {
     const handoff = await readPinnedJson(reference);
     if (handoff.schemaVersion !== 1 || handoff.kind !== "p9-11-candidate-handoff" || handoff.campaignId !== P911_CAMPAIGN
-        || handoff.packageName !== "pokie" || !handoff.packageVersion || !sha(handoff.archiveSha256) || !sha(handoff.executableSha256)
+        || !["pokie", "@fromstan/pokie"].includes(handoff.packageName) || !handoff.packageVersion || !sha(handoff.archiveSha256) || !sha(handoff.executableSha256)
         || !path.isAbsolute(handoff.archivePath ?? "") || !path.isAbsolute(handoff.installationRoot ?? "")) fail("incomplete controller handoff");
     const equivalence = authenticateP911Tree(handoff.candidateId, handoff.candidateTreeId, repository);
     await authenticateP911Driver(handoff.browserDriver);
@@ -104,12 +104,12 @@ export async function readP911Candidate(reference, {repository = root} = {}) {
     const archive = await readFile(handoff.archivePath);
     if (sha256(archive) !== handoff.archiveSha256) fail("archive digest mismatch");
     const projection = await archiveExecutableManifest(archive);
-    if (projection.sha256 !== handoff.executableSha256 || projection.packageJson.name !== "pokie" || projection.packageJson.version !== handoff.packageVersion
+    if (projection.sha256 !== handoff.executableSha256 || projection.packageJson.name !== handoff.packageName || projection.packageJson.version !== handoff.packageVersion
         || (projection.packageJson.gitHead !== undefined && projection.packageJson.gitHead !== handoff.candidateId)) fail("packed identity mismatch");
     const {gitHead, ...declaration} = projection.packageJson;
     if (JSON.stringify(declaration) !== JSON.stringify(JSON.parse(git(repository, ["show", `${handoff.candidateId}:package.json`])))) fail("package declaration differs from source");
-    const packageRoot = await realpath(path.join(handoff.installationRoot, "node_modules/pokie"));
-    if (packageRoot !== path.join(await realpath(handoff.installationRoot), "node_modules/pokie")) fail("installation resolves a borrowed/copied package tree");
+    const packageRoot = await realpath(path.join(handoff.installationRoot, "node_modules", handoff.packageName));
+    if (packageRoot !== path.join(await realpath(handoff.installationRoot), "node_modules", handoff.packageName)) fail("installation resolves a borrowed/copied package tree");
     for (const entry of projection.entries) {
         const file = path.join(packageRoot, entry.path);
         if (!(await lstat(file)).isFile() || await realpath(file) !== file || sha256(await readFile(file)) !== entry.sha256) fail(`stale installed asset: ${entry.path}`);
@@ -129,11 +129,11 @@ export async function readP911Candidate(reference, {repository = root} = {}) {
     // maps "pokie" to source. Resolve in a bounded native Node realm instead.
     const resolutions = JSON.parse(execFileSync(process.execPath, ["--input-type=commonjs", "-e", `
         const resolver = require('node:module').createRequire(process.argv[1]);
-        process.stdout.write(JSON.stringify(Object.fromEntries(['pokie', 'pokie/browser', 'pokie/wasm', 'pokie/client/player'].map(name => [name, resolver.resolve(name)]))));
+        process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(handoff.packageName === "pokie" ? [handoff.packageName, ...["browser", "wasm", "client/player"].map(subpath => `${handoff.packageName}/${subpath}`)] : [handoff.packageName])}.map(name => [name, resolver.resolve(name)]))));
     `, path.join(handoff.installationRoot, "package.json")], {encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
     const esmResolutions = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", `
         import {fileURLToPath} from 'node:url';
-        process.stdout.write(JSON.stringify(Object.fromEntries(['pokie', 'pokie/browser', 'pokie/wasm', 'pokie/client/player'].map(name => [name, fileURLToPath(import.meta.resolve(name))]))));
+        process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify([handoff.packageName, ...["browser", "wasm", "client/player"].map(subpath => `${handoff.packageName}/${subpath}`)])}.map(name => [name, fileURLToPath(import.meta.resolve(name))]))));
     `], {cwd:handoff.installationRoot, encoding:"utf8", timeout:10_000, stdio:["ignore", "pipe", "pipe"]}));
     const bin = await realpath(path.join(handoff.installationRoot, "node_modules/.bin/pokie"));
     for (const file of [...Object.values(resolutions), ...Object.values(esmResolutions)]) {

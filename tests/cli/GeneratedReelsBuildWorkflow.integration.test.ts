@@ -67,7 +67,7 @@ describe("CLI workflow (integration): pokie build with reelStripGeneration", () 
 
         // The generated module's own require() list is the runtime contract: only ordinary
         // session/config primitives, never anything from the reel-generation API.
-        expect(indexJs).toContain('require("pokie")');
+        expect(indexJs).toContain('require("@fromstan/pokie")');
         expect(indexJs).not.toContain("ReelStripGenerator");
         expect(indexJs).not.toContain("ReelStripConstraint");
     });

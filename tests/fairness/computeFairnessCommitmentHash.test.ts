@@ -1,4 +1,4 @@
-import {computeFairnessCommitment, computeFairnessCommitmentHash, computeFairnessServerSeedCommitment, FairnessCommitment} from "pokie";
+import {computeFairnessCommitment, computeFairnessCommitmentHash, computeFairnessServerSeedCommitment, FairnessCommitment} from "@fromstan/pokie";
 
 describe("computeFairnessCommitmentHash", () => {
     const serverSeedCommitment = computeFairnessServerSeedCommitment({serverSeed: "a-secret-server-seed", issuedAt: "2026-01-01T00:00:00.000Z"});

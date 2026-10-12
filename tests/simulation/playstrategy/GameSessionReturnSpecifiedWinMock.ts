@@ -1,4 +1,4 @@
-import {GameSessionHandling} from "pokie";
+import {GameSessionHandling} from "@fromstan/pokie";
 
 export class GameSessionReturnSpecifiedWinMock implements GameSessionHandling {
     private readonly winModel: {value: number};

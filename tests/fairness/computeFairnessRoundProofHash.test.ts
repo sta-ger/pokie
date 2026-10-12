@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {computeFairnessRoundProofHash, FairnessRoundProof, FairnessRoundProofBuilder} from "pokie";
+import {computeFairnessRoundProofHash, FairnessRoundProof, FairnessRoundProofBuilder} from "@fromstan/pokie";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "./FairnessRoundProofTestFixtures.js";
 
 describe("computeFairnessRoundProofHash", () => {

@@ -76,7 +76,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
     const descriptor = new TextEncoder().encode(JSON.stringify({
         schemaVersion: "1.0.0", component: {id, version: "1.0.0"},
         serialization, host, capabilities,
-        artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash},
+        artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "@fromstan/pokie/wasm", configurationHash},
     }));
     const instructions = options.trapping ? [0x00] : createReelSelectionInstructions(stopWidths, stripLengths);
     const functionBody = options.trapping ? [0x00, ...instructions, 0x0b] : [0x01, 0x02, 0x7f, ...instructions, 0x0b];
@@ -91,7 +91,7 @@ export function createCanonicalWasmFixture(options: CanonicalWasmFixtureOptions 
         manifest: {
             schemaVersion: "1.0.0", component: {id, version: "1.0.0"},
             serialization, host, capabilities,
-            artifact: {format: "pokie.wasm.v1", sha256: sha256(bytes), bytes: bytes.byteLength, abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash},
+            artifact: {format: "pokie.wasm.v1", sha256: sha256(bytes), bytes: bytes.byteLength, abiVersion: "1.0.0", adapter: "@fromstan/pokie/wasm", configurationHash},
         },
     };
 }

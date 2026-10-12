@@ -1,4 +1,4 @@
-import type {ValidationIssue} from "pokie";
+import type {ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/home/blueprints/validate's own DTO — never writes/reads anything, purely
 // GameBlueprintValidator.validate() run against whatever blueprint value the editor currently holds.

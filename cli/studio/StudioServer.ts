@@ -43,7 +43,7 @@ import {
     STUDIO_OPERATION,
     toCanonicalJson,
     VALIDATE_OPERATION,
-} from "pokie";
+} from "@fromstan/pokie";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import fs from "fs";

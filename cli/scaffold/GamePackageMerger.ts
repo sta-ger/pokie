@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {buildPackageJsonPatch, PackageJsonLike, PokieGameManifest, renderTsconfig} from "pokie";
+import {buildPackageJsonPatch, PackageJsonLike, PokieGameManifest, renderTsconfig} from "@fromstan/pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageMergeConflictError, PackageJsonFieldConflict} from "./GamePackageMergeConflictError.js";
 import {GamePackageMergeOverrides, GamePackageMerging} from "./GamePackageMerging.js";

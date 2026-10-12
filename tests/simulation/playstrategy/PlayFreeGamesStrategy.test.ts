@@ -1,4 +1,4 @@
-import {PlayFreeGamesStrategy, SymbolsSequence, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession, VideoSlotWithFreeGamesSessionHandling} from "pokie";
+import {PlayFreeGamesStrategy, SymbolsSequence, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession, VideoSlotWithFreeGamesSessionHandling} from "@fromstan/pokie";
 
 describe("PlayFreeGamesStrategy", () => {
     it("continues past constructor scatters and stops after the first actual triggering round", () => {

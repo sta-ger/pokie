@@ -1,4 +1,4 @@
-import {buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, ParSheetImportResult, PokieProject, readWasmComponentManifest} from "pokie";
+import {buildGameModelProjection, describeUnavailableWasmComponent, describeWasmGameModelBoundary, GameBlueprint, GameModelProjection, GamePackageInspectionReport, isWasmComponentFile, ParSheetImportResult, PokieProject, readWasmComponentManifest} from "@fromstan/pokie";
 import type {StudioBlueprintLoadView} from "./StudioBlueprintLoadView.js";
 
 // The collaborators GET /api/project/gameModel's own resolved-project-type dispatch needs to actually

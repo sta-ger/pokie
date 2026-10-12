@@ -6,7 +6,7 @@ import {
     SlotGameNameRequest,
     SlotGameNameResult,
     SlotGameNameTheme,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 

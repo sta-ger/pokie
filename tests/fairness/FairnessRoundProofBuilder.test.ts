@@ -8,7 +8,7 @@ import {
     OutcomeLibraryBundleModeIndex,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "./FairnessRoundProofTestFixtures.js";
 
 describe("FairnessRoundProofBuilder", () => {

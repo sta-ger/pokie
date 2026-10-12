@@ -19,7 +19,7 @@ import {
     SIM_OPERATION,
     WeightedOutcomeRandomSource,
     loadPokieWasmFileRuntime,
-} from "pokie";
+} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GameBlueprint, GameBlueprintValidator, MinimumCircularDistanceConstraint, ReelStrip, StackConstraint} from "pokie";
+import {GameBlueprint, GameBlueprintValidator, MinimumCircularDistanceConstraint, ReelStrip, StackConstraint} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ParCommand} from "../../cli/commands/ParCommand.js";
 import {ReelCommand} from "../../cli/commands/ReelCommand.js";

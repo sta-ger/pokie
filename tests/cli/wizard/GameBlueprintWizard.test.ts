@@ -1,4 +1,4 @@
-import {SlotGameNameGenerating, SlotGameNameResult} from "pokie";
+import {SlotGameNameGenerating, SlotGameNameResult} from "@fromstan/pokie";
 import {GameBlueprintWizard} from "../../../cli/wizard/GameBlueprintWizard.js";
 import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";
 

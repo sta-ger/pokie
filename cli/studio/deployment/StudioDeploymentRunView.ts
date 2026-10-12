@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ExternalDeploymentDeliveryResult, ExternalDeploymentDiagnosticReport, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, ExternalDeploymentDeliveryResult, ExternalDeploymentDiagnosticReport, ValidationIssue} from "@fromstan/pokie";
 import type {StudioDeploymentArtifactView} from "./StudioDeploymentArtifactView.js";
 import type {StudioDeploymentStageSummary} from "./StudioDeploymentStageSummary.js";
 

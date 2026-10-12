@@ -1,4 +1,4 @@
-import {PokieGameManifest} from "pokie";
+import {PokieGameManifest} from "@fromstan/pokie";
 
 export type ScaffoldResult = {
     projectRoot: string;

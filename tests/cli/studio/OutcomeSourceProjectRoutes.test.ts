@@ -1,5 +1,5 @@
 import {markRecognizedStakeProject, writeRareStakeDirectory, expectRareMetrics} from "../../stakeengine/standalone/StakeProbabilityTestFixtures.js";
-import {OutcomeLibraryBundleWriter, PokieGame, PokieGameManifest, StakeEngineExporter, StakeEngineExportModeInput} from "pokie";
+import {OutcomeLibraryBundleWriter, PokieGame, PokieGameManifest, StakeEngineExporter, StakeEngineExportModeInput} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -102,7 +102,7 @@ describe("StudioServer outcome-source project routes", () => {
         expect((await post(`${baseUrl}/api/home/projects/open`, {projectRoot: dir})).status).toBe(200);
         const context = await get(`${baseUrl}/api/project/context`);
         expect(context.status).toBe(200);
-        const dashboard = context.body as {report: import("pokie").OutcomeSourceProjectReport};
+        const dashboard = context.body as {report: import("@fromstan/pokie").OutcomeSourceProjectReport};
         expectRareMetrics(dashboard.report.modes[0].analysis);
         expect(dashboard.report.modes[0].analysis.totalWeight).toBe("18446744073709551616");
         for (const endpoint of ["inspect", "validate"]) {
@@ -208,7 +208,7 @@ describe("StudioServer outcome-source project routes", () => {
             const bundleDir = await buildNativeLibraryDir();
             await post(`${baseUrl}/api/home/projects/open`, {projectRoot: bundleDir});
             const sampled = await post(`${baseUrl}/api/project/outcome-source/sample`, {modeName: "base", seed});
-            const result = sampled.body as {replayId: string; replay?: unknown; selection: {outcome: {artifact: import("pokie").RoundArtifact}}};
+            const result = sampled.body as {replayId: string; replay?: unknown; selection: {outcome: {artifact: import("@fromstan/pokie").RoundArtifact}}};
             const recent = await get(`${baseUrl}/api/project/replays`);
             expect(recent.body).toEqual([expect.objectContaining({id: result.replayId, status: "completed", round: 1, modeName: "base"})]);
             const downloaded = await get(`${baseUrl}/api/project/replays/${result.replayId}/download`);

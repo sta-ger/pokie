@@ -83,7 +83,7 @@ invariants below actually hold, rather than leaving it to every caller to reimpl
   that failure was a normally-reported issue or a caught exception.
 
 ```ts
-import {ExternalDeploymentService} from "pokie";
+import {ExternalDeploymentService} from "@fromstan/pokie";
 
 const result = await new ExternalDeploymentService().deploy(target, modes);
 
@@ -296,7 +296,7 @@ lowercase hex characters, so it can never itself be `".."` or contain a path sep
 ```
 
 ```ts
-import {ExternalDeploymentService, ExternalDeploymentTargetRegistry, createLocalJsonExternalDeploymentTarget} from "pokie";
+import {ExternalDeploymentService, ExternalDeploymentTargetRegistry, createLocalJsonExternalDeploymentTarget} from "@fromstan/pokie";
 
 const target = createLocalJsonExternalDeploymentTarget({outDir: "./out/local-example"});
 

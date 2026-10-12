@@ -12,7 +12,7 @@ import {
     type HoldAndWinRoundOutcome,
     type LockedHoldAndWinSymbol,
     type VideoSlotWithHoldAndWinSessionHandling,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // A fully-controllable VideoSlotWithHoldAndWinSessionHandling double: HoldAndWinRoundHandler only ever
 // reads getSymbolsCombination()/getBet()/getReelsNumber()/getReelsSymbolsNumber()/getCreditsAmount() and the

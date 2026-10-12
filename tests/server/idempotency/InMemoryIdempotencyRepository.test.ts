@@ -1,4 +1,4 @@
-import {InMemoryIdempotencyRepository} from "pokie";
+import {InMemoryIdempotencyRepository} from "@fromstan/pokie";
 
 describe("InMemoryIdempotencyRepository", () => {
     it("returns undefined for a sessionId/requestId pair it hasn't seen", async () => {

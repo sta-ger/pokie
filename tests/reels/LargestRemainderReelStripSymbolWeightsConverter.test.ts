@@ -1,4 +1,4 @@
-import {LargestRemainderReelStripSymbolWeightsConverter} from "pokie";
+import {LargestRemainderReelStripSymbolWeightsConverter} from "@fromstan/pokie";
 
 describe("LargestRemainderReelStripSymbolWeightsConverter", () => {
     const converter = new LargestRemainderReelStripSymbolWeightsConverter();

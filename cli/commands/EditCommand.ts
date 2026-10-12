@@ -10,7 +10,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     writeFileAtomically,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {GameBlueprintWizard} from "../wizard/GameBlueprintWizard.js";

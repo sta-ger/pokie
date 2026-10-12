@@ -1,4 +1,4 @@
-import {SymbolsCombination} from "pokie";
+import {SymbolsCombination} from "@fromstan/pokie";
 
 describe("DefaultSymbolsCombination", () => {
     let symbolsCombination: SymbolsCombination;

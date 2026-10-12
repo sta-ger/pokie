@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {ParSheetExporter, StakeEngineExporter} from "pokie";
+import {ParSheetExporter, StakeEngineExporter} from "@fromstan/pokie";
 import {ImportCommand} from "../../../cli/commands/ImportCommand.js";
 import {InspectCommand} from "../../../cli/commands/InspectCommand.js";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";

@@ -12,7 +12,7 @@ import {
     VideoSlotWinCalculator,
     WaysWinCalculator,
     WinEvaluationValidationContext,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("ValidationResult", () => {
     test("hasErrors/hasWarnings/hasSeverity report on the issue severities actually present", () => {

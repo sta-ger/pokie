@@ -4,7 +4,7 @@ import {spawnSync} from "node:child_process";
 import {mkdir, readFile, readdir, realpath, symlink, writeFile} from "node:fs/promises";
 import {createRequire} from "node:module";
 import path from "node:path";
-import {pathToFileURL, fileURLToPath} from "node:url";
+import {fileURLToPath} from "node:url";
 import {zstdCompressSync} from "node:zlib";
 
 // The reviewed production fixture, including the original string seed "0".
@@ -21,20 +21,45 @@ export function assertRareP911Metrics(mode) {
     assert.ok(Math.abs(mode.standardDeviation ** 2 / mode.variance - 1) <= 1e-12);
 }
 
-export async function runP911PublicScenario(request) {
-    const observations = [], workspace = path.join(request.profileRoot, "workspace");
-    // One borrowed normal installation. Generated games cannot find another
-    // checkout or previously published version through their parent chain.
-    await mkdir(path.join(workspace, "node_modules"));
-    await symlink(request.packageRoot, path.join(workspace, "node_modules/pokie"), "dir");
+/** Resolve through native export conditions in an invocation-owned consumer, with no legacy alias. */
+export async function prepareP911PublicConsumer(request) {
+    const manifest = JSON.parse(await readFile(path.join(request.packageRoot, "package.json"), "utf8"));
+    const packageName = request.packageName ?? manifest.name;
+    assert.ok(["pokie", "@fromstan/pokie"].includes(packageName), "unsupported candidate package identity");
+    assert.equal(manifest.name, packageName, "candidate package identity differs from authenticated request");
+    assert.equal(manifest.version, request.packageVersion, "candidate package version differs from authenticated request");
+    const workspace = path.join(request.profileRoot, "workspace");
+    const link = path.join(workspace, "node_modules", packageName);
+    await mkdir(path.dirname(link), {recursive: true});
+    await symlink(request.packageRoot, link, "dir");
     const require = createRequire(path.join(workspace, "consumer.cjs"));
-    const cjs = require.resolve("pokie");
-    assert.equal(await realpath(cjs), path.join(request.packageRoot, "dist/cjs/index.js"));
-    const api = require("pokie");
-    const esm = await import(pathToFileURL(path.join(request.packageRoot, "dist/esm/index.js")).href);
+    const cjs = require.resolve(packageName);
+    const packageRoot = await realpath(request.packageRoot);
+    assert.ok((await realpath(cjs)).startsWith(`${packageRoot}${path.sep}`), "borrowed CJS runtime");
+    if (request.resolutions) assert.equal(cjs, request.resolutions[packageName]);
+    const names = [packageName, `${packageName}/wasm`, `${packageName}/browser`];
+    const resolved = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+        process.stdout.write(JSON.stringify(Object.fromEntries(${JSON.stringify(names)}.map(name => [name, import.meta.resolve(name)]))));
+    `], {cwd: workspace, encoding: "utf8", timeout: 10_000});
+    assert.ifError(resolved.error);
+    assert.equal(resolved.status, 0, resolved.stderr);
+    const urls = JSON.parse(resolved.stdout);
+    for (const name of names) {
+        const file = fileURLToPath(urls[name]);
+        assert.ok((await realpath(file)).startsWith(`${packageRoot}${path.sep}`), `borrowed ESM export ${name}`);
+        if (request.esmResolutions) assert.equal(file, request.esmResolutions[name]);
+    }
+    const api = require(packageName);
+    const esm = await import(urls[packageName]);
+    const wasm = await import(urls[`${packageName}/wasm`]);
+    const browser = await import(urls[`${packageName}/browser`]);
+    return {workspace, packageName, cjs, api, esm, wasm, browser, urls};
+}
+
+export async function runP911PublicScenario(request) {
+    const observations = [];
+    const {workspace, packageName, cjs, api, esm, wasm, browser} = await prepareP911PublicConsumer(request);
     for (const name of ["GamePackageGenerator", "loadPokieGameRuntime", "WasmArtifactBuilder", "StakeEngineOutcomeSourceReader", "StakeEngineStandaloneAnalyzer"]) assert.equal(typeof esm[name], "function", `ESM export ${name}`);
-    const wasm = await import(pathToFileURL(require.resolve("pokie/wasm")).href);
-    const browser = await import(pathToFileURL(require.resolve("pokie/browser")).href);
     assert.equal(typeof browser.instantiatePokieWasm, "function");
     const cli = (args, expectedCode = 0) => {
         const result = spawnSync(request.bin, args, {cwd:workspace, env:process.env, encoding:"utf8", timeout:30_000, maxBuffer:4 * 1024 * 1024});
@@ -52,7 +77,7 @@ export async function runP911PublicScenario(request) {
         const declaration = JSON.parse(await readFile(path.join(generated.projectRoot, "package.json"), "utf8"));
         assert.equal(declaration.main, "./dist/index.js");
         assert.equal(declaration.exports, declaration.main); assert.equal(declaration.pokie.entry, declaration.main);
-        assert.equal(createRequire(path.join(generated.projectRoot, declaration.main)).resolve("pokie"), cjs);
+        assert.equal(createRequire(path.join(generated.projectRoot, declaration.main)).resolve(packageName), cjs);
         const loaded = await api.loadPokieGameRuntime(generated.projectRoot);
         try {
             const source = path.join(directory, "source.blueprint.json"), artifact = path.join(directory, "game.wasm");

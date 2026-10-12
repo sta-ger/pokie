@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType, StakeEngineManifest} from "pokie";
+import type {ArtifactConversionPlan, ArtifactTargetType, ProjectType, StakeEngineManifest} from "@fromstan/pokie";
 
 // POST /api/project/artifacts/build's own DTO -- mirrors ArtifactBuilderRegistry.build()'s own outcomes
 // exactly, the same ones "pokie build <project> --target <target>" itself can hit: a successful build's

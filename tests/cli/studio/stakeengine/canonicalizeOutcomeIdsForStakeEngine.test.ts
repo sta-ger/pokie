@@ -1,4 +1,4 @@
-import {buildRoundArtifact, buildWeightedOutcomeLibrary, WeightedOutcomeLibrary, WinEvaluationResult} from "pokie";
+import {buildRoundArtifact, buildWeightedOutcomeLibrary, WeightedOutcomeLibrary, WinEvaluationResult} from "@fromstan/pokie";
 import {canonicalizeOutcomeIdsForStakeEngine} from "../../../../cli/studio/stakeengine/canonicalizeOutcomeIdsForStakeEngine.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 

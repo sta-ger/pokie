@@ -1,7 +1,7 @@
-import {PokieGameManifest} from "pokie";
+import {PokieGameManifest} from "@fromstan/pokie";
 
 export function renderGameModule(manifest: PokieGameManifest, className: string): string {
-    return `import {PokieGame, PokieGameContext, PokieGameManifest, VideoSlotSessionSerializer} from "pokie";
+    return `import {PokieGame, PokieGameContext, PokieGameManifest, VideoSlotSessionSerializer} from "@fromstan/pokie";
 import {create${className}Session} from "./${className}Session.js";
 
 const manifest: PokieGameManifest = ${JSON.stringify(manifest, null, 4)};

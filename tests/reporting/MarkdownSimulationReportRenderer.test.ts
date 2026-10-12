@@ -1,4 +1,4 @@
-import {MarkdownSimulationReportRenderer, SimulationReport} from "pokie";
+import {MarkdownSimulationReportRenderer, SimulationReport} from "@fromstan/pokie";
 
 const report: SimulationReport = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

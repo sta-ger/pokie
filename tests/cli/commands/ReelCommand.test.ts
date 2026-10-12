@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GameBlueprint} from "pokie";
+import {GameBlueprint} from "@fromstan/pokie";
 import {ReelCommand} from "../../../cli/commands/ReelCommand.js";
 
 const baseBlueprint: GameBlueprint = {

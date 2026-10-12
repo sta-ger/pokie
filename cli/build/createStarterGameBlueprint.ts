@@ -1,4 +1,4 @@
-import type {GameBlueprint} from "pokie";
+import type {GameBlueprint} from "@fromstan/pokie";
 
 // The canonical starter game this CLI offers by default: every default the interactive "pokie create"
 // wizard offers (see GameBlueprintWizard,

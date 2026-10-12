@@ -22,7 +22,7 @@ const nativeRead = (reference, options) => JSON.parse(execFileSync(process.execP
 
 async function fixture(options = {}) {
     const directory = await mkdtemp(path.join(os.tmpdir(), "p911-producer-contract-"));
-    const candidate = await candidateFixture(directory), calls = [];
+    const candidate = await candidateFixture(directory, options), calls = [];
     const config = {schemaVersion:1, kind:"p9-11-producer-config", campaignId:P911_CAMPAIGN, issuer:"fixture-controller",
         candidateId:candidate.handoff.candidateId, candidateTreeId:candidate.handoff.candidateTreeId,
         repositoryDirectory:candidate.repository, outputDirectory:path.join(directory, "delivery"), browserDriver:candidate.handoff.browserDriver};
@@ -33,6 +33,8 @@ async function fixture(options = {}) {
         assert.equal(commandOptions.env.npm_lifecycle_event, undefined);
         assert.equal(commandOptions.env.npm_package_json, undefined);
         assert.equal(commandOptions.env.NODE_OPTIONS, undefined);
+        assert.equal(commandOptions.env.INIT_CWD, commandOptions.cwd);
+        assert.equal(commandOptions.env.PWD, commandOptions.cwd);
         assert.ok(commandOptions.resourceRegistryPath.startsWith(`${config.outputDirectory}${path.sep}`));
         const phase = args[0] === "run" ? "build" : args[0];
         if (options.failPhase === phase) {
@@ -47,15 +49,18 @@ async function fixture(options = {}) {
         }
         if (phase === "install") {
             await cp(path.join(candidate.handoff.installationRoot, "node_modules"), path.join(commandOptions.cwd, "node_modules"), {recursive:true, verbatimSymlinks:true});
-            if (options.staleInstallation) await writeFile(path.join(commandOptions.cwd, "node_modules/pokie/dist/esm/index.js"), "stale");
+            if (options.staleInstallation) await writeFile(path.join(commandOptions.cwd, "node_modules", candidate.handoff.packageName, "dist/esm/index.js"), "stale");
         }
         return {...success, resourcesDrained:options.undrainedPhase !== phase, stdioClosed:options.openStdioPhase !== phase};
     };
     return {directory, candidate, config, calls, run};
 }
 
-test("producer delivers one normal candidate pin consumed by the native installation reader", async () => {
-    const f = await fixture();
+test.each(["@fromstan/pokie", "pokie"])("producer delivers one normal %s candidate pin consumed by the native installation reader", async (packageName) => {
+    const f = await fixture({packageName});
+    const inherited = {npm_lifecycle_event:"test:targeted", npm_package_json:"/caller/package.json", INIT_CWD:"/caller", NODE_OPTIONS:"--experimental-vm-modules"};
+    const previous = Object.fromEntries(Object.keys(inherited).map(name => [name, process.env[name]]));
+    Object.assign(process.env, inherited);
     try {
         const delivery = await produceP911Candidate(f.config, {run:f.run, readCandidate:nativeRead});
         assert.deepEqual(f.calls.map((call) => call.args), [
@@ -65,6 +70,9 @@ test("producer delivers one normal candidate pin consumed by the native installa
         ]);
         assert.deepEqual(f.calls.map((call) => call.options.cwd), [f.candidate.repository, f.candidate.repository, path.join(f.config.outputDirectory, "installation")]);
         const candidate = nativeRead(delivery.handoff, {repository:f.candidate.repository});
+        assert.equal(candidate.packageName, packageName);
+        assert.equal(candidate.resolutions[packageName], path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
+        assert.equal(candidate.esmResolutions[packageName], path.join(candidate.packageRoot, "dist/esm/index.js"));
         assert.equal(candidate.candidateId, f.config.candidateId);
         assert.deepEqual(candidate.browserDriver, f.config.browserDriver);
         assert.equal(candidate.archiveSha256, f.candidate.handoff.archiveSha256);
@@ -94,7 +102,12 @@ test("producer delivers one normal candidate pin consumed by the native installa
         await assert.rejects(produceP911Candidate(f.config, {run:f.run}), /EEXIST/);
         assert.equal(f.calls.length, 3); // No repeat build or installation.
         assert.equal((await readPinnedJson(delivery.handoff)).archiveSha256, candidate.archiveSha256);
-    } finally { await rm(f.directory, {recursive:true, force:true}); }
+    } finally {
+        for (const [name, value] of Object.entries(previous)) {
+            if (value === undefined) delete process.env[name]; else process.env[name] = value;
+        }
+        await rm(f.directory, {recursive:true, force:true});
+    }
 });
 
 test("shared selector preserves standalone callers and fails closed on partial/conflicting delivery", async () => {

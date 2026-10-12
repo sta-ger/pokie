@@ -1,4 +1,4 @@
-import {ValueWinCalculator, SymbolsCombination} from "pokie";
+import {ValueWinCalculator, SymbolsCombination} from "@fromstan/pokie";
 
 describe("ValueWinCalculator", () => {
     test("pays every occurrence of a valued symbol independently, unlike a count-tiered paytable lookup", () => {

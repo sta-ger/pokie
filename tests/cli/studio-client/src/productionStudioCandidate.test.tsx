@@ -20,8 +20,8 @@ it("uses the authenticated normal installation for both browser regressions with
         const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
         await expect(fs.access(path.join(fixture.repository, "dist/cli/pokie.js"))).rejects.toThrow("ENOENT");
         const selected = await productionStudioCandidate(environment, fixture.repository);
-        expect(selected).toEqual({packageRoot: path.join(fixture.handoff.installationRoot, "node_modules/pokie"),
-            bin: path.join(fixture.handoff.installationRoot, "node_modules/pokie/dist/cli/pokie.js"), authenticated: true});
+        expect(selected).toEqual({packageRoot: path.join(fixture.handoff.installationRoot, "node_modules/@fromstan/pokie"),
+            bin: path.join(fixture.handoff.installationRoot, "node_modules/@fromstan/pokie/dist/cli/pokie.js"), authenticated: true});
         await expect(fs.access(path.join(fixture.repository, "dist"))).rejects.toThrow("ENOENT");
         // A successful local access must never rescue a partial or corrupt pin.
         await fs.mkdir(path.join(fixture.repository, "dist/cli"), {recursive: true});

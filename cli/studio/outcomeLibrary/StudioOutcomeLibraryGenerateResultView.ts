@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ExactEnumerationCheckpoint, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "pokie";
+import type {ArtifactConversionPlan, ExactEnumerationCheckpoint, OutcomeLibraryGeneratorDiagnostics, ValidationIssue} from "@fromstan/pokie";
 import type {OutcomeLibrarySelector} from "./OutcomeLibrarySelector.js";
 
 // The Studio Generate step's own result: unlike "pokie outcomelibrary generate" (which only ever writes a

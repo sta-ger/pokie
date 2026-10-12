@@ -27,7 +27,7 @@ function countingRunner(base: PackageCommandRunning): PackageCommandRunning & {c
 // comment for why nothing here is a simplified/in-memory blueprint interpreter), a real spawned "npm install"
 // (offline, via localPokieDependencyRunner -- see tests/testUtils/offlinePokieDependencyOverride.ts), and the
 // real PokieGamePackageValidator, which only ever reports "valid" by dynamically loading the materialized
-// package's own entry module through Node's real module resolution (require("pokie") included). A materialize()
+// package's own entry module through Node's real module resolution (require("@fromstan/pokie") included). A materialize()
 // call that succeeds here is proof the cached result is a genuine, runnable PokieGame runtime, not a stand-in
 // -- exactly what BlueprintProjectMaterializer.test.ts's fakes can't themselves prove. Slow (real npm), which
 // is why -- like GamePackagePreparer.integration.test.ts -- this lives in the "pokie-integration" project
@@ -57,7 +57,7 @@ describe("BlueprintProjectMaterializer (real generator, real npm install, real v
         fs.rmSync(sourceDir, {recursive: true, force: true});
     });
 
-    it("materializes a blueprint into a genuinely loadable PokieGame runtime -- real dist/index.js, real installed node_modules/pokie", async () => {
+    it("materializes a blueprint into a genuinely loadable PokieGame runtime -- real dist/index.js, real installed node_modules/@fromstan/pokie", async () => {
         const runner = countingRunner(localPokieDependencyRunner());
         const materializer = new BlueprintProjectMaterializer("1.3.0", undefined, undefined, undefined, runner, undefined, cacheRoot);
         const blueprintPath = path.join(sourceDir, "game.json");
@@ -71,7 +71,7 @@ describe("BlueprintProjectMaterializer (real generator, real npm install, real v
         } as never);
 
         expect(fs.existsSync(path.join(result.runtimePath, "dist", "index.js"))).toBe(true);
-        expect(fs.existsSync(path.join(result.runtimePath, "node_modules", "pokie"))).toBe(true);
+        expect(fs.existsSync(path.join(result.runtimePath, "node_modules", "@fromstan", "pokie"))).toBe(true);
         expect(result.ownsRuntimePath).toBe(false);
         expect(runner.calls).toHaveLength(1);
 

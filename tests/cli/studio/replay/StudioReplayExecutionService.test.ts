@@ -12,7 +12,7 @@ import {
     REPLAY_OPERATION,
     ReplayRecorder,
     WinEvaluationResult,
-} from "pokie";
+} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";

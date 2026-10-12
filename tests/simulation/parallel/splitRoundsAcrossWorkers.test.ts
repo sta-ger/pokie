@@ -1,4 +1,4 @@
-import {splitRoundsAcrossWorkers} from "pokie";
+import {splitRoundsAcrossWorkers} from "@fromstan/pokie";
 
 describe("splitRoundsAcrossWorkers", () => {
     test("splits evenly when rounds is a multiple of workers", () => {

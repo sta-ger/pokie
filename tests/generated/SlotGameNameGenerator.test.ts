@@ -1,4 +1,4 @@
-import {SlotGameNameExhaustedError, SlotGameNameGenerator} from "pokie";
+import {SlotGameNameExhaustedError, SlotGameNameGenerator} from "@fromstan/pokie";
 
 const TITLE_PATTERN = /^[A-Z][a-z]+( [A-Z][a-z]+){1,2}$/;
 

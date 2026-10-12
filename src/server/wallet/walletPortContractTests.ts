@@ -4,7 +4,7 @@ import type {WalletPort} from "./WalletPort.js";
 // their own custom WalletPort can verify it against the same behavior InMemoryWallet is held to.
 // Usage in a *.test.ts file:
 //
-//   import {walletPortContractTests} from "pokie";
+//   import {walletPortContractTests} from "@fromstan/pokie";
 //   walletPortContractTests("MyWalletPort", () => new MyWalletPort());
 //
 // For the additive transactional API (debit/credit/reverse), see transactionalWalletPortContractTests

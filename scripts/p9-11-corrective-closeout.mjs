@@ -228,7 +228,7 @@ export async function runP911Closeout(options, dependencies = {}) {
             profiles.push(profileRoot);
             for (const directory of ["", "workspace", "home", "home/Documents", "config", "data", "cache", "browser", "registry", "jobs", "runtime-cache"]) await mkdir(path.join(profileRoot, directory), {recursive:true});
             const request = {schemaVersion:1, id, candidateId:candidate.candidateId, archiveSha256:candidate.archiveSha256,
-                packageRoot:candidate.packageRoot, installationRoot:candidate.installationRoot, bin:candidate.bin, packageVersion:candidate.packageVersion,
+                packageRoot:candidate.packageRoot, installationRoot:candidate.installationRoot, bin:candidate.bin, packageName:candidate.packageName, packageVersion:candidate.packageVersion, resolutions:candidate.resolutions, esmResolutions:candidate.esmResolutions,
                 profileId, profileRoot, driverSha256:driver.sha256, coverage:P911_RENDERED_COVERAGE[id] ?? [], timeoutMs:options.timeoutMs ?? 180_000};
             const requestPath = path.join(runRoot, `${id}.request.json`);
             await json(requestPath, request);

@@ -3,7 +3,7 @@ import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {GamePackageGenerator, loadPokieGameRuntime, OutcomeLibraryBundleReader, type GameBlueprint} from "pokie";
+import {GamePackageGenerator, loadPokieGameRuntime, OutcomeLibraryBundleReader, type GameBlueprint} from "@fromstan/pokie";
 import type {RuntimePackageResolving} from "../../../../../../cli/materialize/materializeRuntimePackage.js";
 import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/StudioBlueprintService.js";

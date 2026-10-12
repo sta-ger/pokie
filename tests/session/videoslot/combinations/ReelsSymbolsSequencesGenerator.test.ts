@@ -1,4 +1,4 @@
-import {ReelsSymbolsSequencesGenerator, SeededRandomNumberGenerator} from "pokie";
+import {ReelsSymbolsSequencesGenerator, SeededRandomNumberGenerator} from "@fromstan/pokie";
 
 // Regression coverage for the fix in src/generated/renderBuiltGameModule.ts/renderSessionModule.ts: a
 // generated package's own default reel-strip content (no explicit blueprint.reelStrips/symbolWeights)

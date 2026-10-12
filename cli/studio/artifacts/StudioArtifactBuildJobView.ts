@@ -1,4 +1,4 @@
-import type {ArtifactBuildProgress, ArtifactTargetType} from "pokie";
+import type {ArtifactBuildProgress, ArtifactTargetType} from "@fromstan/pokie";
 import type {StudioArtifactBuildView} from "./StudioArtifactBuildView.js";
 import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 

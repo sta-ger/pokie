@@ -140,14 +140,14 @@ describe("loadPokieGame (real long-lived CJS runtime)", () => {
         const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-runtime-host-fallback-game-"));
         const scriptPath = path.join(hostRoot, "load.cjs");
         try {
-            fs.mkdirSync(path.join(hostRoot, "node_modules"), {recursive: true});
-            fs.symlinkSync(COMPILED_CJS_ENTRY.slice(0, -"index.js".length), path.join(hostRoot, "node_modules", "pokie"), process.platform === "win32" ? "junction" : "dir");
-            fs.mkdirSync(path.join(packageRoot, "node_modules", "pokie"), {recursive: true});
-            fs.writeFileSync(path.join(packageRoot, "node_modules", "pokie", "index.js"), "throw new Error('stale local runtime must not be selected');\n");
+            fs.mkdirSync(path.join(hostRoot, "node_modules", "@fromstan"), {recursive: true});
+            fs.symlinkSync(COMPILED_CJS_ENTRY.slice(0, -"index.js".length), path.join(hostRoot, "node_modules", "@fromstan", "pokie"), process.platform === "win32" ? "junction" : "dir");
+            fs.mkdirSync(path.join(packageRoot, "node_modules", "@fromstan", "pokie"), {recursive: true});
+            fs.writeFileSync(path.join(packageRoot, "node_modules", "@fromstan", "pokie", "index.js"), "throw new Error('stale local runtime must not be selected');\n");
             fs.writeFileSync(path.join(packageRoot, "package.json"), JSON.stringify({name: "host-fallback-game", version: "1.0.0", pokie: {entry: "./game.js"}}));
             fs.writeFileSync(
                 path.join(packageRoot, "game.js"),
-                "const runtime = require('pokie'); module.exports = {getManifest() { return {id: 'host-fallback-game', name: typeof runtime.loadPokieGame, version: '1.0.0'}; }, createSession() { return {}; }};\n",
+                "const runtime = require('@fromstan/pokie'); module.exports = {getManifest() { return {id: 'host-fallback-game', name: typeof runtime.loadPokieGame, version: '1.0.0'}; }, createSession() { return {}; }};\n",
             );
             fs.writeFileSync(
                 scriptPath,

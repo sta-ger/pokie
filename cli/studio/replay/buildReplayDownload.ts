@@ -1,4 +1,4 @@
-import type {ReplayDescriptor} from "pokie";
+import type {ReplayDescriptor} from "@fromstan/pokie";
 
 export type StudioReplayDownload = {
     contentType: string;

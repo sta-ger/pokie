@@ -1,4 +1,4 @@
-import type {WeightedOutcomeLibrary} from "pokie";
+import type {WeightedOutcomeLibrary} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {isPathWithin} from "../isPathWithin.js";

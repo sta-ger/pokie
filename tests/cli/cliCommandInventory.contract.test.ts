@@ -24,7 +24,7 @@ import {
     SimulationReport,
     SlotGameNameGenerator,
     StakeEngineStandaloneAnalyzer,
-} from "pokie";
+} from "@fromstan/pokie";
 import {Command} from "commander";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";

@@ -31,7 +31,7 @@ import {
     WinningScatterDescribing,
     WinningValue,
     WinningWay,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("WinRuntimeContract", () => {
     test("WinEvaluationResult totalWin equals the sum of components", () => {

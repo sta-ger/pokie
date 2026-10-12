@@ -1,4 +1,4 @@
-import {writeFileAtomically} from "pokie";
+import {writeFileAtomically} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import type {StudioProjectRegistry} from "./StudioProjectRegistry.js";

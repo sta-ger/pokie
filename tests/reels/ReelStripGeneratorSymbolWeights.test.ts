@@ -1,4 +1,4 @@
-import {MaximumConsecutiveOccurrencesConstraint, ReelStripGenerator} from "pokie";
+import {MaximumConsecutiveOccurrencesConstraint, ReelStripGenerator} from "@fromstan/pokie";
 
 describe("ReelStripGenerator.generateFromSymbolWeights", () => {
     test("converts symbolWeights into exact symbolCounts and generates through the same generate() path", () => {

@@ -28,7 +28,7 @@
 // registerCommandsForValidCases() in cliCommandInventory.contract.test.ts) — never a real file, a
 // real bound port, or a real subprocess either.
 
-import {ALL_SLOT_GAME_NAME_THEMES, MAX_SIMULATION_WORKERS, SimulationConfig} from "pokie";
+import {ALL_SLOT_GAME_NAME_THEMES, MAX_SIMULATION_WORKERS, SimulationConfig} from "@fromstan/pokie";
 
 export type CliVerbDescriptor = {
     // The subcommand literal (e.g. "import", "seed-commit"); undefined for a command with no

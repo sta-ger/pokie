@@ -76,7 +76,7 @@ describe("BlueprintStakeOutcomeLibraryWorkflow public export", () => {
             pokie: {entry: "./index.js"},
         }));
         fs.writeFileSync(path.join(packageRoot, "index.js"), `
-            const {SymbolsSequence, VideoSlotConfig, VideoSlotSession} = require("pokie");
+            const {SymbolsSequence, VideoSlotConfig, VideoSlotSession} = require("@fromstan/pokie");
             function config() {
                 const value = new VideoSlotConfig();
                 value.setReelsNumber(1);

@@ -1,4 +1,4 @@
-import {GameSession, GameSessionConfig, GameSessionHandling, MultiStageRoundSessionSerializer} from "pokie";
+import {GameSession, GameSessionConfig, GameSessionHandling, MultiStageRoundSessionSerializer} from "@fromstan/pokie";
 
 function roundtripThroughJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value));

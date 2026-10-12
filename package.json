@@ -1,7 +1,7 @@
 {
-    "name": "pokie",
+    "name": "@fromstan/pokie",
     "version": "1.3.0",
-    "description": "A server-side video slot game logic framework for JavaScript and TypeScript.",
+    "description": "FromStan/POKIE: a video slot game logic framework for JavaScript and TypeScript.",
     "type": "module",
     "exports": {
         ".": {
@@ -15,16 +15,22 @@
             }
         },
         "./client/player": {
-            "types": "./dist/cli/client/player/index.d.ts",
-            "default": "./dist/cli/client/player/index.js"
+            "import": {
+                "types": "./dist/cli/client/player/index.d.ts",
+                "default": "./dist/cli/client/player/index.js"
+            }
         },
         "./browser": {
-            "types": "./dist/esm/browser.d.ts",
-            "default": "./dist/esm/browser.js"
+            "import": {
+                "types": "./dist/esm/browser.d.ts",
+                "default": "./dist/esm/browser.js"
+            }
         },
         "./wasm": {
-            "types": "./dist/esm/wasm/browser.d.ts",
-            "default": "./dist/esm/wasm/browser.js"
+            "import": {
+                "types": "./dist/esm/wasm/browser.d.ts",
+                "default": "./dist/esm/wasm/browser.js"
+            }
         }
     },
     "main": "./dist/cjs/index.js",
@@ -51,8 +57,8 @@
         "check:full": "node scripts/run-full-check.mjs",
         "check:release": "npm run lint && npm run typecheck && npm run test:coverage && npm run test:packaging",
         "release:pc20": "node scripts/pc-20-release-completion.mjs",
-        "build-esm:compile": "tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
-        "build-cjs:compile": "tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs",
+        "build-esm:compile": "tsc --project tsconfig.prod.json && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/esm/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/esm/gamepackage/internal/runtimeLocation.mjs",
+        "build-cjs:compile": "tsc --project tsconfig.prod.json --module CommonJS --outDir dist/cjs && node write-cjs-package-json.js && shx cp src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs && shx mkdir -p dist/cjs/gamepackage/internal && shx cp src/gamepackage/internal/runtimeLocation.mjs dist/cjs/gamepackage/internal/runtimeLocation.mjs",
         "build-esm": "npm run generate-barrels && npm run build-esm:compile",
         "build-cjs": "npm run generate-barrels && npm run build-cjs:compile",
         "build-test-runtime": "npm run generate-barrels && npm run build-esm:compile && npm run build-cjs:compile",
@@ -74,7 +80,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/sta-ger/pokie.git"
+        "url": "git+https://github.com/fromstan/pokie.git"
     },
     "keywords": [
         "TypeScript",
@@ -87,7 +93,7 @@
         "email": "pascaldelger@gmail.com",
         "url": "https://github.com/sta-ger"
     },
-    "homepage": "https://github.com/sta-ger/pokie",
+    "homepage": "https://pokie.fromstan.com",
     "license": "ISC",
     "engines": {
         "node": "^20.19.0 || >=22.12.0"
@@ -133,12 +139,46 @@
     "files": [
         "dist/",
         "src/",
-        "docs/*.md",
         "README.md",
-        "package.json"
+        "LICENSE",
+        "package.json",
+        "docs/README.md",
+        "docs/certification-evidence-bundle.md",
+        "docs/cli.md",
+        "docs/extension-points.md",
+        "docs/external-adapter-sdk.md",
+        "docs/free-games.md",
+        "docs/game-packages.md",
+        "docs/game-session.md",
+        "docs/getting-started.md",
+        "docs/math-modeling.md",
+        "docs/outcome-library-bundle.md",
+        "docs/paylines-and-patterns.md",
+        "docs/paytable-and-wins.md",
+        "docs/pregenerated-runtime.md",
+        "docs/provably-fair.md",
+        "docs/reel-strip-generation.md",
+        "docs/reels-and-sequences.md",
+        "docs/resizable-grid.md",
+        "docs/round-artifacts.md",
+        "docs/serialization.md",
+        "docs/simulation.md",
+        "docs/stake-engine-export.md",
+        "docs/stake-engine-import.md",
+        "docs/stake-engine-standalone.md",
+        "docs/studio-frontend.md",
+        "docs/studio-long-running-jobs.md",
+        "docs/testing.md",
+        "docs/wasm-compatibility-boundary.md",
+        "docs/weighted-outcome-library.md",
+        "docs/v2-completion/V2C-01.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",
         "exceljs": "^4.4.0"
+    },
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://publication-disabled.invalid"
     }
 }

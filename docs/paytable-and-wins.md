@@ -168,7 +168,7 @@ interface WinningClusterDescribing<T = string> extends WinAmountDetermining {
 Not injected by default — pass it as `VideoSlotWinCalculator`'s 4th constructor argument to enable cluster pays:
 
 ```ts
-import {ClusterWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "pokie";
+import {ClusterWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
@@ -210,7 +210,7 @@ interface WinningValueDescribing<T = string> extends WinAmountDetermining {
 ```
 
 ```ts
-import {ValueWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "pokie";
+import {ValueWinCalculator, VideoSlotConfig, VideoSlotWinCalculator} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
@@ -253,7 +253,7 @@ interface WinningWayDescribing<T = string> extends WinAmountDetermining {
 ```
 
 ```ts
-import {VideoSlotConfig, VideoSlotWinCalculator, WaysWinCalculator} from "pokie";
+import {VideoSlotConfig, VideoSlotWinCalculator, WaysWinCalculator} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 const winCalculator = new VideoSlotWinCalculator(
@@ -392,7 +392,7 @@ arguments — replace either one to change how those specific wins are computed,
 anything else the dispatcher already does correctly:
 
 ```ts
-import {LineWinCalculating, VideoSlotConfig, VideoSlotWinCalculator} from "pokie";
+import {LineWinCalculating, VideoSlotConfig, VideoSlotWinCalculator} from "@fromstan/pokie";
 
 class CustomLineCalculator implements LineWinCalculating {
     public calculateWinningLines(bet, symbolsCombination) {

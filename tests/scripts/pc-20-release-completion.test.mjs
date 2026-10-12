@@ -305,181 +305,18 @@ test("requires an explicit release for provider and container resources even whe
     } finally { await Promise.all([rm(providerRegistry, {force:true}), rm(containerRegistry, {force:true}), rm(releasedRegistry, {force:true})]); }
 });
 
-test("issues a controller-accepted authorized receipt with strict lifecycle timestamps despite a tied clock", async () => {
-    const testFixture = await fixture();
+test("refuses publication before any command, network, gate, or receipt write even with credentials", async () => {
     const calls = [];
-    const gateRun = await validatePc20ReleaseGate(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state, runReleaseGate:retainedGate});
-    try {
-        const request = async (url) => {
-            if (url === "https://registry.example/pokie.tgz") return {arrayBuffer:async () => archive};
-            if (url.includes("upload")) return {ok:true, json:async () => ({id:"drive-file-1"})};
-            return {ok:true, arrayBuffer:async () => Buffer.from(await readFile(paths()[0]))};
-        };
-        const command = (name, args) => {
-            calls.push(`${name} ${args.join(" ")}`);
-            if (name === "git" && args[0] === "rev-parse") return candidateId;
-            if (name === "git" && args[0] === "remote") return "origin";
-            if (name === "git" && args[0] === "ls-remote") return `${candidateId}\trefs/heads/develop`;
-            if (name === "npm" && args[0] === "view") return JSON.stringify({tarball:"https://registry.example/pokie.tgz"});
-            return "";
-        };
-        const receipt = await runAuthorizedPc20Lifecycle(testFixture.config, candidateId, {
-            environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:command, validateGate:async () => {},
-            assertCandidateCheckout:() => {}, assertDevelopClean:() => {}, fetch:request, now:() => "2026-09-07T20:03:00.000Z",
-        });
-        assert.deepEqual([receipt.git.pushedAt, receipt.publication.publishedAt, receipt.drive.uploadedAt, receipt.drive.readBackAt, receipt.issuedAt], ["2026-09-07T20:03:00.000Z", "2026-09-07T20:03:00.001Z", "2026-09-07T20:03:00.002Z", "2026-09-07T20:03:00.003Z", "2026-09-07T20:03:00.004Z"]);
-        const contents = await readFile(testFixture.lifecycleReceiptPath, "utf8");
-        testFixture.config.lifecycleReceiptSha256 = hash(contents);
-        const completion = await validatePc20ReleaseCompletion(testFixture.config, {validatePc19:async () => acceptedPc19(), readRepositoryState:state});
-        assert.equal(completion.candidateId, candidateId);
-        assert.equal(gateRun.gate.reused, false);
-    } finally { await testFixture.cleanup(); }
-});
-
-test("executes the authorized gate-to-fast-forward handoff before any push or publication", async () => {
-    const testFixture = await fixture();
-    const archivePath = paths()[4];
-    const gatePath = paths()[0];
-    const gateContents = "candidate-bound gate\n";
-    const calls = [];
-    let onDevelop = false;
-    try {
-        await writeFile(archivePath, archive, {flag:"wx"});
-        await writeFile(gatePath, gateContents, {flag:"wx"});
-        const request = async (url) => {
-            if (url === "https://registry.example/pokie.tgz") return {arrayBuffer:async () => archive};
-            if (url.includes("upload")) return {ok:true, json:async () => ({id:"drive-file-1"})};
-            return {ok:true, arrayBuffer:async () => Buffer.from(gateContents)};
-        };
-        const command = (name, args) => {
-            calls.push(`${name} ${args.join(" ")}`);
-            if (name === "git" && args[0] === "checkout") { onDevelop = true; return ""; }
-            if (name === "git" && args[0] === "merge") return "";
-            if (name === "git" && args[0] === "rev-parse") return candidateId;
-            if (name === "git" && args[0] === "remote") return "origin";
-            if (name === "git" && args[0] === "ls-remote") return `${candidateId}\trefs/heads/develop`;
-            if (name === "npm" && args[0] === "view") return JSON.stringify({tarball:"https://registry.example/pokie.tgz"});
-            return "";
-        };
-        const receipt = await runAuthorizedPc20Lifecycle(testFixture.config, candidateId, {
-            environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:command, validateGate:async () => { calls.push("gate validated"); },
-            assertCandidateCheckout:() => { calls.push("candidate clean"); }, assertDevelopClean:() => { assert.equal(onDevelop, true); calls.push("develop clean"); },
-            fetch:request, now:() => "2026-09-07T20:03:00.000Z",
-        });
-        assert.equal(receipt.git.developSha, candidateId);
-        assert.ok(calls.indexOf("gate validated") < calls.indexOf(`git merge --ff-only ${candidateId}`));
-        assert.ok(calls.indexOf(`git merge --ff-only ${candidateId}`) < calls.indexOf("git push origin develop"));
-        assert.ok(calls.indexOf("git push origin develop") < calls.indexOf("git ls-remote --exit-code origin refs/heads/develop"));
-        assert.ok(calls.indexOf("git push origin develop") < calls.indexOf(`npm publish ${archivePath} --access public`));
-    } finally { await testFixture.cleanup(); }
-});
-
-test("authorized runner rejects candidate identity, gate receipt and post-merge develop drift", async () => {
-    const testFixture = await fixture();
-    const dependencies = {environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:() => candidateId, validateGate:async () => {}, assertCandidateCheckout:() => {}, assertDevelopClean:() => {}, exists:() => true, readFile:async () => archive, writeFile:async () => {}, fetch:async () => ({arrayBuffer:async () => archive})};
-    try {
-        await assert.rejects(() => runAuthorizedPc20Lifecycle(testFixture.config, "0".repeat(40), dependencies), /canonical authorized/i);
-        await assert.rejects(() => runAuthorizedPc20Lifecycle(testFixture.config, candidateId, {...dependencies, validateGate:async () => { throw new Error("gate receipt rejected"); }}), /gate receipt rejected/i);
-        let mergeSeen = false;
-        const drift = {...dependencies, run:(name, args) => {
-            if (name === "git" && args[0] === "merge") { mergeSeen = true; return ""; }
-            if (name === "git" && args[0] === "remote") return "origin";
-            if (name === "git" && args[0] === "rev-parse") return mergeSeen ? "f".repeat(40) : candidateId;
-            return "";
-        }};
-        await assert.rejects(() => runAuthorizedPc20Lifecycle(testFixture.config, candidateId, drift), /develop did not resolve/i);
-        const remoteDrift = {...dependencies, run:(name, args) => {
-            if (name === "git" && args[0] === "remote") return "origin";
-            if (name === "git" && args[0] === "rev-parse") return candidateId;
-            if (name === "git" && args[0] === "ls-remote") return `${"f".repeat(40)}\trefs/heads/develop`;
-            return "";
-        }};
-        await assert.rejects(() => runAuthorizedPc20Lifecycle(testFixture.config, candidateId, remoteDrift), /remote protected develop drifted/i);
-    } finally { await testFixture.cleanup(); }
-});
-
-test("uses a controlled real Git remote handoff and refuses post-push protected-ref drift before npm", async () => {
-    const testFixture = await fixture();
-    const sandbox = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-runner-"));
-    const remote = path.join(sandbox, "origin.git"), work = path.join(sandbox, "work");
-    const git = (args, cwd = work) => execFileSync("git", args, {cwd, encoding:"utf8"}).trim();
-    try {
-        git(["init", "--bare", remote], sandbox);
-        git(["init", "-b", "develop", work], sandbox);
-        git(["config", "user.name", "PC-20 test" ]);
-        git(["config", "user.email", "pc20@example.invalid"]);
-        await writeFile(path.join(work, "candidate.txt"), "base\n");
-        git(["add", "candidate.txt"]); git(["commit", "-m", "base"]);
-        const base = git(["rev-parse", "HEAD"]);
-        git(["remote", "add", "origin", remote]); git(["push", "-u", "origin", "develop"]);
-        await writeFile(path.join(work, "candidate.txt"), "candidate\n");
-        git(["commit", "-am", "candidate"]);
-        const candidate = git(["rev-parse", "HEAD"]);
-        const config = {...testFixture.config, candidateId:candidate};
-        let npmCalled = false;
-        const command = (name, args) => {
-            if (name === "git") {
-                const output = git(args);
-                if (args[0] === "push") git(["--git-dir", remote, "update-ref", "refs/heads/develop", base], sandbox);
-                return output;
-            }
-            if (name === "npm") { npmCalled = true; return ""; }
-            throw new Error(`unexpected command ${name}`);
-        };
-        await assert.rejects(() => runAuthorizedPc20Lifecycle(config, candidate, {
-            environment:{NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, run:command,
-            validateGate:async () => {}, assertCandidateCheckout:() => {}, assertDevelopClean:() => {},
-        }), /remote protected develop drifted/i);
-        assert.equal(git(["rev-parse", "refs/heads/develop"], remote), base);
-        assert.equal(npmCalled, false);
-    } finally { await testFixture.cleanup(); await rm(sandbox, {recursive:true, force:true}); }
-});
-
-test("executes the authorized runner CLI against a controlled Git remote and rejects its post-push drift", async () => {
-    const sandbox = await mkdtemp(path.join(os.tmpdir(), "pokie-pc20-runner-cli-"));
-    const remote = path.join(sandbox, "origin.git"), work = path.join(sandbox, "work"), scripts = path.join(work, "scripts");
-    const git = (args, cwd = work) => execFileSync("git", args, {cwd, encoding:"utf8"}).trim();
-    try {
-        await mkdir(scripts, {recursive:true});
-        for (const script of ["pc-19-independent-cold-start-review.mjs", "pc-20-release-completion.mjs", "pc-20-authorized-release-runner.mjs"]) {
-            await writeFile(path.join(scripts, script), await readFile(path.join(repositoryDirectory, "scripts", script)));
-        }
-        await writeFile(path.join(work, "package.json"), JSON.stringify({name:"pc20-runner-fixture", version:"1.0.0"}));
-        git(["init", "--bare", remote], sandbox);
-        git(["init", "-b", "develop", work], sandbox);
-        git(["config", "user.name", "PC-20 test"]); git(["config", "user.email", "pc20@example.invalid"]);
-        git(["add", "."]); git(["commit", "-m", "base"]);
-        const base = git(["rev-parse", "HEAD"]);
-        git(["remote", "add", "origin", remote]); git(["push", "-u", "origin", "develop"]);
-        await writeFile(path.join(work, "candidate.txt"), "candidate\n");
-        git(["add", "candidate.txt"]); git(["commit", "-m", "candidate"]);
-        const candidate = git(["rev-parse", "HEAD"]);
-        git(["checkout", "--detach", candidate]);
-        const evidence = path.join(work, "docs", "evidence", "phase7-product-coherence", "pc-20-release-completion");
-        await mkdir(evidence, {recursive:true});
-        const archivePath = path.join(evidence, `pc-20-${candidate}-package.tgz`);
-        const smokePath = path.join(evidence, `pc-20-${candidate}-npm-pack-smoke.json`);
-        const gatePath = path.join(evidence, `pc-20-${candidate}-release-gate.json`);
-        const stdoutPath = path.join(evidence, `pc-20-${candidate}-release-gate.stdout.txt`);
-        const stderrPath = path.join(evidence, `pc-20-${candidate}-release-gate.stderr.txt`);
-        const fixtureArchive = Buffer.from("authorized runner fixture archive\n");
-        const fixtureSha = hash(fixtureArchive);
-        await writeFile(archivePath, fixtureArchive);
-        const smoke = {schemaVersion:1, kind:"npm-pack-install-smoke", candidateId:candidate, candidatePackageSha256:fixtureSha, packageName:"pc20-runner-fixture", packageVersion:"1.0.0", archivePath, archiveSha256:fixtureSha, archiveSizeBytes:fixtureArchive.length, complete:true, suitePassed:true, installed:{cli:true, studioApi:true, studioAssets:true, libraryWorker:true, processesDrained:true}, cleanup:{temporaryInstallRemoved:true, temporaryPackDirectoryRemoved:true, processesDrained:true}};
-        const smokeContents = `${JSON.stringify(smoke)}\n`;
-        await writeFile(smokePath, smokeContents);
-        const stdout = "fixture release output\n", stderr = "(no stderr)\n";
-        await Promise.all([writeFile(stdoutPath, stdout), writeFile(stderrPath, stderr)]);
-        const gate = {schemaVersion:1, kind:"release-gate", candidateId:candidate, candidatePackageSha256:fixtureSha, command:"npm run check:release", exitCode:0, timedOut:false, cancelled:false, processGroupDrained:true, processTreeDrained:true, resourcesDrained:true, ownedProcessIdentities:[], ownedResources:[], startedAt:"2026-09-07T20:00:00.000Z", endedAt:"2026-09-07T20:01:00.000Z", stdoutPath:path.basename(stdoutPath), stdoutSha256:hash(stdout), stderrPath:path.basename(stderrPath), stderrSha256:hash(stderr), packagingSmokePath:path.basename(smokePath), packagingSmokeSha256:hash(smokeContents), archivePath:path.basename(archivePath), archiveSha256:fixtureSha};
-        await writeFile(gatePath, `${JSON.stringify(gate)}\n`);
-        const freezePath = path.join(sandbox, "freeze.json"), lifecyclePath = path.join(sandbox, "lifecycle.json");
-        await writeFile(freezePath, "fixture freeze\n");
-        const configPath = path.join(sandbox, "config.json");
-        await writeFile(configPath, `${JSON.stringify({candidateId:candidate, candidatePackageSha256:fixtureSha, reviewDirectory:path.join(sandbox, "review"), freezeReceiptPath:freezePath, freezeReceiptSha256:hash("fixture freeze\n"), lifecycleReceiptPath:lifecyclePath, lifecycleReceiptSha256:"0".repeat(64), outputDirectory:evidence, repositoryDirectory:work, packageName:"pc20-runner-fixture", packageVersion:"1.0.0"})}\n`);
-        await writeFile(path.join(remote, "hooks", "post-receive"), `#!/bin/sh\ngit update-ref refs/heads/develop ${base}\n`, {mode:0o755});
-        assert.throws(() => execFileSync(process.execPath, [path.join(scripts, "pc-20-authorized-release-runner.mjs"), "--config", configPath, "--candidate-ref", candidate], {cwd:work, env:{...process.env, NODE_AUTH_TOKEN:"test", PC20_DRIVE_ACCESS_TOKEN:"test"}, encoding:"utf8"}), /remote protected develop drifted/i);
-        assert.equal(git(["rev-parse", "refs/heads/develop"], remote), base);
-    } finally { await rm(sandbox, {recursive:true, force:true}); }
+    const forbidden = (...args) => { calls.push(args); assert.fail("disabled publisher performed an operation"); };
+    const dependencies = {
+        environment:{NODE_AUTH_TOKEN:"apparent-token", PC20_DRIVE_ACCESS_TOKEN:"apparent-token"},
+        run:forbidden, fetch:forbidden, writeFile:forbidden, readFile:forbidden,
+        validateGate:forbidden, assertCandidateCheckout:forbidden, assertDevelopClean:forbidden,
+    };
+    for (const candidate of [candidateId, "0".repeat(40)]) {
+        await assert.rejects(() => runAuthorizedPc20Lifecycle({candidateId, lifecycleReceiptSha256:"a".repeat(64)}, candidate, dependencies), /public publication is disabled/i);
+    }
+    assert.deepEqual(calls, []);
 });
 
 test("locks a failed candidate and removes partial smoke artifacts before another gate can run", async () => {
@@ -501,18 +338,9 @@ test("locks a failed candidate and removes partial smoke artifacts before anothe
     } finally { await testFixture.cleanup(); }
 });
 
-test("the publication workflow is an authorized candidate-ref runner, not an ephemeral completion stub", async () => {
+test("the publication workflow is inert and has no dispatch, secrets, or publishing route", async () => {
     const workflow = await readFile(path.join(repositoryDirectory, ".github", "workflows", "publish.yml"), "utf8");
-    assert.match(workflow, /runs-on: \[self-hosted, pokie-release-runner\]/);
-    assert.match(workflow, /candidate_ref/);
-    assert.match(workflow, /ref: \$\{\{ inputs\.candidate_ref \}\}/);
-    assert.doesNotMatch(workflow, /git checkout develop/);
-    assert.match(workflow, /clean immutable candidate checkout before its gate/);
-    assert.match(workflow, /contents: write/);
-    assert.match(workflow, /NPM_TOKEN/);
-    assert.match(workflow, /PC20_DRIVE_ACCESS_TOKEN/);
-    assert.match(workflow, /concurrency:/);
-    assert.match(workflow, /pc20-protected-develop-publication/);
-    assert.match(workflow, /--gate-only/);
-    assert.match(workflow, /pc-20-authorized-release-runner\.mjs/);
+    assert.match(workflow, /if: \$\{\{ false \}\}/);
+    assert.match(workflow, /permissions: \{\}/);
+    assert.doesNotMatch(workflow, /workflow_dispatch|NPM_TOKEN|NODE_AUTH_TOKEN|contents: write|npm publish|authorized-release-runner/);
 });

@@ -8,7 +8,7 @@ import {
     WinEvaluationResult,
     WinningValue,
     buildRoundArtifact,
-} from "pokie";
+} from "@fromstan/pokie";
 import {stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 const projector = new StakeEngineRoundEventsProjector<string>();

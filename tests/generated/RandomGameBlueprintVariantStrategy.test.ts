@@ -3,7 +3,7 @@ import {
     GameBlueprintValidator,
     RandomGameBlueprintGenerator,
     RandomGameBlueprintVariantStrategy,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const SEEDS = Array.from({length: 60}, (_, index) => index + 1);
 

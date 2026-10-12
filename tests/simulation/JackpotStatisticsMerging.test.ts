@@ -1,4 +1,4 @@
-import {mergeJackpotStatisticsSnapshots, subtractJackpotStatisticsSnapshots, type JackpotStatisticsSnapshot} from "pokie";
+import {mergeJackpotStatisticsSnapshots, subtractJackpotStatisticsSnapshots, type JackpotStatisticsSnapshot} from "@fromstan/pokie";
 
 describe("mergeJackpotStatisticsSnapshots", () => {
     test("merging into undefined returns the addition unchanged", () => {

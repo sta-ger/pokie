@@ -1,4 +1,4 @@
-import {InMemoryWallet, WalletInsufficientFundsError} from "pokie";
+import {InMemoryWallet, WalletInsufficientFundsError} from "@fromstan/pokie";
 
 describe("InMemoryWallet", () => {
     it("defaults an unknown sessionId's balance to 0", async () => {

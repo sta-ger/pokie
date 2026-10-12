@@ -1,4 +1,4 @@
-import {ReelStrip, RequiredAdjacencyConstraint} from "pokie";
+import {ReelStrip, RequiredAdjacencyConstraint} from "@fromstan/pokie";
 
 describe("RequiredAdjacencyConstraint", () => {
     test("is silent (undirected, default) when every subject occurrence has a required neighbor on either side", () => {

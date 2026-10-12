@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import zlib from "zlib";
-import type {StakeEngineOutcomeSourceReadResult} from "pokie";
+import type {StakeEngineOutcomeSourceReadResult} from "@fromstan/pokie";
 
 export const UINT64_MAX = BigInt("18446744073709551615");
 export const RARE_PROBABILITY = 2 ** -64;

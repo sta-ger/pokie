@@ -1,4 +1,4 @@
-import type {PokieGameManifest} from "pokie";
+import type {PokieGameManifest} from "@fromstan/pokie";
 import type {GamePackagePreparationPhase} from "./GamePackagePreparationError.js";
 
 // Persisted at `<projectRoot>/.pokie-prepare-state.json` by GamePackagePreparer after every phase it

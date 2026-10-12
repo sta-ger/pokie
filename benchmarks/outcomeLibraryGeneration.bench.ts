@@ -6,7 +6,7 @@ import {
     OutcomeLibraryBundleWriter,
     type OutcomeLibraryBundleModeInput,
     type WeightedOutcomeInput,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../tests/weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // This deliberately exercises the canonical streaming publisher rather than

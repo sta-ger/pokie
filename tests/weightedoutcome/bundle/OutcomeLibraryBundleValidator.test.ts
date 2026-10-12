@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter, WeightedOutcomeInput} from "pokie";
+import {OutcomeLibraryBundleManifest, OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter, WeightedOutcomeInput} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function readManifest(outDir: string): OutcomeLibraryBundleManifest {

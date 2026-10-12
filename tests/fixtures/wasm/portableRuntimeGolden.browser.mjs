@@ -13,7 +13,7 @@ export const PORTABLE_RUNTIME_BROWSER_FIXTURE = {
             sha256: "sha256:bded5fabefa7a8f6d345504491c0e3783f15e272d56bac56dd2fe4f2e467085c",
             bytes: 790,
             abiVersion: "1.0.0",
-            adapter: "pokie/wasm",
+            adapter: "@fromstan/pokie/wasm",
             configurationHash: "sha256:438148321f999b5d0e7ea163c3dbbdc76c54beeebbbfbb0c0ea281108b1951f4",
         },
     },

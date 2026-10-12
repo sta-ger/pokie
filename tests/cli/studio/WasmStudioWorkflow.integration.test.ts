@@ -10,7 +10,7 @@ import type {PokieWasmSessionState, PokieWasmRuntime} from "../../../src/wasm/Po
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {PROJECT_TYPE_CAPABILITIES} from "pokie";
+import {PROJECT_TYPE_CAPABILITIES} from "@fromstan/pokie";
 import {WasmArtifactBuilder} from "../../../src/project/WasmArtifactBuilder.js";
 import {loadProjectDashboardContext} from "../../../cli/studio/loadProjectDashboardContext.js";
 import {StudioPlayService} from "../../../cli/studio/runtime/StudioPlayService.js";

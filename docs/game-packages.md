@@ -6,7 +6,7 @@ POKIE itself only defines game *logic* (sessions, win calculation, simulation). 
 convention for shipping a concrete game — symbols, paytable, config, session wiring — as a standalone npm package
 that a CLI, simulator, validator, or server adapter can load without knowing anything about that game in advance.
 
-A game package is a regular npm package that depends on `pokie` and exports one object implementing the
+A game package is a regular npm package that depends on `@fromstan/pokie` and exports one object implementing the
 `PokieGame` contract from a `pokie.entry` file declared in its `package.json`.
 
 ## The contract
@@ -57,7 +57,7 @@ field:
     "name": "sample-slot",
     "version": "1.0.0",
     "dependencies": {
-        "pokie": "^1.3.0"
+        "@fromstan/pokie": "^1.3.0"
     },
     "pokie": {
         "entry": "./dist/index.js"
@@ -108,7 +108,7 @@ The entry module's **default export** must be a `PokieGame`:
 
 ```ts
 // src/index.ts, compiled to ./dist/index.js (see "pokie.entry" above)
-import {PokieGame, VideoSlotConfig, VideoSlotSession} from "pokie";
+import {PokieGame, VideoSlotConfig, VideoSlotSession} from "@fromstan/pokie";
 
 const game: PokieGame = {
     getManifest() {
@@ -133,7 +133,7 @@ entry file was built for.
 `PokieGame`:
 
 ```ts
-import {loadPokieGame} from "pokie";
+import {loadPokieGame} from "@fromstan/pokie";
 
 const game = await loadPokieGame("/path/to/sample-slot");
 const session = game.createSession({seed: "regression-run-42"});
@@ -157,7 +157,7 @@ manifest with a missing/empty `id`, `name`, or `version`. The rejection error li
 machinery. It's a shallower check than what `loadPokieGame` runs internally (shape only, not manifest content):
 
 ```ts
-import {isPokieGame} from "pokie";
+import {isPokieGame} from "@fromstan/pokie";
 
 if (!isPokieGame(candidate)) {
     throw new Error("not a POKIE game");
@@ -169,7 +169,7 @@ For a fuller check — including that `getManifest()` doesn't throw and returns 
 `ValidationResult` pattern used by the win evaluation pipeline's [validation rules](paytable-and-wins.md#aggregation-policy):
 
 ```ts
-import {PokieGameContractValidationRule, ValidationResult} from "pokie";
+import {PokieGameContractValidationRule, ValidationResult} from "@fromstan/pokie";
 
 const issues = new PokieGameContractValidationRule().validate(candidate);
 const result = new ValidationResult(issues);
