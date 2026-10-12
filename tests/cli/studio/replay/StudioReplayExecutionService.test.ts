@@ -562,6 +562,33 @@ describe("StudioReplayExecutionService", () => {
         expect(job.descriptor?.credits).toBe(1005);
     });
 
+    it("stops between commands within a chunk and releases the lease without publishing cancelled accounting", async () => {
+        const game = createSeedAwareFakeGame(manifest);
+        const session = game.createSession({seed: "within-chunk"});
+        game.createSession = () => session;
+        const release = jest.fn(() => Promise.resolve());
+        const completed = jest.fn();
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(game),
+            10, undefined, undefined, () => "within-chunk", undefined, completed, undefined, undefined, undefined, release);
+        const originalPlay = session.play.bind(session);
+        const play = jest.spyOn(session, "play").mockImplementation(() => {
+            originalPlay();
+            service.cancel("/a", "within-chunk");
+        });
+        const result = service.start("/a", {round: 5, seed: "within-chunk"});
+        if (result.status !== "created") throw new Error("expected job to be created");
+        const job = await waitForTerminal(service, "/a", result.job.id);
+        await service.cancelAll();
+        expect(job.status).toBe("cancelled");
+        expect(job.completedRounds).toBe(1);
+        expect(play).toHaveBeenCalledTimes(1);
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(completed).not.toHaveBeenCalled();
+        expect(job.descriptor).toBeUndefined();
+        expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
+        play.mockRestore();
+    });
+
     it("fails corrupt and incomplete PAR preparation without loading a game or publishing a replay descriptor", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-replay-malformed-par-"));
         const corrupt = path.join(workDir, "corrupt.xlsx");

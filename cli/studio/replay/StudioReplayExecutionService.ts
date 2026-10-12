@@ -431,6 +431,11 @@ export class StudioReplayExecutionService {
 
                     const chunkRounds = Math.min(this.chunkSize, roundsRemaining);
                     for (let played = 0; played < chunkRounds; played++) {
+                        if (record.abortController.signal.aborted) {
+                            record.completedRounds += played;
+                            this.cancelRecord(record);
+                            return;
+                        }
                         const actualRound = record.completedRounds + played;
                         if (!session.canPlayNextGame()) {
                             this.fail(record, new Error(`Replay target round ${record.round} is unreachable: session stopped after ${actualRound} round(s).`));
