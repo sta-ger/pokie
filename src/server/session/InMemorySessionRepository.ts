@@ -1,3 +1,4 @@
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import type {PokieSessionState} from "./PokieSessionState.js";
 import {SessionVersionConflictError} from "./SessionVersionConflictError.js";
 import type {VersionedSessionRepository, VersionedSessionState} from "./VersionedSessionRepository.js";
@@ -11,13 +12,14 @@ export class InMemorySessionRepository implements VersionedSessionRepository {
     private readonly versions = new Map<string, number>();
 
     public save(sessionId: string, state: PokieSessionState): Promise<void> {
-        this.states.set(sessionId, state);
+        this.states.set(sessionId, cloneSessionData(state));
         this.versions.set(sessionId, (this.versions.get(sessionId) ?? 0) + 1);
         return Promise.resolve();
     }
 
     public load(sessionId: string): Promise<PokieSessionState | undefined> {
-        return Promise.resolve(this.states.get(sessionId));
+        const state = this.states.get(sessionId);
+        return Promise.resolve(state === undefined ? undefined : cloneSessionData(state));
     }
 
     public loadVersioned(sessionId: string): Promise<VersionedSessionState | undefined> {
@@ -25,7 +27,7 @@ export class InMemorySessionRepository implements VersionedSessionRepository {
         if (state === undefined) {
             return Promise.resolve(undefined);
         }
-        return Promise.resolve({state, version: this.versions.get(sessionId) ?? 0});
+        return Promise.resolve({state: cloneSessionData(state), version: this.versions.get(sessionId) ?? 0});
     }
 
     public saveVersioned(sessionId: string, state: PokieSessionState, expectedVersion: number): Promise<number> {
@@ -34,7 +36,7 @@ export class InMemorySessionRepository implements VersionedSessionRepository {
             return Promise.reject(new SessionVersionConflictError(sessionId, expectedVersion, currentVersion));
         }
         const newVersion = currentVersion + 1;
-        this.states.set(sessionId, state);
+        this.states.set(sessionId, cloneSessionData(state));
         this.versions.set(sessionId, newVersion);
         return Promise.resolve(newVersion);
     }

@@ -1079,6 +1079,26 @@ describe("StudioPlayService", () => {
             expect(getAttempts()).toBe(4);
         });
 
+        it("retains the matching settled round when progress cancels before publishing scenario success", async () => {
+            const {session, getAttempts} = createControllableVideoSlotSession(() => "A");
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("expected ok");
+            const controller = new AbortController();
+            expect(await service.findAnyWin(created.session.sessionId, {signal: controller.signal, onProgress: () => controller.abort()})).toMatchObject({status: "cancelled", session: {sessionId: created.session.sessionId, win: expect.any(Number)}});
+            expect(getAttempts()).toBe(1);
+            service.reset();
+        });
+
+        it("does not publish a matching scenario result after progress supersedes its session", async () => {
+            const {session, getAttempts} = createControllableVideoSlotSession(() => "A");
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("expected ok");
+            expect(await service.findAnyWin(created.session.sessionId, {onProgress: () => service.reset()})).toEqual({status: "not-found"});
+            expect(getAttempts()).toBe(1);
+        });
+
         it("reports every settled search attempt through the optional durable-progress hook", async () => {
             const {session} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "A" : undefined));
             const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}), undefined, "unknown", undefined, undefined, 5);
@@ -1374,5 +1394,21 @@ describe("StudioPlayService", () => {
                 expect(result).toEqual({status: "error", error: "No matching round was found within 5 spins."});
             });
         });
+    });
+});
+
+describe("StudioPlayService canonical error propagation", () => {
+    it("preserves an incompatible-game distinction before playing or recording a replacement round", async () => {
+        let version = "1";
+        const session = createFakeVideoSlotSession(undefined);
+        const play = jest.spyOn(session, "play");
+        const game: PokieGame = {getManifest: () => ({...manifest, version}), createSession: () => session};
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        const created = await service.newSession("/fake/project");
+        if (created.status !== "ok") throw new Error("Could not create fixture session");
+        version = "2";
+        expect(await service.spin(created.session.sessionId)).toMatchObject({status: "error", code: "incompatible-state"});
+        expect(play).not.toHaveBeenCalled();
+        service.reset();
     });
 });

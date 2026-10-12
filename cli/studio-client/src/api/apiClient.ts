@@ -955,6 +955,22 @@ export async function findFreeGamesPlaySession(fetchImpl: FetchLike, sessionId: 
 }
 
 async function readPlaySpinResult(response: {status: number; ok: boolean; json(): Promise<unknown>}): Promise<PlaySpinResult> {
+    // Machine-readable session failures take precedence over the legacy HTTP-only project guard.
+    // They preserve the settled view and never request a replacement session.
+    const body = await response.json() as {code?: string; error?: string; status?: string; session?: StudioRuntimeSessionView};
+    if (body.code !== undefined && body.code !== "not-found") {
+        const actions: Record<string, string> = {
+            "incompatible-state": "Load the matching game version or explicitly start a new session.",
+            "corrupt-state": "Restore the saved session from a valid backup; do not retry this spin.",
+            "restoration-unsupported": "This session requires its original live runtime.",
+            "storage-error": "Check session storage availability.",
+            "recovery-required": "Reconcile the interrupted round before continuing.",
+            "settlement-error": "Check wallet availability and reconcile any interrupted settlement.",
+            "execution-error": "Inspect the game runtime; the last committed session remains authoritative.",
+        };
+        const action = actions[body.code] ?? "Check the command and current session revision.";
+        return {status: "error", message: `${body.code}: ${body.error ?? "Session rejected."} ${action}`};
+    }
     if (response.status === 409) {
         return {status: "no-active-project"};
     }
@@ -962,17 +978,15 @@ async function readPlaySpinResult(response: {status: number; ok: boolean; json()
         return {status: "not-found"};
     }
     if (response.status === 400) {
-        const body = (await response.json()) as {error: string};
-        return {status: "blocked", message: body.error};
+        return {status: "blocked", message: body.error ?? "Spin rejected."};
     }
     if (!response.ok) {
-        throw new Error(await extractErrorMessage(response, "Failed to spin"));
+        throw new Error(body.error ?? "Failed to spin");
     }
-    const body = (await response.json()) as {status: "ok"; session: StudioRuntimeSessionView} | {status: "error"; error: string};
-    if (body.status === "ok") {
+    if (body.status === "ok" && body.session !== undefined) {
         return {status: "ok", session: body.session};
     }
-    return {status: "error", message: body.error};
+    return {status: "error", message: body.error ?? "Spin rejected."};
 }
 
 export async function listDeploymentTargets(fetchImpl: FetchLike): Promise<StudioDeploymentTargetSummary[]> {

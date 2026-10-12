@@ -594,6 +594,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             previousState: captured.previousState,
             credits: captured.credits,
             win: captured.win,
+            ...(captured.stake === undefined ? {} : {stake: captured.stake}),
+            ...(captured.mode === undefined ? {} : {mode: captured.mode}),
             requestId: record.requestId,
             ...(captured.newVersion !== undefined ? {version: captured.newVersion} : {}),
         };

@@ -31,7 +31,7 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         const context = {seed: "save-restore-continuation"};
         const session = game.createSession(context);
         session.setCreditsAmount(1_000);
-        await repository.save(sessionId, captureInitialPokieSessionState(context, session));
+        await repository.save(sessionId, captureInitialPokieSessionState(context, session, undefined, true, game));
         await wallet.setBalance(sessionId, 1_000);
         const handler = new SpinCommandHandler(game, repository, wallet);
         handler.primeSession(sessionId, session, (await repository.loadVersioned(sessionId))?.version);
@@ -42,7 +42,7 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         const game = await loadPokieGame(fixtureRoot);
         const serializer = new VideoSlotSessionSerializer();
         const session = game.createSession({seed: "save-restore-continuation"});
-        const initial = captureInitialPokieSessionState({seed: "save-restore-continuation"}, session, serializer);
+        const initial = captureInitialPokieSessionState({seed: "save-restore-continuation"}, session, serializer, true, game);
         expect(initial.featureState).toMatchObject({rngState: expect.any(Number)});
         expect(JSON.stringify(initial.initialPayload)).not.toContain("rngState");
         const repository = new FileSessionRepository(directory);

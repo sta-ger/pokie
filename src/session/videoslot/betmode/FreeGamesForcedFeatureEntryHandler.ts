@@ -28,6 +28,10 @@ implements ForcedFeatureEntryHandling<T> {
         this.freeGamesToGrant = freeGamesToGrant;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === FreeGamesForcedFeatureEntryHandler;
+    }
+
     public canForceFeatureEntry(session: VideoSlotSessionHandling<T>): boolean {
         return this.supportsFreeGamesState(session);
     }

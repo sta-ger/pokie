@@ -1,3 +1,4 @@
+import type {SessionStateRestoring} from "../SessionStateRestoring.js";
 import {GameSession} from "../GameSession.js";
 import type {GameSessionHandling} from "../GameSessionHandling.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
@@ -20,7 +21,7 @@ import {WinEvaluationResult} from "./winevaluation/WinEvaluationResult.js";
 import type {ConvertableToSessionState} from "../ConvertableToSessionState.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
 
-export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T>, ConvertableToSessionState<{rngState?: unknown}>, BuildableFromSessionState<{rngState?: unknown}> {
+export class VideoSlotSession<T extends string | number | symbol = string> implements VideoSlotSessionHandling<T>, ConvertableToSessionState<{rngState?: unknown}>, BuildableFromSessionState<{rngState?: unknown}>, SessionStateRestoring {
     private readonly baseSession: GameSessionHandling;
     private readonly config: VideoSlotConfigRepresenting<T>;
     private readonly combinationsGenerator: SymbolsCombinationsGenerating<T>;
@@ -133,13 +134,37 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
     }
 
+    public getSessionStateSchema(): {readonly kind: "seeded-video-slot"} {
+        return {kind: "seeded-video-slot"};
+    }
+
+    public isSessionStateRestorable(): boolean {
+        const generator = this.combinationsGenerator as {isRandomStateRestorable?: () => boolean};
+        return this.constructor === VideoSlotSession && generator.isRandomStateRestorable?.() === true &&
+            this.baseSession.constructor === GameSession && this.winCalculator instanceof VideoSlotWinCalculator && this.winCalculator.isStatelessForSessionRestoration();
+    }
+
     public toSessionState(): {rngState?: unknown} {
         const rngState = (this.combinationsGenerator as {getRandomState?: () => unknown}).getRandomState?.();
         return rngState === undefined ? {} : {rngState};
     }
 
+    public validateSessionState(state: unknown): void {
+        if (typeof state !== "object" || state === null || Array.isArray(state)) throw new Error("Video-slot state must be an object.");
+        const rngState = (state as {rngState?: unknown}).rngState;
+        if (rngState === undefined && !this.isSessionStateRestorable()) return;
+        if (typeof rngState !== "number" || !Number.isSafeInteger(rngState) || rngState < 0 || rngState > 0xffffffff) {
+            throw new Error("Video-slot state requires a valid seeded RNG snapshot.");
+        }
+    }
+
     public fromSessionState(state: {rngState?: unknown}): this {
-        if (state?.rngState !== undefined) {
+        if (this.isSessionStateRestorable()) this.validateSessionState(state);
+        if (typeof state !== "object" || state === null || state.rngState === undefined) {
+            if (!this.isSessionStateRestorable() && typeof state === "object" && state !== null) return this;
+            throw new Error("Video-slot state requires an RNG snapshot.");
+        }
+        if (state.rngState !== undefined) {
             const generator = this.combinationsGenerator as {setRandomState?: (value: unknown) => void};
             if (generator.setRandomState === undefined) throw new Error("This video-slot session cannot restore its RNG state.");
             generator.setRandomState(state.rngState);

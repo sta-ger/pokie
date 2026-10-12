@@ -1,3 +1,4 @@
+import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../SessionStateRestoring.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../ConvertableToSessionState.js";
@@ -23,7 +24,8 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         VideoSlotWithFreeGamesSessionHandling<T>,
         ConvertableToSessionState<VideoSlotWithFreeGamesSessionState>,
         BuildableFromSessionState<VideoSlotWithFreeGamesSessionState>,
-        StakeAmountDetermining {
+        StakeAmountDetermining,
+        SessionStateRestoring {
     private readonly config: VideoSlotWithFreeGamesConfigRepresenting<T>;
     private readonly freeGamesRoundHandler: FreeGamesRoundHandling<T>;
     private freeGamesNum = 0;
@@ -75,6 +77,14 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         this.freeBank = value;
     }
 
+    public getSessionStateSchema(): SessionStateSchema {
+        return {kind: "free-games", base: resolveSessionStateSchema(this.baseSession)};
+    }
+
+    public isSessionStateRestorable(): boolean {
+        return this.constructor === VideoSlotWithFreeGamesSession && isSessionStateRestorable(this.baseSession) && this.freeGamesRoundHandler.constructor === FreeGamesRoundHandler;
+    }
+
     public toSessionState(): VideoSlotWithFreeGamesSessionState {
         const state: VideoSlotWithFreeGamesSessionState = {
             freeGamesNum: this.freeGamesNum,
@@ -90,14 +100,25 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         return state;
     }
 
+    public validateSessionState(state: unknown): void {
+        const value = state as VideoSlotWithFreeGamesSessionState;
+        if (typeof value !== "object" || value === null || value.base === undefined ||
+            !Number.isSafeInteger(value.freeGamesNum) || value.freeGamesNum < 0 ||
+            !Number.isSafeInteger(value.freeGamesSum) || value.freeGamesSum < value.freeGamesNum ||
+            !Number.isFinite(value.freeGamesBank) || value.freeGamesBank < 0 ||
+            (value.wonFreeGamesNumber !== undefined && (!Number.isSafeInteger(value.wonFreeGamesNumber) || value.wonFreeGamesNumber < 0)) ||
+            !this.supportsSessionStateRestore(this.baseSession)) throw new Error("Invalid free-games executable state.");
+        const base = this.baseSession as VideoSlotSessionHandling<T> & {validateSessionState?: (state: unknown) => void};
+        base.validateSessionState?.(value.base);
+    }
+
     public fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
+        this.validateSessionState(value);
+        if (this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
         this.freeGamesNum = value.freeGamesNum;
         this.freeGamesSum = value.freeGamesSum;
         this.freeBank = value.freeGamesBank;
         this.wonFreeGamesNumber = value.wonFreeGamesNumber ?? 0;
-        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) {
-            this.baseSession.fromSessionState(value.base);
-        }
         return this;
     }
 

@@ -1,3 +1,4 @@
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
 import {RoundArtifactBuildError} from "../../artifact/RoundArtifactBuildError.js";
 import type {RoundArtifactProvenance} from "../../artifact/RoundArtifactProvenance.js";
@@ -62,6 +63,7 @@ export function captureRoundPokieSessionState(
 ): PokieSessionState {
     const state = captureBaseSessionState(context, session);
     state.capturePolicy = capturePolicy;
+    state.identity = previousState.identity;
 
     if (previousState.initialPayload !== undefined) {
         state.initialPayload = previousState.initialPayload;
@@ -83,7 +85,7 @@ export function captureRoundPokieSessionState(
         captureFullRoundArtifact(context, state, previousState, session, capturePolicy, roundArtifactRequest);
     }
 
-    return state;
+    return cloneSessionData(state);
 }
 
 function captureFullRoundArtifact(

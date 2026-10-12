@@ -14,6 +14,7 @@ import {
     PokieGameManifest,
     PokieSessionState,
     SessionRepository,
+    SessionStateRestoring,
     StakeAmountDetermining,
     VersionedSessionRepository,
     VideoSlotWithFreeGamesSession,
@@ -23,7 +24,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
+function createFakeSession(): GameSessionHandling & SessionStateRestoring & ConvertableToSessionState<{round: number}> & BuildableFromSessionState<{round: number}> & {getSymbolsCombination(): {toMatrix(): string[][]}} {
     let credits = 1000;
     const bet = 5;
     let round = 0;
@@ -45,6 +46,17 @@ function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {t
         },
         getWinAmount: () => winAmount,
         getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
+        isSessionStateRestorable: () => true,
+        validateSessionState: (value: unknown) => {
+            const state = value as {round: number};
+            if (typeof state !== "object" || state === null || !Number.isSafeInteger(state.round) || state.round < 0) throw new Error("Invalid fixture round state.");
+        },
+        toSessionState: () => ({round}),
+        fromSessionState(value: {round: number}) {
+            this.validateSessionState(value);
+            round = value.round;
+            return this;
+        },
     };
 }
 
@@ -118,7 +130,7 @@ function createFakeGameWithCustomSerializer(manifest: PokieGameManifest): PokieG
 
 type FreeGamesState = {freeSpinsRemaining: number};
 
-type FakeFreeGamesSession = GameSessionHandling &
+type FakeFreeGamesSession = GameSessionHandling & SessionStateRestoring &
     ConvertableToSessionState<FreeGamesState> &
     BuildableFromSessionState<FreeGamesState> &
     StakeAmountDetermining & {
@@ -157,8 +169,14 @@ function createFakeFreeGamesSession(initialCredits = 0): FakeFreeGamesSession {
             }
         },
         getWinAmount: () => winAmount,
+        isSessionStateRestorable: () => true,
+        validateSessionState: (value: unknown) => {
+            const state = value as FreeGamesState;
+            if (typeof state !== "object" || state === null || !Number.isSafeInteger(state.freeSpinsRemaining) || state.freeSpinsRemaining < 0) throw new Error("Invalid fixture free-spin state.");
+        },
         toSessionState: () => ({freeSpinsRemaining}),
         fromSessionState(value: FreeGamesState) {
+            this.validateSessionState(value);
             freeSpinsRemaining = value.freeSpinsRemaining;
             return this;
         },
@@ -474,8 +492,8 @@ describe("PokieDevServer (replaceable session storage: DI, restart, unknown sess
         expect(restored.body.bet).toBe(spun.body.bet);
         expect(restored.body.win).toBe(spun.body.win);
         expect(restored.body.screen).toEqual(spun.body.screen);
-        // Credits are explicitly not part of the persisted state: a fresh default InMemoryWallet
-        // means the balance resets even though the game state (bet/win/screen) survived.
+        // The record retains settled credits, but it cannot recreate the separately owned wallet:
+        // the fresh default InMemoryWallet still has no balance for this session.
         expect(restored.body.credits).toBe(0);
 
         // The reconstructed session (credits: 0, bet: 5) correctly can't play the next round anymore
@@ -1793,5 +1811,36 @@ describe("PokieDevServer (optimistic locking / session versioning)", () => {
 
             await server.stop();
         });
+    });
+});
+
+describe("PokieDevServer canonical rejection codes (controller-owned HTTP lane)", () => {
+    it.each([
+        ["incompatible", "incompatible-state", 409],
+        ["corrupt", "corrupt-state", 409],
+        ["absent", "not-found", 404],
+        ["invalid", "invalid-command", 400],
+    ])("translates %s without publishing or advancing a round", async (kind, code, expectedStatus) => {
+        const game = createFakeGame({id: "canonical-http", name: "Canonical HTTP", version: "1"});
+        const repository = new InMemorySessionRepository();
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
+        try {
+            const address = await server.start(),
+                baseUrl = `http://${address.host}:${address.port}`;
+            const created = await postJson(`${baseUrl}/sessions`);
+            const sessionId = created.body.sessionId as string;
+            const stored = (await repository.load(sessionId))!;
+            if (kind === "incompatible") stored.identity = {...stored.identity!, compatibilityVersion: "2"};
+            if (kind === "corrupt") Reflect.deleteProperty(stored, "featureState");
+            if (kind === "incompatible" || kind === "corrupt") await repository.save(sessionId, stored);
+            const before = await repository.loadVersioned(sessionId);
+            const response = await postJson(`${baseUrl}/sessions/${kind === "absent" ? "missing" : sessionId}/spin`, kind === "invalid" ? {bet: -1} : undefined);
+            expect(response.status).toBe(expectedStatus);
+            expect(response.body.code).toBe(code);
+            expect(response.body).not.toHaveProperty("win");
+            expect(await repository.loadVersioned(sessionId)).toEqual(before);
+        } finally {
+            await server.stop();
+        }
     });
 });

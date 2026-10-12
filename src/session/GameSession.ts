@@ -1,10 +1,11 @@
+import type {SessionStateRestoring} from "./SessionStateRestoring.js";
 import {GameSessionConfig} from "./GameSessionConfig.js";
 import type {GameSessionConfigRepresenting} from "./GameSessionConfigRepresenting.js";
 import type {GameSessionHandling} from "./GameSessionHandling.js";
 import {NoWinAmount} from "./NoWinAmount.js";
 import type {WinAmountDetermining} from "./WinAmountDetermining.js";
 
-export class GameSession implements GameSessionHandling {
+export class GameSession implements GameSessionHandling, SessionStateRestoring {
     private readonly config: GameSessionConfigRepresenting;
     private readonly winCalculator: WinAmountDetermining;
     private bet: number;
@@ -18,6 +19,27 @@ export class GameSession implements GameSessionHandling {
         this.winCalculator = winAmountCalculator;
         this.bet = this.getInitialBet();
         this.credits = config.getCreditsAmount();
+    }
+
+    public getSessionStateSchema(): {readonly kind: "base"} {
+        return {kind: "base"};
+    }
+
+    public isSessionStateRestorable(): boolean {
+        return this.constructor === GameSession && this.winCalculator.constructor === NoWinAmount;
+    }
+
+    public toSessionState(): Record<string, never> {
+        return {};
+    }
+
+    public validateSessionState(state: unknown): void {
+        if (typeof state !== "object" || state === null || Array.isArray(state) || Object.keys(state).length !== 0) throw new Error("Invalid base game state.");
+    }
+
+    public fromSessionState(state: Record<string, never>): this {
+        this.validateSessionState(state);
+        return this;
     }
 
     public getCreditsAmount(): number {

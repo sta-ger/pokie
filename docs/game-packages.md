@@ -183,3 +183,7 @@ if (result.hasErrors()) {
 `pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve`/`pokie client`/
 `pokie dev` [CLI](cli.md) commands are built on — `pokie validate` in particular wraps this same contract check in
 `PokieGamePackageValidator`, returning a structured report instead of throwing.
+
+## Headless runtime contract
+
+`PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing `createSession(context)` packages need no rewrite. When capturing a repository record, pass the selected game so its authoritative identity is recorded.

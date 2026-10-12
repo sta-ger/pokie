@@ -32,7 +32,9 @@ export async function getSession(
 ): Promise<{ok: boolean; body?: SessionResponse}> {
     const response = await fetchImpl(`${apiBaseUrl}/sessions/${encodeURIComponent(sessionId)}`);
     if (!response.ok) {
-        return {ok: false};
+        if (response.status === 404) return {ok: false};
+        const body = await safeJson(response) as {code?: string; error?: string} | undefined;
+        throw new SessionCommandError(body?.code ?? "transport-error", body?.error ?? `Session restore failed (HTTP ${response.status}).`);
     }
     return {ok: true, body: (await response.json()) as SessionResponse};
 }
@@ -62,8 +64,8 @@ export async function spin(
         body,
     });
     if (!response.ok) {
-        const errorBody = (await safeJson(response)) as {error?: string} | undefined;
-        throw new Error(errorBody?.error ?? `Spin failed (HTTP ${response.status}).`);
+        const errorBody = (await safeJson(response)) as {error?: string; code?: string} | undefined;
+        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`);
     }
     return (await response.json()) as SessionResponse;
 }
@@ -73,5 +75,12 @@ async function safeJson(response: {json(): Promise<unknown>}): Promise<unknown> 
         return await response.json();
     } catch {
         return undefined;
+    }
+}
+
+export class SessionCommandError extends Error {
+    constructor(public readonly code: string, message: string) {
+        super(`${code}: ${message}`);
+        this.name = "SessionCommandError";
     }
 }

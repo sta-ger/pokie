@@ -301,3 +301,5 @@ that begins only once Phase 5 is already published — a frozen baseline plus a 
 re-verifying five named Phase 5 concerns against current `develop` (two now fixed, one still open as a P2, one
 already closed with real browser evidence, one an intentional documented v2 limitation) and a bounded
 architectural marker sweep, without reopening or changing any Phase 5 product behavior.
+
+The shared [headless command workflow](game-session.md#headless-commands-and-repository-ownership) and [repository recovery support matrix](serialization.md#executable-repository-records) describe domain execution, identity and extension ports.

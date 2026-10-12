@@ -1,3 +1,6 @@
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
+import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
+import {isSessionStateRestorable, resolveSessionStateSchema} from "../../session/SessionStateRestoring.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {captureFeatureState} from "./captureFeatureState.js";
@@ -15,13 +18,16 @@ export function captureBaseSessionState(
 ): PokieSessionState {
     const state: PokieSessionState = {
         context,
+        stateSchema: resolveSessionStateSchema(session),
         bet: session.getBet(),
         win: session.getWinAmount(),
+        credits: session.getCreditsAmount(),
+        commandCapabilities: {bets: [...session.getAvailableBets()], ...(supportsBetModeSelecting(session) ? {modes: [...session.getAvailableBetModeIds()]} : {})},
         // A snapshot-only session is safe while its executable object remains
         // live, but is not evidence that a later reconstruction can continue
         // the same RNG/feature stream.  Mark that distinction at capture time
         // so a cache miss never silently turns into a reset.
-        executionState: canRoundTripFeatureState(session) ? "durably-restorable" : "live-only",
+        executionState: isSessionStateRestorable(session) ? "durably-restorable" : "live-only",
     };
 
     const screen = captureScreen(session);
@@ -34,10 +40,5 @@ export function captureBaseSessionState(
         state.featureState = featureState;
     }
 
-    return state;
-}
-
-function canRoundTripFeatureState(session: GameSessionHandling): boolean {
-    const candidate = session as {toSessionState?: unknown; fromSessionState?: unknown};
-    return typeof candidate.toSessionState === "function" && typeof candidate.fromSessionState === "function";
+    return cloneSessionData(state);
 }

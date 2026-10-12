@@ -195,3 +195,63 @@ fixed symbol set instead of plain unchecked `string`.
 See [Paylines & Line Patterns](paylines-and-patterns.md) and [Paytable & Win Calculation](paytable-and-wins.md) for
 details on lines/patterns/paytable, [Free Games](free-games.md) for the bonus-round layer on top of this, and
 [Resizable Grid](resizable-grid.md) for a grid whose per-reel height can change between rounds.
+
+## Headless commands and repository ownership
+
+`PokieGame` is the game definition and `GameSessionHandling` remains its injected OOP domain session.
+`SessionRuntime` implements the portable `SessionRuntimeHandling` command boundary. Its `SessionCommand`
+(currently `{kind: "spin", bet?, mode?}`) produces `SessionCommandResult`; JavaScript inputs are checked too.
+The adapter calls the injected session's `play()` once. A successful `prepare()` returns a ready command with `rollback` and `execute` callbacks for settlement adapters; rejected preparation has no executor. A ready command executes once; rollback disables its executor and cannot undo an executed round. It does not calculate payouts. Constructor defaults,
+legacy setter fallback, injected collaborators and decorator composition remain available to direct callers.
+
+Simulation (including aggregate/worker execution), replay, Studio scenario spins and exact enumeration use
+this boundary. They need neither a repository nor wallet transactions. Exact enumeration replaces only the
+combinations generator; session math still owns wins, paid stakes and free-game grants. Existing cancellation,
+worker shutdown and runtime lease ownership remain with the calling tool, between settled rounds.
+
+For repository sessions, `SpinCommandHandler` implements `RepositoryCommandHandling`. Its `execute()` accepts
+`RepositoryCommand` (the same command plus `sessionId`, optional `requestId` and `expectedVersion`) and returns
+`SpinCommandResult` after settlement and persistence. The positional `handle()` delegates to the same dispatcher and retains its legacy operational-error rejection behavior. `execute()` returns typed operational failures (`storage-error`, `settlement-error`, `execution-error`) after compensation; `handle()` rejects with the original exception object. Custom adapters can use `RuntimeCommandError` to retain a classified primary cause. Wallet
+settlement, queuing, idempotency, compensation and reconciliation stay in this adapter. `primeSession()` is an
+optimization: save a complete initial record first and pass its committed revision. An unversioned repository
+cannot authorize reuse of a live-only cache; durable sessions reconstruct on every command.
+
+```ts
+import {
+  SpinCommandHandler, captureInitialPokieSessionState,
+  InMemorySessionRepository, InMemoryWallet,
+} from "@fromstan/pokie";
+
+// game implements PokieGame, and may have been loaded with loadPokieGameRuntime().
+const context = {seed: "demo"};
+const session = game.createSession(context);
+const repository = new InMemorySessionRepository();
+const wallet = new InMemoryWallet();
+const id = "demo-session";
+await wallet.setBalance(id, session.getCreditsAmount());
+await repository.save(id, captureInitialPokieSessionState(
+  context, session, game.getSessionSerializer?.(), false, game,
+));
+// A fresh handler needs no retained session or priming.
+const runtime = new SpinCommandHandler(game, repository, wallet);
+const result = await runtime.execute({kind: "spin", sessionId: id, expectedVersion: 1});
+if (result.status === "played") {
+  console.log(result.win, result.credits, result.stake, result.state);
+} else if (result.status === "not-found") {
+  console.log("Session is absent; explicitly choose whether to create another.");
+} else {
+  console.log(result.status, result.reason);
+}
+```
+
+`FileSessionRepository` can replace the repository above. Supply an independently durable wallet and retry
+stores when restart recovery must include money and requests. Keep the game runtime lease until its sessions
+are disposed, and release it on success, failure and cancellation.
+
+Rejection precedence is syntax/identifiers → repository presence and identity/semantic state → committed
+idempotent result → supported selection and revision → reconstruction → pending reconciliation → reversible
+command preparation → execution/settlement/save. A legitimate committed retry reproduces its original
+selection even if a new, syntactically valid bet/mode was supplied. Invalid syntax, incompatible/corrupt
+records and unsupported new selections cannot initiate recovery writes. Restoration exceptions are
+`corrupt-state`, never an invitation to construct defaults. Settlement/save exceptions retain the original
+failure and use the existing compensation path; there is no cross-store atomicity claim.

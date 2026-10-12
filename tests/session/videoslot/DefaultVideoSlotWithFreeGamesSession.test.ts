@@ -109,7 +109,7 @@ describe("VideoSlotWithFreeGamesSession", () => {
             expect(restored.toSessionState()).toEqual(live.toSessionState());
         }
         // Legacy states contain counters/RNG only; they cannot prove a last-round award.
-        restored.fromSessionState({freeGamesNum: 0, freeGamesSum: 0, freeGamesBank: 0});
+        restored.fromSessionState({freeGamesNum: 0, freeGamesSum: 0, freeGamesBank: 0, base: state.base});
         expect(restored.getWonFreeGamesNumber()).toBe(0);
     });
 

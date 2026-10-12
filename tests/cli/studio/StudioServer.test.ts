@@ -6187,6 +6187,14 @@ describe("StudioServer", () => {
             expect(response.status).toBe(404);
         });
 
+        it("reports invalid Play commands with a stable machine-readable code", async () => {
+            playServer = createPlayServer({mode: "project", projectRoot: "/tmp/sample-slot"});
+            const address = await playServer.start();
+            const response = await post(`http://${address.host}:${address.port}/api/project/play/sessions/unknown/spin`, {bet: "invalid"});
+            expect(response.status).toBe(400);
+            expect(response.body).toMatchObject({code: "invalid-command", error: expect.any(String)});
+        });
+
         it("rejects a malformed seed with a 400, never reaching the play service", async () => {
             playServer = createPlayServer({mode: "project", projectRoot: "/tmp/sample-slot"});
             const address = await playServer.start();

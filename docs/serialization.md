@@ -264,3 +264,50 @@ contains.
   genuinely internal data (an actual RNG seed, say) out of the public response should populate it via the new
   `getInitialDebugData`/`getRoundDebugData` hooks instead of `CascadeResult`'s `rngInfo`/`debugInfo` constructor
   arguments.
+
+## Executable repository records
+
+Storage `version` is an optimistic revision, independent of `identity.gameId`, `compatibilityVersion`,
+`stateSchemaVersion` and optional `modelHash`. Generated definitions expose their authoritative blueprint
+hash. Hand-authored definitions use their manifest id/version, or explicitly declare
+`getSessionCompatibility(): {version, stateSchemaVersion}`. This is the author's compatibility promise,
+not an invented hash of arbitrary code. Change it whenever math, construction context or the codec changes.
+The default compatibility schema version is `"1"`. A separate `stateSchema` descriptor records the built-in codec composition, so required RNG and nested base fields are checked before construction. Custom codecs use `{kind: "custom"}` and their nonmutating validator; authors can expose `getSessionStateSchema()` for composed built-in schemas. Records without identity are rejected as `incompatible-state`;
+this workflow does not migrate historical snapshots or silently reset them.
+
+Capture initial state with the game as the fifth argument to `captureInitialPokieSessionState`. The record
+owns the construction context (including numeric versus string seeds), resolved model identity, nominal bet,
+settled balance, command capabilities, and `featureState`. The wallet remains authoritative for the
+balance used during real settlement. `featureState` contains private executable RNG/counter/bank/mode state.
+`screen`, `win`, `initialPayload` and `roundPayload` own the last observable snapshot separately from a newly
+constructed display screen. Reconstruct once, restore the recorded post-constructor RNG before the next
+round, and never replay earlier rounds. Public serializers do not expose `featureState` or private RNG state.
+
+| Composition | Automatic durable restoration |
+| --- | --- |
+| Plain `GameSession` with `NoWinAmount` | Complete base bet/credits, empty codec |
+| `VideoSlotSession` with built-in seeded generator, calculator and base session | Seeded RNG, bet and credits |
+| Built-in free-games decorator around that session | Nested base RNG, counters, bank and last grant |
+| Built-in bet-mode decorator around a supported base | Nested base and selected mode |
+| Default Math.random, secure/custom generators, other decorators, stateful injected collaborators | Live-only unless a custom complete codec explicitly opts in |
+
+`SessionStateRestoring.isSessionStateRestorable()` is an explicit promise of a complete codec, together with
+`toSessionState()`, `fromSessionState()` and nonmutating `validateSessionState(state)`. Method presence alone makes no durability claim. A custom codec
+must validate its opaque JSON payload and required nested fields and restore every collaborator that affects future rounds. Additionally expose
+`PokieGame.validateSessionState(state, context)` for nonmutating validation before construction/recovery. Subclasses
+and custom decorators must make their own complete-state promise; inheriting an incomplete base codec is
+insufficient. Seeded base state requires its RNG snapshot; free and mode state require nested base state.
+Invalid counters, nonfinite/negative banks and invalid seeded RNG snapshots are rejected.
+
+Versioned caches bind to both the committed revision and detached record bytes. Alternating handlers
+reconstruct after another writer advances the record. In-memory repositories and retry results detach
+values on read and write, so caller mutation is not a save. File records distinguish absence (ENOENT),
+malformed JSON/envelopes/semantic state (`SessionStateCorruptError`) and operational reads
+(`SessionStateReadError`). File atomic replacement does not add cross-process locking.
+
+Stable command outcomes are `invalid-command`, `incompatible-state`, `corrupt-state`, `not-found`,
+`restoration-unsupported`, `storage-error`, `settlement-error`, `execution-error`, `conflict`, `blocked` and `recovery-required`. `played` is published
+only after persistence. Corruption/incompatibility require operator repair or explicitly starting another
+session; clients retain the last settled view and never automatically reset or retry those failures.
+Durable game-state recovery alone does not preserve the default in-memory wallet, idempotency store,
+operation log or Studio active-session registry across a process restart.

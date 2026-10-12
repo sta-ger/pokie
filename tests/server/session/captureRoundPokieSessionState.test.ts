@@ -95,7 +95,8 @@ describe("captureRoundPokieSessionState", () => {
 
         const state = captureRoundPokieSessionState(undefined, createFakeSession(), previousState, serializer);
 
-        expect(state.initialPayload).toBe(initialPayload);
+        expect(state.initialPayload).toEqual(initialPayload);
+        expect(state.initialPayload).not.toBe(initialPayload);
         expect(state.roundPayload).toEqual({credits: 1000, bet: 5, win: 10});
     });
 
@@ -145,7 +146,8 @@ describe("captureRoundPokieSessionState", () => {
 
         const state = captureRoundPokieSessionState(undefined, createFakeSession(), previousState, serializer);
 
-        expect(state.initialDebugPayload).toBe(initialDebugPayload);
+        expect(state.initialDebugPayload).toEqual(initialDebugPayload);
+        expect(state.initialDebugPayload).not.toBe(initialDebugPayload);
     });
 
     it("omits roundDebugPayload, and stops carrying initialDebugPayload forward, when the policy's captureDebugPayloads is false", () => {

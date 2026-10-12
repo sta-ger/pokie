@@ -1,7 +1,9 @@
+import type {RepositoryCommand} from "../../runtime/RepositoryCommand.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
 
 export interface SpinCommandHandling {
+    execute?(command: RepositoryCommand): Promise<SpinCommandResult>;
     // Registers an already-constructed live session for sessionId.  When the repository is versioned,
     // `committedVersion` is the version of the record that this object represents.  A handler never
     // executes an object against a different committed record: durable records are reconstructed and

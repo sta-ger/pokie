@@ -1,3 +1,4 @@
+import {validateExecutableState} from "../../runtime/validateExecutableState.js";
 import type {PokieSessionState} from "./PokieSessionState.js";
 import {SessionVersionConflictError} from "./SessionVersionConflictError.js";
 import type {VersionedSessionRepository, VersionedSessionState} from "./VersionedSessionRepository.js";
@@ -197,9 +198,12 @@ function assertValidSessionState(value: unknown): asserts value is PokieSessionS
             throw new Error(`Session state.${key} must be finite.`);
         }
     }
-    if (value.screen !== undefined && !Array.isArray(value.screen)) {
-        throw new Error("Session state.screen must be an array when present.");
+    if (value.screen !== undefined && (!Array.isArray(value.screen) || !value.screen.every(Array.isArray))) {
+        throw new Error("Session state.screen must be an array of reels when present.");
     }
+    if (value.executionState === "durably-restorable") validateExecutableState(value.featureState, value.stateSchema as PokieSessionState["stateSchema"]);
+    if (value.credits !== undefined && (typeof value.credits !== "number" || !Number.isFinite(value.credits) || value.credits < 0)) throw new Error("Session credits must be finite and non-negative.");
+    if (value.executionState !== undefined && value.executionState !== "durably-restorable" && value.executionState !== "live-only") throw new Error("Invalid restoration capability.");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

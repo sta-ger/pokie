@@ -32,9 +32,12 @@ export type SpinCommandResult =
           previousState?: PokieSessionState;
           credits: number;
           win: number;
+          stake?: number;
+          mode?: string;
           requestId?: string;
           version?: number;
       }
+    | {status: "invalid-command" | "incompatible-state" | "corrupt-state" | "restoration-unsupported" | "storage-error" | "settlement-error" | "execution-error"; sessionId: string; reason: string}
     | {status: "blocked"; sessionId: string; reason: string}
     | {status: "not-found"; sessionId: string}
     | {status: "conflict"; sessionId: string; reason: string}

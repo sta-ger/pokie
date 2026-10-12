@@ -11,6 +11,8 @@ export type SpinOperationCapturedResult = {
     readonly previousState: PokieSessionState;
     readonly newState: PokieSessionState;
     readonly win: number;
+    readonly stake?: number;
+    readonly mode?: string;
     readonly credits: number;
     readonly newVersion?: number;
 };

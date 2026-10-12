@@ -1,3 +1,4 @@
+import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import crypto from "crypto";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {ReplayDescriptor} from "./ReplayDescriptor.js";
@@ -31,10 +32,9 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             if (!session.canPlayNextGame()) {
                 throw new Error(`Replay target round ${round} is unreachable: session stopped after ${played} round(s).`);
             }
-            const stake = getActualStake(session);
-            totalBet += stake;
-            session.play();
-            totalWin += session.getWinAmount();
+            const result = executeSessionCommand(session);
+            totalBet += result.stake;
+            totalWin += result.win;
         }
         const durationMs = Date.now() - startedAt;
 
@@ -81,9 +81,4 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
     private hasSymbolsCombination(session: GameSessionHandling): session is SessionWithSymbolsCombination {
         return typeof (session as Partial<SessionWithSymbolsCombination>).getSymbolsCombination === "function";
     }
-}
-
-function getActualStake(session: GameSessionHandling): number {
-    const stakeSession = session as GameSessionHandling & {getStakeAmount?: () => number};
-    return stakeSession.getStakeAmount?.() ?? session.getBet();
 }

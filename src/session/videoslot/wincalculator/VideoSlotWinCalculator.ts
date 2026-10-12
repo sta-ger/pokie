@@ -1,3 +1,9 @@
+import {ClusterWinCalculator} from "./ClusterWinCalculator.js";
+import {ValueWinCalculator} from "./ValueWinCalculator.js";
+import {WaysWinCalculator} from "./WaysWinCalculator.js";
+import {SumAllEnabledWinAggregationPolicy} from "../winevaluation/SumAllEnabledWinAggregationPolicy.js";
+import {SelectedEvaluatorGroupWinAggregationPolicy} from "../winevaluation/SelectedEvaluatorGroupWinAggregationPolicy.js";
+import {HighestWinOnlyAggregationPolicy} from "../winevaluation/HighestWinOnlyAggregationPolicy.js";
 import type {ClusterWinCalculating} from "./ClusterWinCalculating.js";
 import type {LineWinCalculating} from "./LineWinCalculating.js";
 import {LineWinCalculator} from "./LineWinCalculator.js";
@@ -76,6 +82,17 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
             undefined,
             {validateOnEvaluate: options.validateOnEvaluate},
         );
+    }
+
+    public isStatelessForSessionRestoration(): boolean {
+        const policy = this.options.aggregationPolicy;
+        const policySupported = policy === undefined || [ErrorOnIncompatibleWinAggregationPolicy, SumAllEnabledWinAggregationPolicy,
+            SelectedEvaluatorGroupWinAggregationPolicy, HighestWinOnlyAggregationPolicy].some(kind => policy.constructor === kind);
+        return this.constructor === VideoSlotWinCalculator && this.lineWinCalculator.constructor === LineWinCalculator &&
+            this.scatterWinCalculator.constructor === ScatterWinCalculator && this.options.multiplierResolver === undefined && policySupported &&
+            (this.clusterWinCalculator === undefined || (this.clusterWinCalculator instanceof ClusterWinCalculator && this.clusterWinCalculator.isStatelessForSessionRestoration())) &&
+            (this.valueWinCalculator === undefined || this.valueWinCalculator.constructor === ValueWinCalculator) &&
+            (this.waysWinCalculator === undefined || (this.waysWinCalculator instanceof WaysWinCalculator && this.waysWinCalculator.isStatelessForSessionRestoration()));
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): void {

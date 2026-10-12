@@ -1,3 +1,4 @@
+import {resolveGameSessionIdentity} from "../../../src/runtime/GameSessionIdentity.js";
 import {PokieGame} from "../../../src/gamepackage/PokieGame.js";
 import {PokieGameManifest} from "../../../src/gamepackage/PokieGameManifest.js";
 import {IdempotencyRepository} from "../../../src/server/idempotency/IdempotencyRepository.js";
@@ -50,6 +51,17 @@ function reconciliationServiceWithZeroQuiescence(
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
+function fixtureState(bet: number, executionState: "live-only" | "durably-restorable" = "durably-restorable"): PokieSessionState {
+    return {identity: resolveGameSessionIdentity({getManifest: () => manifest, createSession: () => createFakeSession({createSessionCalls: 0, playCalls: 0})}),
+        bet, win: 0, credits: 1000, stateSchema: {kind: "custom"}, commandCapabilities: {bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}, executionState, ...(executionState === "live-only" ? {} : {featureState: {round: 0}})};
+}
+
+function withState<T extends GameSessionHandling>(session: T): T & {isSessionStateRestorable(): boolean; validateSessionState(state: unknown): void; toSessionState(): unknown; fromSessionState(value: unknown): unknown} {
+    return {isSessionStateRestorable: () => true, validateSessionState: (state: unknown) => {
+        if (typeof state !== "object" || state === null) throw new Error("Invalid fixture state");
+    }, toSessionState: () => ({round: 0}), fromSessionState: () => undefined, ...session};
+}
+
 type FakeGameStats = {createSessionCalls: number; playCalls: number};
 
 // Deterministic loss every round (win always 0) — keeps every scenario's own balance/credits math a
@@ -59,7 +71,7 @@ function createFakeSession(stats: FakeGameStats): GameSessionHandling {
     let credits = 1000;
     const bet = 5;
 
-    return {
+    return withState({
         getCreditsAmount: () => credits,
         setCreditsAmount: (value: number) => {
             credits = value;
@@ -73,7 +85,7 @@ function createFakeSession(stats: FakeGameStats): GameSessionHandling {
             credits -= bet;
         },
         getWinAmount: () => 0,
-    };
+    });
 }
 
 function createInstrumentedGame(): {game: PokieGame; stats: FakeGameStats} {
@@ -90,7 +102,7 @@ function createInstrumentedGame(): {game: PokieGame; stats: FakeGameStats} {
 
 async function seedSession(sessionRepository: SessionRepository, wallet: TransactionalWalletPort, sessionId: string, credits: number): Promise<void> {
     await wallet.setBalance(sessionId, credits);
-    const state: PokieSessionState = {bet: 5, win: 0};
+    const state: PokieSessionState = fixtureState(5);
     await sessionRepository.save(sessionId, state);
 }
 
@@ -239,7 +251,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
 
         expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
         expect(stats.playCalls).toBe(2); // exactly one NEW play — reconciling the old attempt never itself plays
-        expect(stats.createSessionCalls).toBe(2); // a fresh session reconstructed for the retry
+        expect(stats.createSessionCalls).toBe(3); // validate before recovery, then reconstruct the recovered authoritative record
         await expect(wallet.getBalance("session-1")).resolves.toBe(995); // reversed to 1000, then genuinely re-debited 5
         await expect(operationLog.load("session-1", "request-1")).resolves.toMatchObject({checkpoint: "committed"});
     });
@@ -534,7 +546,7 @@ describe("SpinCommandHandler reconciliation/retry recovery", () => {
 
         expect(retry).toMatchObject({status: "played", win: 0, credits: 995});
         expect(stats.playCalls).toBe(1); // CRITICAL: never re-played despite the idempotency store having nothing
-        expect(stats.createSessionCalls).toBe(1); // never fell through to the normal fresh-spin path at all
+        expect(stats.createSessionCalls).toBe(2); // reconstruction validates state; recovery never plays a new round
     });
 
     it("reconciliation racing a live in-flight handle() call for the same session is serialized via the same per-session queue, never concurrent", async () => {

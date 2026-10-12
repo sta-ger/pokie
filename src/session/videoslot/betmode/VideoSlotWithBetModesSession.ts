@@ -1,3 +1,4 @@
+import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../../SessionStateRestoring.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
 import type {StakeAmountDetermining} from "../../StakeAmountDetermining.js";
@@ -53,7 +54,8 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         BetModeSelecting,
         StakeAmountDetermining,
         ConvertableToSessionState<BetModeSessionState>,
-        BuildableFromSessionState<BetModeSessionState> {
+        BuildableFromSessionState<BetModeSessionState>,
+        SessionStateRestoring {
     private readonly betModesConfig: BetModesConfigRepresenting;
     private readonly forcedFeatureEntryHandler: ForcedFeatureEntryHandling<T>;
     private currentBetModeId: string;
@@ -151,6 +153,16 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         this.baseSession.play();
     }
 
+    public getSessionStateSchema(): SessionStateSchema {
+        return {kind: "bet-modes", base: resolveSessionStateSchema(this.baseSession)};
+    }
+
+    public isSessionStateRestorable(): boolean {
+        return this.constructor === VideoSlotWithBetModesSession && isSessionStateRestorable(this.baseSession) &&
+            (this.betModesConfig as {isResolvedForSessionRestoration?: () => boolean}).isResolvedForSessionRestoration?.() === true &&
+            (this.forcedFeatureEntryHandler as {isStatelessForSessionRestoration?: () => boolean}).isStatelessForSessionRestoration?.() === true;
+    }
+
     public toSessionState(): BetModeSessionState {
         const state: BetModeSessionState = {betModeId: this.currentBetModeId};
         if (this.supportsSessionStateCapture(this.baseSession)) {
@@ -159,11 +171,20 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         return state;
     }
 
-    public fromSessionState(value: BetModeSessionState): this {
-        this.currentBetModeId = value.betModeId;
-        if (value.base !== undefined && this.supportsSessionStateRestore(this.baseSession)) {
-            this.baseSession.fromSessionState(value.base);
+    public validateSessionState(state: unknown): void {
+        const value = state as BetModeSessionState;
+        if (typeof value !== "object" || value === null || value.base === undefined ||
+            !this.getAvailableBetModeIds().includes(value.betModeId) || !this.supportsSessionStateRestore(this.baseSession)) {
+            throw new Error("Invalid bet-mode executable state.");
         }
+        const base = this.baseSession as VideoSlotSessionHandling<T> & {validateSessionState?: (state: unknown) => void};
+        base.validateSessionState?.(value.base);
+    }
+
+    public fromSessionState(value: BetModeSessionState): this {
+        this.validateSessionState(value);
+        if (this.supportsSessionStateRestore(this.baseSession)) this.baseSession.fromSessionState(value.base);
+        this.currentBetModeId = value.betModeId;
         return this;
     }
 

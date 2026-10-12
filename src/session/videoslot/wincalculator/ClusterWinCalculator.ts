@@ -26,6 +26,10 @@ export class ClusterWinCalculator<T extends string | number | symbol = string> i
         this.clusterDetector = clusterDetector;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === ClusterWinCalculator && this.clusterDetector.constructor === ClusterDetector;
+    }
+
     public calculateWinningClusters(
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,

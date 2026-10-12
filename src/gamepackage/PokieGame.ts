@@ -9,6 +9,12 @@ import type {PokieGameManifest} from "./PokieGameManifest.js";
 export interface PokieGame {
     getManifest(): PokieGameManifest;
 
+    /** Hand-authored compatibility promise; defaults to manifest.version / state schema "1". */
+    /** Nonmutating validation for a custom executable state codec, before construction or recovery. */
+    validateSessionState?(state: unknown, context?: PokieGameContext): void;
+
+    getSessionCompatibility?(): {readonly version: string; readonly stateSchemaVersion: string};
+
     createSession(context?: PokieGameContext): GameSessionHandling;
 
     // Present on a game returned by loadPokieGame().  It releases that loader invocation's isolated

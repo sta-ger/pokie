@@ -42,6 +42,10 @@ export class BetModesConfig implements BetModesConfigRepresenting {
         this.defaultModeId = defaultModeId;
     }
 
+    public isResolvedForSessionRestoration(): boolean {
+        return this.constructor === BetModesConfig && [...this.modes.values()].every(mode => mode.constructor === BetModeDefinition);
+    }
+
     public getDefaultBetModeId(): string {
         return this.defaultModeId;
     }

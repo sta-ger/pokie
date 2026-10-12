@@ -1,24 +1,25 @@
+import type {SessionStateSchema} from "../../session/SessionStateRestoring.js";
+import type {GameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
 import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {
+    identity?: GameSessionIdentity;
+    stateSchema?: SessionStateSchema;
+    credits?: number;
+    commandCapabilities?: {readonly bets: readonly number[]; readonly modes?: readonly string[]};
     context?: PokieGameContext;
     bet: number;
     win: number;
     screen?: unknown[][];
-    // Opaque to PokieDevServer: whatever a session's own ConvertableToSessionState.toSessionState()
-    // returned, restored via BuildableFromSessionState.fromSessionState() on the next reconstruction.
-    // Absent for games that implement neither (snapshot-only fallback: bet/win/screen still restore).
+    // Private executable state, interpreted by the selected game's complete codec and validated
+    // against stateSchema before execution or recovery. Snapshot-only games stay live-only.
     featureState?: unknown;
-    // Declares whether this snapshot is sufficient to reconstruct the session
-    // after its process-local instance has gone away.  A game that exposes a
-    // matching toSessionState()/fromSessionState() pair can carry its hidden
-    // RNG, feature and finite-round progress durably; a game without that
-    // pair cannot.  New captures always set this marker.  It is deliberately
-    // optional only for records written before the contract existed: those
-    // legacy records retain their historical best-effort behaviour rather
-    // than being reclassified from incomplete evidence.
+    // New captures always mark capability explicitly. Durable restoration requires an explicit
+    // completeness promise, a nonmutating validator and capture/restore methods covering all
+    // collaborators. Fields remain optional only so storage readers can inspect historical records;
+    // the command runtime rejects incomplete records instead of silently rebuilding defaults.
     executionState?: "durably-restorable" | "live-only";
     // Present only when the loaded PokieGame implements the optional getSessionSerializer() —
     // captured once, at session creation, from that serializer's getInitialData(session) (see

@@ -19,6 +19,10 @@ export class WaysWinCalculator<T extends string | number | symbol = string> impl
         this.waysAnalyzer = waysAnalyzer;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === WaysWinCalculator && this.waysAnalyzer.constructor === WaysAnalyzer;
+    }
+
     public calculateWinningWays(
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,

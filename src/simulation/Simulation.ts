@@ -1,7 +1,7 @@
+import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {AsyncSimulationHandling} from "./AsyncSimulationHandling.js";
 import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
-import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessionRoundPlayableDetermining.js";
 import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
 
@@ -195,15 +195,14 @@ export class Simulation implements AsyncSimulationHandling {
         }
         this.currentRoundNumber++;
         this.setBetBeforePlay();
-        const stake = this.supportsStakeAmount(this.session) ? this.session.getStakeAmount() : this.session.getBet();
-        this.totalBetAmount += stake;
-        this.betsPerRound.push(stake);
-        this.session.play();
-        this.totalPayoutAmount += this.session.getWinAmount();
-        this.allPayouts.push(this.session.getWinAmount());
-        if (this.session.getWinAmount()) {
+        const result = executeSessionCommand(this.session);
+        this.totalBetAmount += result.stake;
+        this.betsPerRound.push(result.stake);
+        this.totalPayoutAmount += result.win;
+        this.allPayouts.push(result.win);
+        if (result.win) {
             this.numberOfWiningRounds++;
-            this.nonZeroPayouts.push(this.session.getWinAmount());
+            this.nonZeroPayouts.push(result.win);
         }
         this.rtpPerRound.push(this.totalPayoutAmount / this.totalBetAmount);
         if (this.afterPlayCallback) {
@@ -211,7 +210,4 @@ export class Simulation implements AsyncSimulationHandling {
         }
     }
 
-    private supportsStakeAmount(session: GameSessionHandling): session is GameSessionHandling & StakeAmountDetermining {
-        return typeof (session as Partial<StakeAmountDetermining>).getStakeAmount === "function";
-    }
 }

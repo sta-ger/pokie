@@ -11,6 +11,10 @@ import type {VideoSlotSessionHandling} from "../VideoSlotSessionHandling.js";
 // that never happens.
 export class NoOpForcedFeatureEntryHandler<T extends string | number | symbol = string>
 implements ForcedFeatureEntryHandling<T> {
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === NoOpForcedFeatureEntryHandler;
+    }
+
     public canForceFeatureEntry(_session: VideoSlotSessionHandling<T>): boolean {
         return false;
     }

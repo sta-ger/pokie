@@ -341,3 +341,7 @@ No workflow here is **strictly linear with a backward lock** -- every gated flow
 earlier, already-reached step (there is no code path anywhere that blocks *revisiting*), so none needed a
 one-way "wizard" treatment. The one flow that had no navigation at all (guided Design Game's top-level
 stage indicator) is the only one that was actually misusing `Stepper`, and is the only one converted.
+
+## Headless runtime contract
+
+Play propagates repository command failure codes through the service and API. Corrupt or incompatible state produces actionable repair/matching-game guidance while retaining the last settled view. It never triggers a new session or an automatic retry. Project switches, superseded responses and scenario cancellation keep their existing guards; cancellation after a settled round retains that round and stops subsequent execution.
