@@ -260,7 +260,7 @@ describe("V2C-02 canonical runtime contracts", () => {
                 state.featureState = {};
             }, status: "corrupt-state"},
             {name: "null capabilities", change: state => {
-                Reflect.set(state, "commandCapabilities", null); 
+                Reflect.set(state, "commandCapabilities", null);
             }, status: "corrupt-state"},
             {name: "missing codec", change: state => {
                 Reflect.deleteProperty(state, "stateSchema");
