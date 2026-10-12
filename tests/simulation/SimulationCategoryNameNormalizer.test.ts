@@ -1,4 +1,4 @@
-import {SimulationCategoryNameNormalizer} from "pokie";
+import {SimulationCategoryNameNormalizer} from "@fromstan/pokie";
 
 describe("SimulationCategoryNameNormalizer", () => {
     test("accepts simple identifier-style names unchanged", () => {

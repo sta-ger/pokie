@@ -1,4 +1,4 @@
-import {VideoSlotConfig, VideoSlotSession, SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, type GameBlueprint} from "pokie";
+import {VideoSlotConfig, VideoSlotSession, SymbolsSequence, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, type GameBlueprint} from "@fromstan/pokie";
 
 export const FRACTIONAL_BET_STAKES = [1, 0.01, 0.1, 1.5, 1e-7];
 

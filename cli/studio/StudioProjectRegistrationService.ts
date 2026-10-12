@@ -1,4 +1,4 @@
-import {describeUnavailableWasmComponent, ProjectTargetResolver, WASM_CANONICAL_ARTIFACT_CAPABILITY, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "pokie";
+import {describeUnavailableWasmComponent, ProjectTargetResolver, WASM_CANONICAL_ARTIFACT_CAPABILITY, type PokieProject, type ProjectResolving, type ProjectType, wasmProductContractView} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {PokiePathResolver} from "../paths/PokiePathResolver.js";

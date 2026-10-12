@@ -8,7 +8,7 @@ import {
     WeightedOutcomeLibrary,
     WeightedOutcomeSelector,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
 
 describe("OutcomeLibraryBundleReader", () => {

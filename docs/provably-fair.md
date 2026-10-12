@@ -168,7 +168,7 @@ is caught.
 ## Building a proof
 
 ```ts
-import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessRoundProofBuilder} from "pokie";
+import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessRoundProofBuilder} from "@fromstan/pokie";
 
 const serverSeed = crypto.randomBytes(32).toString("hex"); // kept secret server-side until reveal
 const serverSeedCommitment = computeFairnessServerSeedCommitment({serverSeed});
@@ -339,7 +339,7 @@ every subcommand.
 ## Programmatic usage
 
 ```ts
-import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessRoundProofBuilder, FairnessRoundProofVerifier} from "pokie";
+import {computeFairnessCommitment, computeFairnessServerSeedCommitment, FairnessRoundProofBuilder, FairnessRoundProofVerifier} from "@fromstan/pokie";
 
 const proof = await new FairnessRoundProofBuilder().build(commitment, serverSeed, "./bundle");
 const issues = await new FairnessRoundProofVerifier().verify(proof, {commitment, sourceBundleDir: "./bundle"});

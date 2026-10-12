@@ -1,4 +1,4 @@
-import {LinesDefinitionsFor3x3} from "pokie";
+import {LinesDefinitionsFor3x3} from "@fromstan/pokie";
 
 describe("LinesDefinitionsFor3x3", () => {
     const lines = new LinesDefinitionsFor3x3();

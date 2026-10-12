@@ -1,4 +1,4 @@
-import {ExternalDeploymentResult, ValidationIssue} from "pokie";
+import {ExternalDeploymentResult, ValidationIssue} from "@fromstan/pokie";
 import {computeDeploymentStages} from "../../../../cli/studio/deployment/computeDeploymentStages.js";
 
 function issue(code: string, severity: ValidationIssue["severity"] = "error"): ValidationIssue {

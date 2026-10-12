@@ -3,7 +3,7 @@ import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter} from "pokie";
+import {generateExactWeightedOutcomeLibrary, OutcomeLibraryBundleWriter} from "@fromstan/pokie";
 import {ReplayCommand} from "../../../../../../cli/commands/ReplayCommand.js";
 import {StudioHomeService} from "../../../../../../cli/studio/home/StudioHomeService.js";
 import {StudioBlueprintService} from "../../../../../../cli/studio/blueprint/StudioBlueprintService.js";

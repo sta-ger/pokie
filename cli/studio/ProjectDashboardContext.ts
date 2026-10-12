@@ -1,4 +1,4 @@
-import type {OutcomeSourceProjectReport, PokieGameManifest, PokieProject, ProjectType, WasmProductContractView} from "pokie";
+import type {OutcomeSourceProjectReport, PokieGameManifest, PokieProject, ProjectType, WasmProductContractView} from "@fromstan/pokie";
 import type {StudioProjectOrigin} from "./StudioProjectRegistryEntry.js";
 
 // The Project Dashboard's own read model — richer than StudioContext (which only ever carries

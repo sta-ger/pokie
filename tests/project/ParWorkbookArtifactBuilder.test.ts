@@ -11,7 +11,7 @@ import {
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     type ParSheetExporting,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function parWorkbookProjectOf(rootPath: string): PokieProject {
     return {

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {loadPokieGame, type ReplayDescriptor, type SimulationReport} from "pokie";
+import {loadPokieGame, type ReplayDescriptor, type SimulationReport} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {InitCommand} from "../../cli/commands/InitCommand.js";

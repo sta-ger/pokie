@@ -12,7 +12,7 @@ import {
     StakeEngineImporting,
     describeArtifactConversionPlanDiagnostic,
     removePublishedDirectoryIfOwned,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {loadOutcomeLibraryFromSelector} from "../outcomeLibrary/loadOutcomeLibraryFromSelector.js";
@@ -30,11 +30,11 @@ import type {StudioArtifactBuildView} from "../artifacts/StudioArtifactBuildView
 /** The canonical Studio project-goal boundary, implemented by StudioArtifactBuildService. */
 export interface StudioStakeProjectGoalExporting {
     /** @deprecated Kept optional for embedders compiled against the old adapter. */
-    build?: (projectRoot: string, target: "stakeAdapter", outDir?: string, options?: import("pokie").ArtifactBuildOptions) => Promise<StudioArtifactBuildView>;
-    executeStakeProjection?: (operation: import("pokie").PreparedStakeProjectionOperation, options?: import("pokie").ArtifactBuildOptions) => Promise<StudioArtifactBuildView>;
-    validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: import("pokie").ArtifactConversionPlan; readonly operation: import("pokie").PreparedStakeProjectionOperation} | undefined>;
-    validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: import("pokie").ArtifactConversionPlan} | undefined>;
-    buildStakeProjectionSource(sourcePath: string, destinationPath: string, options?: import("pokie").ArtifactBuildOptions): Promise<StudioArtifactBuildView>;
+    build?: (projectRoot: string, target: "stakeAdapter", outDir?: string, options?: import("@fromstan/pokie").ArtifactBuildOptions) => Promise<StudioArtifactBuildView>;
+    executeStakeProjection?: (operation: import("@fromstan/pokie").PreparedStakeProjectionOperation, options?: import("@fromstan/pokie").ArtifactBuildOptions) => Promise<StudioArtifactBuildView>;
+    validateStakeProjection(projectRoot: string, outDir?: string): Promise<{readonly plan: import("@fromstan/pokie").ArtifactConversionPlan; readonly operation: import("@fromstan/pokie").PreparedStakeProjectionOperation} | undefined>;
+    validateStakeProjectionSource(sourcePath: string, destinationPath: string): Promise<{readonly plan: import("@fromstan/pokie").ArtifactConversionPlan} | undefined>;
+    buildStakeProjectionSource(sourcePath: string, destinationPath: string, options?: import("@fromstan/pokie").ArtifactBuildOptions): Promise<StudioArtifactBuildView>;
 }
 
 type LoadModesResult =
@@ -398,7 +398,7 @@ export class StudioStakeEngineExportService {
         projectRoot: string,
         modes: readonly StudioStakeEngineExportModeInput[],
         outDir?: string,
-    ): {readonly status: "unavailable"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan} {
+    ): {readonly status: "unavailable"; readonly error: string; readonly plan: import("@fromstan/pokie").ArtifactConversionPlan} {
         const sourcePath = this.selectedBundleSource(projectRoot, modes) ?? this.selectedExternalSource(projectRoot, modes);
         const destination = outDir === undefined ? undefined : this.resolveArtifactDestination(projectRoot, outDir);
         const plan = createExternalOutcomeLibraryPlan(sourcePath, "stakeAdapter", destination);
@@ -484,7 +484,7 @@ export class StudioStakeEngineExportService {
         projectRoot: string,
         modes: readonly StudioStakeEngineExportModeInput[],
         destinationPath: string | undefined,
-    ): Promise<import("pokie").ArtifactConversionPlan> {
+    ): Promise<import("@fromstan/pokie").ArtifactConversionPlan> {
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
         if (selectedSource !== undefined) {
             return destinationPath === undefined

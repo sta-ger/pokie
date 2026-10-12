@@ -1,4 +1,4 @@
-import {ExplicitSimulationRoundCategoryDeterminer, GameSessionHandling} from "pokie";
+import {ExplicitSimulationRoundCategoryDeterminer, GameSessionHandling} from "@fromstan/pokie";
 
 function sessionWithCategory(category: unknown): GameSessionHandling {
     return {getSimulationCategory: () => category} as unknown as GameSessionHandling;

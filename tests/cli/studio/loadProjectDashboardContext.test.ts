@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import {PokieGame, PokieGameManifest, PokieProject, STUDIO_OPERATION} from "pokie";
+import {PokieGame, PokieGameManifest, PokieProject, STUDIO_OPERATION} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

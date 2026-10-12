@@ -4,7 +4,7 @@ import {
     StakeEngineImportFileResult,
     StakeEngineImportModeFiles,
     StakeEngineImportValidator,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function ok<T>(value: T): StakeEngineImportFileResult<T> {
     return {status: "ok", value};

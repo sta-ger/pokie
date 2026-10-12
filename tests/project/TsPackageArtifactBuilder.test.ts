@@ -15,7 +15,7 @@ import {
     PROJECT_TYPE_CAPABILITIES,
     TsPackageArtifactBuilder,
     type GamePackageGenerating,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function blueprintProjectOf(rootPath: string): PokieProject {
     return {
@@ -95,7 +95,7 @@ describe("TsPackageArtifactBuilder", () => {
         expect(result.outputPath).toBe(destinationDir);
         expect(fs.existsSync(path.join(destinationDir, "package.json"))).toBe(true);
         expect(fs.existsSync(path.join(destinationDir, "dist", "index.js"))).toBe(true);
-        expect(fs.lstatSync(path.join(destinationDir, "node_modules", "pokie")).isSymbolicLink()).toBe(true);
+        expect(fs.lstatSync(path.join(destinationDir, "node_modules", "@fromstan", "pokie")).isSymbolicLink()).toBe(true);
         const game = await loadPokieGame(destinationDir);
         try {
             expect(game).toMatchObject({getManifest: expect.any(Function)});
@@ -110,7 +110,21 @@ describe("TsPackageArtifactBuilder", () => {
 
         await new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(runtimeRoot).build(blueprintProjectOf(blueprintPath), destinationDir);
 
-        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "pokie"))).toBe(runtimeRoot);
+        expect(fs.readlinkSync(path.join(destinationDir, "node_modules", "@fromstan", "pokie"))).toBe(runtimeRoot);
+    });
+
+    it.each([false, true])("cleans a failed scoped runtime link while preserving the original empty destination (%s)", async existed => {
+        if (existed) fs.mkdirSync(destinationDir);
+        const link = jest.spyOn(fs, "symlinkSync").mockImplementationOnce(() => {
+            throw new Error("scoped link failed");
+        });
+        try {
+            await expect(new TsPackageArtifactBuilder("1.3.0").withRuntimePackageRoot(dir).build(blueprintProjectOf(blueprintPath), destinationDir)).rejects.toThrow("scoped link failed");
+            expect(fs.existsSync(destinationDir)).toBe(existed);
+            if (existed) expect(fs.readdirSync(destinationDir)).toEqual([]);
+        } finally {
+            link.mockRestore(); 
+        }
     });
 
     it("throws ArtifactBuildConflictError rather than overwriting an existing, non-empty destination", async () => {

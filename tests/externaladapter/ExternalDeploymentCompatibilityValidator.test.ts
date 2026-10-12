@@ -11,7 +11,7 @@ import {
     ROUND_ARTIFACT_FEATURE_EVENTS_CAPABILITY,
     RoundArtifact,
     buildWeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 import {
     externalAdapterArtifact,
     externalAdapterArtifactWithDebug,

@@ -7,7 +7,7 @@ import {
     WinningValue,
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 
 export const stakeEngineTestProvenance: RoundArtifactProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

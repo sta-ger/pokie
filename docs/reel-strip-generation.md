@@ -17,7 +17,7 @@ import {
     MinimumCircularDistanceConstraint,
     ReelStripAnalyzer,
     ReelStripGenerator,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const generator = new ReelStripGenerator();
 
@@ -136,7 +136,7 @@ requested `length`, then generates through **the same `generate()` path** descri
 generation codepath for weighted requests, only a conversion step in front of it.
 
 ```ts
-import {ReelStripGenerator} from "pokie";
+import {ReelStripGenerator} from "@fromstan/pokie";
 
 const generator = new ReelStripGenerator();
 
@@ -212,7 +212,7 @@ type ReelStripSymbolWeightsConversionDiagnostic = {
 ```
 
 ```ts
-import {LargestRemainderReelStripSymbolWeightsConverter} from "pokie";
+import {LargestRemainderReelStripSymbolWeightsConverter} from "@fromstan/pokie";
 
 const converter = new LargestRemainderReelStripSymbolWeightsConverter();
 const conversion = converter.convert({length: 10, symbolWeights: {A: 1, B: 1, C: 1}});
@@ -300,7 +300,7 @@ lands on. Pass `directed = true` to make order matter:
   the *next* position; the subject's previous neighbor is not considered at all, even if it happens to match.
 
 ```ts
-import {ReelStrip, RequiredAdjacencyConstraint} from "pokie";
+import {ReelStrip, RequiredAdjacencyConstraint} from "@fromstan/pokie";
 
 // Every "W" must have an "M" or an "X" next to it, in either direction (undirected, the default).
 const flanked = new RequiredAdjacencyConstraint([
@@ -325,7 +325,7 @@ Overlapping matches all count independently: sequence `["A", "A"]` against `["A"
 position 0 and position 1.
 
 ```ts
-import {ForbiddenSequenceConstraint, ReelStrip, RequiredSequenceConstraint} from "pokie";
+import {ForbiddenSequenceConstraint, ReelStrip, RequiredSequenceConstraint} from "@fromstan/pokie";
 
 // A "bonus trigger" run (3 scatters in a row) must occur between 1 and 2 times.
 const bonusTrigger = new RequiredSequenceConstraint(["S", "S", "S"], 1, 2);
@@ -415,7 +415,7 @@ type ReelStripAnalysis = {
 ```
 
 ```ts
-import {ReelStrip, ReelStripAnalyzer} from "pokie";
+import {ReelStrip, ReelStripAnalyzer} from "@fromstan/pokie";
 
 const analysis = ReelStripAnalyzer.analyze(new ReelStrip(["A", "A", "B", "A", "C"]));
 analysis.symbolCounts;                 // {A: 3, B: 1, C: 1}

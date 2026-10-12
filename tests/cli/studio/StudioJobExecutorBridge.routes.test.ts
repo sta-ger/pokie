@@ -2,7 +2,7 @@ import fs from "fs";
 import http from "http";
 import os from "os";
 import path from "path";
-import {buildGameBuildInfo} from "pokie";
+import {buildGameBuildInfo} from "@fromstan/pokie";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioCertificationService} from "../../../cli/studio/certification/StudioCertificationService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";

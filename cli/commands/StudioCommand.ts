@@ -1,5 +1,5 @@
 import {Command} from "commander";
-import {PokieGamePackageValidator, STUDIO_OPERATION} from "pokie";
+import {PokieGamePackageValidator, STUDIO_OPERATION} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createMaterializingRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {openBrowser} from "../openBrowser.js";

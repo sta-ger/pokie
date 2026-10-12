@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleWriter, PokieProject, type PreGeneratedRoundReplayDescriptor, ProjectTargetResolver, replayOutcomeSourceProject, toCanonicalJson} from "pokie";
+import {OutcomeLibraryBundleWriter, PokieProject, type PreGeneratedRoundReplayDescriptor, ProjectTargetResolver, replayOutcomeSourceProject, toCanonicalJson} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // Proves P3-POLISH-21's own replay boundary: a resolved "outcomeLibrary" project reproduces a (seed, round)

@@ -52,7 +52,7 @@ import {
     VideoSlotSession,
     VideoSlotWinCalculator,
     VideoSlotWithResizableGridSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 config.setReelsNumber(5);

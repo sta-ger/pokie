@@ -1,4 +1,4 @@
-import type {ReelStripGenerationSpec} from "pokie";
+import type {ReelStripGenerationSpec} from "@fromstan/pokie";
 
 // Converts a random blueprint's flat symbolWeights ratio into a per-reel reelStripGeneration array --
 // one independent "generated" entry per reel, each targeting the exact same symbol:weight ratio (so

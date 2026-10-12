@@ -7,7 +7,7 @@ import {
     releasePokieGame,
     ProjectTargetResolver,
     type PokieGame,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // The Deployment Configure step's own "current build" contract, mirrored server-side so a deployment
 // request can be checked against it even when it never went through the Configure UI at all -- but

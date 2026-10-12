@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {buildWeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, OutcomeLibraryBundleWriter, OutcomeLibraryBundleValidator, OutcomeLibraryBundleReader} from "pokie";
+import {buildWeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, OutcomeLibraryBundleWriter, OutcomeLibraryBundleValidator, OutcomeLibraryBundleReader} from "@fromstan/pokie";
 import {computeOnlineWeightedOutcomeLibraryAnalysis} from "../../../../src/weightedoutcome/bundle/internal/computeOnlineWeightedOutcomeLibraryAnalysis.js";
 import {artifactWithTotalWin} from "../../WeightedOutcomeTestFixtures.js";
 import {expectRelative} from "../../../stakeengine/standalone/StakeProbabilityTestFixtures.js";

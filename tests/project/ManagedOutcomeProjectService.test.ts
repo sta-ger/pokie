@@ -6,7 +6,7 @@ import {
     type ManagedOutcomeProjectFileOperations,
     OutcomeLibraryBundleWriter,
     type WeightedOutcomeInput,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 describe("ManagedOutcomeProjectService atomic registry writes", () => {

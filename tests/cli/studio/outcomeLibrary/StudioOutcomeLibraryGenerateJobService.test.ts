@@ -13,7 +13,7 @@ import {
     SymbolsSequence,
     VideoSlotConfig,
     VideoSlotSession,
-} from "pokie";
+} from "@fromstan/pokie";
 import {createUnresolvedRuntimePlan} from "../../../../cli/studio/artifacts/createExternalArtifactConversionPlan.js";
 import type {StudioOutcomeLibraryGenerateResultView} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateResultView.js";
 import {StudioOutcomeLibraryGenerateJobService} from "../../../../cli/studio/outcomeLibrary/StudioOutcomeLibraryGenerateJobService.js";

@@ -12,7 +12,7 @@ import {
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesConfigRepresenting,
     VideoSlotWithFreeGamesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const FREE_GAMES_TO_GRANT = 4;
 const SEED = 1234567;

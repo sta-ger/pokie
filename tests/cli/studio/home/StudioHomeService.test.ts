@@ -1,4 +1,4 @@
-import {PokieGame, PokieGameManifest, POKIE_WASM_CONTRACT_VERSION} from "pokie";
+import {PokieGame, PokieGameManifest, POKIE_WASM_CONTRACT_VERSION} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

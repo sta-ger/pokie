@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleWriter, PokieProject, ProjectTargetResolver, SeededWeightedOutcomeRandomSource, sampleOutcomeSourceProject} from "pokie";
+import {OutcomeLibraryBundleWriter, PokieProject, ProjectTargetResolver, SeededWeightedOutcomeRandomSource, sampleOutcomeSourceProject} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 // Proves P3-POLISH-21's own sampling boundary: a resolved "outcomeLibrary" project draws through the existing

@@ -1,4 +1,4 @@
-import {SimulationConfig} from "pokie";
+import {SimulationConfig} from "@fromstan/pokie";
 
 describe("DefaultGameSessionSimulationConfig", () => {
     it("should create default simulation config", () => {

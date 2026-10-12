@@ -16,7 +16,7 @@ import {
     WinningScatterDescribing,
     WinningValue,
     WinningWay,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // Fixed win amounts per evaluator group so both the sum and the "which one is highest" outcome are
 // unambiguous: line=10, scatter=5, cluster=7, value=11, ways=13 (all distinct, ways is the max).

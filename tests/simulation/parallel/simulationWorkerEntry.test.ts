@@ -1,4 +1,4 @@
-import type {SimulationWorkerRequest} from "pokie";
+import type {SimulationWorkerRequest} from "@fromstan/pokie";
 import path from "path";
 import {Worker} from "worker_threads";
 import type {SimulationWorkerMessage} from "../../../src/simulation/parallel/internal/SimulationWorkerMessage.js";

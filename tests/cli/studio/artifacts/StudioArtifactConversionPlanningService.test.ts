@@ -1,5 +1,5 @@
 import {StudioArtifactConversionPlanningService} from "../../../../cli/studio/artifacts/StudioArtifactConversionPlanningService.js";
-import type {ArtifactBuilderRegistry, ProjectResolving} from "pokie";
+import type {ArtifactBuilderRegistry, ProjectResolving} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

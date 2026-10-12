@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "pokie";
+import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "@fromstan/pokie";
 import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
 import {GamePackagePreparer} from "../../../cli/prepare/GamePackagePreparer.js";
 import {PackageCommandResult, PackageCommandRunning} from "../../../cli/prepare/PackageCommandRunner.js";

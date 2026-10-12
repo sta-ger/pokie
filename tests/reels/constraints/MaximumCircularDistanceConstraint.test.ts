@@ -1,4 +1,4 @@
-import {MaximumCircularDistanceConstraint, ReelStrip} from "pokie";
+import {MaximumCircularDistanceConstraint, ReelStrip} from "@fromstan/pokie";
 
 describe("MaximumCircularDistanceConstraint", () => {
     test("is silent when every occurrence of the target symbol is close enough together, including the wrap-around gap", () => {

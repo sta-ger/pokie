@@ -1,4 +1,4 @@
-import {GameBlueprint, resolveReelStripGeneration} from "pokie";
+import {GameBlueprint, resolveReelStripGeneration} from "@fromstan/pokie";
 
 function baseBlueprint(overrides: Partial<GameBlueprint> = {}): GameBlueprint {
     return {

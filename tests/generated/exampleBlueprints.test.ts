@@ -1,4 +1,4 @@
-import {GameBlueprintValidator, loadGameBlueprint} from "pokie";
+import {GameBlueprintValidator, loadGameBlueprint} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 

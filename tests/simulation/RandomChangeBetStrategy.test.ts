@@ -1,4 +1,4 @@
-import {Simulation, SimulationConfig, GameSessionHandling, RandomChangeBetStrategy} from "pokie";
+import {Simulation, SimulationConfig, GameSessionHandling, RandomChangeBetStrategy} from "@fromstan/pokie";
 
 describe("RandomChangeBetStrategyTest", () => {
     it("changes the bet randomly during the simulation", () => {

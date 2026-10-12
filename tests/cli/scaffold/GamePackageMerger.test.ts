@@ -30,7 +30,7 @@ describe("GamePackageMerger", () => {
 
         const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8"));
         expect(pkg.name).toBe(path.basename(projectRoot).toLowerCase());
-        expect(pkg.dependencies).toEqual({pokie: "^1.2.1"});
+        expect(pkg.dependencies).toEqual({"@fromstan/pokie": "^1.2.1"});
         expect(pkg.pokie).toEqual({entry: "./dist/index.js"});
     });
 
@@ -65,7 +65,7 @@ describe("GamePackageMerger", () => {
         expect(pkg.description).toBe("keep me");
         expect(pkg.scripts.lint).toBe("eslint .");
         expect(pkg.scripts.build).toBe("tsc");
-        expect(pkg.dependencies).toEqual({pokie: "^1.2.1"});
+        expect(pkg.dependencies).toEqual({"@fromstan/pokie": "^1.2.1"});
     });
 
     it("never overwrites an existing tsconfig.json/README.md/src/index.ts -- reports them as skipped", () => {
@@ -151,7 +151,7 @@ describe("GamePackageMerger", () => {
         it("throws when \"pokie.entry\" disagrees", () => {
             fs.writeFileSync(
                 path.join(projectRoot, "package.json"),
-                JSON.stringify({name: "already-here", dependencies: {pokie: "^1.0.0"}, pokie: {entry: "./dist/other.js"}}),
+                JSON.stringify({name: "already-here", dependencies: {"@fromstan/pokie": "^1.0.0"}, pokie: {entry: "./dist/other.js"}}),
             );
             const merger = new GamePackageMerger("1.2.1");
 

@@ -32,7 +32,7 @@ import {
     SeededPokieWasmHost,
     VideoSlotSessionHandling,
     WeightedOutcomeRandomSource,
-} from "pokie";
+} from "@fromstan/pokie";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {canonicalStudioProjectIdentity} from "../jobs/canonicalStudioProjectIdentity.js";
 import crypto from "crypto";

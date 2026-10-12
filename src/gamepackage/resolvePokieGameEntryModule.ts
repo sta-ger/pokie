@@ -4,7 +4,7 @@ import fs from "fs";
 import {createRequire} from "module";
 import os from "os";
 import path from "path";
-import {pathToFileURL} from "url";
+import {fileURLToPath, pathToFileURL} from "url";
 
 export type ResolvedPokieGameEntryModule = {
     entryPath: string;
@@ -45,7 +45,7 @@ async function importPokieGameEntryModule(entryPath: string): Promise<Record<str
     }
 }
 
-function createRuntimeSnapshot(packageRoot: string, entryPath: string): {root: string; entryPath: string; release: () => Promise<void>} {
+async function createRuntimeSnapshot(packageRoot: string, entryPath: string): Promise<{root: string; entryPath: string; release: () => Promise<void>}> {
     // `entryPath` may be inside a nested module-type scope (for example
     // dist/cjs/package.json). That file controls how Node interprets modules,
     // not what belongs to the game package. The resolver has already identified
@@ -68,7 +68,7 @@ function createRuntimeSnapshot(packageRoot: string, entryPath: string): {root: s
         // node_modules directory (fixtures and Studio materializations do). Keep that normal
         // Node resolution chain available from the external snapshot without copying dependencies
         // or writing anything into the authored package.
-        createDependencyOverlay(root, packageRoot);
+        await createDependencyOverlay(root, packageRoot);
         const snapshotEntry = path.join(root, relativeEntry);
         let released = false;
         return {
@@ -98,7 +98,7 @@ function createRuntimeSnapshot(packageRoot: string, entryPath: string): {root: s
     }
 }
 
-function createDependencyOverlay(snapshotRoot: string, startPath: string): void {
+async function createDependencyOverlay(snapshotRoot: string, startPath: string): Promise<void> {
     const overlay = path.join(snapshotRoot, "node_modules");
     const dependencyRoots: string[] = [];
     let current = startPath;
@@ -111,29 +111,30 @@ function createDependencyOverlay(snapshotRoot: string, startPath: string): void 
     // Link only the package's declared runtime dependencies, never every entry in an ancestor
     // workspace node_modules.  The linked package keeps its physical nested dependency tree, so
     // Node resolves its transitive dependencies normally without a recursive copy or overlay scan.
-    // `pokie` is the host runtime contract for a generated package.  Older
+    // `@fromstan/pokie` is the host runtime contract for a generated package.  Older
     // package fixtures and packages built before dependency metadata was
     // standardized may omit it from package.json, yet were loadable from a
     // normal workspace ancestor. Keep that single compatibility dependency;
     // every other overlay entry remains manifest-declared.
     const declaredDependencies = declaredRuntimeDependencies(startPath);
-    for (const dependencyName of new Set(["pokie", ...declaredDependencies])) {
+    const hostRuntimeRoot = await resolveHostPokieRuntimeRoot();
+    for (const dependencyName of new Set(["@fromstan/pokie", ...declaredDependencies])) {
         // An explicit package dependency remains authoritative. The compatibility `pokie`
         // overlay for old packages that omit it is different: bind that name to the embedding
-        // runtime first, so a stray legacy/local `node_modules/pokie` cannot make a worker load a
+        // runtime first, so a stray legacy/local `node_modules/@fromstan/pokie` cannot make a worker load a
         // source checkout rather than the installed API that created it.
-        const hostRuntime = dependencyName === "pokie" && !declaredDependencies.includes("pokie")
-            ? resolveHostPokieRuntimeRoot()
+        const hostRuntime = dependencyName === "@fromstan/pokie" && !declaredDependencies.includes("@fromstan/pokie")
+            ? hostRuntimeRoot
             : undefined;
         // A game package is permitted to omit its host runtime from its own ancestry: for
         // example, an embedding application can load a fixture outside its install tree. In that
-        // layout the snapshot still must bind `require("pokie")` to the *same installed runtime*
+        // layout the snapshot still must bind `require("@fromstan/pokie")` to the *same installed runtime*
         // that invoked the loader, rather than assuming the fixture's source checkout has a
-        // sibling node_modules/pokie. This is especially important in worker_threads, whose loader
+        // sibling node_modules/@fromstan/pokie. This is especially important in worker_threads, whose loader
         // starts from the snapshot path and otherwise loses the embedding app's resolution chain.
         const source = hostRuntime
             ?? dependencyRoots.map((dependencyRoot) => path.join(dependencyRoot, dependencyName)).find((candidate) => fs.existsSync(candidate))
-            ?? (dependencyName === "pokie" ? resolveHostPokieRuntimeRoot() : undefined);
+            ?? (dependencyName === "@fromstan/pokie" ? hostRuntimeRoot : undefined);
         if (source === undefined) continue;
         const destination = path.join(overlay, dependencyName);
         fs.mkdirSync(path.dirname(destination), {recursive: true});
@@ -141,18 +142,15 @@ function createDependencyOverlay(snapshotRoot: string, startPath: string): void 
     }
 }
 
-function resolveHostPokieRuntimeRoot(): string | undefined {
-    try {
-        // Anchor resolution at the embedding process's working directory. A package invoked from a
-        // third-party install therefore finds that install's `node_modules/pokie`; a normal game
-        // package with a nearer declared dependency was already selected above and never reaches
-        // this fallback. Avoid `__dirname`/this source checkout, which would silently bind an
-        // externally-installed runtime to whatever development tree happens to contain it.
-        const hostEntry = createRequire(path.join(process.cwd(), "__pokie_runtime_resolver__.cjs")).resolve("pokie");
-        return findPackageRoot(hostEntry);
-    } catch {
-        return undefined;
-    }
+async function resolveHostPokieRuntimeRoot(): Promise<string | undefined> {
+    // Bind omitted runtime dependencies to the installation executing this loader, even when a
+    // global CLI or embedding application opens a project outside its own node_modules ancestry.
+    // Explicit dependencies are resolved from the project's ancestry before this fallback is used.
+    if (typeof __filename === "string") return findPackageRoot(__filename);
+    // A native import preserves the ESM location helper when TypeScript also emits this source as CJS.
+    // eslint-disable-next-line no-new-func -- the helper must retain import.meta in both compiled trees.
+    const locate = new Function("return import('./internal/runtimeLocation.mjs')") as () => Promise<{runtimeLocation(): string}>;
+    return findPackageRoot(fileURLToPath((await locate()).runtimeLocation()));
 }
 
 function findPackageRoot(filePath: string): string | undefined {
@@ -235,7 +233,7 @@ export async function resolvePokieGameEntryModule(
     // immutable version.  Crucially, the snapshot is *not* removed after import: a game may read
     // model.json or lazily import/require a sibling while a session is still live.  Its owner gets
     // the release lease returned below.
-    const snapshot = createRuntimeSnapshot(packageRoot, entryPath);
+    const snapshot = await createRuntimeSnapshot(packageRoot, entryPath);
     let entryModule: Record<string, unknown>;
     try {
         // A plain absolute path, not a file:// URL: TypeScript downlevels `import()` to

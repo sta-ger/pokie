@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {LocalFileExternalDeploymentRuntimeAdapter} from "pokie";
+import {LocalFileExternalDeploymentRuntimeAdapter} from "@fromstan/pokie";
 
 describe("LocalFileExternalDeploymentRuntimeAdapter", () => {
     let outDir: string;

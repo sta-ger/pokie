@@ -1,4 +1,4 @@
-import {SimulationCancelledError, SimulationWorkerCoordinator, SimulationWorkerFailureError, SimulationWorkerRequest, SimulationWorkerResult} from "pokie";
+import {SimulationCancelledError, SimulationWorkerCoordinator, SimulationWorkerFailureError, SimulationWorkerRequest, SimulationWorkerResult} from "@fromstan/pokie";
 import {EventEmitter} from "events";
 import type {Worker} from "worker_threads";
 

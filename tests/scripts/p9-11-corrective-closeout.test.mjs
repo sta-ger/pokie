@@ -248,7 +248,7 @@ test("pinned real file/archive reader rejects candidate, stale assets, extra ass
         assert.equal(candidate.candidateId, fixture.handoff.candidateId);
         assert.equal(candidate.resolutions.pokie, path.join(candidate.packageRoot, "dist/cjs/index.cjs"));
         assert.equal(candidate.esmResolutions.pokie, path.join(candidate.packageRoot, "dist/esm/index.js"));
-        for (const name of ["pokie/browser", "pokie/wasm", "pokie/client/player"]) {
+        for (const name of ["@fromstan/pokie/browser", "@fromstan/pokie/wasm", "@fromstan/pokie/client/player"]) {
             assert.equal(candidate.esmResolutions[name], candidate.resolutions[name]);
         }
         await assert.rejects(readPinnedJson({...fixture.reference, sha256:"b".repeat(64)}), /digest mismatch/);
@@ -276,7 +276,7 @@ async function runnerFixture(directory, options = {}) {
     const image = path.join(directory, "focus.png");
     await writeFile(image, "fixture image; no visual acceptance");
     const candidate = {candidateId:"a".repeat(40), candidateTreeId:"b".repeat(40), packageName:"pokie", archiveSha256:digest, archivePath:path.join(directory, "archives/candidate.tgz"), executableSha256:digest, installationRoot:path.join(directory, "borrowed-install"),
-        packageRoot:path.join(directory, "borrowed-install/node_modules/pokie"), bin:"/fixture/pokie", packageVersion:"1.3.0", resolutions:{pokie:"/fixture/cjs/index.js"}, esmResolutions:{pokie:"/fixture/esm/index.js"},
+        packageRoot:path.join(directory, "borrowed-install/node_modules/@fromstan/pokie"), bin:"/fixture/pokie", packageVersion:"1.3.0", resolutions:{"@fromstan/pokie":"/fixture/cjs/index.js"}, esmResolutions:{"@fromstan/pokie":"/fixture/esm/index.js"},
         buildReceipt:{path:"/fixture/build.json", sha256:digest}, installReceipt:{path:"/fixture/install.json", sha256:digest},
         browserDriver:{path:driver, sha256:sha256(await readFile(driver))}, projection:{entries:[{path:"dist/cli/studio-client/index.html", sha256:digest}, {path:"dist/cli/studio-client/assets/app.js", sha256:digest}, {path:"dist/cli/studio-client/assets/app.css", sha256:digest}]}};
     const requests = [], calls = [];

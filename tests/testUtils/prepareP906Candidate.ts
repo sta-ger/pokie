@@ -23,13 +23,14 @@ export function compileP906Candidate(repositoryRoot: string): void {
             run(['node_modules/typescript/bin/tsc','--project','tsconfig.cli.json']);
             for(const format of ['esm','cjs','src'])
                 fs.copyFileSync('src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs','dist/'+format+'/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs');
+            for (const tree of ['dist/esm', 'dist/cjs', 'dist/src']) { fs.mkdirSync(tree + '/gamepackage/internal', {recursive:true}); fs.copyFileSync('src/gamepackage/internal/runtimeLocation.mjs', tree + '/gamepackage/internal/runtimeLocation.mjs'); }
             run(['node_modules/vite/bin/vite.js','build','--config','cli/studio-client/vite.config.ts']);
         `],
     });
 }
 
 export function prepareP906Candidate(repositoryRoot: string, directory: string) {
-    const packageRoot = path.join(directory, "node_modules", "pokie");
+    const packageRoot = path.join(directory, "node_modules", "@fromstan", "pokie");
     fs.mkdirSync(packageRoot, {recursive: true});
     for (const entry of ["dist", "README.md", "package.json"]) {
         fs.cpSync(path.join(repositoryRoot, entry), path.join(packageRoot, entry), {recursive: true});
@@ -51,13 +52,13 @@ export function prepareP906Candidate(repositoryRoot: string, directory: string) 
     const launcher = path.join(directory, "node_modules", ".bin", "pokie");
     fs.mkdirSync(path.dirname(launcher), {recursive: true});
     fs.chmodSync(path.join(packageRoot, "dist", "cli", "pokie.js"), 0o755);
-    fs.symlinkSync(path.join("..", "pokie", "dist", "cli", "pokie.js"), launcher);
+    fs.symlinkSync(path.join("..", "@fromstan", "pokie", "dist", "cli", "pokie.js"), launcher);
     const workspace = path.join(directory, "workspace");
     const existingProject = path.join(workspace, "Existing Project");
     fs.mkdirSync(workspace);
     fs.cpSync(path.join(repositoryRoot, "tests", "cli", "fixtures", "playable-game"), existingProject, {recursive: true});
     // Resolve in ordinary Node, outside Jest's source module-name mapping.
-    const resolution = spawnSync(process.execPath, ["-p", "require.resolve('pokie')"], {cwd: existingProject, encoding: "utf8", timeout: 5000});
+    const resolution = spawnSync(process.execPath, ["-p", "require.resolve('@fromstan/pokie')"], {cwd: existingProject, encoding: "utf8", timeout: 5000});
     if (resolution.status !== 0 || resolution.stdout.trim() !== path.join(packageRoot, "dist", "cjs", "index.js")) {
         throw new Error("The supplied project's POKIE dependency does not resolve to this candidate.");
     }

@@ -100,7 +100,7 @@ getTotalNumberOfRounds(): number                              // the configured 
 ```
 
 ```ts
-import {Simulation, SimulationConfig, VideoSlotSession} from "pokie";
+import {Simulation, SimulationConfig, VideoSlotSession} from "@fromstan/pokie";
 
 const session = new VideoSlotSession();
 
@@ -153,7 +153,7 @@ iteration.
   optionally requiring the free-games bank to be empty/non-empty at the end via `setShouldHaveFreeBankAtEnd(bool)`.
 
 ```ts
-import {Simulation, SimulationConfig, PlayUntilSymbolWinStrategy} from "pokie";
+import {Simulation, SimulationConfig, PlayUntilSymbolWinStrategy} from "@fromstan/pokie";
 
 const simulationConfig = new SimulationConfig();
 simulationConfig.setNumberOfRounds(Infinity);
@@ -186,7 +186,7 @@ await simulation.runAsync(500, 0); // smaller chunks, yields more often
 ## Aggregate-only example
 
 ```ts
-import {AggregateSimulationRunner, VideoSlotSession} from "pokie";
+import {AggregateSimulationRunner, VideoSlotSession} from "@fromstan/pokie";
 
 const runner = new AggregateSimulationRunner(new VideoSlotSession(), 1_000_000);
 const accumulator = runner.run();
@@ -210,7 +210,7 @@ class — neither has (or needs) its own worker-thread implementation.
 ### Programmatic usage
 
 ```ts
-import {ParallelSimulationRunner} from "pokie";
+import {ParallelSimulationRunner} from "@fromstan/pokie";
 
 const runner = new ParallelSimulationRunner("./sample-slot", 1_000_000, {
     seed: "demo",
@@ -351,7 +351,7 @@ is always played in full unless `ParallelSimulationRunOptions.convergence` is ex
 `Simulation`/`SimulationConfig` class (see above) has no concept of this feature at all and never will.
 
 ```ts
-import {ParallelSimulationRunner} from "pokie";
+import {ParallelSimulationRunner} from "@fromstan/pokie";
 
 const runner = new ParallelSimulationRunner("./sample-slot", 5_000_000, {
     seed: "demo",
@@ -452,7 +452,7 @@ interface SimulationCategoryDetermining {
 ```
 
 ```ts
-import type {GameSessionHandling, SimulationCategoryDetermining} from "pokie";
+import type {GameSessionHandling, SimulationCategoryDetermining} from "@fromstan/pokie";
 
 class MySession implements GameSessionHandling, SimulationCategoryDetermining {
     private inBonusRound = false;
@@ -518,7 +518,7 @@ own list wrapped in `FallbackSimulationRoundCategoryDeterminer`) as `AggregateSi
 same as a custom `NextSessionRoundPlayableDetermining` play strategy is its 3rd:
 
 ```ts
-import {AggregateSimulationRunner, FallbackSimulationRoundCategoryDeterminer, StakeBasedSimulationRoundCategoryDeterminer} from "pokie";
+import {AggregateSimulationRunner, FallbackSimulationRoundCategoryDeterminer, StakeBasedSimulationRoundCategoryDeterminer} from "@fromstan/pokie";
 
 class MyJackpotAwareDeterminer implements SimulationRoundCategoryDetermining {
     supportsRoundCategorization(session: GameSessionHandling): boolean {

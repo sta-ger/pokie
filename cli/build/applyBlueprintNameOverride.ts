@@ -1,4 +1,4 @@
-import type {GameBlueprint} from "pokie";
+import type {GameBlueprint} from "@fromstan/pokie";
 import {deriveManifestDefaults} from "../scaffold/deriveManifestDefaults.js";
 
 // Shared by CreateCommand and InitCommand: turns a given "<name>" positional into the same

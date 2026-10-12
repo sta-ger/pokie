@@ -86,7 +86,7 @@ test("completion rejects a retained gate started before closeout even with a tru
 });
 
 
-test("authorizes lifecycle only after validated closeout and gate, then reuses immutable completion", async () => {
+test("refuses automatic publication after a valid gate, then validates and reuses a historical receipt", async () => {
     const closeout = {campaignId:"campaign", candidateId, candidatePackageSha256, closeoutSha256:"e".repeat(64), manifestSha256:"9".repeat(64), closedAt:"2026-09-19T19:00:00.000Z"};
     const gate = {schemaVersion:1, kind:"p8-05-release-gate", candidateId, candidatePackageSha256, campaignId:"campaign", campaignCloseoutSha256:closeout.closeoutSha256, pc20GateSha256:"f".repeat(64), pc20GateEndedAt:"2026-09-19T19:50:00.000Z", completedAt:"2026-09-19T20:00:00.000Z", chronology:["clean-retest-closeout", "check-release-and-npm-pack-smoke"]};
     const gateContents = JSON.stringify(gate), records = new Map(), lifecycleContents = JSON.stringify(protectedLifecycle());
@@ -103,13 +103,17 @@ test("authorizes lifecycle only after validated closeout and gate, then reuses i
         validatePc20Lifecycle:async (pc20, gateSha256) => { assert.equal(pc20.lifecycleReceiptSha256, sha256(lifecycleContents)); assert.equal(gateSha256, gate.pc20GateSha256); return {value:protectedLifecycle(), sha256:sha256(lifecycleContents)}; },
         now:() => "2026-09-19T20:01:00.000Z",
     };
+    await assert.rejects(() => validateP805ReleaseCompletion(settings, dependencies), /public publication is disabled/i);
+    assert.equal(authorizedCalls, 0);
+    assert.equal(records.size, 0);
+    settings.pc20.lifecycleReceiptSha256 = sha256(lifecycleContents);
     const created = await validateP805ReleaseCompletion(settings, dependencies);
-    assert.equal(authorizedCalls, 1);
+    assert.equal(authorizedCalls, 0);
     assert.equal(created.evidenceIndex.campaignManifestSha256, closeout.manifestSha256);
     assert.equal(created.evidenceIndex.archiveSha256, candidatePackageSha256);
     const reused = await validateP805ReleaseCompletion({...settings, retainedP805CompletionReceiptSha256:created.sha256, retainedP805EvidenceIndexSha256:sha256([...records.entries()].find(([target]) => target.includes("evidence-index"))[1]), pc20:{...settings.pc20, lifecycleReceiptSha256:sha256(lifecycleContents)}}, dependencies);
     assert.equal(reused.reused, true);
-    assert.equal(authorizedCalls, 1);
+    assert.equal(authorizedCalls, 0);
 });
 
 test("preflight authenticates the original campaign and exercises exact checkout without gate/writes", async () => {
@@ -132,12 +136,12 @@ test("preflight authenticates the original campaign and exercises exact checkout
     await assert.rejects(() => validateP805ReleasePreflight(settings, {...dependencies, assertCheckout:() => { throw new Error("clean exact checkout required"); }}), /clean exact checkout/);
 });
 
-test("handoff identity survives gate, authorized lifecycle, completion/index reuse and drift rejection", async () => {
+test("handoff identity survives gate, retained historical lifecycle, completion/index reuse and drift rejection", async () => {
     const auditedCandidateId = "1".repeat(40), handoffSha256 = "2".repeat(64);
     const binding = {auditedCandidateId, releaseHandoffSha256:handoffSha256};
     const closeout = {campaignId:"campaign", candidateId:auditedCandidateId, candidatePackageSha256, closeoutSha256:"e".repeat(64), manifestSha256:"9".repeat(64), closedAt:"2026-09-19T19:00:00.000Z"};
     const records = new Map(), lifecycle = {...protectedLifecycle(), ...binding}, lifecycleContents = JSON.stringify(lifecycle);
-    const settings = {...config(), campaignReleaseHandoff:{auditedCandidateId, archivePath:"/tmp/canonical.tgz"}, pc20:{...config().pc20, lifecycleReceiptSha256:undefined}};
+    const settings = {...config(), campaignReleaseHandoff:{auditedCandidateId, archivePath:"/tmp/canonical.tgz"}, pc20:{...config().pc20, lifecycleReceiptSha256:sha256(lifecycleContents)}};
     const pc20Gate = {...binding, candidateId, candidatePackageSha256, archiveSha256:candidatePackageSha256, startedAt:"2026-09-19T19:30:00.000Z", endedAt:"2026-09-19T19:50:00.000Z"};
     const check = (pc20) => { assert.equal(pc20.candidateId, candidateId); assert.equal(pc20.p805ReleaseHandoff.auditedCandidateId, auditedCandidateId); assert.equal(pc20.p805ReleaseHandoffSha256, handoffSha256); };
     let authorized = 0;
@@ -161,14 +165,14 @@ test("handoff identity survives gate, authorized lifecycle, completion/index reu
     assert.equal((await validateP805ReleaseGate(retained, dependencies)).reused, true);
     const completionDependencies = {...dependencies, now:() => "2026-09-19T20:01:00.000Z"};
     const completed = await validateP805ReleaseCompletion(retained, completionDependencies);
-    assert.equal(authorized, 1);
+    assert.equal(authorized, 0);
     assert.equal(completed.evidenceIndex.auditedCandidateId, auditedCandidateId);
     assert.equal(completed.evidenceIndex.releaseHandoffSha256, handoffSha256);
     const reuse = {...retained, retainedP805CompletionReceiptSha256:completed.sha256, retainedP805EvidenceIndexSha256:sha256([...records.entries()].find(([target]) => target.includes("evidence-index"))[1]), pc20:{...retained.pc20, lifecycleReceiptSha256:sha256(lifecycleContents)}};
     assert.equal((await validateP805ReleaseCompletion(reuse, completionDependencies)).reused, true);
-    assert.equal(authorized, 1);
+    assert.equal(authorized, 0);
     const drift = {...completionDependencies, validateHandoff:async () => ({closeout, sha256:"0".repeat(64), binding:{candidateId, candidatePackageSha256, auditedCandidateId}})};
     await assert.rejects(() => validateP805ReleaseGate(retained, drift), /receipt drifted/);
     await assert.rejects(() => validateP805ReleaseCompletion(reuse, drift), /bound to the clean campaign/);
-    assert.equal(authorized, 1);
+    assert.equal(authorized, 0);
 });

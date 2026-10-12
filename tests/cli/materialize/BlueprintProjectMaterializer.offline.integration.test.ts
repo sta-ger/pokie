@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {computeGameBlueprintHash, DEV_OPERATION, GAME_BLUEPRINT_SCHEMA_VERSION, GameBlueprint} from "pokie";
+import {computeGameBlueprintHash, DEV_OPERATION, GAME_BLUEPRINT_SCHEMA_VERSION, GameBlueprint} from "@fromstan/pokie";
 import {createStarterGameBlueprint} from "../../../cli/build/createStarterGameBlueprint.js";
 import {BlueprintMaterializationError} from "../../../cli/materialize/BlueprintMaterializationError.js";
 import {BlueprintProjectMaterializer} from "../../../cli/materialize/BlueprintProjectMaterializer.js";
@@ -172,7 +172,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: default production r
             // "pokie" really did resolve to this exact (spaced-path) checkout, not any registry-published
             // version.
             const installedPokiePackageJson = JSON.parse(
-                fs.readFileSync(path.join(first.runtimePath, "node_modules", "pokie", "package.json"), "utf-8"),
+                fs.readFileSync(path.join(first.runtimePath, "node_modules", "@fromstan", "pokie", "package.json"), "utf-8"),
             ) as {name: string};
             expect(installedPokiePackageJson.name).toBe("pokie");
 
@@ -225,7 +225,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: default production r
         const retried = await resolveRuntimePackageRoot(blueprintPath);
         try {
             expect(fs.existsSync(path.join(retried.runtimePath, "dist", "index.js"))).toBe(true);
-            expect(fs.existsSync(path.join(retried.runtimePath, "node_modules", "pokie"))).toBe(true);
+            expect(fs.existsSync(path.join(retried.runtimePath, "node_modules", "@fromstan", "pokie"))).toBe(true);
             expect(flakyRunner.calls).toBe(3);
 
             const cachedAfterRetry = await resolveRuntimePackageRoot(blueprintPath);
@@ -316,14 +316,14 @@ describe("BlueprintProjectMaterializer (offline end-to-end: real npm-managed ins
                     name: "pokie-materialize-tarball-consumer",
                     version: "0.0.0",
                     private: true,
-                    dependencies: {pokie: `file:${tarballPath}`, ...localClosureDependencies},
+                    dependencies: {"@fromstan/pokie": `file:${tarballPath}`, ...localClosureDependencies},
                 },
                 null,
                 4,
             ),
         );
         execFileSync("npm", ["install", "--no-audit", "--no-fund"], {cwd: tarballInstallDir, encoding: "utf-8"});
-        tarballInstalledPokieRoot = path.join(tarballInstallDir, "node_modules", "pokie");
+        tarballInstalledPokieRoot = path.join(tarballInstallDir, "node_modules", "@fromstan", "pokie");
 
         // Real `npm link` (never a hand-rolled fs.symlinkSync) against a scratch global prefix, so the
         // symlink it creates lives entirely under this test's own temp directories.
@@ -339,7 +339,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: real npm-managed ins
             encoding: "utf-8",
             env: {...process.env, "npm_config_prefix": linkNpmPrefix},
         });
-        linkedPokieRoot = path.join(linkInstallDir, "node_modules", "pokie");
+        linkedPokieRoot = path.join(linkInstallDir, "node_modules", "@fromstan", "pokie");
     });
 
     afterAll(() => {
@@ -379,7 +379,7 @@ describe("BlueprintProjectMaterializer (offline end-to-end: real npm-managed ins
             // "pokie" really did resolve to this exact installation (the tarball-installed/linked root),
             // not any registry-published version.
             const installedPokiePackageJson = JSON.parse(
-                fs.readFileSync(path.join(resolved.runtimePath, "node_modules", "pokie", "package.json"), "utf-8"),
+                fs.readFileSync(path.join(resolved.runtimePath, "node_modules", "@fromstan", "pokie", "package.json"), "utf-8"),
             ) as {name: string};
             expect(installedPokiePackageJson.name).toBe("pokie");
 

@@ -1,4 +1,4 @@
-import {WorkerSeedStrategy} from "pokie";
+import {WorkerSeedStrategy} from "@fromstan/pokie";
 
 describe("WorkerSeedStrategy", () => {
     describe("deriveSeed", () => {

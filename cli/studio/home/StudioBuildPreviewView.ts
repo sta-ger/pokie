@@ -1,4 +1,4 @@
-import type {GameBlueprintManifest, ValidationIssue} from "pokie";
+import type {GameBlueprintManifest, ValidationIssue} from "@fromstan/pokie";
 import type {BuildDestinationPreview} from "../previewBuildDestination.js";
 
 // POST /api/home/projects/build/preview's own DTO — never writes anything to disk (same reasoning as

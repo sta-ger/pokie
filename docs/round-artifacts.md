@@ -107,7 +107,7 @@ afterward throws a `TypeError`, and mutating whatever the caller originally pass
 artifact:
 
 ```ts
-import {RoundArtifactBuildError} from "pokie";
+import {RoundArtifactBuildError} from "@fromstan/pokie";
 
 try {
     buildRoundArtifact({roundId: "", provenance, stake: 1, steps: []});
@@ -122,7 +122,7 @@ For the common single-step case, `buildRoundArtifactFromSession` builds straight
 `VideoSlotSessionHandling`:
 
 ```ts
-import {buildRoundArtifactFromSession} from "pokie";
+import {buildRoundArtifactFromSession} from "@fromstan/pokie";
 
 session.play();
 const artifact = buildRoundArtifactFromSession(session, {
@@ -141,7 +141,7 @@ For a multi-step round, build one `RoundArtifactStepSource` per stage yourself (
 `getWinEvaluationResult()` in exactly this shape) and pass them all to `buildRoundArtifact`:
 
 ```ts
-import {buildRoundArtifact} from "pokie";
+import {buildRoundArtifact} from "@fromstan/pokie";
 
 const artifact = buildRoundArtifact({
     roundId: "round-42",
@@ -204,7 +204,7 @@ A `RoundArtifact` built via `buildRoundArtifact`/`buildRoundArtifactFromSession`
 guarantee.
 
 ```ts
-import {PokieJsonRoundArtifactProjector} from "pokie";
+import {PokieJsonRoundArtifactProjector} from "@fromstan/pokie";
 
 const projector = new PokieJsonRoundArtifactProjector();
 const json = projector.project(artifact);

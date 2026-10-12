@@ -1,5 +1,5 @@
 import {expectRelative} from "../stakeengine/standalone/StakeProbabilityTestFixtures.js";
-import {WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryFeatureBreakdown} from "pokie";
+import {WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryFeatureBreakdown} from "@fromstan/pokie";
 import {testProvenance} from "./WeightedOutcomeTestFixtures.js";
 
 const NO_WIN = new WinEvaluationResult<string>();

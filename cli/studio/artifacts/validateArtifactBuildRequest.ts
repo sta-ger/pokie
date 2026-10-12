@@ -1,4 +1,4 @@
-import {ADVERTISED_ARTIFACT_BUILD_TARGETS, type ArtifactTargetType} from "pokie";
+import {ADVERTISED_ARTIFACT_BUILD_TARGETS, type ArtifactTargetType} from "@fromstan/pokie";
 
 export type ArtifactBuildRequestInput = {
     target?: unknown;

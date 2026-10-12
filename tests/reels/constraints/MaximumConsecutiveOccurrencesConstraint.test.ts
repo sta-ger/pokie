@@ -1,4 +1,4 @@
-import {MaximumConsecutiveOccurrencesConstraint, ReelStrip} from "pokie";
+import {MaximumConsecutiveOccurrencesConstraint, ReelStrip} from "@fromstan/pokie";
 
 describe("MaximumConsecutiveOccurrencesConstraint", () => {
     test("is silent when no run of identical adjacent symbols exceeds the maximum", () => {

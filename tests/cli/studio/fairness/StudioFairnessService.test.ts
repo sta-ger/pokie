@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleReader} from "pokie";
+import {OutcomeLibraryBundleReader} from "@fromstan/pokie";
 import {StudioFairnessService} from "../../../../cli/studio/fairness/StudioFairnessService.js";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "../../../fairness/FairnessRoundProofTestFixtures.js";
 

@@ -1,4 +1,4 @@
-import {SlotGameNameGenerator} from "pokie";
+import {SlotGameNameGenerator} from "@fromstan/pokie";
 
 // SlotGameNameGenerator.test.ts only checks reproducibility ("same seed -> toEqual") and shape (regex
 // patterns), or pins exact strings using a minimal custom vocabulary chosen to make the outcome

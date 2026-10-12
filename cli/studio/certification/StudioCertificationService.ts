@@ -5,7 +5,7 @@ import {
     CertificationEvidenceBundleModeSampleInput,
     OutcomeLibraryBundleValidating,
     OutcomeLibraryBundleValidator,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import {resolveProjectDirectory} from "../outcomeLibrary/resolveProjectDirectory.js";
 import type {StudioCertificationBuildView} from "./StudioCertificationBuildView.js";

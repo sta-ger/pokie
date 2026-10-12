@@ -1,4 +1,4 @@
-import {SlotGameNameGenerating, SlotGameNameRequest, SlotGameNameResult} from "pokie";
+import {SlotGameNameGenerating, SlotGameNameRequest, SlotGameNameResult} from "@fromstan/pokie";
 import {NameCommand} from "../../../cli/commands/NameCommand.js";
 
 function createStubGenerator(): SlotGameNameGenerating & {calledWith?: {count: number; request?: SlotGameNameRequest}} {

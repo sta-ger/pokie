@@ -1,4 +1,4 @@
-import {SimulationReport, SimulationReportDiffing, SimulationReportSet, SimulationReportSetDiffer} from "pokie";
+import {SimulationReport, SimulationReportDiffing, SimulationReportSet, SimulationReportSetDiffer} from "@fromstan/pokie";
 
 function buildReport(betMode: string, rtp: number): SimulationReport {
     return {

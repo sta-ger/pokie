@@ -1,4 +1,4 @@
-import {GameBlueprint, GameBlueprintValidating, RandomGameBlueprintGenerating, RandomGameBlueprintRequest, RandomGameBlueprintResult, ValidationIssue} from "pokie";
+import {GameBlueprint, GameBlueprintValidating, RandomGameBlueprintGenerating, RandomGameBlueprintRequest, RandomGameBlueprintResult, ValidationIssue} from "@fromstan/pokie";
 import {CreateCommand} from "../../../cli/commands/CreateCommand.js";
 import {GameBlueprintWizarding, GameBlueprintWizardOptions} from "../../../cli/wizard/GameBlueprintWizarding.js";
 import {PromptAdapting} from "../../../cli/wizard/PromptAdapting.js";

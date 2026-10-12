@@ -1,5 +1,5 @@
 export function renderSessionModule(className: string): string {
-    return `import {PokieGameContext, ReelsSymbolsSequencesGenerator, SeededRandomNumberGenerator, SymbolsCombinationsGenerator, VideoSlotConfig, VideoSlotSession} from "pokie";
+    return `import {PokieGameContext, ReelsSymbolsSequencesGenerator, SeededRandomNumberGenerator, SymbolsCombinationsGenerator, VideoSlotConfig, VideoSlotSession} from "@fromstan/pokie";
 
 export function create${className}Session(context?: PokieGameContext): VideoSlotSession {
     const seedRng = context && context.seed !== undefined ? new SeededRandomNumberGenerator(context.seed) : undefined;

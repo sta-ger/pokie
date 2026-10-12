@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {PokieGamePackageValidating, PokieGamePackageValidator} from "pokie";
+import {PokieGamePackageValidating, PokieGamePackageValidator} from "@fromstan/pokie";
 import {GamePackageCreateOverrides, GamePackageCreating} from "../scaffold/GamePackageCreating.js";
 import {GamePackageCreator} from "../scaffold/GamePackageCreator.js";
 import {renderPackageReadme} from "../scaffold/renderPackageReadme.js";

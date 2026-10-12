@@ -1,4 +1,4 @@
-import {SeededRandomNumberGenerator, SymbolsSequence} from "pokie";
+import {SeededRandomNumberGenerator, SymbolsSequence} from "@fromstan/pokie";
 
 describe("DefaultSymbolsSequence", () => {
     let sequence: SymbolsSequence;

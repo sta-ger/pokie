@@ -17,7 +17,7 @@ import {
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary, stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 const eventsProjector = new StakeEngineRoundEventsProjector<string>();

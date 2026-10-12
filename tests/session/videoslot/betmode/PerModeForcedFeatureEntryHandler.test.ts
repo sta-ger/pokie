@@ -3,7 +3,7 @@ import {
     FreeGamesForcedFeatureEntryHandler,
     PerModeForcedFeatureEntryHandler,
     VideoSlotWithFreeGamesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const buyBonus10 = new BetModeDefinition("buy-10", {stakeMultiplier: 50, forcesFeatureEntry: true});
 const buyBonus20 = new BetModeDefinition("buy-20", {stakeMultiplier: 100, forcesFeatureEntry: true});

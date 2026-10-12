@@ -1,4 +1,4 @@
-import {RandomGameBlueprintGenerator} from "pokie";
+import {RandomGameBlueprintGenerator} from "@fromstan/pokie";
 
 // RandomGameBlueprintGenerator.test.ts checks reproducibility ("same seed -> toEqual") and structural
 // invariants (bounds, validator cleanliness) across many seeds, but never pins one seed's full literal

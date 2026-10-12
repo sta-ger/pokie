@@ -1,4 +1,4 @@
-import type {PokieProject, RunnableRuntimePlan} from "pokie";
+import type {PokieProject, RunnableRuntimePlan} from "@fromstan/pokie";
 
 /**
  * A safe, caller-facing account of a failed runnable-runtime plan.  The

@@ -9,7 +9,7 @@ import {
     FairnessRoundProofVerifying,
     OutcomeLibraryBundleReader,
     OutcomeLibraryBundleReading,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import type {StudioFairnessConfigureView} from "./StudioFairnessConfigureView.js";

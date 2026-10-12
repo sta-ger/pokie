@@ -3,21 +3,21 @@
 # CLI
 
 `pokie` ships a CLI alongside the library for creating and operating on [game packages](game-packages.md).
-`npx pokie` starts the local Studio server and opens **global Studio Home** in your browser, even when launched
+`npx --package @fromstan/pokie pokie` starts the local Studio server and opens **global Studio Home** in your browser, even when launched
 inside a game project. Choose a project explicitly to open its dashboard instead. For command-line help without
-starting a server, use `npx pokie --help`.
+starting a server, use `npx --package @fromstan/pokie pokie --help`.
 
 ```
-npx pokie                       # Studio Home
-npx pokie .                     # Studio for the current project
-npx pokie ./my-game              # Studio for a specified project
-npx pokie --help                 # CLI help; no server
-npx pokie --version              # Installed version; no server
+npx --package @fromstan/pokie pokie                       # Studio Home
+npx --package @fromstan/pokie pokie .                     # Studio for the current project
+npx --package @fromstan/pokie pokie ./my-game              # Studio for a specified project
+npx --package @fromstan/pokie pokie --help                 # CLI help; no server
+npx --package @fromstan/pokie pokie --version              # Installed version; no server
 ```
 
-Use `npx pokie init <directory>` when you want a prepared game package immediately. Use `npx pokie create <name>`
+Use `npx --package @fromstan/pokie pokie init <directory>` when you want a prepared game package immediately. Use `npx --package @fromstan/pokie pokie create <name>`
 from an interactive terminal to design an editable Blueprint Project, or add `--blank` / `--random` for a
-non-interactive blueprint. Run `npx pokie <command> --help` before a workflow for its required arguments and
+non-interactive blueprint. Run `npx --package @fromstan/pokie pokie <command> --help` before a workflow for its required arguments and
 options.
 
 ## WASM quick start
@@ -25,12 +25,12 @@ options.
 WASM is a normal POKIE artifact target. Build a portable, self-describing component from a Blueprint (or a PAR workbook through its model-preserving import):
 
 ```sh
-npx pokie build slot.blueprint.json --target wasm --out game.wasm
-npx pokie game.wasm              # inspect its bound metadata and next actions
-npx pokie validate game.wasm
-npx pokie run game.wasm --seed demo
-npx pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json
-npx pokie replay game.wasm --round 6 --seed demo
+npx --package @fromstan/pokie pokie build slot.blueprint.json --target wasm --out game.wasm
+npx --package @fromstan/pokie pokie game.wasm              # inspect its bound metadata and next actions
+npx --package @fromstan/pokie pokie validate game.wasm
+npx --package @fromstan/pokie pokie run game.wasm --seed demo
+npx --package @fromstan/pokie pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json
+npx --package @fromstan/pokie pokie replay game.wasm --round 6 --seed demo
 ```
 
 Canonical WASM artifacts also support deterministic `pokie sim game.wasm --rounds <number> --seed <seed>` and `pokie replay game.wasm --round <number> --seed <seed>` through the portable runtime; neither command materializes a game package. `pokie serve game.wasm` is intentionally unavailable because the portable component contract does not declare the local HTTP/server adapter required by the dev server. It validates the artifact binding and returns the normal capability diagnostic before loading a package or allocating a server.
@@ -43,7 +43,7 @@ WASM simulation requires `--workers 1` and does not accept `--mode` or adaptive 
 does not accept `--mode`. Omit replay `--out` when parsing stdout as JSON, or read the written JSON file:
 with `--out`, stdout also contains a destination notice.
 
-`npx pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
+`npx --package @fromstan/pokie pokie game.wasm` deliberately routes to ordinary inspection instead of requiring a local project, compiler, package install, or adapter path. It prints the executable validate/run actions available from the normal artifact navigation. A missing, stale, swapped, malformed, or incompatible manifest is rejected before the component can be treated as runnable.
 
 Build creates a **new artifact**: package directories must be new or empty; file targets, including zero-byte
 PAR/WASM files, must not exist. WASM also refuses occupied integrity sidecars and PAR import companions.
@@ -109,7 +109,7 @@ ready-to-run package directly instead — the recommended way to start a new gam
 [`pokie init`](#pokie-init-directory) below.
 
 ```
-npm i -g pokie
+npm i -g @fromstan/pokie
 pokie create sample-slot
 ```
 
@@ -324,7 +324,7 @@ Both are ordinary, standalone exports from `"pokie"` — useful outside the CLI 
 several candidate games to pick from):
 
 ```ts
-import {RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy, SlotGameNameGenerator} from "pokie";
+import {RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy, SlotGameNameGenerator} from "@fromstan/pokie";
 
 const {title, slug, packageName} = new SlotGameNameGenerator().generate();          // fresh every call
 const reproduced = new SlotGameNameGenerator().generate({seed: 42});                // deterministic for seed 42
@@ -1511,7 +1511,7 @@ in place, with **no game-id subdirectory** — the "programmer-first" package wo
 file instead, see [`pokie create`](#pokie-create-name) above.
 
 ```
-npm i -g pokie
+npm i -g @fromstan/pokie
 mkdir sample-slot && cd sample-slot
 pokie init
 ```
@@ -1523,7 +1523,7 @@ pokie init
   created  src/index.ts
 
 Game package "sample-slot" (id: "sample-slot") prepared and verified in "/path/to/sample-slot".
-Load it anywhere with: loadPokieGame("/path/to/sample-slot") from "pokie".
+Load it anywhere with: loadPokieGame("/path/to/sample-slot") from "@fromstan/pokie".
 
 Next:
   pokie validate /path/to/sample-slot
@@ -1584,7 +1584,7 @@ any other non-empty directory.
 The result is loadable like any other [game package](game-packages.md):
 
 ```ts
-import {loadPokieGame} from "pokie";
+import {loadPokieGame} from "@fromstan/pokie";
 
 const game = await loadPokieGame("/path/to/sample-slot");
 game.createSession().play();
@@ -1901,7 +1901,7 @@ array is empty — a report can always be rendered, whether it has these fields 
 The reusable rendering API behind the command lives in `src/reporting`:
 
 ```ts
-import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReportRendering} from "pokie";
+import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReportRendering} from "@fromstan/pokie";
 
 const renderer: SimulationReportRendering = new MarkdownSimulationReportRenderer();
 const markdown = renderer.render(report); // report: SimulationReport, e.g. from JSON.parse(fs.readFileSync(...))
@@ -2055,7 +2055,7 @@ game adding a free-games feature (or the session categorization contract) and th
 The reusable diffing API behind the command lives in `src/diff`:
 
 ```ts
-import {SimulationReportDiffer, SimulationReportDiffing} from "pokie";
+import {SimulationReportDiffer, SimulationReportDiffing} from "@fromstan/pokie";
 
 const differ: SimulationReportDiffing = new SimulationReportDiffer();
 const diff = differ.diff(leftReport, rightReport); // leftReport/rightReport: SimulationReport
@@ -2100,7 +2100,7 @@ followed by the added/removed mode lists when non-empty. Diffing a plain `Simula
 The reusable API:
 
 ```ts
-import {SimulationReportSetDiffer} from "pokie";
+import {SimulationReportSetDiffer} from "@fromstan/pokie";
 
 const setDiffer = new SimulationReportSetDiffer(); // wraps a SimulationReportDiffer by default
 const setDiff = setDiffer.diff(leftSet, rightSet); // leftSet/rightSet: SimulationReportSet
@@ -2229,7 +2229,7 @@ entirely dependent on the game package:
 The reusable recording API behind the command lives in `src/replay`:
 
 ```ts
-import {ReplayRecorder, ReplayRecording} from "pokie";
+import {ReplayRecorder, ReplayRecording} from "@fromstan/pokie";
 
 const recorder: ReplayRecording = new ReplayRecorder();
 const descriptor = recorder.record({game, seed: "demo", round: 42}); // game: PokieGame, e.g. from loadPokieGame
@@ -2652,7 +2652,7 @@ custom `WalletPort` implementation can verify its own `getBalance`/`setBalance` 
 using the exported `walletPortContractTests` Jest suite:
 
 ```ts
-import {walletPortContractTests} from "pokie";
+import {walletPortContractTests} from "@fromstan/pokie";
 
 walletPortContractTests("MyWalletPort", () => new MyWalletPort());
 ```
@@ -2677,7 +2677,7 @@ Both are constructor options on `PokieDevServer`, additive to the existing `{hos
 `idempotencyRepository`, see below):
 
 ```ts
-import {FileSessionRepository, InMemoryWallet, loadPokieGame, PokieDevServer} from "pokie";
+import {FileSessionRepository, InMemoryWallet, loadPokieGame, PokieDevServer} from "@fromstan/pokie";
 
 const game = await loadPokieGame("./sample-slot");
 const server = new PokieDevServer(game, {
@@ -2826,7 +2826,7 @@ feature-detection `PokieDevServer` uses to skip wrapping a wallet that's already
 `TransactionalWalletPort` (or a plain `WalletPort` you want to check through the adapter) can be verified with:
 
 ```ts
-import {transactionalWalletPortContractTests, TransactionalWalletAdapter} from "pokie";
+import {transactionalWalletPortContractTests, TransactionalWalletAdapter} from "@fromstan/pokie";
 
 transactionalWalletPortContractTests("MyWalletPort (adapted)", () => new TransactionalWalletAdapter(new MyWalletPort()));
 ```
@@ -2956,7 +2956,7 @@ The reusable server sits behind `src/server` (`PokieDevServer`, implementing `Po
 "thin CLI wrapper over a reusable class" shape as [`pokie replay`](#pokie-replay-packageroot):
 
 ```ts
-import {loadPokieGame, PokieDevServer, PokieDevServerHandling} from "pokie";
+import {loadPokieGame, PokieDevServer, PokieDevServerHandling} from "@fromstan/pokie";
 
 const game = await loadPokieGame("./sample-slot");
 const server: PokieDevServerHandling = new PokieDevServer(game, {host: "127.0.0.1", port: 4000});
@@ -3015,7 +3015,7 @@ The reusable server sits behind `src/server` (`PokieClientServer`, implementing 
 the same shape as `PokieDevServer`:
 
 ```ts
-import {PokieClientServer, PokieClientServerHandling} from "pokie";
+import {PokieClientServer, PokieClientServerHandling} from "@fromstan/pokie";
 
 const server: PokieClientServerHandling = new PokieClientServer("./dist/cli/client", {
     host: "127.0.0.1",
@@ -3688,7 +3688,7 @@ All 21 public top-level commands this file documents (`build`/`certification`/`c
 `edit`/`fairness`/`generate`/`import`/`init`/`inspect`/`par`/`reel`/`replay`/`report`/`run`/`sample`/
 `serve`/`sim`/`validate`) are shipped today. Package-oriented workflows use the shared
 [game package](game-packages.md) primitives (`loadPokieGame`, `isPokieGame`, `PokieGameContractValidationRule`);
-the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `pokie/wasm`
+the portable `run` command and WASM inspect/validate/sim/replay paths use the integrity-checked `@fromstan/pokie/wasm`
 runtime instead, while artifact/source workflows use the resolver and `ArtifactBuilderRegistry` contracts appropriate
 to their project types. [POKIE Studio](#pokie) already
 covers most of these workflows with a real GUI, not just the CLI: designing/building a game (Home's Design Game

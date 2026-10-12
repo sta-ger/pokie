@@ -1,4 +1,4 @@
-import {StakeEngineExportModeInput, StakeEngineExportValidator} from "pokie";
+import {StakeEngineExportModeInput, StakeEngineExportValidator} from "@fromstan/pokie";
 import {buildStakeEngineTestLibrary} from "./StakeEngineTestFixtures.js";
 
 function baseMode(): StakeEngineExportModeInput {

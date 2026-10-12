@@ -10,7 +10,7 @@ import {
     PokieGame,
     WeightedOutcomeLibraryGenerationCancelledError,
     generateWeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";

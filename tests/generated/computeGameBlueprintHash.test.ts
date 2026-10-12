@@ -1,4 +1,4 @@
-import {computeGameBlueprintHash} from "pokie";
+import {computeGameBlueprintHash} from "@fromstan/pokie";
 
 describe("computeGameBlueprintHash", () => {
     it("hashes semantically identical content the same way regardless of top-level key order", () => {

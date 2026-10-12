@@ -1,4 +1,4 @@
-import type {ReplayDescriptor} from "pokie";
+import type {ReplayDescriptor} from "@fromstan/pokie";
 import {buildReplayDownload} from "../../../../cli/studio/replay/buildReplayDownload.js";
 
 function createDescriptor(overrides: Partial<ReplayDescriptor> = {}): ReplayDescriptor {

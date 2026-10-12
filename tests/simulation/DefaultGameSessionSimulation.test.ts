@@ -13,7 +13,7 @@ import {
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotWinCalculator,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("DefaultGameSessionSimulation", () => {
     test("playSpecifiedNumOfRoundsAndCalculateRtpTest", () => {

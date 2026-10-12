@@ -1,4 +1,4 @@
-import {GameSession, GameSessionConfig, Paytable, PokieGame, SymbolsCombinationsGenerating, SymbolsSequence, VideoSlotConfig, VideoSlotSession} from "pokie";
+import {GameSession, GameSessionConfig, Paytable, PokieGame, SymbolsCombinationsGenerating, SymbolsSequence, VideoSlotConfig, VideoSlotSession} from "@fromstan/pokie";
 
 // A tiny, hand-computable video-slot math model: 2 reels, a single visible row per reel (reelsSymbolsNumber
 // 1), reel 0 = ["A","A","B"] (3 stops), reel 1 = ["A","B"] (2 stops) -- a raw reel-stop space of exactly 3*2=6

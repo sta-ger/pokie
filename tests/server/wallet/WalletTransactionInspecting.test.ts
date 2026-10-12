@@ -1,4 +1,4 @@
-import {InMemoryWallet, TransactionalWalletAdapter, TransactionalWalletPort, WalletPort, WalletTransactionInspecting} from "pokie";
+import {InMemoryWallet, TransactionalWalletAdapter, TransactionalWalletPort, WalletPort, WalletTransactionInspecting} from "@fromstan/pokie";
 
 // Both InMemoryWallet and TransactionalWalletAdapter report transaction status the same way (the latter
 // is what InMemoryWallet itself composes internally) — exercised together via a small table so the two

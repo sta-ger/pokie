@@ -73,7 +73,7 @@ they're pure type intersections of the video-slot and free-games shapes above.
 | `VideoSlotWithFreeGamesSessionSerializer` | `freeGamesNum`/`freeGamesSum`/`freeGamesBank` ← `getFreeGamesNum/Sum/Bank()`; `wonFreeGamesNumber` ← `getWonFreeGamesNumber()` | (nothing extra — just base-init ∪ own round data) |
 
 ```ts
-import {VideoSlotWithFreeGamesSession, VideoSlotWithFreeGamesSessionSerializer} from "pokie";
+import {VideoSlotWithFreeGamesSession, VideoSlotWithFreeGamesSessionSerializer} from "@fromstan/pokie";
 
 const session = new VideoSlotWithFreeGamesSession();
 session.play();
@@ -152,7 +152,7 @@ Any session implementing `VideoSlotSessionHandling<T> & CascadeResultProviding<T
 `CascadeSessionSerializer` as-is:
 
 ```ts
-import {CascadeSessionSerializer} from "pokie";
+import {CascadeSessionSerializer} from "@fromstan/pokie";
 
 const serializer = new CascadeSessionSerializer();
 const roundPayload = serializer.getRoundData(session); // session implements CascadeResultProviding

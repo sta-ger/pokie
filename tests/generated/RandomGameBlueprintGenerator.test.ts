@@ -6,7 +6,7 @@ import {
     RandomGameBlueprintMechanics,
     RandomGameBlueprintStrategy,
     resolveReelStripGeneration,
-} from "pokie";
+} from "@fromstan/pokie";
 
 function stubStrategy(features: readonly GameMechanicFeature[] = [], name = "stub"): RandomGameBlueprintStrategy {
     return {

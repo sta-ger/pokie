@@ -1,4 +1,4 @@
-import {ForbiddenSequenceConstraint, ReelStrip, ViolationCountReelStripScorer} from "pokie";
+import {ForbiddenSequenceConstraint, ReelStrip, ViolationCountReelStripScorer} from "@fromstan/pokie";
 
 describe("ForbiddenSequenceConstraint", () => {
     test("is silent when the forbidden sequence never occurs", () => {

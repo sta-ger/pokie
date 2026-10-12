@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import {POKIE_WASM_RUNTIME_API_VERSION, BoundedPokieWasmTraceCollector} from "pokie";
-import * as browser from "pokie/browser";
-import {instantiatePokieWasm, SeededPokieWasmHost} from "pokie/wasm";
+import {POKIE_WASM_RUNTIME_API_VERSION, BoundedPokieWasmTraceCollector} from "@fromstan/pokie";
+import * as browser from "@fromstan/pokie/browser";
+import {instantiatePokieWasm, SeededPokieWasmHost} from "@fromstan/pokie/wasm";
 import {createCanonicalWasmFixture} from "../fixtures/wasm/createCanonicalWasmFixture.js";
 
 describe("browser-safe WASM runtime API", () => {
@@ -29,8 +29,8 @@ describe("browser-safe WASM runtime API", () => {
         expect(pkg.exports["."].import.default).toBe("./dist/esm/index.js");
         expect(pkg.exports["."].require.default).toBe("./dist/cjs/index.js");
         expect(pkg.main).toBe(pkg.exports["."].require.default);
-        expect(pkg.exports["./browser"].default).toBe("./dist/esm/browser.js");
-        expect(pkg.exports["./wasm"].default).toBe("./dist/esm/wasm/browser.js");
+        expect(pkg.exports["./browser"].import.default).toBe("./dist/esm/browser.js");
+        expect(pkg.exports["./wasm"].import.default).toBe("./dist/esm/wasm/browser.js");
         expect(browser.instantiatePokieWasm).toBe(instantiatePokieWasm);
         expect(browser.BoundedPokieWasmTraceCollector).toBe(BoundedPokieWasmTraceCollector);
         expect(browser.POKIE_WASM_RUNTIME_API_VERSION).toBe(POKIE_WASM_RUNTIME_API_VERSION);

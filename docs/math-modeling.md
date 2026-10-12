@@ -27,7 +27,7 @@ the payline definitions.
 ## Step 1 — configure the game
 
 ```ts
-import {VideoSlotConfig, VideoSlotSession, SymbolsSequence, Paytable, LeftToRightLinesPatterns} from "pokie";
+import {VideoSlotConfig, VideoSlotSession, SymbolsSequence, Paytable, LeftToRightLinesPatterns} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 config.setReelsNumber(5);
@@ -80,7 +80,7 @@ For strip sizes small enough to enumerate exhaustively, `SymbolsCombinationsAnal
 gives you every possible reel-stop combination, so you can compute RTP exactly rather than statistically:
 
 ```ts
-import {SymbolsCombinationsAnalyzer, SymbolsCombination, VideoSlotWinCalculator} from "pokie";
+import {SymbolsCombinationsAnalyzer, SymbolsCombination, VideoSlotWinCalculator} from "@fromstan/pokie";
 
 const allCombinations = SymbolsCombinationsAnalyzer.getAllPossibleSymbolsCombinations(
     config.getSymbolsSequences(),
@@ -114,7 +114,7 @@ Once the theoretical RTP looks right, confirm it holds up under realistic random
 [Simulation](simulation.md):
 
 ```ts
-import {Simulation, SimulationConfig} from "pokie";
+import {Simulation, SimulationConfig} from "@fromstan/pokie";
 
 const session = new VideoSlotSession(config);
 

@@ -1,4 +1,4 @@
-import type {ValidationIssue} from "pokie";
+import type {ValidationIssue} from "@fromstan/pokie";
 
 // FairnessRoundProofVerifier.verify() never throws -- every outcome (a malformed candidate, a missing
 // commitment/sourceBundleDir, a genuine mismatch) already rides on its own ValidationIssue[] output, so

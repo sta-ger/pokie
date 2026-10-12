@@ -15,7 +15,7 @@ import {
     REPLAY_OPERATION,
     SeededPokieWasmHost,
     loadPokieWasmFileRuntime,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";

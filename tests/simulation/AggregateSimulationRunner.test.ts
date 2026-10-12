@@ -1,4 +1,4 @@
-import {AggregateSimulationRunner, GameSessionHandling} from "pokie";
+import {AggregateSimulationRunner, GameSessionHandling} from "@fromstan/pokie";
 
 function createBaseOnlySession(rounds: number): GameSessionHandling {
     let round = 0;

@@ -19,7 +19,7 @@ changed; only how the frontend is built, rendered, and organized has.
   `HomePage`/`ProjectDashboardPage` element instance mounted across param-only changes.
 - All of the above are **devDependencies** of the `pokie` package, not runtime dependencies — the published
   npm package still ships only a static, framework-free JS/CSS bundle at `dist/cli/studio-client/`, built at
-  publish time. Nothing about `npm install pokie` changes for consumers.
+  publish time. Nothing about `npm install @fromstan/pokie` changes for consumers.
 
 ## UX / Information architecture
 

@@ -13,7 +13,7 @@ import {
     WeightedOutcomeLibrary,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {artifactWith} from "../../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 // Mirrors the "racing repository" pattern PokieDevServer.test.ts uses for its own optimistic-locking

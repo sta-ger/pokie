@@ -20,7 +20,7 @@ games). Any other symbol or count returns `0` until you register it explicitly â
 so double-check spelling.
 
 ```ts
-import {VideoSlotWithFreeGamesConfig} from "pokie";
+import {VideoSlotWithFreeGamesConfig} from "@fromstan/pokie";
 
 const config = new VideoSlotWithFreeGamesConfig();
 config.getFreeGamesForScatters("S", 3); // 10 (built-in default)
@@ -81,7 +81,7 @@ mechanic:
    credits.
 
 ```ts
-import {VideoSlotWithFreeGamesSession} from "pokie";
+import {VideoSlotWithFreeGamesSession} from "@fromstan/pokie";
 
 const session = new VideoSlotWithFreeGamesSession();
 session.setBet(10);
@@ -105,7 +105,7 @@ A different bonus mechanic â€” a progressive per-spin multiplier, paying out imm
 argument, not a fork of the whole session:
 
 ```ts
-import {FreeGamesRoundHandling, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession} from "pokie";
+import {FreeGamesRoundHandling, VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession} from "@fromstan/pokie";
 
 class ImmediatePayoutFreeGamesHandler implements FreeGamesRoundHandling {
     public beforeRoundPlayed(session) {

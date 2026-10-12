@@ -40,7 +40,7 @@ describe("GamePackageCreator", () => {
 
         const pkg = JSON.parse(fs.readFileSync(path.join(result.projectRoot, "package.json"), "utf-8"));
         expect(pkg.name).toBe("sample-slot");
-        expect(pkg.dependencies).toEqual({pokie: "^1.2.1"});
+        expect(pkg.dependencies).toEqual({"@fromstan/pokie": "^1.2.1"});
         expect(pkg.scripts).toEqual({
             build: "tsc",
             start: "pokie dev .",

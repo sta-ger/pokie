@@ -13,13 +13,13 @@ than trust the \`dist/index.js\` already sitting in this package.
 
 ## Structure
 
-- \`package.json\` — name/version/description from the blueprint's \`manifest\`, a \`pokie\` dependency,
+- \`package.json\` — name/version/description from the blueprint's \`manifest\`, a \`@fromstan/pokie\` dependency,
   and \`start\`/\`server\`/\`client\`/\`build\` scripts. \`pokie.entry\`/\`main\`/\`exports\` all point at
   \`dist/index.js\`, the same entry path \`pokie create\`/\`pokie init\` packages compile their own
   TypeScript source into.
-- \`node_modules/pokie\` — a link to the POKIE runtime that performed this build, making this fresh
+- \`node_modules/@fromstan/pokie\` — a link to the POKIE runtime that performed this build, making this fresh
   package runnable immediately. It is local build support rather than a published package file;
-  \`npm install\` replaces it using the released \`pokie\` range in \`package.json\`.
+  \`npm install\` replaces it using the planned \`@fromstan/pokie\` range in \`package.json\`.
 - \`package-lock.json\`/\`tsconfig.json\` — the same lockfile seed/compiler config \`pokie create\`/
   \`pokie init\` write, so \`npm install && npm run build\` behaves identically here.
 - \`src/index.ts\`/\`dist/index.js\` — the \`PokieGame\` implementation: a \`VideoSlotConfig\` assembled
@@ -43,15 +43,15 @@ the local link is not portable. This workflow installs them explicitly:
 \`\`\`
 npm install
 
-npx pokie inspect .
-npx pokie validate .
-npx pokie sim . --rounds 10000 --seed demo --out sim.json
-npx pokie report sim.json
-npx pokie replay . --seed demo --round 1
-npx pokie dev .
+npx --package @fromstan/pokie pokie inspect .
+npx --package @fromstan/pokie pokie validate .
+npx --package @fromstan/pokie pokie sim . --rounds 10000 --seed demo --out sim.json
+npx --package @fromstan/pokie pokie report sim.json
+npx --package @fromstan/pokie pokie replay . --seed demo --round 1
+npx --package @fromstan/pokie pokie dev .
 \`\`\`
 
-See [\`pokie\`'s CLI docs](https://github.com/sta-ger/pokie/blob/master/docs/cli.md) for what each
+See [\`pokie\`'s CLI docs](https://github.com/fromstan/pokie/blob/develop/docs/cli.md) for what each
 command does and every available option.
 `;
 }

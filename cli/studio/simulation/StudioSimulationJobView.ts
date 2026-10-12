@@ -1,4 +1,4 @@
-import type {PreGeneratedRoundReplayDescriptor, SimulationReport} from "pokie";
+import type {PreGeneratedRoundReplayDescriptor, SimulationReport} from "@fromstan/pokie";
 import type {StudioSimulationStatus} from "./StudioSimulationStatus.js";
 import type {StudioJobRecoveryView} from "../jobs/StudioJobView.js";
 

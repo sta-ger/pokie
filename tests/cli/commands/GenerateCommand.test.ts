@@ -4,7 +4,7 @@ import {EventEmitter} from "events";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {GenerateExactWeightedOutcomeLibraryResult, OutcomeLibraryGenerationRequest, OutcomeSpaceEstimate, POKIE_WASM_CONTRACT_VERSION, PokieGame} from "pokie";
+import {GenerateExactWeightedOutcomeLibraryResult, OutcomeLibraryGenerationRequest, OutcomeSpaceEstimate, POKIE_WASM_CONTRACT_VERSION, PokieGame} from "@fromstan/pokie";
 
 describe("GenerateCommand", () => {
     it("renders public help without its private implementation namespace", async () => {

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {FairnessRoundProof, FairnessRoundProofBuilder, FairnessRoundProofValidator} from "pokie";
+import {FairnessRoundProof, FairnessRoundProofBuilder, FairnessRoundProofValidator} from "@fromstan/pokie";
 import {buildFairnessSourceBundle, issueFairnessCommitmentFor} from "./FairnessRoundProofTestFixtures.js";
 
 describe("FairnessRoundProofValidator", () => {

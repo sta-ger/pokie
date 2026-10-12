@@ -1,4 +1,4 @@
-import {SimulationAccumulator, SimulationStatisticsMerger, type JackpotStatisticsSnapshot} from "pokie";
+import {SimulationAccumulator, SimulationStatisticsMerger, type JackpotStatisticsSnapshot} from "@fromstan/pokie";
 
 describe("SimulationStatisticsMerger", () => {
     test("merging a single entry reproduces that entry's own statistics exactly", () => {

@@ -1,5 +1,5 @@
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
-import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, type VideoSlotSessionHandling} from "pokie";
+import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, type VideoSlotSessionHandling} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
 import os from "os";

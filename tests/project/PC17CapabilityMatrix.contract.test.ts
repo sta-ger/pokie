@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import {BUILD_PRODUCT_MATRIX, BUILD_PRODUCT_MATRIX_SOURCE_TYPES, BUILD_PRODUCT_MATRIX_TARGETS} from "pokie";
+import {BUILD_PRODUCT_MATRIX, BUILD_PRODUCT_MATRIX_SOURCE_TYPES, BUILD_PRODUCT_MATRIX_TARGETS} from "@fromstan/pokie";
 
 const AUDIT_ROOT = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-17-parity-semantic-audit");
 const MATRIX_PATH = path.resolve(process.cwd(), "docs/evidence/phase7-product-coherence/pc-05-product-model/CAPABILITY-MATRIX.md");

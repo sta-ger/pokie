@@ -3,7 +3,7 @@ import {
     SymbolsSequence,
     VariableHeightSymbolsCombinationsGenerator,
     VideoSlotConfig,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("VariableHeightSymbolsCombinationsGenerator", () => {
     const availableSymbols: string[] = ["A", "K", "Q", "J", "10", "9"];

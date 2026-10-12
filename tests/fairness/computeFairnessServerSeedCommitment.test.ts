@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import {computeFairnessServerSeedCommitment, POKIE_FAIRNESS_ALGORITHM_VERSION} from "pokie";
+import {computeFairnessServerSeedCommitment, POKIE_FAIRNESS_ALGORITHM_VERSION} from "@fromstan/pokie";
 
 function sha256OfBytes(bytes: string): string {
     return `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;

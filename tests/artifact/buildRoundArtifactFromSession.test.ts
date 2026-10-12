@@ -6,7 +6,7 @@ import {
     VideoSlotWinCalculator,
     WinEvaluationResult,
     buildRoundArtifactFromSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const provenance: RoundArtifactProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

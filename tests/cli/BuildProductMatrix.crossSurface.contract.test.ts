@@ -12,7 +12,7 @@ import {
     PokieProject,
     ProjectTargetResolver,
     ProjectType,
-} from "pokie";
+} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {StudioArtifactBuildService} from "../../cli/studio/artifacts/StudioArtifactBuildService.js";
 

@@ -1,4 +1,4 @@
-import type {ValidationIssue} from "pokie";
+import type {ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/home/blueprints/par-export's own DTO -- see StudioBlueprintService.exportParSheet()'s own
 // doc comment. "conflict" is never a write: exports share artifact publication's no-overwrite policy,

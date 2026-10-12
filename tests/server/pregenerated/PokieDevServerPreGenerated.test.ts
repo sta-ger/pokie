@@ -10,7 +10,7 @@ import {
     WeightedOutcomeLibrary,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {artifactWith} from "../../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 // Mirrors PreGeneratedSpinCommandHandler.test.ts's own racing-repository helper, one level up: forces

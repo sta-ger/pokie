@@ -1,4 +1,4 @@
-import {loadPokieGame, PokieGamePackageValidator, resolvePokieGameEntryModule, type PokieGameEntryModuleLoading} from "pokie";
+import {loadPokieGame, PokieGamePackageValidator, resolvePokieGameEntryModule, type PokieGameEntryModuleLoading} from "@fromstan/pokie";
 import fs from "fs";
 import {createRequire} from "module";
 import path from "path";
@@ -78,7 +78,7 @@ function isMissingPokieRuntime(error: unknown): boolean {
         typeof error === "object" &&
         error !== null &&
         (error as {code?: unknown}).code === "MODULE_NOT_FOUND" &&
-        (/Cannot find module ['"]pokie['"]/).test(String((error as {message?: unknown}).message))
+        (/Cannot find module ['"]@fromstan\/pokie['"]/).test(String((error as {message?: unknown}).message))
     );
 }
 
@@ -88,12 +88,12 @@ function loadCommonJsEntryWithStudioRuntime(entryPath: string, studioRequire: No
         packageRoot = path.dirname(packageRoot);
     }
     const dependencies = path.join(packageRoot, "node_modules");
-    const injectedRuntime = path.join(dependencies, "pokie");
+    const injectedRuntime = path.join(dependencies, "@fromstan", "pokie");
     if (!fs.existsSync(injectedRuntime)) {
-        fs.mkdirSync(dependencies, {recursive: true});
+        fs.mkdirSync(path.dirname(injectedRuntime), {recursive: true});
         // The Studio runtime itself is a normal package directory. Linking it into the disposable
         // snapshot lets Node supply its own CJS wrapper, require.resolve and import callback.
-        fs.symlinkSync(path.dirname(studioRequire.resolve("pokie")), injectedRuntime, process.platform === "win32" ? "junction" : "dir");
+        fs.symlinkSync(path.dirname(studioRequire.resolve("@fromstan/pokie")), injectedRuntime, process.platform === "win32" ? "junction" : "dir");
     }
     return createRequire(entryPath)(entryPath) as Record<string, unknown>;
 }

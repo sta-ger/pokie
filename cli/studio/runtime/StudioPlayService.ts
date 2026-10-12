@@ -44,7 +44,7 @@ import {
     type PokieWasmRuntime,
     type PokieWasmRuntimeSession,
     type PokieWasmRound,
-} from "pokie";
+} from "@fromstan/pokie";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
@@ -499,7 +499,7 @@ export class StudioPlayService {
     // PlayTab's "Find free games" scenario control -- the canonical shared "custom scenario" abstraction
     // pokie-examples' own custom-scenario dropdown already uses for its "Free games" entry (see that
     // repo's `games/slot-with-free-games/index.ts`, `new PlayFreeGamesStrategy()`): a real, generic
-    // PlayStrategy the "pokie" library ships (src/simulation/playstrategy/PlayFreeGamesStrategy.ts),
+    // PlayStrategy the "@fromstan/pokie" library ships (src/simulation/playstrategy/PlayFreeGamesStrategy.ts),
     // never a Studio-local reimplementation. Same real, authoritative search loop as findAnyWin()/
     // findSymbolWin() above: for a "runtime" session, whether to keep searching is decided by handing the
     // engine's own PlayFreeGamesStrategy the same live GameSessionHandling spin() just played, exactly as

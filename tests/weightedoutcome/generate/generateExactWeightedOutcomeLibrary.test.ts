@@ -25,7 +25,7 @@ import {
     loadPokieGameRuntime,
     VideoSlotSession,
     VideoSlotWithBetModesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildAlternateFixtureGame, buildFixtureConfig, buildFixtureGame, buildUnplayableFixtureGame, buildUnsupportedFixtureGame} from "./GenerateTestFixtures.js";
 import {streamExactWeightedOutcomes} from "../../../src/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.js";
 import type {WeightedOutcomeInput} from "../../../src/weightedoutcome/buildWeightedOutcomeLibrary.js";

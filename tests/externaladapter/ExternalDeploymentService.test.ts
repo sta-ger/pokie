@@ -5,7 +5,7 @@ import {
     ExternalDeploymentTarget,
     ExternalRoundProjector,
     RoundArtifact,
-} from "pokie";
+} from "@fromstan/pokie";
 import {externalAdapterTestLibrary} from "./ExternalAdapterTestFixtures.js";
 
 class MarkerRoundProjector implements ExternalRoundProjector {

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import {buildPackageJsonPatch, PokieGameManifest, renderTsconfig} from "pokie";
+import {buildPackageJsonPatch, PokieGameManifest, renderTsconfig} from "@fromstan/pokie";
 import {deriveManifestDefaults} from "./deriveManifestDefaults.js";
 import {GamePackageCreateOverrides, GamePackageCreating} from "./GamePackageCreating.js";
 import {renderGameModule} from "./renderGameModule.js";

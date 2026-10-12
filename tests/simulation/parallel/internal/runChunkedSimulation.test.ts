@@ -1,4 +1,4 @@
-import type {GameSessionHandling} from "pokie";
+import type {GameSessionHandling} from "@fromstan/pokie";
 import {runChunkedSimulation} from "../../../../src/simulation/parallel/internal/runChunkedSimulation.js";
 
 function createJackpotAwareSession(options: {contributionPerRound?: number; awardEveryNth?: number; awardAmount?: number} = {}): GameSessionHandling {

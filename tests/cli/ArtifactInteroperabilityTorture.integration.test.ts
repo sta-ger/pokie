@@ -20,7 +20,7 @@ import {
     StakeEngineOutcomeSourceReader,
     StakeEngineStandaloneValidator,
     loadPokieGame,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CertificationCommand} from "../../cli/commands/CertificationCommand.js";
 import {CreateCommand} from "../../cli/commands/CreateCommand.js";
 import {DiffCommand} from "../../cli/commands/DiffCommand.js";
@@ -1059,7 +1059,7 @@ describe("PC-14 CLI real-artifact interoperability torture", () => {
         const servedPaths: string[] = [];
         const servingStub = {
             start: () => Promise.resolve({host: "127.0.0.1", port: 0}),
-        } as unknown as import("pokie").PokieDevServerHandling;
+        } as unknown as import("@fromstan/pokie").PokieDevServerHandling;
         expect(await new ServeCommand(loadPokieGame, () => {
             servedPaths.push("tsPackage");
             return servingStub;

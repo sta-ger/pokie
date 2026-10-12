@@ -5,7 +5,7 @@ import {
     WinEvaluationResult,
     WinningValue,
     buildRoundArtifact,
-} from "pokie";
+} from "@fromstan/pokie";
 
 export const testProvenance: RoundArtifactProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},

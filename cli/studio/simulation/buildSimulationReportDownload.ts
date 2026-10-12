@@ -1,4 +1,4 @@
-import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportRendering} from "pokie";
+import {HtmlSimulationReportRenderer, MarkdownSimulationReportRenderer, SimulationReport, SimulationReportRendering} from "@fromstan/pokie";
 
 export type ReportDownloadFormat = "json" | "markdown" | "html";
 

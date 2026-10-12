@@ -1,4 +1,4 @@
-import {ScatteredLinesPatterns} from "pokie";
+import {ScatteredLinesPatterns} from "@fromstan/pokie";
 
 describe("ScatteredLinesPatterns", () => {
     it("contains lines patterns that describe winning symbols at any position on line", () => {

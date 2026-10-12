@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {isStakeEngineOutcomeDirectory} from "pokie";
+import {isStakeEngineOutcomeDirectory} from "@fromstan/pokie";
 
 describe("isStakeEngineOutcomeDirectory", () => {
     let dir: string;

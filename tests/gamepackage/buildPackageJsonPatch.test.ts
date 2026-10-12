@@ -1,10 +1,10 @@
-import {buildPackageJsonPatch} from "pokie";
+import {buildPackageJsonPatch} from "@fromstan/pokie";
 
 describe("buildPackageJsonPatch", () => {
     it("uses the running POKIE version as its portable runtime range", () => {
         const patched = buildPackageJsonPatch({name: "sample-slot", version: "1.0.0"}, "1.3.0");
 
-        expect(patched.dependencies).toEqual({pokie: "^1.3.0"});
+        expect(patched.dependencies).toEqual({"@fromstan/pokie": "^1.3.0"});
     });
 
     it("sets pokie.entry, and fills in the build script and dependencies on a bare package.json", () => {
@@ -19,7 +19,7 @@ describe("buildPackageJsonPatch", () => {
             server: "pokie serve .",
             client: "pokie client .",
         });
-        expect(patched.dependencies).toEqual({pokie: "^1.2.1"});
+        expect(patched.dependencies).toEqual({"@fromstan/pokie": "^1.2.1"});
         expect(patched.devDependencies).toEqual({typescript: "^5.0.4"});
         expect(patched.name).toBe("sample-slot");
         expect(patched.version).toBe("1.0.0");
@@ -30,7 +30,7 @@ describe("buildPackageJsonPatch", () => {
             {
                 name: "sample-slot",
                 scripts: {build: "webpack", test: "jest", start: "node server.js"},
-                dependencies: {pokie: "^1.0.0"},
+                dependencies: {"@fromstan/pokie": "^1.0.0"},
                 devDependencies: {typescript: "^4.9.0"},
                 pokie: {entry: "./custom/entry.js"},
             },
@@ -44,7 +44,7 @@ describe("buildPackageJsonPatch", () => {
             server: "pokie serve .",
             client: "pokie client .",
         });
-        expect(patched.dependencies).toEqual({pokie: "^1.0.0"});
+        expect(patched.dependencies).toEqual({"@fromstan/pokie": "^1.0.0"});
         expect(patched.devDependencies).toEqual({typescript: "^4.9.0"});
         // pokie.entry, main, and exports are always managed/overwritten by init, unlike the other
         // fields above -- so they can never disagree with each other about where dist output lives.

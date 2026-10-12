@@ -48,7 +48,7 @@ interface LinesDefinitionsDescribing {
   result without enumerating every line as a discrete combination.
 
 ```ts
-import {CustomLinesDefinitions} from "pokie";
+import {CustomLinesDefinitions} from "@fromstan/pokie";
 
 const lines = new CustomLinesDefinitions()
     .setLineDefinition("0", [1, 1, 1, 1, 1])  // straight middle line
@@ -74,7 +74,7 @@ counts your `Paytable` actually has payouts for (see [Paytable & Win Calculation
 one without the other can silently shift what counts as a win.
 
 ```ts
-import {LeftToRightLinesPatterns} from "pokie";
+import {LeftToRightLinesPatterns} from "@fromstan/pokie";
 
 new LeftToRightLinesPatterns(5).toArray();
 // [[1,1,1,1,1],[1,1,1,1,0],[1,1,1,0,0],[1,1,0,0,0]]

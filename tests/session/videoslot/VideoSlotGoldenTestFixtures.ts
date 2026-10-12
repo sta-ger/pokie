@@ -1,4 +1,4 @@
-import {SymbolsSequence, SymbolsSequenceDescribing} from "pokie";
+import {SymbolsSequence, SymbolsSequenceDescribing} from "@fromstan/pokie";
 
 // Fixed, hand-chosen reel strips (one of every base-game symbol per reel; no wild) -- the golden-value
 // tests in this directory need every spin's *screen* to be exactly reproducible given a seed, which

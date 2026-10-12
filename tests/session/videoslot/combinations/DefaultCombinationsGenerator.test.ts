@@ -1,4 +1,4 @@
-import {SeededRandomNumberGenerator, SymbolsCombinationsGenerator, SymbolsSequence, VideoSlotConfig} from "pokie";
+import {SeededRandomNumberGenerator, SymbolsCombinationsGenerator, SymbolsSequence, VideoSlotConfig} from "@fromstan/pokie";
 
 describe("DefaultCombinationsGenerator", () => {
     let combinationsGenerator: SymbolsCombinationsGenerator;

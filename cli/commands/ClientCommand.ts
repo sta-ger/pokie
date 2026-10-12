@@ -1,5 +1,5 @@
 import {Command} from "commander";
-import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions} from "pokie";
+import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {openBrowser} from "../openBrowser.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";

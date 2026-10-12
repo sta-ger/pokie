@@ -23,7 +23,7 @@ import {
     ProjectTargetResolver,
     resolveReelStripGeneration,
     StakeProjectionExportService,
-} from "pokie";
+} from "@fromstan/pokie";
 import {Command} from "commander";
 import path from "path";
 import {OutcomeLibraryCommand} from "./OutcomeLibraryCommand.js";

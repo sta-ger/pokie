@@ -126,7 +126,7 @@ automatically on every `setAvailableSymbols`/`setScatterSymbols` call (e.g. weig
 argument instead of replacing the generated sequences after the fact:
 
 ```ts
-import {ReelsSymbolsSequencesGenerating, SymbolsSequenceDescribing, VideoSlotConfig} from "pokie";
+import {ReelsSymbolsSequencesGenerating, SymbolsSequenceDescribing, VideoSlotConfig} from "@fromstan/pokie";
 
 class WeightedReelsGenerator implements ReelsSymbolsSequencesGenerating {
     public generate(reelsNumber: number, availableSymbols: string[], wildSymbols: string[], scatterSymbols: string[]): SymbolsSequenceDescribing[] {
@@ -143,7 +143,7 @@ const config = new VideoSlotConfig(new GameSessionConfig(), new WeightedReelsGen
 import {
     VideoSlotConfig, VideoSlotSession, SymbolsSequence,
     LinesDefinitionsFor5x3, LeftToRightLinesPatterns, Paytable,
-} from "pokie";
+} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 config.setAvailableSymbols(["A", "K", "Q", "J", "10", "W", "S"]);
@@ -172,7 +172,7 @@ defaulting to `T = string`. The default keeps every existing call site — `new 
 Pass an explicit type argument to use something other than plain strings, e.g. numeric symbol codes:
 
 ```ts
-import {VideoSlotConfig, VideoSlotSession, SymbolsSequence} from "pokie";
+import {VideoSlotConfig, VideoSlotSession, SymbolsSequence} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig<number>();
 config.setAvailableSymbols([1, 2, 3, 4, 100, 200]); // 100 = wild, 200 = scatter

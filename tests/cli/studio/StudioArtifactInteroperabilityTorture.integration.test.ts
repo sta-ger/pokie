@@ -8,7 +8,7 @@ import {
     POKIE_WASM_CONTRACT_VERSION,
     ProjectTargetResolver,
     type GameBlueprint,
-} from "pokie";
+} from "@fromstan/pokie";
 import {StudioArtifactBuildService} from "../../../cli/studio/artifacts/StudioArtifactBuildService.js";
 import {StudioBlueprintService} from "../../../cli/studio/blueprint/StudioBlueprintService.js";
 import {StudioDeploymentService} from "../../../cli/studio/deployment/StudioDeploymentService.js";

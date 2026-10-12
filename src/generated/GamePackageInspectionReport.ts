@@ -22,7 +22,7 @@ export type GamePackageInspectionReport = {
             sha256: string;
             bytes: number;
             abiVersion: string;
-            adapter: "pokie/wasm";
+            adapter: "@fromstan/pokie/wasm";
             configurationHash: string;
         };
     };

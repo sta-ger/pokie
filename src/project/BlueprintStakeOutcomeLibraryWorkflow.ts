@@ -452,12 +452,12 @@ export class BlueprintStakeOutcomeLibraryWorkflow {
 
     private loadMaterializedGame(blueprint: GameBlueprint): PokieGame {
         const module = {exports: {}} as {exports: unknown};
-        // The generated package contains only require("pokie") plus its generated module body.  Supplying
+        // The generated package contains only require("@fromstan/pokie") plus its generated module body.  Supplying
         // the live public runtime namespace executes exactly that generated artifact contract without a
         // caller having to install a throw-away node_modules tree solely to generate outcomes.
         vm.runInNewContext(renderBuiltGameModule(blueprint, this.pokieVersion), {
             require: (name: string) => {
-                if (name !== "pokie") throw new Error(`Generated Blueprint requested unsupported module "${name}".`);
+                if (name !== "@fromstan/pokie") throw new Error(`Generated Blueprint requested unsupported module "${name}".`);
                 return GENERATED_RUNTIME;
             },
             module,

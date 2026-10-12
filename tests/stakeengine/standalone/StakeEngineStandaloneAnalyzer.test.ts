@@ -1,5 +1,5 @@
 import {rareStakeSource, expectRareMetrics, expectRelative, RARE_PROBABILITY, UINT64_MAX} from "./StakeProbabilityTestFixtures.js";
-import {StakeEngineEventClassification, StakeEngineEventClassifying, StakeEngineEvent, StakeEngineOutcomeSourceReadResult, StakeEngineStandaloneAnalyzer} from "pokie";
+import {StakeEngineEventClassification, StakeEngineEventClassifying, StakeEngineEvent, StakeEngineOutcomeSourceReadResult, StakeEngineStandaloneAnalyzer} from "@fromstan/pokie";
 
 // A small, hand-computable mode: a loss (weight 970), a plain win (weight 25, ratio 2), and a win with a
 // non-structural "feature" event (weight 5, ratio 5) -- mirrors StakeEngineTestFixtures.buildStakeEngineTestLibrary

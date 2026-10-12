@@ -1,7 +1,7 @@
 import {execFile, spawn, type ChildProcessWithoutNullStreams} from "child_process";
 import fs from "fs";
 import path from "path";
-import {PackageJsonLike, withLocalPokieDependency} from "pokie";
+import {PackageJsonLike, withLocalPokieDependency} from "@fromstan/pokie";
 import {LocalPokieDependencyClosureEntry, resolveLocalPokieDependencyClosure} from "./localPokieDependencyClosure.js";
 import {RuntimePreparationCancelledError} from "../materialize/RuntimePreparationCancelledError.js";
 
@@ -257,16 +257,22 @@ function restorePortableLockRoot(packages: Record<string, unknown>, originalPack
 }
 
 // Undoes, inside the just-written package-lock.json, exactly what resolving the transient `file:`
-// rewrite above left behind -- the counterpart to restoring package.json itself. Run once "npm install"
-// has actually succeeded (a failed install may leave no lockfile, or one mid-write; either way there's
-// nothing consistent to normalize, and the next retry re-derives everything fresh). A project with
+// rewrite above left behind -- the counterpart to restoring package.json itself. Run whenever "npm install"
+// settles, including cancellation and failure. Remove an incomplete JSON write for a clean retry. A project with
 // "package-lock=false" (no lockfile at all) is left exactly as-is.
 function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJsonLike, taintedNames: ReadonlySet<string>): void {
     const lockPath = path.join(cwd, "package-lock.json");
     if (!fs.existsSync(lockPath)) {
         return;
     }
-    const lockfile = JSON.parse(fs.readFileSync(lockPath, "utf-8")) as {packages?: Record<string, unknown>};
+    let lockfile: {packages?: Record<string, unknown>};
+    try {
+        lockfile = JSON.parse(fs.readFileSync(lockPath, "utf-8"));
+    } catch {
+        // A torn npm write cannot be made portable. Remove it so a retry re-resolves metadata.
+        fs.rmSync(lockPath);
+        return;
+    }
     if (!lockfile.packages) {
         return;
     }
@@ -276,7 +282,7 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 }
 
 // Wraps a PackageCommandRunning so every "npm install" it runs rewrites `cwd`'s own package.json for
-// the duration of that one call -- its direct "pokie" dependency to a `file:` spec bound to
+// the duration of that one call -- its direct "@fromstan/pokie" dependency to a `file:` spec bound to
 // `pokiePackageRoot` (via withLocalPokieDependency), and every name in "pokie"'s own real runtime
 // dependency closure to this exact running installation's already-resolved copies
 // (withLocalPokieDependencyClosure) -- the one shared mechanism every real "npm install" this repo's
@@ -294,7 +300,7 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 //
 // The rewrite is reverted the moment the wrapped "npm install" settles, success or failure alike -- the
 // `file:`/`overrides` entries it writes are never what's left on disk once this call returns; the
-// package's own "pokie" dependency (and everything buildPackageJsonPatch's caller wrote around it) is
+// package's own "@fromstan/pokie" dependency (and everything buildPackageJsonPatch's caller wrote around it) is
 // back to exactly what it was before this call. A successful install's own package-lock.json gets the
 // same treatment (restorePersistedPackageLock): real `npm install` resolves those `file:` specs as
 // symlinks, which it records in the lockfile as its own absolute-host-tied entries (see
@@ -302,7 +308,7 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // most likely to be committed, published, or copied elsewhere, even though package.json itself no longer
 // mentions them. That's deliberate, not an oversight: `npm install` itself only ever reads package.json
 // (and package-lock.json) to *resolve* dependencies into node_modules -- once that's done, nothing later
-// (a build, a require("pokie"), a "pokie validate") reads either file's "pokie"/"overrides"/`file:` fields
+// (a build, a require("@fromstan/pokie"), a "pokie validate") reads either file's "pokie"/"overrides"/`file:` fields
 // again, so there's no reason to leave the resolution mechanism's own, absolute, host-specific paths
 // sitting in either file. A later "npm install" against this exact package.json -- whether InitCommand's
 // own retry after a failed later phase, or a person re-running "pokie init" by hand -- goes through this
@@ -316,7 +322,7 @@ function restorePersistedPackageLock(cwd: string, originalPackageJson: PackageJs
 // this package" section, which is where that's surfaced to the person running "pokie init". "pokie build"
 // (GamePackageGenerator) never goes through this function at all and stays fully portable instead (see
 // renderBuiltPackageLock.ts) -- it doesn't run "npm install" itself, so it never needs a local override in
-// the first place, at the cost of leaving `node_modules/pokie` for its own generated `require("pokie")` up
+// the first place, at the cost of leaving `node_modules/@fromstan/pokie` for its own generated `require("@fromstan/pokie")` up
 // to the caller.
 export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCommandRunning = runPackageCommand): PackageCommandRunning {
     return async (command, args, cwd, options) => {
@@ -331,12 +337,11 @@ export function withLocalPokieInstall(pokiePackageRoot: string, base: PackageCom
         const patched = withLocalPokieDependencyClosure(withPokie, closure);
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(patched, null, 4)}\n`);
         try {
-            const result = await base(command, args, cwd, options);
-            const taintedNames = new Set(["pokie", ...closure.map((entry) => entry.name)]);
-            restorePersistedPackageLock(cwd, packageJson, taintedNames);
-            return result;
+            return await base(command, args, cwd, options);
         } finally {
             fs.writeFileSync(packageJsonPath, original);
+            const taintedNames = new Set(["@fromstan/pokie", ...closure.map((entry) => entry.name)]);
+            restorePersistedPackageLock(cwd, packageJson, taintedNames);
         }
     };
 }
@@ -356,11 +361,11 @@ export function withLinkedLocalPokieRuntime(pokiePackageRoot: string, base: Pack
             return Promise.reject(new RuntimePreparationCancelledError("Runtime materialization was cancelled."));
         }
         const nodeModules = path.join(cwd, "node_modules");
-        fs.mkdirSync(nodeModules, {recursive: true});
+        fs.mkdirSync(path.join(nodeModules, "@fromstan"), {recursive: true});
         // "junction" is required for directory links on Windows and is accepted for directories on
         // POSIX platforms too. A materializer staging directory is new, so an existing target is a
         // lifecycle error rather than something this helper should silently replace.
-        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "pokie"), "junction");
+        fs.symlinkSync(path.resolve(pokiePackageRoot), path.join(nodeModules, "@fromstan", "pokie"), "junction");
         return Promise.resolve({stdout: "", stderr: ""});
     };
 }

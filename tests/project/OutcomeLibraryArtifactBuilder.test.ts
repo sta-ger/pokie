@@ -8,7 +8,7 @@ import {
     OutcomeLibraryBundleWriter,
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function outcomeLibraryProjectOf(rootPath: string): PokieProject {

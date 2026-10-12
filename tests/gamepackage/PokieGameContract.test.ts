@@ -1,4 +1,4 @@
-import {GameSessionHandling, isPokieGame, PokieGame, PokieGameContractValidationRule, PokieGameManifest} from "pokie";
+import {GameSessionHandling, isPokieGame, PokieGame, PokieGameContractValidationRule, PokieGameManifest} from "@fromstan/pokie";
 
 function createStubSession(): GameSessionHandling {
     return {

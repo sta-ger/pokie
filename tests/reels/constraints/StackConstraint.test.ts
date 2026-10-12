@@ -1,4 +1,4 @@
-import {ReelStrip, StackConstraint} from "pokie";
+import {ReelStrip, StackConstraint} from "@fromstan/pokie";
 
 describe("StackConstraint", () => {
     it("enforces fixed/range stack counts, spacing, and visible-window limits", () => {

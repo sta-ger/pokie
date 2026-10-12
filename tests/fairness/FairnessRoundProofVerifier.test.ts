@@ -11,7 +11,7 @@ import {
     OutcomeLibraryBundleReading,
     OutcomeLibraryBundleWriter,
     WeightedOutcome,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildFairnessSourceBundle, FAIRNESS_TEST_POKIE_VERSION, issueFairnessCommitmentFor} from "./FairnessRoundProofTestFixtures.js";
 

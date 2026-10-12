@@ -1,4 +1,4 @@
-import {resolveOutcomeLibraryModeName} from "pokie";
+import {resolveOutcomeLibraryModeName} from "@fromstan/pokie";
 
 describe("resolveOutcomeLibraryModeName", () => {
     const modes = [{modeName: "base"}, {modeName: "buyFeature"}];

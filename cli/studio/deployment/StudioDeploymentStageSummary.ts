@@ -1,4 +1,4 @@
-import type {ValidationIssue} from "pokie";
+import type {ValidationIssue} from "@fromstan/pokie";
 import type {StudioDeploymentStageStatus} from "./StudioDeploymentStageStatus.js";
 
 export type StudioDeploymentStageKey =

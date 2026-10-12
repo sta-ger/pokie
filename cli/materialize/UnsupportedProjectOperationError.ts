@@ -1,4 +1,4 @@
-import type {UnsupportedProjectOperationDiagnostic} from "pokie";
+import type {UnsupportedProjectOperationDiagnostic} from "@fromstan/pokie";
 
 // Thrown by createMaterializingRuntimePackageResolver when a resolved PokieProject can't perform the
 // operation it was resolved for (e.g. "pokie sim" pointed at a parWorkbook or outcomeLibrary path) --

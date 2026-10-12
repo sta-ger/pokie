@@ -1,4 +1,4 @@
-import type {ProjectCapabilities, ProjectType} from "pokie";
+import type {ProjectCapabilities, ProjectType} from "@fromstan/pokie";
 
 // "managed" — POKIE itself created this project (Create/Init/Build from Home), living under the
 // platform "POKIE Projects" convention (see PokiePathResolver.resolveIndependentProjectDirectory).

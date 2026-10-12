@@ -78,7 +78,7 @@ it("retains the authenticated installed candidate across the complete gate-test 
         const environment = {POKIE_P911_CANDIDATE_HANDOFF: fixture.reference.path, POKIE_P911_CANDIDATE_HANDOFF_SHA256: fixture.reference.sha256};
         const installed = await productionStudioCandidate(environment, fixture.repository);
         expect(installed.authenticated).toBe(true);
-        expect(installed.packageRoot).toBe(path.join(fixture.handoff.installationRoot, "node_modules/pokie"));
+        expect(installed.packageRoot).toBe(path.join(fixture.handoff.installationRoot, "node_modules/@fromstan/pokie"));
         await expect(fs.access(path.join(fixture.repository, "dist"))).rejects.toThrow("ENOENT");
         await expect(productionStudioCandidate({...environment, POKIE_P911_CANDIDATE_HANDOFF_SHA256: "b".repeat(64)}, fixture.repository)).rejects.toThrow("receipt digest mismatch");
         const driver = await fs.readFile(fixture.handoff.browserDriver.path);

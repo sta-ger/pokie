@@ -51,7 +51,7 @@ describe("WasmArtifactBuilder", () => {
         const project = await new ProjectTargetResolver().resolve(outputPath);
         expect(project).toBeDefined();
         const read = await readWasmComponentManifest(project!);
-        expect(read).toMatchObject({supported: true, manifest: {component: {id: "wasm-fixture"}, artifact: {format: "pokie.wasm.v1", adapter: "pokie/wasm"}}});
+        expect(read).toMatchObject({supported: true, manifest: {component: {id: "wasm-fixture"}, artifact: {format: "pokie.wasm.v1", adapter: "@fromstan/pokie/wasm"}}});
         if (read.supported) expect(read.manifest.artifact?.bytes).toBeGreaterThan(8);
         if (read.supported) expect(read.manifest.artifact?.sha256).toBe(`sha256:${crypto.createHash("sha256").update(fs.readFileSync(outputPath)).digest("hex")}`);
     });

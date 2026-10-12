@@ -2,7 +2,7 @@ import {
     ArtifactConversionPlan,
     ArtifactConversionPlanner,
     ArtifactTargetType,
-} from "pokie";
+} from "@fromstan/pokie";
 
 /**
  * Gives selector-backed Studio actions an explicit *unavailable* planner

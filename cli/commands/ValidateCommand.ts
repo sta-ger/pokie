@@ -15,7 +15,7 @@ import {
     ValidationIssue,
     describeWasmRecovery,
     readWasmComponentManifest,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {CliCommandHandling} from "../CliCommandHandling.js";
@@ -194,7 +194,7 @@ export class ValidateCommand implements CliCommandHandling {
         );
     }
 
-    private async validateWasm(project: import("pokie").PokieProject): Promise<ValidateReport> {
+    private async validateWasm(project: import("@fromstan/pokie").PokieProject): Promise<ValidateReport> {
         try {
             const result = await readWasmComponentManifest(project);
             if (!result.supported) return this.wasmValidationFailure(project.rootPath, result.diagnostic.message);

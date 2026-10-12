@@ -1,4 +1,4 @@
-import type {ArtifactConversionPlan, ExternalDeploymentResult} from "pokie";
+import type {ArtifactConversionPlan, ExternalDeploymentResult} from "@fromstan/pokie";
 import {computeDeploymentStages} from "./computeDeploymentStages.js";
 import type {StudioDeploymentRunView} from "./StudioDeploymentRunView.js";
 

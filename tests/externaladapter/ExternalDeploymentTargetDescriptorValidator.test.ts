@@ -1,4 +1,4 @@
-import {ExternalDeploymentTarget, ExternalDeploymentTargetDescriptorValidator, ExternalRoundProjector, RoundArtifact} from "pokie";
+import {ExternalDeploymentTarget, ExternalDeploymentTargetDescriptorValidator, ExternalRoundProjector, RoundArtifact} from "@fromstan/pokie";
 
 class NoOpRoundProjector implements ExternalRoundProjector {
     public project(_artifact: RoundArtifact): Record<string, never> {

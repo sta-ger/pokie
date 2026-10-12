@@ -1,4 +1,4 @@
-import {loadPokieGame, SimulationReport} from "pokie";
+import {loadPokieGame, SimulationReport} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

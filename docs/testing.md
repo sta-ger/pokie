@@ -9,7 +9,7 @@ npm package — see [`docs/README.md`](README.md) for the library's own API refe
 |---|---|---|---|
 | `npm test` / `npm run check:fast` | Unit + component tests only (`pokie` + `studio-client-components` Jest projects) | off | Everyday dev loop |
 | `npm run check:full` | `check:fast` + root and Studio-client TypeScript checks + `pokie-integration` + `studio-client-workflows` | off | Before opening a PR |
-| `npm run check:release` | lint + typecheck + every test **with coverage** + the real `npm pack`/install smoke test (`pokie-packaging`) | on | Pre-publish gate (`.github/workflows/publish.yml` runs this instead of `npm test`) |
+| `npm run check:release` | lint + typecheck + every test **with coverage** + the real `npm pack`/install smoke test (`pokie-packaging`) | on | Controller-owned packaging gate; publication workflow is disabled |
 | `npm run test:integration` | Just the `pokie-integration` lane | off | Iterating on integration/server/worker tests specifically |
 | `npm run test:targeted -- <files...>` | Exact named files across all Jest projects, serially | off | Verifying one bounded correction set that spans unit/component/workflow projects |
 | `npm run test:workflows` | Just the `studio-client-workflows` lane | off | Iterating on the heavy Studio workflow/navigation-guard/poll-hook tests specifically |
@@ -144,15 +144,15 @@ used to surface as noisy warnings before this change).
 ## Import convention: direct imports for new unit tests
 
 `src/index.ts` is an auto-generated barrel (`generate-barrels.js`) re-exporting everything under
-`src/` (600+ exports). A unit test importing a single class `from "pokie"` forces ts-jest to
+`src/` (600+ exports). A unit test importing a single class `from "@fromstan/pokie"` forces ts-jest to
 resolve/load the entire barrel graph just to get that one class — measured directly on one file
 (`DefaultVideoSlotSessionWinCalculator.test.ts`, 36 tests): barrel import cost roughly **6x** the
 wall time of a direct import, independent of and additive to the isolatedModules/no-coverage
 savings above.
 
 **Convention for new unit tests:** import directly from the class's own source file
-(`import {Foo} from "../../../src/some/path/Foo.js"`), not `from "pokie"`. The one deliberate
-exception is `tests/packaging/npmPackSmoke.test.ts`, which imports `from "pokie"` on purpose — it's
+(`import {Foo} from "../../../src/some/path/Foo.js"`), not `from "@fromstan/pokie"`. The one deliberate
+exception is `tests/packaging/npmPackSmoke.test.ts`, which imports `from "@fromstan/pokie"` on purpose — it's
 verifying the installed package's own barrel/dual-build boundary, not a single class.
 
 This is not (yet) enforced by an ESLint rule — retrofitting `no-restricted-imports` now would need
@@ -324,16 +324,16 @@ parsing the actual served `index.html` for its real `<script src>`/`<link href>`
 hardcoding them.
 
 **Real-worker `Cannot find module 'pokie'`.** This was 100% deterministic, not flaky: the fixture
-game packages under `tests/cli/fixtures/*/` each do a bare `require("pokie")` (deliberately, to
+game packages under `tests/cli/fixtures/*/` each do a bare `require("@fromstan/pokie")` (deliberately, to
 simulate a real external game package), but nothing in a fresh checkout provides a resolvable
-`node_modules/pokie` for that specifier inside a real `worker_thread` (a fresh Node realm that never
+`node_modules/@fromstan/pokie` for that specifier inside a real `worker_thread` (a fresh Node realm that never
 goes through ts-jest's `moduleNameMapper`) — Node's self-reference resolution only fires when the
 *nearest ancestor* `package.json` is itself named `"pokie"`, and each fixture's own `package.json`
 is named after the fixture, not `"pokie"`. Fixed by `tests/cli/fixtures/ensureFixturesCanRequirePokie.ts`,
-which creates a real `tests/cli/fixtures/node_modules/pokie` directory symlink to the repo root
+which creates a real `tests/cli/fixtures/node_modules/@fromstan/pokie` directory symlink to the repo root
 (building `dist/cjs` on demand first if missing) — called from `testWorkerEntryUrl.ts` (covering the
 3 real-worker unit test files) and from `npmPackSmoke.test.ts`'s `beforeAll` (covering its
-installed-package worker test, a separate code path). The fixtures' own `require("pokie")` and
+installed-package worker test, a separate code path). The fixtures' own `require("@fromstan/pokie")` and
 `SimulationWorkerCoordinator.ts`/`simulationWorkerEntry.ts` (already using fully-resolved absolute
 paths) were untouched. Verified deterministic: `pokie-integration` passed 5/5 consecutive runs,
 `npmPackSmoke` passed on 2 consecutive full builds.

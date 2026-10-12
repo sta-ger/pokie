@@ -42,8 +42,8 @@ describe("ArtifactConversionPlanner", () => {
             fs.writeFileSync(path.join(packageRoot, "index.js"), "export default 1;");
             fs.writeFileSync(executableDependency, "module.exports = 1;");
             fs.writeFileSync(path.join(cache, "jest"), "first");
-            fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "pokie"), "dir");
-            const options = {ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "pokie", "node_modules", ".cache")]};
+            fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "@fromstan", "pokie"), "dir");
+            const options = {ignoredDirectoryPaths: [path.join(packageRoot, "node_modules", "@fromstan", "@fromstan/pokie", "node_modules", ".cache")]};
             const prepared = computeArtifactInputBindingHash([packageRoot], options);
 
             fs.writeFileSync(path.join(cache, "jest"), "second");
@@ -68,7 +68,7 @@ describe("ArtifactConversionPlanner", () => {
             fs.writeFileSync(path.join(packageRoot, "package.json"), '{"pokie":{"entry":"./dist/index.js"}}');
             fs.writeFileSync(entry, "module.exports = {version: 1};");
             fs.writeFileSync(runtimeFile, "module.exports = {runtime: 1};");
-            fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "pokie"), "dir");
+            fs.symlinkSync(runtime, path.join(packageRoot, "node_modules", "@fromstan", "pokie"), "dir");
             const prepared = computeProjectInputBindingHash({type: "tsPackage", rootPath: packageRoot});
 
             fs.writeFileSync(runtimeFile, "module.exports = {runtime: 2};");

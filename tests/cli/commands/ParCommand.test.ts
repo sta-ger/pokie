@@ -12,7 +12,7 @@ import {
     ProjectResolving,
     PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
-} from "pokie";
+} from "@fromstan/pokie";
 import {ParCommand} from "../../../cli/commands/ParCommand.js";
 
 function createStubImporter(result: ParSheetImportResult | Error): ParSheetImporting & {calledWith?: string} {

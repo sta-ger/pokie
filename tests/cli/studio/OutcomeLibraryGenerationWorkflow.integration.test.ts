@@ -1,4 +1,4 @@
-import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, OutcomeLibraryBundleWriting, generateWeightedOutcomeLibrary, loadPokieGame, releasePokieGame} from "pokie";
+import {ArtifactConversionPlan, computeWeightedOutcomeLibraryHash, OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, OutcomeLibraryBundleWriting, generateWeightedOutcomeLibrary, loadPokieGame, releasePokieGame} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

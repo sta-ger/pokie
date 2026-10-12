@@ -6,7 +6,7 @@ import {
     VideoSlotSessionHandling,
     VideoSlotWinCalculator,
     VideoSlotWithResizableGridSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("VideoSlotWithResizableGridSession", () => {
     test("play() delegates to the base session, passes it and the current heights to the handler, and applies its result", () => {

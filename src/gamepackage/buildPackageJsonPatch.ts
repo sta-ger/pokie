@@ -22,7 +22,7 @@ export function buildPackageJsonPatch(pkg: PackageJsonLike, pokieVersion: string
             ...pkg.scripts,
         },
         dependencies: {
-            pokie: `^${pokieVersion}`,
+            "@fromstan/pokie": `^${pokieVersion}`,
             ...pkg.dependencies,
         },
         devDependencies: {

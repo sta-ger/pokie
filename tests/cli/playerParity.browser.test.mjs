@@ -91,11 +91,11 @@ test("PC-12 browser parity contract excludes host mount geometry but rejects mat
 });
 
 test("PC-12 browser parity provisions an isolated exact candidate consumer before loading examples", () => {
-    const manifest = exactCandidateConsumerManifest({dependencies: {pokie: "^1.3.0", vite: "4.3.9"}}, "/tmp/pokie-1.3.0.tgz");
-    assert.equal(manifest.dependencies.pokie, "file:/tmp/pokie-1.3.0.tgz");
+    const manifest = exactCandidateConsumerManifest({dependencies: {"@fromstan/pokie": "^1.3.0", vite: "4.3.9"}}, "/tmp/pokie-1.3.0.tgz");
+    assert.equal(manifest.dependencies["@fromstan/pokie"], "file:/tmp/pokie-1.3.0.tgz");
     assert.equal(manifest.dependencies.vite, "4.3.9");
-    assert.doesNotThrow(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
-    assert.doesNotThrow(() => assertExactCandidatePlayerExport("file:///tmp/isolated/node_modules/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
+    assert.doesNotThrow(() => assertExactCandidatePlayerExport("/tmp/isolated/node_modules/@fromstan/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
+    assert.doesNotThrow(() => assertExactCandidatePlayerExport("file:///tmp/isolated/node_modules/@fromstan/pokie/dist/cli/client/player/index.js", "/tmp/isolated"));
     assert.throws(() => assertExactCandidatePlayerExport("/workspace/dist/cli/client/player/index.js", "/tmp/isolated"), /isolated candidate install/);
 });
 

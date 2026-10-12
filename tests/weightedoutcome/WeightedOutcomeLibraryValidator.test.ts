@@ -2,7 +2,7 @@ import {
     WeightedOutcomeLibrary,
     WeightedOutcomeLibraryValidator,
     buildWeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 import {artifactWithTotalWin} from "./WeightedOutcomeTestFixtures.js";
 
 function validLibrary(): WeightedOutcomeLibrary<string> {

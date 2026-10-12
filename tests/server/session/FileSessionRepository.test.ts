@@ -1,6 +1,6 @@
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
-import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, VideoSlotSessionHandling, captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "pokie";
+import {GamePackageGenerator, loadPokieGameRuntime, SymbolsCombination, VideoSlotSessionHandling, captureInitialPokieSessionState, captureRoundPokieSessionState, VideoSlotSessionSerializer, FileSessionRepository, PokieSessionState, SessionStateCorruptError, SessionVersionConflictError} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

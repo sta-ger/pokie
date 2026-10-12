@@ -4,7 +4,7 @@ import {
     VideoSlotWinCalculator,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 import {goldenVideoSlotSymbolsSequences} from "./VideoSlotGoldenTestFixtures.js";
 
 // Pins the exact state-transition sequence a known seed produces: a base spin that triggers free games,

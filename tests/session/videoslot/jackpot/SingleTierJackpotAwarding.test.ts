@@ -1,4 +1,4 @@
-import {AccumulatingJackpotPool, FixedJackpotPool, SingleTierJackpotAwarding} from "pokie";
+import {AccumulatingJackpotPool, FixedJackpotPool, SingleTierJackpotAwarding} from "@fromstan/pokie";
 
 describe("SingleTierJackpotAwarding", () => {
     it("awards the first configured pool, calling its own award()", () => {

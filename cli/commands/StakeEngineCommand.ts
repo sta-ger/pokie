@@ -40,7 +40,7 @@ import {
     OutcomeLibraryGeneratorDiagnostics,
     StakeEngineImportSourceProvenance,
     removePublishedDirectoryIfOwned,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 
@@ -510,7 +510,7 @@ export class StakeEngineCommand implements CliCommandHandling {
         }};
     }
 
-    private exportDescriptorSource(configPath: string): import("pokie").ArtifactIdentity {
+    private exportDescriptorSource(configPath: string): import("@fromstan/pokie").ArtifactIdentity {
         const canonicalLocation = path.resolve(configPath);
         const descriptor = this.loadDescriptor(canonicalLocation);
         const referencedInputs = descriptor.modes.map((entry) => path.resolve(

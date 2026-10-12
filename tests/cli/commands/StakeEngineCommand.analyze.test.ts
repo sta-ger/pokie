@@ -11,7 +11,7 @@ import {
     StakeEngineStandaloneAnalysis,
     StakeEngineStandaloneAnalyzer,
     ValidationIssue,
-} from "pokie";
+} from "@fromstan/pokie";
 import {StakeEngineCommand} from "../../../cli/commands/StakeEngineCommand.js";
 import {buildSingleOutcomeStakeEngineLibrary} from "../../stakeengine/StakeEngineTestFixtures.js";
 

@@ -1,4 +1,4 @@
-import {ExternalArtifactGenerationResult, ExternalGeneratedArtifact, StandardExternalArtifactValidator} from "pokie";
+import {ExternalArtifactGenerationResult, ExternalGeneratedArtifact, StandardExternalArtifactValidator} from "@fromstan/pokie";
 
 function resultOf(artifacts: readonly ExternalGeneratedArtifact[]): ExternalArtifactGenerationResult {
     return {artifacts, issues: []};

@@ -1,4 +1,4 @@
-import {GameSession, GameSessionConfig} from "pokie";
+import {GameSession, GameSessionConfig} from "@fromstan/pokie";
 import {FRACTIONAL_BET_STAKES} from "../fixtures/math/FractionalBetFixture.js";
 import {
     createCustomConfigForTestProperInitialValues,

@@ -1,4 +1,4 @@
-import {PokieGamePackageValidator} from "pokie";
+import {PokieGamePackageValidator} from "@fromstan/pokie";
 import path from "path";
 
 const fixturesRoot = path.join(__dirname, "fixtures");

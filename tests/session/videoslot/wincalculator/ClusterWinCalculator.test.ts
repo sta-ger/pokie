@@ -1,4 +1,4 @@
-import {ClusterWinCalculator, SymbolsCombination, VideoSlotConfig} from "pokie";
+import {ClusterWinCalculator, SymbolsCombination, VideoSlotConfig} from "@fromstan/pokie";
 
 describe("ClusterWinCalculator", () => {
     test("pays a cluster of orthogonally-adjacent same symbols that meets the minimum size", () => {

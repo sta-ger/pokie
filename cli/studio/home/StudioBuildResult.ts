@@ -1,4 +1,4 @@
-import type {GameBlueprintManifest, GameBuildInfo, ValidationIssue} from "pokie";
+import type {GameBlueprintManifest, GameBuildInfo, ValidationIssue} from "@fromstan/pokie";
 
 // POST /api/home/projects/build's own DTO. "load-error"/"invalid" mirror StudioBuildPreviewView's own
 // (a failing build never even reaches GamePackageGenerator in those cases); "error" covers

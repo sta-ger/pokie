@@ -7,7 +7,7 @@ import {
     ExternalDeploymentTargetRegistry,
     ExternalRoundProjector,
     RoundArtifact,
-} from "pokie";
+} from "@fromstan/pokie";
 
 class NoOpRoundProjector implements ExternalRoundProjector {
     public project(_artifact: RoundArtifact): Record<string, never> {

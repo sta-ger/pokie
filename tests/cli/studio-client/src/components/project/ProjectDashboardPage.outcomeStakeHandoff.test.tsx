@@ -1,6 +1,6 @@
 /** @jest-environment-options {"customExportConditions": ["node", "node-addons"]} */
 import fs from "fs";
-import {GamePackageGenerator, loadPokieGameRuntime, type GameBlueprint} from "pokie";
+import {GamePackageGenerator, loadPokieGameRuntime, type GameBlueprint} from "@fromstan/pokie";
 import http from "http";
 import os from "os";
 import path from "path";

@@ -1,5 +1,5 @@
 import type {StudioProjectRegistryEntry} from "./StudioProjectRegistryEntry.js";
-import type {WasmProductContractView} from "pokie";
+import type {WasmProductContractView} from "@fromstan/pokie";
 
 // "missing" once an entry's own `location` can no longer be found on disk -- moved, deleted, or renamed
 // outside Studio. Never persisted on the entry itself (see StudioProjectRegistryEntry's own doc comment);

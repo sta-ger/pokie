@@ -19,7 +19,7 @@ const descriptor = new TextEncoder().encode(JSON.stringify({
     schemaVersion: "1.0.0", component: {id: "fixture", version: "1.0.0"},
     serialization: {session: "pokie.session.v1", play: "pokie.play.v1", state: "pokie.state.v1"},
     host: {rng: "pokie.rng.v1", services: []}, capabilities: ["runtime.play", "runtime.serialize"],
-    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "pokie/wasm", configurationHash: `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`},
+    artifact: {format: "pokie.wasm.v1", abiVersion: "1.0.0", adapter: "@fromstan/pokie/wasm", configurationHash: `sha256:${crypto.createHash("sha256").update(model).digest("hex")}`},
 }));
 const descriptorName = new TextEncoder().encode("pokie.component.v1");
 const bytes = new Uint8Array([
@@ -50,7 +50,7 @@ function manifestFor(moduleBytes: Uint8Array, modelBytes: Uint8Array = model): P
             sha256: `sha256:${crypto.createHash("sha256").update(moduleBytes).digest("hex")}`,
             bytes: moduleBytes.byteLength,
             abiVersion: "1.0.0",
-            adapter: "pokie/wasm",
+            adapter: "@fromstan/pokie/wasm",
             configurationHash: `sha256:${crypto.createHash("sha256").update(modelBytes).digest("hex")}`,
         },
     };

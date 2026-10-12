@@ -1,4 +1,4 @@
-import {describeUnavailableWasmComponent, isWasmComponentFile, loadPokieGame, ProjectTargetResolver} from "pokie";
+import {describeUnavailableWasmComponent, isWasmComponentFile, loadPokieGame, ProjectTargetResolver} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";

@@ -47,7 +47,7 @@ toArray(): string[]
 ```
 
 ```ts
-import {SymbolsSequence} from "pokie";
+import {SymbolsSequence} from "@fromstan/pokie";
 
 const reel = new SymbolsSequence();
 reel.fromNumberOfEachSymbol(["A", "K", "Q"], 2); // ["A","A","K","K","Q","Q"]
@@ -131,7 +131,7 @@ getLastReelsHeights(): number[]   // heights actually drawn for the most recent 
 primitive as symbol strips, just with heights as the "symbols":
 
 ```ts
-import {SymbolsSequence, VariableHeightSymbolsCombinationsGenerator, VideoSlotSession} from "pokie";
+import {SymbolsSequence, VariableHeightSymbolsCombinationsGenerator, VideoSlotSession} from "@fromstan/pokie";
 
 const reelsHeightWeights = [
     new SymbolsSequence<number>().fromNumbersOfSymbols({3: 70, 4: 20, 5: 10}), // reel 0: mostly 3 rows
@@ -183,7 +183,7 @@ interface RandomNumberGenerating { getRandomInt(min: number, max: number): numbe
   outside POKIE:
 
   ```ts
-  import {SymbolsCombinationsGenerator, SecureRandomNumberGenerator} from "pokie";
+  import {SymbolsCombinationsGenerator, SecureRandomNumberGenerator} from "@fromstan/pokie";
 
   const generator = new SymbolsCombinationsGenerator(config, new SecureRandomNumberGenerator());
   ```
@@ -193,7 +193,7 @@ interface RandomNumberGenerating { getRandomInt(min: number, max: number): numbe
   consistent outcomes:
 
   ```ts
-  import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator} from "pokie";
+  import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator} from "@fromstan/pokie";
 
   const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(12345));
   generator.generateSymbolsCombination(); // always the same combination for a given config + seed

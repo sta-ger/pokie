@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter, StakeEngineImportResult, StakeEngineImportWriter} from "pokie";
+import {OutcomeLibraryBundleValidator, OutcomeLibraryBundleWriter, StakeEngineImportResult, StakeEngineImportWriter} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleTestLibrary} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 function resultWithModes(modeNames: readonly string[]): StakeEngineImportResult {

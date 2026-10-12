@@ -1,4 +1,4 @@
-import type {OutcomeLibraryGenerationStrategy, PokieGameManifest} from "pokie";
+import type {OutcomeLibraryGenerationStrategy, PokieGameManifest} from "@fromstan/pokie";
 
 export type StudioOutcomeLibraryRegistryModeEntry = {
     readonly modeName: string;

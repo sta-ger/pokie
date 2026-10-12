@@ -386,7 +386,7 @@ describe("canonical Player source reachability", () => {
         const fixtureGame = readFileSync(resolve(pokieExamplesRoot, "src/games/fixture-slot/index.ts"), "utf8");
         const examplesIndex = readFileSync(resolve(pokieExamplesRoot, "index.html"), "utf8");
 
-        expect(examplesUi).toContain('from "pokie/client/player"');
+        expect(examplesUi).toContain('from "@fromstan/pokie/client/player"');
         expect(examplesUi).toContain("createPlayerRoundElements(");
         expect(examplesUi).toContain("renderPlayerRound(");
         expect(examplesUi).toContain("onSelectBet:");
@@ -440,7 +440,7 @@ describe("canonical Player source reachability", () => {
         const examplesViteConfig = readFileSync(resolve(pokieExamplesRoot, "vite.config.js"), "utf8");
         const examplesTsconfig = readFileSync(resolve(pokieExamplesRoot, "tsconfig.json"), "utf8");
 
-        expect(examplesPackage.dependencies.pokie).toBe(`^${packageJson.version}`);
+        expect(examplesPackage.dependencies["@fromstan/pokie"]).toBe(`^${packageJson.version}`);
         expect(examplesViteConfig).not.toContain("/workspace");
         expect(examplesViteConfig).not.toContain("pokieClientPlayerPath");
         expect(examplesTsconfig).not.toContain("/workspace");

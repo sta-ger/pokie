@@ -1,4 +1,4 @@
-import type {FairnessRoundProof} from "pokie";
+import type {FairnessRoundProof} from "@fromstan/pokie";
 
 // FairnessRoundProofBuilder.build's own two failure classes, kept distinct rather than collapsed into
 // one "error" status: a "build-error" is a genuine domain-level rejection (revealed seed doesn't match

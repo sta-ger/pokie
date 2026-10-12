@@ -1,4 +1,4 @@
-import {SumWithMultiplierHoldAndWinPayoutAggregator, type LockedHoldAndWinSymbol} from "pokie";
+import {SumWithMultiplierHoldAndWinPayoutAggregator, type LockedHoldAndWinSymbol} from "@fromstan/pokie";
 
 describe("SumWithMultiplierHoldAndWinPayoutAggregator", () => {
     it("sums flat value amounts with no multiplier symbols present", () => {

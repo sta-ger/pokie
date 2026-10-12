@@ -7,7 +7,7 @@ import {
     CertificationEvidenceBundleManifest,
     CertificationEvidenceBundleValidator,
     computeCertificationEvidenceContentHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildSourceOutcomeLibraryBundle, CERTIFICATION_TEST_POKIE_VERSION} from "./CertificationEvidenceBundleTestFixtures.js";
 
 function sha256OfBytes(bytes: Buffer): string {

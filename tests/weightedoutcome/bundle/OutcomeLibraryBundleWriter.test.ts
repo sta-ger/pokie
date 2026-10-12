@@ -12,7 +12,7 @@ import {
     WeightedOutcomeLibraryAnalyzer,
     WeightedOutcomeInput,
     capturePublishDirectoryOwnership,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput, buildOutcomeLibraryBundleTestLibrary} from "./OutcomeLibraryBundleTestFixtures.js";
 
 function siblingLeftovers(outDir: string): string[] {

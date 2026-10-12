@@ -2,7 +2,7 @@ import {spawnSync} from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleReader, ParSheetImporter, StakeEngineImporter} from "pokie";
+import {OutcomeLibraryBundleReader, ParSheetImporter, StakeEngineImporter} from "@fromstan/pokie";
 import {dispatch} from "../../cli/dispatch.js";
 import {registerCliCommands} from "../../cli/registerCliCommands.js";
 import {ensureCompiledTestOutput} from "../testUtils/ensureCompiledTestOutput.js";

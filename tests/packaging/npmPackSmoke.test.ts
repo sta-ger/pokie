@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 import {pathToFileURL} from "url";
 import {constants, runInThisContext} from "node:vm";
-import {BUILT_PACKAGE_FILES} from "pokie";
+import {BUILT_PACKAGE_FILES} from "@fromstan/pokie";
 import {localPokieDependencyRunner} from "../testUtils/offlinePokieDependencyOverride.js";
 
 const REPO_ROOT = path.join(__dirname, "..", "..");
@@ -311,7 +311,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.existsSync(pokieBinPath)).toBe(true);
 
         // Keep the real worker fixture beneath this consumer's node_modules.
-        // The repository fixture helper would resolve its bare require("pokie")
+        // The repository fixture helper would resolve its bare require("@fromstan/pokie")
         // back to checkout dist and could also launch an extra runtime build.
         fs.cpSync(path.join(REPO_ROOT, "tests/cli/fixtures/playable-game"), path.join(installDir, "playable-game"), {
             recursive: true, filter: (source) => path.basename(source) !== "node_modules",
@@ -447,12 +447,12 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         fs.writeFileSync(
             scriptPath,
             `
-            import {ParallelSimulationRunner} from "pokie";
+            import {ParallelSimulationRunner} from "@fromstan/pokie";
 
             const {createRequire} = await import('node:module');
             const consumer = createRequire(import.meta.url);
             const fixture = createRequire(${JSON.stringify(path.join(fixtureRoot, "package.json"))});
-            if (fixture.resolve('pokie') !== consumer.resolve('pokie')) throw new Error('worker fixture resolved a different POKIE');
+            if (fixture.resolve('@fromstan/pokie') !== consumer.resolve('@fromstan/pokie')) throw new Error('worker fixture resolved a different POKIE');
             const runner = new ParallelSimulationRunner(${JSON.stringify(fixtureRoot)}, 20000, {seed: "demo", workers: 2});
             const result = await runner.run();
 
@@ -502,7 +502,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
             const workerScript = path.join(workflowDir, "wasm-worker-protocol.mjs");
             fs.writeFileSync(workerScript, `
                 import fs from "fs";
-                import {PokieWasmWorkerProtocol} from "pokie/wasm";
+                import {PokieWasmWorkerProtocol} from "@fromstan/pokie/wasm";
                 const artifact = ${JSON.stringify(wasmPath)};
                 const manifest = JSON.parse(fs.readFileSync(artifact + ".pokie-wasm.json", "utf8"));
                 const protocol = new PokieWasmWorkerProtocol();
@@ -650,7 +650,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
 
     for (const [flag] of [["--version"], ["-V"]]) smokeIt(`prints the installed version for \`pokie ${flag}\`, exiting 0`, () => {
         const result = spawnSync(pokieBinPath, [flag], {cwd: installDir, encoding: "utf-8", timeout: 60000});
-        const {version} = JSON.parse(fs.readFileSync(path.join(installDir!, "node_modules", "pokie", "package.json"), "utf-8")) as {
+        const {version} = JSON.parse(fs.readFileSync(path.join(installDir!, "node_modules", "@fromstan", "pokie", "package.json"), "utf-8")) as {
             version: string;
         };
 
@@ -696,7 +696,7 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const projectRoot = path.join(installDir!, "sample-slot");
         // No --no-prepare, no --no-install, no manual package.json rewrite: "pokie init" now resolves its
         // own scaffolded "pokie" dependency against the running installation's own root (readOwnPackageRoot()
-        // -- here, installDir/node_modules/pokie, exactly what the outer `npm install tarballPath` above
+        // -- here, installDir/node_modules/@fromstan/pokie, exactly what the outer `npm install tarballPath` above
         // already installed) via the same withLocalPokieInstall mechanism Blueprint materialization uses --
         // see registerCliCommands.ts's own InitCommand wiring. Proves this works even though this dev
         // version was never published: only "pokie" itself needs that local resolution, "typescript" (a
@@ -718,8 +718,8 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const packageJsonPath = path.join(projectRoot, "package.json");
         const scaffoldedPkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")) as {dependencies?: Record<string, string>};
         const {version: ownVersion} = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {version: string};
-        expect(scaffoldedPkg.dependencies?.pokie).toBe(`^${ownVersion}`);
-        expect(fs.existsSync(path.join(projectRoot, "node_modules", "pokie", "package.json"))).toBe(true);
+        expect(scaffoldedPkg.dependencies?.["@fromstan/pokie"]).toBe(`^${ownVersion}`);
+        expect(fs.existsSync(path.join(projectRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
         const validate = spawnSync(pokieBinPath, ["validate", projectRoot], {cwd: installDir, encoding: "utf-8", timeout: 60000});
         expect(validate.status).toBe(0);
@@ -772,23 +772,23 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         expect(fs.existsSync(path.join(reinstalledRoot, "node_modules"))).toBe(false);
 
         const lockPackagesBeforeReinstall = readPackageLockPackages(reinstalledRoot);
-        expect(lockPackagesBeforeReinstall["node_modules/pokie"]).toBeUndefined();
+        expect(lockPackagesBeforeReinstall["node_modules/@fromstan/pokie"]).toBeUndefined();
         for (const key of Object.keys(lockPackagesBeforeReinstall)) {
             expect(key).not.toContain(installDir!);
         }
 
         await localPokieDependencyRunner()("npm", ["install"], reinstalledRoot);
 
-        expect(fs.existsSync(path.join(reinstalledRoot, "node_modules", "pokie", "package.json"))).toBe(true);
+        expect(fs.existsSync(path.join(reinstalledRoot, "node_modules", "@fromstan", "pokie", "package.json"))).toBe(true);
 
         const pkgAfterReinstall = JSON.parse(fs.readFileSync(path.join(reinstalledRoot, "package.json"), "utf-8")) as {
             dependencies?: Record<string, string>;
         };
-        expect(pkgAfterReinstall.dependencies?.pokie).not.toMatch(/^file:/);
-        expect(pkgAfterReinstall.dependencies?.pokie).not.toContain(installDir!);
+        expect(pkgAfterReinstall.dependencies?.["@fromstan/pokie"]).not.toMatch(/^file:/);
+        expect(pkgAfterReinstall.dependencies?.["@fromstan/pokie"]).not.toContain(installDir!);
 
         const lockPackagesAfterReinstall = readPackageLockPackages(reinstalledRoot);
-        expect(lockPackagesAfterReinstall["node_modules/pokie"]).toBeUndefined();
+        expect(lockPackagesAfterReinstall["node_modules/@fromstan/pokie"]).toBeUndefined();
         for (const key of Object.keys(lockPackagesAfterReinstall)) {
             expect(key).not.toContain(installDir!);
         }
@@ -814,11 +814,11 @@ describe("npm pack smoke test (real tarball, real npm install, real spawned poki
         const movedPkg = JSON.parse(fs.readFileSync(path.join(movedRoot, "package.json"), "utf-8")) as {
             dependencies?: Record<string, string>;
         };
-        expect(movedPkg.dependencies?.pokie).not.toMatch(/^file:/);
-        expect(movedPkg.dependencies?.pokie).not.toContain(installDir!);
+        expect(movedPkg.dependencies?.["@fromstan/pokie"]).not.toMatch(/^file:/);
+        expect(movedPkg.dependencies?.["@fromstan/pokie"]).not.toContain(installDir!);
 
         const movedLockPackages = readPackageLockPackages(movedRoot);
-        expect(movedLockPackages["node_modules/pokie"]).toBeUndefined();
+        expect(movedLockPackages["node_modules/@fromstan/pokie"]).toBeUndefined();
         for (const key of Object.keys(movedLockPackages)) {
             expect(key).not.toContain(installDir!);
         }

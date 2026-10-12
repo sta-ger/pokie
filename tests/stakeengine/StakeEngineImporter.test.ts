@@ -10,7 +10,7 @@ import {
     StakeEngineImporter,
     StakeEngineManifest,
     WeightedOutcomeLibrary,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildSingleOutcomeStakeEngineLibrary, buildStakeEngineTestLibrary, stakeEngineTestProvenance} from "./StakeEngineTestFixtures.js";
 
 function readBooksLines(filePath: string): {id: number; events: unknown[]; payoutMultiplier: number}[] {

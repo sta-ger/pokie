@@ -1,4 +1,4 @@
-import {GameBlueprintValidator, RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy} from "pokie";
+import {GameBlueprintValidator, RandomGameBlueprintGenerator, RandomGameBlueprintVariantStrategy} from "@fromstan/pokie";
 import {buildRandomReelStripGeneration} from "../../../cli/build/buildRandomReelStripGeneration.js";
 
 describe("buildRandomReelStripGeneration", () => {

@@ -16,7 +16,7 @@ import {
     SecureWeightedOutcomeRandomSource,
     SeededWeightedOutcomeRandomSource,
     WeightedOutcomeRandomSource,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import {deriveDeterministicSeed} from "../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import {CliCommandHandling} from "../CliCommandHandling.js";

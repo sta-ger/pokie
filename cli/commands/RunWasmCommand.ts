@@ -1,5 +1,5 @@
 import {Command} from "commander";
-import {loadPokieWasmFileRuntime, SeededPokieWasmHost} from "pokie";
+import {loadPokieWasmFileRuntime, SeededPokieWasmHost} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
 

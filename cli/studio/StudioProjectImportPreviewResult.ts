@@ -1,4 +1,4 @@
-import type {ProjectCapabilities, ProjectType, WasmProductContractView} from "pokie";
+import type {ProjectCapabilities, ProjectType, WasmProductContractView} from "@fromstan/pokie";
 
 // The outcome of StudioProjectRegistrationService.previewImport — a read-only "detect" step Import
 // Project runs before ever calling registerExternal, so a user can see what a path resolves to (and

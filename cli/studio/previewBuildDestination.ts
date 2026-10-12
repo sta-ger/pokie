@@ -1,4 +1,4 @@
-import {BUILT_PACKAGE_FILES, assertPreparedArtifactDestinationAvailable, resolveGamePackageDestination} from "pokie";
+import {BUILT_PACKAGE_FILES, assertPreparedArtifactDestinationAvailable, resolveGamePackageDestination} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 

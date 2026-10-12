@@ -21,7 +21,7 @@ import {
     ProjectTargetResolver,
     PROJECT_TYPE_CAPABILITIES,
     ValidationIssue,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";
 import {CommanderErrorMessages, createCommanderCliCommand, isCommanderHelpDisplay, translateCommanderError} from "./internal/CommanderCliAdapter.js";
@@ -324,7 +324,7 @@ export class ParCommand implements CliCommandHandling {
         return this.importer instanceof ParSheetImporter && this.writeFile === writeBlueprintFileAtomically;
     }
 
-    private printPreparedPlan(plan: import("pokie").ArtifactConversionPlan): void {
+    private printPreparedPlan(plan: import("@fromstan/pokie").ArtifactConversionPlan): void {
         console.log(`Conversion plan: ${plan.steps.map((step) => `${step.choice} ${step.kind}`).join(" → ") || "no executable steps"}.`);
         console.log(`Final destination: ${plan.target.canonicalLocation ?? "selected destination"} (${plan.preflight.destinationKind}).`);
         for (const step of plan.steps) {
@@ -452,7 +452,7 @@ export class ParCommand implements CliCommandHandling {
         }
     }
 
-    private exportDescriptorSource(blueprintPath: string): import("pokie").ArtifactIdentity {
+    private exportDescriptorSource(blueprintPath: string): import("@fromstan/pokie").ArtifactIdentity {
         const canonicalLocation = path.resolve(blueprintPath);
         return {
             kind: "blueprint",

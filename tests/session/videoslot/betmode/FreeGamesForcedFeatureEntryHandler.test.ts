@@ -1,4 +1,4 @@
-import {FreeGamesForcedFeatureEntryHandler, VideoSlotSession, VideoSlotWithFreeGamesSession} from "pokie";
+import {FreeGamesForcedFeatureEntryHandler, VideoSlotSession, VideoSlotWithFreeGamesSession} from "@fromstan/pokie";
 
 describe("FreeGamesForcedFeatureEntryHandler", () => {
     it("rejects a non-positive-integer freeGamesToGrant", () => {

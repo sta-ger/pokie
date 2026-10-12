@@ -11,7 +11,7 @@ import {
     StakeEngineImporter,
     StakeEngineImporting,
     describeArtifactConversionPlanDiagnostic,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import path from "path";
 import type {OutcomeLibrarySelector} from "../outcomeLibrary/OutcomeLibrarySelector.js";
@@ -53,12 +53,12 @@ export type StudioDeploymentRunResult =
         readonly status: "cancelled";
         /** Whether delivery is known to have happened when cancellation raced the SDK. */
         readonly deliveryOutcome: "delivered" | "not-delivered" | "outcome-unknown";
-        readonly plan: import("pokie").ArtifactConversionPlan;
+        readonly plan: import("@fromstan/pokie").ArtifactConversionPlan;
         readonly view?: StudioDeploymentRunView;
     }
-    | {readonly status: "target-not-found"; readonly plan: import("pokie").ArtifactConversionPlan}
-    | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan}
-    | {readonly status: "load-error"; readonly error: string; readonly plan: import("pokie").ArtifactConversionPlan};
+    | {readonly status: "target-not-found"; readonly plan: import("@fromstan/pokie").ArtifactConversionPlan}
+    | {readonly status: "invalid-modes"; readonly error: string; readonly plan: import("@fromstan/pokie").ArtifactConversionPlan}
+    | {readonly status: "load-error"; readonly error: string; readonly plan: import("@fromstan/pokie").ArtifactConversionPlan};
 
 /** Resolves the current project's verified deployment inputs on the server. */
 export type StudioDeploymentModeResolving = (projectRoot: string) => Promise<readonly StudioDeploymentModeInput[]>;
@@ -394,7 +394,7 @@ export class StudioDeploymentService {
     /** See StudioStakeEngineExportService's counterpart: a canonical selector is
      * a durable planner source, so deployment cannot preview a project-root plan
      * and then consume an unrelated selected bundle. */
-    private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("pokie").ArtifactConversionPlan> {
+    private prepareForSelectedBundles(projectRoot: string, modes: readonly ValidatedDeploymentRunRequest["modes"][number][]): Promise<import("@fromstan/pokie").ArtifactConversionPlan> {
         const selectedSource = this.selectedBundleSource(projectRoot, modes);
         if (selectedSource !== undefined) {
             return this.planning.prepare(selectedSource, "outcomeLibrary");

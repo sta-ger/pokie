@@ -130,24 +130,59 @@ describe("withLocalPokieInstall", () => {
     });
 
     it("rewrites the package's pokie dependency to a file: spec for the duration of 'npm install', then restores the portable spec once it completes", async () => {
-        writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+        writePackageJson(projectDir, {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
         const base = createStateRecordingBase();
         const runner = withLocalPokieInstall("/opt/pokie-checkout", base);
 
         await runner("npm", ["install"], projectDir);
 
-        expect(base.packageJsonDuringCalls).toEqual([{name: "starter-slot", dependencies: {pokie: "file:/opt/pokie-checkout"}}]);
-        expect(readPackageJson(projectDir)).toEqual({name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+        expect(base.packageJsonDuringCalls).toEqual([{name: "starter-slot", dependencies: {"@fromstan/pokie": "file:/opt/pokie-checkout"}}]);
+        expect(readPackageJson(projectDir)).toEqual({name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
+    });
+
+    it.each(["failure", "cancellation"])("restores scoped lock metadata after install %s without removing unrelated links", async outcome => {
+        const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0", other: "^1"}};
+        writePackageJson(projectDir, original);
+        const error = new Error(outcome);
+        const controller = new AbortController();
+        const runner = withLocalPokieInstall("/opt/pokie-checkout", () => {
+            writePackageLock(projectDir, {packages: {
+                "": {dependencies: {"@fromstan/pokie": "file:/opt/pokie-checkout", other: "^1"}},
+                ...fileLinkLockEntries("@fromstan/pokie", "../../opt/pokie-checkout"),
+                ...fileLinkLockEntries("other", "../../other"),
+            }});
+            if (outcome === "cancellation") controller.abort();
+            return Promise.reject(error);
+        });
+        await expect(runner("npm", ["install"], projectDir, {signal: controller.signal})).rejects.toBe(error);
+        expect(readPackageJson(projectDir)).toEqual(original);
+        const lock = readPackageLock(projectDir);
+        expect(lock.packages[""]).toMatchObject({dependencies: original.dependencies});
+        expect(lock.packages["node_modules/@fromstan/pokie"]).toBeUndefined();
+        expect(lock.packages["../../opt/pokie-checkout"]).toBeUndefined();
+        expect(lock.packages["node_modules/other"]).toBeDefined();
+    });
+
+    it("removes a torn lock write after failed install and restores the authored package", async () => {
+        const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}};
+        writePackageJson(projectDir, original);
+        const runner = withLocalPokieInstall("/opt/pokie-checkout", () => {
+            fs.writeFileSync(path.join(projectDir, "package-lock.json"), '{"packages":');
+            return Promise.reject(new Error("install failed"));
+        });
+        await expect(runner("npm", ["install"], projectDir)).rejects.toThrow("install failed");
+        expect(readPackageJson(projectDir)).toEqual(original);
+        expect(fs.existsSync(path.join(projectDir, "package-lock.json"))).toBe(false);
     });
 
     it("never touches package.json for a non-'install' npm subcommand", async () => {
-        writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+        writePackageJson(projectDir, {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
         const base = createRecordingBase();
         const runner = withLocalPokieInstall("/opt/pokie-checkout", base);
 
         await runner("npm", ["run", "build"], projectDir);
 
-        expect(readPackageJson(projectDir).dependencies).toEqual({pokie: "^1.3.0"});
+        expect(readPackageJson(projectDir).dependencies).toEqual({"@fromstan/pokie": "^1.3.0"});
         expect(base.calls).toEqual([{command: "npm", args: ["run", "build"], cwd: projectDir}]);
     });
 
@@ -155,7 +190,7 @@ describe("withLocalPokieInstall", () => {
         const original = {
             name: "starter-slot",
             version: "0.1.0",
-            dependencies: {pokie: "^1.3.0", commander: "^14.0.0"},
+            dependencies: {"@fromstan/pokie": "^1.3.0", commander: "^14.0.0"},
             devDependencies: {typescript: "^5.0.4"},
         };
         writePackageJson(projectDir, original);
@@ -165,7 +200,7 @@ describe("withLocalPokieInstall", () => {
         await runner("npm", ["install"], projectDir);
 
         const duringInstall = base.packageJsonDuringCalls[0] as typeof original;
-        expect(duringInstall.dependencies).toEqual({pokie: "file:/opt/pokie-checkout", commander: "^14.0.0"});
+        expect(duringInstall.dependencies).toEqual({"@fromstan/pokie": "file:/opt/pokie-checkout", commander: "^14.0.0"});
         expect(duringInstall.devDependencies).toEqual({typescript: "^5.0.4"});
         expect(duringInstall.name).toBe("starter-slot");
         expect(duringInstall.version).toBe("0.1.0");
@@ -182,7 +217,7 @@ describe("withLocalPokieInstall", () => {
     // withLocalPokieDependencyClosure for why that distinction is the one this whole mechanism exists
     // for.
     it("also rewrites every one of pokie's own real runtime dependencies to this running installation's already-resolved copies, only for the duration of install", async () => {
-        const original = {name: "starter-slot", dependencies: {pokie: "^1.3.0"}};
+        const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}};
         writePackageJson(projectDir, original);
         const base = createStateRecordingBase();
         const runner = withLocalPokieInstall(REPO_ROOT, base);
@@ -190,7 +225,7 @@ describe("withLocalPokieInstall", () => {
         await runner("npm", ["install"], projectDir);
 
         const duringInstall = base.packageJsonDuringCalls[0] as {dependencies: Record<string, string>; overrides: Record<string, string>};
-        expect(duringInstall.dependencies.pokie).toBe(`file:${REPO_ROOT}`);
+        expect(duringInstall.dependencies["@fromstan/pokie"]).toBe(`file:${REPO_ROOT}`);
         // "commander" and "exceljs" are pokie's own direct dependencies (package.json); "dayjs" is one
         // of exceljs's own transitive dependencies -- proving the closure really is walked, not just
         // one level deep.
@@ -204,7 +239,7 @@ describe("withLocalPokieInstall", () => {
     });
 
     it("rewrites a closure name already declared as a direct dependency in place, instead of adding it to overrides (npm rejects an overrides entry for a direct dependency it doesn't match)", async () => {
-        const original = {name: "starter-slot", dependencies: {pokie: "^1.3.0", commander: "^14.0.0"}};
+        const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0", commander: "^14.0.0"}};
         writePackageJson(projectDir, original);
         const base = createStateRecordingBase();
         const runner = withLocalPokieInstall(REPO_ROOT, base);
@@ -219,18 +254,18 @@ describe("withLocalPokieInstall", () => {
     });
 
     it("resolves against a pokiePackageRoot containing spaces", async () => {
-        writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+        writePackageJson(projectDir, {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
         const base = createStateRecordingBase();
         const runner = withLocalPokieInstall("/opt/pokie checkout with spaces", base);
 
         await runner("npm", ["install"], projectDir);
 
-        expect(base.packageJsonDuringCalls[0].dependencies).toEqual({pokie: "file:/opt/pokie checkout with spaces"});
-        expect(readPackageJson(projectDir).dependencies).toEqual({pokie: "^1.3.0"});
+        expect(base.packageJsonDuringCalls[0].dependencies).toEqual({"@fromstan/pokie": "file:/opt/pokie checkout with spaces"});
+        expect(readPackageJson(projectDir).dependencies).toEqual({"@fromstan/pokie": "^1.3.0"});
     });
 
     it("propagates the base runner's own result and rejection unchanged", async () => {
-        writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+        writePackageJson(projectDir, {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
         const failing: PackageCommandRunning = () => Promise.reject(new Error("npm exploded"));
         const runner = withLocalPokieInstall("/opt/pokie-checkout", failing);
 
@@ -238,7 +273,7 @@ describe("withLocalPokieInstall", () => {
     });
 
     it("still restores the portable spec when the wrapped 'npm install' itself fails -- a retry re-derives the local override fresh rather than depending on a stale rewrite surviving the failure", async () => {
-        const original = {name: "starter-slot", dependencies: {pokie: "^1.3.0"}};
+        const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}};
         writePackageJson(projectDir, original);
         const failing: PackageCommandRunning = () => Promise.reject(new Error("npm exploded"));
         const runner = withLocalPokieInstall("/opt/pokie-checkout", failing);
@@ -255,7 +290,7 @@ describe("withLocalPokieInstall", () => {
     // package.json-only coverage above.
     describe("normalizing package-lock.json once the wrapped 'npm install' succeeds", () => {
         it("strips the 'pokie' link entry and its target metadata block, leaving every unrelated (genuinely portable) entry untouched", async () => {
-            const original = {name: "starter-slot", version: "0.1.0", dependencies: {pokie: "^1.3.0"}};
+            const original = {name: "starter-slot", version: "0.1.0", dependencies: {"@fromstan/pokie": "^1.3.0"}};
             writePackageJson(projectDir, original);
             const lock = {
                 name: "starter-slot",
@@ -263,8 +298,8 @@ describe("withLocalPokieInstall", () => {
                 lockfileVersion: 3,
                 requires: true,
                 packages: {
-                    "": {name: "starter-slot", version: "0.1.0", dependencies: {pokie: "file:/opt/pokie-checkout"}},
-                    ...fileLinkLockEntries("pokie", "../../opt/pokie-checkout"),
+                    "": {name: "starter-slot", version: "0.1.0", dependencies: {"@fromstan/pokie": "file:/opt/pokie-checkout"}},
+                    ...fileLinkLockEntries("@fromstan/pokie", "../../opt/pokie-checkout"),
                     "node_modules/left-pad": {
                         version: "1.3.0",
                         resolved: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
@@ -278,24 +313,24 @@ describe("withLocalPokieInstall", () => {
             await runner("npm", ["install"], projectDir);
 
             const written = readPackageLock(projectDir);
-            expect(written.packages["node_modules/pokie"]).toBeUndefined();
+            expect(written.packages["node_modules/@fromstan/pokie"]).toBeUndefined();
             expect(written.packages["../../opt/pokie-checkout"]).toBeUndefined();
             expect(written.packages["node_modules/left-pad"]).toEqual(lock.packages["node_modules/left-pad"]);
-            expect((written.packages[""] as {dependencies: unknown}).dependencies).toEqual({pokie: "^1.3.0"});
+            expect((written.packages[""] as {dependencies: unknown}).dependencies).toEqual({"@fromstan/pokie": "^1.3.0"});
         });
 
         it("also strips a closure override's link entry (e.g. 'commander'), by name, wherever it was rewritten", async () => {
-            const original = {name: "starter-slot", dependencies: {pokie: "^1.3.0"}};
+            const original = {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}};
             writePackageJson(projectDir, original);
             const commanderRoot = path.join(REPO_ROOT, "node_modules", "commander");
             const lock = {
                 packages: {
                     "": {
                         name: "starter-slot",
-                        dependencies: {pokie: `file:${REPO_ROOT}`},
+                        dependencies: {"@fromstan/pokie": `file:${REPO_ROOT}`},
                         overrides: {commander: `file:${commanderRoot}`},
                     },
-                    ...fileLinkLockEntries("pokie", "../../workspace"),
+                    ...fileLinkLockEntries("@fromstan/pokie", "../../workspace"),
                     ...fileLinkLockEntries("commander", "../../workspace/node_modules/commander"),
                 },
             };
@@ -305,7 +340,7 @@ describe("withLocalPokieInstall", () => {
             await runner("npm", ["install"], projectDir);
 
             const written = readPackageLock(projectDir);
-            expect(written.packages["node_modules/pokie"]).toBeUndefined();
+            expect(written.packages["node_modules/@fromstan/pokie"]).toBeUndefined();
             expect(written.packages["../../workspace"]).toBeUndefined();
             expect(written.packages["node_modules/commander"]).toBeUndefined();
             expect(written.packages["../../workspace/node_modules/commander"]).toBeUndefined();
@@ -315,11 +350,11 @@ describe("withLocalPokieInstall", () => {
         });
 
         it("leaves an unrelated pre-existing link entry (a name outside pokie's own closure) untouched", async () => {
-            writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+            writePackageJson(projectDir, {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
             const lock = {
                 packages: {
-                    "": {name: "starter-slot", dependencies: {pokie: "file:/opt/pokie-checkout"}},
-                    ...fileLinkLockEntries("pokie", "../../opt/pokie-checkout"),
+                    "": {name: "starter-slot", dependencies: {"@fromstan/pokie": "file:/opt/pokie-checkout"}},
+                    ...fileLinkLockEntries("@fromstan/pokie", "../../opt/pokie-checkout"),
                     ...fileLinkLockEntries("some-unrelated-local-dep", "../../opt/some-unrelated-local-dep"),
                 },
             };
@@ -338,7 +373,7 @@ describe("withLocalPokieInstall", () => {
         });
 
         it("never writes/touches package-lock.json when the wrapped install never produced one", async () => {
-            writePackageJson(projectDir, {name: "starter-slot", dependencies: {pokie: "^1.3.0"}});
+            writePackageJson(projectDir, {name: "starter-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}});
             const base: PackageCommandRunning = () => Promise.resolve({stdout: "", stderr: ""});
             const runner = withLocalPokieInstall("/opt/pokie-checkout", base);
 
@@ -366,7 +401,7 @@ describe("withLinkedLocalPokieRuntime", () => {
 
         await expect(runner("npm", ["install", "--omit=dev"], runtimeDir)).resolves.toEqual({stdout: "", stderr: ""});
 
-        const linkedPokie = path.join(runtimeDir, "node_modules", "pokie");
+        const linkedPokie = path.join(runtimeDir, "node_modules", "@fromstan", "pokie");
         expect(fs.realpathSync(linkedPokie)).toBe(fs.realpathSync(REPO_ROOT));
         expect(base.calls).toEqual([]);
     });

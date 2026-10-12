@@ -11,7 +11,6 @@ import path from "node:path";
 import process from "node:process";
 import {fileURLToPath} from "node:url";
 import {PC20_EVIDENCE_DIRECTORY, validatePc20CandidatePreflight, validatePc20CandidateLifecycleReceipt, validatePc20CandidateReleaseGate, validatePc20RetainedReleaseGate} from "./pc-20-release-completion.mjs";
-import {runAuthorizedPc20Lifecycle} from "./pc-20-authorized-release-runner.mjs";
 import {P805_EVIDENCE_DIRECTORY, validateP805ProductReadinessCampaign} from "./p8-05-product-readiness-campaign.mjs";
 
 import {validateP805ReleaseHandoff} from "./p8-05-release-handoff.mjs";
@@ -123,7 +122,7 @@ export async function validateP805ReleaseGate(config, dependencies = {}) {
  */
 export async function validateP805ReleaseCompletion(config, dependencies = {}) {
     requiredConfig(config);
-    const services = {validateCampaign:validateP805ProductReadinessCampaign, validatePc20Lifecycle:validatePc20CandidateLifecycleReceipt, validateRetainedPc20Gate:validatePc20RetainedReleaseGate, runAuthorizedLifecycle:runAuthorizedPc20Lifecycle, readJson, exists:existsSync, writeFile, readFile, now:() => new Date().toISOString(), ...dependencies};
+    const services = {validateCampaign:validateP805ProductReadinessCampaign, validatePc20Lifecycle:validatePc20CandidateLifecycleReceipt, validateRetainedPc20Gate:validatePc20RetainedReleaseGate, readJson, exists:existsSync, writeFile, readFile, now:() => new Date().toISOString(), ...dependencies};
     const {closeout, pc20:pc20Config, receiptBinding} = await releaseCampaign(config, services);
     if (!sha(closeout.manifestSha256) || !iso(closeout.closedAt) || closeout.candidateId !== (receiptBinding.auditedCandidateId ?? config.candidateId) || closeout.candidatePackageSha256 !== config.candidatePackageSha256) fail("clean campaign closeout lacks its verified manifest or candidate binding");
     if (!sha(config.retainedP805GateReceiptSha256)) fail("completion requires a verifier-supplied digest for the retained P8-05 gate receipt");
@@ -153,10 +152,9 @@ export async function validateP805ReleaseCompletion(config, dependencies = {}) {
         return {...receipt, sha256:digest(existing.contents), evidenceIndex, reused:true};
     }
     if (services.exists(evidenceIndexPath(config.candidateId, config.outputDirectory))) fail("incomplete pre-existing completion evidence index");
-    let lifecycleConfig = pc20Config;
+    const lifecycleConfig = pc20Config;
     if (!lifecycleConfig.lifecycleReceiptSha256) {
-        await services.runAuthorizedLifecycle(lifecycleConfig, config.candidateId);
-        lifecycleConfig = {...lifecycleConfig, lifecycleReceiptSha256:digest(await services.readFile(lifecycleConfig.lifecycleReceiptPath))};
+        fail("public publication is disabled; completion requires an existing, independently bound historical lifecycle receipt");
     }
     const pc20 = await services.validatePc20Lifecycle(lifecycleConfig, value.pc20GateSha256);
     if (!pc20?.value || pc20.value.candidateId !== config.candidateId || pc20.value.candidatePackageSha256 !== config.candidatePackageSha256) fail("PC-20 final lifecycle receipt is not this release candidate");

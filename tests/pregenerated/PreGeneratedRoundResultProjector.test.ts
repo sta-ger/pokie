@@ -3,7 +3,7 @@ import {
     buildPreGeneratedRoundResult,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
-} from "pokie";
+} from "@fromstan/pokie";
 import {artifactWith} from "../weightedoutcome/WeightedOutcomeTestFixtures.js";
 
 describe("PreGeneratedRoundResultProjector", () => {

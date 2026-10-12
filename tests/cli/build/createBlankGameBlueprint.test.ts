@@ -1,4 +1,4 @@
-import {GameBlueprintValidator} from "pokie";
+import {GameBlueprintValidator} from "@fromstan/pokie";
 import {createBlankGameBlueprint} from "../../../cli/build/createBlankGameBlueprint.js";
 
 describe("createBlankGameBlueprint", () => {

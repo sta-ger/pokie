@@ -1,4 +1,4 @@
-import {GameBlueprint, ValidationIssue} from "pokie";
+import {GameBlueprint, ValidationIssue} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -87,7 +87,7 @@ describe("CLI workflow (integration): first-class random game generation", () =>
     });
 
     it("the randomly generated blueprint always passes GameBlueprintValidator with zero errors across many seeds", async () => {
-        const {GameBlueprintValidator, RandomGameBlueprintGenerator} = await import("pokie");
+        const {GameBlueprintValidator, RandomGameBlueprintGenerator} = await import("@fromstan/pokie");
         const generator = new RandomGameBlueprintGenerator();
         const validator = new GameBlueprintValidator();
 

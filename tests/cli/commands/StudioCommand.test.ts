@@ -1,4 +1,4 @@
-import {PokieDevServerAddress} from "pokie";
+import {PokieDevServerAddress} from "@fromstan/pokie";
 import path from "path";
 import {StudioCommand} from "../../../cli/commands/StudioCommand.js";
 import {StudioServerOptions} from "../../../cli/studio/StudioServerOptions.js";

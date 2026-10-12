@@ -1,4 +1,4 @@
-import {GameBlueprintValidator, RandomGameBlueprintGenerator, resolveReelStripGeneration, toCanonicalJson} from "pokie";
+import {GameBlueprintValidator, RandomGameBlueprintGenerator, resolveReelStripGeneration, toCanonicalJson} from "@fromstan/pokie";
 
 // RandomGameBlueprintGenerator.test.ts checks reproducibility, validator-cleanliness, and mechanic scope each in
 // isolation, on a handful of hand-picked seeds. This sweeps a bounded, fixed set of seeds and checks every one of

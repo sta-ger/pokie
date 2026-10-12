@@ -1,4 +1,4 @@
-import {InvalidJsonValueError, toCanonicalJson} from "pokie";
+import {InvalidJsonValueError, toCanonicalJson} from "@fromstan/pokie";
 
 describe("toCanonicalJson", () => {
     it("passes through primitives and null unchanged", () => {

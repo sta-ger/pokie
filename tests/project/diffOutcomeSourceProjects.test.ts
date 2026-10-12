@@ -9,7 +9,7 @@ import {
     PokieProject,
     PROJECT_TYPE_CAPABILITIES,
     ProjectTargetResolver,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 
 const blueprintProject: PokieProject = {

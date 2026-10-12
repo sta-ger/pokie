@@ -48,7 +48,7 @@ function resolvePackageRoot(
 // Walks the real, on-disk runtime dependency closure of the running POKIE installation at
 // `pokiePackageRoot` -- starting from its own package.json "dependencies" (never "devDependencies":
 // those were never installed for a `pokiePackageRoot` that isn't a dev checkout, e.g. a real end
-// user's "npm install -g pokie", so treating them as part of this closure would make materialization
+// user's "npm install -g @fromstan/pokie", so treating them as part of this closure would make materialization
 // depend on state that doesn't exist for a real installation) -- resolved via Node's own
 // require.resolve, the same algorithm Node itself uses when a materialized runtime's
 // "require(\"pokie\")" later loads this exact tree. This is what lets withLocalPokieInstall rewrite

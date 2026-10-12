@@ -31,7 +31,7 @@ import {
     STUDIO_OPERATION,
     WeightedOutcomeLibrary,
     WinEvaluationResult,
-} from "pokie";
+} from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import crypto from "crypto";
 import fs from "fs";

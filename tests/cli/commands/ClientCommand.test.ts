@@ -1,4 +1,4 @@
-import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions, PokieDevServerAddress} from "pokie";
+import {PokieClientServer, PokieClientServerHandling, PokieClientServerOptions, PokieDevServerAddress} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

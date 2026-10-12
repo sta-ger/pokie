@@ -28,7 +28,7 @@ import {
     SimulationAccumulator,
     loadPokieWasmFileRuntime,
     WeightedOutcomeRandomSource,
-} from "pokie";
+} from "@fromstan/pokie";
 import {CliCommandHandling} from "../CliCommandHandling.js";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {UnsupportedProjectOperationError} from "../materialize/UnsupportedProjectOperationError.js";

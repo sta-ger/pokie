@@ -1,4 +1,4 @@
-import {GameSessionHandling, StakeBasedSimulationRoundCategoryDeterminer} from "pokie";
+import {GameSessionHandling, StakeBasedSimulationRoundCategoryDeterminer} from "@fromstan/pokie";
 
 describe("StakeBasedSimulationRoundCategoryDeterminer", () => {
     test("does not support categorization for a session without getStakeAmount", () => {

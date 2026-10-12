@@ -13,7 +13,7 @@ import {
     type OutcomeSourceProjectReport,
     type PreGeneratedRoundReplayDescriptor,
     type SimulationReport,
-} from "pokie";
+} from "@fromstan/pokie";
 import {PokiePathResolver} from "../../cli/paths/PokiePathResolver.js";
 import type {RuntimePackageResolving} from "../../cli/materialize/materializeRuntimePackage.js";
 import {StudioBlueprintService} from "../../cli/studio/blueprint/StudioBlueprintService.js";
@@ -68,7 +68,7 @@ describe("P9-07 bounded mathematician workflow", () => {
     const loadGame = async (runtimeRoot: string) => {
         let loaded = runtimes.get(runtimeRoot);
         if (loaded === undefined) {
-            // Resolve the generated module's require("pokie") to candidate source
+            // Resolve the generated module's require("@fromstan/pokie") to candidate source
             // under Jest, as the existing production Node/WASM parity fixture does.
             loaded = await loadPokieGameRuntime(runtimeRoot, (entry) => require(entry));
             runtimes.set(runtimeRoot, loaded);

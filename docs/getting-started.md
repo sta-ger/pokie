@@ -5,14 +5,14 @@
 ## Install
 
 ```
-npm install pokie
+npm install @fromstan/pokie
 ```
 
 POKIE ships both ESM and CJS builds plus type declarations, so it works from `import` or `require` in JS or TS.
 
 ## Design and test in Studio
 
-Run `npx pokie` to open Home. Choose a starter, change its design, then **Create game** to save it and open
+Run `npx --package @fromstan/pokie pokie` to open Home. Choose a starter, change its design, then **Create game** to save it and open
 its workspace. **Overview** checks structural validity; **Play** runs real local rounds. **Simulation** estimates
 RTP, and **Build/Export** writes a local package or another supported artifact. Saving a design, preparing its
 runtime, validating the project, and building an artifact are separate results. The saved Blueprint remains
@@ -25,7 +25,7 @@ developer integration. See the [CLI reference](cli.md#pokie-projectroot) for lau
 ## Play a round
 
 ```ts
-import {VideoSlotSession} from "pokie";
+import {VideoSlotSession} from "@fromstan/pokie";
 
 const session = new VideoSlotSession(); // default 5x3 game, symbols A/K/Q/J/10/9, wild "W", scatter "S"
 

@@ -10,7 +10,7 @@ import {
     ProjectResolving,
     ProjectTargetResolver,
     ProjectTargetMalformedError,
-} from "pokie";
+} from "@fromstan/pokie";
 import {withLinkedLocalPokieRuntime} from "../prepare/PackageCommandRunner.js";
 import {BlueprintProjectMaterializer} from "./BlueprintProjectMaterializer.js";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
@@ -158,7 +158,7 @@ export type MaterializingRuntimePackageResolverDependencies = {
 //
 // `pokiePackageRoot` -- the running POKIE installation's own root directory (see cli/pokie.ts's
 // readOwnPackageRoot()) -- is what lets the default materializer's own "npm install" resolve its
-// generated "pokie" dependency against this exact installation (via withLocalPokieInstall) instead of a
+// generated "@fromstan/pokie" dependency against this exact installation (via withLocalPokieInstall) instead of a
 // registry, so a Blueprint materializes offline even when the running version has never been published.
 // Optional only so a caller that already supplies its own `materializer` (every test below) never has to
 // pass a real filesystem path it doesn't need; every real production call site (cli/pokie.ts,

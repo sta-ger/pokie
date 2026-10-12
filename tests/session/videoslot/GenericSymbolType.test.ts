@@ -5,7 +5,7 @@ import {
     SymbolsSequence,
     VideoSlotConfig,
     VideoSlotSession,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("GenericSymbolType", () => {
     test("VideoSlotSession works end-to-end with numeric symbol IDs, not just string", () => {

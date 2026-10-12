@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, StakeEngineImporter, StakeEngineRoundEventsProjector, WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "pokie";
+import {OutcomeLibraryBundleReader, OutcomeLibraryBundleWriter, StakeEngineImporter, StakeEngineRoundEventsProjector, WinEvaluationResult, buildRoundArtifact, buildWeightedOutcomeLibrary} from "@fromstan/pokie";
 import {BuildCommand} from "../../cli/commands/BuildCommand.js";
 import {ImportCommand} from "../../cli/commands/ImportCommand.js";
 import {OutcomeLibraryCommand} from "../../cli/commands/OutcomeLibraryCommand.js";

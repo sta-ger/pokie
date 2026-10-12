@@ -1,4 +1,4 @@
-import {ForbiddenAdjacencyConstraint, ReelStrip} from "pokie";
+import {ForbiddenAdjacencyConstraint, ReelStrip} from "@fromstan/pokie";
 
 describe("ForbiddenAdjacencyConstraint", () => {
     test("is silent when no forbidden pair sits next to each other", () => {

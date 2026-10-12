@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {atomicallyWriteExternalDeploymentArtifactsToDirectory} from "pokie";
+import {atomicallyWriteExternalDeploymentArtifactsToDirectory} from "@fromstan/pokie";
 
 function siblingLeftovers(outDir: string): string[] {
     const parentDir = path.dirname(outDir);

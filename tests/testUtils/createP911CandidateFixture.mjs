@@ -51,7 +51,7 @@ export async function commitP911ToolingDescendant(fixture) {
 export async function candidateFixture(directory) {
     const repository = path.join(directory, "repository"), pack = path.join(directory, "pack"), installationRoot = path.join(directory, "installation");
     await mkdir(repository); await mkdir(path.join(pack, "package"), {recursive:true});
-    const declaration = {name:"pokie", version:"1.3.0", type:"module", exports:{".":{import:"./dist/esm/index.js", require:"./dist/cjs/index.cjs"}, "./browser":"./dist/esm/browser.js", "./wasm":"./dist/esm/wasm.js", "./client/player":"./dist/cli/player.js"}, bin:{pokie:"./dist/cli/pokie.js"}};
+    const declaration = {name:"@fromstan/pokie", private:true, version:"1.3.0", type:"module", exports:{".":{import:"./dist/esm/index.js", require:"./dist/cjs/index.cjs"}, "./browser":"./dist/esm/browser.js", "./wasm":"./dist/esm/wasm.js", "./client/player":"./dist/cli/player.js"}, bin:{pokie:"./dist/cli/pokie.js"}};
     await json(path.join(repository, "package.json"), declaration);
     for (const file of P911_TOOLING_DESCENDANT_PATHS) {
         await mkdir(path.dirname(path.join(repository, file)), {recursive:true});
@@ -73,15 +73,15 @@ export async function candidateFixture(directory) {
     execFileSync("tar", ["-czf", archivePath, "-C", pack, "package"], {timeout:5000});
     const projection = await archiveExecutableManifest(await readFile(archivePath));
     await mkdir(path.join(installationRoot, "node_modules/.bin"), {recursive:true});
-    await cp(path.join(pack, "package"), path.join(installationRoot, "node_modules/pokie"), {recursive:true});
-    await symlink("../pokie/dist/cli/pokie.js", path.join(installationRoot, "node_modules/.bin/pokie"));
+    await cp(path.join(pack, "package"), path.join(installationRoot, "node_modules/@fromstan/pokie"), {recursive:true});
+    await symlink("../@fromstan/pokie/dist/cli/pokie.js", path.join(installationRoot, "node_modules/.bin/pokie"));
     const binding = {candidateId, candidateTreeId, archiveSha256:sha256(await readFile(archivePath)), executableSha256:projection.sha256, exitCode:0, resourcesDrained:true, issuer:"fixture-controller", receiptId:"fixture"};
     const buildPath = path.join(directory, "build.json"), installPath = path.join(directory, "install.json");
     const driverPath = path.join(directory, "fixture-driver.mjs");
     await writeFile(driverPath, "// Synthetic contract driver; never acceptance evidence.\n");
     await json(buildPath, {...binding, kind:"p9-11-normal-build-pack", buildCommand:"npm run build", packCommand:"npm pack --ignore-scripts", environment:{NODE_ENV:"production"}});
     await json(installPath, {...binding, kind:"p9-11-npm-install", command:"npm install <archive>", installationRoot});
-    const handoff = {schemaVersion:1, kind:"p9-11-candidate-handoff", campaignId:P911_CAMPAIGN, ...binding, packageName:"pokie", packageVersion:"1.3.0", archivePath, installationRoot,
+    const handoff = {schemaVersion:1, kind:"p9-11-candidate-handoff", campaignId:P911_CAMPAIGN, ...binding, packageName:"@fromstan/pokie", packageVersion:"1.3.0", archivePath, installationRoot,
         buildReceipt:{path:buildPath, sha256:sha256(await readFile(buildPath))}, installReceipt:{path:installPath, sha256:sha256(await readFile(installPath))},
         browserDriver:{path:driverPath, sha256:sha256(await readFile(driverPath))}};
     const handoffPath = path.join(directory, "handoff.json"); await json(handoffPath, handoff);

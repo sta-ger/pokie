@@ -47,7 +47,7 @@ async function fixture(options = {}) {
         }
         if (phase === "install") {
             await cp(path.join(candidate.handoff.installationRoot, "node_modules"), path.join(commandOptions.cwd, "node_modules"), {recursive:true, verbatimSymlinks:true});
-            if (options.staleInstallation) await writeFile(path.join(commandOptions.cwd, "node_modules/pokie/dist/esm/index.js"), "stale");
+            if (options.staleInstallation) await writeFile(path.join(commandOptions.cwd, "node_modules/@fromstan/pokie/dist/esm/index.js"), "stale");
         }
         return {...success, resourcesDrained:options.undrainedPhase !== phase, stdioClosed:options.openStdioPhase !== phase};
     };

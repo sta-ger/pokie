@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import type {GamePackageInspectionReport, PokieProject, WasmComponentManifestReadResult} from "pokie";
+import type {GamePackageInspectionReport, PokieProject, WasmComponentManifestReadResult} from "@fromstan/pokie";
 import {buildProjectGameModel, type GameModelSourceReaders} from "../../../../cli/studio/blueprint/buildProjectGameModel.js";
 import type {StudioBlueprintLoadView} from "../../../../cli/studio/blueprint/StudioBlueprintLoadView.js";
 

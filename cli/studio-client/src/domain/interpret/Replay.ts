@@ -444,7 +444,7 @@ function isFiniteNumber(value: unknown): value is number {
 // A defensive structural equality check over already-computed JSON-safe data (screen/wins/steps/
 // feature-events/debug/state) — never a second game-calculation path, purely a presentation-layer diff
 // of values the backend already produced. Mirrors RoundArtifactValidator's own private deepEqual (not
-// exported from "pokie"), including the same depth cap standing in for cycle detection.
+// exported from "@fromstan/pokie"), including the same depth cap standing in for cycle detection.
 function deepEqualJson(a: unknown, b: unknown, depth = 0): boolean {
     if (depth > 100) {
         return false;

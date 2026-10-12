@@ -17,7 +17,7 @@ import {
     ProjectMaterializationResult,
     ProjectMaterializing,
     type ProjectMaterializationOptions,
-} from "pokie";
+} from "@fromstan/pokie";
 import {BlueprintMaterializationError} from "./BlueprintMaterializationError.js";
 import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";
 import {RuntimePreparationCleanupError} from "./RuntimePreparationCleanupError.js";
@@ -77,7 +77,7 @@ type LockHolder = {readonly pid: number; readonly token?: string};
 // one produced by "pokie build" + "npm install" by hand.
 //
 // Cached, deterministically, by content: the cache key folds together the blueprint's own exact-content hash
-// (computeGameBlueprintHash — changes on any edit), the running "pokie" version (changes on an upgrade), and
+// (computeGameBlueprintHash — changes on any edit), the running "@fromstan/pokie" version (changes on an upgrade), and
 // the blueprint schema/build-contract version (GAME_BLUEPRINT_SCHEMA_VERSION — changes if the shape a build
 // understands ever changes), and the running installation identity (changes when an unpublished/local build is
 // replaced without a version bump) — so an unchanged blueprint against an unchanged "pokie" always resolves to the
@@ -271,7 +271,7 @@ export class BlueprintProjectMaterializer implements ProjectMaterializing {
                 // actually needed. Skipping them is also what makes this install genuinely offline end to end
                 // when composed with withLocalPokieInstall's own dependency-closure rewrite (see
                 // PackageCommandRunner.ts): a real running POKIE installation that isn't a dev checkout (e.g.
-                // "npm install -g pokie") never has its own devDependencies installed either, so there'd be
+                // "npm install -g @fromstan/pokie") never has its own devDependencies installed either, so there'd be
                 // nothing on disk for that mechanism to point "typescript" at anyway.
                 await this.runCommand("npm", ["install", "--omit=dev"], stagingDir, {signal});
                 return;

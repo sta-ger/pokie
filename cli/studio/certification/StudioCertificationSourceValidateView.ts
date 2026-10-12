@@ -1,4 +1,4 @@
-import type {ValidationIssue} from "pokie";
+import type {ValidationIssue} from "@fromstan/pokie";
 
 // The Certification tab's "Validate" step -- a preflight, opt-in-before-you-commit run of the exact
 // same deep bundle validation CertificationEvidenceBundleBuilder.buildFromBundle itself runs (and

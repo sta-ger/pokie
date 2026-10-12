@@ -1,4 +1,4 @@
-import {SymbolCountJackpotTrigger, NoJackpotTrigger} from "pokie";
+import {SymbolCountJackpotTrigger, NoJackpotTrigger} from "@fromstan/pokie";
 
 describe("SymbolCountJackpotTrigger", () => {
     it("triggers when the configured symbol reaches the configured minimum count", () => {

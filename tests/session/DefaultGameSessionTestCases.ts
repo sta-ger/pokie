@@ -1,4 +1,4 @@
-import {GameSessionConfig, GameSessionHandling, GameSessionConfigRepresenting} from "pokie";
+import {GameSessionConfig, GameSessionHandling, GameSessionConfigRepresenting} from "@fromstan/pokie";
 
 export const testDefaultSessionHasProperInitialValues = (
     session: GameSessionHandling,

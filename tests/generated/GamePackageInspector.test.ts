@@ -1,4 +1,4 @@
-import {GamePackageInspector} from "pokie";
+import {GamePackageInspector} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

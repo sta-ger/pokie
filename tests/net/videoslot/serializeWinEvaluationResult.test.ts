@@ -1,4 +1,4 @@
-import {SymbolsCombination, VideoSlotConfig, VideoSlotWinCalculator, serializeWinEvaluationResult} from "pokie";
+import {SymbolsCombination, VideoSlotConfig, VideoSlotWinCalculator, serializeWinEvaluationResult} from "@fromstan/pokie";
 
 function roundtripThroughJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value));

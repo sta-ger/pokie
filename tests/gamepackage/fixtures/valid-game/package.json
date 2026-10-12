@@ -3,5 +3,6 @@
     "version": "1.0.0",
     "pokie": {
         "entry": "./index.js"
-    }
+    },
+    "private": true
 }

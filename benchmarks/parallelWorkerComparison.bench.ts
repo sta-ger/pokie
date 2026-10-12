@@ -1,4 +1,4 @@
-import {loadPokieGame, ParallelSimulationRunner} from "pokie";
+import {loadPokieGame, ParallelSimulationRunner} from "@fromstan/pokie";
 import path from "path";
 import {TEST_WORKER_ENTRY_URL} from "../tests/simulation/parallel/testWorkerEntryUrl.js";
 import {formatBenchmarkLine, measureBenchmarkAsync} from "./support/measureBenchmark.js";

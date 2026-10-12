@@ -1,4 +1,4 @@
-import type {GameBlueprint} from "pokie";
+import type {GameBlueprint} from "@fromstan/pokie";
 
 export type WizardResult = {
     blueprint: GameBlueprint;

@@ -23,7 +23,7 @@ const pokieExamplesRoot = process.env.POKIE_EXAMPLES_PATH ?? path.join(configDir
 const pokieExamplesAvailable = existsSync(pokieExamplesRoot);
 
 // Integration/workflow/server/worker/filesystem-heavy test files that get their own slower
-// "pokie-integration" project instead of running in the default fast "pokie" lane. Kept as one
+// "pokie-integration" project instead of running in the default fast "@fromstan/pokie" lane. Kept as one
 // list (matched two ways: glob testMatch here, regex testPathIgnorePatterns below) so the fast
 // project's exclusions and the integration project's inclusions can't drift apart.
 const integrationTestMatch = [
@@ -122,10 +122,10 @@ const studioClientComponentsModuleNameMapper = {
     // services.  Resolve the package import to this checkout's source just as
     // the Node integration project does; no published package is installed in
     // an isolated clone.
-    "^pokie$": "<rootDir>/src/index.ts",
+    "^@fromstan/pokie$": "<rootDir>/src/index.ts",
     // Studio's common components now import cli/client/player directly (CanonicalPlayerView --
     // see its own doc comment) -- that module's own internal imports use real ".js" extensions
-    // (NodeNext-style, same convention as "pokie"/"pokie-examples" resolve via their own
+    // (NodeNext-style, same convention as "@fromstan/pokie"/"pokie-examples" resolve via their own
     // sourceTestModuleNameMapper/pokieExamplesModuleNameMapper above), so this project needs the
     // same stripping to resolve them under ts-jest.
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
@@ -141,9 +141,9 @@ const sourceTestTransform = {
 };
 
 const sourceTestModuleNameMapper = {
-    "^pokie$": "<rootDir>/src/index.ts",
-    "^pokie/browser$": "<rootDir>/src/browser.ts",
-    "^pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
+    "^@fromstan/pokie$": "<rootDir>/src/index.ts",
+    "^@fromstan/pokie/browser$": "<rootDir>/src/browser.ts",
+    "^@fromstan/pokie/wasm$": "<rootDir>/src/wasm/browser.ts",
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };
 
@@ -152,8 +152,12 @@ const sourceTestModuleNameMapper = {
 // own `roots` to have Jest discover them at all. This mapper is test-only TS source wiring; Vite
 // and TypeScript use the published `pokie/client/player` package export in production.
 const pokieExamplesModuleNameMapper = {
+    // External companion checkout retains its own identity until migrated by its owner.
+    // These legacy aliases are confined to that project; current consumers use native scoped exports.
     "^pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
     "^pokie$": "<rootDir>/src/index.ts",
+    "^@fromstan/pokie/client/player$": "<rootDir>/cli/client/player/index.ts",
+    "^@fromstan/pokie$": "<rootDir>/src/index.ts",
     "^(\\.\\.?\\/.+)\\.jsx?$": "$1",
 };
 
@@ -256,11 +260,11 @@ export default {
             cacheDirectory: jestCacheDirectory,
             testEnvironment: "jsdom",
             // jest-environment-jsdom defaults package "exports" resolution to the "browser" condition,
-            // which sends "pokie" -> src/index.ts's own exceljs dependency down to uuid's ESM browser
+            // which sends "@fromstan/pokie" -> src/index.ts's own exceljs dependency down to uuid's ESM browser
             // build (a real "Unexpected token export" parse failure, not related to anything under
             // test here) -- overriding back to jest-environment-node's own default ("node"/"node-addons")
-            // keeps this project's own DOM-heavy tests on jsdom while resolving "pokie"'s dependency
-            // tree the same CJS-friendly way the "pokie" project's (node-environment) tests already do.
+            // keeps this project's own DOM-heavy tests on jsdom while resolving "@fromstan/pokie"'s dependency
+            // tree the same CJS-friendly way the "@fromstan/pokie" project's (node-environment) tests already do.
             testEnvironmentOptions: {customExportConditions: ["node", "node-addons"]},
             moduleFileExtensions: ["ts", "js"],
             // Fall back to this repo's own (always-present) rootDir with a testMatch that can

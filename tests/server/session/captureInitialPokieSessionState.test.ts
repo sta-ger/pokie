@@ -1,4 +1,4 @@
-import {captureInitialPokieSessionState, GameSessionHandling, GameSessionSerializing} from "pokie";
+import {captureInitialPokieSessionState, GameSessionHandling, GameSessionSerializing} from "@fromstan/pokie";
 
 function createFakeSession(): GameSessionHandling {
     return {

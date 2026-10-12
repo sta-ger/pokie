@@ -4,7 +4,7 @@ import {
     StakeEngineOutcomeSourceReadResult,
     StakeEngineStandaloneAnalysisDiffer,
     StakeEngineStandaloneAnalyzer,
-} from "pokie";
+} from "@fromstan/pokie";
 import {formatBenchmarkLine, measureBenchmark} from "./support/measureBenchmark.js";
 
 // Same deterministically-generated (SeededRandomNumberGenerator) uint64-scale outcome-set shape as

@@ -21,7 +21,7 @@ import {
     VideoSlotWithFreeGamesSessionState,
     VideoSlotSessionSerializer,
     VideoSlotWithBetModesSession,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -385,7 +385,7 @@ describe("GamePackageGenerator", () => {
 
         expect(pkg.name).toBe("sample-slot");
         expect(pkg.version).toBe("0.1.0");
-        expect(pkg.dependencies).toEqual({pokie: "^1.3.0"});
+        expect(pkg.dependencies).toEqual({"@fromstan/pokie": "^1.3.0"});
         expect(pkg.pokie).toEqual({entry: "./dist/index.js"});
         expect(pkg.main).toBe("./dist/index.js");
         expect(pkg.exports).toBe("./dist/index.js");
@@ -462,7 +462,7 @@ describe("GamePackageGenerator", () => {
         const source = fs.readFileSync(path.join(result.projectRoot, "src", "index.ts"), "utf-8");
         const distIndexJs = fs.readFileSync(path.join(result.projectRoot, "dist", "index.js"), "utf-8");
 
-        expect(source).toContain('import type {GameBlueprint, PokieGameContext} from "pokie" with { "resolution-mode": "require" };');
+        expect(source).toContain('import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };');
         expect(source).toContain("const blueprint: GameBlueprint = ");
         expect(source).toContain("const sequences: unknown[] = [];");
         expect(source).toContain("module.exports = {");

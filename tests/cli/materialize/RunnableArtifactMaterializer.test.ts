@@ -6,7 +6,7 @@ import {
     ProjectMaterializing,
     PROJECT_TYPE_CAPABILITIES,
     SIM_OPERATION,
-} from "pokie";
+} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

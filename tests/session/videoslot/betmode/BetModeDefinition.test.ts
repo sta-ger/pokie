@@ -1,4 +1,4 @@
-import {BetModeDefinition} from "pokie";
+import {BetModeDefinition} from "@fromstan/pokie";
 
 describe("BetModeDefinition", () => {
     it("defaults to stakeMultiplier 1 and forcesFeatureEntry false", () => {

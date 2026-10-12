@@ -14,7 +14,7 @@ import {
     ValidationIssue,
     WeightedOutcomeLibraryGenerationCancelledError,
     WeightedOutcomeLibraryGenerationError,
-} from "pokie";
+} from "@fromstan/pokie";
 import {OutcomeLibraryCommand} from "../../../cli/commands/OutcomeLibraryCommand.js";
 
 const CONFIG_PATH = "/project/outcomelibrary-config.json";
@@ -568,7 +568,7 @@ describe("OutcomeLibraryCommand", () => {
                 fs.writeFileSync(path.join(packageRoot, "package.json"), "{}");
                 fs.writeFileSync(cacheFile, "initial cache");
                 fs.writeFileSync(dependencyFile, "module.exports = 1;");
-                fs.symlinkSync(runtimeRoot, path.join(packageRoot, "node_modules", "pokie"), "dir");
+                fs.symlinkSync(runtimeRoot, path.join(packageRoot, "node_modules", "@fromstan", "pokie"), "dir");
             };
             try {
                 preparePackage();

@@ -1,4 +1,4 @@
-import {loadPokieGame} from "pokie";
+import {loadPokieGame} from "@fromstan/pokie";
 import path from "path";
 import {InMemoryStudioSimulationRepository} from "../../../../cli/studio/simulation/InMemoryStudioSimulationRepository.js";
 import {StudioSimulationJobView} from "../../../../cli/studio/simulation/StudioSimulationJobView.js";

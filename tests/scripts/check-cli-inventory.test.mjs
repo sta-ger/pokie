@@ -150,7 +150,7 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
     const {directory, cli, coverage} = await fixture("", "The normal command is pokie build --target supported.\n");
     try {
         await mkdir(path.join(directory, "public-guides"));
-        await writeFile(path.join(directory, "public-guides/narrative.md"), "A stale example is npx pokie build --source-type rogue-source --target supported --mode base -x.\n");
+        await writeFile(path.join(directory, "public-guides/narrative.md"), "A stale example is npx --package @fromstan/pokie pokie build --source-type rogue-source --target supported --mode base -x.\n");
         const map = JSON.parse(await readFile(coverage, "utf8"));
         map.documentationScope.include.push("public-guides/*.md");
         await writeFile(coverage, JSON.stringify(map));

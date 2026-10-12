@@ -1,4 +1,4 @@
-import {GamePackageInspecting, loadPokieGame, OutcomeSourceProjectAnalyzing, PokieGamePackageValidating} from "pokie";
+import {GamePackageInspecting, loadPokieGame, OutcomeSourceProjectAnalyzing, PokieGamePackageValidating} from "@fromstan/pokie";
 import type {IncomingMessage} from "http";
 import type {RuntimePackageResolving} from "../materialize/materializeRuntimePackage.js";
 import {StudioArtifactBuildService} from "./artifacts/StudioArtifactBuildService.js";

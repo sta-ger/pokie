@@ -3,7 +3,7 @@ import type {TransactionalWalletPort} from "./TransactionalWalletPort.js";
 // A reusable Jest contract suite for a TransactionalWalletPort implementation (either a native one,
 // or a plain WalletPort wrapped in TransactionalWalletAdapter). Usage in a *.test.ts file:
 //
-//   import {transactionalWalletPortContractTests, TransactionalWalletAdapter} from "pokie";
+//   import {transactionalWalletPortContractTests, TransactionalWalletAdapter} from "@fromstan/pokie";
 //   transactionalWalletPortContractTests("MyWalletPort (adapted)", () => new TransactionalWalletAdapter(new MyWalletPort()));
 //
 // Each case establishes its own starting balance via setBalance() first, rather than assuming a

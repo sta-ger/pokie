@@ -1,4 +1,4 @@
-import {mergeSimulationBreakdowns, SimulationBreakdownComponent, summarizeSimulationBreakdown} from "pokie";
+import {mergeSimulationBreakdowns, SimulationBreakdownComponent, summarizeSimulationBreakdown} from "@fromstan/pokie";
 
 const component = (rounds: number, totalBet: number, totalWin: number, maxWin: number): SimulationBreakdownComponent => ({
     rounds,

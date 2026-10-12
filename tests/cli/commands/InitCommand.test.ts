@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "pokie";
+import {PokieGamePackageValidating, PokieGamePackageValidationReport} from "@fromstan/pokie";
 import {defaultDirectoryNeedsConfirmation, InitCommand} from "../../../cli/commands/InitCommand.js";
 import {GamePackagePreparationError} from "../../../cli/prepare/GamePackagePreparationError.js";
 import {PackageCommandResult, PackageCommandRunning, withLocalPokieInstall} from "../../../cli/prepare/PackageCommandRunner.js";
@@ -243,7 +243,7 @@ describe("InitCommand", () => {
 
         beforeEach(() => {
             projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-init-real-install-test-"));
-            fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "sample-slot", dependencies: {pokie: "^1.3.0"}}, null, 4));
+            fs.writeFileSync(path.join(projectRoot, "package.json"), JSON.stringify({name: "sample-slot", dependencies: {"@fromstan/pokie": "^1.3.0"}}, null, 4));
         });
 
         afterEach(() => {
@@ -265,10 +265,10 @@ describe("InitCommand", () => {
 
             expect(exitCode).toBe(0);
             expect(packageJsonDuringInstall).toHaveLength(1);
-            expect((JSON.parse(packageJsonDuringInstall[0]) as {dependencies: {pokie: string}}).dependencies.pokie).toBe("file:/opt/pokie-checkout");
+            expect((JSON.parse(packageJsonDuringInstall[0]) as {dependencies: {"@fromstan/pokie": string}}).dependencies["@fromstan/pokie"]).toBe("file:/opt/pokie-checkout");
 
-            const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {dependencies: {pokie: string}};
-            expect(persisted.dependencies.pokie).toBe("^1.3.0");
+            const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {dependencies: {"@fromstan/pokie": string}};
+            expect(persisted.dependencies["@fromstan/pokie"]).toBe("^1.3.0");
         });
 
         it("still restores the portable range even when 'npm install' itself fails, so a retried 'pokie init' re-derives the local override fresh rather than depending on a stale rewrite surviving the failure", async () => {
@@ -278,8 +278,8 @@ describe("InitCommand", () => {
 
             await expect(command.run([projectRoot])).rejects.toMatchObject({phase: "dependencies"});
 
-            const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {dependencies: {pokie: string}};
-            expect(persisted.dependencies.pokie).toBe("^1.3.0");
+            const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")) as {dependencies: {"@fromstan/pokie": string}};
+            expect(persisted.dependencies["@fromstan/pokie"]).toBe("^1.3.0");
         });
     });
 
@@ -449,7 +449,7 @@ describe("defaultDirectoryNeedsConfirmation", () => {
     });
 
     it("is true for an existing npm project that merely depends on pokie as a library, with no compatible pokie.entry", () => {
-        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({name: "my-game", dependencies: {pokie: "^1.3.0"}}));
+        fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({name: "my-game", dependencies: {"@fromstan/pokie": "^1.3.0"}}));
         expect(defaultDirectoryNeedsConfirmation(dir)).toBe(true);
     });
 
@@ -459,7 +459,7 @@ describe("defaultDirectoryNeedsConfirmation", () => {
             JSON.stringify({
                 name: "my-game",
                 main: "./dist/index.js",
-                dependencies: {pokie: "^1.3.0"},
+                dependencies: {"@fromstan/pokie": "^1.3.0"},
                 pokie: {entry: "./dist/index.js"},
             }),
         );

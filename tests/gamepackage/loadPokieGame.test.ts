@@ -1,4 +1,4 @@
-import {loadPokieGame, readPokiePackageConfig, releasePokieGame} from "pokie";
+import {loadPokieGame, readPokiePackageConfig, releasePokieGame} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
 import path from "path";

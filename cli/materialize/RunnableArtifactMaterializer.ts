@@ -7,7 +7,7 @@ import {
     ProjectMaterializationResult,
     ProjectMaterializing,
     type ProjectMaterializationOptions,
-} from "pokie";
+} from "@fromstan/pokie";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeArtifactInputBindingHash} from "../../src/project/ArtifactConversionPlanner.js";
 import {RuntimePreparationCancelledError} from "./RuntimePreparationCancelledError.js";

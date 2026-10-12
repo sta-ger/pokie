@@ -3,7 +3,7 @@ const {
     PC_12_FREE_GAMES_FIXTURE_ID,
     createPc12FreeGamesFixtureSession,
     VideoSlotWithFreeGamesSessionSerializer,
-} = require("pokie");
+} = require("@fromstan/pokie");
 
 // The Studio half of PC-12's browser runner. The examples fixture imports the same public factory,
 // so a featured round is one game contract and one seed rather than two coincidentally similar games.

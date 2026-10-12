@@ -10,7 +10,7 @@ import {
     SeededWeightedOutcomeRandomSource,
     WeightedOutcomeInput,
     WeightedOutcomeRandomSource,
-} from "pokie";
+} from "@fromstan/pokie";
 import {buildOutcomeLibraryBundleModeInput} from "./OutcomeLibraryBundleTestFixtures.js";
 
 // Always resolves to the first (lowest-cumulative-weight, canonical-id-order) entry — entry "0" in this

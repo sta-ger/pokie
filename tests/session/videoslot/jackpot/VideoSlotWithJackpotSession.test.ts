@@ -14,7 +14,7 @@ import {
     type StakeAmountDetermining,
     type VideoSlotSessionHandling,
     type VideoSlotWithJackpotSessionState,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // A scripted, fully-controllable VideoSlotSessionHandling double: play() advances through a fixed sequence
 // of grids, decrementing credits by the bet each round — mirroring real GameSessionHandling accounting

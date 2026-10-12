@@ -1,6 +1,6 @@
 import {cleanup, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {createLocalJsonExternalDeploymentTarget, STUDIO_OPERATION} from "pokie";
+import {createLocalJsonExternalDeploymentTarget, STUDIO_OPERATION} from "@fromstan/pokie";
 import fs from "fs";
 import http from "http";
 import os from "os";

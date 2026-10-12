@@ -1,17 +1,24 @@
-# POKIE
+# FromStan/POKIE
 
-[![npm version](https://img.shields.io/npm/v/pokie.svg)](https://www.npmjs.com/package/pokie)
-[![license](https://img.shields.io/npm/l/pokie.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/@fromstan/pokie.svg)](https://www.npmjs.com/package/@fromstan/pokie)
+[![license](https://img.shields.io/npm/l/@fromstan/pokie.svg)](LICENSE)
 
 _In Australia, they call slot machines "pokies"._
 
 Introducing **POKIE**, a server-side video slot game logic framework for JavaScript and TypeScript.
 For developers and game-math authors, with **Studio** for producers to design and test games locally.
-Start with `npx pokie`: edit a starter, **Create game** to save and open its workspace, check **Overview**,
+Start with `npx --package @fromstan/pokie pokie`: edit a starter, **Create game** to save and open its workspace, check **Overview**,
 then **Play** a round. Use the workspace’s **Build/Export** for a playable package or another local artifact.
 Structural validation and simulation do not establish certification; operator integration remains developer work.
 
-`npm install pokie`
+`npm install @fromstan/pokie`
+
+This is the planned scoped identity, not a claim of registry availability or scope ownership.
+For an unpublished candidate, install a controller-produced local archive (`npm install /path/to/fromstan-pokie.tgz`)
+or use a built local checkout (`npm install /path/to/pokie`). Then run the installed `pokie` binary.
+Repository/site targets are [fromstan/pokie](https://github.com/fromstan/pokie) and
+[pokie.fromstan.com](https://pokie.fromstan.com); account access and hosting are external prerequisites.
+The existing 1.3.0 version is candidate planning metadata; this campaign does not release it.
 
 > **⚠️ RNG:** default `PseudorandomNumberGenerator` uses `Math.random()` — not cryptographically secure.
 > `SecureRandomNumberGenerator` gives a stronger, production-like, security-sensitive RNG primitive built on
@@ -52,34 +59,34 @@ POKIE goes well beyond classic paylines:
 - **[Game packages](docs/game-packages.md)** — a `PokieGame`/`pokie.entry` npm package convention plus a
   `loadPokieGame` loader, so an external game can be loaded by a CLI, simulator, validator, or server without
   knowing about it in advance.
-- **[CLI](docs/cli.md)** — `npx pokie` opens global **POKIE Studio Home**; `npx pokie .` or `npx pokie <projectRoot>`
-  opens a project's Studio dashboard. Create a game with `npx pokie init <directory>` or design a Blueprint with
-  `npx pokie create <name>`; `npx pokie --help` lists every public
+- **[CLI](docs/cli.md)** — `npx --package @fromstan/pokie pokie` opens global **POKIE Studio Home**; `npx --package @fromstan/pokie pokie .` or `npx --package @fromstan/pokie pokie <projectRoot>`
+  opens a project's Studio dashboard. Create a game with `npx --package @fromstan/pokie pokie init <directory>` or design a Blueprint with
+  `npx --package @fromstan/pokie pokie create <name>`; `npx --package @fromstan/pokie pokie --help` lists every public
   workflow. Artifacts use one canonical command: `pokie build <project> --target <artifact>`
   (`blueprint`, `tsPackage`, `outcomeLibrary`, `stakeAdapter`, `parWorkbook`, or `wasm`), including standalone
-  Outcome Library and Stake descriptors for their matching targets. `npx pokie build <project.json> --target tsPackage --out <dir>` generates a working game
+  Outcome Library and Stake descriptors for their matching targets. `npx --package @fromstan/pokie pokie build <project.json> --target tsPackage --out <dir>` generates a working game
   package straight from a JSON `GameBlueprint` (reels, symbols, paylines, paytable, reel strips — literal, weighted,
   or build-time generated via `reelStripGeneration` and `ReelStripGenerator`), no compile step required (see
   [`examples/blueprints`](examples/blueprints)); `--dry-run` validates and previews a blueprint without writing
-  anything; `npx pokie create [name] --random` generates a structurally-valid `GameBlueprint` with no config file at
-  all — seeded/reproducible — ready to feed straight into `pokie build`; `npx pokie inspect
+  anything; `npx --package @fromstan/pokie pokie create [name] --random` generates a structurally-valid `GameBlueprint` with no config file at
+  all — seeded/reproducible — ready to feed straight into `pokie build`; `npx --package @fromstan/pokie pokie inspect
   <packageRoot>` identifies the project kind and available next actions without running it; it does not attest to a package's original Blueprint or build provenance;
-  `npx pokie create [name]` designs an editable Blueprint Project (a `GameBlueprint` JSON file) through an
-  interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead); `npx pokie
-  init [directory]` prepares an immediately valid game package in place, entirely non-interactively; `npx pokie
-  sim <project>` simulates a package, Blueprint, native Outcome Library or canonical WASM artifact and reports RTP/hit-frequency/max-win; `npx pokie
+  `npx --package @fromstan/pokie pokie create [name]` designs an editable Blueprint Project (a `GameBlueprint` JSON file) through an
+  interactive wizard when run in a terminal (`--blank`/`--random` write one non-interactively instead); `npx --package @fromstan/pokie pokie
+  init [directory]` prepares an immediately valid game package in place, entirely non-interactively; `npx --package @fromstan/pokie pokie
+  sim <project>` simulates a package, Blueprint, native Outcome Library or canonical WASM artifact and reports RTP/hit-frequency/max-win; `npx --package @fromstan/pokie pokie
   validate <project>` checks a game package, Blueprint JSON file, or outcome-library bundle without playing it
-  (`--deep` adds outcome checks only for outcome-library bundles); `npx pokie report <simulationReportJson>` renders a `pokie sim`
-  report (including reproducibility info, warnings, and recommendations) as JSON/Markdown/HTML; `npx pokie diff
+  (`--deep` adds outcome checks only for outcome-library bundles); `npx --package @fromstan/pokie pokie report <simulationReportJson>` renders a `pokie sim`
+  report (including reproducibility info, warnings, and recommendations) as JSON/Markdown/HTML; `npx --package @fromstan/pokie pokie diff
   <leftProjectOrReportJson> <rightProjectOrReportJson>` compares two `pokie sim` reports or two Outcome Library/
-  Stake Engine outcome sources (e.g. before/after a config change); `npx pokie replay <project>` replays by
+  Stake Engine outcome sources (e.g. before/after a config change); `npx --package @fromstan/pokie pokie replay <project>` replays by
   seed + round index (deterministic canonical WASM/native Outcome Library, best-effort package/Blueprint) as a JSON artifact;
   use the same explicit seed and round count to [compare WASM simulation and replay](docs/cli.md#wasm-quick-start).
-  `npx pokie serve <packageRoot>` starts a local/dev JSON
-  HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx pokie client
+  `npx --package @fromstan/pokie pokie serve <packageRoot>` starts a local/dev JSON
+  HTTP server over a package for creating sessions and spinning them, not a casino backend/RGS; `npx --package @fromstan/pokie pokie client
   <packageRoot>` serves the POKIE browser client for a running `pokie serve`; `npx
   pokie dev <packageRoot>` runs both together, opening a browser — all optionally as a JSON
-  file/machine-readable output; `npx pokie .` launches **POKIE Studio**, a
+  file/machine-readable output; `npx --package @fromstan/pokie pokie .` launches **POKIE Studio**, a
   local web app GUI for create/build/inspect/validate/sim/report/replay, opening a browser — its own Play tab
   drives a real game session entirely in-process, never a server; use `pokie serve`/`pokie dev` directly for that.
 
@@ -94,7 +101,7 @@ verifiable/seeded-RNG spin).
 Video slot game logic.
 
 ```js
-import {VideoSlotSession} from "pokie";
+import {VideoSlotSession} from "@fromstan/pokie";
 
 const session = new VideoSlotSession();
 
@@ -112,7 +119,7 @@ session.getWinningScatters(); // winning scatters data
 Running a certain number of game rounds and calculating RTP.
 
 ```js
-import {SimulationConfig, Simulation} from "pokie";
+import {SimulationConfig, Simulation} from "@fromstan/pokie";
 
 const simulationConfig = new SimulationConfig();
 simulationConfig.setNumberOfRounds(10000);
@@ -138,7 +145,7 @@ simulation.getAverageRtp(); // average RTP across all rounds played
 Capturing specific game features.
 
 ```js
-import {SimulationConfig, Simulation, PlayUntilSymbolWinStrategy} from "pokie";
+import {SimulationConfig, Simulation, PlayUntilSymbolWinStrategy} from "@fromstan/pokie";
 
 const simulationConfig = new SimulationConfig();
 simulationConfig.setNumberOfRounds(Infinity);
@@ -151,7 +158,7 @@ simulation.run(); // the simulation will be stopped on any winning combination w
 Running a large number of rounds without keeping every round in memory — just the running statistics.
 
 ```js
-import {AggregateSimulationRunner, VideoSlotSession} from "pokie";
+import {AggregateSimulationRunner, VideoSlotSession} from "@fromstan/pokie";
 
 const runner = new AggregateSimulationRunner(new VideoSlotSession(), 1_000_000);
 const stats = runner.run().getStatistics();
@@ -169,7 +176,7 @@ For a stronger, security-sensitive entropy source, POKIE also provides `SecureRa
 that real-money/regulated play still requires independent RNG certification and compliance work outside POKIE.
 
 ```js
-import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "pokie";
+import {SymbolsCombinationsGenerator, SeededRandomNumberGenerator, VideoSlotConfig} from "@fromstan/pokie";
 
 const config = new VideoSlotConfig();
 const generator = new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(12345));
@@ -182,32 +189,32 @@ generator.generateSymbolsCombination(); // same seed always reproduces the same 
 Start with the installed CLI's guidance and public version:
 
 ```
-npx pokie
-npx pokie --version
-npx pokie --help
+npx --package @fromstan/pokie pokie
+npx --package @fromstan/pokie pokie --version
+npx --package @fromstan/pokie pokie --help
 ```
 
 Turn a directory into a ready-to-run [game package](docs/game-packages.md) in place — merging into an existing npm
 project if there is one, scaffolding a fresh one if not:
 
 ```
-npx pokie init sample-slot
+npx --package @fromstan/pokie pokie init sample-slot
 cd sample-slot
-npx pokie validate .
+npx --package @fromstan/pokie pokie validate .
 ```
 
-To design an editable Blueprint Project instead, use `npx pokie create <name>` in an interactive terminal, or use
-`npx pokie create <name> --blank` / `npx pokie create <name> --random` non-interactively. Each command has its own
-complete grammar through `npx pokie <command> --help`.
+To design an editable Blueprint Project instead, use `npx --package @fromstan/pokie pokie create <name>` in an interactive terminal, or use
+`npx --package @fromstan/pokie pokie create <name> --blank` / `npx --package @fromstan/pokie pokie create <name> --random` non-interactively. Each command has its own
+complete grammar through `npx --package @fromstan/pokie pokie <command> --help`.
 
 Validate a package, Blueprint JSON file, or outcome-library bundle without playing it. It returns exit code 0 when
 valid and 1 otherwise; use `--format json` for CI-friendly JSON output. `--deep` applies only to outcome-library
 bundles:
 
 ```
-npx pokie validate .
-npx pokie validate game.blueprint.json
-npx pokie validate outcomes --deep
+npx --package @fromstan/pokie pokie validate .
+npx --package @fromstan/pokie pokie validate game.blueprint.json
+npx --package @fromstan/pokie pokie validate outcomes --deep
 ```
 
 See the [CLI docs](docs/cli.md) for what `pokie create`/`pokie init` generate, what `pokie sim`/`pokie validate`
@@ -217,7 +224,7 @@ report, and a
 Open an existing package or Blueprint in the local GUI:
 
 ```
-npx pokie .
+npx --package @fromstan/pokie pokie .
 ```
 
 **POKIE Studio** is a local web app covering Home (a guided Design Game flow for a new/random/

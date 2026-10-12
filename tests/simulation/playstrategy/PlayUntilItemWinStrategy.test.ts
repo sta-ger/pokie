@@ -6,7 +6,7 @@ import {
     VideoSlotSessionHandling,
     WinningScatter,
     WinningLine,
-} from "pokie";
+} from "@fromstan/pokie";
 
 describe("PlayUntilSymbolWinStrategy", () => {
     let linesForTest: Record<number, WinningLine>;

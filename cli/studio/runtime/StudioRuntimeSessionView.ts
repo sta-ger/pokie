@@ -1,4 +1,4 @@
-import type {PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "pokie";
+import type {PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "@fromstan/pokie";
 
 // Studio's own session response DTO for a played/drawn round — built by StudioPlayService directly off
 // a real, in-process PokieSessionState (see its own buildSessionView() doc comment): every public field

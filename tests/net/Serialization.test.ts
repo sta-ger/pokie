@@ -15,7 +15,7 @@ import {
     VideoSlotWithFreeGamesSession,
     VideoSlotWithFreeGamesConfig,
     VideoSlotWithFreeGamesSessionSerializer,
-} from "pokie";
+} from "@fromstan/pokie";
 
 // A JSON round trip drops functions, class prototypes, and `undefined` values — the same coercion
 // a real HTTP/JSON.stringify boundary applies. Comparing before/after with toEqual (not toBe)
