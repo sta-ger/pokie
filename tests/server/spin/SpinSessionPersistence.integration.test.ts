@@ -9,7 +9,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-describe("SpinCommandHandler persistence (real generated game + file repository)", () => {
+describe("SpinCommandHandler persistence (package-loaded games + file repository)", () => {
     const fixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game");
     const freeGamesFixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game-with-free-games");
     let directory: string;
@@ -82,6 +82,27 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         );
     });
 
+    it("keeps an unseeded default session live-only and rejects cache loss without mutation", async () => {
+        const game = await loadPokieGame(fixtureRoot);
+        const session = game.createSession();
+        const initial = captureInitialPokieSessionState(undefined, session, undefined, true, game);
+        expect(initial.executionState).toBe("live-only");
+        const repository = new FileSessionRepository(directory);
+        const wallet = new InMemoryWallet();
+        await repository.save("unseeded", initial);
+        await wallet.setBalance("unseeded", session.getCreditsAmount());
+        const live = new SpinCommandHandler(game, repository, wallet);
+        live.primeSession("unseeded", session, (await repository.loadVersioned("unseeded"))?.version);
+        expect((await live.handle("unseeded")).status).toBe("played");
+
+        const before = await repository.loadVersioned("unseeded");
+        const balance = await wallet.getBalance("unseeded");
+        const restored = new SpinCommandHandler(game, new FileSessionRepository(directory), wallet);
+        expect(await restored.handle("unseeded")).toMatchObject({status: "restoration-unsupported", sessionId: "unseeded"});
+        expect(await repository.loadVersioned("unseeded")).toEqual(before);
+        expect(await wallet.getBalance("unseeded")).toBe(balance);
+    });
+
     it("preserves a live free-games continuation and its nested base RNG across destruction and restore", async () => {
         const game = await loadPokieGame(freeGamesFixtureRoot);
         const continuousRepository = new FileSessionRepository(path.join(directory, "free-continuous"));
@@ -99,9 +120,11 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         for (let round = 0; round < 8; round++) await beforeRestart.handle("free-restored");
 
         const persisted = await restoredRepository.load("free-restored");
+        expect(persisted?.executionState).toBe("durably-restorable");
         expect(persisted?.featureState).toMatchObject({freeGamesNum: 0, freeGamesSum: 10, base: {rngState: expect.any(Number)}});
 
-        const afterRestart = new SpinCommandHandler(game, new FileSessionRepository(restoredDirectory), restoredWallet);
+        const restoredGame = await loadPokieGame(freeGamesFixtureRoot);
+        const afterRestart = new SpinCommandHandler(restoredGame, new FileSessionRepository(restoredDirectory), restoredWallet);
         const restoredNext = await afterRestart.handle("free-restored");
 
         expect({...restoredNext, sessionId: "free-continuous"}).toEqual(uninterruptedNext);
@@ -135,12 +158,21 @@ describe("SpinCommandHandler persistence (real generated game + file repository)
         }
         const alternatingResults: SpinCommandResult[] = [];
         const continuousResults: SpinCommandResult[] = [];
-        for (const handler of [handlerB, handlerA, handlerB, handlerA, handlerB]) {
+        // Continue through feature completion and the following paid round to cover both mode
+        // transitions, bank settlement and RNG continuity, rebuilding at each committed revision.
+        for (let round = 0; round < 11; round++) {
+            const handler = round % 2 === 0 ? handlerB : handlerA;
             continuousResults.push(await spinAtCommittedVersion(continuous, continuousRepository, "continuous"));
             alternatingResults.push(await spinAtCommittedVersion(handler, alternatingRepository, "alternating"));
         }
 
         expect(alternatingResults.map((result) => ({...result, sessionId: "continuous"}))).toEqual(continuousResults);
-        expect(alternatingResults.map((result) => result.status === "played" ? (result.state.featureState as {freeGamesNum?: unknown})?.freeGamesNum : undefined)).toEqual([1, 2, 3, 4, 5]);
+        expect(alternatingResults.slice(0, 10).map((result) => result.status === "played" ? (result.state.featureState as {freeGamesNum?: unknown})?.freeGamesNum : undefined)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        const paidRound = alternatingResults[10];
+        expect(paidRound.status).toBe("played");
+        if (paidRound.status !== "played") throw new Error("Expected a settled paid round after feature completion.");
+        expect(paidRound.state.featureState).toMatchObject({freeGamesNum: 0, freeGamesBank: 0});
+        expect(paidRound.credits).toBe(paidRound.previousState.credits! - paidRound.state.bet + paidRound.win);
+        expect(await alternatingRepository.load("alternating")).toEqual(await continuousRepository.load("continuous"));
     });
 });

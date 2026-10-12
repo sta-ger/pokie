@@ -1,5 +1,6 @@
 import {
     BuildableFromSessionState,
+    captureInitialPokieSessionState,
     ConvertableToSessionState,
     FileSessionRepository,
     GameBlueprint,
@@ -15,9 +16,13 @@ import {
     PokieSessionState,
     SessionRepository,
     SessionStateRestoring,
+    SeededRandomNumberGenerator,
     StakeAmountDetermining,
+    SymbolsCombinationsGenerator,
+    SymbolsSequence,
     VersionedSessionRepository,
     VideoSlotWithFreeGamesSession,
+    VideoSlotWithFreeGamesConfig,
     WalletPort,
 } from "@fromstan/pokie";
 import fs from "fs";
@@ -203,7 +208,11 @@ function createRealFreeGamesGame(
     return {
         getManifest: () => manifest,
         createSession() {
-            const session = new VideoSlotWithFreeGamesSession();
+            // Durable continuation requires an explicit seeded generator and reproducible model.
+            // Distinct symbols on each reel keep these wallet tests free of wins/scatter grants.
+            const config = new VideoSlotWithFreeGamesConfig();
+            config.setSymbolsSequences(["A", "K", "Q", "J", "10"].map((symbol) => new SymbolsSequence().fromArray([symbol])));
+            const session = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(42)));
             this.lastSession = session;
             return session;
         },
@@ -1056,14 +1065,30 @@ describe("PokieDevServer (sessionCapturePolicyMode: the versioned full/partial r
             await server.stop();
         });
 
-        it("returns the legacy record's own state verbatim under internal.stateAfter, with no capturePolicy/roundArtifact fields invented", async () => {
-            const {body} = await getJson(`${baseUrl}/sessions/${legacySessionId}?debug=1`);
+        it("rejects an unidentified legacy record without inventing compatibility, capture policy or artifacts", async () => {
+            const before = await sessionRepository.loadVersioned(legacySessionId);
+            for (const response of [await getJson(`${baseUrl}/sessions/${legacySessionId}?debug=1`), await postJson(`${baseUrl}/sessions/${legacySessionId}/spin?debug=1`)]) {
+                expect(response.status).toBe(409);
+                expect(response.body).toEqual({code: "incompatible-state", error: expect.stringContaining("no game/model/schema identity")});
+            }
+            expect(await sessionRepository.loadVersioned(legacySessionId)).toEqual(before);
+            expect(before?.state).toEqual(legacyState);
+        });
 
+        it("returns a compatible partial record verbatim without backfilling capturePolicy/roundArtifact", async () => {
+            const game = createFakeGame(manifest);
+            const state = captureInitialPokieSessionState(undefined, game.createSession(), undefined, true, game);
+            await sessionRepository.save(legacySessionId, state);
+            const before = await sessionRepository.loadVersioned(legacySessionId);
+            const {status, body} = await getJson(`${baseUrl}/sessions/${legacySessionId}?debug=1`);
+
+            expect(status).toBe(200);
             const stateAfter = (body.internal as Record<string, unknown>).stateAfter as Record<string, unknown>;
-            expect(stateAfter).toEqual(legacyState);
+            expect(stateAfter).toEqual(state);
             expect("capturePolicy" in stateAfter).toBe(false);
             expect("roundArtifact" in stateAfter).toBe(false);
             expect("roundArtifactUnavailableReason" in stateAfter).toBe(false);
+            expect(await sessionRepository.loadVersioned(legacySessionId)).toEqual(before);
         });
     });
 });
@@ -1600,7 +1625,7 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
         const addressA = await serverA.start();
         const baseUrlA = `http://${addressA.host}:${addressA.port}`;
 
-        const created = await postJson(`${baseUrlA}/sessions?debug=1`);
+        const created = await postJson(`${baseUrlA}/sessions?debug=1`, {seed: "version-continuation"});
         const sessionId = created.body.sessionId as string;
         expect((created.body.internal as Record<string, unknown>).sessionVersion).toBe(1);
 
@@ -1611,10 +1636,8 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
 
         // serverB is a separate PokieDevServer instance/FileSessionRepository object over the same
         // directory (simulating a restart) — the version must carry forward from disk, not reset.
-        // Credits are deliberately NOT part of PokieSessionState (see "Session storage & wallet" in
-        // docs/cli.md), so an explicit, pre-funded wallet is needed here for the sessionId to be able
-        // to spin again on serverB — a fresh default wallet would see 0 credits for it and block the
-        // spin, unrelated to what this test is actually checking (sessionVersion carrying forward).
+        // The record carries settled session credits, but an explicitly pre-funded wallet is still
+        // needed: the wallet remains authoritative and a fresh default wallet sees zero credits.
         const gameB = await loadPokieGame(fixtureRoot);
         const serverB = new PokieDevServer(gameB, {
             host: "127.0.0.1",
@@ -1635,7 +1658,7 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
         await serverB.stop();
     });
 
-    it("returns an explicit server error rather than treating a corrupted persisted session as missing", async () => {
+    it("returns the stable corrupt-state error without treating a corrupted persisted session as missing or rewriting it", async () => {
         const game = await loadPokieGame(fixtureRoot);
         const server = new PokieDevServer(game, {
             host: "127.0.0.1",
@@ -1651,10 +1674,11 @@ describe("PokieDevServer (integration, FileSessionRepository across a simulated 
         const [fileName] = fs.readdirSync(directory);
         fs.writeFileSync(path.join(directory, fileName), "{not valid json", "utf-8");
 
-        const {status, body} = await getJson(`${baseUrl}/sessions/${sessionId}`);
-
-        expect(status).toBe(500);
-        expect(typeof body.error).toBe("string");
+        for (const response of [await getJson(`${baseUrl}/sessions/${sessionId}`), await postJson(`${baseUrl}/sessions/${sessionId}/spin`)]) {
+            expect(response.status).toBe(409);
+            expect(response.body).toEqual({code: "corrupt-state", error: expect.any(String)});
+        }
+        expect(fs.readFileSync(path.join(directory, fileName), "utf-8")).toBe("{not valid json");
 
         await server.stop();
     });
