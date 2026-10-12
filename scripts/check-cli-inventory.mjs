@@ -306,6 +306,11 @@ async function configuredDocumentationFiles(coverage, root) {
 }
 
 function documentedCapabilities(contents, inventory) {
+    // Markdown permits an inline code span to wrap across prose lines. Keep that span
+    // intact before splitting lines, so a launcher prefix cannot leak into the preceding
+    // command and options on a continuation line still belong to their executable.
+    // Single-backtick boundaries exclude fenced blocks, whose newlines delimit commands.
+    contents = contents.replace(/(?<!`)`(?!`)([^`]+)`(?!`)/g, (span) => span.replace(/\s*\n\s*/g, " "));
     const capabilities = new Set();
     const nestedVerbs = new Set(inventory.commands.filter((command) => command.path.includes(" ")).map((command) => command.path));
     const rootCommands = new Set(inventory.rootCommands);
@@ -374,7 +379,7 @@ function documentedCapabilities(contents, inventory) {
         return command;
     };
     const addInvocations = (text, context = text) => {
-        const starts = [...text.matchAll(/(?<![\w-])(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])/g)];
+        const starts = [...text.matchAll(/(?<![\w/@-])(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])/g)];
         for (const [index, start] of starts.entries()) {
             const invocation = text.slice(start.index, starts[index + 1]?.index);
             const match = invocation.match(/^(?:npx\s+)?(?:pokie|Pokie)(?:\.js)?(?![a-z0-9-])(?:(\s+)([a-z][a-z0-9-]*))?([^\n]*)/);

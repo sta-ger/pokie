@@ -3,6 +3,8 @@ const {spawnSync} = process.getBuiltinModule("node:child_process");
 const {chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile} = process.getBuiltinModule("node:fs/promises");
 const os = process.getBuiltinModule("node:os");
 const path = process.getBuiltinModule("node:path");
+import {documentationCapabilities} from "../../scripts/check-cli-inventory.mjs";
+import {stageRuntimeLocation} from "../testUtils/stageRuntimeLocation.mjs";
 
 const root = process.cwd();
 const checker = path.join(root, "scripts/check-cli-inventory.mjs");
@@ -158,6 +160,36 @@ test("discovers narrative documentation and rejects command-scoped stale claims"
         assert.equal(result.status, 1);
         assert.match(result.stderr, /stale documented capability value:build:--source-type:rogue-source/);
         assert.match(result.stderr, /stale documented capability alias:build:-x/);
+    } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test("keeps multiline npm launcher options separate from the preceding CLI invocation", async () => {
+    const {directory, cli, coverage} = await fixture("", "`npx --package @fromstan/pokie pokie build\n <project>` uses a running `pokie build`; `npx --package @fromstan/pokie\n  pokie build --target supported` uses the local CLI.\n");
+    try {
+        const result = run(cli, coverage, path.join(directory, "evidence"));
+        assert.equal(result.status, 0, result.stderr);
+        const inventory = JSON.parse(await readFile(path.join(directory, "evidence/inventory.json"), "utf8"));
+        const map = JSON.parse(await readFile(coverage, "utf8"));
+        const claims = await documentationCapabilities(map, inventory, coverage);
+        assert.ok(claims.has("command:build"));
+        assert.ok(claims.has("option:build:--target"));
+        assert.ok(claims.has("value:build:--target:supported"));
+        assert.ok(!claims.has("option:build:--package"));
+        assert.ok(!claims.has("command:pokie"));
+
+        await writeFile(path.join(directory, "docs.md"), "```sh\nnpx --package @fromstan/pokie pokie build --target supported\nnpx --package=@fromstan/pokie pokie build --target obsolete\n```\n");
+        const fenced = run(cli, coverage, path.join(directory, "fenced"));
+        assert.equal(fenced.status, 1);
+        assert.match(fenced.stderr, /stale documented capability value:build:--target:obsolete/);
+        assert.doesNotMatch(fenced.stderr, /option:build:--package/);
+
+        // A launcher prefix must not hide a stale option on the actual binary, including
+        // on a continuation line inside the same inline code span.
+        await writeFile(path.join(directory, "docs.md"), "`npx --package @fromstan/pokie\n pokie build\n --package rogue --target obsolete`\n");
+        const rejected = run(cli, coverage, path.join(directory, "rejected"));
+        assert.equal(rejected.status, 1);
+        assert.match(rejected.stderr, /stale documented capability option:build:--package/);
+        assert.match(rejected.stderr, /stale documented capability value:build:--target:obsolete/);
     } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
@@ -410,6 +442,7 @@ test("checks the freshly built production CLI against the complete public docume
         runBuildStep([path.join(buildRoot, "generate-barrels.js")]);
         runBuildStep([tsc, "--project", "tsconfig.prod.json"]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/esm/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
+        stageRuntimeLocation(buildRoot, buildRoot, ["esm"]);
         // Several CLI command modules use their sibling compiled shared modules via `dist/src`.
         // The complete package build supplies that tree; mirror it from this isolated ESM build
         // before exercising the executable without pulling browser-asset compilation into help.
@@ -418,6 +451,13 @@ test("checks the freshly built production CLI against the complete public docume
         runBuildStep([path.join(buildRoot, "write-cjs-package-json.js")]);
         runBuildStep([shx, "cp", "src/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs", "dist/cjs/simulation/parallel/internal/resolveDefaultWorkerEntryUrl.mjs"]);
         runBuildStep([tsc, "--project", "tsconfig.cli.json"]);
+        stageRuntimeLocation(buildRoot, buildRoot, ["cjs", "src"]);
+        for (const tree of ["esm", "cjs", "src"]) {
+            assert.deepEqual(
+                await readFile(path.join(buildRoot, "dist", tree, "gamepackage/internal/runtimeLocation.mjs")),
+                await readFile(path.join(buildRoot, "src/gamepackage/internal/runtimeLocation.mjs")),
+            );
+        }
         for (const runId of ["first", "second"]) {
             const evidenceDirectory = path.join(directory, `evidence-${runId}`);
             const result = spawnSync(process.execPath, [
