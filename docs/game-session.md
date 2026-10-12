@@ -215,22 +215,27 @@ For repository sessions, `SpinCommandHandler` implements `RepositoryCommandHandl
 `RepositoryCommand` (the same command plus `sessionId`, optional `requestId` and `expectedVersion`) and returns
 `SpinCommandResult` after settlement and persistence. The positional `handle()` delegates to the same dispatcher and retains its legacy operational-error rejection behavior. `execute()` returns typed operational failures (`storage-error`, `settlement-error`, `execution-error`) after compensation; `handle()` rejects with the original exception object. Custom adapters can use `RuntimeCommandError` to retain a classified primary cause. Wallet
 settlement, queuing, idempotency, compensation and reconciliation stay in this adapter. `primeSession()` is an
-optimization: save a complete initial record first and pass its committed revision. An unversioned repository
+cache registration: save an initial record first and pass its committed revision. For a package without
+repository declarations, it also captures trusted live schema/command authority from that object. An unversioned repository
 cannot authorize reuse of a live-only cache; durable sessions reconstruct on every new command.
 The selected game's `getSessionStateSchema()` declares the codec before reconstruction. For example,
 `{kind: "seeded-video-slot"}` restores the built-in RNG and resolved reel strips; optional `reels` and
 `symbols` constrain the reconstructed model. Composed free-games/bet-mode schemas declare their nested
 `base`. A custom schema also requires `PokieGame.validateSessionState(state, context)`, and its session
 must capture and restore the complete model and executable state. Packages without a declaration can
-keep a primed live session but cannot promise durable reconstruction. Repository commands also require
-`getSessionCommandCapabilities(context)`, a nonmutating declaration of the selected model's supported
-`bets` and optional executable `modes`. It must resolve without constructing a session or consuming RNG.
-Persisted capabilities may restrict that declared set, but cannot add selections. Generated games and
-scaffolds supply this declaration; hand-authored packages supply it alongside their compatibility promise.
+keep a primed live session but cannot promise durable reconstruction. An unchanged
+`getManifest()`/`createSession()` package uses the primed object's captured supported bets, modes and schema
+as process-local authority. Serve and Studio Play/scenario searches use this same handler path. Such records
+remain `live-only`; losing the object returns `restoration-unsupported` before construction or recovery writes.
+For durable recovery or construction-free retries after live-state loss, declare
+`getSessionCommandCapabilities(context)`, the selected model's supported `bets` and optional executable
+`modes`. It must resolve without constructing a session or consuming RNG. Persisted capabilities may
+restrict the trusted set, but cannot add selections. Generated games and scaffolds supply these declarations;
+hand-authored packages opt into recovery alongside their compatibility promise.
 Direct constructors and `SessionRuntime` do not require these repository declarations. See [serialization](serialization.md).
 
 Syntactically valid retries validate the current record and the complete retained result before returning
-it. Already-computed retries can recover without a live executable object, including live-only sessions;
+it. With declared command authority, already-computed retries can recover without a live executable object, including live-only sessions;
 new rounds still require that object or complete durable state. Unsupported bet/mode selections reject
 before pending recovery writes. Schema matching applies to live-only records even when `featureState`
 is absent. A game explicitly supplies `validateLiveSessionState` to authorize partial state. Generated/scaffolded

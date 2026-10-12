@@ -550,7 +550,9 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
-        const rejected = validatePersistedSession(state, this.game);
+        const rejected = this.spinCommandHandler.validateStoredSession === undefined
+            ? validatePersistedSession(state, this.game)
+            : this.spinCommandHandler.validateStoredSession(sessionId, state);
         if (rejected !== undefined) {
             this.sendJson(res, 409, {code: rejected.status, error: rejected.reason});
             return;

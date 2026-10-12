@@ -1,3 +1,4 @@
+import {captureLiveSessionAuthority, type LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
 import {validateOperationRecord, validateRetryResult} from "../../runtime/internal/validateRecoveryData.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import {RuntimeCommandError, type RuntimeFailureCode} from "../../runtime/RuntimeCommandError.js";
@@ -156,7 +157,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     // A process-local executable object is valid only for the repository version it executed from.
     // Keeping that binding beside the object is what makes two handlers sharing one versioned store
     // converge instead of alternately replaying stale RNG/feature progress.
-    private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined; readonly record?: string}>();
+    private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined; readonly record?: string; readonly authority: LiveSessionAuthority}>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
@@ -228,14 +229,18 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         this.reconciliationService =
             legacyReconciliationService ??
             reconciliationService ??
-            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game);
+            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game, sessionId => this.liveSessions.get(sessionId)?.authority);
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
         this.pokieVersion = pokieVersion;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void {
-        this.liveSessions.set(sessionId, {session, committedVersion});
+        this.liveSessions.set(sessionId, {session, committedVersion, authority: captureLiveSessionAuthority(session)});
+    }
+
+    public validateStoredSession(sessionId: string, state: unknown): ReturnType<typeof validatePersistedSession> {
+        return validatePersistedSession(state, this.game, this.liveSessions.get(sessionId)?.authority);
     }
 
     // Observes the process-local session that the most recent successful command for this id actually
@@ -266,8 +271,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             if (pending === undefined) return this.reconciliationService.reconcileOne(sessionId, requestId);
             const {state} = await this.loadState(sessionId);
             const cached = await this.readRetryResult(sessionId, requestId);
-            const rejected = validatePersistedSession(state, this.game) ?? this.validatePendingState(pending, sessionId, requestId!) ??
-                (cached === undefined ? undefined : validateRetryResult(cached, this.game, sessionId, requestId));
+            const rejected = this.validateStoredSession(sessionId, state) ?? this.validatePendingState(pending, sessionId, requestId!) ??
+                (cached === undefined ? undefined : validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority));
             if (rejected !== undefined) return {status: "manual-recovery-required", sessionId, requestId,
                 reason: `${rejected.status}: ${rejected.reason}`, record: pending};
             return this.reconciliationService.reconcileOne(sessionId, requestId);
@@ -358,7 +363,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const {state, version} = loaded;
         if (version !== undefined && (!Number.isSafeInteger(version) || version < 0)) return {status: "corrupt-state", sessionId, reason: "Invalid repository revision."};
         if (state === undefined) return {status: "not-found", sessionId};
-        const rejected = validatePersistedSession(state, this.game);
+        const rejected = this.validateStoredSession(sessionId, state);
         if (rejected !== undefined) return {...rejected, sessionId};
 
         // Syntax and repository identity precede retry/recovery. A valid committed retry returns
@@ -366,13 +371,13 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         if (requestId !== undefined) {
             const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                const invalid = validateRetryResult(cached, this.game, sessionId, requestId);
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
                 if (invalid !== undefined) return {...invalid, sessionId};
                 return cloneSessionData(cached);
             }
         }
 
-        const capabilities = this.game.getSessionCommandCapabilities!(state.context);
+        const capabilities = this.game.getSessionCommandCapabilities?.(state.context) ?? this.liveSessions.get(sessionId)?.authority.capabilities;
         if ((bet !== undefined || mode !== undefined) && capabilities === undefined) return {status: "invalid-command", sessionId,
             reason: "Selected game must declare command capabilities before a selection can authorize recovery."};
         if (bet !== undefined && (!capabilities!.bets.includes(bet) || !state.commandCapabilities!.bets.includes(bet))) return {status: "invalid-command", sessionId,
@@ -511,7 +516,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     }
 
     private validatePendingState(record: SpinOperationRecord, sessionId: string, requestId: string): ReturnType<typeof validatePersistedSession> {
-        return validateOperationRecord(record, this.game, sessionId, requestId);
+        return validateOperationRecord(record, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
     }
 
     private async reconcilePendingAttempt(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
@@ -524,7 +529,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         if (rejected !== undefined) return {...rejected, sessionId};
         const outcome = await this.reconciliationService.reconcileOne(sessionId, requestId);
         if (outcome.status === "resumed") {
-            const invalid = validateRetryResult(outcome.result, this.game, sessionId, requestId);
+            const invalid = validateRetryResult(outcome.result, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
             return invalid === undefined ? outcome.result : {...invalid, sessionId};
         }
         if (outcome.status === "manual-recovery-required" || outcome.status === "deferred") {
@@ -537,7 +542,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             // spin.
             const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                const invalid = validateRetryResult(cached, this.game, sessionId, requestId);
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
                 return invalid === undefined ? cached : {...invalid, sessionId};
             }
         }
@@ -646,7 +651,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             newState.credits = newBalance;
-            const invalidState = validatePersistedSession(newState, this.game);
+            const invalidState = this.validateStoredSession(sessionId, newState);
             if (invalidState !== undefined) throw new Error(invalidState.reason);
             failureCode = "storage-error";
             await checkpoint({
@@ -700,7 +705,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
             // The cache advances only after every durable/checkpointed commit has succeeded.  A
             // second handler's later version is therefore never mistaken for this executable state.
-            this.liveSessions.set(sessionId, {session, committedVersion: newVersion, record: JSON.stringify(newState)});
+            this.liveSessions.set(sessionId, {session, committedVersion: newVersion, record: JSON.stringify(newState), authority: this.liveSessions.get(sessionId)?.authority ?? captureLiveSessionAuthority(session)});
 
             return cloneSessionData(result);
         } catch (error) {

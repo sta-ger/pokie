@@ -281,11 +281,15 @@ Custom schemas require the selected game's nonmutating `validateSessionState(sta
 validator rejects even if the record claims `{kind: "custom"}`. Records without identity are rejected as `incompatible-state`;
 this workflow does not migrate historical snapshots or silently reset them.
 `getSessionCommandCapabilities(context)` additionally declares the supported model selections without
-construction or RNG draws. Repository validation requires this authority, including for HTTP reads,
-cached results and direct reconciliation. Persisted capability lists may restrict the declared set but may
-never expand it; the current bet and captured mode must belong to those lists. Missing authority is
-`incompatible-state`; forged selections are `corrupt-state`. Initial creation and direct session callers
-retain their constructor defaults; a hand-authored repository game declares its existing bets/modes explicitly.
+construction or RNG draws. Repository validation uses this declaration or process-local authority
+captured from a trusted primed session, including for HTTP reads, cached results and direct reconciliation.
+Persisted capability lists may restrict the trusted set but may never expand it; the current bet and captured
+mode must belong to those lists. A record claiming durable recovery without declarations is `incompatible-state`;
+a live-only record without retained authority is `restoration-unsupported`. Forged selections are
+`corrupt-state`. Existing `getManifest()`/`createSession()` packages remain playable through their primed
+live session without adding methods. Initial capture marks them `live-only` when either declaration is
+absent; trusted live schema checks never authorize reconstruction. Initial creation and direct session
+callers retain their constructor defaults.
 
 Capture initial state with the game as the fifth argument to `captureInitialPokieSessionState`. The record
 owns the construction context (including numeric versus string seeds), resolved model identity, nominal bet,
@@ -334,8 +338,12 @@ nested base object. An absent built-in feature snapshot is corrupt. Custom state
 validator, including when absent. A game may explicitly provide `validateLiveSessionState(state, context)`
 for its partial snapshot; otherwise `validateSessionState` applies. Neither a partial snapshot nor a
 live-only marker authorizes reconstruction. Games without an executable codec can retain observable-only
-live records and construction-free completed retries, with declared command authority and structural
-snapshot checks. New rounds after loss of the live object remain unsupported.
+live records with schema and command authority captured from their trusted primed object, plus structural
+snapshot checks. A trusted built-in session with a complete codec still requires complete snapshot fields;
+only an unsupported live collaborator permits the built-in partial policy. With declared command authority,
+completed retries can also recover without the live
+object. Without that declaration, losing the object rejects retries as well as new rounds before recovery
+writes. New rounds after loss of unsupported live state remain unsupported.
 
 Versioned caches bind to both the committed revision and detached record bytes. Alternating handlers
 reconstruct after another writer advances the record. In-memory repositories and retry results detach

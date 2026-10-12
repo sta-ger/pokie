@@ -1,3 +1,4 @@
+import type {LiveSessionAuthority} from "./internal/LiveSessionAuthority.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
 import {sessionStateSchemasMatch} from "../session/SessionStateRestoring.js";
 import {validateExecutableState} from "./validateExecutableState.js";
@@ -5,7 +6,7 @@ import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieSessionState} from "../server/session/PokieSessionState.js";
 import {resolveGameSessionIdentity} from "./GameSessionIdentity.js";
 
-export function validatePersistedSession(value: unknown, game: PokieGame): {status: "incompatible-state" | "corrupt-state"; reason: string} | undefined {
+export function validatePersistedSession(value: unknown, game: PokieGame, live?: LiveSessionAuthority): {status: "incompatible-state" | "corrupt-state" | "restoration-unsupported"; reason: string} | undefined {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return {status: "corrupt-state", reason: "Session state must be an object."};
     const state = value as PokieSessionState;
     let expected: ReturnType<typeof resolveGameSessionIdentity>;
@@ -63,11 +64,17 @@ export function validatePersistedSession(value: unknown, game: PokieGame): {stat
             if (state.executionState === "durably-restorable") return {status: "incompatible-state", reason: "Selected game does not declare an authoritative executable state codec."};
             // Legacy packages with no executable codec retain observable live-only envelopes.
             // They cannot authorize reconstruction or selection from this metadata.
-            if (state.featureState !== undefined) validateExecutableState(state.featureState);
+            if (live !== undefined) {
+                if (!sessionStateSchemasMatch(live.schema, state.stateSchema)) throw new Error("Stored executable schema does not match the trusted live session.");
+                if (live.schema.kind !== "custom") validateExecutableState(state.featureState, live.schema, undefined, live.partial);
+                else if (state.featureState !== undefined) validateExecutableState(state.featureState);
+            } else if (state.featureState !== undefined) validateExecutableState(state.featureState);
             game.validateLiveSessionState?.(state.featureState, state.context);
         }
-        const authority = game.getSessionCommandCapabilities?.(state.context);
-        if (authority === undefined) return {status: "incompatible-state", reason: "Selected game does not declare authoritative command capabilities."};
+        const declared = game.getSessionCommandCapabilities?.(state.context);
+        if (declared === undefined && state.executionState === "durably-restorable") return {status: "incompatible-state", reason: "Selected game does not declare authoritative command capabilities."};
+        const authority = declared ?? live?.capabilities;
+        if (authority === undefined) return {status: "restoration-unsupported", reason: "Session requires trusted live command authority; its live executable state has been lost."};
         if (!supportsSelections(authority.bets, capabilities.bets) || !supportsSelections(authority.modes, capabilities.modes)) {
             throw new Error("Stored command capabilities do not match the selected game model.");
         }

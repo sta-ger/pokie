@@ -14,7 +14,8 @@ export interface PokieGame {
     getSessionStateSchema?(): SessionStateSchema;
 
     /** Nonmutating selected-model authority, resolved without creating a session or drawing RNG.
-     * Required for repository execution/recovery; persisted sessions may restrict these selections.
+     * Required for construction-free recovery; primed live sessions can supply trusted authority instead.
+     * Persisted sessions may restrict these selections.
      */
     getSessionCommandCapabilities?(context?: PokieGameContext): {readonly bets: readonly number[]; readonly modes?: readonly string[]};
 

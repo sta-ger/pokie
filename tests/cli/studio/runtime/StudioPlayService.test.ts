@@ -307,6 +307,44 @@ function createFakeNonVideoSlotGame(): PokieGame {
 }
 
 describe("StudioPlayService", () => {
+    it("plays and searches scenarios with an unchanged getManifest/createSession-only package", async () => {
+        const {session, getAttempts} = createControllableVideoSlotSession(attempt => attempt >= 3 ? "A" : undefined);
+        const game: PokieGame = {getManifest: () => manifest, createSession: () => session};
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Unchanged package creation failed");
+            const played = await service.spin(created.session.sessionId);
+            expect(played.status).toBe("ok");
+            const found = await service.findAnyWin(created.session.sessionId);
+            expect(found.status).toBe("ok");
+            if (found.status !== "ok") throw new Error("Unchanged package search failed");
+            expect(found.session.win).toBeGreaterThan(0);
+            expect(getAttempts()).toBe(3);
+            expect(await service.findSymbolWin(created.session.sessionId, "A")).toMatchObject({status: "ok"});
+        } finally {
+            service.reset();
+        }
+    });
+
+    it("finds free games with an unchanged getManifest/createSession-only package", async () => {
+        const {session, getAttempts} = createControllableFreeGamesSession(attempt => attempt >= 3 ? 3 : 0);
+        const game: PokieGame = {getManifest: () => manifest, createSession: () => session};
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Unchanged package creation failed");
+            const found = await service.findFreeGames(created.session.sessionId);
+            expect(found.status).toBe("ok");
+            if (found.status !== "ok") throw new Error("Unchanged package feature search failed");
+            expect(found.session.debug?.artifact?.featureEvents).toEqual([{type: "freeGamesTriggered", data: {count: 3}}]);
+            expect(getAttempts()).toBe(3);
+        } finally {
+            service.reset();
+        }
+    });
+
     it("creates a real, live session directly, with no server/host/port involved", async () => {
         const service = new StudioPlayService(fakeLoadVideoSlotGame());
 

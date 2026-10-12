@@ -36,7 +36,7 @@ export function captureInitialPokieSessionState(
         state.identity = resolveGameSessionIdentity(game);
         // Existing createSession packages can remain playable with a primed live object, but a
         // session-level codec alone cannot authorize reconstruction from an untrusted record.
-        if (game.getSessionStateSchema === undefined) state.executionState = "live-only";
+        if (game.getSessionStateSchema === undefined || game.getSessionCommandCapabilities === undefined) state.executionState = "live-only";
     }
 
     if (serializer !== undefined) {

@@ -4,6 +4,7 @@ import {
     ConvertableToSessionState,
     FileSessionRepository,
     GameBlueprint,
+    GameSession,
     GamePackageGenerator,
     GameSessionHandling,
     GameSessionSerializing,
@@ -251,6 +252,43 @@ async function getJson(url: string): Promise<{status: number; body: Record<strin
 }
 
 describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
+    it("creates, reads and spins an unchanged package, then refuses continuation after live-state loss", async () => {
+        const game: PokieGame = {getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const repository = new InMemorySessionRepository();
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
+        const address = await server.start();
+        const url = `http://${address.host}:${address.port}`;
+        let sessionId: string;
+        try {
+            const created = await postJson(`${url}/sessions`);
+            expect(created.status).toBe(201);
+            sessionId = created.body.sessionId as string;
+            expect((await getJson(`${url}/sessions/${sessionId}`)).status).toBe(200);
+            expect((await postJson(`${url}/sessions/${sessionId}/spin`, {bet: 2})).status).toBe(200);
+            const before = await repository.loadVersioned(sessionId);
+            const forged = {...before!.state, commandCapabilities: {bets: [1, 2, 999]}};
+            await repository.save(sessionId, forged);
+            expect(await getJson(`${url}/sessions/${sessionId}`)).toMatchObject({status: 409, body: {code: "corrupt-state"}});
+            expect(await postJson(`${url}/sessions/${sessionId}/spin`, {bet: 999})).toMatchObject({status: 409, body: {code: "corrupt-state"}});
+            await repository.save(sessionId, before!.state);
+        } finally {
+            await server.stop();
+        }
+        const restarted = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
+        const nextAddress = await restarted.start();
+        const construction = jest.spyOn(game, "createSession");
+        const before = await repository.loadVersioned(sessionId!);
+        try {
+            expect(await postJson(`http://${nextAddress.host}:${nextAddress.port}/sessions/${sessionId!}/spin`)).toMatchObject({status: 409, body: {code: "restoration-unsupported"}});
+            expect(await repository.loadVersioned(sessionId!)).toEqual(before);
+            expect(construction).not.toHaveBeenCalled();
+        } finally {
+            construction.mockRestore();
+            await restarted.stop();
+        }
+    });
+
     const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
     let game: PokieGame & {createdWith?: unknown};
     let server: PokieDevServer;

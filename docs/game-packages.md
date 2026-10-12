@@ -186,4 +186,12 @@ if (result.hasErrors()) {
 
 ## Headless runtime contract
 
-`PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing `createSession(context)` packages need no rewrite. When capturing a repository record, pass the selected game so its authoritative identity is recorded.
+`PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing packages exposing only `getManifest()` and `createSession(context)` need no rewrite for live
+Play: direct repository commands, serve and Studio capture command/schema authority from the trusted
+constructed object when it is primed. Save the initial record with the selected game and pass its committed
+revision to `primeSession()`; serve and Studio do this automatically. Those captures remain `live-only`
+even if the session itself has a complete codec. Persisted capability lists cannot supply authority.
+After live-state loss, new commands and undeclared-package retries return `restoration-unsupported`
+without constructing a replacement. Durable opt-in requires both `getSessionStateSchema()` and
+`getSessionCommandCapabilities(context)`, plus a complete session codec (and a validator for a custom schema).
+Declared command authority also permits validated completed live-only retries without constructing a session.

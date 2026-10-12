@@ -86,6 +86,137 @@ async function initialize(game: PokieGame, seed: string | number, repository: In
 }
 
 describe("V2C-02 canonical runtime contracts", () => {
+    it.each(["base", "video-slot"] as const)("plays an unchanged %s package using only trusted primed authority", async kind => {
+        const game: PokieGame = {
+            getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}),
+            createSession: () => kind === "base" ? new GameSession() : new VideoSlotSession(),
+        };
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const session = game.createSession(),
+            repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet();
+        const initial = captureInitialPokieSessionState(undefined, session, undefined, false, game);
+        expect(initial.executionState).toBe("live-only");
+        await repository.save("session", initial);
+        await wallet.setBalance("session", initial.credits!);
+        const runtime = new SpinCommandHandler(game, repository, wallet);
+        runtime.primeSession("session", session, 1);
+        const construction = jest.spyOn(game, "createSession");
+        expect(await runtime.execute({kind: "spin", sessionId: "session", bet: 2, requestId: "retry"})).toMatchObject({status: "played", state: {bet: 2, executionState: "live-only"}});
+        const settled = await repository.loadVersioned("session");
+        expect(await runtime.execute({kind: "spin", sessionId: "session", requestId: "retry"})).toMatchObject({status: "played", state: settled!.state});
+        expect(runtime.validateStoredSession("session", settled!.state)).toBeUndefined();
+        expect(await runtime.execute({kind: "spin", sessionId: "session", bet: 999})).toMatchObject({status: "invalid-command"});
+        expect(await repository.loadVersioned("session")).toEqual(settled);
+        const fresh = new SpinCommandHandler(game, repository, wallet);
+        const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit")];
+        expect(await fresh.execute({kind: "spin", sessionId: "session", requestId: "retry"})).toMatchObject({status: "restoration-unsupported"});
+        expect(await repository.loadVersioned("session")).toEqual(settled);
+        expect(construction).not.toHaveBeenCalled();
+        writes.forEach(spy => {
+            expect(spy).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
+        construction.mockRestore();
+    });
+
+    it("retains seeded nested math and rejects incomplete snapshots for an unchanged package", async () => {
+        const blueprint: GameBlueprint = {...fractionalBetBlueprint([0.05], true), scatters: ["B"],
+            mechanics: {freeGames: {scatterSymbol: "B", awardsByCount: {3: 2}}},
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 5, forcedFreeGames: 3}]};
+        const definition = authored(blueprint);
+        const game: PokieGame = {getManifest: definition.getManifest, createSession: definition.createSession};
+        const context = {seed: "0"},
+            session = game.createSession(context),
+            reference = new SessionRuntime(game.createSession(context));
+        const repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet();
+        const initial = captureInitialPokieSessionState(context, session, undefined, false, game);
+        expect(initial.executionState).toBe("live-only");
+        await repository.save("session", initial);
+        await wallet.setBalance("session", initial.credits!);
+        const runtime = new SpinCommandHandler(game, repository, wallet);
+        runtime.primeSession("session", session, 1);
+        for (let round = 0; round < 4; round++) {
+            const command = {kind: "spin" as const, ...(round === 0 ? {mode: "buy"} : {})};
+            const expected = reference.execute(command),
+                actual = await runtime.execute({...command, sessionId: "session"});
+            expect(actual.status).toBe("played");
+            if (expected.status !== "played" || actual.status !== "played") throw new Error("Unchanged nested package rejected");
+            expect({stake: actual.stake, win: actual.win, credits: actual.credits, mode: actual.mode}).toEqual({stake: expected.stake, win: expected.win, credits: expected.credits, mode: expected.mode});
+        }
+        const before = (await repository.loadVersioned("session"))!;
+        const malformed = structuredClone(before.state);
+        Reflect.deleteProperty(((malformed.featureState as {base: {base: object}}).base).base, "rngState");
+        Reflect.deleteProperty(((malformed.featureState as {base: {base: object}}).base).base, "reelStrips");
+        await repository.save("session", malformed);
+        const writes = [jest.spyOn(game, "createSession"), jest.spyOn(SeededRandomNumberGenerator.prototype, "getRandomInt"), jest.spyOn(wallet, "debit"), jest.spyOn(repository, "saveVersioned")];
+        expect(await runtime.execute({kind: "spin", sessionId: "session"})).toMatchObject({status: "corrupt-state"});
+        writes.forEach(spy => {
+            expect(spy).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
+    });
+
+    it.each(["current", "idempotent", "captured"] as const)("rejects forged unchanged-package %s state before recovery or publication", async location => {
+        for (const change of [
+            (state: PokieSessionState) => {
+                state.commandCapabilities = {bets: [1, 999]};
+            },
+            (state: PokieSessionState) => {
+                state.stateSchema = {kind: "custom"};
+                Reflect.deleteProperty(state, "featureState");
+            },
+            (state: PokieSessionState) => {
+                state.credits = -1;
+            },
+        ]) {
+            const game: PokieGame = {getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
+            const session = game.createSession() as GameSession,
+                repository = new InMemorySessionRepository(),
+                wallet = new InMemoryWallet(),
+                operations = new InMemorySpinOperationLog();
+            let idempotency = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const initial = captureInitialPokieSessionState(undefined, session, undefined, false, game);
+            await repository.save("session", initial);
+            await wallet.setBalance("session", initial.credits!);
+            const first = new SpinCommandHandler(game, repository, wallet, idempotency, operations);
+            first.primeSession("session", session, 1);
+            const result = await first.execute({kind: "spin", sessionId: "session", requestId: "retry"});
+            if (result.status !== "played") throw new Error("Unchanged package rejected");
+            if (location === "current") {
+                change(result.state);
+                await repository.save("session", result.state);
+            } else if (location === "idempotent") {
+                change(result.state);
+                await idempotency.save("session", "retry", result);
+            } else {
+                const record = (await operations.load("session", "retry"))!;
+                change(record.capturedResult!.newState);
+                await operations.record({...record, checkpoint: "settled", updatedAt: new Date(0).toISOString()});
+                idempotency = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            }
+            const runtime = new SpinCommandHandler(game, repository, wallet, idempotency, operations, true);
+            runtime.primeSession("session", session, (await repository.loadVersioned("session"))!.version);
+            const before = await repository.loadVersioned("session"),
+                retained = await operations.load("session", "retry"),
+                retry = await idempotency.load("session", "retry"),
+                executable = {state: session.toSessionState(), bet: session.getBet(), credits: session.getCreditsAmount()};
+            const spies = [jest.spyOn(game, "createSession"), jest.spyOn(session, "play"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"), jest.spyOn(repository, "saveVersioned"), jest.spyOn(repository, "save"), jest.spyOn(operations, "record"), jest.spyOn(operations, "delete"), jest.spyOn(idempotency, "save")];
+            expect(await runtime.execute({kind: "spin", sessionId: "session", requestId: "retry"})).toMatchObject({status: "corrupt-state"});
+            expect(await runtime.reconcileOne("session", "retry")).toMatchObject({status: "manual-recovery-required"});
+            expect(await runtime.getReconciliationService().reconcileOne("session", "retry")).toMatchObject({status: "manual-recovery-required"});
+            expect(await repository.loadVersioned("session")).toEqual(before);
+            expect(await operations.load("session", "retry")).toEqual(retained);
+            expect(await idempotency.load("session", "retry")).toEqual(retry);
+            expect({state: session.toSessionState(), bet: session.getBet(), credits: session.getCreditsAmount()}).toEqual(executable);
+            spies.forEach(spy => {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore();
+            });
+        }
+    });
+
     it.each([0.05, 7.5, 1e-7])("delegates generated CJS/TS and code-first fractional math at %s through one portable command", bet => {
         const blueprint = fractionalBetBlueprint([bet], true);
         const sessions = [generated(blueprint), generated(blueprint, true), authored(blueprint)].map(game => game.createSession({seed: "0"}) as VideoSlotSession);
@@ -293,7 +424,7 @@ describe("V2C-02 canonical runtime contracts", () => {
                 await repository.save("session", state);
             }
             const before = await repository.loadVersioned("session"),
-                executable = session.toSessionState();
+                executable = {state: session.toSessionState(), bet: session.getBet(), credits: session.getCreditsAmount()};
             const mutations = [jest.spyOn(game, "createSession"), jest.spyOn(SeededRandomNumberGenerator.prototype, "getRandomInt"), jest.spyOn(operationLog, "record"), jest.spyOn(operationLog, "delete"), jest.spyOn(operationLog, "tryClaimForReconciliation"), jest.spyOn(session, "play"), jest.spyOn(session, "setBet"), jest.spyOn(session, "setCreditsAmount"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"), jest.spyOn(repository, "save"), jest.spyOn(repository, "saveVersioned")];
             const submitted = row.command === undefined ? {kind: "spin", sessionId: "session", requestId: "pending"} : row.command;
             const command = typeof submitted === "object" && submitted !== null ? {requestId: "pending", ...submitted} : submitted;
@@ -304,7 +435,7 @@ describe("V2C-02 canonical runtime contracts", () => {
                 spy.mockRestore();
             });
             expect(await repository.loadVersioned("session")).toEqual(before);
-            expect(session.toSessionState()).toEqual(executable);
+            expect({state: session.toSessionState(), bet: session.getBet(), credits: session.getCreditsAmount()}).toEqual(executable);
         }
     });
 

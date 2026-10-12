@@ -1,3 +1,4 @@
+import type {LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import {validatePersistedSession} from "../../runtime/validatePersistedSession.js";
@@ -129,6 +130,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly leaseDurationMs: number;
     private readonly now: () => Date;
     private readonly game: PokieGame | undefined;
+    private readonly liveAuthority: ((sessionId: string) => LiveSessionAuthority | undefined) | undefined;
 
     constructor(
         wallet: TransactionalWalletPort,
@@ -144,8 +146,12 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
         now: () => Date = () => new Date(),
         game: PokieGame | undefined = undefined,
+        // An explicit adapter may supply authority retained from trusted live construction only.
+        // This never permits reconstruction and must not derive its values from stored records.
+        liveAuthority: ((sessionId: string) => LiveSessionAuthority | undefined) | undefined = undefined,
     ) {
         this.game = game;
+        this.liveAuthority = liveAuthority;
         this.wallet = wallet;
         this.sessionRepository = sessionRepository;
         this.idempotencyRepository = idempotencyRepository;
@@ -198,8 +204,9 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         if (game === undefined) return {status: "manual-recovery-required", sessionId, requestId, reason: "Reconciliation requires the selected game's authoritative codec.", record};
         const current = await this.sessionRepository.load(sessionId);
         const cached = await this.idempotencyRepository.load(sessionId, requestId);
-        const invalid = validatePersistedSession(current, game) ?? validateOperationRecord(record, game, sessionId, requestId) ??
-            (cached === undefined ? undefined : validateRetryResult(cached, game, sessionId, requestId));
+        const live = this.liveAuthority?.(sessionId);
+        const invalid = validatePersistedSession(current, game, live) ?? validateOperationRecord(record, game, sessionId, requestId, live) ??
+            (cached === undefined ? undefined : validateRetryResult(cached, game, sessionId, requestId, live));
         if (invalid !== undefined) return {status: "manual-recovery-required", sessionId, requestId, reason: invalid.reason, record};
 
         switch (record.checkpoint) {
