@@ -13,7 +13,7 @@ module.exports = {
         return {id: PC_12_FREE_GAMES_FIXTURE_ID, name: "PC-12 Deterministic Free Games Fixture", version: "1.0.0"};
     },
     getSessionCommandCapabilities() {
-        return {bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]};
+        return {bets: [5, 10]};
     },
     getSessionStateSchema() {
         return {kind: "free-games", base: {kind: "seeded-video-slot"}};

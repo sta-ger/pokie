@@ -5,6 +5,9 @@ import {FileSessionRepository} from "../../../src/server/session/FileSessionRepo
 import {SpinCommandHandler} from "../../../src/server/spin/SpinCommandHandler.js";
 import type {SpinCommandResult} from "../../../src/server/spin/SpinCommandResult.js";
 import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
+import {InMemoryIdempotencyRepository} from "../../../src/server/idempotency/InMemoryIdempotencyRepository.js";
+import {InMemorySpinOperationLog} from "../../../src/server/spin/InMemorySpinOperationLog.js";
+import {SpinReconciliationService} from "../../../src/server/spin/SpinReconciliationService.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -145,6 +148,48 @@ describe("SpinCommandHandler persistence (package-loaded games + file repository
         await expect(new FileSessionRepository(restoredDirectory).load("free-restored")).resolves.toEqual(
             await continuousRepository.load("free-continuous"),
         );
+    });
+
+    it("rejects forged fixed-fixture stakes before started-operation recovery or cached publication", async () => {
+        const game = await loadPokieGame(freeGamesFixtureRoot);
+        const session = game.createSession();
+        const repository = new FileSessionRepository(directory);
+        const wallet = new InMemoryWallet();
+        const idempotency = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        const operations = new InMemorySpinOperationLog();
+        const initial = captureInitialPokieSessionState(undefined, session, undefined, true, game);
+        await repository.save("forged", initial);
+        await wallet.setBalance("forged", initial.credits!);
+        const live = new SpinCommandHandler(game, repository, wallet, idempotency, operations);
+        live.primeSession("forged", session, (await repository.loadVersioned("forged"))!.version);
+        const result = await live.handle("forged", "retained");
+        if (result.status !== "played") throw new Error("Expected a settled fixture round.");
+        const operation = (await operations.load("forged", "retained"))!;
+        await operations.record({...operation, checkpoint: "started", capturedResult: undefined, updatedAt: new Date(0).toISOString()});
+        // Bet 1 belongs to the library defaults, but not this fixture's selected model.
+        result.state.commandCapabilities = {bets: [...result.state.commandCapabilities!.bets, 1]};
+        await repository.save("forged", result.state);
+        const before = await repository.loadVersioned("forged");
+        const retained = await operations.load("forged", "retained");
+        const retry = await idempotency.load("forged", "retained");
+        const balance = await wallet.getBalance("forged");
+        const spies = [jest.spyOn(game, "createSession"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"),
+            jest.spyOn(repository, "save"), jest.spyOn(repository, "saveVersioned"), jest.spyOn(operations, "delete"),
+            jest.spyOn(operations, "record"), jest.spyOn(idempotency, "save")];
+        try {
+            const fresh = new SpinCommandHandler(game, repository, wallet, idempotency, operations, true);
+            expect(await fresh.execute({kind: "spin", sessionId: "forged", requestId: "retained", bet: 1})).toMatchObject({status: "corrupt-state"});
+            expect(await fresh.reconcileOne("forged", "retained")).toMatchObject({status: "manual-recovery-required"});
+            const direct = new SpinReconciliationService(wallet, repository, idempotency, operations, true, false, 0, undefined, undefined, game);
+            expect(await direct.reconcileOne("forged", "retained")).toMatchObject({status: "manual-recovery-required"});
+            expect(await repository.loadVersioned("forged")).toEqual(before);
+            expect(await operations.load("forged", "retained")).toEqual(retained);
+            expect(await idempotency.load("forged", "retained")).toEqual(retry);
+            expect(await wallet.getBalance("forged")).toBe(balance);
+            spies.forEach(spy => expect(spy).not.toHaveBeenCalled());
+        } finally {
+            spies.forEach(spy => spy.mockRestore());
+        }
     });
 
     it("reconstructs durable executable state when two handlers alternate committed versions", async () => {
