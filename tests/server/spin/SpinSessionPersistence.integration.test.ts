@@ -8,11 +8,25 @@ import {InMemoryWallet} from "../../../src/server/wallet/InMemoryWallet.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import {ensureCompiledTestOutput} from "../../testUtils/ensureCompiledTestOutput.js";
 
 describe("SpinCommandHandler persistence (package-loaded games + file repository)", () => {
     const fixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game");
     const freeGamesFixtureRoot = path.join(__dirname, "..", "..", "cli", "fixtures", "playable-game-with-free-games");
     let directory: string;
+
+    beforeAll(() => {
+        // loadPokieGame uses the installed runtime in these CommonJS fixture packages.
+        // Exercise this candidate's compiled codec even when another test left dist behind.
+        const repositoryRoot = path.resolve(__dirname, "..", "..", "..");
+        ensureCompiledTestOutput({
+            repositoryRoot,
+            outputPaths: [path.join(repositoryRoot, "dist", "cjs", "index.js")],
+            lockName: "compiled-runtime",
+            command: ["npm", "run", "build-test-runtime"],
+            forceRebuild: true,
+        });
+    }, 300000);
 
     beforeEach(() => {
         directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-spin-continuation-"));

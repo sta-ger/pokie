@@ -76,6 +76,18 @@ class Pc12FreeGamesConfig extends VideoSlotWithFreeGamesConfig {
         this.freeGamesMode = value;
     }
 
+    public override isResolvedForSessionRestoration(): boolean {
+        // This factory accepts no model collaborators. Its only changing model view is
+        // freeGamesMode, rebuilt by the session codec from captured feature progress.
+        // Certify the exact fixed strategies rather than opting config subclasses in.
+        return this.constructor === Pc12FreeGamesConfig &&
+            this.getPaytable().constructor === Paytable &&
+            this.getLinesDefinitions().constructor === LinesDefinitionsFor5x3 &&
+            this.normalPatterns.constructor === LeftToRightLinesPatterns &&
+            this.freeGamesPatterns.constructor === ScatteredLinesPatterns &&
+            [...this.normalSequences, ...this.freeGamesSequences].every(strip => strip.constructor === SymbolsSequence);
+    }
+
     public isFreeGamesMode(): boolean {
         return this.freeGamesMode;
     }
@@ -102,7 +114,7 @@ class Pc12FreeGamesSession extends VideoSlotWithFreeGamesSession {
     public override isSessionStateRestorable(): boolean {
         // This exact extension adds only the configuration view rebuilt by fromSessionState.
         // Retain the nested codec check and do not opt unknown subclasses into restoration.
-        return this.constructor === Pc12FreeGamesSession && isSessionStateRestorable(this.baseSession);
+        return this.constructor === Pc12FreeGamesSession && this.fixtureConfig.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession);
     }
 
     public override fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
@@ -126,7 +138,7 @@ class Pc12FreeGamesWinCalculator extends VideoSlotWinCalculator {
     public override isStatelessForSessionRestoration(): boolean {
         // The constructor installs only the standard evaluators. Multiplied wins are output
         // caches replaced on each calculation; the mode is derived from restored feature progress.
-        return this.constructor === Pc12FreeGamesWinCalculator;
+        return this.constructor === Pc12FreeGamesWinCalculator && this.fixtureConfig.isResolvedForSessionRestoration();
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing): void {
