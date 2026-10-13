@@ -60,7 +60,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
 
     public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
         const projection = resolveScreenProjection(this);
-        return projection ? new SymbolsCombination<T>().fromMatrix(projection.project(this.symbolsCombination.toMatrix(), "visible")) : this.symbolsCombination;
+        return projection ? new SymbolsCombination<T>().fromMatrix(projection.project(this.symbolsCombination.toMatrix(), "visible")).withCoordinates(projection.getGeometry(), "visible") : this.symbolsCombination;
     }
 
     public getEvaluatedSymbolsCombination(): SymbolsCombinationDescribing<T> {

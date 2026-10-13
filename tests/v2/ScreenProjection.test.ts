@@ -214,10 +214,25 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getScreenGeometry()).toEqual(overscanGeometry);
     });
 
+    it("keeps a decorator's own symbol overlay in ordinary visible and evaluated grids", () => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        const base = new VideoSlotSession(config, {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"]))});
+        const decorated = new VideoSlotWithHoldAndWinSession(base);
+        decorated.setHoldAndWinActive(true);
+        decorated.setLockedHoldAndWinSymbols([{position: [0, 0], symbolId: "A", effect: {kind: "value", amount: 10}}]);
+        expect(decorated.getVisibleSymbolsCombination().toMatrix()).toEqual(decorated.getSymbolsCombination().toMatrix());
+        expect(decorated.getEvaluatedSymbolsCombination().toMatrix()).toEqual(decorated.getSymbolsCombination().toMatrix());
+        expect(new VideoSlotSessionSerializer().getRoundData(decorated).reelsSymbols[0][0]).toBe("A");
+    });
+
     it("presents viewport-local highlights while retaining immutable generated/evaluated artifact evidence", () => {
         const session = fixedSession();
         session.play();
         const serializer = new VideoSlotSessionSerializer();
+        expect(session.getVisibleSymbolsCombination().getCoordinateSpace?.()).toBe("visible");
+        expect(session.getVisibleSymbolsCombination().getScreenGeometry?.()).toEqual(overscanGeometry);
+        expect(() => new WinEvaluationContext(1, session.getVisibleSymbolsCombination(), overscanConfig())).toThrow(/visible screen/);
         const initial = serializer.getInitialData(session);
         expect(initial.reelsSymbols).toEqual(Array.from({length: 5}, () => ["W", "B", "B"]));
         expect(initial.reelsSymbolsNumber).toBe(3);

@@ -34,14 +34,13 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
-        if (this.baseSession.getVisibleSymbolsCombination) return this.baseSession.getVisibleSymbolsCombination();
         const geometry = this.getScreenGeometry();
         const generated = this.getSymbolsCombination();
-        return geometry ? new SymbolsCombination<T>().fromMatrix(new ScreenProjection(geometry).project(generated.toMatrix(), "visible")) : generated;
+        return geometry ? new SymbolsCombination<T>().fromMatrix(new ScreenProjection(geometry).project(generated.toMatrix(), "visible")).withCoordinates(geometry, "visible") : generated;
     }
 
     public getEvaluatedSymbolsCombination(): SymbolsCombinationDescribing<T> {
-        return this.baseSession.getEvaluatedSymbolsCombination?.() ?? projectEvaluationSymbols(this.getSymbolsCombination());
+        return projectEvaluationSymbols(this.getSymbolsCombination(), this);
     }
 
     public getPaytable(): PaytableRepresenting<T> {
