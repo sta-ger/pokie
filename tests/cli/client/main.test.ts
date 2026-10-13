@@ -207,6 +207,37 @@ describe("Player session boot", () => {
         expect(calls[2].requestId).not.toBe(calls[0].requestId);
     });
 
+    it("keeps the original composite intent and displays its committed prefix after successor failure", async () => {
+        const calls: Record<string, unknown>[] = [];
+        let failure = true;
+        window.fetch = jest.fn((url: string, init?: {body?: string}) => {
+            if (url === "/config") return Promise.resolve(response({apiBaseUrl: "http://api.test"}));
+            if (url.endsWith("/spin")) {
+                const intent = JSON.parse(init!.body!) as Record<string, unknown>;
+                calls.push(intent);
+                if (failure) return Promise.resolve({ok: false, status: 503, json: () => Promise.resolve({code: "execution-error", error: "Successor failed", retryDisposition: "safe-to-retry",
+                    committedProgress: {roundId: intent.roundId, cursor: 1, requestId: intent.requestId},
+                    committedSession: {...session("stable-session"), credits: 999, logicalRoundDeliverySupported: true, logicalRound: {roundId: intent.roundId, cursor: 1, status: "pending"}}})});
+            }
+            return Promise.resolve(response({...session("stable-session"), logicalRoundDeliverySupported: true}));
+        }) as unknown as typeof window.fetch;
+        await import("../../../cli/client/main.js");
+        await flushPromises();
+        await flushPromises();
+        const spinButton = document.getElementById("spin-button") as HTMLButtonElement;
+        spinButton.click();
+        await flushPromises();
+        await flushPromises();
+        expect(spinButton.disabled).toBe(true);
+        expect(document.getElementById("raw-json")?.textContent).toContain('"pending"');
+        expect(window.localStorage.getItem("pokie.player.pendingRound:http://api.test:stable-session")).not.toBeNull();
+        failure = false;
+        (document.getElementById("spin-retry-button") as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+        expect(calls[1]).toEqual(calls[0]);
+    });
+
     it("restores a pending round after reload and keeps its captured selection", async () => {
         const pending = {requestId: "retained", bet: 0.05, mode: "base"};
         window.localStorage.setItem("pokie:sessionId", "stable-session");

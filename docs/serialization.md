@@ -400,3 +400,33 @@ recovered accounting is validated before publication. A pending remote round ret
 original snapshot and prevents intervening session advancement. See
 [external reconciliation](game-session.md#durable-external-wallet-reconciliation); plain file
 replacement or an in-memory idempotency map does not confer these guarantees.
+
+### Logical-round delivery
+
+POST `/sessions/:id/spin` and Studio POST
+`/api/project/play/sessions/:id/spin` accept `delivery`, `roundId`,
+`continuation: {roundId, cursor}`, `maxSubrounds` and `requestId` alongside existing
+entry selections. Studio also accepts `expectedVersion`; the public server's
+existing revision field is `expectedSessionVersion`. Continuation forbids bet,
+mode and a second entry roundId. A missing/foreign/skipped/stale/completed cursor
+is rejected before selection, RNG or money changes; a duplicate saved request
+uses its original result instead.
+
+Creation/restoration responses advertise `logicalRoundDeliverySupported`.
+Logical results include `logicalRound`: round identity, mathematical and delivery
+cursors/status, entry bet/mode, ordered subrounds, actual stake/payout totals and
+the currently delivered public step. Executable/RNG state, generated coordinate
+evidence and debug remain internal. The full internal artifact can contain later
+cascade stages already calculated; the public player renders `currentStep`.
+Generic multi-stage and cascade serializers detach their nested outputs and never
+calculate another result. Their legacy `stages` field describes the complete
+already evaluated sequence; selecting a delivery policy happens at the runtime
+boundary, not in a serializer.
+
+Studio and the standalone player retain request selection and cursor across a
+retry after response loss. Their delivery controls offer one subround or a
+complete logical round. Studio Play is explicitly `process-only`; its history
+keeps one record per logical round and retains committed history across project
+changes, while late responses cannot replace another project's active session.
+Canonical WASM and outcome-source Play reject unsupported logical continuation;
+their existing single-outcome/session contracts remain unchanged.

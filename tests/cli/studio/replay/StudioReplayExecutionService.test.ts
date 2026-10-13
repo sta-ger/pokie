@@ -1,5 +1,7 @@
+import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
+    CascadeResult,
     GameSessionHandling,
     GameSessionSerializing,
     loadPokieGame,
@@ -900,7 +902,8 @@ describe("StudioReplayExecutionService", () => {
             throw new Error("expected job to be created");
         }
         await flushMacrotask();
-        expect(gate.pendingCount()).toBe(1); // paused right after the first chunk (10 rounds)
+        expect(gate.pendingCount()).toBe(1);
+        // paused right after the first chunk (10 rounds)
         expect(service.getStatus("/a", result.job.id)?.completedRounds).toBe(10);
         expect(service.getStatus("/a", result.job.id)?.status).toBe("running");
 
@@ -914,7 +917,8 @@ describe("StudioReplayExecutionService", () => {
 
         expect(job.status).toBe("completed");
         expect(job.completedRounds).toBe(25);
-        expect(sessionsCreated).toBe(1); // the same session was reused for every chunk
+        expect(sessionsCreated).toBe(1);
+        // the same session was reused for every chunk
     });
 
     it("returns undefined for an unknown replay id", () => {
@@ -1006,7 +1010,8 @@ describe("StudioReplayExecutionService", () => {
             throw new Error("expected job to be created");
         }
         await flushMacrotask();
-        expect(gate.pendingCount()).toBe(1); // paused right after the first chunk (10 rounds)
+        expect(gate.pendingCount()).toBe(1);
+        // paused right after the first chunk (10 rounds)
         expect(service.getStatus("/a", result.job.id)?.completedRounds).toBe(10);
 
         // Cancellation can only take effect between chunks (see StudioReplayExecutionService.run()'s
@@ -1678,6 +1683,79 @@ describe("Overscan Studio replay", () => {
             spy.mockRestore();
             await service.cancelAll();
 
+        }
+    });
+});
+
+it("replays the same logical entry and ordered subrounds through Studio", async () => {
+    const model = transactionalRoundGame();
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(model));
+    const started = service.start("/logical", {round: 1, seed: "7", unit: "logical-round", entryCommands: [{kind: "spin", bet: 7.5, mode: "double"}]});
+    if (started.status !== "created") throw new Error("Replay not created");
+    try {
+        const terminal = await waitForTerminal(service, "/logical", started.job.id);
+        expect(terminal.status).toBe("completed");
+        const download = service.getDownload("/logical", started.job.id);
+        expect(download.status).toBe("ok");
+        if (download.status !== "ok") throw new Error("Missing descriptor");
+        expect(download.descriptor.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 15});
+        expect(download.descriptor.commands).toEqual([{kind: "spin", bet: 7.5, mode: "double"}]);
+    } finally {
+        await service.cancelAll();
+    }
+});
+
+it("refuses completed Studio replay publication for an exhausted cascade in the legacy step unit", async () => {
+    const model = createSeedAwareFakeGame({id: "exhausted", name: "Exhausted", version: "1"});
+    const create = model.createSession.bind(model);
+    model.createSession = context => Object.assign(create(context), {getCascadeResult: () => new CascadeResult([["A"]], [["A"]], [], {maxCascadeStepsExceeded: true})});
+    const completed = jest.fn();
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, completed);
+    const started = service.start("/exhausted", {round: 1});
+    if (started.status !== "created") throw new Error("Replay not created");
+    try {
+        const terminal = await waitForTerminal(service, "/exhausted", started.job.id);
+        expect(terminal.status).toBe("failed");
+        expect(terminal.descriptor).toBeUndefined();
+        expect(service.getDownload("/exhausted", started.job.id)).toMatchObject({status: "not-ready"});
+        expect(completed).not.toHaveBeenCalled();
+    } finally {
+        await service.cancelAll();
+    }
+});
+
+describe("Studio fractional logical replay payout", () => {
+    it.each([0.05, 7.5, 1e-7].flatMap(bet => [false, true].map(deferred => ({bet, deferred}))))("preserves awards at $bet (deferred=$deferred)", async ({bet, deferred}) => {
+        const model = deferred ? createOverscanGame({
+            manifest: {id: "fractional-bank", name: "Fractional bank", version: "1"},
+            reels: 3, rows: 1, availableBets: [0.05, 7.5, 1e-7], symbols: ["A", "S"], wilds: [], scatters: ["S"],
+            paylines: [[0, 0, 0]], paytable: {A: {"3": 2}}, reelStrips: Array.from({length: 3}, () => ["A"]),
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 2}}},
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 5, forcedFreeGames: 3}],
+        }) : transactionalRoundGame();
+        const entry = {kind: "spin" as const, bet, ...(deferred ? {mode: "buy"} : {})};
+        const session = model.createSession({seed: "7"});
+        session.setCreditsAmount(bet * 20);
+        const reference = new SessionRuntime(session).execute({...entry, roundId: "reference", delivery: "composite"});
+        if (reference.status !== "played" || !reference.logicalRound) throw new Error("Missing logical reference");
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(model));
+        const started = service.start("/fractional", {round: 1, seed: "7", unit: "logical-round", entryCommands: [entry]});
+        if (started.status !== "created") throw new Error("Replay not created");
+        try {
+            expect((await waitForTerminal(service, "/fractional", started.job.id)).status).toBe("completed");
+            const download = service.getDownload("/fractional", started.job.id);
+            if (download.status !== "ok") throw new Error("Missing descriptor");
+            const actual = download.descriptor.logicalRound!;
+            expect(actual.subrounds.map(step => step.win)).toEqual(reference.logicalRound.subrounds.map(step => step.win));
+            for (const [index, step] of actual.subrounds.entries()) expect(Math.abs(step.payout - reference.logicalRound.subrounds[index].payout)).toBeLessThan(bet * 1e-10);
+            expect(Math.abs(actual.totalPayout - actual.totalWin)).toBeLessThan(bet * 1e-10);
+            if (deferred) {
+                expect(actual.subrounds[1].payout).toBe(0);
+                expect(actual.subrounds[0].payout).toBe(0);
+                expect(actual.subrounds[actual.cursor - 1].payout).toBe(actual.totalWin);
+            }
+        } finally {
+            await service.cancelAll();
         }
     });
 });

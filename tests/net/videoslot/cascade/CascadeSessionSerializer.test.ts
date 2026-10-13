@@ -1,4 +1,5 @@
 import {
+    SessionRuntime,
     AbstractVideoSlotSessionDecorator,
     CascadeGridTransformer,
     CascadeResult,
@@ -152,4 +153,31 @@ describe("CascadeSessionSerializer", () => {
         expect(typeof initialData.paytable).toBe("object");
         expect(roundtripThroughJson(initialData)).toEqual(initialData);
     });
+});
+
+it("stepwise cascade delivery reads saved evaluated stages without refilling again", () => {
+    const a = buildCascadeSession([["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]], [["K", "Q", "J"], ["Q", "J", "K"], ["J", "K", "Q"]]);
+    const b = buildCascadeSession([["A", "A", "A"], ["A", "A", "A"], ["A", "A", "A"]], [["K", "Q", "J"], ["Q", "J", "K"], ["J", "K", "Q"]]);
+    const runtime = new SessionRuntime(a);
+    const play = jest.spyOn(a, "play");
+    let result = runtime.execute({kind: "spin", roundId: "cascade", delivery: "stepwise"});
+    const composite = new SessionRuntime(b).execute({kind: "spin", roundId: "cascade", delivery: "composite"});
+    expect(result.status).toBe("played");
+    while (result.status === "played" && result.logicalRound?.status === "pending") {
+        const command = {kind: "spin" as const, delivery: "stepwise" as const, continuation: {roundId: "cascade", cursor: result.logicalRound.deliveryCursor}};
+        result = runtime.execute(command);
+        expect(runtime.execute(command)).toEqual(result);
+    }
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(composite.status).toBe("played");
+    if (result.status !== "played" || composite.status !== "played") throw new Error("Cascade failed");
+    expect(result.logicalRound?.subrounds).toEqual(composite.logicalRound?.subrounds.map(step => ({...step, command: {...step.command, delivery: "stepwise"}})));
+    expect(result.logicalRound?.totalStake).toBe(composite.logicalRound?.totalStake);
+    expect(result.logicalRound?.totalWin).toBe(composite.logicalRound?.totalWin);
+    expect(a.getSymbolsCombination().toMatrix()).toEqual(b.getSymbolsCombination().toMatrix());
+    const serializer = new CascadeSessionSerializer();
+    const captured = serializer.getRoundData(a);
+    captured.stages[0].screen[0][0] = "mutated";
+    expect(serializer.getRoundData(a).stages[0].screen[0][0]).toBe("A");
+    expect(play).toHaveBeenCalledTimes(1);
 });

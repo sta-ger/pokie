@@ -54,6 +54,9 @@ export function transactionalRoundGame(onCalculate?: () => void, failure?: "calc
         public setBetMode(mode: string): void {
             this.mode = mode;
         }
+        public hasPendingLogicalRound(): boolean {
+            return this.free > 0; 
+        }
         public getStakeAmount(): number {
             return this.free > 0 ? 0 : this.getBet() * (this.mode === "double" ? 2 : 1);
         }
@@ -75,6 +78,7 @@ export function transactionalRoundGame(onCalculate?: () => void, failure?: "calc
         }
     }
     return {
+        supportsLogicalRoundDelivery: () => true,
         getManifest: () => ({id: "reference-round", name: "Reference round", version: "1"}),
         getSessionStateSchema: () => ({kind: "custom"}),
         getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7], modes: ["base", "double"]}),

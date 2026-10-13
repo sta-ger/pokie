@@ -1,7 +1,10 @@
+import {validateSessionCommand, type SessionCommand} from "@fromstan/pokie";
 import {MAX_STUDIO_REPLAY_ROUND} from "./StudioReplayLimits.js";
 
 export type ReplayRequestInput = {
     round?: unknown;
+    unit?: unknown;
+    entryCommands?: unknown;
     seed?: unknown;
     // Only ever set by the Replay tab's own "Recent Simulation" source (see ReplayTab.tsx) — the id of
     // the completed simulation report this round/seed was picked from. Never used to derive round/seed
@@ -24,6 +27,8 @@ export type ReplayRequestInput = {
 
 export type ValidatedReplayRequest = {
     round: number;
+    unit?: "step" | "logical-round";
+    entryCommands?: readonly SessionCommand[];
     seed?: string;
     simulationId?: string;
     modeName?: string;
@@ -44,6 +49,8 @@ export type ReplayValidationOptions = {
 // Mirrors validateSimulationRequest.ts's own shape/reasoning.
 export function validateReplayRequest(input: ReplayRequestInput, options: ReplayValidationOptions = {}): ValidatedReplayRequest {
     const {round, seed, simulationId, modeName} = input;
+    if (input.unit !== undefined && input.unit !== "step" && input.unit !== "logical-round") throw new Error("Replay unit must be step or logical-round.");
+    if (input.entryCommands !== undefined && (!Array.isArray(input.entryCommands) || input.entryCommands.length > 100000 || input.entryCommands.some(command => validateSessionCommand(command) || command.continuation !== undefined))) throw new Error("Replay entryCommands must contain valid entry selections.");
 
     if (typeof round !== "number" || !Number.isInteger(round) || round < 1) {
         throw new Error('"round" must be a positive integer.');
@@ -69,6 +76,8 @@ export function validateReplayRequest(input: ReplayRequestInput, options: Replay
 
     const base: ValidatedReplayRequest = {
         round,
+        ...(input.unit === undefined ? {} : {unit: input.unit as "step" | "logical-round"}),
+        ...(input.entryCommands === undefined ? {} : {entryCommands: JSON.parse(JSON.stringify(input.entryCommands)) as SessionCommand[]}),
         ...(simulationId === undefined ? {} : {simulationId}),
         ...(modeName === undefined ? {} : {modeName}),
     };

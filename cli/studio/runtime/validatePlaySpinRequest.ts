@@ -1,6 +1,7 @@
-export type PlaySpinRequestInput = {bet?: unknown; mode?: unknown};
+import {validateRepositoryCommand, validateSessionCommand, type SessionCommand} from "@fromstan/pokie";
+export type PlaySpinRequestInput = {bet?: unknown; mode?: unknown; requestId?: unknown; delivery?: unknown; roundId?: unknown; continuation?: unknown; maxSubrounds?: unknown; expectedVersion?: unknown};
 
-export type ValidatedPlaySpinRequest = {bet?: number; mode?: string};
+export type ValidatedPlaySpinRequest = Omit<SessionCommand, "kind"> & {requestId?: string; expectedVersion?: number};
 
 // A Play spin accepts only the two choices the game's live session can apply immediately before
 // evaluating this exact round.  The session/SpinCommandHandler remains the authority for whether a
@@ -13,5 +14,7 @@ export function validatePlaySpinRequest(input: PlaySpinRequestInput): ValidatedP
     if (mode !== undefined && (typeof mode !== "string" || mode.trim().length === 0)) {
         throw new Error('"mode" must be a non-empty string when given.');
     }
-    return {bet: bet as number | undefined, mode: mode as string | undefined};
+    const invalid = validateSessionCommand({kind: "spin", ...input}) ?? validateRepositoryCommand({sessionId: "play", ...input});
+    if (invalid) throw new Error(invalid);
+    return input as ValidatedPlaySpinRequest;
 }

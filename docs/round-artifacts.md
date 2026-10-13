@@ -252,3 +252,30 @@ if (issues.some((issue) => issue.severity === "error")) {
 ## Generated, visible and evaluated coordinates
 
 Canonical generated evidence and the separate PublicRoundArtifactProjector: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+
+### Retained logical rounds
+
+Explicit logical delivery retains each evaluated result before another subround
+can overwrite the live session's output. `buildLogicalRoundArtifact(round,
+provenanceTemplate)` folds these immutable ordered steps, using the entry's
+actual stake/mode and mathematical win total. It does not resolve, refill, draw
+or evaluate. Full server capture uses this complete prefix and completes it as
+free games finish; pending artifacts represent a committed prefix, not a claim
+that the feature ended. Public projection still removes generated/evaluated
+coordinate evidence, including on the currently delivered cascade step.
+
+`buildRoundArtifactFromSession()` remains a single played-subround capture for
+free-game sessions. For cascade providers it consumes the retained resolver
+steps and terminal evaluation. Custom providers must retain those evaluated
+results; a displayed final screen alone cannot establish complete math or RNG
+continuation. Deferred free-game bank release belongs to actual settlement;
+adding that release to per-step mathematical wins would double-count it.
+
+`ReplayRecorder.record({unit: "logical-round", entryCommands, ...})` and Studio
+replay requests with the same unit reproduce logical entries and ordered
+subrounds. Entry commands preserve explicit bet/mode choices. The default replay
+unit remains one domain step; `pokie replay --unit logical-round` selects logical
+addressing for capable game packages. WASM/outcome sources do not gain feature
+mechanics through this option. Studio's recorded Play history already holds the
+original commands, prefix/final artifact and provenance, so re-delivery creates
+no additional history record.

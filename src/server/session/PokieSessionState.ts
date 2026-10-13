@@ -1,3 +1,5 @@
+import type {LogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
+import type {LogicalRound} from "../../runtime/LogicalRound.js";
 import type {ScreenGeometry} from "../../session/videoslot/coordinates/ScreenGeometry.js";
 import type {SessionStateSchema} from "../../session/SessionStateRestoring.js";
 import type {GameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
@@ -6,6 +8,11 @@ import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
 import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {
+    logicalRound?: LogicalRound;
+    /** Compact permanent entry identities; full historical outputs belong to result storage. */
+    logicalRoundIds?: readonly string[];
+    logicalRoundDeliverySupported?: boolean;
+    logicalRoundStatistics?: LogicalRoundStatistics;
     identity?: GameSessionIdentity;
     stateSchema?: SessionStateSchema;
     credits?: number;

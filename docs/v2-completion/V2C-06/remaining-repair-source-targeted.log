@@ -1,0 +1,23 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts tests/v2/TransactionalRuntimeBoundary.test.ts tests/v2/TransactionalRoundStore.test.ts tests/server/spin/SpinCommandHandler.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/server/session/captureRoundPokieSessionState.test.ts tests/artifact/buildRoundArtifactFromSession.test.ts tests/net/MultiStageRoundSessionSerializer.test.ts tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts tests/replay/ReplayRecorder.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/simulation/AggregateSimulationRunner.test.ts tests/simulation/DefaultGameSessionSimulation.test.ts
+
+PASS pokie tests/v2/TransactionalRoundStore.test.ts (191.892 s)
+PASS pokie tests/v2/TransactionalRuntimeBoundary.test.ts (12.752 s)
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts (5.006 s)
+PASS pokie tests/simulation/DefaultGameSessionSimulation.test.ts
+PASS pokie tests/cli/studio/replay/StudioReplayExecutionService.test.ts
+PASS pokie tests/server/spin/SpinCommandHandler.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+PASS pokie tests/net/MultiStageRoundSessionSerializer.test.ts
+PASS pokie tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts
+PASS pokie tests/server/session/captureRoundPokieSessionState.test.ts
+PASS pokie tests/simulation/AggregateSimulationRunner.test.ts
+PASS pokie tests/artifact/buildRoundArtifactFromSession.test.ts
+PASS pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+
+Test Suites: 13 passed, 13 total
+Tests:       378 passed, 378 total
+Snapshots:   0 total
+Time:        218.258 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts", "tests/v2/TransactionalRuntimeBoundary.test.ts", "tests/v2/TransactionalRoundStore.test.ts", "tests/server/spin/SpinCommandHandler.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts", "tests/server/session/captureRoundPokieSessionState.test.ts", "tests/artifact/buildRoundArtifactFromSession.test.ts", "tests/net/MultiStageRoundSessionSerializer.test.ts", "tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts", "tests/replay/ReplayRecorder.test.ts", "tests/cli/studio/replay/StudioReplayExecutionService.test.ts", "tests/simulation/AggregateSimulationRunner.test.ts", "tests/simulation/DefaultGameSessionSimulation.test.ts".

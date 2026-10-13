@@ -478,3 +478,69 @@ pre/post-action disconnects, missing acknowledgement, inspection overrides and d
 counters exercise the lifecycle without substituting the local reference ledger. Candidate
 implementation checks and pending independent evidence are recorded in
 [V2C-05](v2-completion/V2C-05.md).
+
+### Logical entry and continuation
+
+`SessionRuntime` accepts an explicit logical entry:
+
+```ts
+const first = runtime.execute({
+    kind: "spin", roundId: "round-1", delivery: "stepwise", bet: 0.05,
+});
+// Use the returned delivery cursor; never select another bet or mode here.
+const next = runtime.execute({
+    kind: "spin", delivery: "composite",
+    continuation: {roundId: "round-1", cursor: first.logicalRound.deliveryCursor},
+});
+```
+
+Check `status === "played"` before reading `logicalRound`. `stepwise` advances
+one mathematical subround or publishes one already evaluated cascade step.
+`composite` repeats that same operation until this round completes, cancellation
+occurs, or its delivery batch reaches `maxSubrounds` (default 1000; accepted range
+1–10000). A bounded batch returns a pending round and its exact next cursor; it
+never purchases another entry. Resolver exhaustion is reported as `exhausted`,
+which cannot authorize a new entry or pretend that the mathematics completed.
+
+The mathematical cursor counts domain `play()` calls. The delivery cursor also
+counts publication of retained cascade steps. A cascade is calculated once; its
+terminal evaluation is retained with the winning steps. An immediately ending
+cascade has no winning cascade stages and one terminal screen. Publishing saved
+steps advances only delivery state. `prepare()` prepares one such unit, even
+when the requested policy is composite; settlement adapters own the loop and
+commit each subround separately.
+
+Omitting both delivery and continuation preserves the existing one-`play()`
+command. Direct `play()`, simulation quotas and exact enumeration retain this
+unit. Do not mix these calls into an explicitly pending logical round. Free-game
+and bet-mode decorators declare `hasPendingLogicalRound()`; custom sessions must
+implement `LogicalRoundProgressProviding` explicitly. Custom HTTP games can
+advertise that promise with `supportsLogicalRoundDelivery()`. This capability
+never supplies an executable state codec or a durability guarantee.
+
+`SpinCommandHandler.execute()` additionally requires a stable `requestId` for
+logical delivery, and defaults the entry's `roundId` to that identity. The owning
+SQLite local store commits executable/RNG state, logical progress, accounting
+and the detached response together. The external store uses the existing durable
+settlement intents and permanent provider identities. Saved-stage deliveries
+use no debit or payout leg. Retrying the original composite request walks its
+retained subround identities; retrying a subround returns its own saved output,
+even after later rounds. Changed delivery, selection, round, cursor, bound or
+version under the same durable request identity conflicts.
+
+Cancellation before acceptance makes no change. Local cancellation observed
+before commit rolls back that unit. Cancellation or response loss after commit
+retains that result and stops subsequent work; a failed successor includes
+`committedProgress`. Remote uncertainty retains the original settlement owner
+and must be reconciled. HTTP disconnects cancel subsequent delivery, and shutdown
+drains accepted work. Direct portable runtimes have process-local retry storage;
+passing retained logical progress to their constructor supplies a continuation,
+not durable wallet/result recovery. Complete restart recovery requires a complete
+codec and an owning durable store. File snapshots with ephemeral wallet/retry
+participants and Studio Play advertise no process-restart guarantee.
+
+For a direct runtime with a complete executable codec, a failed calculated unit
+restores its executable/RNG state and credits. A composite failure retains earlier
+accepted units and their results. Live-only direct sessions require their own
+transaction boundary; the portable runtime does not invent an inverse for custom
+mutable collaborators.

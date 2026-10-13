@@ -17,7 +17,7 @@ export function extractKnownRoundView(response: SessionResponse): KnownRoundView
         credits: response.credits,
         bet: pickNumber(response, ["bet"]),
         win: pickNumber(response, ["win", "totalWin"]),
-        screen: pickArray(response, ["screen", "reelsSymbols"]),
+        screen: response.logicalRound?.currentStep?.screen.map(reel => [...reel]) ?? pickArray(response, ["screen", "reelsSymbols"]),
     };
 }
 

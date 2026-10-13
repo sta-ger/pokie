@@ -1,8 +1,10 @@
+import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 import {ConfidenceIntervalCalculator} from "./ConfidenceIntervalCalculator.js";
 import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapshot.js";
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private logicalRounds: LogicalRoundStatistics | undefined;
     private rounds = 0;
     private hitCount = 0;
     private totalBet = 0;
@@ -24,6 +26,7 @@ export class SimulationAccumulator {
     public static fromSnapshot(snapshot: SimulationAccumulatorSnapshot): SimulationAccumulator {
         validateSnapshot(snapshot);
         const accumulator = new SimulationAccumulator();
+        accumulator.logicalRounds = snapshot.logicalRounds ? {...snapshot.logicalRounds} : undefined;
         accumulator.rounds = snapshot.rounds;
         accumulator.hitCount = snapshot.hitCount;
         accumulator.totalBet = snapshot.totalBet;
@@ -41,6 +44,10 @@ export class SimulationAccumulator {
             accumulator.payoutHistogram[bucket] = count;
         });
         return accumulator;
+    }
+
+    public addLogicalRound(observation: LogicalRoundStatistics): void {
+        this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), observation);
     }
 
     public addRound(bet: number, payout: number): void {
@@ -87,6 +94,7 @@ export class SimulationAccumulator {
     }
 
     public merge(other: SimulationAccumulator): void {
+        if (other.logicalRounds) this.addLogicalRound(other.logicalRounds);
         if (other.rounds === 0) {
             return;
         }
@@ -160,6 +168,7 @@ export class SimulationAccumulator {
             this.rounds,
         );
         return {
+            ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -187,6 +196,7 @@ export class SimulationAccumulator {
     // worker_threads boundary itself, but this plain snapshot can.
     public toSnapshot(): SimulationAccumulatorSnapshot {
         return {
+            ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
             totalBet: this.totalBet,
@@ -229,6 +239,7 @@ function validateSnapshot(snapshot: SimulationAccumulatorSnapshot): void {
             throw new Error(`SimulationAccumulator snapshot has invalid ${name}: ${value}.`);
         }
     }
+    if (snapshot.logicalRounds && (!Number.isSafeInteger(snapshot.logicalRounds.rounds) || snapshot.logicalRounds.rounds < 0 || !Number.isSafeInteger(snapshot.logicalRounds.steps) || snapshot.logicalRounds.steps < snapshot.logicalRounds.rounds || ![snapshot.logicalRounds.totalStake, snapshot.logicalRounds.totalWin].every(n => Number.isFinite(n) && n >= 0))) throw new Error("Invalid logical-round statistics snapshot.");
     if (snapshot.hitCount > snapshot.rounds) {
         throw new Error(`SimulationAccumulator snapshot hitCount cannot exceed rounds.`);
     }

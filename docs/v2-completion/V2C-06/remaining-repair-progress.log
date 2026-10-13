@@ -1,0 +1,15 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts tests/v2/TransactionalRuntimeBoundary.test.ts tests/replay/ReplayRecorder.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/simulation/DefaultGameSessionSimulation.test.ts
+
+PASS pokie tests/v2/TransactionalRuntimeBoundary.test.ts (13.183 s)
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts
+PASS pokie tests/simulation/DefaultGameSessionSimulation.test.ts
+PASS pokie tests/cli/studio/replay/StudioReplayExecutionService.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       189 passed, 189 total
+Snapshots:   0 total
+Time:        23.492 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts", "tests/v2/TransactionalRuntimeBoundary.test.ts", "tests/replay/ReplayRecorder.test.ts", "tests/cli/studio/replay/StudioReplayExecutionService.test.ts", "tests/simulation/DefaultGameSessionSimulation.test.ts".

@@ -1,0 +1,1555 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+
+FAIL pokie tests/v2/LogicalRoundPackaging.test.ts (5.403 s)
+  ● logical-round delivery and mathematical boundaries › a successfully returned bounded composite keeps its detached output after later progress
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  9
+    + Received  + 25
+
+    @@ -1,22 +1,22 @@
+      Object {
+    -   "credits": 999.95,
+    +   "credits": 1000.1,
+        "logicalRound": Object {
+          "bet": 0.05,
+    -     "cursor": 2,
+    -     "deliveryCursor": 2,
+    +     "cursor": 3,
+    +     "deliveryCursor": 3,
+          "entry": Object {
+            "delivery": "composite",
+            "kind": "spin",
+            "maxSubrounds": 2,
+            "roundId": "bounded",
+          },
+          "id": "bounded",
+    -     "mathematicalStatus": "pending",
+    +     "mathematicalStatus": "completed",
+          "mode": "base",
+          "stageCursor": 0,
+    -     "status": "pending",
+    +     "status": "completed",
+          "subrounds": Array [
+            Object {
+              "command": Object {
+                "delivery": "composite",
+                "kind": "spin",
+    @@ -43,17 +43,33 @@
+              "id": "bounded:1",
+              "index": 1,
+              "payout": 0,
+              "stake": 0,
+              "win": 0,
+    +       },
+    +       Object {
+    +         "command": Object {
+    +           "continuation": Object {
+    +             "cursor": 2,
+    +             "roundId": "bounded",
+    +           },
+    +           "delivery": "stepwise",
+    +           "kind": "spin",
+    +         },
+    +         "credits": 1000.1,
+    +         "id": "bounded:2",
+    +         "index": 2,
+    +         "payout": 0.14999999999997726,
+    +         "stake": 0,
+    +         "win": 0.15000000000000002,
+            },
+          ],
+    -     "totalPayout": 4.5477510646207975e-14,
+    +     "totalPayout": 0.15000000000002273,
+          "totalStake": 0.05,
+    -     "totalWin": 0,
+    +     "totalWin": 0.15000000000000002,
+        },
+        "mode": "base",
+    -   "payout": 0,
+    +   "payout": 0.14999999999997726,
+        "stake": 0,
+        "status": "played",
+    -   "win": 0,
+    +   "win": 0.15000000000000002,
+      }
+
+      118 |         expect(first.logicalRound).toMatchObject({cursor: 2, status: "pending"});
+      119 |         const before = snapshot(session);
+    > 120 |         expect(runtime.execute(command)).toEqual(first);
+          |                                          ^
+      121 |         expect(snapshot(session)).toEqual(before);
+      122 |         expect(calculations).toBe(2);
+      123 |         played(runtime.execute({kind: "spin", delivery: "stepwise", continuation: {roundId: "bounded", cursor: 2}}));
+
+      at Object.<anonymous> (tests/v2/LogicalRoundPackaging.test.ts:120:42)
+
+  ● logical-round delivery and mathematical boundaries › an interrupted bounded composite retains its original budget after returned interruption
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "deliveryCursor": 3,
+    +   "deliveryCursor": 4,
+        "status": "pending",
+      }
+
+      155 |         interrupt = false;
+      156 |         const resumed = played(runtime.execute(command));
+    > 157 |         expect(resumed.logicalRound).toMatchObject({deliveryCursor: 3, status: "pending"});
+          |                                      ^
+      158 |         expect(calculations).toBe(3);
+      159 |         const before = snapshot(session);
+      160 |         expect(runtime.execute(command)).toEqual(resumed);
+
+      at tests/v2/LogicalRoundPackaging.test.ts:157:38
+
+  ● logical-round delivery and mathematical boundaries › an interrupted bounded composite retains its original budget after thrown interruption
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "deliveryCursor": 3,
+    +   "deliveryCursor": 4,
+        "status": "pending",
+      }
+
+      155 |         interrupt = false;
+      156 |         const resumed = played(runtime.execute(command));
+    > 157 |         expect(resumed.logicalRound).toMatchObject({deliveryCursor: 3, status: "pending"});
+          |                                      ^
+      158 |         expect(calculations).toBe(3);
+      159 |         const before = snapshot(session);
+      160 |         expect(runtime.execute(command)).toEqual(resumed);
+
+      at tests/v2/LogicalRoundPackaging.test.ts:157:38
+
+  ● logical-round delivery and mathematical boundaries › an interrupted bounded composite retains its original budget after cancelled interruption
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "deliveryCursor": 3,
+    +   "deliveryCursor": 4,
+        "status": "pending",
+      }
+
+      155 |         interrupt = false;
+      156 |         const resumed = played(runtime.execute(command));
+    > 157 |         expect(resumed.logicalRound).toMatchObject({deliveryCursor: 3, status: "pending"});
+          |                                      ^
+      158 |         expect(calculations).toBe(3);
+      159 |         const before = snapshot(session);
+      160 |         expect(runtime.execute(command)).toEqual(resumed);
+
+      at tests/v2/LogicalRoundPackaging.test.ts:157:38
+
+  ● logical-round delivery and mathematical boundaries › saved-stage checkpoint failure fences successors until authorized recovery completes
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1274
+    + Received  +    2
+
+      Object {
+    -   "credits": 103,
+    -   "deliveryCommand": Object {
+    -     "continuation": Object {
+    -       "cursor": 1,
+    -       "roundId": "round",
+    -     },
+    -     "delivery": "stepwise",
+    -     "kind": "spin",
+    +   "reason": "The wallet was already fully settled for this attempt, but its session state moved on before this could be persisted (Session \"session\" was updated concurrently: expected version 2, but the repository is currently at version 4.) — resuming would silently overwrite whatever committed in between. Resolve by hand.",
+        "requestId": "stage",
+        "sessionId": "session",
+    -   },
+    -   "deliveryOnly": true,
+    -   "previousState": Object {
+    -     "bet": 1,
+    -     "capturePolicy": Object {
+    -       "captureDebugPayloads": true,
+    -       "mode": "partial",
+    -       "version": 1,
+    -     },
+    -     "commandCapabilities": Object {
+    -       "bets": Array [
+    -         1,
+    -       ],
+    -     },
+    -     "context": Object {
+    -       "seed": 7,
+    -     },
+    -     "credits": 103,
+    -     "executionState": "durably-restorable",
+    -     "featureState": Object {
+    -       "base": Object {
+    -         "reelStrips": Array [
+    -           Array [
+    -             "A",
+    -           ],
+    -           Array [
+    -             "A",
+    -           ],
+    -           Array [
+    -             "A",
+    -           ],
+    -         ],
+    -         "rngState": 2399460293,
+    -       },
+    -       "win": 4,
+    -     },
+    -     "identity": Object {
+    -       "compatibilityVersion": "1",
+    -       "gameId": "cascade-delivery",
+    -       "stateSchemaVersion": "1",
+    -     },
+    -     "initialPayload": Object {
+    -       "availableBets": Array [
+    -         1,
+    -       ],
+    -       "availableSymbols": Array [
+    -         "A",
+    -         "B",
+    -       ],
+    -       "bet": 1,
+    -       "credits": 1000,
+    -       "linesDefinitions": Object {
+    -         "line": Array [
+    -           0,
+    -           0,
+    -           0,
+    -         ],
+    -       },
+    -       "paytable": Object {
+    -         "1": Object {
+    -           "A": Object {
+    -             "3": 2,
+    -           },
+    -           "B": Object {
+    -             "3": 0,
+    -           },
+    -         },
+    -       },
+    -       "reelsNumber": 3,
+    -       "reelsSymbols": Array [
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -       ],
+    -       "reelsSymbolsNumber": 1,
+    -       "totalWin": 0,
+    -       "winEvaluationResult": Object {
+    -         "clusterWins": Array [],
+    -         "lineWins": Array [],
+    -         "metadata": Object {},
+    -         "scatterWins": Array [],
+    -         "totalWin": 0,
+    -         "valueWins": Array [],
+    -         "waysWins": Array [],
+    -         "winningPositions": Array [],
+    -       },
+    -       "winningPositions": Array [],
+    -     },
+    -     "logicalRound": Object {
+    -       "bet": 1,
+    -       "cursor": 1,
+    -       "deliveryCursor": 1,
+    -       "entry": Object {
+    -         "delivery": "stepwise",
+    -         "kind": "spin",
+    -         "requestId": "entry",
+    -         "roundId": "round",
+    -         "sessionId": "session",
+    -       },
+    -       "id": "round",
+    -       "mathematicalStatus": "completed",
+    -       "stageCursor": 1,
+    -       "status": "pending",
+    -       "subrounds": Array [
+    -         Object {
+    -           "artifacts": Array [
+    -             Object {
+    -               "index": 0,
+    -               "screen": Array [
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -               ],
+    -               "totalWin": 2,
+    -               "wins": Array [
+    -                 Object {
+    -                   "id": "line",
+    -                   "metadata": Object {
+    -                     "definition": Array [
+    -                       0,
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     "pattern": Array [
+    -                       1,
+    -                       1,
+    -                       1,
+    -                     ],
+    -                     "symbolsPositions": Array [
+    -                       0,
+    -                       1,
+    -                       2,
+    -                     ],
+    -                     "wildSymbolsPositions": Array [],
+    -                   },
+    -                   "multiplierBreakdown": Array [],
+    -                   "symbolId": "A",
+    -                   "type": "line",
+    -                   "winAmount": 2,
+    -                   "winningPositions": Array [
+    -                     Array [
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       1,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       2,
+    -                       0,
+    -                     ],
+    -                   ],
+    -                 },
+    -               ],
+    -             },
+    -             Object {
+    -               "index": 1,
+    -               "screen": Array [
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -               ],
+    -               "totalWin": 2,
+    -               "wins": Array [
+    -                 Object {
+    -                   "id": "line",
+    -                   "metadata": Object {
+    -                     "definition": Array [
+    -                       0,
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     "pattern": Array [
+    -                       1,
+    -                       1,
+    -                       1,
+    -                     ],
+    -                     "symbolsPositions": Array [
+    -                       0,
+    -                       1,
+    -                       2,
+    -                     ],
+    -                     "wildSymbolsPositions": Array [],
+    -                   },
+    -                   "multiplierBreakdown": Array [],
+    -                   "symbolId": "A",
+    -                   "type": "line",
+    -                   "winAmount": 2,
+    -                   "winningPositions": Array [
+    -                     Array [
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       1,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       2,
+    -                       0,
+    -                     ],
+    -                   ],
+    -                 },
+    -               ],
+    -             },
+    -             Object {
+    -               "index": 2,
+    -               "screen": Array [
+    -                 Array [
+    -                   "B",
+    -                 ],
+    -                 Array [
+    -                   "B",
+    -                 ],
+    -                 Array [
+    -                   "B",
+    -                 ],
+    -               ],
+    -               "totalWin": 0,
+    -               "wins": Array [],
+    -             },
+    -           ],
+    -           "command": Object {
+    -             "delivery": "stepwise",
+    -             "kind": "spin",
+    -             "requestId": "entry",
+    -             "roundId": "round",
+    -             "sessionId": "session",
+    -           },
+    -           "credits": 103,
+    -           "id": "round:0",
+    -           "index": 0,
+    -           "payout": 4,
+    -           "screen": Array [
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -           ],
+    -           "stake": 1,
+    -           "win": 4,
+    -         },
+    -       ],
+    -       "totalPayout": 4,
+    -       "totalStake": 1,
+    -       "totalWin": 4,
+    -     },
+    -     "logicalRoundDeliverySupported": true,
+    -     "logicalRoundIds": Array [
+    -       "round",
+    -     ],
+    -     "logicalRoundStatistics": Object {
+    -       "rounds": 1,
+    -       "steps": 1,
+    -       "totalStake": 1,
+    -       "totalWin": 4,
+    -     },
+    -     "roundPayload": Object {
+    -       "availableBets": Array [
+    -         1,
+    -       ],
+    -       "bet": 1,
+    -       "cascadeDebugInfo": Object {
+    -         "cascadeStepCount": 2,
+    -         "totalCascadeWin": 4,
+    -       },
+    -       "cascadeMetadata": Object {
+    -         "totalSteps": 2,
+    -       },
+    -       "cascadeRngInfo": Object {
+    -         "cascadeStepCount": 2,
+    -       },
+    -       "credits": 103,
+    -       "finalScreen": Array [
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -       ],
+    -       "initialScreen": Array [
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -       ],
+    -       "reelsSymbols": Array [
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -       ],
+    -       "stages": Array [
+    -         Object {
+    -           "debugInfo": Object {
+    -             "multiplierBreakdown": Array [],
+    -           },
+    -           "metadata": Object {
+    -             "cascadeStepIndex": 0,
+    -           },
+    -           "refillSymbols": Array [
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -           ],
+    -           "removedPositions": Array [
+    -             Array [
+    -               0,
+    -               0,
+    -             ],
+    -             Array [
+    -               1,
+    -               0,
+    -             ],
+    -             Array [
+    -               2,
+    -               0,
+    -             ],
+    -           ],
+    -           "rngInfo": Object {},
+    -           "screen": Array [
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -           ],
+    -           "winEvaluationResult": Object {
+    -             "clusterWins": Array [],
+    -             "lineWins": Array [
+    -               Object {
+    -                 "definition": Array [
+    -                   0,
+    -                   0,
+    -                   0,
+    -                 ],
+    -                 "lineId": "line",
+    -                 "pattern": Array [
+    -                   1,
+    -                   1,
+    -                   1,
+    -                 ],
+    -                 "symbolId": "A",
+    -                 "symbolsPositions": Array [
+    -                   0,
+    -                   1,
+    -                   2,
+    -                 ],
+    -                 "wildSymbolsPositions": Array [],
+    -                 "winAmount": 2,
+    -               },
+    -             ],
+    -             "metadata": Object {
+    -               "aggregationPolicy": "error-if-incompatible",
+    -               "evaluators": Array [
+    -                 "line",
+    -                 "scatter",
+    -               ],
+    -             },
+    -             "scatterWins": Array [],
+    -             "totalWin": 2,
+    -             "valueWins": Array [],
+    -             "waysWins": Array [],
+    -             "winningPositions": Array [
+    -               Array [
+    -                 0,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 1,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 2,
+    -                 0,
+    -               ],
+    -             ],
+    -           },
+    -         },
+    -         Object {
+    -           "debugInfo": Object {
+    -             "multiplierBreakdown": Array [],
+    -           },
+    -           "metadata": Object {
+    -             "cascadeStepIndex": 1,
+    -           },
+    -           "refillSymbols": Array [
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -           ],
+    -           "removedPositions": Array [
+    -             Array [
+    -               0,
+    -               0,
+    -             ],
+    -             Array [
+    -               1,
+    -               0,
+    -             ],
+    -             Array [
+    -               2,
+    -               0,
+    -             ],
+    -           ],
+    -           "rngInfo": Object {},
+    -           "screen": Array [
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -           ],
+    -           "winEvaluationResult": Object {
+    -             "clusterWins": Array [],
+    -             "lineWins": Array [
+    -               Object {
+    -                 "definition": Array [
+    -                   0,
+    -                   0,
+    -                   0,
+    -                 ],
+    -                 "lineId": "line",
+    -                 "pattern": Array [
+    -                   1,
+    -                   1,
+    -                   1,
+    -                 ],
+    -                 "symbolId": "A",
+    -                 "symbolsPositions": Array [
+    -                   0,
+    -                   1,
+    -                   2,
+    -                 ],
+    -                 "wildSymbolsPositions": Array [],
+    -                 "winAmount": 2,
+    -               },
+    -             ],
+    -             "metadata": Object {
+    -               "aggregationPolicy": "error-if-incompatible",
+    -               "evaluators": Array [
+    -                 "line",
+    -                 "scatter",
+    -               ],
+    -             },
+    -             "scatterWins": Array [],
+    -             "totalWin": 2,
+    -             "valueWins": Array [],
+    -             "waysWins": Array [],
+    -             "winningPositions": Array [
+    -               Array [
+    -                 0,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 1,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 2,
+    -                 0,
+    -               ],
+    -             ],
+    -           },
+    -         },
+    -       ],
+    -       "totalCascadeWin": 4,
+    -       "totalWin": 4,
+    -       "winEvaluationResult": Object {
+    -         "clusterWins": Array [],
+    -         "lineWins": Array [
+    -           Object {
+    -             "definition": Array [
+    -               0,
+    -               0,
+    -               0,
+    -             ],
+    -             "lineId": "line",
+    -             "pattern": Array [
+    -               1,
+    -               1,
+    -               1,
+    -             ],
+    -             "symbolId": "A",
+    -             "symbolsPositions": Array [
+    -               0,
+    -               1,
+    -               2,
+    -             ],
+    -             "wildSymbolsPositions": Array [],
+    -             "winAmount": 2,
+    -           },
+    -         ],
+    -         "metadata": Object {
+    -           "aggregationPolicy": "error-if-incompatible",
+    -           "evaluators": Array [
+    -             "line",
+    -             "scatter",
+    -           ],
+    -         },
+    -         "scatterWins": Array [],
+    -         "totalWin": 2,
+    -         "valueWins": Array [],
+    -         "waysWins": Array [],
+    -         "winningPositions": Array [
+    -           Array [
+    -             0,
+    -             0,
+    -           ],
+    -           Array [
+    -             1,
+    -             0,
+    -           ],
+    -           Array [
+    -             2,
+    -             0,
+    -           ],
+    -         ],
+    -       },
+    -       "winningLines": Object {
+    -         "line": Object {
+    -           "definition": Array [
+    -             0,
+    -             0,
+    -             0,
+    -           ],
+    -           "lineId": "line",
+    -           "pattern": Array [
+    -             1,
+    -             1,
+    -             1,
+    -           ],
+    -           "symbolId": "A",
+    -           "symbolsPositions": Array [
+    -             0,
+    -             1,
+    -             2,
+    -           ],
+    -           "wildSymbolsPositions": Array [],
+    -           "winAmount": 2,
+    -         },
+    -       },
+    -       "winningPositions": Array [
+    -         Array [
+    -           0,
+    -           0,
+    -         ],
+    -         Array [
+    -           1,
+    -           0,
+    -         ],
+    -         Array [
+    -           2,
+    -           0,
+    -         ],
+    -       ],
+    -     },
+    -     "screen": Array [
+    -       Array [
+    -         "B",
+    -       ],
+    -       Array [
+    -         "B",
+    -       ],
+    -       Array [
+    -         "B",
+    -       ],
+    -     ],
+    -     "stateSchema": Object {
+    -       "kind": "custom",
+    -     },
+    -     "win": 4,
+    -   },
+    -   "requestId": "stage",
+    -   "sessionId": "session",
+    -   "stake": 0,
+    -   "state": Object {
+    -     "bet": 1,
+    -     "capturePolicy": Object {
+    -       "captureDebugPayloads": true,
+    -       "mode": "partial",
+    -       "version": 1,
+    -     },
+    -     "commandCapabilities": Object {
+    -       "bets": Array [
+    -         1,
+    -       ],
+    -     },
+    -     "context": Object {
+    -       "seed": 7,
+    -     },
+    -     "credits": 103,
+    -     "executionState": "durably-restorable",
+    -     "featureState": Object {
+    -       "base": Object {
+    -         "reelStrips": Array [
+    -           Array [
+    -             "A",
+    -           ],
+    -           Array [
+    -             "A",
+    -           ],
+    -           Array [
+    -             "A",
+    -           ],
+    -         ],
+    -         "rngState": 2399460293,
+    -       },
+    -       "win": 4,
+    -     },
+    -     "identity": Object {
+    -       "compatibilityVersion": "1",
+    -       "gameId": "cascade-delivery",
+    -       "stateSchemaVersion": "1",
+    -     },
+    -     "initialPayload": Object {
+    -       "availableBets": Array [
+    -         1,
+    -       ],
+    -       "availableSymbols": Array [
+    -         "A",
+    -         "B",
+    -       ],
+    -       "bet": 1,
+    -       "credits": 1000,
+    -       "linesDefinitions": Object {
+    -         "line": Array [
+    -           0,
+    -           0,
+    -           0,
+    -         ],
+    -       },
+    -       "paytable": Object {
+    -         "1": Object {
+    -           "A": Object {
+    -             "3": 2,
+    -           },
+    -           "B": Object {
+    -             "3": 0,
+    -           },
+    -         },
+    -       },
+    -       "reelsNumber": 3,
+    -       "reelsSymbols": Array [
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -       ],
+    -       "reelsSymbolsNumber": 1,
+    -       "totalWin": 0,
+    -       "winEvaluationResult": Object {
+    -         "clusterWins": Array [],
+    -         "lineWins": Array [],
+    -         "metadata": Object {},
+    -         "scatterWins": Array [],
+    -         "totalWin": 0,
+    -         "valueWins": Array [],
+    -         "waysWins": Array [],
+    -         "winningPositions": Array [],
+    -       },
+    -       "winningPositions": Array [],
+    -     },
+    -     "logicalRound": Object {
+    -       "bet": 1,
+    -       "cursor": 1,
+    -       "deliveryCursor": 2,
+    -       "entry": Object {
+    -         "delivery": "stepwise",
+    -         "kind": "spin",
+    -         "requestId": "entry",
+    -         "roundId": "round",
+    -         "sessionId": "session",
+    -       },
+    -       "id": "round",
+    -       "mathematicalStatus": "completed",
+    -       "stageCursor": 2,
+    -       "status": "pending",
+    -       "subrounds": Array [
+    -         Object {
+    -           "artifacts": Array [
+    -             Object {
+    -               "index": 0,
+    -               "screen": Array [
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -               ],
+    -               "totalWin": 2,
+    -               "wins": Array [
+    -                 Object {
+    -                   "id": "line",
+    -                   "metadata": Object {
+    -                     "definition": Array [
+    -                       0,
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     "pattern": Array [
+    -                       1,
+    -                       1,
+    -                       1,
+    -                     ],
+    -                     "symbolsPositions": Array [
+    -                       0,
+    -                       1,
+    -                       2,
+    -                     ],
+    -                     "wildSymbolsPositions": Array [],
+    -                   },
+    -                   "multiplierBreakdown": Array [],
+    -                   "symbolId": "A",
+    -                   "type": "line",
+    -                   "winAmount": 2,
+    -                   "winningPositions": Array [
+    -                     Array [
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       1,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       2,
+    -                       0,
+    -                     ],
+    -                   ],
+    -                 },
+    -               ],
+    -             },
+    -             Object {
+    -               "index": 1,
+    -               "screen": Array [
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -                 Array [
+    -                   "A",
+    -                 ],
+    -               ],
+    -               "totalWin": 2,
+    -               "wins": Array [
+    -                 Object {
+    -                   "id": "line",
+    -                   "metadata": Object {
+    -                     "definition": Array [
+    -                       0,
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     "pattern": Array [
+    -                       1,
+    -                       1,
+    -                       1,
+    -                     ],
+    -                     "symbolsPositions": Array [
+    -                       0,
+    -                       1,
+    -                       2,
+    -                     ],
+    -                     "wildSymbolsPositions": Array [],
+    -                   },
+    -                   "multiplierBreakdown": Array [],
+    -                   "symbolId": "A",
+    -                   "type": "line",
+    -                   "winAmount": 2,
+    -                   "winningPositions": Array [
+    -                     Array [
+    -                       0,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       1,
+    -                       0,
+    -                     ],
+    -                     Array [
+    -                       2,
+    -                       0,
+    -                     ],
+    -                   ],
+    -                 },
+    -               ],
+    -             },
+    -             Object {
+    -               "index": 2,
+    -               "screen": Array [
+    -                 Array [
+    -                   "B",
+    -                 ],
+    -                 Array [
+    -                   "B",
+    -                 ],
+    -                 Array [
+    -                   "B",
+    -                 ],
+    -               ],
+    -               "totalWin": 0,
+    -               "wins": Array [],
+    -             },
+    -           ],
+    -           "command": Object {
+    -             "delivery": "stepwise",
+    -             "kind": "spin",
+    -             "requestId": "entry",
+    -             "roundId": "round",
+    -             "sessionId": "session",
+    -           },
+    -           "credits": 103,
+    -           "id": "round:0",
+    -           "index": 0,
+    -           "payout": 4,
+    -           "screen": Array [
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -           ],
+    -           "stake": 1,
+    -           "win": 4,
+    -         },
+    -       ],
+    -       "totalPayout": 4,
+    -       "totalStake": 1,
+    -       "totalWin": 4,
+    -     },
+    -     "logicalRoundDeliverySupported": true,
+    -     "logicalRoundIds": Array [
+    -       "round",
+    -     ],
+    -     "logicalRoundStatistics": Object {
+    -       "rounds": 1,
+    -       "steps": 1,
+    -       "totalStake": 1,
+    -       "totalWin": 4,
+    -     },
+    -     "roundPayload": Object {
+    -       "availableBets": Array [
+    -         1,
+    -       ],
+    -       "bet": 1,
+    -       "cascadeDebugInfo": Object {
+    -         "cascadeStepCount": 2,
+    -         "totalCascadeWin": 4,
+    -       },
+    -       "cascadeMetadata": Object {
+    -         "totalSteps": 2,
+    -       },
+    -       "cascadeRngInfo": Object {
+    -         "cascadeStepCount": 2,
+    -       },
+    -       "credits": 103,
+    -       "finalScreen": Array [
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -       ],
+    -       "initialScreen": Array [
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -         Array [
+    -           "A",
+    -         ],
+    -       ],
+    -       "reelsSymbols": Array [
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -         Array [
+    -           "B",
+    -         ],
+    -       ],
+    -       "stages": Array [
+    -         Object {
+    -           "debugInfo": Object {
+    -             "multiplierBreakdown": Array [],
+    -           },
+    -           "metadata": Object {
+    -             "cascadeStepIndex": 0,
+    -           },
+    -           "refillSymbols": Array [
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -           ],
+    -           "removedPositions": Array [
+    -             Array [
+    -               0,
+    -               0,
+    -             ],
+    -             Array [
+    -               1,
+    -               0,
+    -             ],
+    -             Array [
+    -               2,
+    -               0,
+    -             ],
+    -           ],
+    -           "rngInfo": Object {},
+    -           "screen": Array [
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -           ],
+    -           "winEvaluationResult": Object {
+    -             "clusterWins": Array [],
+    -             "lineWins": Array [
+    -               Object {
+    -                 "definition": Array [
+    -                   0,
+    -                   0,
+    -                   0,
+    -                 ],
+    -                 "lineId": "line",
+    -                 "pattern": Array [
+    -                   1,
+    -                   1,
+    -                   1,
+    -                 ],
+    -                 "symbolId": "A",
+    -                 "symbolsPositions": Array [
+    -                   0,
+    -                   1,
+    -                   2,
+    -                 ],
+    -                 "wildSymbolsPositions": Array [],
+    -                 "winAmount": 2,
+    -               },
+    -             ],
+    -             "metadata": Object {
+    -               "aggregationPolicy": "error-if-incompatible",
+    -               "evaluators": Array [
+    -                 "line",
+    -                 "scatter",
+    -               ],
+    -             },
+    -             "scatterWins": Array [],
+    -             "totalWin": 2,
+    -             "valueWins": Array [],
+    -             "waysWins": Array [],
+    -             "winningPositions": Array [
+    -               Array [
+    -                 0,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 1,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 2,
+    -                 0,
+    -               ],
+    -             ],
+    -           },
+    -         },
+    -         Object {
+    -           "debugInfo": Object {
+    -             "multiplierBreakdown": Array [],
+    -           },
+    -           "metadata": Object {
+    -             "cascadeStepIndex": 1,
+    -           },
+    -           "refillSymbols": Array [
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -             Array [
+    -               "B",
+    -             ],
+    -           ],
+    -           "removedPositions": Array [
+    -             Array [
+    -               0,
+    -               0,
+    -             ],
+    -             Array [
+    -               1,
+    -               0,
+    -             ],
+    -             Array [
+    -               2,
+    -               0,
+    -             ],
+    -           ],
+    -           "rngInfo": Object {},
+    -           "screen": Array [
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -             Array [
+    -               "A",
+    -             ],
+    -           ],
+    -           "winEvaluationResult": Object {
+    -             "clusterWins": Array [],
+    -             "lineWins": Array [
+    -               Object {
+    -                 "definition": Array [
+    -                   0,
+    -                   0,
+    -                   0,
+    -                 ],
+    -                 "lineId": "line",
+    -                 "pattern": Array [
+    -                   1,
+    -                   1,
+    -                   1,
+    -                 ],
+    -                 "symbolId": "A",
+    -                 "symbolsPositions": Array [
+    -                   0,
+    -                   1,
+    -                   2,
+    -                 ],
+    -                 "wildSymbolsPositions": Array [],
+    -                 "winAmount": 2,
+    -               },
+    -             ],
+    -             "metadata": Object {
+    -               "aggregationPolicy": "error-if-incompatible",
+    -               "evaluators": Array [
+    -                 "line",
+    -                 "scatter",
+    -               ],
+    -             },
+    -             "scatterWins": Array [],
+    -             "totalWin": 2,
+    -             "valueWins": Array [],
+    -             "waysWins": Array [],
+    -             "winningPositions": Array [
+    -               Array [
+    -                 0,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 1,
+    -                 0,
+    -               ],
+    -               Array [
+    -                 2,
+    -                 0,
+    -               ],
+    -             ],
+    -           },
+    -         },
+    -       ],
+    -       "totalCascadeWin": 4,
+    -       "totalWin": 4,
+    -       "winEvaluationResult": Object {
+    -         "clusterWins": Array [],
+    -         "lineWins": Array [
+    -           Object {
+    -             "definition": Array [
+    -               0,
+    -               0,
+    -               0,
+    -             ],
+    -             "lineId": "line",
+    -             "pattern": Array [
+    -               1,
+    -               1,
+    -               1,
+    -             ],
+    -             "symbolId": "A",
+    -             "symbolsPositions": Array [
+    -               0,
+    -               1,
+    -               2,
+    -             ],
+    -             "wildSymbolsPositions": Array [],
+    -             "winAmount": 2,
+    -           },
+    -         ],
+    -         "metadata": Object {
+    -           "aggregationPolicy": "error-if-incompatible",
+    -           "evaluators": Array [
+    -             "line",
+    -             "scatter",
+    -           ],
+    -         },
+    -         "scatterWins": Array [],
+    -         "totalWin": 2,
+    -         "valueWins": Array [],
+    -         "waysWins": Array [],
+    -         "winningPositions": Array [
+    -           Array [
+    -             0,
+    -             0,
+    -           ],
+    -           Array [
+    -             1,
+    -             0,
+    -           ],
+    -           Array [
+    -             2,
+    -             0,
+    -           ],
+    -         ],
+    -       },
+    -       "winningLines": Object {
+    -         "line": Object {
+    -           "definition": Array [
+    -             0,
+    -             0,
+    -             0,
+    -           ],
+    -           "lineId": "line",
+    -           "pattern": Array [
+    -             1,
+    -             1,
+    -             1,
+    -           ],
+    -           "symbolId": "A",
+    -           "symbolsPositions": Array [
+    -             0,
+    -             1,
+    -             2,
+    -           ],
+    -           "wildSymbolsPositions": Array [],
+    -           "winAmount": 2,
+    -         },
+    -       },
+    -       "winningPositions": Array [
+    -         Array [
+    -           0,
+    -           0,
+    -         ],
+    -         Array [
+    -           1,
+    -           0,
+    -         ],
+    -         Array [
+    -           2,
+    -           0,
+    -         ],
+    -       ],
+    -     },
+    -     "screen": Array [
+    -       Array [
+    -         "B",
+    -       ],
+    -       Array [
+    -         "B",
+    -       ],
+    -       Array [
+    -         "B",
+    -       ],
+    -     ],
+    -     "stateSchema": Object {
+    -       "kind": "custom",
+    -     },
+    -     "win": 4,
+    -   },
+    -   "status": "played",
+    -   "version": 3,
+    -   "win": 4,
+    +   "status": "recovery-required",
+      }
+
+      324 |         const beforeRetry = await repository.loadVersioned("session");
+      325 |         const balance = await wallet.getBalance("session");
+    > 326 |         expect(await handler().execute(command)).toEqual(failed.committedResult);
+          |                                                  ^
+      327 |         expect(await handler().execute(command)).toEqual(failed.committedResult);
+      328 |         expect(await repository.loadVersioned("session")).toEqual(beforeRetry);
+      329 |         expect(await wallet.getBalance("session")).toBe(balance);
+
+      at tests/v2/LogicalRoundPackaging.test.ts:326:50
+      at fulfilled (tests/v2/LogicalRoundPackaging.test.ts:38:58)
+
+  ● logical-round delivery and mathematical boundaries › saved-stage checkpoint failure fences successors until deferred recovery completes
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "status": "recovery-required",
+    +   "status": "played",
+      }
+
+      315 |             const before = await repository.loadVersioned("session");
+      316 |             const conservative = new api.SpinReconciliationService(wallet, repository, results, operations, false, false, 0, undefined, undefined, model);
+    > 317 |             expect(await handler(conservative).execute(successor)).toMatchObject({status: recovery === "corrupt" ? "corrupt-state" : "recovery-required"});
+          |                                                                    ^
+      318 |             expect(await repository.loadVersioned("session")).toEqual(before);
+      319 |             expect(await results.load("session", "successor")).toBeUndefined();
+      320 |             if (recovery === "corrupt") await operations.record(checkpoint);
+
+      at tests/v2/LogicalRoundPackaging.test.ts:317:68
+      at fulfilled (tests/v2/LogicalRoundPackaging.test.ts:38:58)
+
+  ● logical-round delivery and mathematical boundaries › saved-stage checkpoint failure fences successors until corrupt recovery completes
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "status": "corrupt-state",
+    +   "status": "played",
+      }
+
+      315 |             const before = await repository.loadVersioned("session");
+      316 |             const conservative = new api.SpinReconciliationService(wallet, repository, results, operations, false, false, 0, undefined, undefined, model);
+    > 317 |             expect(await handler(conservative).execute(successor)).toMatchObject({status: recovery === "corrupt" ? "corrupt-state" : "recovery-required"});
+          |                                                                    ^
+      318 |             expect(await repository.loadVersioned("session")).toEqual(before);
+      319 |             expect(await results.load("session", "successor")).toBeUndefined();
+      320 |             if (recovery === "corrupt") await operations.record(checkpoint);
+
+      at tests/v2/LogicalRoundPackaging.test.ts:317:68
+      at fulfilled (tests/v2/LogicalRoundPackaging.test.ts:38:58)
+
+FAIL pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+  ● SpinCommandHandler reconciliation/retry recovery › recovers the original logical entry from session-saved evidence after later progress
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "status": "corrupt-state",
+    +   "status": "identity-conflict",
+      }
+
+      266 |         expect(await handler().execute({...command, bet: 7.5})).toMatchObject({status: "identity-conflict"});
+      267 |         await operations.record({...retained, checkpoint, capturedResult: {...retained.capturedResult!, newState: null as unknown as PokieSessionState}});
+    > 268 |         expect(await handler().execute(command)).toMatchObject({status: "corrupt-state"});
+          |                                                  ^
+      269 |         await operations.record({...retained, checkpoint});
+      270 |         expect(await handler().execute(command)).toEqual(original);
+      271 |         expect(await handler().execute(command)).toEqual(original);
+
+      at tests/server/spin/SpinCommandHandlerReconciliation.test.ts:268:50
+      at fulfilled (tests/server/spin/SpinCommandHandlerReconciliation.test.ts:5:58)
+
+  ● SpinCommandHandler reconciliation/retry recovery › recovers the original logical entry from committed evidence after later progress
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "status": "corrupt-state",
+    +   "status": "identity-conflict",
+      }
+
+      266 |         expect(await handler().execute({...command, bet: 7.5})).toMatchObject({status: "identity-conflict"});
+      267 |         await operations.record({...retained, checkpoint, capturedResult: {...retained.capturedResult!, newState: null as unknown as PokieSessionState}});
+    > 268 |         expect(await handler().execute(command)).toMatchObject({status: "corrupt-state"});
+          |                                                  ^
+      269 |         await operations.record({...retained, checkpoint});
+      270 |         expect(await handler().execute(command)).toEqual(original);
+      271 |         expect(await handler().execute(command)).toEqual(original);
+
+      at tests/server/spin/SpinCommandHandlerReconciliation.test.ts:268:50
+      at fulfilled (tests/server/spin/SpinCommandHandlerReconciliation.test.ts:5:58)
+
+Test Suites: 2 failed, 2 total
+Tests:       9 failed, 55 passed, 64 total
+Snapshots:   0 total
+Time:        6.355 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts".

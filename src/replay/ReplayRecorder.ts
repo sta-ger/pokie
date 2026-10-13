@@ -1,3 +1,7 @@
+import {executeLogicalReplayCommand} from "./internal/executeLogicalReplayCommand.js";
+import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
+import {buildLogicalRoundArtifact} from "../artifact/buildLogicalRoundArtifact.js";
+import type {LogicalRound} from "../runtime/LogicalRound.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
 import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
@@ -28,28 +32,37 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         const session = game.createSession(seed === undefined ? undefined : {seed});
         // A replay reconstructs a specific round, not risk of ruin — give the session a bankroll large
         // enough that reaching `round` is never cut short by running out of credits mid-replay.
-        session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+        session.setCreditsAmount(options.unit === "logical-round" ? session.getBet() : Number.MAX_SAFE_INTEGER);
 
         const startedAt = Date.now();
+        let logicalRound: LogicalRound | undefined;
         let totalBet = 0;
         let totalWin = 0;
         for (let played = 0; played < round; played++) {
-            if (!session.canPlayNextGame()) {
+            if (options.unit !== "logical-round" && !session.canPlayNextGame()) {
                 throw new Error(`Replay target round ${round} is unreachable: session stopped after ${played} round(s).`);
             }
-            const result = executeSessionCommand(session);
-            totalBet += result.stake;
-            totalWin += result.win;
+            const command = options.unit === "logical-round"
+                ? {...options.entryCommands?.[played], kind: "spin" as const, delivery: "composite" as const, roundId: `replay:${played + 1}`}
+                : options.entryCommands?.[played];
+            const result = options.unit === "logical-round" ? executeLogicalReplayCommand(session, command!) : executeSessionCommand(session, command);
+            logicalRound = result.logicalRound;
+            if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Replay logical round exceeded the delivery bound; result is incomplete or exhausted.");
+            totalBet += logicalRound?.totalStake ?? result.stake;
+            totalWin += logicalRound?.totalWin ?? result.win;
         }
         const durationMs = Date.now() - startedAt;
         const slot = session as Partial<VideoSlotSessionHandling>;
         const geometry = slot.getScreenGeometry?.();
-        const artifact = geometry && !new ScreenProjection(geometry).isIdentity() && slot.getWinEvaluationResult
+        let artifact = (logicalRound || (geometry && !new ScreenProjection(geometry).isIdentity())) && slot.getWinEvaluationResult
             ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
                 roundId: `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
+        if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,
+            buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
         return {
+            ...(options.unit ? {unit: options.unit} : {}), ...(options.entryCommands ? {commands: options.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
             sessionId: crypto.randomUUID(),
             game: {id: manifest.id, name: manifest.name, version: manifest.version},
             seed: seed ?? null,

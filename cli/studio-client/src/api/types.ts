@@ -1,3 +1,4 @@
+import type {LogicalRoundDelivery} from "../../../../src/runtime/projectLogicalRound.js";
 import type {ScreenGeometry} from "../../../../src/session/videoslot/coordinates/ScreenGeometry.js";
 export type StudioContext = {mode: "home"} | {mode: "project"; projectRoot: string};
 
@@ -956,6 +957,9 @@ export type StudioReplayListEntry = {
 // an idempotent retry of the same requestId), `studioRecordedAt` is when Studio recorded it, `studioSource`
 // names which tab/route produced it, and `studioOperation` names the concrete action within that tab.
 export type StudioRuntimeSessionView = {
+    logicalRound?: LogicalRoundDelivery;
+    logicalRoundDeliverySupported?: boolean;
+    logicalRoundDurability?: "process-only";
     sessionId: string;
     game: {id: string; name: string; version: string};
     // Absent only for a stateless one-shot draw with no session/wallet of its own (the Outcome Source

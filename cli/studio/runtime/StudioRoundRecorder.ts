@@ -43,9 +43,12 @@ export type StudioRoundProvenance = {
 // Simulation" reproductions -- funnels through to become part of one shared, bounded, most-recent-first
 // history, so "the last N rounds played in Studio, from any tab" is genuinely one list, not several
 // independently-bounded ones a caller would have to merge itself.
+type RecordedIdentity = Pick<StudioRuntimeSessionView, "studioRound" | "studioRecordedAt" | "studioSource" | "studioOperation" | "studioProjectRoot" | "studioSeed" | "studioModeName"> & {cursor: number};
+
 export class StudioRoundRecorder {
     private static readonly MAX_RECORDS = 20;
 
+    private readonly identities = new Map<string, RecordedIdentity>();
     private records: StudioRuntimeSessionView[] = [];
     // Session-local round counters, keyed by sessionId -- strictly increasing regardless of MAX_RECORDS'
     // own eviction. Safe to share across every producer's sessionIds: each producer mints its own
@@ -59,9 +62,10 @@ export class StudioRoundRecorder {
     // round, every outcome-source-sample draw, every simulation-sample reproduction) can't be identified
     // as a retry of anything, so it's always recorded as its own new entry.
     public record(session: StudioRuntimeSessionView, provenance: StudioRoundProvenance): void {
-        const requestId = session.studioRequestId;
+        const requestId = session.logicalRound?.roundId ?? session.studioRequestId;
+        const key = requestId === undefined ? undefined : `${session.sessionId}:${requestId}`;
         if (requestId !== undefined) {
-            const duplicate = this.records.find((entry) => entry.sessionId === session.sessionId && entry.studioRequestId === requestId);
+            const duplicate = this.identities.get(key!);
             if (duplicate !== undefined) {
                 session.studioRound = duplicate.studioRound;
                 session.studioRecordedAt = duplicate.studioRecordedAt;
@@ -70,6 +74,11 @@ export class StudioRoundRecorder {
                 session.studioProjectRoot = duplicate.studioProjectRoot;
                 session.studioSeed = duplicate.studioSeed;
                 session.studioModeName = duplicate.studioModeName;
+                if (session.logicalRound && session.logicalRound.cursor > duplicate.cursor) {
+                    const index = this.records.findIndex(record => record.sessionId === session.sessionId && record.studioRound === duplicate.studioRound);
+                    if (index >= 0) this.records[index] = session;
+                    this.identities.set(key!, this.identity(session));
+                }
                 return;
             }
         }
@@ -88,6 +97,7 @@ export class StudioRoundRecorder {
             session.studioModeName = provenance.modeName;
         }
 
+        if (key) this.identities.set(key, this.identity(session));
         this.records.unshift(session);
         if (this.records.length > StudioRoundRecorder.MAX_RECORDS) {
             this.records.length = StudioRoundRecorder.MAX_RECORDS;
@@ -104,8 +114,15 @@ export class StudioRoundRecorder {
     // project switch, or Studio shutdown): every producer's history refers to sessions/games that no
     // longer exist, so nothing here should survive into the next project.
     public clearAll(): void {
+        this.identities.clear();
         this.records = [];
         this.roundCounters = new Map();
+    }
+
+    private identity(session: StudioRuntimeSessionView): RecordedIdentity {
+        return {studioRound: session.studioRound, studioRecordedAt: session.studioRecordedAt, studioSource: session.studioSource,
+            studioOperation: session.studioOperation, studioProjectRoot: session.studioProjectRoot, studioSeed: session.studioSeed,
+            studioModeName: session.studioModeName, cursor: session.logicalRound?.cursor ?? 0};
     }
 
     private nextRound(sessionId: string): number {

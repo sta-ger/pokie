@@ -549,3 +549,27 @@ runner.getBreakdownStatistics();
 
 `pokie sim` takes this, adds a `contribution` field per category (share of the report's overall RTP — see
 [`pokie sim`](cli.md#pokie-sim-packageroot)), and puts the result on `SimulationReport.breakdown`.
+
+### Counting logical rounds
+
+Existing `rounds`, category breakdowns, iteration limits and `totalPayout` count
+domain steps and their mathematical wins. They continue to include zero-stake
+free-game steps. Delivery count and released wallet bank are not extra simulated
+outcomes. Exact weighted-outcome generation still enumerates one screen; logical
+delivery does not introduce full-feature enumeration.
+
+Capable sessions additionally report `logicalRounds` with completed entry count,
+domain step count, actual total stake and mathematical total win. An unfinished
+observation travels with the executable session across runner/chunk boundaries
+and closes once when its domain feature ends. Completed observations merge
+through accumulator snapshots and `SimulationStatisticsMerger`; `Simulation`
+also exposes `getLogicalRoundStatistics()`. Partial final features are omitted
+from completed logical totals, while their played steps remain in the existing
+statistics. Separate workers still have separate independent session streams.
+A forcing mode locked by an explicit simulation strategy is selected afresh at
+each new entry; delivery loops never invoke that strategy to buy another round.
+
+A feature tail first observed without its entry ledger is not a completed logical
+observation. Its steps still count normally; bare feature snapshots cannot recover
+the original entry price or command. Durable runtime statistics use the retained
+logical entry and therefore complete normally after restart.

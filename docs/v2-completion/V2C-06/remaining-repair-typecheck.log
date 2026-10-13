@@ -1,0 +1,5 @@
+
+> @fromstan/pokie@1.3.0 typecheck
+> tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client
+
+tests/v2/LogicalRoundPackaging.test.ts(138,79): error TS2345: Argument of type 'undefined' is not assignable to parameter of type 'PokieSessionState'.

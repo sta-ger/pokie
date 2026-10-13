@@ -1,3 +1,4 @@
+import type {RepositoryCommand} from "../../runtime/RepositoryCommand.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import type {SpinOperationCheckpoint} from "./SpinOperationCheckpoint.js";
 
@@ -8,6 +9,7 @@ import type {SpinOperationCheckpoint} from "./SpinOperationCheckpoint.js";
 // a second time to recompute it. Mirrors the "played" SpinCommandResult's own fields exactly, minus
 // requestId (the record is already keyed by it).
 export type SpinOperationCapturedResult = {
+    readonly deliveryOnly?: boolean;
     readonly previousState: PokieSessionState;
     readonly newState: PokieSessionState;
     readonly win: number;
@@ -24,6 +26,7 @@ export type SpinOperationCapturedResult = {
 export type SpinOperationRecord = {
     readonly sessionId: string;
     readonly requestId: string;
+    readonly command?: RepositoryCommand;
     readonly attemptId: string;
     readonly debitTransactionId: string;
     readonly creditTransactionId: string;

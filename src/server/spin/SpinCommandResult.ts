@@ -1,3 +1,4 @@
+import type {RepositoryCommand} from "../../runtime/RepositoryCommand.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 
 // The outcome of SpinCommandHandler.handle(), transport-agnostic on purpose (no HTTP status codes
@@ -24,9 +25,11 @@ import type {PokieSessionState} from "../session/PokieSessionState.js";
 // what's ambiguous; the caller/transport should surface this as a distinct "needs manual attention" case,
 // never retried automatically and never treated as a plain 500 — see SpinReconciliationService's own
 // "manual-recovery-required" outcome, which is what produces this.
-export type SpinCommandResult =
+type SpinCommandOutcome =
     | {
           status: "played";
+          deliveryOnly?: boolean;
+          deliveryCommand?: RepositoryCommand;
           sessionId: string;
           state: PokieSessionState;
           previousState?: PokieSessionState;
@@ -43,3 +46,5 @@ export type SpinCommandResult =
     | {status: "identity-conflict"; sessionId: string; reason: string}
     | {status: "conflict"; sessionId: string; reason: string}
     | {status: "recovery-required"; sessionId: string; requestId: string; reason: string};
+
+export type SpinCommandResult = SpinCommandOutcome & {committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; committedResult?: Extract<SpinCommandOutcome, {status: "played"}>};

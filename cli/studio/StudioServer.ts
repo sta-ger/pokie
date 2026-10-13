@@ -539,7 +539,7 @@ export class StudioServer implements StudioServerHandling {
         }
         // Never holds an OS port (see StudioPlayService's own doc comment), but still discards whatever
         // session was active.
-        this.playService.reset();
+        await this.playService.reset();
         // Every recorded round, from any tab, refers to a session/game this shutdown is about to make
         // unreachable -- see StudioRoundRecorder.clearAll()'s own doc comment.
         this.roundRecorder.clearAll();
@@ -1062,10 +1062,8 @@ export class StudioServer implements StudioServerHandling {
             // Closing is the established explicit policy: request cancellation,
             // then let each executor persist its own cleanup-safe terminal state.
             this.cancelRuntimePreparation();
-            this.playService.reset();
-            // Same reasoning as stop()'s own call -- every recorded round refers to a session/game in the
-            // project being left.
-            this.roundRecorder.clearAll();
+            await this.playService.reset();
+            // Retained immutable results remain inspectable after leaving the active project.
             await this.cancelActiveJobsForOldProject();
             this.currentContext = {mode: "home"};
             this.projectDashboard = undefined;
@@ -1590,8 +1588,8 @@ export class StudioServer implements StudioServerHandling {
                             throw new StudioProjectOpeningCancelledError();
                         }
                         progress({stage: "Publishing dashboard", unit: "opening stages", current: 3, total: 3, message: "Switching Studio to the opened project."});
-                        this.playService.reset();
-                        this.roundRecorder.clearAll();
+                        await this.playService.reset();
+                        // Preserve committed history; project provenance distinguishes these records.
                         await this.cancelActiveJobsForOldProject(job.id);
                         this.currentContext = {mode: "project", projectRoot: dashboard.projectRoot};
                         this.projectDashboard = dashboard;
@@ -2331,19 +2329,19 @@ export class StudioServer implements StudioServerHandling {
                 const manifest = await readWasmComponentManifest(project);
                 const diagnostic = describeUnsupportedProjectOperation(project, operation);
                 if (manifest.supported && manifest.manifest.artifact !== undefined && diagnostic === undefined) return false;
-                this.playService.reset();
+                await this.playService.reset();
                 this.sendJson(res, 409, {error: diagnostic?.message ?? describeUnavailableWasmComponent()});
                 return true;
             }
             if (project === undefined && this.isWasmPath(projectRoot)) {
-                this.playService.reset();
+                await this.playService.reset();
                 this.sendJson(res, 409, {error: await this.describeUnresolvedWasm(projectRoot)});
                 return true;
             }
             return false;
         } catch (error) {
             if (!this.isWasmPath(projectRoot)) return false;
-            this.playService.reset();
+            await this.playService.reset();
             this.sendJson(res, 409, {error: error instanceof Error ? error.message : String(error)});
             return true;
         }
@@ -3749,7 +3747,17 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.playService.spin(sessionId, "spin", validated.bet, validated.mode);
+        const disconnect = new AbortController();
+        const abortDelivery = (): void => disconnect.abort();
+        req.once("aborted", abortDelivery);
+        res.once("close", abortDelivery);
+        let result: StudioPlaySpinResult;
+        try {
+            result = await this.playService.spin(sessionId, "spin", validated.bet, validated.mode, validated, disconnect.signal);
+        } finally {
+            req.off("aborted", abortDelivery);
+            res.off("close", abortDelivery);
+        }
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;
@@ -3874,7 +3882,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (result.status === "blocked") {
-            this.sendJson(res, 400, {error: result.error});
+            this.sendJson(res, 400, {error: result.error, ...(result.code ? {code: result.code} : {}), ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {}), ...(result.committedProgress ? {committedProgress: result.committedProgress} : {}), ...(result.session ? {session: result.session} : {})});
             return;
         }
         if (result.status === "cancelled") {
@@ -3887,7 +3895,7 @@ export class StudioServer implements StudioServerHandling {
         const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
         const statusCode = result.code === undefined ? 200 : statusCodes[result.code] ?? 409;
         this.sendJson(res, statusCode,
-            {status: "error", error: result.error, ...(result.code === undefined ? {} : {code: result.code})});
+            {status: "error", error: result.error, ...(result.code === undefined ? {} : {code: result.code}), ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {}), ...(result.committedProgress ? {committedProgress: result.committedProgress} : {}), ...(result.session ? {session: result.session} : {})});
     }
 
     private playCancellationResult(

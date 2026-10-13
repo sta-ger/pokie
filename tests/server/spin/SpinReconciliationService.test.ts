@@ -14,6 +14,7 @@ import {SpinReconciliationService} from "../../../src/server/spin/SpinReconcilia
 import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalWalletPort.js";
 import {WalletTransactionInspecting} from "../../../src/server/wallet/WalletTransactionInspecting.js";
 import {WalletTransactionStatus} from "../../../src/server/wallet/WalletTransactionStatus.js";
+import {InMemorySessionRepository} from "../../../src/server/session/InMemorySessionRepository.js";
 
 const fixtureGame: PokieGame = {
     getManifest: () => ({id: "reconciliation", name: "Reconciliation", version: "1"}),
@@ -382,6 +383,30 @@ describe("SpinReconciliationService", () => {
     });
 
     describe("checkpoint at 'settled' or 'session-saved' — resuming from the captured result", () => {
+        it("checkpoints the saved revision before a failed result publication and later backfills without overwriting a successor", async () => {
+            const wallet = new FakeInspectableWallet();
+            wallet.statusFor.set("request-1:attempt-1:debit", "applied");
+            wallet.statusFor.set("request-1:attempt-1:credit", "applied");
+            const repository = new InMemorySessionRepository();
+            const results = new InMemoryIdempotencyRepository<SpinCommandResult>();
+            const operations = new InMemorySpinOperationLog();
+            await repository.save("session-1", previousState);
+            await operations.record(baseRecord("settled", {expectedVersion: 1, capturedResult: {previousState, newState, win: 20, credits: 995}}));
+            const service = createReconciler(wallet, repository, results, operations, false, true, 0);
+            jest.spyOn(results, "save").mockRejectedValueOnce(new Error("result publication failed"));
+            expect(await service.reconcileOne("session-1", "request-1")).toMatchObject({status: "manual-recovery-required", reason: "Reconciliation itself failed unexpectedly: result publication failed."});
+            expect(await operations.load("session-1", "request-1")).toMatchObject({checkpoint: "session-saved", capturedResult: {newVersion: 2}});
+            const successor = {...newState, win: 0, credits: 990};
+            await repository.saveVersioned("session-1", successor, 2);
+            const before = await repository.loadVersioned("session-1");
+            const saves = jest.spyOn(repository, "saveVersioned");
+            const recovered = await service.reconcileOne("session-1", "request-1");
+            expect(recovered).toMatchObject({status: "resumed", result: {status: "played", state: newState, previousState, win: 20, credits: 995, requestId: "request-1", version: 2}});
+            expect(await repository.loadVersioned("session-1")).toEqual(before);
+            expect(saves).not.toHaveBeenCalled();
+            expect(wallet.reverseCalls).toEqual([]);
+        });
+
         it("persists the session state and the idempotency result, never re-playing, for a 'settled' record", async () => {
             const wallet = new FakeInspectableWallet();
             wallet.statusFor.set("request-1:attempt-1:debit", "applied");

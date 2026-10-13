@@ -19,6 +19,8 @@ import {TransactionalWalletPort} from "../../../src/server/wallet/TransactionalW
 import {WalletTransactionInspecting} from "../../../src/server/wallet/WalletTransactionInspecting.js";
 import {WalletTransactionStatus} from "../../../src/server/wallet/WalletTransactionStatus.js";
 import {GameSessionHandling} from "../../../src/session/GameSessionHandling.js";
+import {captureInitialPokieSessionState, type RepositoryCommand} from "@fromstan/pokie";
+import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 
 // Every "retry" handler below is constructed with a zero-quiescence, structurally-owned
 // SpinReconciliationService — standing in for exactly what SpinCommandHandler's own default construction
@@ -230,6 +232,50 @@ class SilentlyLosingIdempotencyRepository implements IdempotencyRepository<SpinC
 }
 
 describe("SpinCommandHandler reconciliation/retry recovery", () => {
+    it.each(["session-saved", "committed"] as const)("recovers the original logical entry from %s evidence after later progress", async checkpoint => {
+        let calculations = 0;
+        const game = transactionalRoundGame(() => calculations++);
+        const repository = new InMemorySessionRepository();
+        const wallet = new InMemoryWallet(100);
+        const results = new InMemoryIdempotencyRepository<SpinCommandResult>();
+        const operations = new InMemorySpinOperationLog();
+        const service = new SpinReconciliationService(wallet, repository, results, operations, true, false, 0, undefined, undefined, game);
+        const handler = () => new SpinCommandHandler(game, repository, wallet, results, operations, true, service);
+        await repository.save("session", captureInitialPokieSessionState({seed: 7}, game.createSession({seed: 7}), game.getSessionSerializer?.(), false, game));
+        const command: RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "stepwise"};
+        const original = await handler().execute(command);
+        expect(original.status).toBe("played");
+        await handler().execute({kind: "spin", sessionId: "session", requestId: "finish", continuation: {roundId: "round", cursor: 1}, delivery: "composite"});
+        await handler().execute({kind: "spin", sessionId: "session", requestId: "later", roundId: "later", delivery: "composite"});
+        const retained = (await operations.load("session", "entry"))!;
+        await operations.record({...retained, checkpoint});
+        let missing = true;
+        const load = results.load.bind(results),
+            save = results.save.bind(results);
+        jest.spyOn(results, "load").mockImplementation((sessionId, requestId) => requestId === "entry" && missing ? Promise.resolve(undefined) : load(sessionId, requestId));
+        jest.spyOn(results, "save").mockImplementation(async (sessionId, requestId, result) => {
+            await save(sessionId, requestId, result);
+            if (requestId === "entry") missing = false;
+        });
+        const before = await repository.loadVersioned("session"),
+            balance = await wallet.getBalance("session"),
+            count = calculations;
+        const debit = jest.spyOn(wallet, "debit"),
+            credit = jest.spyOn(wallet, "credit");
+        expect(await handler().execute({...command, requestId: "foreign"})).toMatchObject({status: "identity-conflict"});
+        expect(await handler().execute({...command, bet: 7.5})).toMatchObject({status: "identity-conflict"});
+        await operations.record({...retained, checkpoint, capturedResult: {...retained.capturedResult!, newState: null as unknown as PokieSessionState}});
+        expect(await handler().execute(command)).toMatchObject({status: "corrupt-state"});
+        await operations.record({...retained, checkpoint});
+        expect(await handler().execute(command)).toEqual(original);
+        expect(await handler().execute(command)).toEqual(original);
+        expect(await repository.loadVersioned("session")).toEqual(before);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        expect(calculations).toBe(count);
+        expect(debit).not.toHaveBeenCalled();
+        expect(credit).not.toHaveBeenCalled();
+    });
+
     it("failure after debit: retry with the same requestId reverses the stale debit and runs a genuinely fresh spin, never double-charging", async () => {
         const {game, stats} = createInstrumentedGame();
         const sessionRepository = new InMemorySessionRepository();

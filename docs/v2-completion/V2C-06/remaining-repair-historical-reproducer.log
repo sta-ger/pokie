@@ -1,0 +1,158 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts
+
+FAIL pokie tests/v2/LogicalRoundPackaging.test.ts (5.365 s)
+  logical-round delivery and mathematical boundaries
+    ✓ validates opaque custom progress before current-state and cached-result publication (15 ms)
+    ✓ custom retained validation preserves a package's reused executable and direct delivery ledger (3 ms)
+    ✓ direct composite returned failure retains the latest prefix and exact successor (2 ms)
+    ✓ direct composite thrown failure retains the latest prefix and exact successor (2 ms)
+    ✕ a failed direct composite completed by its successor remains retryable after a later round (13 ms)
+    ✓ independent saved-stage result write failure recovers exact delivery without math or settlement (93 ms)
+    ✓ independent saved-stage checkpoint write failure recovers exact delivery without math or settlement (51 ms)
+    ✓ composite saved-stage publication failure exposes the newly accepted prefix (45 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through independent/partial capture and retry (19 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through independent/full capture and retry (21 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through local/partial capture and retry (93 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through local/full capture and retry (117 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through external/partial capture and retry (276 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through external/full capture and retry (276 ms)
+    ✓ binds completed logical identity independently of request identity (independent) (68 ms)
+    ✓ binds completed logical identity independently of request identity (local) (153 ms)
+    ✓ binds completed logical identity independently of request identity (external) (369 ms)
+    ✓ rejects corrupt retained artifacts, commands, cursors and executable progress before effects (55 ms)
+    ✓ a returned successor rejection exposes the retained prefix and resumes without another entry (23 ms)
+    ✓ a thrown composite successor exposes its committed prefix and exact retry identity (164 ms)
+    ✓ uses the execution contract for base and unsupported custom capabilities (3 ms)
+    ✓ exhausted cascades cannot publish completed replay or logical statistics (15 ms)
+    ✓ packages the identical paid entry, retriggers, bank and next RNG round at bet 0.05 (30 ms)
+    ✓ packages the identical paid entry, retriggers, bank and next RNG round at bet 7.5 (19 ms)
+    ✓ packages the identical paid entry, retriggers, bank and next RNG round at bet 1e-7 (17 ms)
+    ✓ cascade bound exhaustion retains its evaluated prefix and cannot purchase another entry (5 ms)
+    ✓ retains direct duplicate deliveries even after another round without another draw (10 ms)
+    ✓ rejects foreign, skipped, stale and entry-changing continuations before mutation (3 ms)
+    ✓ rejects a mutated entry bet or paid continuation before another draw (3 ms)
+    ✓ an unsupported purchase rolls back the selected mode before it can become latent (2 ms)
+    ✓ zero natural grants complete one entry, while a bounded feature keeps an explicit successor (5 ms)
+    ✓ shared retry retention preserves detached historical prefixes of a long chain (229 ms)
+    ✓ finishes a long finite feature iteratively and settles its bank once (989 ms)
+    ✓ a retrigger on the nominal last free game postpones completion and bank release (5 ms)
+    ✓ logical statistics close once across chunk boundaries without changing step quotas (3 ms)
+    ✓ does not fabricate a completed observation for a feature tail whose entry was not observed (2 ms)
+    ✓ replay addresses a logical round with its actual entry command and ordered artifact (7 ms)
+    ✓ restarts at each committed subround and replays historical/final outputs independently (183 ms)
+    ✓ restart delivers saved cascade stages without calculation or settlement (external=false) (241 ms)
+    ✓ restart delivers saved cascade stages without calculation or settlement (external=true) (435 ms)
+    ✓ cancellation after commit preserves the prefix and resumes its exact successor (191 ms)
+
+  ● logical-round delivery and mathematical boundaries › a failed direct composite completed by its successor remains retryable after a later round
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 19
+    + Received  + 19
+
+    @@ -5,67 +5,67 @@
+          "cursor": 3,
+          "deliveryCursor": 3,
+          "entry": Object {
+            "delivery": "composite",
+            "kind": "spin",
+    -       "roundId": "first",
+    +       "roundId": "later",
+          },
+    -     "id": "first",
+    +     "id": "later",
+          "mathematicalStatus": "completed",
+          "mode": "base",
+          "stageCursor": 0,
+          "status": "completed",
+          "subrounds": Array [
+            Object {
+              "command": Object {
+                "delivery": "composite",
+                "kind": "spin",
+    -           "roundId": "first",
+    +           "roundId": "later",
+              },
+    -         "credits": 999.95,
+    -         "id": "first:0",
+    +         "credits": 1000.1500000000001,
+    +         "id": "later:0",
+              "index": 0,
+    -         "payout": 4.5477510646207975e-14,
+    +         "payout": 0.10000000000006821,
+              "stake": 0.05,
+    -         "win": 0,
+    +         "win": 0.1,
+            },
+            Object {
+              "command": Object {
+                "continuation": Object {
+                  "cursor": 1,
+    -             "roundId": "first",
+    +             "roundId": "later",
+                },
+                "delivery": "stepwise",
+                "kind": "spin",
+              },
+    -         "credits": 999.95,
+    -         "id": "first:1",
+    +         "credits": 1000.2500000000001,
+    +         "id": "later:1",
+              "index": 1,
+    -         "payout": 0,
+    +         "payout": 0.10000000000002274,
+              "stake": 0,
+    -         "win": 0,
+    +         "win": 0.1,
+            },
+            Object {
+              "command": Object {
+                "continuation": Object {
+                  "cursor": 2,
+    -             "roundId": "first",
+    +             "roundId": "later",
+                },
+                "delivery": "stepwise",
+                "kind": "spin",
+              },
+    -         "credits": 1000.1,
+    -         "id": "first:2",
+    +         "credits": 1000.3000000000001,
+    +         "id": "later:2",
+              "index": 2,
+    -         "payout": 0.14999999999997726,
+    +         "payout": 0.049999999999954525,
+              "stake": 0,
+    -         "win": 0.15000000000000002,
+    +         "win": 0.05,
+            },
+          ],
+    -     "totalPayout": 0.15000000000002273,
+    +     "totalPayout": 0.25000000000004546,
+          "totalStake": 0.05,
+    -     "totalWin": 0.15000000000000002,
+    +     "totalWin": 0.25,
+        },
+        "mode": "base",
+        "payout": 0.14999999999997726,
+        "stake": 0,
+        "status": "played",
+
+      201 |         const before = snapshot(session);
+      202 |         expect(runtime.execute(entry)).toEqual(completed);
+    > 203 |         expect(runtime.execute(entry)).toEqual(completed);
+          |                                        ^
+      204 |         expect(runtime.getLogicalRound()).toEqual(later.logicalRound);
+      205 |         expect(snapshot(session)).toEqual(before);
+      206 |     });
+
+      at Object.<anonymous> (tests/v2/LogicalRoundPackaging.test.ts:203:40)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 40 passed, 41 total
+Snapshots:   0 total
+Time:        5.607 s, estimated 6 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts".

@@ -1,4 +1,6 @@
+import type {ValidatedPlaySpinRequest} from "./validatePlaySpinRequest.js";
 import {
+    projectLogicalRound, SessionRuntime,
     captureInitialPokieSessionState,
     describeUnsupportedProjectOperation,
     GameSessionHandling,
@@ -124,8 +126,8 @@ export type StudioPlaySpinResult =
     /** A scenario search stopped only between real settled rounds. */
     | {status: "cancelled"; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
-    | {status: "blocked"; error: string}
-    | {status: "error"; error: string; code?: string};
+    | {status: "blocked"; error: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView}
+    | {status: "error"; error: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView};
 
 // Play's own backend -- Studio's only game mode (see PlayTab's own doc comment). Never a
 // PokieDevServer/PokieClientServer, never an OS port, never a SessionRepository/WalletPort a
@@ -326,11 +328,12 @@ export class StudioPlayService {
     // has produced a genuine result -- the one choke point every Play tab round (runtime or
     // outcomeSource) passes through, so StudioRoundRecorder never needs a second call site to stay
     // complete.
-    public async spin(sessionId: string, operation?: StudioRoundOperation, bet?: number, mode?: string): Promise<StudioPlaySpinResult> {
+    public async spin(sessionId: string, operation?: StudioRoundOperation, bet?: number, mode?: string, intent: ValidatedPlaySpinRequest = {}, signal: AbortSignal | undefined = undefined): Promise<StudioPlaySpinResult> {
         const active = this.activeSessionFor(sessionId);
         if (active === undefined) {
             return {status: "not-found"};
         }
+        if (active.kind !== "runtime" && (intent.continuation !== undefined || intent.delivery !== undefined)) return {status: "error", code: "invalid-command", error: "This runtime does not support logical continuation."};
         if (active.kind === "wasm") {
             const currentWasmError = await this.invalidateWasmSession(active, sessionId);
             if (currentWasmError !== undefined) return {status: "error", error: currentWasmError};
@@ -388,19 +391,26 @@ export class StudioPlayService {
             // These are submitted together with a manual Spin, so the canonical SpinCommandHandler
             // applies them immediately before this exact round.  Scenario searches deliberately omit
             // them: they continue from the session state the player already selected.
-            const handled = await active.spinHandler.execute({kind: "spin", sessionId, bet, mode});
+            if (operation !== undefined && operation !== "spin" && intent.delivery === undefined && typeof (active.session as {hasPendingLogicalRound?: () => boolean}).hasPendingLogicalRound === "function") {
+                const round = new SessionRuntime(active.session).getLogicalRound();
+                const requestId = crypto.randomUUID();
+                const domainPending = (active.session as GameSessionHandling & {hasPendingLogicalRound: () => boolean}).hasPendingLogicalRound();
+                // A legacy caller may already be inside a feature with no logical entry ledger.
+                // Preserve that one-play compatibility unit until it ends before selecting a policy.
+                if (round?.status === "pending") intent = {requestId, delivery: "stepwise", continuation: {roundId: round.id, cursor: round.deliveryCursor}};
+                else if (!domainPending) intent = {requestId, roundId: requestId, delivery: "stepwise"};
+            }
+            const handled = await active.spinHandler.execute({kind: "spin", sessionId, bet, mode, ...intent, requestId: intent.requestId ?? crypto.randomUUID()}, signal);
             if (handled.status === "not-found") {
-                result = {status: "not-found"};
+                result = handled.committedProgress ? {status: "error", code: "not-found", error: "Session was removed after its committed prefix.", committedProgress: handled.committedProgress} : {status: "not-found"};
             } else if (handled.status === "blocked") {
-                result = {status: "blocked", error: handled.reason};
-            } else if (handled.status === "conflict" || handled.status === "recovery-required") {
-                // Neither can actually happen here in practice -- this service never passes an
-                // expectedVersion, and never shares its stores with another SpinCommandHandler instance
-                // (see the class doc comment) -- surfaced as a plain error rather than silently dropped
-                // in the (unreachable in normal operation) case they somehow ever did.
-                result = {status: "error", code: handled.status, error: handled.reason};
+                result = {status: "blocked", code: handled.status, error: handled.reason, ...(handled.committedProgress ? {committedProgress: handled.committedProgress} : {retryDisposition: "rejected"})};
             } else if (handled.status !== "played") {
-                result = {status: "error", code: handled.status, error: handled.reason};
+                let retryDisposition: "rejected" | "safe-to-retry" | undefined;
+                if (["invalid-command", "identity-conflict", "conflict"].includes(handled.status) && !handled.committedProgress) retryDisposition = "rejected";
+                else if ("retryDisposition" in handled && handled.retryDisposition === "safe-to-retry") retryDisposition = handled.retryDisposition;
+                result = {status: "error", code: handled.status, error: handled.reason, ...(handled.committedProgress ? {committedProgress: handled.committedProgress} : {}),
+                    ...(retryDisposition ? {retryDisposition} : {})};
             } else {
                 const settledSession = active.spinHandler.getLiveSession(sessionId);
                 if (settledSession === undefined) {
@@ -409,9 +419,6 @@ export class StudioPlayService {
                 // A new/reset session may have won the race while the prior command was settling. The
                 // prior command is still valid for its old in-memory stores, but must never overwrite the
                 // current Play presentation state with it.
-                if (this.active !== active || this.currentSessionId !== sessionId) {
-                    return {status: "not-found"};
-                }
                 active.session = settledSession;
                 result = {
                     status: "ok",
@@ -425,15 +432,22 @@ export class StudioPlayService {
                         settledSession,
                     ),
                 };
+                result.session.studioRequestId = (handled.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? handled.requestId;
+                result.session.debug = {...result.session.debug, stateBefore: handled.previousState, requestId: handled.requestId};
+            }
+            if (handled.status !== "played" && handled.committedResult && (result.status === "error" || result.status === "blocked")) {
+                const prefix = handled.committedResult;
+                result.session = this.buildSessionView(sessionId, active.manifest, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload, active.session);
+                result.session.studioRequestId = (prefix.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? prefix.requestId;
             }
         }
 
         // A round cannot be returned or recorded after an asynchronous predecessor has installed a
         // replacement. This is especially important for portable components: a Wasm session is mutable,
         // so an obsolete response must never be presented as the newer session's own round.
-        if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
-        if (result.status === "ok") {
-            this.roundRecorder.record(result.session, {
+        const recordedSession = "session" in result ? result.session : undefined;
+        if (recordedSession) {
+            this.roundRecorder.record(recordedSession, {
                 source: active.kind === "outcomeSource" ? "play-outcome-source" : "play",
                 operation: actualOperation,
                 projectRoot: active.projectRoot,
@@ -441,6 +455,7 @@ export class StudioPlayService {
                 modeName: active.kind === "outcomeSource" ? active.modeName : undefined,
             });
         }
+        if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
         return result;
     }
 
@@ -537,8 +552,8 @@ export class StudioPlayService {
     // project must never leave a previous project's session reachable. Nothing here holds an OS resource
     // (see newSession()'s own doc comment on why materialization is never held past loadGame), so this is
     // just discarding in-memory references, never an async teardown.
-    public reset(): void {
-        this.releaseActiveRuntime().catch(() => undefined);
+    public reset(): Promise<void> {
+        return this.releaseActiveRuntime();
     }
 
     // A Play session is a snapshot of an executable package, not permission
@@ -601,6 +616,7 @@ export class StudioPlayService {
         this.active = undefined;
         this.currentSessionId = undefined;
         if (active.kind === "runtime") {
+            await active.spinHandler.drain();
             await releasePokieGame(active.game).catch(() => undefined);
         }
     }
@@ -611,6 +627,7 @@ export class StudioPlayService {
         this.active = undefined;
         this.currentSessionId = undefined;
         if (active?.kind === "runtime") {
+            await active.spinHandler.drain();
             await releasePokieGame(active.game).catch(() => undefined);
         }
         if (active?.kind === "wasm") {
@@ -706,7 +723,7 @@ export class StudioPlayService {
                 return {status: "not-found"};
             }
 
-            const round = await this.spin(sessionId, operation);
+            const round = await this.spin(sessionId, operation, undefined, undefined, {}, signal);
             if (signal?.aborted) {
                 const settledSession = round.status === "ok" ? round.session : lastSettledSession;
                 return {status: "cancelled", ...(settledSession === undefined ? {} : {session: settledSession})};
@@ -885,6 +902,16 @@ export class StudioPlayService {
                 }
         ) as StudioRuntimeSessionView;
 
+        if (state.logicalRound) {
+            view.logicalRound = projectLogicalRound(state.logicalRound);
+            if (view.logicalRound.currentStep) {
+                view.reelsSymbols = view.logicalRound.currentStep.screen;
+                view.screen = view.logicalRound.currentStep.screen.map(reel => [...reel]);
+                view.totalWin = view.logicalRound.currentStep.totalWin;
+            }
+        }
+        view.logicalRoundDeliverySupported = SessionRuntime.supportsLogicalRoundDelivery(session) && (this.active?.kind !== "runtime" || this.active.game.supportsLogicalRoundDelivery?.() !== false);
+        view.logicalRoundDurability = "process-only";
         const availableSymbols = this.getAvailableSymbolsIfSupported(session);
         if (availableSymbols !== undefined) {
             view.availableSymbols = availableSymbols;

@@ -1,3 +1,4 @@
+import {cloneSessionData} from "../../../runtime/internal/cloneSessionData.js";
 import {rejectScreenGeometry} from "../../../session/videoslot/coordinates/projectSymbolsCombination.js";
 import type {CascadeResultProviding} from "../../../session/videoslot/cascade/CascadeResultProviding.js";
 import type {VideoSlotSessionHandling} from "../../../session/videoslot/VideoSlotSessionHandling.js";
@@ -33,7 +34,7 @@ export class CascadeSessionSerializer<T extends string | number | symbol = strin
     public override getRoundData(session: CascadeCapableSession<T>): CascadeRoundNetworkData<T> {
         rejectScreenGeometry(session, "CascadeSessionSerializer");
         const cascadeResult = session.getCascadeResult();
-        return {
+        return cloneSessionData({
             ...super.getRoundData(session),
             initialScreen: cascadeResult.getInitialScreen(),
             finalScreen: cascadeResult.getFinalScreen(),
@@ -41,7 +42,7 @@ export class CascadeSessionSerializer<T extends string | number | symbol = strin
             cascadeMetadata: cascadeResult.getMetadata(),
             cascadeRngInfo: cascadeResult.getRngInfo(),
             cascadeDebugInfo: cascadeResult.getDebugInfo(),
-        };
+        });
     }
 
     public override getInitialData(session: CascadeCapableSession<T>): CascadeInitialNetworkData<T> {

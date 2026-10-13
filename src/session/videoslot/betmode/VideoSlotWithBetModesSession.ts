@@ -108,6 +108,12 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
         return this.baseSession.getCreditsAmount() >= totalCost;
     }
 
+    /** Nonmutating entry guard used by command preparation before a debit or selection is committed. */
+    public validateEntryAction(): void {
+        const mode = this.resolveActiveBetMode();
+        if (mode.forcesFeatureEntry() && this.getStakeAmount() > 0 && !this.canForceFeatureEntry(mode)) throw new ForcedFeatureEntryUnsupportedError(mode.getId());
+    }
+
     public override play(): void {
         this.validateScreenCoordinates();
         if (!this.canPlayNextGame()) {

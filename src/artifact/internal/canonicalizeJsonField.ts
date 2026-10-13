@@ -19,5 +19,6 @@ export function canonicalizeJsonField(fieldPath: string, value: Record<string, u
     if (canonical === null || typeof canonical !== "object" || Array.isArray(canonical)) {
         throw new RoundArtifactBuildError("round-artifact-not-json-safe", `${fieldPath} must be a plain object.`);
     }
-    return canonical;
+    // Array.isArray does not narrow the readonly JsonArray union in strict consumers.
+    return canonical as JsonObject;
 }

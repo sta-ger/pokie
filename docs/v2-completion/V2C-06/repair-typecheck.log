@@ -1,0 +1,24 @@
+
+> @fromstan/pokie@1.3.0 typecheck
+> tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client
+
+
+> @fromstan/pokie@1.3.0 typecheck-studio-client
+> tsc --project cli/studio-client/tsconfig.json --noEmit
+
+
+> @fromstan/pokie@1.3.0 typecheck
+> tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client
+
+
+> @fromstan/pokie@1.3.0 typecheck-studio-client
+> tsc --project cli/studio-client/tsconfig.json --noEmit
+
+
+> @fromstan/pokie@1.3.0 typecheck
+> tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client
+
+
+> @fromstan/pokie@1.3.0 typecheck-studio-client
+> tsc --project cli/studio-client/tsconfig.json --noEmit
+

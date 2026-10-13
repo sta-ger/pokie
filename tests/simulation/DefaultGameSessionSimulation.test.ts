@@ -2,6 +2,8 @@
 
 import {
     BetForNextSimulationRoundSetting,
+    AggregateSimulationRunner,
+    SessionRuntime,
     GameSession,
     GameSessionConfig,
     NextSessionRoundPlayableDetermining,
@@ -16,6 +18,21 @@ import {
 } from "@fromstan/pokie";
 
 describe("DefaultGameSessionSimulation", () => {
+    test("plain built-in base rounds use the same capability and statistics in every runner", () => {
+        const base = new GameSession();
+        const runtime = new SessionRuntime(base);
+        const one = runtime.execute({kind: "spin", delivery: "composite", roundId: "base"});
+        expect(one).toMatchObject({status: "played", logicalRound: {status: "completed", cursor: 1, totalStake: base.getBet()}});
+        const config = new SimulationConfig();
+        config.setNumberOfRounds(2);
+        const simulation = new Simulation(new GameSession(), config);
+        simulation.run();
+        const aggregate = new AggregateSimulationRunner(new GameSession(), 2).run();
+        const expected = {rounds: 2, steps: 2, totalStake: base.getBet() * 2, totalWin: 0};
+        expect(simulation.getLogicalRoundStatistics()).toEqual(expected);
+        expect(aggregate.getStatistics().logicalRounds).toEqual(expected);
+    });
+
     test("playSpecifiedNumOfRoundsAndCalculateRtpTest", () => {
         const sessionConfig = new VideoSlotConfig();
         sessionConfig.setSymbolsSequences([

@@ -61,3 +61,10 @@ Potentially noticeable rows above are all common-job operations; they are not ex
 projections while their domain services remain executors.
 
 When leaving a project, Studio asks the server for the complete active job set. The browser names those operations and must confirm the transition; the server rejects an unconfirmed close, Home navigation, or opening/switching to another project with the affected operation names. A new project generation invalidates stale list/start/poll/cancel responses so no response from project A is rendered in project B.
+
+Logical composite delivery commits each subround through the existing runtime
+boundary. Cancellation stops subsequent subrounds and publication, and preserves
+a committed prefix or uncertain external settlement owner. Play scenario searches
+continue an active logical round with its returned cursor. Project changes drain
+accepted Play work before releasing its runtime; retained history remains
+inspectable and late responses cannot repopulate the active project view.

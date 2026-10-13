@@ -35,7 +35,7 @@ export function PlayTab({
     session: PlaySessionView;
     sessionId: string | undefined;
     onNewSession: (seed?: string, modeName?: string) => void;
-    onSpin: (bet?: number, mode?: string) => void;
+    onSpin: (bet?: number, mode?: string, delivery?: "stepwise" | "composite") => void;
     onFindAnyWin: () => void;
     onFindSymbolWin: (symbolId: string) => void;
     // The canonical shared "custom scenario" control -- StudioPlayService.findFreeGames()'s own doc
@@ -62,6 +62,7 @@ export function PlayTab({
             setSelectedMode(availableModes[0]);
         }
     }, [availableModes, selectedMode]);
+    const [delivery, setDelivery] = useState<"stepwise" | "composite">("stepwise");
     const loading = session.status === "loading";
     // The game's own real symbol list -- present on session/spin/find-scenario responses alike (see
     // StudioPlayService.buildSessionView()'s own doc comment) -- undefined until the first "ok" response,
@@ -109,6 +110,7 @@ export function PlayTab({
         errorNotice = <ErrorState message={session.message} />;
     }
 
+    const deliveryField = activeSession?.logicalRoundDeliverySupported && <Select label="Round delivery" aria-label="Round delivery" value={delivery} data={[{value: "stepwise", label: "One subround"}, {value: "composite", label: "Complete logical round"}]} onChange={(value) => setDelivery(value === "composite" ? "composite" : "stepwise")} disabled={loading} />;
     const seedField = (
         <TextInput
             label="Seed (optional)"
@@ -143,10 +145,12 @@ export function PlayTab({
                 <Text size="sm" c="dimmed" mb="sm">
                     Play prepares this game for a real round and creates a session in Studio. Nothing else needs to be set up.
                 </Text>
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.cursor} subrounds, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Starting…" />}
                 {errorNotice}
                 <PageSection legend="Start Play">
                     {modeField}
+                    {deliveryField}
                     <AdvancedDisclosure detail="seed">
                         {seedField}
                     </AdvancedDisclosure>
@@ -188,7 +192,7 @@ export function PlayTab({
         );
     } else if (activeSession !== undefined) {
         roundResult = (
-            <GameScreenView
+            <GameScreenView logicalRound={activeSession?.logicalRound}
                 screen={describeRuntimeScreen(activeSession.screen) ?? []}
                 visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
                 credits={activeSession.credits}
@@ -208,17 +212,19 @@ export function PlayTab({
         <div>
             <PageSection legend="Play">
                 <QuickActions>
-                    <Button loading={loading} onClick={() => onSpin(selectedBet === null ? undefined : Number(selectedBet), selectedBetMode ?? undefined)}>
-                        Spin
+                    <Button loading={loading} onClick={() => onSpin(selectedBet === null ? undefined : Number(selectedBet), selectedBetMode ?? undefined, delivery)}>
+                        {activeSession?.logicalRound?.status === "pending" ? "Continue round" : "Spin"}
                     </Button>
                 </QuickActions>
                 {errorNotice}
+                {activeSession?.logicalRound && <Text size="sm">Round {activeSession.logicalRound.status}: {activeSession.logicalRound.cursor} subrounds, stake {activeSession.logicalRound.totalStake}, payout {activeSession.logicalRound.totalPayout}</Text>}
                 {loading && <LoadingState label="Spinning…" />}
                 {(!loading || playedRound !== undefined) && roundResult}
             </PageSection>
 
             <PageSection legend="Session">
                 {modeField}
+                {deliveryField}
                 <AdvancedDisclosure detail="seed">
                     {seedField}
                 </AdvancedDisclosure>

@@ -54,6 +54,9 @@ export function RoundSummary({
     onSelectBet?: (bet: number) => void;
     onSelectBetMode?: (modeId: string) => void;
 }) {
+    let roundTitle = "Round complete";
+    if (session.logicalRound?.status === "pending") roundTitle = "Subround committed";
+    if (session.logicalRound?.status === "exhausted") roundTitle = "Round stopped at its bound";
     const [artifactInspectorOpen, setArtifactInspectorOpen] = useState(false);
     if (session.debug?.artifact) {
         const artifact = describeRoundArtifact(session.debug.artifact);
@@ -61,12 +64,12 @@ export function RoundSummary({
         return (
             <div>
                 {artifact.totalWin > 0 ? (
-                    <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title="Round complete" mb="md">
+                    <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
                         You won {artifact.totalWin.toFixed(2)}.
                     </Alert>
                 ) : (
                     <Text size="sm" c="dimmed" mb="md">
-                        Round complete — no win this round.
+                        {roundTitle} — no win this round.
                     </Text>
                 )}
 
@@ -74,7 +77,7 @@ export function RoundSummary({
                     session/Game Model, balance from the session, and this round's screen/wins/mode from
                     the immutable RoundArtifact.  The full inspector remains available below without
                     displacing normal play behind provenance or JSON. */}
-                <GameScreenView
+                <GameScreenView logicalRound={session.logicalRound}
                     screen={artifact.screen}
                     visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
                     wins={artifact.wins}
@@ -132,12 +135,12 @@ export function RoundSummary({
     return (
         <div>
             {session.win !== undefined && session.win > 0 ? (
-                <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title="Round complete" mb="md">
+                <Alert color="green" variant="light" icon={<IconCircleCheck size={16} />} title={roundTitle} mb="md">
                     You won {session.win.toFixed(2)}.
                 </Alert>
             ) : (
                 <Text size="sm" c="dimmed" mb="md">
-                    Round complete — no win this round.
+                    {roundTitle} — no win this round.
                 </Text>
             )}
 
@@ -159,7 +162,7 @@ export function RoundSummary({
             </Table>
 
             {session.screen && (
-                <GameScreenView
+                <GameScreenView logicalRound={session.logicalRound}
                     screen={describeRuntimeScreen(session.screen) ?? []}
                     visibleRowCoverage={Array.isArray(session.visibleRowCoverage) ? session.visibleRowCoverage as number[] : undefined}
                     credits={session.credits}

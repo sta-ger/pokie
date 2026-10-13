@@ -25,6 +25,10 @@ implements VideoSlotSessionHandling<T> {
         this.baseSession = baseSession;
     }
 
+    public hasPendingLogicalRound(): boolean {
+        return (this.baseSession as {hasPendingLogicalRound?: () => boolean}).hasPendingLogicalRound?.() ?? false;
+    }
+
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
         if (this.baseSession.getConfiguredScreenGeometry) return this.baseSession.getConfiguredScreenGeometry();
         // Capability absence permits legacy detection; an authoritative undefined return above

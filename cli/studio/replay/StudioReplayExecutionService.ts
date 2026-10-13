@@ -1,4 +1,6 @@
+import {executeLogicalReplayCommand} from "../../../src/replay/internal/executeLogicalReplayCommand.js";
 import {
+    buildLogicalRoundArtifact, type LogicalRound, type CascadeResultProviding,
     buildRoundArtifactFromSession,
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
@@ -178,6 +180,7 @@ export class StudioReplayExecutionService {
     // `projectRoot`'s own type itself).
     public start(projectRoot: string, request: ValidatedReplayRequest, outcomeSourceProject?: PokieProject): StudioReplayStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        if (request.unit === "logical-round" && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "This runtime cannot replay feature logical rounds."};
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
         // can only fail after attempting runtime preparation.
@@ -190,7 +193,7 @@ export class StudioReplayExecutionService {
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "replay",
-            request: {round: request.round, ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {round: request.round, ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `replay:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -210,6 +213,7 @@ export class StudioReplayExecutionService {
             projectRoot,
             status: "queued",
             round: request.round,
+            unit: request.unit, entryCommands: request.entryCommands,
             seed: request.seed,
             simulationId: request.simulationId,
             startedAt: this.now(),
@@ -395,6 +399,7 @@ export class StudioReplayExecutionService {
             // mislabeling the job id as one.
             const sessionId = this.createId();
             let session: GameSessionHandling;
+            let logicalRound: LogicalRound | undefined;
             let playerCredits: number;
             try {
                 session = game.createSession(context);
@@ -402,7 +407,7 @@ export class StudioReplayExecutionService {
                 // A replay reconstructs a specific round, not risk of ruin — same reasoning as
                 // ReplayRecorder itself: a bankroll large enough that reaching `round` is never cut short
                 // by running out of credits mid-replay.
-                session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+                session.setCreditsAmount(record.unit === "logical-round" ? session.getBet() : Number.MAX_SAFE_INTEGER);
             } catch (error) {
                 this.fail(record, error);
                 return;
@@ -437,7 +442,7 @@ export class StudioReplayExecutionService {
                             return;
                         }
                         const actualRound = record.completedRounds + played;
-                        if (!session.canPlayNextGame()) {
+                        if (record.unit !== "logical-round" && !session.canPlayNextGame()) {
                             this.fail(record, new Error(`Replay target round ${record.round} is unreachable: session stopped after ${actualRound} round(s).`));
                             return;
                         }
@@ -450,10 +455,21 @@ export class StudioReplayExecutionService {
                             stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
                         }
 
-                        const result = executeSessionCommand(session);
-                        totalBet += result.stake;
-                        totalWin += result.win;
-                        playerCredits = playerCredits - result.stake + result.win;
+                        const result = record.unit === "logical-round"
+                            ? executeLogicalReplayCommand(session, {...record.entryCommands?.[actualRound], kind: "spin", delivery: "composite", roundId: `replay:${actualRound + 1}`}, record.abortController.signal)
+                            : executeSessionCommand(session, record.entryCommands?.[actualRound], record.abortController.signal);
+                        logicalRound = result.logicalRound;
+                        if (record.abortController.signal.aborted) {
+                            record.completedRounds += played + (record.unit !== "logical-round" || logicalRound?.status === "completed" ? 1 : 0);
+                            this.cancelRecord(record);
+                            return; 
+                        }
+                        if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Logical replay exceeded its bound; no completed descriptor can be published.");
+                        const stake = logicalRound?.totalStake ?? result.stake, 
+                            win = logicalRound?.totalWin ?? result.win;
+                        totalBet += stake;
+                        totalWin += win;
+                        playerCredits = playerCredits - stake + win;
 
                         if (isFinalPlay) {
                             stateAfterFinal = this.captureBoundaryState(false, context, session, initialState, serializer);
@@ -484,7 +500,10 @@ export class StudioReplayExecutionService {
                 screen: captureScreen(session),
                 timestamp: record.startedAt,
                 durationMs: record.durationMs,
-                artifact: this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
+                ...(record.unit ? {unit: record.unit} : {}), ...(record.entryCommands ? {commands: record.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
+                artifact: logicalRound && this.hasVideoSlotShape(session)
+                    ? new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound, buildRoundArtifactFromSession(session, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: this.pokieVersion, ...(record.configHash ? {configHash: record.configHash} : {})}})))
+                    : this.buildArtifact(session, manifest, record, this.mergeDebugPayloads(stateAfterFinal)),
                 ...(stateBeforeFinal !== undefined ? {stateBefore: this.toPublicSessionState(stateBeforeFinal)} : {}),
                 ...(stateAfterFinal !== undefined ? {stateAfter: this.toPublicSessionState(stateAfterFinal)} : {}),
             };

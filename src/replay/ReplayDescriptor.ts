@@ -1,3 +1,5 @@
+import type {SessionCommand} from "../runtime/SessionCommand.js";
+import type {LogicalRound} from "../runtime/LogicalRound.js";
 import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
 import type {PreGeneratedRoundReplayDescriptor} from "../pregenerated/PreGeneratedRoundReplayDescriptor.js";
 
@@ -10,6 +12,9 @@ export type ReplayDescriptor = {
     game: {id: string; name: string; version: string};
     seed: string | null;
     round: number;
+    unit?: "step" | "logical-round";
+    commands?: readonly SessionCommand[];
+    logicalRound?: LogicalRound;
     totalBet: number;
     totalWin: number;
     // The player-facing balance after the target round.  Studio replays lift a session's balance to
