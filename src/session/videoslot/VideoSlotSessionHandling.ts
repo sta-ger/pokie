@@ -10,7 +10,10 @@ export interface VideoSlotSessionHandling<T extends string | number | symbol = s
         GameSessionHandling,
         VideoSlotRoundStateDetermining<T> {
     getScreenGeometry?(): ScreenGeometry | undefined;
-    /** Upcoming model or known generator geometry; settled geometry remains owned by getScreenGeometry. */
+    /** Validated upcoming model/generator geometry. An undefined return is authoritative ordinary
+     * coordinates; callers must not replace it with a settled combination's tag.
+     * Settled geometry remains owned by getScreenGeometry.
+     */
     getConfiguredScreenGeometry?(): ScreenGeometry | undefined;
     getVisibleSymbolsCombination?(): SymbolsCombinationDescribing<T>;
     getEvaluatedSymbolsCombination?(): SymbolsCombinationDescribing<T>;

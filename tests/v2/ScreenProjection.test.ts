@@ -317,6 +317,190 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getWinAmount()).toBe(3);
     });
 
+    it.each(["direct", "jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 rejects a configured identity conflicting with a known generator contract before mutation (%s)", feature => {
+        for (const ante of [false, true]) {
+            const config = overscanConfig();
+            config.setScreenGeometry(undefined);
+            const generator = {generateSymbolsCombination: jest.fn(() => combination())};
+            const base = new VideoSlotSession(config, generator);
+            base.play();
+            const pool = new AccumulatingJackpotPool("conflict", 20);
+            const jackpot = (session: VideoSlotSessionHandling) => new VideoSlotWithJackpotSession(session, [pool], new PercentageOfBetJackpotContributor(0.1), new SymbolCountJackpotTrigger("B", 3));
+            const hold = new VideoSlotWithHoldAndWinSession(feature === "holdOutsideJackpot" ? jackpot(base) : base);
+            hold.setHoldAndWinActive(true);
+            hold.setHoldAndWinRespinsRemaining(2);
+            hold.setLockedHoldAndWinSymbols([{position: [0, 0], symbolId: "A", effect: {kind: "value", amount: 10}}]);
+            const withFeature = feature === "holdAndWin" || feature === "holdOutsideJackpot" ? hold :
+                jackpot(feature === "jackpotOutsideHold" ? hold : base);
+            const decorated = feature === "direct" ? base : withFeature;
+            const session = ante ? new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})])) : decorated;
+            if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("ante");
+            const snapshot = {credits: session.getCreditsAmount(), hold: hold.toSessionState(), pool: pool.toSessionState(), screen: session.getSymbolsCombination().toMatrix()};
+            config.setScreenGeometry({generated: {reels: 5, rows: 3}, visible: {rowOffset: 0, rows: 3}, evaluated: {rowOffset: 0, rows: 3}, paylineSpace: "evaluated"});
+            generator.generateSymbolsCombination.mockClear();
+            expect(() => session.play()).toThrow(/geometry.*differs|coordinate contract/i);
+            expect(generator.generateSymbolsCombination).not.toHaveBeenCalled();
+            expect(session.getCreditsAmount()).toBe(snapshot.credits);
+            expect(hold.toSessionState()).toEqual(snapshot.hold);
+            expect(pool.toSessionState()).toEqual(snapshot.pool);
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+            expect(session.getScreenGeometry?.()).toEqual(overscanGeometry);
+            // Direct rejected rounds invalidate their result; outer preflight preserves settlement.
+            expect(session.getWinAmount()).toBe(feature === "direct" && !ante ? 0 : 3);
+        }
+    });
+
+    it.each(["direct", "jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 built-in upcoming geometry returns to ordinary through composition (%s)", feature => {
+        for (const ante of [false, true]) {
+            const config = overscanConfig();
+            const rng = {getRandomInt: jest.fn(() => 2)};
+            const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
+            base.play();
+            const jackpot = (session: VideoSlotSessionHandling) => new VideoSlotWithJackpotSession(session);
+            const hold = new VideoSlotWithHoldAndWinSession(feature === "holdOutsideJackpot" ? jackpot(base) : base);
+            const withFeature = feature === "holdAndWin" || feature === "holdOutsideJackpot" ? hold :
+                jackpot(feature === "jackpotOutsideHold" ? hold : base);
+            const decorated = feature === "direct" ? base : withFeature;
+            const session = ante ? new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})])) : decorated;
+            if (session instanceof VideoSlotWithBetModesSession) session.setBetMode("ante");
+            const screen = session.getSymbolsCombination().toMatrix();
+            const credits = session.getCreditsAmount();
+            config.setScreenGeometry(undefined);
+            rng.getRandomInt.mockClear();
+            expect(session.getConfiguredScreenGeometry?.()).toBeUndefined();
+            expect(() => session.validateScreenCoordinates?.()).not.toThrow();
+            expect(session.getScreenGeometry?.()).toEqual(overscanGeometry);
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+            expect(new VideoSlotSessionSerializer().getRoundData(session).reelsSymbols).toHaveLength(5);
+            expect(() => session.play()).not.toThrow();
+            expect(rng.getRandomInt).toHaveBeenCalledTimes(5);
+            expect(session.getScreenGeometry?.()).toBeUndefined();
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(Array.from({length: 5}, () => ["B", "B", "B"]));
+            expect(session.getWinAmount()).toBe(3);
+            expect(session.getCreditsAmount()).toBe(credits + 3 - (ante ? 2 : 1));
+        }
+    });
+
+    it.each([false, true])("F8 shared built-in free-games contracts accept upcoming geometry changes (ante %s)", ante => {
+        const config = new VideoSlotWithFreeGamesConfig(overscanConfig(), {});
+        config.setScreenGeometry(undefined);
+        const rng = {getRandomInt: jest.fn(() => 2)};
+        const free = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        if (ante) session.setBetMode("ante");
+        session.play();
+        for (const geometry of [overscanGeometry, {...overscanGeometry, evaluated: {rowOffset: 0, rows: 3}}, undefined]) {
+            const settledGeometry = session.getScreenGeometry();
+            const credits = session.getCreditsAmount();
+            config.setScreenGeometry(geometry);
+            rng.getRandomInt.mockClear();
+            expect(() => session.validateScreenCoordinates()).not.toThrow();
+            expect(session.getScreenGeometry()).toEqual(settledGeometry);
+            expect(() => session.play()).not.toThrow();
+            expect(rng.getRandomInt).toHaveBeenCalledTimes(5);
+            expect(session.getScreenGeometry()).toEqual(geometry);
+            expect(session.getCreditsAmount()).toBe(credits + session.getWinAmount() - (ante ? 2 : 1));
+            expect(session.getSymbolsCombination().toMatrix()[0]).toHaveLength(geometry ? 7 : 3);
+            expect(new VideoSlotSessionSerializer().getRoundData(session).reelsSymbols[0]).toHaveLength(3);
+        }
+    });
+
+    it.each(["wrapperOverscan", "baseOverscan", "differentOverscan"] as const)("F8 free-games mismatched upcoming contracts reject before free-round and ante mutation (%s)", mismatch => {
+        const baseConfig = overscanConfig();
+        baseConfig.setScreenGeometry(undefined);
+        const config = new VideoSlotWithFreeGamesConfig(overscanConfig(), {});
+        config.setScreenGeometry(undefined);
+        const rng = {getRandomInt: jest.fn(() => 2)};
+        const base = new VideoSlotSession(baseConfig, new SymbolsCombinationsGenerator(baseConfig, rng));
+        const free = new VideoSlotWithFreeGamesSession(config, undefined, undefined, base);
+        const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        session.setBetMode("ante");
+        session.play();
+        free.setFreeGamesSum(3);
+        if (mismatch !== "baseOverscan") config.setScreenGeometry(overscanGeometry);
+        if (mismatch !== "wrapperOverscan") baseConfig.setScreenGeometry({...overscanGeometry, evaluated: {rowOffset: 1, rows: 3}});
+        const snapshot = {credits: session.getCreditsAmount(), state: session.toSessionState(), win: session.getWinAmount(), screen: session.getSymbolsCombination().toMatrix()};
+        rng.getRandomInt.mockClear();
+        expect(() => session.play()).toThrow(/same.*coordinate contract/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
+        expect(session.toSessionState()).toEqual(snapshot.state);
+        expect(session.getWinAmount()).toBe(snapshot.win);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+    });
+
+    it.each(["jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 shared free-games upcoming contracts reach stacked feature and ante preflight (%s)", feature => {
+        const config = new VideoSlotWithFreeGamesConfig(overscanConfig(), {});
+        config.setScreenGeometry(undefined);
+        const rng = {getRandomInt: jest.fn(() => 2)};
+        const free = new VideoSlotWithFreeGamesSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const jackpot = (session: VideoSlotSessionHandling) => new VideoSlotWithJackpotSession(session);
+        const hold = new VideoSlotWithHoldAndWinSession(feature === "holdOutsideJackpot" ? jackpot(free) : free);
+        const decorated = feature === "holdAndWin" || feature === "holdOutsideJackpot" ? hold : jackpot(feature === "jackpotOutsideHold" ? hold : free);
+        const session = new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        session.setBetMode("ante");
+        session.play();
+        free.setFreeGamesSum(3);
+        const snapshot = {credits: session.getCreditsAmount(), state: session.toSessionState(), win: session.getWinAmount()};
+        config.setScreenGeometry(overscanGeometry);
+        rng.getRandomInt.mockClear();
+        expect(() => session.play()).toThrow(/does not support overscan/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
+        expect(session.toSessionState()).toEqual(snapshot.state);
+        expect(session.getWinAmount()).toBe(snapshot.win);
+        config.setScreenGeometry(undefined);
+        expect(() => session.play()).not.toThrow();
+        expect(free.getFreeGamesNum()).toBe(1);
+    });
+
+    it("F8 detects a built-in generator's independent upcoming configuration before generation", () => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        const generatorConfig = overscanConfig();
+        generatorConfig.setScreenGeometry(undefined);
+        const rng = {getRandomInt: jest.fn(() => 2)};
+        const generator = new SymbolsCombinationsGenerator(generatorConfig, rng);
+        const base = new VideoSlotSession(config, generator);
+        base.play();
+        const session = new VideoSlotWithBetModesSession(base, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        session.setBetMode("ante");
+        const credits = session.getCreditsAmount();
+        generatorConfig.setScreenGeometry(overscanGeometry);
+        config.setScreenGeometry({generated: {reels: 5, rows: 3}, visible: {rowOffset: 0, rows: 3}, evaluated: {rowOffset: 0, rows: 3}, paylineSpace: "evaluated"});
+        rng.getRandomInt.mockClear();
+        expect(() => session.play()).toThrow(/Generator geometry differs/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getScreenGeometry()).toBeUndefined();
+        expect(() => new VideoSlotSession(config, generator)).toThrow(/Generator geometry differs/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        // The optional capability's undefined return is an ordinary contract, not unknown.
+        generatorConfig.setScreenGeometry(undefined);
+        config.setScreenGeometry(overscanGeometry);
+        expect(() => session.play()).toThrow(/Generator geometry differs/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        config.setScreenGeometry(undefined);
+        expect(() => session.play()).not.toThrow();
+    });
+
+    it.each(["jackpot", "holdAndWin"] as const)("F8 retains tag detection for legacy sessions without upcoming capabilities (%s)", feature => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        const generator = {generateSymbolsCombination: jest.fn(() => combination())};
+        const base = new VideoSlotSession(config, generator);
+        const legacy: VideoSlotSessionHandling = new Proxy(base, {get(target, property, receiver) {
+            if (property === "getConfiguredScreenGeometry" || property === "validateScreenCoordinates") return undefined;
+            return Reflect.get(target, property, receiver);
+        }});
+        const decorated = feature === "jackpot" ? new VideoSlotWithJackpotSession(legacy) : new VideoSlotWithHoldAndWinSession(legacy);
+        const session = new VideoSlotWithBetModesSession(decorated);
+        generator.generateSymbolsCombination.mockClear();
+        expect(() => session.play()).toThrow(/does not support overscan/);
+        expect(generator.generateSymbolsCombination).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(base.getCreditsAmount());
+    });
+
     it("normalizes the pipeline even with optional validation disabled and custom evaluators", () => {
         const config = overscanConfig();
         const evaluate = jest.fn((context: WinEvaluationContext) => {

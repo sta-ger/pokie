@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
 import {resolveScreenProjection} from "../coordinates/projectSymbolsCombination.js";
 import {SeededRandomNumberGenerator} from "./SeededRandomNumberGenerator.js";
 import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
@@ -31,6 +32,10 @@ implements SymbolsCombinationsGenerating<T> {
         const combination = new SymbolsCombination<T>().fromMatrix(arr);
         const geometry = this.config.getScreenGeometry?.();
         return geometry ? combination.withCoordinates(geometry) : combination;
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return resolveScreenProjection(this.config)?.getGeometry();
     }
 
     public getLastStopPositions(): number[] {

@@ -15,6 +15,16 @@ export function resolveScreenProjection(config: Pick<VideoSlotConfigDescribing, 
     return projection;
 }
 
+/** Compare upcoming contracts; absent metadata denotes ordinary identity coordinates.
+ * Owners must also validate their reel/row dimensions against the configuration.
+ */
+export function areScreenGeometriesCompatible(first?: ScreenGeometry, second?: ScreenGeometry): boolean {
+    const a = first && new ScreenProjection(first);
+    const b = second && new ScreenProjection(second);
+    if (!a || !b) return (a ?? b)?.isIdentity() ?? true;
+    return JSON.stringify(a.getGeometry()) === JSON.stringify(b.getGeometry());
+}
+
 /** Safety boundary also used by directly invoked calculators. Never infers overscan from shape. */
 export function projectEvaluationSymbols<T extends string | number | symbol>(
     combination: SymbolsCombinationDescribing<T>, config?: VideoSlotConfigDescribing<T>,

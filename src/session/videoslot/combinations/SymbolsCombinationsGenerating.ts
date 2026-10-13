@@ -1,7 +1,13 @@
+import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
 import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
 
 export interface SymbolsCombinationsGenerating<T extends string | number | symbol = string> {
     generateSymbolsCombination(): SymbolsCombinationDescribing<T>;
+
+    /** Authoritative next-generation contract. An undefined return means ordinary coordinates,
+     * even if the previous combination was tagged. Absent capability retains legacy tag detection.
+     */
+    getScreenGeometry?(): ScreenGeometry | undefined;
 
     // Optional so existing implementers of this interface keep compiling unchanged. The per-reel
     // stop position (index into that reel's SymbolsSequence) that produced the most recently

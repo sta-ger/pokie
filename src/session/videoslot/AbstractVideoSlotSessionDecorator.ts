@@ -26,9 +26,10 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
-        const configured = this.baseSession.getConfiguredScreenGeometry?.();
-        const attached = this.baseSession.getSymbolsCombination().getScreenGeometry?.();
-        return configured ?? attached ?? (this.baseSession.getConfiguredScreenGeometry ? undefined : this.baseSession.getScreenGeometry?.());
+        if (this.baseSession.getConfiguredScreenGeometry) return this.baseSession.getConfiguredScreenGeometry();
+        // Capability absence permits legacy detection; an authoritative undefined return above
+        // must never be replaced with geometry belonging to the previous settled combination.
+        return this.baseSession.getSymbolsCombination().getScreenGeometry?.() ?? this.baseSession.getScreenGeometry?.();
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {

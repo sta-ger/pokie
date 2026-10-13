@@ -1,6 +1,6 @@
 import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import {assertEvaluationComponents} from "./coordinates/internal/assertEvaluationComponents.js";
-import {projectEvaluationSymbols, resolveScreenProjection, validateEvaluationPaylines} from "./coordinates/projectSymbolsCombination.js";
+import {areScreenGeometriesCompatible, projectEvaluationSymbols, resolveScreenProjection, validateEvaluationPaylines} from "./coordinates/projectSymbolsCombination.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {SymbolsSequence} from "./combinations/SymbolsSequence.js";
 import {validateExecutableState} from "../../runtime/validateExecutableState.js";
@@ -50,14 +50,23 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.baseSession = baseSession;
         this.validateScreenCoordinates();
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
+        this.validateScreenCoordinates();
         const geometry = this.config.getScreenGeometry?.() ?? this.symbolsCombination.getScreenGeometry?.();
         this.roundGeometry = geometry && new ScreenProjection(geometry).getGeometry();
     }
 
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
-        // The last generated combination advertises a generator contract even when the model
-        // has no geometry. Keep this preflight capability separate from settled-result geometry.
-        return this.config.getScreenGeometry?.() ?? this.symbolsCombination.getScreenGeometry?.();
+        const configured = this.config.getScreenGeometry?.();
+        // A generator capability owns the upcoming contract, including an ordinary undefined
+        // value. Only legacy generators without that capability fall back to their last tag.
+        const generatorGeometry = this.combinationsGenerator.getScreenGeometry
+            ? this.combinationsGenerator.getScreenGeometry() : this.symbolsCombination.getScreenGeometry?.();
+        if ((this.combinationsGenerator.getScreenGeometry || generatorGeometry) && configured &&
+            !areScreenGeometriesCompatible(configured, generatorGeometry)) {
+            throw new Error("Generator geometry differs from the configured coordinate contract.");
+        }
+        const geometry = configured ?? generatorGeometry;
+        return geometry && new ScreenProjection(geometry).getGeometry();
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {
@@ -75,7 +84,11 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public validateScreenCoordinates(): void {
-        resolveScreenProjection(this.config);
+        resolveScreenProjection({
+            getScreenGeometry: () => this.getConfiguredScreenGeometry(),
+            getReelsNumber: () => this.config.getReelsNumber(),
+            getReelsSymbolsNumber: () => this.config.getReelsSymbolsNumber(),
+        });
         validateEvaluationPaylines(this.config);
     }
     public getPaytable(): PaytableRepresenting<T> {

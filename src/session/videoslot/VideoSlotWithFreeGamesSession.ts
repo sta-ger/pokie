@@ -1,5 +1,4 @@
-import {projectEvaluationSymbols, resolveScreenProjection} from "./coordinates/projectSymbolsCombination.js";
-import {ScreenProjection} from "./coordinates/ScreenProjection.js";
+import {areScreenGeometriesCompatible, projectEvaluationSymbols, resolveScreenProjection} from "./coordinates/projectSymbolsCombination.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../SessionStateRestoring.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
@@ -55,11 +54,11 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     public override validateScreenCoordinates(): void {
         super.validateScreenCoordinates();
         const projection = resolveScreenProjection(this.config);
-        if (projection && !projection.isIdentity()) {
-            const baseGeometry = this.baseSession.getScreenGeometry?.();
-            if (!baseGeometry || JSON.stringify(new ScreenProjection(baseGeometry).getGeometry()) !== JSON.stringify(projection.getGeometry())) {
-                throw new Error("Free-games base session must expose the same overscan coordinate contract.");
-            }
+        const baseGeometry = this.getConfiguredScreenGeometry();
+        if (!areScreenGeometriesCompatible(projection?.getGeometry(), baseGeometry) ||
+            this.config.getReelsNumber() !== this.baseSession.getReelsNumber() ||
+            this.config.getReelsSymbolsNumber() !== this.baseSession.getReelsSymbolsNumber()) {
+            throw new Error("Free-games base session must expose the same upcoming coordinate contract.");
         }
     }
 
