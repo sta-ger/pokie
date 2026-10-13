@@ -151,7 +151,21 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
                 }
                 await this.write("request", () => this.database.prepare("INSERT INTO requests VALUES (?, ?, ?, NULL)").run(intent.sessionId, requestId, envelope));
                 const participants = this.participants(assertActive, intent.sessionId, requestId);
-                const result = await work(participants, {...intent, requestId});
+                let result: SpinCommandResult | undefined;
+                let ledgerFailure: {cause: unknown} | undefined;
+                try {
+                    result = await work(participants, {...intent, requestId});
+                } finally {
+                    // Promise.all may reject while another accepted ledger call is pending.
+                    // Finish those calls inside this transaction before rollback or commit.
+                    try {
+                        await participants.ledger.drain();
+                    } catch (cause) {
+                        ledgerFailure = {cause};
+                    }
+                }
+                // Preserve the callback's original error/non-played classification.
+                if (result.status === "played" && ledgerFailure !== undefined) throw ledgerFailure.cause;
                 if (result.status !== "played") {
                     this.rollback();
                     return result;
@@ -200,7 +214,7 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
         return this.closePromise;
     }
 
-    private participants(assertActive: () => void, ownerSessionId: string, ownerRequestId: string): RoundTransaction {
+    private participants(assertActive: () => void, ownerSessionId: string, ownerRequestId: string): RoundTransaction & {readonly ledger: ReferenceRoundLedger} {
         const assertOwner = (sessionId: string, requestId?: string): void => {
             assertActive();
             if (sessionId !== ownerSessionId || (requestId !== undefined && requestId !== ownerRequestId)) throw new Error("Round participant identity differs from its owning command.");

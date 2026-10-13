@@ -156,6 +156,141 @@ describe("durable transactional reference rounds", () => {
         return fs.existsSync(calculations) ? fs.readFileSync(calculations, "utf8").trim().split("\n").length : 0;
     }
 
+    async function completeReferenceRound(tx: RoundTransaction, intent: API.RepositoryCommand, credits: number): Promise<API.SpinCommandResult> {
+        const previous = (await tx.sessions.loadVersioned(intent.sessionId))!;
+        const state = {...previous.state, credits};
+        const version = await tx.sessions.saveVersioned(intent.sessionId, state, previous.version);
+        const result: API.SpinCommandResult = {status: "played", sessionId: intent.sessionId, requestId: intent.requestId,
+            previousState: previous.state, state, credits, stake: 20, win: 5, version};
+        await tx.results.save(intent.sessionId, intent.requestId!, result);
+        await tx.operations.record({sessionId: intent.sessionId, requestId: intent.requestId!, attemptId: "reference",
+            debitTransactionId: "reference:debit", creditTransactionId: "reference:credit", stakeAmount: 20,
+            expectedVersion: previous.version, checkpoint: "committed", startedAt: "test", updatedAt: "test",
+            capturedResult: {previousState: previous.state, newState: state, credits, stake: 20, win: 5, newVersion: version}});
+        return result;
+    }
+
+    it("serializes overlapping public ledger debit/credit and commits consistent balance, state and result", async () => {
+        const store = await open();
+        await initialize(store, "session", 100);
+        const result = await store.transact(command, async (tx, intent) => {
+            const outcomes = await Promise.all([tx.ledger.debit("session", "reference:debit", 20),
+                tx.ledger.credit("session", "reference:credit", 5), tx.ledger.getBalance("session")]);
+            expect(outcomes).toEqual([80, 85, 85]);
+            return completeReferenceRound(tx, intent, outcomes[2]);
+        });
+        await store.close();
+        const observed = await run("observe");
+        expect(observed).toMatchObject({balance: 85, state: {version: 2, state: {credits: 85}}, result});
+        expect(observed.ledger).toEqual([{kind: "debit", amount: 20, balance: 80}, {kind: "credit", amount: 5, balance: 85}]);
+        expect(JSON.parse(String((observed.operations as {record: string}[])[0].record))).toMatchObject({checkpoint: "committed"});
+    });
+
+    it("applies concurrent duplicate ledger identities once, returns historical outcomes and rejects conflicting reuse", async () => {
+        const store = await open();
+        await initialize(store, "session", 100);
+        const result = await store.transact(command, async (tx, intent) => {
+            const outcomes = await Promise.allSettled([tx.ledger.debit("session", "reference:debit", 20),
+                tx.ledger.credit("session", "reference:credit", 5), tx.ledger.debit("session", "reference:debit", 20),
+                tx.ledger.credit("session", "reference:credit", 5), tx.ledger.debit("session", "reference:debit", 21),
+                tx.ledger.credit("session", "reference:debit", 20)]);
+            expect(outcomes.slice(0, 4)).toEqual([80, 85, 80, 85].map(value => ({status: "fulfilled", value})));
+            for (const outcome of outcomes.slice(4)) {
+                expect(outcome).toMatchObject({status: "rejected", reason: new Error("Conflicting reference ledger transaction identity.")});
+            }
+            expect(await tx.ledger.getBalance("session")).toBe(85);
+            return completeReferenceRound(tx, intent, 85);
+        });
+        await store.close();
+        const observed = await run("observe");
+        expect(observed).toMatchObject({balance: 85, state: {version: 2, state: {credits: 85}}, result});
+        expect(observed.ledger).toEqual([{kind: "debit", amount: 20, balance: 80}, {kind: "credit", amount: 5, balance: 85}]);
+    });
+
+    it("rolls back overlapping debits that exceed available funds and retries from the original tuple", async () => {
+        const store = await open();
+        await initialize(store, "session", 100);
+        const before = await store.readSession("session");
+        await expect(store.transact(command, async tx => {
+            await Promise.all([tx.ledger.debit("session", "reference:debit", 60), tx.ledger.debit("session", "second:debit", 50)]);
+            throw new Error("Overdraw was accepted");
+        })).rejects.toThrow('Cannot debit 50 for session "session": balance is only 40.');
+        await store.close();
+        const observed = await run("observe");
+        expect(observed).toMatchObject({balance: 100, state: before, ledger: [], operations: [], requests: []});
+        expect(observed.result).toBeUndefined();
+        const reopened = await open();
+        const result = await reopened.transact(command, async (tx, intent) => {
+            await Promise.all([tx.ledger.debit("session", "reference:debit", 20), tx.ledger.credit("session", "reference:credit", 5)]);
+            return completeReferenceRound(tx, intent, await tx.ledger.getBalance("session"));
+        });
+        expect(result).toMatchObject({status: "played", version: 2, credits: 85, previousState: before?.state});
+    });
+
+    it("drains accepted ledger writes before callback failure rolls back and the next transaction starts", async () => {
+        const store = await open();
+        await initialize(store, "session", 100);
+        let acknowledge!: () => void, release!: () => void;
+        const acknowledged = new Promise<void>(resolve => {
+            acknowledge = resolve;
+        });
+        const released = new Promise<void>(resolve => {
+            release = resolve;
+        });
+        const events: string[] = [];
+        hook(store, async boundary => {
+            if (boundary === "before:payout-ledger") {
+                acknowledge();
+                await released;
+            }
+            if (boundary === "after:payout-balance") events.push("ledger-finished");
+        });
+        const failed = store.transact(command, tx => {
+            tx.ledger.credit("session", "aborted:credit", 5).catch(() => undefined);
+            return Promise.reject(new Error("callback failed"));
+        }).catch(error => {
+            events.push("rolled-back");
+            return error as Error;
+        });
+        try {
+            await acknowledged;
+            const next = store.transact(command, async (tx, intent) => {
+                events.push("next-started");
+                await Promise.all([tx.ledger.debit("session", "reference:debit", 20), tx.ledger.credit("session", "reference:credit", 5)]);
+                return completeReferenceRound(tx, intent, await tx.ledger.getBalance("session"));
+            });
+            release();
+            expect(await failed).toMatchObject({message: "callback failed"});
+            expect(await next).toMatchObject({status: "played", version: 2, credits: 85});
+            expect(events).toEqual(["ledger-finished", "rolled-back", "next-started", "ledger-finished"]);
+            await store.close();
+            const observed = await run("observe");
+            expect(observed).toMatchObject({balance: 85, state: {version: 2, state: {credits: 85}}});
+            expect(observed.ledger).toEqual([{kind: "debit", amount: 20, balance: 80}, {kind: "credit", amount: 5, balance: 85}]);
+        } finally {
+            release();
+        }
+    });
+
+    it("cannot commit a caught partial ledger persistence failure with an otherwise matching tuple", async () => {
+        const store = await open();
+        await initialize(store, "session", 100);
+        const before = await store.readSession("session");
+        hook(store, boundary => {
+            if (boundary === "after:payout-ledger") throw new Error("payout balance not written");
+            return Promise.resolve();
+        });
+        await expect(store.transact(command, async (tx, intent) => {
+            const outcomes = await Promise.allSettled([tx.ledger.debit("session", "reference:debit", 20), tx.ledger.credit("session", "reference:credit", 5)]);
+            expect(outcomes).toMatchObject([{status: "fulfilled", value: 80}, {status: "rejected"}]);
+            return completeReferenceRound(tx, intent, 80);
+        })).rejects.toThrow("payout balance not written");
+        await store.close();
+        const observed = await run("observe");
+        expect(observed).toMatchObject({balance: 100, state: before, ledger: [], operations: [], requests: []});
+        expect(observed.result).toBeUndefined();
+    });
+
     it("constructs public CJS/ESM storage, initializes once, reopens and detaches historical results without constructing the game", async () => {
         const store = await open();
         await initialize(store);
