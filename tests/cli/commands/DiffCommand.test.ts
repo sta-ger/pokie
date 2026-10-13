@@ -785,3 +785,26 @@ it("prints and serializes whole-sequence changes even when payouts agree", async
         log.mockRestore();
     }
 });
+
+
+it("public JSON and text diffs attribute a mixed-model reel 2 edit without naming reel 1", async () => {
+    const model = {context: "logical-round-v1", reels: [[{id: "a", weight: 1, symbols: ["A"]}], ["A"]]};
+    const sequence = {reelIndex: 0, context: "logical-round" as const, model: JSON.stringify(model), selections: 0, variants: [{id: "a", weight: 1, probability: 1, count: 0, frequency: 0, uncovered: true}]};
+    const before = {...left, reelSequences: [sequence]};
+    const after = {...before, reelSequences: [{...sequence, model: JSON.stringify({...model, reels: [model.reels[0], ["B"]]})}]};
+    const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(before), "right.json": JSON.stringify(after)}));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        await command.run(["left.json", "right.json"]);
+        const text = log.mock.calls.map(call => String(call[0])).join("\n");
+        expect(text).toContain("Whole-sequence symbols change at reel 2");
+        expect(text).not.toContain("change at reel 1");
+        log.mockClear();
+        await command.run(["left.json", "right.json", "--format", "json"]);
+        const parsed = JSON.parse(String(log.mock.calls[0][0]));
+        expect(parsed.reelSequences.changes).toEqual([expect.objectContaining({reelIndex: 1, kind: "symbols", path: "model.reels[1]"})]);
+        expect(parsed.reelSequences.observationsChanged).toBe(false);
+    } finally {
+        log.mockRestore();
+    }
+});

@@ -65,7 +65,7 @@ export class SimulationReportDiffer implements SimulationReportDiffing {
             durationMs,
             spinsPerSecond,
             warnings: [...this.buildWarnings(rtp, hitFrequency, maxWin, breakdown, left.breakdown, right.breakdown, betMode),
-                ...(reelSequences?.changes.map(change => `Whole-sequence ${change.kind} change at reel ${change.reelIndex + 1} ${change.path}: ${JSON.stringify(change.left)} -> ${JSON.stringify(change.right)}`) ?? []),
+                ...(reelSequences?.changes.map(change => `Whole-sequence ${change.kind} change at ${change.reelIndex < 0 ? "model" : `reel ${change.reelIndex + 1}`} ${change.path}: ${JSON.stringify(change.left)} -> ${JSON.stringify(change.right)}`) ?? []),
                 ...(reelSequences?.observationsChanged ? ["Whole-sequence observed counts or selection denominators changed (sampling results)."] : [])],
             breakdown,
         };

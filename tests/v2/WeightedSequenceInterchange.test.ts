@@ -211,6 +211,40 @@ describe("weighted-sequence real XLSX interchange", () => {
             ),
         ).toBe(true);
     });
+    it.each([
+        ["normalized duplicate", "K1", " wEiGhT "],
+        ["boolean reel", "A2", true],
+        ["boolean variant", "B2", true],
+        ["boolean position", "F2", true],
+        ["boolean length", "J2", true],
+        ["boolean weight", "E2", false],
+        ["nonnumeric weight", "E2", "quarter"],
+        ["blank index", "A2", null],
+    ])("rejects real XLSX %s cells without certifying losslessness", async (_kind, address, value) => {
+        const blueprint = model();
+        // false must not coerce to a legitimate authored zero weight; true must not
+        // coerce to a legitimate one-based index, even when the resulting hash matches.
+        const variants = (blueprint.reelSequences![0] as {variants: api.WeightedSequenceVariant[]}).variants;
+        variants[0] = {...variants[0], weight: 0};
+        await new api.ParSheetExporter("1").exportToFile(blueprint, file);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(file);
+        const sheet = workbook.getWorksheet("ReelSequences")!;
+        sheet.getCell(String(address)).value = value;
+        if (address === "K1") {
+            sheet.eachRow((row, index) => {
+                if (index > 1) row.getCell(11).value = row.getCell(5).value;
+            });
+            sheet.getCell("E2").value = "conflicting ignored weight";
+        }
+        await workbook.xlsx.writeFile(file);
+        const imported = await new api.ParSheetImporter().importFromFile(file);
+        expect(imported.issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({code: "parsheet-reelsequences-invalid", severity: "error"}),
+        ]));
+        expect(imported.conversionEvidence?.losslessEligible).toBe(false);
+        if (address === "K1") expect(imported.issues.some(issue => issue.message.includes("Duplicate column"))).toBe(true);
+    });
     it("supports planner/registry export, import with sidecar and workbook republishing; rejects occupied/alias/cancelled publications", async () => {
         const source = path.join(directory, "source.blueprint.json");
         fs.writeFileSync(source, JSON.stringify(model()));

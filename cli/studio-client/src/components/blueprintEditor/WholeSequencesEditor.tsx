@@ -113,6 +113,10 @@ export function WholeSequencesEditor({
         invalidate();
         const next = clone(draft);
         change(next);
+        // Publish event-time dirtiness before async Save/Open completion can observe it.
+        const nextDirty = JSON.stringify(payload(next)) !== authored;
+        retainWholeSequenceDraft(modeDrafts.current, clone(next), authored, nextDirty);
+        onDirtyChange?.(nextDirty);
         setDraft(next);
     };
     const inspect = async (): Promise<void> => {

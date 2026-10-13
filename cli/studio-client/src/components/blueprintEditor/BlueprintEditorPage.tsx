@@ -256,6 +256,11 @@ export function BlueprintEditorPage({
     // in sync, at that point -- see the formGeneration effect below.
     const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
     const [jsonDraftDirty, setJsonDraftDirty] = useState(false);
+    const jsonDraftDirtyRef = useRef(false);
+    const reportJsonDraftDirty = (dirty: boolean): void => {
+        jsonDraftDirtyRef.current = dirty;
+        setJsonDraftDirty(dirty);
+    };
     // Save success mutates cleanRevisionRef from an async callback, which (being a ref) doesn't itself
     // trigger a re-render -- this forces one so `isDirty` below gets recomputed against whatever
     // editor.state.revision *actually* is by then (which may have moved past what was saved, if the user
@@ -270,7 +275,7 @@ export function BlueprintEditorPage({
             cleanRevisionRef.current = editor.state.revision;
             nextFormGenerationIsClean.current = false;
         }
-        setJsonDraftDirty(false);
+        reportJsonDraftDirty(false);
         setSequenceDraftDirty(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.formGeneration]);
@@ -979,6 +984,10 @@ export function BlueprintEditorPage({
         // this attempt's UI after it settles.
         workspaceOpenRequestIdRef.current += 1;
         const draftIdentity = draftIdentityRef.current;
+        const hasNewerEdits = (): boolean => draftIdentity !== draftIdentityRef.current
+            || editor.getCurrentState().revision !== savedRevision
+            || Boolean(editor.modeDrafts.current.wholeSequenceDraft?.dirty)
+            || jsonDraftDirtyRef.current;
         setWorkspaceOpenError(undefined);
         setManagedSaveView({status: "loading"});
         const alreadyOwnsPath = blueprintPath !== undefined && overwriteConfirmedForPath === blueprintPath;
@@ -1008,7 +1017,6 @@ export function BlueprintEditorPage({
                     setBlueprintPath(view.path);
                     setOverwriteConfirmedForPath(view.path);
                     markClean(savedRevision);
-                    clearPersistedBlueprintDraft();
                     sourceVersionRef.current = {path: view.path, hash: raw.blueprintHash};
                     sourceCheckPausedRef.current = false;
                     // Same as runSave's own success branch -- see sourceDrift's own doc comment.
@@ -1030,6 +1038,12 @@ export function BlueprintEditorPage({
                     // save-managed registry projection as the creation result. The path is both the
                     // concrete Blueprint file the save confirmed and, for a loaded CLI Blueprint, the
                     // source Home must register while opening.
+                    // The disk contains the submitted snapshot. Keep newer work in Design instead
+                    // of opening that older snapshot and silently abandoning the current draft.
+                    if (hasNewerEdits()) {
+                        setManagedSaveView({status: "idle"});
+                        return;
+                    }
                     const workspaceOpenRequestId = ++workspaceOpenRequestIdRef.current;
                     setWorkspaceOpenPending(true);
                     openWithConfirmation(view.path)
@@ -1037,6 +1051,12 @@ export function BlueprintEditorPage({
                             if (workspaceOpenRequestId !== workspaceOpenRequestIdRef.current) {
                                 return;
                             }
+                            setWorkspaceOpenPending(false);
+                            if (hasNewerEdits()) {
+                                setManagedSaveView({status: "idle"});
+                                return;
+                            }
+                            clearPersistedBlueprintDraft();
                             // The saved project is now visibly represented by its Workspace, not by
                             // the hidden creator. Clear the creator result before navigating so a
                             // late render cannot pair a successful Workspace with stale save error
@@ -1105,6 +1125,7 @@ export function BlueprintEditorPage({
             modeDrafts={editor.modeDrafts}
             revision={revision}
             validationView={validationView}
+            onSequenceDirtyChange={setSequenceDraftDirty}
         />
     ) : (
         <div key={editor.formGeneration}>
@@ -1328,7 +1349,7 @@ export function BlueprintEditorPage({
                         // BlueprintJsonPanel (and its never-applied draft) with zero warning.
                         if (mode === "json" && jsonDraftDirty && nextMode !== mode) {
                             confirm("Switch away from JSON mode? The unapplied JSON edit will be discarded.", () => {
-                                setJsonDraftDirty(false);
+                                reportJsonDraftDirty(false);
                                 setMode(nextMode);
                             });
                             return;
@@ -1383,7 +1404,7 @@ export function BlueprintEditorPage({
                         if (sequenceDraftDirty) confirm("Replace the Blueprint and discard unapplied whole-sequence edits?", () => editor.applyJson(text));
                         else editor.applyJson(text);
                     }}
-                    onDraftDirtyChange={setJsonDraftDirty}
+                    onDraftDirtyChange={reportJsonDraftDirty}
                 />
             )}
 

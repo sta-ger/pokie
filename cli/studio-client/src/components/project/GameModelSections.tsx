@@ -1,4 +1,5 @@
 import {Badge, Button, Group, NumberInput, Table, Tabs, Text} from "@mantine/core";
+import {getReelGenerationMode} from "../../domain/blueprintFormOps";
 import {useState} from "react";
 import type {
     GameModelBetsAndModes,
@@ -825,7 +826,7 @@ export function GameModelSections({
 
             <PageSection legend="Reels" action={edit && <SectionEditAction id="reels" edit={edit} />}>
                 {editingReels && edit ? (
-                    <fieldset style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
+                    <fieldset disabled={edit.saving && getReelGenerationMode(edit.blueprint) !== "reelSequences"} style={{border: 0, padding: 0, margin: 0, minWidth: 0}}>
                         <SectionValidationIssues id="reels" edit={edit} />
                         <ReelGenerationModeSelector blueprint={edit.blueprint} mutate={edit.mutate} drafts={edit.drafts} modeDrafts={edit.modeDrafts} revision={edit.revision} onDirtyChange={edit.onSequenceDirtyChange} />
                     </fieldset>

@@ -404,3 +404,28 @@ it.each(["unchanged", "order", "weight", "context", "symbols", "added", "removed
     if (!["unchanged", "sampling"].includes(kind)) expect(result.reelSequences?.changes.some(change => change.kind === (kind === "missing" ? "availability" : kind))).toBe(true);
     if (kind === "unchanged") expect(result.reelSequences?.changes).toEqual([]);
 });
+
+
+it.each(["weighted", "exact"])("attributes a reel 2 %s definition edit once with mixed siblings", type => {
+    const variants = [{id: "a", weight: 1, probability: 1, count: 0, frequency: 0, uncovered: true}];
+    const weighted = [{id: "a", weight: 1, symbols: ["A"]}];
+    const model = {context: "logical-round-v1", reels: [weighted, type === "exact" ? ["A"] : weighted, ["B"]]};
+    const sequence = (reelIndex: number) => ({reelIndex, context: "logical-round" as const, selections: 0, model: JSON.stringify(model), variants});
+    const before: SimulationReport = {...left, reelSequences: type === "exact" ? [sequence(0)] : [sequence(0), sequence(1)]};
+    const changedModel = JSON.parse(JSON.stringify(model));
+    if (type === "exact") changedModel.reels[1] = ["B"];
+    else changedModel.reels[1][0].symbols = ["B"];
+    const after: SimulationReport = {...before, reelSequences: before.reelSequences!.map(reel => ({...reel, model: JSON.stringify(changedModel)}))};
+    const diff = new SimulationReportDiffer().diff(before, after);
+    expect(diff.reelSequences).toMatchObject({configuredChanged: true, observationsChanged: false});
+    expect(diff.reelSequences!.changes).toEqual([
+        expect.objectContaining({reelIndex: 1, kind: "symbols", path: type === "exact" ? "model.reels[1]" : 'model.reels[1].variants["a"].symbols'}),
+    ]);
+    expect(diff.warnings).toHaveLength(1);
+    expect(diff.warnings[0]).toContain("change at reel 2");
+    expect(diff.warnings[0]).not.toContain("reel 1");
+    const sampled: SimulationReport = {...after, reelSequences: after.reelSequences!.map(reel => ({...reel, selections: 1, variants: variants.map(variant => ({...variant, count: 1, frequency: 1, uncovered: false}))}))};
+    const sampledDiff = new SimulationReportDiffer().diff(before, sampled);
+    expect(sampledDiff.reelSequences!.changes).toEqual(diff.reelSequences!.changes);
+    expect(sampledDiff.reelSequences!.observationsChanged).toBe(true);
+});

@@ -56,51 +56,6 @@ export function diffReelSequences(
             );
             else add("weight", `variants[${JSON.stringify(id)}].weight`, av.weight, bv.weight);
         }
-        const am = readModel(a.model),
-            bm = readModel(b.model);
-        if (am && bm) {
-            for (const key of new Set([...Object.keys(am), ...Object.keys(bm)])) {
-                if (key !== "reels") add(
-                    key === "context" || key === "sampling" ? "context" : "model",
-                    `model.${key}`,
-                    am[key],
-                    bm[key],
-                );
-            }
-            const ar = Array.isArray(am.reels) ? am.reels : [],
-                br = Array.isArray(bm.reels) ? bm.reels : [];
-            for (let i = 0; i < Math.max(ar.length, br.length); i++) {
-                const as = ar[i],
-                    bs = br[i];
-                // Weighted models embed complete variants; compare symbols by stable ID so order and
-                // weight edits above are not mislabeled as symbol changes.
-                if (Array.isArray(as) && Array.isArray(bs) && as.every(isVariant) && bs.every(isVariant)) {
-                    add(
-                        "order",
-                        `model.reels[${i}].variants.order`,
-                        as.map((v) => v.id),
-                        bs.map((v) => v.id),
-                    );
-                    for (const id of new Set([...as.map((v) => v.id), ...bs.map((v) => v.id)])) {
-                        const av = as.find((v) => v.id === id),
-                            bv = bs.find((v) => v.id === id);
-                        if (!av || !bv) add(av ? "removed" : "added", `model.reels[${i}].variants[${JSON.stringify(id)}]`, av, bv);
-                        else add(
-                            "weight",
-                            `model.reels[${i}].variants[${JSON.stringify(id)}].weight`,
-                            av.weight,
-                            bv.weight,
-                        );
-                        add(
-                            "symbols",
-                            `model.reels[${i}].variants[${JSON.stringify(id)}].symbols`,
-                            as.find((v) => v.id === id)?.symbols,
-                            bs.find((v) => v.id === id)?.symbols,
-                        );
-                    }
-                } else add("symbols", `model.reels[${i}]`, as, bs);
-            }
-        } else add("model", "model.identity", a.model, b.model);
         observationsChanged ||= !equal(
             {
                 selections: a.selections,
@@ -118,6 +73,60 @@ export function diffReelSequences(
             },
         );
     }
+    const add = (kind: ReelSequenceModelChange["kind"], path: string, before: unknown, after: unknown, reelIndex: number): void => {
+        if (!equal(before, after)) changes.push({reelIndex, kind, path, left: before ?? null, right: after ?? null});
+    };
+    // Every weighted statistics row embeds the same complete model, including exact
+    // siblings. Compare it once and attribute each definition to its actual array index.
+    const am = readModel(left?.[0]?.model ?? ""),
+        bm = readModel(right?.[0]?.model ?? "");
+    if (am && bm) {
+        for (const key of new Set([...Object.keys(am), ...Object.keys(bm)])) {
+            if (key !== "reels") add(
+                key === "context" || key === "sampling" ? "context" : "model",
+                `model.${key}`,
+                am[key],
+                bm[key],
+                -1,
+            );
+        }
+        const ar = Array.isArray(am.reels) ? am.reels : [],
+            br = Array.isArray(bm.reels) ? bm.reels : [];
+        for (let i = 0; i < Math.max(ar.length, br.length); i++) {
+            const as = ar[i],
+                bs = br[i];
+            // Weighted models embed complete variants; compare symbols by stable ID so order and
+            // weight edits above are not mislabeled as symbol changes.
+            if (Array.isArray(as) && Array.isArray(bs) && as.every(isVariant) && bs.every(isVariant)) {
+                add(
+                    "order",
+                    `model.reels[${i}].variants.order`,
+                    as.map((v) => v.id),
+                    bs.map((v) => v.id),
+                    i,
+                );
+                for (const id of new Set([...as.map((v) => v.id), ...bs.map((v) => v.id)])) {
+                    const av = as.find((v) => v.id === id),
+                        bv = bs.find((v) => v.id === id);
+                    if (!av || !bv) add(av ? "removed" : "added", `model.reels[${i}].variants[${JSON.stringify(id)}]`, av, bv, i);
+                    else add(
+                        "weight",
+                        `model.reels[${i}].variants[${JSON.stringify(id)}].weight`,
+                        av.weight,
+                        bv.weight,
+                        i,
+                    );
+                    add(
+                        "symbols",
+                        `model.reels[${i}].variants[${JSON.stringify(id)}].symbols`,
+                        as.find((v) => v.id === id)?.symbols,
+                        bs.find((v) => v.id === id)?.symbols,
+                        i,
+                    );
+                }
+            } else add("symbols", `model.reels[${i}]`, as, bs, i);
+        }
+    } else if (left?.length && right?.length) add("model", "model.identity", left[0].model, right[0].model, -1);
     if ((left === undefined) !== (right === undefined) && changes.length === 0) changes.push({
         reelIndex: -1,
         kind: "availability",

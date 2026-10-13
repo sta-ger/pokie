@@ -2,7 +2,7 @@ import type {GameBlueprint} from "../../generated/GameBlueprint.js";
 import type {ValidationIssue} from "../../validation/ValidationIssue.js";
 import type {SheetGrid} from "../SheetGrid.js";
 import type {ReelSequencesSheetMapping} from "./ReelSequencesSheetMapping.js";
-import {resolveColumnIndexes} from "./sheetCellParsing.js";
+import {cellToText, resolveColumnIndexes} from "./sheetCellParsing.js";
 
 export const PAR_SEQUENCE_CONTEXT = "logical-round-v1";
 export const PAR_SEQUENCE_SAMPLING = "binary64-integer-ratios-v1";
@@ -54,15 +54,15 @@ export class ReelSequencesSheetMapper implements ReelSequencesSheetMapping {
         };
         const headers = rows[0] ?? [];
         for (const name of COLUMNS) if (
-            headers.filter((cell) => typeof cell === "string" && cell.toLowerCase() === name.toLowerCase()).length >
+            headers.filter((cell) => cellToText(cell)?.toLowerCase() === name.toLowerCase()).length >
                 1
         ) error(1, name, "Duplicate column.");
         rows.slice(1).forEach((row, index) => {
             const number = index + 2;
             const cell = (name: string): unknown => row[columns[name]];
-            const reel = Number(cell("Reel")),
-                variant = Number(cell("Variant")),
-                position = Number(cell("Position"));
+            const reel = numericCell(cell("Reel")),
+                variant = numericCell(cell("Variant")),
+                position = numericCell(cell("Position"));
             if (!Number.isSafeInteger(reel) || reel < 1 || reel > reels) return error(number, "Reel", "Expected a one-based reel index within Manifest.Reels.");
             if (!Number.isSafeInteger(variant) || variant < 1 || variant > rows.length) return error(number, "Variant", "Expected a contiguous one-based variant index.");
             if (!Number.isSafeInteger(position) || position < 1 || position > rows.length) return error(number, "Position", "Expected a contiguous one-based symbol position.");
@@ -80,13 +80,13 @@ export class ReelSequencesSheetMapper implements ReelSequencesSheetMapping {
                 "ID",
                 "Expected a nonempty text ID for a weighted variant (IDs are case-sensitive).",
             );
-            const length = Number(cell("Length"));
+            const length = numericCell(cell("Length"));
             if (!Number.isSafeInteger(length) || length < 1 || length > rows.length || position > length) error(
                 number,
                 "Length / Position",
                 "Length must cover every ordered position in the complete sequence.",
             );
-            const weight = type === "exact" ? 0 : Number(rawWeight);
+            const weight = type === "exact" ? 0 : numericCell(rawWeight);
             if (type === "exact" && (id !== "" || rawWeight !== "" || variant !== 1)) error(number, "Variant / ID / Weight", "Exact reels have one array and no variant ID or weight.");
             if (type === "weighted" && (String(rawWeight).trim() === "" || !Number.isFinite(weight) || weight < 0)) error(number, "Weight", "Expected a finite nonnegative relative weight.");
             const symbol = cell("Symbol");
@@ -127,4 +127,12 @@ export class ReelSequencesSheetMapper implements ReelSequencesSheetMapping {
         }
         return {value, issues};
     }
+}
+
+// Exported weights are decimal text to retain binary64 values. Excel booleans, empty
+// cells and other nonnumeric types must never be coerced into valid indices/weights.
+function numericCell(value: unknown): number {
+    if (typeof value === "number") return value;
+    if (typeof value !== "string" || !(/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i).test(value.trim())) return NaN;
+    return Number(value);
 }
