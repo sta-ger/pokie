@@ -20,7 +20,7 @@ export interface VersionedSessionRepository extends SessionRepository {
     // The version starts at 1 after the very first save() and increments by 1 on every subsequent
     // save()/successful saveVersioned() for that sessionId — never on a saveVersioned() that
     // conflicts. Returns undefined under the same condition load() would (sessionId never saved, or a
-    // FileSessionRepository whose file is missing/corrupted).
+    // FileSessionRepository whose file is absent; corruption and operational failures reject).
     loadVersioned(sessionId: string): Promise<VersionedSessionState | undefined>;
 
     // Persists `state` only if the repository's current version for sessionId is exactly

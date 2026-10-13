@@ -1,3 +1,4 @@
+import {executeSessionCommand} from "../../runtime/SessionRuntime.js";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
@@ -421,7 +422,7 @@ async function *streamExactWeightedOutcomesInternal(
         // *next* spin, which becomes zero immediately after this spin awards free games, so capture it
         // before play() changes that state and pass it through to the artifact explicitly.
         const stake = options.stake ?? determineStakeAmount(session, session.getBet());
-        session.play();
+        executeSessionCommand(session);
 
         const artifact = buildRoundArtifactFromSession(session, {
             roundId: id,

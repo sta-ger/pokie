@@ -64,3 +64,36 @@ describe("usePlaySession - resetForProjectSwitch", () => {
         expect(onRoundRecorded).not.toHaveBeenCalled();
     });
 });
+
+describe("usePlaySession - canonical runtime failures", () => {
+    it.each([
+        ["invalid-command", 400, "Check the command"],
+        ["incompatible-state", 409, "matching game version"],
+        ["corrupt-state", 409, "valid backup"],
+        ["restoration-unsupported", 409, "original live runtime"],
+        ["storage-error", 503, "storage availability"],
+        ["recovery-required", 409, "Reconcile"],
+    ])("retains the settled view and does not reset or retry %s", async (code, status, guidance) => {
+        let creations = 0;
+        let spins = 0;
+        const settled = session("stable", {win: 3, screen: [["A"]]});
+        const fetchImpl: FetchLike = url => {
+            if (url === "/api/project/play/session") {
+                creations++;
+                return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: settled})});
+            }
+            spins++;
+            return Promise.resolve({ok: false, status: Number(status), json: () => Promise.resolve({code, error: "Saved rejection"})});
+        };
+        const onRoundRecorded = jest.fn();
+        const {result} = renderHook(() => usePlaySession(onRoundRecorded), {wrapper: strictModeWrapper(fetchImpl)});
+        act(() => result.current.newSession());
+        await waitFor(() => expect(result.current.sessionId).toBe("stable"));
+        act(() => result.current.spin());
+        await waitFor(() => expect(result.current.session).toMatchObject({status: "error", previousSession: settled, message: expect.stringContaining(String(guidance))}));
+        expect(result.current.sessionId).toBe("stable");
+        expect(creations).toBe(1);
+        expect(spins).toBe(1);
+        expect(onRoundRecorded).not.toHaveBeenCalled();
+    });
+});

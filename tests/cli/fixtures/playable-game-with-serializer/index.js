@@ -1,4 +1,5 @@
 const {
+    validateExecutableState,
     VideoSlotConfig,
     VideoSlotSession,
     VideoSlotSessionSerializer,
@@ -43,6 +44,15 @@ function buildFixedSymbolsSequences(config) {
 module.exports = {
     getManifest() {
         return {id: "playable-game-with-serializer", name: "Playable Game With Serializer", version: "1.0.0"};
+    },
+    getSessionCommandCapabilities() {
+        return {bets: [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100]};
+    },
+    getSessionStateSchema() {
+        return {kind: "seeded-video-slot"};
+    },
+    validateLiveSessionState(state, context) {
+        validateExecutableState(state, {kind: "seeded-video-slot"}, undefined, context?.seed === undefined);
     },
     createSession(context) {
         const config = new VideoSlotConfig();

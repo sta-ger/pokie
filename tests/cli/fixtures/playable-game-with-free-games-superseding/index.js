@@ -12,6 +12,12 @@ module.exports = {
     getManifest() {
         return {id: PC_12_FREE_GAMES_FIXTURE_ID, name: "PC-12 Deterministic Free Games Fixture", version: "1.0.0"};
     },
+    getSessionCommandCapabilities() {
+        return {bets: [5, 10]};
+    },
+    getSessionStateSchema() {
+        return {kind: "free-games", base: {kind: "seeded-video-slot"}};
+    },
     createSession() {
         return createPc12FreeGamesFixtureSession(PC_12_FEATURED_ROUND_SEED);
     },

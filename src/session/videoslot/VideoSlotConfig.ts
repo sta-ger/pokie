@@ -1,3 +1,7 @@
+import {CustomLinesDefinitions} from "./linesdefinitions/CustomLinesDefinitions.js";
+import {RightToLeftLinesPatterns} from "./linespatterns/RightToLeftLinesPatterns.js";
+import {ScatteredLinesPatterns} from "./linespatterns/ScatteredLinesPatterns.js";
+import {SymbolsSequence} from "./combinations/SymbolsSequence.js";
 import {GameSessionConfig} from "../GameSessionConfig.js";
 import {HorizontalLines} from "./linesdefinitions/HorizontalLines.js";
 import {LeftToRightLinesPatterns} from "./linespatterns/LeftToRightLinesPatterns.js";
@@ -47,6 +51,15 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
         this.linesDefinitions = new HorizontalLines(this.reelsNumber, this.reelsSymbolsNumber);
         this.linesPatterns = new LeftToRightLinesPatterns(this.reelsNumber);
         this.reelsSymbolsSequences = this.createReelsSymbolsSequences();
+    }
+
+    /** Built-in resolved data only: subclasses and injected model strategies need their own complete codec. */
+    public isResolvedForSessionRestoration(): boolean {
+        return this.constructor === VideoSlotConfig && this.baseConfig.constructor === GameSessionConfig &&
+            this.paytable.constructor === Paytable &&
+            [HorizontalLines, CustomLinesDefinitions].some(kind => this.linesDefinitions.constructor === kind) &&
+            [LeftToRightLinesPatterns, RightToLeftLinesPatterns, ScatteredLinesPatterns].some(kind => this.linesPatterns.constructor === kind) &&
+            this.reelsSymbolsSequences.every(strip => strip.constructor === SymbolsSequence);
     }
 
     public getPaytable(): PaytableRepresenting<T> {

@@ -1,3 +1,6 @@
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
+import type {PokieGame} from "../../gamepackage/PokieGame.js";
+import {resolveGameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
 import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
@@ -26,8 +29,15 @@ export function captureInitialPokieSessionState(
     session: GameSessionHandling,
     serializer?: GameSessionSerializing,
     captureDebugData = true,
+    game: PokieGame | undefined = undefined,
 ): PokieSessionState {
     const state = captureBaseSessionState(context, session);
+    if (game !== undefined) {
+        state.identity = resolveGameSessionIdentity(game);
+        // Existing createSession packages can remain playable with a primed live object, but a
+        // session-level codec alone cannot authorize reconstruction from an untrusted record.
+        if (game.getSessionStateSchema === undefined || game.getSessionCommandCapabilities === undefined) state.executionState = "live-only";
+    }
 
     if (serializer !== undefined) {
         state.initialPayload = serializer.getInitialData(session) as unknown as Record<string, unknown>;
@@ -37,5 +47,5 @@ export function captureInitialPokieSessionState(
         }
     }
 
-    return state;
+    return cloneSessionData(state);
 }

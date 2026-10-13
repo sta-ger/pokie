@@ -183,3 +183,22 @@ if (result.hasErrors()) {
 `pokie sim`/`pokie validate`/`pokie report`/`pokie diff`/`pokie replay`/`pokie serve`/`pokie client`/
 `pokie dev` [CLI](cli.md) commands are built on — `pokie validate` in particular wraps this same contract check in
 `PokieGamePackageValidator`, returning a structured report instead of throwing.
+
+## Headless runtime contract
+
+`PokieGame` also defines the headless runtime compatibility ports `getSessionCompatibility()` and `validateSessionState()`. Generated and code-first packages use the same `SessionRuntime` / repository command semantics; see [game-session.md](game-session.md#headless-commands-and-repository-ownership) and [serialization.md](serialization.md#executable-repository-records). Existing packages exposing only `getManifest()` and `createSession(context)` need no rewrite for live
+Play: direct repository commands, serve and Studio capture command/schema authority from the trusted
+constructed object when it is primed. Save the initial record with the selected game and pass its committed
+revision to `primeSession()`; serve and Studio do this automatically. Those captures remain `live-only`
+even if the session itself has a complete codec. Persisted capability lists cannot supply authority.
+After live-state loss, new commands and undeclared-package retries return `restoration-unsupported`
+without constructing a replacement. Durable opt-in requires both `getSessionStateSchema()` and
+`getSessionCommandCapabilities(context)`, plus a complete session codec (and a validator for a custom schema).
+Declared command authority also permits validated completed live-only retries without constructing a session.
+
+Trusted live validation follows built-in free-game and bet-mode composition node by node. An unchanged
+custom decorator may omit a snapshot or emit an opaque legacy snapshot inside those wrappers. Such
+snapshots stay live-only: they preserve the constructed collaborator and never authorize rebuilding it.
+Complete built-in children still require their nested state, and selected modes must belong to the
+trusted model before reads, retries or reconciliation publish a result. Declared codecs retain their
+own strict validation requirements, including the game validator for custom payloads.

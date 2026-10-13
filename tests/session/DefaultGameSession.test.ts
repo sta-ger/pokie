@@ -30,6 +30,15 @@ describe("GenericGameSession", () => {
         expect(session.getCreditsAmount()).toBe(0);
     });
 
+    it("keeps the plain built-in base codec strict", () => {
+        const session = new GameSession();
+        expect(session.getSessionStateSchema()).toEqual({kind: "base"});
+        expect(session.isSessionStateRestorable()).toBe(true);
+        expect(session.toSessionState()).toEqual({});
+        expect(session.fromSessionState({})).toBe(session);
+        for (const state of [null, [], {round: 1}]) expect(() => session.fromSessionState(state)).toThrow("Invalid base game state");
+    });
+
     it("creates a new session", () => {
         const conf = new GameSessionConfig();
         const sess = new GameSession(conf);

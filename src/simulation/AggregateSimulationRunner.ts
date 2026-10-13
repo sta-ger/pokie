@@ -1,6 +1,6 @@
+import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {JackpotStatisticsProviding} from "../session/JackpotStatisticsProviding.js";
 import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
-import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {BetModeForNextSimulationRoundSetting} from "./BetModeForNextSimulationRoundSetting.js";
 import {ExplicitSimulationRoundCategoryDeterminer} from "./ExplicitSimulationRoundCategoryDeterminer.js";
@@ -50,7 +50,7 @@ export class AggregateSimulationRunner {
         // Locks the run to one bet mode (see FixedBetModeForNextSimulationRoundSetting) — absent by
         // default, so an existing caller that never touches bet modes gets byte-identical behavior.
         // Both the overall accumulator and every breakdown read getStakeAmount() (see
-        // resolveStakeAmount()): a mode-locked run's whole point is measuring what a bet mode
+        // SessionRuntime): a mode-locked run's whole point is measuring what a bet mode
         // actually costs, which is exactly what StakeAmountDetermining -- already the runtime's own
         // source of truth, never recomputed here -- reports.
         betModeSelector: BetModeForNextSimulationRoundSetting | undefined = undefined,
@@ -81,9 +81,6 @@ export class AggregateSimulationRunner {
             }
             this.betModeSelector?.setBetModeForNextRound(this.session);
 
-            // Read before play(); getStakeAmount()'s own contract (see
-            // StakeAmountDetermining) is "what the *next* play() will actually charge".
-            const stakeAmount = this.resolveStakeAmount();
             const supportsCategorization = this.roundCategoryDeterminer.supportsRoundCategorization(this.session);
             // Normalized/validated here, centrally, regardless of which determiner produced it — an
             // injected custom SimulationRoundCategoryDetermining (see the extension point) gets the same
@@ -95,8 +92,7 @@ export class AggregateSimulationRunner {
                 ? SimulationCategoryNameNormalizer.normalize(this.roundCategoryDeterminer.categorizeRound(this.session))
                 : undefined;
 
-            this.session.play();
-            const payout = this.session.getWinAmount();
+            const {stake: stakeAmount, win: payout} = executeSessionCommand(this.session);
             // Canonical accounting: nominalBet is the displayed denomination;
             // stakeAmount is what the player actually paid for this round;
             // a free continuation therefore contributes 0 stake but its full
@@ -151,14 +147,6 @@ export class AggregateSimulationRunner {
             totals.maxWin = payout;
         }
         categoryTotals.set(category, totals);
-    }
-
-    private resolveStakeAmount(): number {
-        return this.supportsStakeAmount(this.session) ? this.session.getStakeAmount() : this.session.getBet();
-    }
-
-    private supportsStakeAmount(session: GameSessionHandling): session is GameSessionHandling & StakeAmountDetermining {
-        return typeof (session as Partial<StakeAmountDetermining>).getStakeAmount === "function";
     }
 
     private supportsJackpotStatistics(session: GameSessionHandling): session is GameSessionHandling & JackpotStatisticsProviding {

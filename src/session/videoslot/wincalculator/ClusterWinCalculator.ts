@@ -1,3 +1,5 @@
+import {VideoSlotConfig} from "../VideoSlotConfig.js";
+import {VideoSlotWithFreeGamesConfig} from "../VideoSlotWithFreeGamesConfig.js";
 import {ClusterDetector} from "../combinations/ClusterDetector.js";
 import type {ClusterWinCalculating} from "./ClusterWinCalculating.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
@@ -24,6 +26,15 @@ export class ClusterWinCalculator<T extends string | number | symbol = string> i
         this.config = config;
         this.minimumClusterSize = minimumClusterSize;
         this.clusterDetector = clusterDetector;
+    }
+
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === ClusterWinCalculator &&
+            (this.config instanceof VideoSlotConfig || this.config instanceof VideoSlotWithFreeGamesConfig) && this.config.isResolvedForSessionRestoration() && this.clusterDetector.constructor === ClusterDetector;
     }
 
     public calculateWinningClusters(

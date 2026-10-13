@@ -29,6 +29,10 @@ export class SeededRandomNumberGenerator implements RandomNumberGenerating {
         return min + Math.floor(this.nextFloat() * (max - min));
     }
 
+    public getRandomStateCodec(): "seeded" | "opaque" {
+        return this.constructor === SeededRandomNumberGenerator ? "seeded" : "opaque";
+    }
+
     public toSessionState(): number {
         return this.state;
     }

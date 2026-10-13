@@ -132,3 +132,7 @@ Note the `undefined` placeholders — TypeScript only applies a parameter defaul
 [Extension Points](extension-points.md) for the full list of injectable collaborators, including
 `AbstractVideoSlotSessionDecorator` for writing your own session wrapper (the same pattern
 `VideoSlotWithFreeGamesSession` itself is built on) without re-implementing every passthrough method.
+
+## Headless runtime contract
+
+Repository continuation through `SpinCommandHandler.execute()` retains nested seeded RNG, current progress, retriggers, banked wins and last grant. A zero-stake continuation remains playable at zero wallet balance; the final free spin releases the bank, and subsequent paid play charges its real stake. See [executable repository records](serialization.md#executable-repository-records) for the supported composition and custom-codec boundary.

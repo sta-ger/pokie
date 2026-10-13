@@ -124,7 +124,7 @@ export type StudioPlaySpinResult =
     | {status: "cancelled"; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
     | {status: "blocked"; error: string}
-    | {status: "error"; error: string};
+    | {status: "error"; error: string; code?: string};
 
 // Play's own backend -- Studio's only game mode (see PlayTab's own doc comment). Never a
 // PokieDevServer/PokieClientServer, never an OS port, never a SessionRepository/WalletPort a
@@ -297,7 +297,7 @@ export class StudioPlayService {
         try {
             session = game.createSession(context);
             await wallet.setBalance(sessionId, session.getCreditsAmount());
-            state = captureInitialPokieSessionState(context, session, resolveGameSessionSerializer(game), true);
+            state = captureInitialPokieSessionState(context, session, resolveGameSessionSerializer(game), true, game);
             await sessionRepository.save(sessionId, state);
             spinHandler.primeSession(sessionId, session, (await sessionRepository.loadVersioned(sessionId))?.version);
             assertCurrent();
@@ -386,7 +386,7 @@ export class StudioPlayService {
             // These are submitted together with a manual Spin, so the canonical SpinCommandHandler
             // applies them immediately before this exact round.  Scenario searches deliberately omit
             // them: they continue from the session state the player already selected.
-            const handled = await active.spinHandler.handle(sessionId, undefined, undefined, bet, mode);
+            const handled = await active.spinHandler.execute({kind: "spin", sessionId, bet, mode});
             if (handled.status === "not-found") {
                 result = {status: "not-found"};
             } else if (handled.status === "blocked") {
@@ -396,7 +396,9 @@ export class StudioPlayService {
                 // expectedVersion, and never shares its stores with another SpinCommandHandler instance
                 // (see the class doc comment) -- surfaced as a plain error rather than silently dropped
                 // in the (unreachable in normal operation) case they somehow ever did.
-                result = {status: "error", error: handled.reason};
+                result = {status: "error", code: handled.status, error: handled.reason};
+            } else if (handled.status !== "played") {
+                result = {status: "error", code: handled.status, error: handled.reason};
             } else {
                 const settledSession = active.spinHandler.getLiveSession(sessionId);
                 if (settledSession === undefined) {
@@ -712,6 +714,10 @@ export class StudioPlayService {
             }
             lastSettledSession = round.session;
             onProgress?.(attempt + 1, this.maxFindScenarioSpins);
+            // Progress callbacks may cancel or replace the active project synchronously. The settled
+            // round remains committed, but it must not become a successful scenario result afterward.
+            if (signal?.aborted) return {status: "cancelled", session: lastSettledSession};
+            if (!this.isActiveSession(active, sessionId)) return {status: "not-found"};
 
             let matched: boolean;
             if (active.kind === "runtime") {

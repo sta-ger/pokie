@@ -1,3 +1,8 @@
+import type {LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
+import type {PokieGame} from "../../gamepackage/PokieGame.js";
+import {validatePersistedSession} from "../../runtime/validatePersistedSession.js";
+import {validateOperationRecord, validateRetryResult} from "../../runtime/internal/validateRecoveryData.js";
 import {isVersionedSessionRepository} from "../session/isVersionedSessionRepository.js";
 import {SessionVersionConflictError} from "../session/SessionVersionConflictError.js";
 import type {SessionRepository} from "../session/SessionRepository.js";
@@ -34,11 +39,11 @@ const DEFAULT_LEASE_DURATION_MS = 10_000;
 // full cross-store atomicity is a v2 concern: every mutating branch below only ever acts when it can be
 // certain, and defers to a human (or to time, or to whoever currently holds ownership) otherwise.
 //
-// Deliberately has no PokieGame/live-session access at all — constructed from only the wallet,
+// Has no live-session access: the selected game supplies only its nonmutating codec declaration.
+// Constructed from the wallet,
 // sessionRepository, idempotencyRepository, and operationLog a SpinCommandHandler itself already holds.
-// That is not an incidental narrowing: it makes it structurally impossible for this class to call
-// session.play() a second time for an attempt it's recovering, no matter what a future change here might
-// try to do — resuming an attempt can only ever replay already-computed data (SpinOperationRecord's own
+// The game is consulted only for validation; recovery never constructs or plays a session.
+// Resuming an attempt reuses only already-computed data (SpinOperationRecord's own
 // capturedResult), never recompute it.
 //
 // No checkpoint is ever trusted as proof of what did NOT happen — only of what DID. "started" being the
@@ -124,6 +129,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly minimumQuiescenceMs: number;
     private readonly leaseDurationMs: number;
     private readonly now: () => Date;
+    private readonly game: PokieGame | undefined;
+    private readonly liveAuthority: ((sessionId: string) => LiveSessionAuthority | undefined) | undefined;
 
     constructor(
         wallet: TransactionalWalletPort,
@@ -138,7 +145,13 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         minimumQuiescenceMs: number = DEFAULT_MINIMUM_QUIESCENCE_MS,
         leaseDurationMs: number = DEFAULT_LEASE_DURATION_MS,
         now: () => Date = () => new Date(),
+        game: PokieGame | undefined = undefined,
+        // An explicit adapter may supply authority retained from trusted live construction only.
+        // This never permits reconstruction and must not derive its values from stored records.
+        liveAuthority: ((sessionId: string) => LiveSessionAuthority | undefined) | undefined = undefined,
     ) {
+        this.game = game;
+        this.liveAuthority = liveAuthority;
         this.wallet = wallet;
         this.sessionRepository = sessionRepository;
         this.idempotencyRepository = idempotencyRepository;
@@ -180,10 +193,21 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     }
 
     private async reconcileOneInternal(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
-        const record = await this.operationLog.load(sessionId, requestId);
+        const record = cloneSessionData(await this.operationLog.load(sessionId, requestId));
         if (record === undefined) {
             return {status: "no-action-needed", sessionId, requestId, reason: "No operation record found for this requestId — nothing to reconcile."};
         }
+
+        // The codec comes from the selected game, never from a recoverable record. A standalone
+        // reconciler must receive that game to validate already-computed data without constructing it.
+        const game = this.game;
+        if (game === undefined) return {status: "manual-recovery-required", sessionId, requestId, reason: "Reconciliation requires the selected game's authoritative codec.", record};
+        const current = await this.sessionRepository.load(sessionId);
+        const cached = await this.idempotencyRepository.load(sessionId, requestId);
+        const live = this.liveAuthority?.(sessionId);
+        const invalid = validatePersistedSession(current, game, live) ?? validateOperationRecord(record, game, sessionId, requestId, live) ??
+            (cached === undefined ? undefined : validateRetryResult(cached, game, sessionId, requestId, live));
+        if (invalid !== undefined) return {status: "manual-recovery-required", sessionId, requestId, reason: invalid.reason, record};
 
         switch (record.checkpoint) {
             case "committed":
@@ -594,6 +618,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             previousState: captured.previousState,
             credits: captured.credits,
             win: captured.win,
+            ...(captured.stake === undefined ? {} : {stake: captured.stake}),
+            ...(captured.mode === undefined ? {} : {mode: captured.mode}),
             requestId: record.requestId,
             ...(captured.newVersion !== undefined ? {version: captured.newVersion} : {}),
         };

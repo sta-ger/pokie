@@ -1,3 +1,4 @@
+import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
 import type {GameSessionSerializing} from "../net/GameSessionSerializing.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {SymbolsCombinationsGenerating} from "../session/videoslot/combinations/SymbolsCombinationsGenerating.js";
@@ -8,6 +9,24 @@ import type {PokieGameManifest} from "./PokieGameManifest.js";
 
 export interface PokieGame {
     getManifest(): PokieGameManifest;
+
+    /** Authoritative codec declaration, resolved without constructing a session. Required for durable recovery. */
+    getSessionStateSchema?(): SessionStateSchema;
+
+    /** Nonmutating selected-model authority, resolved without creating a session or drawing RNG.
+     * Required for construction-free recovery; primed live sessions can supply trusted authority instead.
+     * Persisted sessions may restrict these selections.
+     */
+    getSessionCommandCapabilities?(context?: PokieGameContext): {readonly bets: readonly number[]; readonly modes?: readonly string[]};
+
+    /** Explicit partial-snapshot policy for live-only collaborators; never authorizes reconstruction. */
+    validateLiveSessionState?(state: unknown, context?: PokieGameContext): void;
+
+    /** Hand-authored compatibility promise; defaults to manifest.version / state schema "1". */
+    /** Nonmutating validation for a custom executable state codec, before construction or recovery. */
+    validateSessionState?(state: unknown, context?: PokieGameContext): void;
+
+    getSessionCompatibility?(): {readonly version: string; readonly stateSchemaVersion: string};
 
     createSession(context?: PokieGameContext): GameSessionHandling;
 

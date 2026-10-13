@@ -48,6 +48,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
         "VideoSlotConfig",
         "VideoSlotSession",
         "VideoSlotSessionSerializer",
+        "validateExecutableState",
     ];
     if (winModel.type === "ways" || winModel.type === "clusters") {
         requireNames.push("VideoSlotWinCalculator", "SelectedEvaluatorGroupWinAggregationPolicy");
@@ -198,6 +199,9 @@ ${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     // declarations. Pin the erased type import to the CommonJS condition so Node16 resolution does
     // not reject it as an ESM type import from a CommonJS generated module.
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
+    const baseStateSchema = {kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols};
+    const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
+    const stateSchema = betModeWiring !== undefined ? {kind: "bet-modes", base: featureStateSchema} : featureStateSchema;
     const blueprintDeclaration =
         format === "ts"
             ? `const blueprint: GameBlueprint = ${JSON.stringify(blueprint, null, 4)};`
@@ -290,6 +294,15 @@ ${freeGamesWrapCode}
 module.exports = {
     getManifest() {
         return blueprint.manifest;
+    },
+    getSessionStateSchema() {
+        return ${JSON.stringify(stateSchema)};
+    },
+    getSessionCommandCapabilities() {
+        return ${JSON.stringify({bets: blueprint.availableBets ?? [1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], ...(stateSchema.kind === "bet-modes" ? {modes: blueprint.betModes!.map(mode => mode.id)} : {})})};
+    },
+    validateLiveSessionState(${format === "ts" ? "state: unknown" : "state"}, ${contextParam}) {
+        validateExecutableState(state, ${JSON.stringify(stateSchema)}, undefined, context?.seed === undefined);
     },
     createSession(${contextParam}) {
 ${createSessionBody}    },

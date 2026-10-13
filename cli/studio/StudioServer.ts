@@ -3740,12 +3740,12 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (await this.rejectCurrentWasmOperation(res, PLAY_OPERATION)) return;
-        const body = await this.readJsonBody(req);
         let validated;
         try {
+            const body = await this.readJsonBody(req);
             validated = validatePlaySpinRequest((body ?? {}) as PlaySpinRequestInput);
         } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            this.sendJson(res, 400, {code: "invalid-command", error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
@@ -3773,7 +3773,7 @@ export class StudioServer implements StudioServerHandling {
             res, {
                 projectId: projectRoot, operation: "play-find-any-win", request: {sessionId}, conflictKey: `play:${projectRoot}:${sessionId}`, recoveryOnRestart: recovery,
                 initialProgress: {stage: "Searching rounds", unit: "attempted spins", current: 0, total: "indeterminate", message: "Spinning until a winning round is settled."},
-                // The Play client uses 409 exclusively for no-active-project.
+                // Runtime failure codes distinguish session failures from the HTTP-only project guard.
                 // Preserve its normal result union for exact reattachment.
                 reattachedResponse: (job) => ({statusCode: 200, body: {status: "error", error: "Scenario search is already in progress for this exact request.", activeJobId: job.id, reattached: true}}),
             },
@@ -3781,7 +3781,8 @@ export class StudioServer implements StudioServerHandling {
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "any-win", result.status === "cancelled" ? result.session : undefined), recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "any-win", session: result.session}}};
-                return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
+                const error = result.status === "error" && result.code !== undefined ? `${result.code}: ${result.error}` : `Play scenario search ${result.status}.`;
+                return {status: "failed", error, recovery};
             },
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "any-win"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
@@ -3821,7 +3822,8 @@ export class StudioServer implements StudioServerHandling {
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "symbol-win", result.status === "cancelled" ? result.session : undefined, validated.symbolId), recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId, session: result.session}}};
-                return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
+                const error = result.status === "error" && result.code !== undefined ? `${result.code}: ${result.error}` : `Play scenario search ${result.status}.`;
+                return {status: "failed", error, recovery};
             },
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "symbol-win", symbolId: validated.symbolId}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
@@ -3852,7 +3854,8 @@ export class StudioServer implements StudioServerHandling {
             (result, cancelled) => {
                 if (cancelled || result.status === "cancelled") return {status: "cancelled", result: this.playCancellationResult(sessionId, "free-games", result.status === "cancelled" ? result.session : undefined), recovery};
                 if (result.status === "ok") return {status: "completed", result: {summary: "Play scenario search completed.", outputs: [{label: "Settled Play round"}], provenance: {game: result.session.game}, detail: {sessionId, scenario: "free-games", session: result.session}}};
-                return {status: "failed", error: `Play scenario search ${result.status}.`, recovery};
+                const error = result.status === "error" && result.code !== undefined ? `${result.code}: ${result.error}` : `Play scenario search ${result.status}.`;
+                return {status: "failed", error, recovery};
             },
             (error, cancelled) => cancelled ? {status: "cancelled", result: {summary: "Scenario search stopped after its last settled round.", detail: {sessionId, scenario: "free-games"}}, recovery} : {status: "failed", error: error instanceof Error ? error.message : String(error), recovery},
         );
@@ -3881,7 +3884,10 @@ export class StudioServer implements StudioServerHandling {
             this.sendJson(res, 200, {status: "error", error: "Scenario search was cancelled after its last settled round."});
             return;
         }
-        this.sendJson(res, 200, {status: "error", error: result.error});
+        const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
+        const statusCode = result.code === undefined ? 200 : statusCodes[result.code] ?? 409;
+        this.sendJson(res, statusCode,
+            {status: "error", error: result.error, ...(result.code === undefined ? {} : {code: result.code})});
     }
 
     private playCancellationResult(

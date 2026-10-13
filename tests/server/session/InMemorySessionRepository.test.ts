@@ -108,3 +108,19 @@ describe("InMemorySessionRepository", () => {
         });
     });
 });
+
+describe("InMemorySessionRepository detached ownership", () => {
+    it("requires a save to change a record despite input, load and versioned-load mutations", async () => {
+        const repository = new InMemorySessionRepository();
+        const state: PokieSessionState = {bet: 1, win: 0, featureState: {rngState: 7}, screen: [["A"]]};
+        await repository.save("detached", state);
+        state.screen![0][0] = "input-change";
+        const loaded = (await repository.load("detached"))!;
+        loaded.screen![0][0] = "load-change";
+        const versioned = (await repository.loadVersioned("detached"))!;
+        (versioned.state.featureState as {rngState: number}).rngState = 123;
+        expect(await repository.loadVersioned("detached")).toEqual({version: 1, state: {bet: 1, win: 0, featureState: {rngState: 7}, screen: [["A"]]}});
+        await expect(repository.saveVersioned("detached", loaded, 0)).rejects.toThrow(SessionVersionConflictError);
+        expect(await repository.loadVersioned("detached")).toEqual({version: 1, state: {bet: 1, win: 0, featureState: {rngState: 7}, screen: [["A"]]}});
+    });
+});

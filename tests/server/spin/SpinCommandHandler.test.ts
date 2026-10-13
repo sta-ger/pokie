@@ -1,3 +1,4 @@
+import {resolveGameSessionIdentity} from "../../../src/runtime/GameSessionIdentity.js";
 import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
 import {validatePlaySpinRequest} from "../../../cli/studio/runtime/validatePlaySpinRequest.js";
 import {PokieGame} from "../../../src/gamepackage/PokieGame.js";
@@ -23,6 +24,28 @@ import {WinEvaluationResult} from "../../../src/session/videoslot/winevaluation/
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
+const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
+    getSessionStateSchema: () => ({kind: "custom"}),
+    getSessionCommandCapabilities: () => ({bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}),
+    validateLiveSessionState: value => {
+        if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value))) throw new Error("Invalid live fixture state");
+    },
+    validateSessionState: value => {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid fixture state");
+    },
+};
+
+function fixtureState(bet: number, executionState: "live-only" | "durably-restorable" = "durably-restorable"): PokieSessionState {
+    return {identity: resolveGameSessionIdentity({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSession()}),
+        bet, win: 0, credits: 1000, stateSchema: {kind: "custom"}, commandCapabilities: {bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}, executionState, ...(executionState === "live-only" ? {} : {featureState: {round: 0}})};
+}
+
+function withState<T extends GameSessionHandling>(session: T): T & {isSessionStateRestorable(): boolean; validateSessionState(state: unknown): void; toSessionState(): unknown; fromSessionState(value: unknown): unknown} {
+    return {isSessionStateRestorable: () => true, validateSessionState: (state: unknown) => {
+        if (typeof state !== "object" || state === null) throw new Error("Invalid fixture state");
+    }, toSessionState: () => ({round: 0}), fromSessionState: () => undefined, ...session};
+}
+
 type FakeGameStats = {createSessionCalls: number; playCalls: number};
 
 function createFakeSession(
@@ -37,7 +60,7 @@ function createFakeSession(
     let round = 0;
     let winAmount = 0;
 
-    return {
+    return withState({
         getCreditsAmount: () => credits,
         setCreditsAmount: (value: number) => {
             credits = value;
@@ -63,12 +86,12 @@ function createFakeSession(
             if (typeof state.round === "number") round = state.round;
             return undefined;
         },
-    };
+    });
 }
 
 function createFakeGame(): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCodec,
         createSession: () => createFakeSession(),
     };
 }
@@ -84,7 +107,7 @@ function createFakeSessionWithSelectableBet(
     let round = 0;
     let winAmount = 0;
 
-    return {
+    return withState({
         getCreditsAmount: () => credits,
         setCreditsAmount: (value: number) => {
             credits = value;
@@ -103,12 +126,12 @@ function createFakeSessionWithSelectableBet(
         },
         getWinAmount: () => winAmount,
         getSymbolsCombination: () => ({toMatrix: () => [[`round-${round}`]]}),
-    };
+    });
 }
 
 function createFakeGameWithSelectableBet(): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCodec,
         createSession: () => createFakeSessionWithSelectableBet(),
     };
 }
@@ -127,7 +150,7 @@ function createFakeSessionWithSelectableBetMode(
     let winAmount = 0;
     let betModeId = "base";
 
-    return {
+    return withState({
         getCreditsAmount: () => credits,
         setCreditsAmount: (value: number) => {
             credits = value;
@@ -152,12 +175,12 @@ function createFakeSessionWithSelectableBetMode(
             }
             betModeId = modeId;
         },
-    };
+    });
 }
 
 function createFakeGameWithSelectableBetMode(): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCodec,
         createSession: () => createFakeSessionWithSelectableBetMode(),
     };
 }
@@ -173,7 +196,7 @@ function createFakeVideoSlotSessionWithModeLifecycle():
     const stakeMultiplierByMode: Record<string, number> = {base: 1, ante: 1.25, buyFeature: 50};
     const getStakeAmount = (): number => bet * stakeMultiplierByMode[betModeId];
 
-    return {
+    return withState({
         getCreditsAmount: () => credits,
         setCreditsAmount: (value: number) => {
             credits = value;
@@ -198,12 +221,12 @@ function createFakeVideoSlotSessionWithModeLifecycle():
         setBetMode: (modeId: string) => {
             betModeId = modeId;
         },
-    };
+    });
 }
 
 function createFakeGameWithModeLifecycle(): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCodec,
         createSession: () => createFakeVideoSlotSessionWithModeLifecycle(),
     };
 }
@@ -214,7 +237,7 @@ function createFakeGameWithModeLifecycle(): PokieGame {
 function createInstrumentedFakeGame(): {game: PokieGame; stats: FakeGameStats} {
     const stats: FakeGameStats = {createSessionCalls: 0, playCalls: 0};
     const game: PokieGame = {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCodec,
         createSession: () => {
             stats.createSessionCalls++;
             return createFakeSession(stats);
@@ -235,7 +258,7 @@ function createFakeFreeGamesSession(initialCredits = 0): GameSessionHandling & S
     let winAmount = 0;
     let freeSpinsRemaining = 3;
 
-    return {
+    return withState({
         getCreditsAmount: () => credits,
         setCreditsAmount: (value: number) => {
             credits = value;
@@ -255,7 +278,7 @@ function createFakeFreeGamesSession(initialCredits = 0): GameSessionHandling & S
             }
         },
         getWinAmount: () => winAmount,
-    };
+    });
 }
 
 async function createSpinnableSession(
@@ -265,7 +288,7 @@ async function createSpinnableSession(
     credits: number,
 ): Promise<void> {
     await wallet.setBalance(sessionId, credits);
-    const state: PokieSessionState = {bet: 5, win: 0};
+    const state: PokieSessionState = fixtureState(5);
     await sessionRepository.save(sessionId, state);
 }
 
@@ -350,7 +373,7 @@ async function createSpinnableSessionOn(
     credits: number,
 ): Promise<void> {
     await wallet.setBalance(sessionId, credits);
-    const state: PokieSessionState = {bet: 5, win: 0};
+    const state: PokieSessionState = fixtureState(5);
     await sessionRepository.save(sessionId, state);
 }
 
@@ -360,7 +383,7 @@ describe("SpinCommandHandler", () => {
         const wallet = new InMemoryWallet();
         let createSessionCalls = 0;
         const game: PokieGame = {
-            getManifest: () => manifest,
+            getManifest: () => manifest, ...fixtureCodec,
             createSession: () => {
                 createSessionCalls++;
                 return createFakeSession();
@@ -368,16 +391,16 @@ describe("SpinCommandHandler", () => {
         };
         const handler = new SpinCommandHandler(game, sessionRepository, wallet);
         await wallet.setBalance("live-only", 1_000);
-        await sessionRepository.save("live-only", {bet: 5, win: 0, executionState: "live-only"});
+        await sessionRepository.save("live-only", fixtureState(5, "live-only"));
 
         await expect(handler.handle("live-only")).resolves.toMatchObject({
-            status: "blocked",
+            status: "restoration-unsupported",
             sessionId: "live-only",
             reason: expect.stringContaining("does not persist complete executable session state"),
         });
         expect(createSessionCalls).toBe(0);
         await expect(wallet.getBalance("live-only")).resolves.toBe(1_000);
-        await expect(sessionRepository.load("live-only")).resolves.toEqual({bet: 5, win: 0, executionState: "live-only"});
+        await expect(sessionRepository.load("live-only")).resolves.toEqual(fixtureState(5, "live-only"));
     });
 
     it("plays a spin, settles the wallet, and persists the new state", async () => {
@@ -479,7 +502,7 @@ describe("SpinCommandHandler", () => {
             getWinAmount: () => 7,
         };
         const game: PokieGame = {
-            getManifest: () => manifest,
+            getManifest: () => manifest, ...fixtureCodec,
             // The reconstruction is deliberately incapable of carrying the finite live state.
             // It must validate only; executing it would reset the one-round stream on every command.
             createSession: () => ({...live, canPlayNextGame: () => true, play: () => {
@@ -489,7 +512,7 @@ describe("SpinCommandHandler", () => {
         const sessionRepository = new InMemorySessionRepository();
         const wallet = new InMemoryWallet();
         const handler = new SpinCommandHandler(game, sessionRepository, wallet);
-        await sessionRepository.save("legacy", {bet: 5, win: 0});
+        await sessionRepository.save("legacy", fixtureState(5, "live-only"));
         await wallet.setBalance("legacy", 100);
         handler.primeSession("legacy", live, (await sessionRepository.loadVersioned("legacy"))?.version);
 
@@ -523,8 +546,8 @@ describe("SpinCommandHandler", () => {
         };
         const repository = new InMemorySessionRepository();
         const wallet = new InMemoryWallet();
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBet()}, repository, wallet);
-        await repository.save("changed-bet", {bet: 10, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSessionWithSelectableBet()}, repository, wallet);
+        await repository.save("changed-bet", fixtureState(10, "live-only"));
         await wallet.setBalance("changed-bet", 11);
         handler.primeSession("changed-bet", live, (await repository.loadVersioned("changed-bet"))?.version);
 
@@ -538,8 +561,8 @@ describe("SpinCommandHandler", () => {
         const live = createFakeFreeGamesSession(0);
         const repository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeFreeGamesSession()}, repository, wallet);
-        await repository.save("free-zero", {bet: 5, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeFreeGamesSession()}, repository, wallet);
+        await repository.save("free-zero", fixtureState(5, "live-only"));
         await wallet.setBalance("free-zero", 0);
         handler.primeSession("free-zero", live, (await repository.loadVersioned("free-zero"))?.version);
 
@@ -576,8 +599,8 @@ describe("SpinCommandHandler", () => {
         };
         const repository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
-        await repository.save("rollback", {bet: 1, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
+        await repository.save("rollback", fixtureState(1, "live-only"));
         await wallet.setBalance("rollback", 10);
         handler.primeSession("rollback", live, (await repository.loadVersioned("rollback"))?.version);
 
@@ -604,8 +627,8 @@ describe("SpinCommandHandler", () => {
             delete: () => Promise.resolve(),
             listIncomplete: () => Promise.resolve([]),
         };
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
-        await repository.save("checkpoint-rollback", {bet: 1, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, getSessionStateSchema: () => ({kind: "base"}), getSessionCommandCapabilities: () => ({bets: config.getAvailableBets()}), createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
+        await repository.save("checkpoint-rollback", {...fixtureState(1, "live-only"), stateSchema: {kind: "base"}, featureState: {}, commandCapabilities: {bets: [1, 2]}});
         await wallet.setBalance("checkpoint-rollback", 10);
         handler.primeSession("checkpoint-rollback", live, (await repository.loadVersioned("checkpoint-rollback"))?.version);
 
@@ -642,8 +665,8 @@ describe("SpinCommandHandler", () => {
             delete: deleteAttempted,
             listIncomplete: () => Promise.resolve([]),
         };
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
-        await repository.save("stake-read-failure", {bet: 1, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, getSessionStateSchema: () => ({kind: "base"}), getSessionCommandCapabilities: () => ({bets: config.getAvailableBets()}), createSession: () => new GameSession(config)}, repository, wallet, undefined, operationLog);
+        await repository.save("stake-read-failure", {...fixtureState(1, "live-only"), stateSchema: {kind: "base"}, featureState: {}, commandCapabilities: {bets: [1, 2]}});
         await wallet.setBalance("stake-read-failure", 10);
         handler.primeSession("stake-read-failure", live, (await repository.loadVersioned("stake-read-failure"))?.version);
 
@@ -694,8 +717,8 @@ describe("SpinCommandHandler", () => {
         };
         const repository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
-        await repository.save("mode-read-failure", {bet: 1, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
+        await repository.save("mode-read-failure", fixtureState(1, "live-only"));
         await wallet.setBalance("mode-read-failure", 10);
         handler.primeSession("mode-read-failure", live, (await repository.loadVersioned("mode-read-failure"))?.version);
 
@@ -737,8 +760,8 @@ describe("SpinCommandHandler", () => {
         };
         const repository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBet()}, repository, wallet);
-        await repository.save("partial-setter", {bet: 1, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSessionWithSelectableBet()}, repository, wallet);
+        await repository.save("partial-setter", fixtureState(1, "live-only"));
         await wallet.setBalance("partial-setter", 10);
         handler.primeSession("partial-setter", live, (await repository.loadVersioned("partial-setter"))?.version);
 
@@ -783,8 +806,8 @@ describe("SpinCommandHandler", () => {
         };
         const repository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
-        const handler = new SpinCommandHandler({getManifest: () => manifest, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
-        await repository.save("unrecoverable-setter", {bet: 1, win: 0, executionState: "live-only"});
+        const handler = new SpinCommandHandler({getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeSessionWithSelectableBetMode()}, repository, wallet);
+        await repository.save("unrecoverable-setter", fixtureState(1, "live-only"));
         await wallet.setBalance("unrecoverable-setter", 10);
         handler.primeSession("unrecoverable-setter", live, (await repository.loadVersioned("unrecoverable-setter"))?.version);
 
@@ -794,7 +817,7 @@ describe("SpinCommandHandler", () => {
         await expect(repository.load("unrecoverable-setter")).resolves.toMatchObject({bet: 1});
         await expect(wallet.getBalance("unrecoverable-setter")).resolves.toBe(10);
 
-        await expect(handler.handle("unrecoverable-setter")).resolves.toMatchObject({status: "blocked", reason: expect.stringContaining("cannot continue")});
+        await expect(handler.handle("unrecoverable-setter")).resolves.toMatchObject({status: "restoration-unsupported", reason: expect.stringContaining("cannot continue")});
         expect(plays).toBe(0);
     });
 
@@ -802,8 +825,8 @@ describe("SpinCommandHandler", () => {
         const betVariants: readonly (number | undefined)[] = [undefined, 5, 10];
         const modeVariants: readonly (string | undefined)[] = [undefined, "base", "ante", "invalid"];
         const persistenceVariants: readonly {readonly name: string; readonly state: PokieSessionState}[] = [
-            {name: "legacy", state: {bet: 5, win: 0}},
-            {name: "durable", state: {bet: 5, win: 0, context: {seed: "durable-context"}, featureState: {round: 0}}},
+            {name: "legacy", state: fixtureState(5)},
+            {name: "durable", state: {...fixtureState(5), context: {seed: "durable-context"}}},
         ];
         const walletVariants: readonly {readonly name: string; readonly balance: number}[] = [
             {name: "unchanged", balance: 100},
@@ -823,7 +846,7 @@ describe("SpinCommandHandler", () => {
                                 let credits = 0;
                                 let bet = 5;
                                 let mode = "base";
-                                return {
+                                return withState({
                                     getCreditsAmount: () => credits,
                                     setCreditsAmount: (value: number) => {
                                         credits = value;
@@ -845,10 +868,10 @@ describe("SpinCommandHandler", () => {
                                     setBetMode: (value: string) => {
                                         mode = value;
                                     },
-                                };
+                                });
                             };
                             const game: PokieGame = {
-                                getManifest: () => manifest,
+                                getManifest: () => manifest, ...fixtureCodec,
                                 createSession: () => createSession(reconstructed, !closed),
                             };
                             const sessionId = `${persistence.name}-${closed}-${requestedBet ?? "omitted"}-${requestedMode ?? "omitted"}-${walletVariant.name}`;
@@ -860,7 +883,8 @@ describe("SpinCommandHandler", () => {
 
                             const result = await handler.handle(sessionId, undefined, undefined, requestedBet, requestedMode);
                             const rejected = closed || requestedMode === "invalid";
-                            expect(result.status).toBe(rejected ? "blocked" : "played");
+                            const guardStatus = closed ? "blocked" : "played";
+                            expect(result.status).toBe(requestedMode === "invalid" ? "invalid-command" : guardStatus);
                             if (rejected) {
                                 expect(stale.plays).toBe(0);
                                 expect(reconstructed.plays).toBe(0);
@@ -962,7 +986,7 @@ describe("SpinCommandHandler", () => {
     });
 
     it("debits zero for a free spin at a balance below the nominal bet", async () => {
-        const game: PokieGame = {getManifest: () => manifest, createSession: () => createFakeFreeGamesSession(0)};
+        const game: PokieGame = {getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeFreeGamesSession(0)};
         const sessionRepository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
         const handler = new SpinCommandHandler(game, sessionRepository, wallet);
@@ -979,7 +1003,7 @@ describe("SpinCommandHandler", () => {
         // The balance (1000) is far more than enough to cover the nominal bet (5): under the old
         // "insufficient balance implies free" heuristic this would have been wrongly charged. Only
         // the explicit StakeAmountDetermining signal must decide this.
-        const game: PokieGame = {getManifest: () => manifest, createSession: () => createFakeFreeGamesSession(1000)};
+        const game: PokieGame = {getManifest: () => manifest, ...fixtureCodec, createSession: () => createFakeFreeGamesSession(1000)};
         const sessionRepository = new InMemorySessionRepository();
         const wallet = new RecordingTransactionalWallet();
         const handler = new SpinCommandHandler(game, sessionRepository, wallet);
@@ -1249,7 +1273,7 @@ describe("SpinCommandHandler", () => {
             // Fully reversed: the losing attempt's debit/credit left no lasting mark on the wallet.
             await expect(wallet.getBalance("session-1")).resolves.toBe(1000);
             // Exactly what the "concurrent writer" committed — untouched by the loser.
-            await expect(realRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+            await expect(realRepository.load("session-1")).resolves.toEqual(fixtureState(5));
         });
 
         it("evicts the live session on conflict, so a retry reconstructs fresh against the winning writer's state", async () => {
@@ -1313,7 +1337,7 @@ describe("SpinCommandHandler", () => {
             };
             const wallet = new InMemoryWallet();
             await wallet.setBalance("session-1", 1000);
-            backing.set("session-1", {bet: 5, win: 0});
+            backing.set("session-1", fixtureState(5));
             const handler = new SpinCommandHandler(game, plainRepository, wallet);
 
             const first = await handler.handle("session-1");
@@ -1356,7 +1380,7 @@ describe("SpinCommandHandler", () => {
             }
             expect(wallet.debitCalls).toEqual([]);
             expect(wallet.creditCalls).toEqual([]);
-            await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+            await expect(sessionRepository.load("session-1")).resolves.toEqual(fixtureState(5));
         });
 
         it("does not cache a stale-expectedVersion conflict under its requestId, so a retry with the same requestId can still succeed", async () => {
@@ -1386,7 +1410,7 @@ describe("SpinCommandHandler", () => {
             };
             const wallet = new InMemoryWallet();
             await wallet.setBalance("session-1", 1000);
-            backing.set("session-1", {bet: 5, win: 0});
+            backing.set("session-1", fixtureState(5));
             const handler = new SpinCommandHandler(game, plainRepository, wallet);
 
             // A wildly wrong expectedVersion has no effect at all — there's no version to compare it
@@ -1401,10 +1425,10 @@ describe("SpinCommandHandler", () => {
         it.each(FRACTIONAL_BET_STAKES)("plays and persists a real fractional session at stake %s while blocking unavailable bets without mutation", async (bet) => {
             const live = fractionalBetSession();
             const play = jest.spyOn(live, "play");
-            const game: PokieGame = {getManifest: () => manifest, createSession: () => live};
+            const game: PokieGame = {getManifest: () => manifest, getSessionStateSchema: () => ({kind: "seeded-video-slot"}), getSessionCommandCapabilities: () => ({bets: live.getAvailableBets()}), createSession: () => live};
             const repository = new InMemorySessionRepository();
             const wallet = new RecordingTransactionalWallet();
-            await repository.save("fractional", {bet: 1, win: 0});
+            await repository.save("fractional", {...fixtureState(1), stateSchema: live.getSessionStateSchema(), featureState: live.toSessionState(), commandCapabilities: {bets: live.getAvailableBets()}});
             await wallet.setBalance("fractional", 1000);
             const handler = new SpinCommandHandler(game, repository, wallet);
             handler.primeSession("fractional", live, (await repository.loadVersioned("fractional"))?.version);
@@ -1420,7 +1444,7 @@ describe("SpinCommandHandler", () => {
             const balance = await wallet.getBalance("fractional");
             const debits = [...wallet.debitCalls];
             const creditCalls = [...wallet.creditCalls];
-            expect((await handler.handle("fractional", undefined, undefined, 99)).status).toBe("blocked");
+            expect((await handler.handle("fractional", undefined, undefined, 99)).status).toBe("invalid-command");
             expect(live.getBet()).toBe(bet);
             expect(live.toSessionState()).toEqual(state);
             expect(live.getCreditsAmount()).toBe(credits);
@@ -1458,14 +1482,14 @@ describe("SpinCommandHandler", () => {
 
             const result = await handler.handle("session-1", undefined, undefined, 7);
 
-            expect(result.status).toBe("blocked");
-            if (result.status === "blocked") {
+            expect(result.status).toBe("invalid-command");
+            if (result.status === "invalid-command") {
                 expect(result.reason).toContain("7");
                 expect(result.reason).toContain("5, 10, 20");
             }
             expect(wallet.debitCalls).toEqual([]);
             expect(wallet.creditCalls).toEqual([]);
-            await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+            await expect(sessionRepository.load("session-1")).resolves.toEqual(fixtureState(5));
         });
 
         it("does not mutate a cached live session when a later command validation step rejects", async () => {
@@ -1480,11 +1504,11 @@ describe("SpinCommandHandler", () => {
             // whole command blocked. This is the former cache-poisoning sequence.
             const result = await handler.handle("session-1", undefined, undefined, 5, "not-a-mode");
 
-            expect(result.status).toBe("blocked");
+            expect(result.status).toBe("invalid-command");
             expect(live.getBet()).toBe(5);
             expect(live.getBetModeId()).toBe("base");
             expect(wallet.debitCalls).toEqual([]);
-            await expect(sessionRepository.load("session-1")).resolves.toEqual({bet: 5, win: 0});
+            await expect(sessionRepository.load("session-1")).resolves.toEqual(fixtureState(5));
         });
 
         it("plays at the session's own current bet, unchanged, when no bet is given", async () => {
@@ -1570,8 +1594,8 @@ describe("SpinCommandHandler", () => {
 
             const result = await handler.handle("session-1", undefined, undefined, undefined, "double-or-nothing");
 
-            expect(result.status).toBe("blocked");
-            if (result.status === "blocked") {
+            expect(result.status).toBe("invalid-command");
+            if (result.status === "invalid-command") {
                 expect(result.reason).toContain("double-or-nothing");
                 expect(result.reason).toContain("base, ante");
             }
@@ -1588,8 +1612,8 @@ describe("SpinCommandHandler", () => {
 
             const result = await handler.handle("session-1", undefined, undefined, undefined, "ante");
 
-            expect(result.status).toBe("blocked");
-            if (result.status === "blocked") {
+            expect(result.status).toBe("invalid-command");
+            if (result.status === "invalid-command") {
                 expect(result.reason).toContain("does not support bet mode selection");
             }
             expect(wallet.debitCalls).toEqual([]);
@@ -1603,7 +1627,7 @@ describe("SpinCommandHandler", () => {
             // above would already block it before ever reaching setBetMode() — widen it here to
             // prove the *setBetMode() itself throws* path, not just the membership pre-check.
             const gameWithBuyFeatureListed: PokieGame = {
-                getManifest: () => manifest,
+                getManifest: () => manifest, ...fixtureCodec,
                 createSession: () => {
                     const session = createFakeSessionWithSelectableBetMode();
                     const originalGetAvailableBetModeIds = session.getAvailableBetModeIds.bind(session);

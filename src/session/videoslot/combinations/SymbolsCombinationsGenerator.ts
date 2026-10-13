@@ -1,3 +1,4 @@
+import {SeededRandomNumberGenerator} from "./SeededRandomNumberGenerator.js";
 import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
 import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 import {SymbolsCombination} from "./SymbolsCombination.js";
@@ -30,6 +31,21 @@ implements SymbolsCombinationsGenerating<T> {
 
     public getLastStopPositions(): number[] {
         return [...this.lastStopPositions];
+    }
+
+    public usesConfig(config: VideoSlotConfigDescribing<T>): boolean {
+        return this.config === config;
+    }
+
+    public isRandomStateRestorable(): boolean {
+        return this.constructor === SymbolsCombinationsGenerator && this.rng.constructor === SeededRandomNumberGenerator;
+    }
+
+    public getRandomStateCodec(): "seeded" | "opaque" {
+        // The RNG reports its own codec even when injected from the other public module format.
+        // Subclass snapshots remain opaque unless their codec is explicitly supplied.
+        if (this.constructor !== SymbolsCombinationsGenerator) return "opaque";
+        return (this.rng as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
     }
 
     public getRandomState(): unknown {

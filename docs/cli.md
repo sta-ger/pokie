@@ -3711,3 +3711,7 @@ A named expanding/sticky-wilds decorator and organization/npm migration remain f
 summary assigns no new release commitment. Math Targeting/Optimization is agreed but not implemented, with
 release scope unconfirmed. See the [reviewed status register](audit-corrections/README.md) for partial and
 not-found directions, including authoring, analytics, certification, diff, reachability, overscan, and formats.
+
+## Headless runtime contract
+
+Session API failures carry `code` alongside `error`: invalid-command (400), incompatible-state/corrupt-state/restoration-unsupported (409), storage-error/settlement-error (503), execution-error (500), not-found (404), and the existing conflict/recovery-required distinctions (409). The standalone client preserves failure codes and creates a replacement only after a true 404 or an explicit new-session request, never after corruption or an operational storage failure.

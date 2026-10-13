@@ -1,3 +1,13 @@
+import {captureLiveSessionAuthority, type LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
+import {validateOperationRecord, validateRetryResult} from "../../runtime/internal/validateRecoveryData.js";
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
+import {RuntimeCommandError, type RuntimeFailureCode} from "../../runtime/RuntimeCommandError.js";
+import {validateSessionCommand} from "../../runtime/SessionCommand.js";
+import {validateRepositoryCommand, type RepositoryCommand, type RepositoryCommandHandling} from "../../runtime/RepositoryCommand.js";
+import {validatePersistedSession} from "../../runtime/validatePersistedSession.js";
+import {SessionStateCorruptError} from "../session/FileSessionRepository.js";
+import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch} from "../../session/SessionStateRestoring.js";
+import {SessionRuntime, type PreparedSessionCommand} from "../../runtime/SessionRuntime.js";
 import crypto from "crypto";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {GameSessionSerializing} from "../../net/GameSessionSerializing.js";
@@ -134,7 +144,7 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // (manual-recovery-required for anything it can't independently prove safe via
 // WalletTransactionInspecting/SpinOperationLeasing) rather than ever trusting its own queue as sufficient
 // authority on its own.
-export class SpinCommandHandler implements SpinCommandHandling {
+export class SpinCommandHandler implements SpinCommandHandling, RepositoryCommandHandling {
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
     private readonly wallet: TransactionalWalletPort;
@@ -147,7 +157,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // A process-local executable object is valid only for the repository version it executed from.
     // Keeping that binding beside the object is what makes two handlers sharing one versioned store
     // converge instead of alternately replaying stale RNG/feature progress.
-    private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined}>();
+    private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined; readonly record?: string; readonly authority: LiveSessionAuthority}>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
@@ -219,14 +229,18 @@ export class SpinCommandHandler implements SpinCommandHandling {
         this.reconciliationService =
             legacyReconciliationService ??
             reconciliationService ??
-            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment);
+            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game, sessionId => this.liveSessions.get(sessionId)?.authority);
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
         this.pokieVersion = pokieVersion;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void {
-        this.liveSessions.set(sessionId, {session, committedVersion});
+        this.liveSessions.set(sessionId, {session, committedVersion, authority: captureLiveSessionAuthority(session)});
+    }
+
+    public validateStoredSession(sessionId: string, state: unknown): ReturnType<typeof validatePersistedSession> {
+        return validatePersistedSession(state, this.game, this.liveSessions.get(sessionId)?.authority);
     }
 
     // Observes the process-local session that the most recent successful command for this id actually
@@ -250,7 +264,19 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // singleInstanceDeployment: true (see the constructor's own doc comment and the class doc comment's
     // "Multi-instance safety" section) — this method itself has no separate say in that.
     public reconcileOne(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
-        return this.enqueue(sessionId, () => this.reconciliationService.reconcileOne(sessionId, requestId));
+        const invalid = validateRepositoryCommand({sessionId, requestId});
+        if (invalid !== undefined) return Promise.reject(new Error(invalid));
+        return this.enqueue(sessionId, async () => {
+            const pending = await this.operationLog.load(sessionId, requestId);
+            if (pending === undefined) return this.reconciliationService.reconcileOne(sessionId, requestId);
+            const {state} = await this.loadState(sessionId);
+            const cached = await this.readRetryResult(sessionId, requestId);
+            const rejected = this.validateStoredSession(sessionId, state) ?? this.validatePendingState(pending, sessionId, requestId!) ??
+                (cached === undefined ? undefined : validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority));
+            if (rejected !== undefined) return {status: "manual-recovery-required", sessionId, requestId,
+                reason: `${rejected.status}: ${rejected.reason}`, record: pending};
+            return this.reconciliationService.reconcileOne(sessionId, requestId);
+        });
     }
 
     // Sweeps every currently-incomplete SpinOperationRecord (e.g. once at startup, over whatever a
@@ -280,6 +306,21 @@ export class SpinCommandHandler implements SpinCommandHandling {
     }
 
     public handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult> {
+        return this.dispatch({kind: "spin", sessionId, requestId, expectedVersion, bet, mode}).catch(error => {
+            throw error instanceof RuntimeCommandError ? error.cause : error;
+        });
+    }
+
+    public execute(command: RepositoryCommand): Promise<SpinCommandResult> {
+        const sessionId = typeof command?.sessionId === "string" ? command.sessionId : "";
+        return this.dispatch(command).catch(error => ({status: error instanceof RuntimeCommandError ? error.code : "execution-error",
+            sessionId, reason: error instanceof Error ? error.message : String(error)}));
+    }
+
+    private dispatch(command: RepositoryCommand): Promise<SpinCommandResult> {
+        const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
+        if (invalid !== undefined) return Promise.resolve({status: "invalid-command", sessionId: typeof command?.sessionId === "string" ? command.sessionId : "", reason: invalid});
+        const {sessionId, requestId, expectedVersion, bet, mode} = command;
         return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode));
     }
 
@@ -313,24 +354,62 @@ export class SpinCommandHandler implements SpinCommandHandling {
         bet?: number,
         mode?: string,
     ): Promise<SpinCommandResult> {
+        let loaded: {state: PokieSessionState | undefined; version: number | undefined};
+        try {
+            loaded = await this.loadState(sessionId);
+        } catch (error) {
+            return {status: error instanceof SessionStateCorruptError ? "corrupt-state" : "storage-error", sessionId, reason: error instanceof Error ? error.message : String(error)};
+        }
+        const {state, version} = loaded;
+        if (version !== undefined && (!Number.isSafeInteger(version) || version < 0)) return {status: "corrupt-state", sessionId, reason: "Invalid repository revision."};
+        if (state === undefined) return {status: "not-found", sessionId};
+        const rejected = this.validateStoredSession(sessionId, state);
+        if (rejected !== undefined) return {...rejected, sessionId};
+
+        // Syntax and repository identity precede retry/recovery. A valid committed retry returns
+        // its original result, even when current selection parameters differ.
         if (requestId !== undefined) {
-            const cached = await this.idempotencyRepository.load(sessionId, requestId);
+            const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                return cached;
-            }
-
-            const recovered = await this.reconcilePendingAttempt(sessionId, requestId);
-            if (recovered !== undefined) {
-                return recovered;
+                // A cached reply does not authorize a corrupt retained recovery envelope.
+                // Validate both before publishing success, without reconstructing or recovering.
+                const retained = await this.readPendingAttempt(sessionId, requestId);
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority) ??
+                    (retained === undefined ? undefined : this.validatePendingState(retained, sessionId, requestId));
+                if (invalid !== undefined) return {...invalid, sessionId};
+                return cloneSessionData(cached);
             }
         }
 
-        const {state, version} = await this.loadState(sessionId);
-        if (!state) {
-            return {status: "not-found", sessionId};
+        const capabilities = this.game.getSessionCommandCapabilities?.(state.context) ?? this.liveSessions.get(sessionId)?.authority.capabilities;
+        if ((bet !== undefined || mode !== undefined) && capabilities === undefined) return {status: "invalid-command", sessionId,
+            reason: "Selected game must declare command capabilities before a selection can authorize recovery."};
+        if (bet !== undefined && (!capabilities!.bets.includes(bet) || !state.commandCapabilities!.bets.includes(bet))) return {status: "invalid-command", sessionId,
+            reason: `Session does not support bet ${bet} (available bets: ${capabilities!.bets.join(", ")}).`};
+        if (mode !== undefined && (!capabilities!.modes?.includes(mode) || !state.commandCapabilities!.modes?.includes(mode))) return {status: "invalid-command", sessionId,
+            reason: capabilities!.modes === undefined ? "Session does not support bet mode selection." :
+                `Session does not support bet mode "${mode}" (available modes: ${capabilities!.modes.join(", ")}).`};
+
+        const pending = requestId === undefined ? undefined : await this.readPendingAttempt(sessionId, requestId);
+        if (pending !== undefined) {
+            const invalid = this.validatePendingState(pending, sessionId, requestId!);
+            if (invalid !== undefined) return {...invalid, sessionId};
         }
 
-        // A caller-declared precondition, checked before anything else mutates: if the repository is
+        if (expectedVersion !== undefined && version !== undefined && version !== expectedVersion &&
+            pending?.capturedResult === undefined) return {status: "conflict", sessionId,
+            reason: `Session "${sessionId}" version mismatch: expected version ${expectedVersion}, but the current version is ${version}.`};
+
+        if (requestId !== undefined) {
+            if (pending !== undefined) {
+                const recovered = await this.reconcilePendingAttempt(sessionId, requestId);
+                if (recovered !== undefined) return cloneSessionData(recovered);
+                if (pending.checkpoint !== "compensated" && pending.checkpoint !== "started") {
+                    return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode);
+                }
+            }
+        }
+        // A caller-declared precondition for a genuinely new round: if the repository is
         // versioned and the caller expected a different version than what's actually stored, this is
         // already stale — reject immediately rather than spinning against state the caller didn't
         // expect. Nothing has been applied yet (no wallet transaction, no play()), so there's nothing
@@ -347,17 +426,29 @@ export class SpinCommandHandler implements SpinCommandHandling {
         // it has no complete executable-state round trip, so rebuilding it
         // after losing the live object could restart an RNG or finite feature
         // stream.  Do not turn that uncertainty into a paid spin.  Records
-        // written before this marker existed remain on the documented legacy
-        // best-effort path for compatibility; all new captures are marked.
-        const resolvedSession = this.resolveExecutableSession(sessionId, state, version);
+        // without the identity/capability envelope have already been rejected above.
+        let resolvedSession: ReturnType<SpinCommandHandler["resolveExecutableSession"]>;
+        try {
+            resolvedSession = this.resolveExecutableSession(sessionId, state, version);
+        } catch (error) {
+            return {status: "corrupt-state", sessionId, reason: error instanceof Error ? error.message : String(error)};
+        }
         if (resolvedSession.status === "blocked") {
             return {
-                status: "blocked",
+                status: "restoration-unsupported",
                 sessionId,
                 reason: resolvedSession.reason,
             };
         }
-        const balanceBeforePlay = await this.wallet.getBalance(sessionId);
+        const selectionError = new SessionRuntime(resolvedSession.session).validateSelection({kind: "spin", bet, mode});
+        if (selectionError !== undefined) return {status: "invalid-command", sessionId, reason: selectionError};
+        let balanceBeforePlay: number;
+        try {
+            balanceBeforePlay = await this.wallet.getBalance(sessionId);
+        } catch (error) {
+            throw new RuntimeCommandError("settlement-error", error);
+        }
+        if (!Number.isFinite(balanceBeforePlay) || balanceBeforePlay < 0) throw new RuntimeCommandError("settlement-error", new Error("Wallet balance must be finite and non-negative."));
         const command = this.applyCommand(resolvedSession.session, balanceBeforePlay, bet, mode);
         if (command.status === "blocked") {
             // A rejected command is normally reversible and deliberately leaves the live instance
@@ -376,7 +467,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             };
         }
 
-        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback);
+        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback, command.execute);
     }
 
     // Reads both the state and, when sessionRepository supports it, the version it was read at — a
@@ -384,9 +475,13 @@ export class SpinCommandHandler implements SpinCommandHandling {
     private async loadState(sessionId: string): Promise<{state: PokieSessionState | undefined; version: number | undefined}> {
         if (isVersionedSessionRepository(this.sessionRepository)) {
             const versioned = await this.sessionRepository.loadVersioned(sessionId);
-            return {state: versioned?.state, version: versioned?.version};
+            if (versioned !== undefined && (typeof versioned !== "object" || versioned === null || versioned.state === undefined ||
+                !Number.isSafeInteger(versioned.version) || versioned.version < 0)) {
+                throw new SessionStateCorruptError(sessionId, "Versioned repository returned an invalid envelope.");
+            }
+            return {state: versioned === undefined ? undefined : cloneSessionData(versioned.state), version: versioned?.version};
         }
-        return {state: await this.sessionRepository.load(sessionId), version: undefined};
+        return {state: cloneSessionData(await this.sessionRepository.load(sessionId)), version: undefined};
     }
 
     // Consulted only on an idempotency cache miss for a requestId-bearing call — an interrupted prior
@@ -408,15 +503,38 @@ export class SpinCommandHandler implements SpinCommandHandling {
     // proceed" — only when there was no pending record at all, or it was cleanly resolved as never having
     // applied anything ("no-action-needed") or safely reversed ("reversed"), in which case the caller
     // runs a genuinely fresh spin.
+    private async readRetryResult(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
+        try {
+            return cloneSessionData(await this.idempotencyRepository.load(sessionId, requestId));
+        } catch (error) {
+            throw new RuntimeCommandError("storage-error", error);
+        }
+    }
+
+    private async readPendingAttempt(sessionId: string, requestId: string): Promise<SpinOperationRecord | undefined> {
+        try {
+            return cloneSessionData(await this.operationLog.load(sessionId, requestId));
+        } catch (error) {
+            throw new RuntimeCommandError("storage-error", error);
+        }
+    }
+
+    private validatePendingState(record: SpinOperationRecord, sessionId: string, requestId: string): ReturnType<typeof validatePersistedSession> {
+        return validateOperationRecord(record, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
+    }
+
     private async reconcilePendingAttempt(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
-        const pending = await this.operationLog.load(sessionId, requestId);
+        const pending = await this.readPendingAttempt(sessionId, requestId);
         if (pending === undefined) {
             return undefined;
         }
 
+        const rejected = this.validatePendingState(pending, sessionId, requestId!);
+        if (rejected !== undefined) return {...rejected, sessionId};
         const outcome = await this.reconciliationService.reconcileOne(sessionId, requestId);
         if (outcome.status === "resumed") {
-            return outcome.result;
+            const invalid = validateRetryResult(outcome.result, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
+            return invalid === undefined ? outcome.result : {...invalid, sessionId};
         }
         if (outcome.status === "manual-recovery-required" || outcome.status === "deferred") {
             return {status: "recovery-required", sessionId, requestId, reason: outcome.reason};
@@ -426,9 +544,10 @@ export class SpinCommandHandler implements SpinCommandHandling {
             // there (possibly written concurrently by another call racing this same requestId — the
             // idempotency cache-miss above raced it). Fetch it rather than falling through to a fresh
             // spin.
-            const cached = await this.idempotencyRepository.load(sessionId, requestId);
+            const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                return cached;
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
+                return invalid === undefined ? cached : {...invalid, sessionId};
             }
         }
         // "reversed"/"no-action-needed" (or the defensive fallback above): wallet and session are clean
@@ -446,6 +565,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         balanceBeforePlay: number,
         requestId: string | undefined,
         rollbackCommand: () => boolean,
+        executeCommand: Extract<PreparedSessionCommand, {status: "ready"}>["execute"],
     ): Promise<SpinCommandResult> {
         const roundId = requestId ?? crypto.randomUUID();
         const attemptId = crypto.randomUUID();
@@ -455,6 +575,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
         const appliedTransactionIds: string[] = [];
         let sessionStateSaved = false;
         let playStarted = false;
+        let failureCode: RuntimeFailureCode = "execution-error";
         let checkpoint: ((record: Omit<SpinOperationRecord, "sessionId" | "requestId" | "attemptId" | "debitTransactionId" | "creditTransactionId" | "stakeAmount" | "expectedVersion" | "startedAt">) => Promise<void>) | undefined;
         try {
             // applyCommand() has already made the reversible command projection.  Everything from the
@@ -463,6 +584,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             // the live instance.  Do not leave that instance selected merely because no wallet write or
             // operation-log checkpoint was reached yet.
             const stakeAmount = determineStakeAmount(session, session.getBet());
+            if (!Number.isFinite(stakeAmount) || stakeAmount < 0) throw new Error("Domain stake must be finite and non-negative.");
             // Capture the selected mode before play(): a forcing one-shot mode resets itself during its
             // successful play, but this completed round must retain the mode that determined its stake.
             const betMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
@@ -488,23 +610,31 @@ export class SpinCommandHandler implements SpinCommandHandling {
             // still pre-play: if it rejects, restoring that preparation is safe and must happen before
             // this request leaves the handler.  Keeping it in this try boundary is essential because a
             // failing operation log is otherwise able to leak a requested bet/mode into a later spin.
+            failureCode = "storage-error";
             await checkpoint({checkpoint: "started", updatedAt: startedAt});
+            failureCode = "settlement-error";
             await this.wallet.debit(sessionId, debitTransactionId, stakeAmount);
             appliedTransactionIds.push(debitTransactionId);
+            failureCode = "storage-error";
             await checkpoint({checkpoint: "debited", updatedAt: new Date().toISOString()});
 
+            failureCode = "execution-error";
             playStarted = true;
-            session.play();
-            const win = session.getWinAmount();
+            const executed = executeCommand();
+            const win = executed.win;
+            if (!Number.isFinite(win) || win < 0 || !Number.isFinite(session.getCreditsAmount()) || session.getCreditsAmount() < 0) throw new Error("Domain result contains invalid win or credits.");
             const delta = session.getCreditsAmount() - balanceBeforePlay;
             const creditAmount = delta + stakeAmount;
 
+            failureCode = "settlement-error";
             const newBalance =
                 creditAmount >= 0
                     ? await this.wallet.credit(sessionId, creditTransactionId, creditAmount)
                     : await this.wallet.debit(sessionId, creditTransactionId, -creditAmount);
             appliedTransactionIds.push(creditTransactionId);
+            if (!Number.isFinite(newBalance) || newBalance < 0) throw new Error("Settled wallet balance must be finite and non-negative.");
 
+            failureCode = "execution-error";
             const roundArtifactRequest: RoundArtifactCaptureRequest | undefined =
                 this.capturePolicy.mode === "full"
                     ? {
@@ -524,10 +654,14 @@ export class SpinCommandHandler implements SpinCommandHandling {
                     }
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
+            newState.credits = newBalance;
+            const invalidState = this.validateStoredSession(sessionId, newState);
+            if (invalidState !== undefined) throw new Error(invalidState.reason);
+            failureCode = "storage-error";
             await checkpoint({
                 checkpoint: "settled",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {previousState: state, newState, win, credits: newBalance},
+                capturedResult: {previousState: state, newState, win, credits: newBalance, stake: stakeAmount, mode: betMode},
             });
 
             let newVersion: number | undefined;
@@ -540,7 +674,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             await checkpoint({
                 checkpoint: "session-saved",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion},
+                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
             });
 
             const result: SpinCommandResult = {
@@ -550,6 +684,8 @@ export class SpinCommandHandler implements SpinCommandHandling {
                 previousState: state,
                 credits: newBalance,
                 win,
+                stake: stakeAmount,
+                mode: betMode,
             };
             if (newVersion !== undefined) {
                 result.version = newVersion;
@@ -568,14 +704,14 @@ export class SpinCommandHandler implements SpinCommandHandling {
             await checkpoint({
                 checkpoint: "committed",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion},
+                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
             });
 
             // The cache advances only after every durable/checkpointed commit has succeeded.  A
             // second handler's later version is therefore never mistaken for this executable state.
-            this.liveSessions.set(sessionId, {session, committedVersion: newVersion});
+            this.liveSessions.set(sessionId, {session, committedVersion: newVersion, record: JSON.stringify(newState), authority: this.liveSessions.get(sessionId)?.authority ?? captureLiveSessionAuthority(session)});
 
-            return result;
+            return cloneSessionData(result);
         } catch (error) {
             let compensationFullySucceeded = true;
             // Before play(), the only mutable state this handler owns is the reversible command
@@ -623,7 +759,7 @@ export class SpinCommandHandler implements SpinCommandHandling {
             if (error instanceof SessionVersionConflictError) {
                 return {status: "conflict", sessionId, reason: error.message};
             }
-            throw error;
+            throw new RuntimeCommandError(failureCode, error);
         }
     }
 
@@ -670,7 +806,19 @@ export class SpinCommandHandler implements SpinCommandHandling {
         committedVersion: number | undefined,
     ): {readonly status: "ready"; readonly session: GameSessionHandling} | {readonly status: "blocked"; readonly reason: string} {
         const cached = this.liveSessions.get(sessionId);
-        if (cached !== undefined && (committedVersion === undefined || cached.committedVersion === committedVersion)) {
+        if (cached !== undefined && state.executionState === "durably-restorable" && !sessionStateSchemasMatch(resolveSessionStateSchema(cached.session), state.stateSchema)) {
+            throw new Error("Stored executable schema does not match the session codec.");
+        }
+        // Snapshot validation precedes cache lookup; caches also bind the complete record bytes.
+        // Live-only records cannot reconstruct and are executable only against an explicitly primed
+        // or previously committed revision. Unversioned live-only stores have no such authority.
+        if (cached !== undefined && committedVersion !== undefined && cached.committedVersion === committedVersion &&
+            (cached.record === undefined || cached.record === JSON.stringify(state))) {
+            if (state.executionState === "durably-restorable") {
+                if (!isSessionStateRestorable(cached.session)) throw new Error("Cached session does not support its claimed executable state codec.");
+                const codec = cached.session as GameSessionHandling & {validateSessionState(state: unknown): void};
+                codec.validateSessionState(state.featureState);
+            }
             return {status: "ready", session: cached.session};
         }
         // A stale cache is not executable evidence.  A durable state can replace it exactly; a
@@ -690,62 +838,19 @@ export class SpinCommandHandler implements SpinCommandHandling {
         balance: number,
         bet: number | undefined,
         mode: string | undefined,
-    ):
-        | {readonly status: "ready"; readonly rollback: () => boolean}
-        | {readonly status: "blocked"; readonly reason: string; readonly restored: boolean} {
-        const availableBets = session.getAvailableBets();
-        if (bet !== undefined && !availableBets.includes(bet)) {
-            return {status: "blocked", reason: `Session does not support bet ${bet} (available bets: ${availableBets.join(", ")}).`, restored: true};
-        }
-        if (mode !== undefined) {
-            if (!supportsBetModeSelecting(session)) return {status: "blocked", reason: "Session does not support bet mode selection.", restored: true};
-            const availableModes = session.getAvailableBetModeIds();
-            if (!availableModes.includes(mode)) return {status: "blocked", reason: `Session does not support bet mode "${mode}" (available modes: ${availableModes.join(", ")}).`, restored: true};
-        }
-
-        // Command setters are applied to the same object that will play, then rolled back as one
-        // unit on a rejected guard or setter failure.  A scratch session cannot prove affordability
-        // for a finite/live-only feature or preserve its RNG; this reversible projection can.
-        const previousCredits = session.getCreditsAmount();
-        const previousBet = session.getBet();
-        const previousMode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
-        const rollback = (): boolean => {
-            try {
-                if (previousMode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(previousMode);
-                session.setBet(previousBet);
-                session.setCreditsAmount(previousCredits);
-                return true;
-            } catch {
-                return false;
-            }
-        };
-        try {
-            // Setters are allowed to mutate and then throw.  Always restore the snapshot on failure so a
-            // partial setCreditsAmount() cannot bypass restoration merely because it never returned.
-            session.setCreditsAmount(balance);
-            if (bet !== undefined) session.setBet(bet);
-            if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);
-            if (session.canPlayNextGame()) return {status: "ready", rollback};
-            const restored = rollback();
-            return {status: "blocked", reason: restored
-                ? "Session cannot play the next round (canPlayNextGame() returned false)."
-                : "Session rejected the command and does not support reversible command-state restoration.", restored};
-        } catch (error) {
-            // We intentionally attempt the snapshot restore even if the first setter threw: it may have
-            // applied part of its mutation before reporting failure.  If restoration itself fails, the
-            // caller evicts this object rather than leaving it executable in the live cache.
-            const restored = rollback();
-            if (!restored) {
-                return {status: "blocked", reason: "Session rejected the command and does not support reversible command-state restoration.", restored: false};
-            }
-            return {status: "blocked", reason: error instanceof Error ? error.message : String(error), restored: true};
-        }
+    ): PreparedSessionCommand {
+        return new SessionRuntime(session).prepare({kind: "spin", bet, mode}, balance);
     }
 
     private createSessionFromState(state: PokieSessionState): GameSessionHandling {
         const session = this.game.createSession(state.context);
+        if (!isSessionStateRestorable(session)) throw new Error("Selected session does not support complete executable state restoration.");
+        if (!sessionStateSchemasMatch(resolveSessionStateSchema(session), state.stateSchema)) throw new Error("Stored executable schema does not match the selected game codec.");
+        if (!session.getAvailableBets().includes(state.bet)) throw new Error("Stored bet is not supported by the selected game.");
+        (session as GameSessionHandling & {validateSessionState(state: unknown): void}).validateSessionState(state.featureState);
+        restoreFeatureState(session, cloneSessionData(state.featureState));
         session.setBet(state.bet);
-        restoreFeatureState(session, state.featureState);
+        session.setCreditsAmount(state.credits!);
         return session;
     }
 }

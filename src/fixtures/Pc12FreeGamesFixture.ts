@@ -1,6 +1,7 @@
 import {VideoSlotWithFreeGamesConfig} from "../session/videoslot/VideoSlotWithFreeGamesConfig.js";
 import {VideoSlotWithFreeGamesSession} from "../session/videoslot/VideoSlotWithFreeGamesSession.js";
 import type {VideoSlotWithFreeGamesSessionState} from "../session/videoslot/VideoSlotWithFreeGamesSessionState.js";
+import {isSessionStateRestorable} from "../session/SessionStateRestoring.js";
 import {WinningLine} from "../session/videoslot/WinningLine.js";
 import type {WinningLineDescribing} from "../session/videoslot/WinningLineDescribing.js";
 import {WinningScatter} from "../session/videoslot/WinningScatter.js";
@@ -75,6 +76,18 @@ class Pc12FreeGamesConfig extends VideoSlotWithFreeGamesConfig {
         this.freeGamesMode = value;
     }
 
+    public override isResolvedForSessionRestoration(): boolean {
+        // This factory accepts no model collaborators. Its only changing model view is
+        // freeGamesMode, rebuilt by the session codec from captured feature progress.
+        // Certify the exact fixed strategies rather than opting config subclasses in.
+        return this.constructor === Pc12FreeGamesConfig &&
+            this.getPaytable().constructor === Paytable &&
+            this.getLinesDefinitions().constructor === LinesDefinitionsFor5x3 &&
+            this.normalPatterns.constructor === LeftToRightLinesPatterns &&
+            this.freeGamesPatterns.constructor === ScatteredLinesPatterns &&
+            [...this.normalSequences, ...this.freeGamesSequences].every(strip => strip.constructor === SymbolsSequence);
+    }
+
     public isFreeGamesMode(): boolean {
         return this.freeGamesMode;
     }
@@ -98,6 +111,12 @@ class Pc12FreeGamesSession extends VideoSlotWithFreeGamesSession {
         this.fixtureConfig.setFreeGamesMode(this.getFreeGamesSum() > 0 && this.getFreeGamesNum() !== this.getFreeGamesSum());
     }
 
+    public override isSessionStateRestorable(): boolean {
+        // This exact extension adds only the configuration view rebuilt by fromSessionState.
+        // Retain the nested codec check and do not opt unknown subclasses into restoration.
+        return this.constructor === Pc12FreeGamesSession && this.fixtureConfig.isResolvedForSessionRestoration() && isSessionStateRestorable(this.baseSession);
+    }
+
     public override fromSessionState(value: VideoSlotWithFreeGamesSessionState): this {
         super.fromSessionState(value);
         // This fixture's alternate reel/payout policy is selected from free-games progress. Rebuild
@@ -114,6 +133,12 @@ class Pc12FreeGamesWinCalculator extends VideoSlotWinCalculator {
 
     public constructor(private readonly fixtureConfig: Pc12FreeGamesConfig) {
         super(fixtureConfig);
+    }
+
+    public override isStatelessForSessionRestoration(): boolean {
+        // The constructor installs only the standard evaluators. Multiplied wins are output
+        // caches replaced on each calculation; the mode is derived from restored feature progress.
+        return this.constructor === Pc12FreeGamesWinCalculator && this.fixtureConfig.isResolvedForSessionRestoration();
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing): void {

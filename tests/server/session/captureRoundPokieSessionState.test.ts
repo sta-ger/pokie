@@ -62,6 +62,17 @@ function createFakeVideoSlotSession(): GameSessionHandling & VideoSlotSessionHan
 const emptyPreviousState: PokieSessionState = {bet: 5, win: 0};
 
 describe("captureRoundPokieSessionState", () => {
+    it("carries stored selection restrictions without aliasing the record or rebuilding model capabilities", () => {
+        const session = {...createFakeSession(), getAvailableBets: () => [5, 10]};
+        const previousState: PokieSessionState = {bet: 5, win: 0, commandCapabilities: {bets: [5], modes: ["base"]}};
+        const state = captureRoundPokieSessionState(undefined, session, previousState);
+        expect(state.commandCapabilities).toEqual(previousState.commandCapabilities);
+        const mutable = state.commandCapabilities as {bets: number[]; modes: string[]};
+        mutable.bets.push(10);
+        mutable.modes.push("ante");
+        expect(previousState.commandCapabilities).toEqual({bets: [5], modes: ["base"]});
+    });
+
     it("omits roundPayload entirely when no serializer is given", () => {
         const state = captureRoundPokieSessionState(undefined, createFakeSession(), emptyPreviousState);
 
@@ -95,7 +106,8 @@ describe("captureRoundPokieSessionState", () => {
 
         const state = captureRoundPokieSessionState(undefined, createFakeSession(), previousState, serializer);
 
-        expect(state.initialPayload).toBe(initialPayload);
+        expect(state.initialPayload).toEqual(initialPayload);
+        expect(state.initialPayload).not.toBe(initialPayload);
         expect(state.roundPayload).toEqual({credits: 1000, bet: 5, win: 10});
     });
 
@@ -145,7 +157,8 @@ describe("captureRoundPokieSessionState", () => {
 
         const state = captureRoundPokieSessionState(undefined, createFakeSession(), previousState, serializer);
 
-        expect(state.initialDebugPayload).toBe(initialDebugPayload);
+        expect(state.initialDebugPayload).toEqual(initialDebugPayload);
+        expect(state.initialDebugPayload).not.toBe(initialDebugPayload);
     });
 
     it("omits roundDebugPayload, and stops carrying initialDebugPayload forward, when the policy's captureDebugPayloads is false", () => {

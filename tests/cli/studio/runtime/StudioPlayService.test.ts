@@ -1,5 +1,6 @@
+import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import {
-    buildRoundArtifact,
+    buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
     GamePackageGenerator,
@@ -34,6 +35,12 @@ import {
     outcomeLibraryBundleTestProvenance,
 } from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
+
+import {legacyCompositions} from "../../../v2/fixtures/LegacyComposedGame.js";
+
+const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
+    getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
+};
 
 const manifest: PokieGameManifest = {id: "sample-slot", name: "Sample Slot", version: "0.1.0"};
 
@@ -134,7 +141,7 @@ function createFakeVideoSlotSession(seed: string | number | undefined): GameSess
 }
 
 function createFakeVideoSlotGame(): PokieGame {
-    return {getManifest: () => manifest, createSession: (context) => createFakeVideoSlotSession(context?.seed)};
+    return {getManifest: () => manifest, ...fixtureCommandAuthority, createSession: (context) => createFakeVideoSlotSession(context?.seed)};
 }
 
 function fakeLoadVideoSlotGame(): (packageRoot: string) => Promise<PokieGame> {
@@ -147,7 +154,7 @@ function fakeLoadVideoSlotGame(): (packageRoot: string) => Promise<PokieGame> {
 function fakeLoadGameWithStaleSerializedWin(): (packageRoot: string) => Promise<PokieGame> {
     return () =>
         Promise.resolve({
-            getManifest: () => manifest,
+            getManifest: () => manifest, ...fixtureCommandAuthority,
             createSession: () => {
                 const session = createFakeVideoSlotSession(undefined);
                 return {...session, getWinAmount: () => 7};
@@ -280,7 +287,7 @@ function buildFreeGamesLibraryModeInput(modeName: string, libraryId: string): Ou
 // capture can't build a RoundArtifact and must report roundArtifactUnavailableReason instead.
 function createFakeNonVideoSlotGame(): PokieGame {
     return {
-        getManifest: () => manifest,
+        getManifest: () => manifest, ...fixtureCommandAuthority,
         createSession: () => {
             let credits = 1000;
             const bet = 1;
@@ -303,6 +310,145 @@ function createFakeNonVideoSlotGame(): PokieGame {
 }
 
 describe("StudioPlayService", () => {
+    let publicRuntime: ReturnType<typeof emitPublicRuntime>;
+    beforeAll(() => {
+        publicRuntime = emitPublicRuntime();
+    }, 60000);
+    afterAll(() => publicRuntime?.dispose());
+    it("rejects a CJS selected mode excluded by retained capabilities in Play and scenario callers", async () => {
+        const game = publicRuntime.legacyGame("bet-free", true);
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Play session creation failed");
+            const id = created.session.sessionId;
+            expect(await service.spin(id)).toMatchObject({status: "ok"});
+            const active = Reflect.get(service, "active") as {spinHandler: SpinCommandHandler};
+            const repository = Reflect.get(active.spinHandler, "sessionRepository") as InMemorySessionRepository;
+            const record = (await repository.loadVersioned(id))!;
+            record.state.commandCapabilities = {...record.state.commandCapabilities!, modes: []};
+            await repository.save(id, record.state);
+            const before = await repository.loadVersioned(id);
+            const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(game, "createSession")];
+            for (const result of [await service.spin(id), await service.findAnyWin(id), await service.findSymbolWin(id, "A")]) {
+                expect(result).toMatchObject({status: "error", code: "corrupt-state"});
+            }
+            expect(await repository.loadVersioned(id)).toEqual(before);
+            writes.forEach(spy => {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore();
+            });
+        } finally {
+            service.reset();
+        }
+    });
+
+    it.each(legacyCompositions)("plays and searches unchanged CJS composed %s packages without declarations", async composition => {
+        for (const opaque of [false, true]) {
+            const game = publicRuntime.legacyGame(composition, opaque);
+            const service = new StudioPlayService(() => Promise.resolve(game));
+            try {
+                const created = await service.newSession("/fake/project");
+                if (created.status !== "ok") throw new Error("Composed Play session creation failed");
+                const id = created.session.sessionId;
+                expect(await service.spin(id)).toMatchObject({status: "ok"});
+                expect(await service.findAnyWin(id)).toMatchObject({status: "ok"});
+                expect(await service.findSymbolWin(id, "A")).toMatchObject({status: "ok"});
+                if (composition === "free-games" || composition === "free-bet") expect(await service.findFreeGames(id)).toMatchObject({status: "ok"});
+                const active = Reflect.get(service, "active") as {spinHandler: SpinCommandHandler};
+                const repository = Reflect.get(active.spinHandler, "sessionRepository") as InMemorySessionRepository;
+                const record = (await repository.loadVersioned(id))!;
+                expect(record.state.executionState).toBe("live-only");
+                if (composition !== "free-games") {
+                    let feature = record.state.featureState as {betModeId?: string; base?: unknown};
+                    while (feature.betModeId === undefined) feature = feature.base as typeof feature;
+                    feature.betModeId = "nonexistent";
+                    await repository.save(id, record.state);
+                    const before = await repository.loadVersioned(id);
+                    const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(game, "createSession")];
+                    expect(await service.spin(id)).toMatchObject({status: "error", code: "corrupt-state"});
+                    expect(await service.findAnyWin(id)).toMatchObject({status: "error", code: "corrupt-state"});
+                    expect(await repository.loadVersioned(id)).toEqual(before);
+                    writes.forEach(spy => {
+                        expect(spy).not.toHaveBeenCalled();
+                        spy.mockRestore();
+                    });
+                }
+            } finally {
+                service.reset();
+            }
+        }
+    });
+
+    it("plays an unchanged CJS GameSession subclass and preserves restrictions and opaque snapshots", async () => {
+        const game = publicRuntime.roundGame();
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Subclass Play session creation failed");
+            const id = created.session.sessionId;
+            const active = Reflect.get(service, "active") as {spinHandler: SpinCommandHandler};
+            const repository = Reflect.get(active.spinHandler, "sessionRepository") as InMemorySessionRepository;
+            const initial = (await repository.load(id))!;
+            expect(initial).toMatchObject({stateSchema: {kind: "custom"}, featureState: {round: 0}, executionState: "live-only"});
+            initial.commandCapabilities = {bets: [1]};
+            await repository.save(id, initial);
+            active.spinHandler.primeSession(id, active.spinHandler.getLiveSession(id)!, 2);
+            for (const round of [1, 2]) {
+                expect(await service.spin(id, undefined, 1)).toMatchObject({status: "ok", session: {debug: {stateAfter: {featureState: {round}, commandCapabilities: {bets: [1]}}}}});
+                const before = await repository.loadVersioned(id);
+                const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(game, "createSession")];
+                expect(await service.spin(id, undefined, 2)).toMatchObject({status: "error", code: "invalid-command"});
+                expect(await repository.loadVersioned(id)).toEqual(before);
+                writes.forEach(spy => {
+                    expect(spy).not.toHaveBeenCalled();
+                    spy.mockRestore();
+                });
+            }
+        } finally {
+            service.reset();
+        }
+    });
+
+    it("plays and searches scenarios with an unchanged getManifest/createSession-only package", async () => {
+        const {session, getAttempts} = createControllableVideoSlotSession(attempt => attempt >= 3 ? "A" : undefined);
+        const game: PokieGame = {getManifest: () => manifest, createSession: () => session};
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Unchanged package creation failed");
+            const played = await service.spin(created.session.sessionId);
+            expect(played.status).toBe("ok");
+            const found = await service.findAnyWin(created.session.sessionId);
+            expect(found.status).toBe("ok");
+            if (found.status !== "ok") throw new Error("Unchanged package search failed");
+            expect(found.session.win).toBeGreaterThan(0);
+            expect(getAttempts()).toBe(3);
+            expect(await service.findSymbolWin(created.session.sessionId, "A")).toMatchObject({status: "ok"});
+        } finally {
+            service.reset();
+        }
+    });
+
+    it("finds free games with an unchanged getManifest/createSession-only package", async () => {
+        const {session, getAttempts} = createControllableFreeGamesSession(attempt => attempt >= 3 ? 3 : 0);
+        const game: PokieGame = {getManifest: () => manifest, createSession: () => session};
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Unchanged package creation failed");
+            const found = await service.findFreeGames(created.session.sessionId);
+            expect(found.status).toBe("ok");
+            if (found.status !== "ok") throw new Error("Unchanged package feature search failed");
+            expect(found.session.debug?.artifact?.featureEvents).toEqual([{type: "freeGamesTriggered", data: {count: 3}}]);
+            expect(getAttempts()).toBe(3);
+        } finally {
+            service.reset();
+        }
+    });
+
     it("creates a real, live session directly, with no server/host/port involved", async () => {
         const service = new StudioPlayService(fakeLoadVideoSlotGame());
 
@@ -649,7 +795,7 @@ describe("StudioPlayService", () => {
         session.setBetMode = (mode) => {
             selectedMode = mode;
         };
-        const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+        const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
         const created = await service.newSession("/fake/project");
         if (created.status !== "ok") {
             throw new Error("expected ok");
@@ -1044,7 +1190,7 @@ describe("StudioPlayService", () => {
     describe("findAnyWin / findSymbolWin / findFreeGames", () => {
         it("findAnyWin returns the very first round when it already wins, driving the engine's own PlayUntilAnyWinStrategy against the live session", async () => {
             const {session} = createControllableVideoSlotSession(() => "A");
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1061,7 +1207,7 @@ describe("StudioPlayService", () => {
 
         it("findAnyWin repeats real, authoritative spins -- never a client-side calculation -- until one actually wins", async () => {
             const {session, getAttempts} = createControllableVideoSlotSession((attempt) => (attempt >= 4 ? "A" : undefined));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1079,9 +1225,29 @@ describe("StudioPlayService", () => {
             expect(getAttempts()).toBe(4);
         });
 
+        it("retains the matching settled round when progress cancels before publishing scenario success", async () => {
+            const {session, getAttempts} = createControllableVideoSlotSession(() => "A");
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("expected ok");
+            const controller = new AbortController();
+            expect(await service.findAnyWin(created.session.sessionId, {signal: controller.signal, onProgress: () => controller.abort()})).toMatchObject({status: "cancelled", session: {sessionId: created.session.sessionId, win: expect.any(Number)}});
+            expect(getAttempts()).toBe(1);
+            service.reset();
+        });
+
+        it("does not publish a matching scenario result after progress supersedes its session", async () => {
+            const {session, getAttempts} = createControllableVideoSlotSession(() => "A");
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("expected ok");
+            expect(await service.findAnyWin(created.session.sessionId, {onProgress: () => service.reset()})).toEqual({status: "not-found"});
+            expect(getAttempts()).toBe(1);
+        });
+
         it("reports every settled search attempt through the optional durable-progress hook", async () => {
             const {session} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "A" : undefined));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}), undefined, "unknown", undefined, undefined, 5);
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}), undefined, "unknown", undefined, undefined, 5);
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") throw new Error("expected ok");
             const progress = jest.fn();
@@ -1096,7 +1262,7 @@ describe("StudioPlayService", () => {
             // maxFindScenarioSpins is overridden to a small bound (the 6th constructor argument) so this
             // exercises the real "search exhausted" path without waiting out thousands of real spins.
             const service = new StudioPlayService(
-                () => Promise.resolve({getManifest: () => manifest, createSession: () => session}),
+                () => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}),
                 undefined,
                 undefined,
                 undefined,
@@ -1121,7 +1287,7 @@ describe("StudioPlayService", () => {
 
         it("findSymbolWin stops on the first real spin that actually wins the requested symbol, not just any win", async () => {
             const {session, getAttempts} = createControllableVideoSlotSession((attempt) => (attempt >= 3 ? "K" : undefined));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1169,7 +1335,7 @@ describe("StudioPlayService", () => {
 
         it("findFreeGames returns the very first round when it already triggers free games, driving the engine's own PlayFreeGamesStrategy against the live session", async () => {
             const {session} = createControllableFreeGamesSession(() => 3);
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1186,7 +1352,7 @@ describe("StudioPlayService", () => {
 
         it("findFreeGames repeats real, authoritative spins -- never a client-side calculation -- until one actually triggers free games", async () => {
             const {session, getAttempts} = createControllableFreeGamesSession((attempt) => (attempt >= 4 ? 3 : 0));
-            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, createSession: () => session}));
+            const service = new StudioPlayService(() => Promise.resolve({getManifest: () => manifest, ...fixtureCommandAuthority, createSession: () => session}));
             const created = await service.newSession("/fake/project");
             if (created.status !== "ok") {
                 throw new Error("expected ok");
@@ -1374,5 +1540,21 @@ describe("StudioPlayService", () => {
                 expect(result).toEqual({status: "error", error: "No matching round was found within 5 spins."});
             });
         });
+    });
+});
+
+describe("StudioPlayService canonical error propagation", () => {
+    it("preserves an incompatible-game distinction before playing or recording a replacement round", async () => {
+        let version = "1";
+        const session = createFakeVideoSlotSession(undefined);
+        const play = jest.spyOn(session, "play");
+        const game: PokieGame = {getManifest: () => ({...manifest, version}), ...fixtureCommandAuthority, createSession: () => session};
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        const created = await service.newSession("/fake/project");
+        if (created.status !== "ok") throw new Error("Could not create fixture session");
+        version = "2";
+        expect(await service.spin(created.session.sessionId)).toMatchObject({status: "error", code: "incompatible-state"});
+        expect(play).not.toHaveBeenCalled();
+        service.reset();
     });
 });

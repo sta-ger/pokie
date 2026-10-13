@@ -16,6 +16,18 @@ const COMPILED_CJS_ENTRY = path.join(REPO_ROOT, "dist", "cjs", "index.js");
 const COMPILED_CJS_PACKAGE_JSON = path.join(REPO_ROOT, "dist", "cjs", "package.json");
 const COMPILED_ESM_WORKER_ENTRY = path.join(REPO_ROOT, "dist", "esm", "simulation", "parallel", "internal", "simulationWorkerEntry.js");
 
+beforeAll(() => {
+    // The scaffold compiles against installed public declarations, not Jest's source aliases.
+    // Existing dist entries can belong to an earlier candidate with a different public API.
+    ensureCompiledTestOutput({
+        repositoryRoot: REPO_ROOT,
+        outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
+        lockName: "compiled-runtime",
+        command: ["npm", "run", "build-test-runtime"],
+        forceRebuild: true,
+    });
+}, 300000);
+
 // End-to-end proof that "pokie init [directory]" -- the in-place, non-interactive package workflow --
 // really does produce an immediately usable package with a real "npm install"/"npm run build", not
 // just against injected fakes (see InitCommand.test.ts for the fast, fully-injected coverage of every
@@ -27,15 +39,6 @@ describe("CLI workflow (integration): pokie init (in-place, non-interactive) pro
     jest.setTimeout(300000);
 
     let workDir: string;
-
-    beforeAll(() => {
-        ensureCompiledTestOutput({
-            repositoryRoot: REPO_ROOT,
-            outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
-            lockName: "compiled-runtime",
-            command: ["npm", "run", "build-test-runtime"],
-        });
-    });
 
     beforeEach(() => {
         // The space is deliberate: PackageCommandRunning always passes args as an array straight to
@@ -186,13 +189,6 @@ describe("CLI workflow (integration): pokie init resolves \"pokie\" through the 
     let workDir: string;
 
     beforeAll(() => {
-        ensureCompiledTestOutput({
-            repositoryRoot: REPO_ROOT,
-            outputPaths: [COMPILED_CJS_ENTRY, COMPILED_CJS_PACKAGE_JSON, COMPILED_ESM_WORKER_ENTRY],
-            lockName: "compiled-runtime",
-            command: ["npm", "run", "build-test-runtime"],
-        });
-
         // Routed through a scratch npm_config_prefix (never this environment's real global npm folder)
         // so the real npm-managed symlink `npm link` creates can never leak state outside this test's own
         // temp directories.

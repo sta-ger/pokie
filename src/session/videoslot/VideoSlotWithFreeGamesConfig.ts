@@ -32,6 +32,10 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
         return rv;
     }
 
+    public isResolvedForSessionRestoration(): boolean {
+        return this.constructor === VideoSlotWithFreeGamesConfig && this.baseConfig.isResolvedForSessionRestoration();
+    }
+
     public getFreeGamesForScatters(symbolId: T, numberOfSymbols: number): number {
         if (
             !Reflect.has(this.freeGamesForScattersMap, symbolId) ||

@@ -28,6 +28,11 @@ implements ModeAwareForcedFeatureEntryHandling<T> {
         this.handlersByModeId = handlersByModeId;
     }
 
+    public isStatelessForSessionRestoration(): boolean {
+        return this.constructor === PerModeForcedFeatureEntryHandler && [...this.handlersByModeId.values()].every(handler =>
+            (handler as {isStatelessForSessionRestoration?: () => boolean}).isStatelessForSessionRestoration?.() === true);
+    }
+
     public canForceFeatureEntryForMode(session: VideoSlotSessionHandling<T>, mode: BetModeDescribing): boolean {
         const handler = this.handlersByModeId.get(mode.getId());
         return handler !== undefined && handler.canForceFeatureEntry(session);

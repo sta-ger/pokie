@@ -1,3 +1,4 @@
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import type {IdempotencyRepository} from "./IdempotencyRepository.js";
 
 // Default IdempotencyRepository: results live only in a Map for the lifetime of the process, same
@@ -7,11 +8,12 @@ export class InMemoryIdempotencyRepository<T = unknown> implements IdempotencyRe
     private readonly results = new Map<string, T>();
 
     public load(sessionId: string, requestId: string): Promise<T | undefined> {
-        return Promise.resolve(this.results.get(this.keyFor(sessionId, requestId)));
+        const result = this.results.get(this.keyFor(sessionId, requestId));
+        return Promise.resolve(result === undefined ? undefined : cloneSessionData(result));
     }
 
     public save(sessionId: string, requestId: string, result: T): Promise<void> {
-        this.results.set(this.keyFor(sessionId, requestId), result);
+        this.results.set(this.keyFor(sessionId, requestId), cloneSessionData(result));
         return Promise.resolve();
     }
 

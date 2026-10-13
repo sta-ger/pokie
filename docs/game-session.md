@@ -195,3 +195,99 @@ fixed symbol set instead of plain unchecked `string`.
 See [Paylines & Line Patterns](paylines-and-patterns.md) and [Paytable & Win Calculation](paytable-and-wins.md) for
 details on lines/patterns/paytable, [Free Games](free-games.md) for the bonus-round layer on top of this, and
 [Resizable Grid](resizable-grid.md) for a grid whose per-reel height can change between rounds.
+
+## Headless commands and repository ownership
+
+`PokieGame` is the game definition and `GameSessionHandling` remains its injected OOP domain session.
+`SessionRuntime` implements the portable `SessionRuntimeHandling` command boundary. Its `SessionCommand`
+(currently `{kind: "spin", bet?, mode?}`) produces `SessionCommandResult`; JavaScript inputs are checked too.
+The adapter calls the injected session's `play()` once. A successful `prepare()` returns a ready command with `rollback` and `execute` callbacks for settlement adapters; rejected preparation has no executor. A ready command executes once; rollback disables its executor and cannot undo an executed round. It does not calculate payouts. Constructor defaults,
+legacy setter fallback, injected collaborators and decorator composition remain available to direct callers.
+
+Simulation (including aggregate/worker execution), replay, Studio scenario spins and exact enumeration use
+this boundary. They need neither a repository nor wallet transactions. Exact enumeration replaces only the
+combinations generator; session math still owns wins, paid stakes and free-game grants. Existing cancellation,
+worker shutdown and runtime lease ownership remain with the calling tool, between settled rounds.
+Studio package replay consumes this boundary's returned stake and win for its totals. A prepared command's
+first rollback is terminal: later rollback or execute calls cannot change a subsequently settled command.
+
+For repository sessions, `SpinCommandHandler` implements `RepositoryCommandHandling`. Its `execute()` accepts
+`RepositoryCommand` (the same command plus `sessionId`, optional `requestId` and `expectedVersion`) and returns
+`SpinCommandResult` after settlement and persistence. The positional `handle()` delegates to the same dispatcher and retains its legacy operational-error rejection behavior. `execute()` returns typed operational failures (`storage-error`, `settlement-error`, `execution-error`) after compensation; `handle()` rejects with the original exception object. Custom adapters can use `RuntimeCommandError` to retain a classified primary cause. Wallet
+settlement, queuing, idempotency, compensation and reconciliation stay in this adapter. `primeSession()` is an
+cache registration: save an initial record first and pass its committed revision. For a package without
+repository declarations, it also captures trusted live schema/command authority from that object. An unversioned repository
+cannot authorize reuse of a live-only cache; durable sessions reconstruct on every new command.
+The selected game's `getSessionStateSchema()` declares the codec before reconstruction. For example,
+`{kind: "seeded-video-slot"}` restores the built-in RNG and resolved reel strips; optional `reels` and
+`symbols` constrain the reconstructed model. Composed free-games/bet-mode schemas declare their nested
+`base`. A custom schema also requires `PokieGame.validateSessionState(state, context)`, and its session
+must capture and restore the complete model and executable state. Packages without a declaration can
+keep a primed live session but cannot promise durable reconstruction. An unchanged
+`getManifest()`/`createSession()` package uses the primed object's captured supported bets, modes and schema
+as process-local authority. Serve and Studio Play/scenario searches use this same handler path. Such records
+remain `live-only`; losing the object returns `restoration-unsupported` before construction or recovery writes.
+For durable recovery or construction-free retries after live-state loss, declare
+`getSessionCommandCapabilities(context)`, the selected model's supported `bets` and optional executable
+`modes`. It must resolve without constructing a session or consuming RNG. Persisted capabilities may
+restrict the trusted set, but cannot add selections. Generated games and scaffolds supply these declarations;
+hand-authored packages opt into recovery alongside their compatibility promise.
+Direct constructors and `SessionRuntime` do not require these repository declarations. See [serialization](serialization.md).
+
+Syntactically valid retries validate the current record and the complete retained result before returning
+it. With declared command authority, already-computed retries can recover without a live executable object, including live-only sessions;
+new rounds still require that object or complete durable state. Unsupported bet/mode selections reject
+before pending recovery writes. Schema matching applies to live-only records even when `featureState`
+is absent. A game explicitly supplies `validateLiveSessionState` to authorize partial state. Generated/scaffolded
+policies accept `{}` for an unseeded generator and require the complete seeded snapshot when a seed is supplied. They validate any captured RNG/reels, required feature counters and nested envelopes. A custom codec
+always runs its selected-game validator. `validateLiveSessionState(state, context)` can explicitly validate
+a partial snapshot, including an intentionally absent snapshot; it grants no reconstruction
+authority. Completed retries use this same policy and return retained accounting without constructing a session. Revision conflicts reject new rounds; completed retries return their
+original settled result even when the caller repeats its original revision.
+
+```ts
+import {
+  SpinCommandHandler, captureInitialPokieSessionState,
+  InMemorySessionRepository, InMemoryWallet,
+} from "@fromstan/pokie";
+
+// game implements PokieGame, and may have been loaded with loadPokieGameRuntime().
+const context = {seed: "demo"};
+const session = game.createSession(context);
+const repository = new InMemorySessionRepository();
+const wallet = new InMemoryWallet();
+const id = "demo-session";
+await wallet.setBalance(id, session.getCreditsAmount());
+await repository.save(id, captureInitialPokieSessionState(
+  context, session, game.getSessionSerializer?.(), false, game,
+));
+// A fresh handler needs no retained session or priming.
+const runtime = new SpinCommandHandler(game, repository, wallet);
+const result = await runtime.execute({kind: "spin", sessionId: id, expectedVersion: 1});
+if (result.status === "played") {
+  console.log(result.win, result.credits, result.stake, result.state);
+} else if (result.status === "not-found") {
+  console.log("Session is absent; explicitly choose whether to create another.");
+} else {
+  console.log(result.status, result.reason);
+}
+```
+
+`FileSessionRepository` can replace the repository above. Supply an independently durable wallet and retry
+stores when restart recovery must include money and requests. Keep the game runtime lease until its sessions
+are disposed, and release it on success, failure and cancellation.
+
+Rejection precedence is syntax/identifiers → repository presence and identity/semantic state → committed
+idempotent result → supported selection and revision → reconstruction → pending reconciliation → reversible
+command preparation → execution/settlement/save. A legitimate committed retry reproduces its original
+selection even if a new, syntactically valid bet/mode was supplied. Invalid syntax, incompatible/corrupt
+records and unsupported new selections cannot initiate recovery writes. Restoration exceptions are
+`corrupt-state`, never an invitation to construct defaults. Settlement/save exceptions retain the original
+failure and use the existing compensation path; there is no cross-store atomicity claim.
+
+For unchanged packages, the live snapshot policy is captured separately for every built-in composition
+node at `primeSession()`. A custom decorator inside free-game or bet-mode sessions may have no codec or
+an opaque legacy capture. The outer feature counters and selected modes still receive validation, and
+complete built-in descendants cannot become partial because their parent is live-only. Retained current,
+previous, cached and captured results use this same policy. Without the trusted live object, these
+undeclared compositions reject restoration before constructing a replacement or writing recovery data.

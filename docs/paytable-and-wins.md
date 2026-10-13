@@ -417,3 +417,7 @@ const calculator = new VideoSlotWinCalculator(config, new CustomLineCalculator()
 5. **Effective minimum-to-win for lines depends on two independently configured things**: the line pattern's
    `minimumWinningSymbols` (default 2) *and* which counts the paytable actually has non-zero payouts for (default
    constructor only fills 3..reelsNumber). Changing one without the other silently changes what pays.
+
+## Headless runtime contract
+
+Headless command execution delegates to the same injected win calculator as direct OOP play. It preserves fractional denominations (including 0.05, 7.5 and 1e-7), authored absent payouts, explicit zeros and free-game grants independently of scatter money. Repository command validation rejects an unsupported denomination without changing legacy direct setter fallback behavior.

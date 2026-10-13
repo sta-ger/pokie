@@ -1,12 +1,11 @@
 import type {BuildableFromSessionState} from "../../session/BuildableFromSessionState.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 
-// The restoring half of captureFeatureState(): a no-op unless both featureState was actually
-// captured (undefined otherwise, e.g. a fresh session with no prior persisted state) and the
-// reconstructed session implements BuildableFromSessionState.
+// Restore a validated executable snapshot. Missing data or a missing codec is an error,
+// never permission to continue from a constructor's default state.
 export function restoreFeatureState(session: GameSessionHandling, featureState: unknown): void {
     if (featureState === undefined || !canRestoreSessionState(session)) {
-        return;
+        throw new Error("Required executable state or restoration codec is missing.");
     }
     session.fromSessionState(featureState);
 }

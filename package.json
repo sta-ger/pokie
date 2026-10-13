@@ -171,7 +171,8 @@
         "docs/testing.md",
         "docs/wasm-compatibility-boundary.md",
         "docs/weighted-outcome-library.md",
-        "docs/v2-completion/V2C-01.md"
+        "docs/v2-completion/V2C-01.md",
+        "docs/v2-completion/V2C-02.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",

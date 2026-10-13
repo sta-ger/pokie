@@ -1,3 +1,4 @@
+import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import crypto from "crypto";
 import type {SpinOperationLeasing} from "./SpinOperationLeasing.js";
 import type {SpinOperationLog} from "./SpinOperationLog.js";
@@ -35,12 +36,13 @@ export class InMemorySpinOperationLog implements SpinOperationLog, SpinOperation
     }
 
     public record(record: SpinOperationRecord): Promise<void> {
-        this.records.set(this.keyFor(record.sessionId, record.requestId), record);
+        this.records.set(this.keyFor(record.sessionId, record.requestId), cloneSessionData(record));
         return Promise.resolve();
     }
 
     public load(sessionId: string, requestId: string): Promise<SpinOperationRecord | undefined> {
-        return Promise.resolve(this.records.get(this.keyFor(sessionId, requestId)));
+        const record = this.records.get(this.keyFor(sessionId, requestId));
+        return Promise.resolve(record === undefined ? undefined : cloneSessionData(record));
     }
 
     public delete(sessionId: string, requestId: string): Promise<void> {
@@ -49,7 +51,7 @@ export class InMemorySpinOperationLog implements SpinOperationLog, SpinOperation
     }
 
     public listIncomplete(): Promise<readonly SpinOperationRecord[]> {
-        return Promise.resolve([...this.records.values()].filter((record) => !TERMINAL_CHECKPOINTS.has(record.checkpoint)));
+        return Promise.resolve(cloneSessionData([...this.records.values()].filter((record) => !TERMINAL_CHECKPOINTS.has(record.checkpoint))));
     }
 
     public tryClaimForReconciliation(sessionId: string, requestId: string, leaseDurationMs: number): Promise<string | undefined> {

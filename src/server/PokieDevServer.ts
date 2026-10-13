@@ -1,3 +1,5 @@
+import {SessionStateCorruptError} from "./session/FileSessionRepository.js";
+import {validatePersistedSession} from "../runtime/validatePersistedSession.js";
 import crypto from "crypto";
 import http, {IncomingMessage, ServerResponse} from "http";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
@@ -323,7 +325,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             session.setCreditsAmount(await this.wallet.getBalance(sessionId));
         }
 
-        const state = captureInitialPokieSessionState(context, session, this.sessionSerializer, this.captureDebugSessionData);
+        const state = captureInitialPokieSessionState(context, session, this.sessionSerializer, this.captureDebugSessionData, this.game);
         await this.sessionRepository.save(sessionId, state);
         // Bind the newly-created object to the record that actually committed.  A later handler
         // instance may only reuse a cache carrying this exact version.
@@ -348,25 +350,22 @@ export class PokieDevServer implements PokieDevServerHandling {
         try {
             spinRequest = await this.readSpinRequest(req);
         } catch (error) {
-            this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            this.sendJson(res, 400, {code: "invalid-command", error: error instanceof Error ? error.message : String(error)});
             return;
         }
 
-        const result = await this.spinCommandHandler.handle(
-            sessionId,
-            spinRequest.requestId,
-            spinRequest.expectedVersion,
-            spinRequest.bet,
-            spinRequest.mode,
-        );
+        const command = {kind: "spin" as const, sessionId, ...spinRequest};
+        const result = this.spinCommandHandler.execute === undefined
+            ? await this.spinCommandHandler.handle(sessionId, spinRequest.requestId, spinRequest.expectedVersion, spinRequest.bet, spinRequest.mode)
+            : await this.spinCommandHandler.execute(command);
 
         if (result.status === "not-found") {
-            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
         if (result.status === "blocked") {
-            this.sendJson(res, 400, {error: result.reason});
+            this.sendJson(res, 400, {code: result.status, error: result.reason});
             return;
         }
 
@@ -376,7 +375,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             // attempt on another PokieDevServer instance sharing this repository committed first.
             // Every wallet transaction this attempt applied was already reversed by SpinCommandHandler
             // before returning this, so there's nothing to roll back here; the client should retry.
-            this.sendJson(res, 409, {error: result.reason});
+            this.sendJson(res, 409, {code: result.status, error: result.reason});
             return;
         }
 
@@ -386,7 +385,14 @@ export class PokieDevServer implements PokieDevServerHandling {
             // own — see SpinCommandHandler's own doc comment. Never retried automatically here, and
             // never surfaced as this server's own fault: the caller/operator needs to resolve it by hand
             // (see result.reason) before this requestId can be retried.
-            this.sendJson(res, 409, {error: result.reason});
+            this.sendJson(res, 409, {code: result.status, error: result.reason});
+            return;
+        }
+
+        if (result.status !== "played") {
+            const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
+            const status = statusCodes[result.status] ?? 409;
+            this.sendJson(res, status, {code: result.status, error: result.reason});
             return;
         }
 
@@ -472,7 +478,7 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const result = await this.preGeneratedSpinCommandHandler.handle(sessionId, requestId);
         if (result.status === "not-found") {
-            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
@@ -483,7 +489,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             // distinction. Every wallet transaction this attempt applied was already reversed by
             // PreGeneratedSpinCommandHandler before returning this, so there's nothing to roll back here;
             // the client should retry.
-            this.sendJson(res, 409, {error: result.reason});
+            this.sendJson(res, 409, {code: result.status, error: result.reason});
             return;
         }
 
@@ -529,13 +535,28 @@ export class PokieDevServer implements PokieDevServerHandling {
 
     private async handleGetSession(sessionId: string, res: ServerResponse, includeInternal: boolean): Promise<void> {
         const supportsVersioning = isVersionedSessionRepository(this.sessionRepository);
-        const versioned = supportsVersioning ? await this.sessionRepository.loadVersioned(sessionId) : undefined;
-        const state = supportsVersioning ? versioned?.state : await this.sessionRepository.load(sessionId);
+        let versioned: {state: PokieSessionState; version: number} | undefined;
+        let state: PokieSessionState | undefined;
+        try {
+            versioned = supportsVersioning ? await this.sessionRepository.loadVersioned(sessionId) : undefined;
+            state = supportsVersioning ? versioned?.state : await this.sessionRepository.load(sessionId);
+        } catch (error) {
+            const code = error instanceof SessionStateCorruptError ? "corrupt-state" : "storage-error";
+            this.sendJson(res, code === "corrupt-state" ? 409 : 503, {code, error: error instanceof Error ? error.message : String(error)});
+            return;
+        }
         if (!state) {
-            this.sendJson(res, 404, {error: `Unknown sessionId "${sessionId}".`});
+            this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
+        const rejected = this.spinCommandHandler.validateStoredSession === undefined
+            ? validatePersistedSession(state, this.game)
+            : this.spinCommandHandler.validateStoredSession(sessionId, state);
+        if (rejected !== undefined) {
+            this.sendJson(res, 409, {code: rejected.status, error: rejected.reason});
+            return;
+        }
         const credits = await this.wallet.getBalance(sessionId);
         const response = this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state));
         if (includeInternal) {

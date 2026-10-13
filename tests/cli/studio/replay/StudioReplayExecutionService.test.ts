@@ -11,6 +11,7 @@ import {
     ProjectTargetResolver,
     REPLAY_OPERATION,
     ReplayRecorder,
+    SessionRuntime,
     WinEvaluationResult,
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
@@ -530,9 +531,13 @@ describe("StudioReplayExecutionService", () => {
     });
 
     it("runs a small replay to completion and produces the full descriptor", async () => {
+        const game = createSeedAwareFakeGame(manifest);
+        const session = game.createSession({seed: "demo"});
+        game.createSession = () => session;
+        const execution = jest.spyOn(SessionRuntime.prototype, "execute");
         const service = new StudioReplayExecutionService(
             new InMemoryStudioReplayRepository(),
-            () => Promise.resolve(createSeedAwareFakeGame(manifest)),
+            () => Promise.resolve(game),
         );
 
         const result = service.start("/a", {round: 5, seed: "demo"});
@@ -541,6 +546,12 @@ describe("StudioReplayExecutionService", () => {
         }
         const job = await waitForTerminal(service, "/a", result.job.id);
 
+        const accounting = execution.mock.results.flatMap((entry, index) => Reflect.get(execution.mock.contexts[index], "session") === session
+            ? [entry.value as {stake: number; win: number}] : []);
+        expect(accounting).toHaveLength(5);
+        expect(job.descriptor?.totalBet).toBe(accounting.reduce((sum, result) => sum + result.stake, 0));
+        expect(job.descriptor?.totalWin).toBe(accounting.reduce((sum, result) => sum + result.win, 0));
+        execution.mockRestore();
         expect(job.status).toBe("completed");
         expect(job.completedRounds).toBe(5);
         expect(job.descriptor?.game).toEqual(manifest);
@@ -549,6 +560,33 @@ describe("StudioReplayExecutionService", () => {
         expect(job.descriptor?.totalBet).toBe(5);
         expect(job.descriptor?.screen).toEqual([[expect.stringContaining("round-5")]]);
         expect(job.descriptor?.credits).toBe(1005);
+    });
+
+    it("stops between commands within a chunk and releases the lease without publishing cancelled accounting", async () => {
+        const game = createSeedAwareFakeGame(manifest);
+        const session = game.createSession({seed: "within-chunk"});
+        game.createSession = () => session;
+        const release = jest.fn(() => Promise.resolve());
+        const completed = jest.fn();
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(game),
+            10, undefined, undefined, () => "within-chunk", undefined, completed, undefined, undefined, undefined, release);
+        const originalPlay = session.play.bind(session);
+        const play = jest.spyOn(session, "play").mockImplementation(() => {
+            originalPlay();
+            service.cancel("/a", "within-chunk");
+        });
+        const result = service.start("/a", {round: 5, seed: "within-chunk"});
+        if (result.status !== "created") throw new Error("expected job to be created");
+        const job = await waitForTerminal(service, "/a", result.job.id);
+        await service.cancelAll();
+        expect(job.status).toBe("cancelled");
+        expect(job.completedRounds).toBe(1);
+        expect(play).toHaveBeenCalledTimes(1);
+        expect(release).toHaveBeenCalledTimes(1);
+        expect(completed).not.toHaveBeenCalled();
+        expect(job.descriptor).toBeUndefined();
+        expect(service.getDownload("/a", result.job.id)).toEqual({status: "not-ready", jobStatus: "cancelled"});
+        play.mockRestore();
     });
 
     it("fails corrupt and incomplete PAR preparation without loading a game or publishing a replay descriptor", async () => {
