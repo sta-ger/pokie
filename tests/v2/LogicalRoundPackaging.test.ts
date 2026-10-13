@@ -109,6 +109,75 @@ function snapshot(session: api.GameSessionHandling) {
 }
 
 describe("logical-round delivery and mathematical boundaries", () => {
+    it("a successfully returned bounded composite keeps its detached output after later progress", () => {
+        let calculations = 0;
+        const session = transactionalRoundGame(() => calculations++).createSession({seed: 7});
+        const runtime = new api.SessionRuntime(session);
+        const command: api.SessionCommand = {kind: "spin", roundId: "bounded", delivery: "composite", maxSubrounds: 2};
+        const first = played(runtime.execute(command));
+        expect(first.logicalRound).toMatchObject({cursor: 2, status: "pending"});
+        const before = snapshot(session);
+        expect(runtime.execute(command)).toEqual(first);
+        expect(snapshot(session)).toEqual(before);
+        expect(calculations).toBe(2);
+        played(runtime.execute({kind: "spin", delivery: "stepwise", continuation: {roundId: "bounded", cursor: 2}}));
+        const later = played(runtime.execute({kind: "spin", roundId: "later", delivery: "composite"}));
+        const newer = snapshot(session),
+            count = calculations;
+        const duplicate = played(runtime.execute(command));
+        expect(duplicate).toEqual(first);
+        (duplicate.logicalRound!.subrounds as api.LogicalSubround[]).length = 0;
+        expect(runtime.execute(command)).toEqual(first);
+        expect(runtime.getLogicalRound()).toEqual(later.logicalRound);
+        expect(snapshot(session)).toEqual(newer);
+        expect(calculations).toBe(count);
+    });
+
+    it("a bounded composite continuation counts saved deliveries independently of mathematical subrounds", () => {
+        let calculations = 0;
+        const session = cascadeGame(() => calculations++).createSession({seed: 7});
+        session.setCreditsAmount(100);
+        const runtime = new api.SessionRuntime(session);
+        played(runtime.execute({kind: "spin", roundId: "cascade", delivery: "stepwise"}));
+        const command: api.SessionCommand = {kind: "spin", delivery: "composite", continuation: {roundId: "cascade", cursor: 1}, maxSubrounds: 1};
+        const first = played(runtime.execute(command));
+        expect(first.logicalRound).toMatchObject({cursor: 1, deliveryCursor: 2, status: "pending"});
+        const before = snapshot(session);
+        expect(runtime.execute(command)).toEqual(first);
+        expect(runtime.getLogicalRound()).toEqual(first.logicalRound);
+        expect(snapshot(session)).toEqual(before);
+        expect(calculations).toBe(1);
+    });
+
+    it.each(["returned", "thrown", "cancelled"])("an interrupted bounded composite retains its original budget after %s interruption", failure => {
+        const session = game(0, 6).createSession({seed: 7}) as api.GameSessionHandling & api.StakeAmountDetermining;
+        const runtime = new api.SessionRuntime(session);
+        const play = session.play.bind(session),
+            stake = session.getStakeAmount.bind(session);
+        const abort = new AbortController();
+        let calculations = 0,
+            interrupt = true;
+        session.play = () => {
+            if (interrupt && failure === "thrown" && calculations === 2) throw new Error("interrupted third subround");
+            play();
+            calculations++;
+            if (interrupt && failure === "cancelled" && calculations === 2) abort.abort();
+        };
+        session.getStakeAmount = () => interrupt && failure === "returned" && calculations === 2 ? 1 : stake();
+        const command: api.SessionCommand = {kind: "spin", roundId: "bounded", delivery: "composite", mode: "buy", maxSubrounds: 3};
+        if (failure === "thrown") expect(() => runtime.execute(command)).toThrow("interrupted third subround");
+        else runtime.execute(command, abort.signal);
+        expect(runtime.getLogicalRound()?.deliveryCursor).toBe(2);
+        interrupt = false;
+        const resumed = played(runtime.execute(command));
+        expect(resumed.logicalRound).toMatchObject({deliveryCursor: 3, status: "pending"});
+        expect(calculations).toBe(3);
+        const before = snapshot(session);
+        expect(runtime.execute(command)).toEqual(resumed);
+        expect(snapshot(session)).toEqual(before);
+        expect(calculations).toBe(3);
+    });
+
     it("validates opaque custom progress before current-state and cached-result publication", async () => {
         const model = transactionalRoundGame();
         const repository = new api.InMemorySessionRepository();
@@ -235,6 +304,49 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(await wallet.getBalance("session")).toBe(balance);
         expect(debit).not.toHaveBeenCalled();
         expect(credit).not.toHaveBeenCalled();
+    });
+
+    it.each(["authorized", "deferred", "corrupt"])("saved-stage checkpoint failure fences successors until %s recovery completes", async recovery => {
+        let calculations = 0;
+        const model = cascadeGame(() => calculations++);
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(100);
+        const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+        const operations = new api.InMemorySpinOperationLog();
+        const reconcile = new api.SpinReconciliationService(wallet, repository, results, operations, true, false, 0, undefined, undefined, model);
+        const handler = (service = reconcile) => new api.SpinCommandHandler(model, repository, wallet, results, operations, true, service);
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        settled(await handler().execute({kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "stepwise"}));
+        const debit = jest.spyOn(wallet, "debit"),
+            credit = jest.spyOn(wallet, "credit");
+        jest.spyOn(operations, "record").mockImplementationOnce(record => Reflect.apply(api.InMemorySpinOperationLog.prototype.record, operations, [record])).mockRejectedValueOnce(new Error("checkpoint write failed"));
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "stage", continuation: {roundId: "round", cursor: 1}, delivery: "stepwise"};
+        const failed = await handler().execute(command);
+        expect(failed).toMatchObject({status: "storage-error", committedResult: {state: {logicalRound: {deliveryCursor: 2}}}});
+        const checkpoint = (await operations.load("session", "stage"))!;
+        expect(checkpoint.checkpoint).toBe("settled");
+        const successor: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "successor", continuation: {roundId: "round", cursor: 2}, delivery: "stepwise"};
+        if (recovery !== "authorized") {
+            if (recovery === "corrupt") await operations.record({...checkpoint, capturedResult: {...checkpoint.capturedResult!, previousState: null as unknown as api.PokieSessionState}});
+            const before = await repository.loadVersioned("session");
+            const conservative = new api.SpinReconciliationService(wallet, repository, results, operations, false, false, 0, undefined, undefined, model);
+            expect(await handler(conservative).execute(successor)).toMatchObject({status: recovery === "corrupt" ? "corrupt-state" : "recovery-required"});
+            expect(await repository.loadVersioned("session")).toEqual(before);
+            expect(await results.load("session", "successor")).toBeUndefined();
+            if (recovery === "corrupt") await operations.record(checkpoint);
+        }
+        const next = settled(await handler().execute(successor));
+        expect(next.state.logicalRound).toMatchObject({deliveryCursor: 3, status: "completed"});
+        const beforeRetry = await repository.loadVersioned("session");
+        const balance = await wallet.getBalance("session");
+        expect(await handler().execute(command)).toEqual(failed.committedResult);
+        expect(await handler().execute(command)).toEqual(failed.committedResult);
+        expect(await repository.loadVersioned("session")).toEqual(beforeRetry);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        expect(calculations).toBe(1);
+        expect(debit).not.toHaveBeenCalled();
+        expect(credit).not.toHaveBeenCalled();
+        expect(next.state.logicalRoundStatistics).toEqual(failed.committedResult?.state.logicalRoundStatistics);
     });
 
     it("composite saved-stage publication failure exposes the newly accepted prefix", async () => {

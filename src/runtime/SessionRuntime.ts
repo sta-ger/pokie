@@ -9,7 +9,8 @@ import {validateLogicalRound, type LogicalRound, type LogicalSubround, type Logi
 const logicalRounds = new WeakMap<GameSessionHandling, LogicalRound>();
 type Played = Extract<SessionCommandResult, {status: "played"}>;
 type SubroundNode = {subround: LogicalSubround; previous?: SubroundNode};
-type SavedDelivery = {command: string; result: Omit<Played, "logicalRound">; round?: Omit<LogicalRound, "subrounds">; tail?: SubroundNode};
+type SavedDelivery = {command: string; result: Omit<Played, "logicalRound">; round?: Omit<LogicalRound, "subrounds">; tail?: SubroundNode;
+    composite?: {advanced: number; returned: boolean}};
 const deliveries = new WeakMap<GameSessionHandling, Map<string, SavedDelivery>>();
 const retainedTails = new WeakMap<GameSessionHandling, {roundId: string; tail: SubroundNode}>();
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
@@ -63,7 +64,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (saved) {
             if (saved.command !== JSON.stringify(command)) return {status: "invalid-command", reason: "Logical delivery identity conflicts with its original command."};
             const prefix = this.restoreDelivery(saved);
-            return command.delivery === "composite" ? this.completeComposite(command, prefix, key!, signal) : prefix;
+            return command.delivery === "composite" && !saved.composite?.returned ? this.completeComposite(command, prefix, key!, signal) : prefix;
         }
         if (signal?.aborted) return {status: "blocked", reason: "Cancelled before acceptance."};
         const invalid = this.validateSelection(command);
@@ -204,9 +205,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
     }
     private completeComposite(command: SessionCommand, prefix: Played, key: string, signal?: AbortSignal): SessionCommandResult {
         let result = prefix;
-        let advanced = 1;
         const ledger = deliveries.get(this.session)!;
-        while (result.logicalRound?.status === "pending" && advanced < (command.maxSubrounds ?? 1000) && !signal?.aborted) {
+        let advanced = ledger.get(key)!.composite?.advanced ?? 1;
+        const limit = command.maxSubrounds ?? 1000;
+        while (result.logicalRound?.status === "pending" && advanced < limit && !signal?.aborted) {
             const continuation = {roundId: result.logicalRound.id, cursor: result.logicalRound.deliveryCursor};
             const committedProgress: SessionCommandProgress = {committedResult: cloneSessionData(result), continuation};
             let next: SessionCommandResult;
@@ -223,9 +225,13 @@ export class SessionRuntime implements SessionRuntimeHandling {
             // The successor may be a historical retry after another round has started. Share
             // its accepted delivery node rather than reading the session's newer live round.
             const accepted = ledger.get(`${continuation.roundId}:${continuation.cursor}`)!;
-            ledger.set(key, {...accepted, command: JSON.stringify(command)});
             advanced++;
+            ledger.set(key, {...accepted, command: JSON.stringify(command), composite: {advanced, returned: false}});
         }
+        // A completed or bounded batch is an immutable delivery. Cancellation leaves an
+        // interrupted prefix resumable, with only the original batch's remaining budget.
+        const returned = !signal?.aborted || advanced >= limit || result.logicalRound?.status !== "pending";
+        ledger.set(key, {...ledger.get(key)!, composite: {advanced, returned}});
         return result;
     }
 

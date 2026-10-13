@@ -546,7 +546,6 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             }
         }
 
-        if (intent?.roundId && !intent.continuation && (state.logicalRoundIds?.includes(intent.roundId) || state.logicalRound?.id === intent.roundId)) return {status: "identity-conflict", sessionId, reason: "Logical round identity has already been accepted; retry its original request."};
         if ((intent?.delivery !== undefined || intent?.continuation !== undefined) && this.game.supportsLogicalRoundDelivery?.() === false) return {status: "invalid-command", sessionId, reason: "Selected game does not support logical delivery."};
 
         const capabilities = this.game.getSessionCommandCapabilities?.(state.context) ?? this.liveSessions.get(sessionId)?.authority.capabilities;
@@ -563,6 +562,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             if (intent && pending.command && commandEnvelope(pending.command) !== commandEnvelope(intent)) return {status: "identity-conflict", sessionId, reason: "Pending logical request owns a different command envelope."};
             const invalid = this.validatePendingState(pending, sessionId, requestId!);
             if (invalid !== undefined) return {...invalid, sessionId};
+            const original = pending.command ?? pending.capturedResult?.newState.logicalRound?.subrounds[pending.capturedResult.newState.logicalRound.cursor - 1]?.command;
+            if (intent && original && commandEnvelope(original as RepositoryCommand) !== commandEnvelope(intent)) return {status: "identity-conflict", sessionId, reason: "Pending logical request owns a different command envelope."};
         }
 
         if (expectedVersion !== undefined && version !== undefined && version !== expectedVersion &&
@@ -576,6 +577,31 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 if (pending.checkpoint !== "compensated" && pending.checkpoint !== "started") {
                     return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode, intent);
                 }
+            }
+        }
+        // The original owner can recover its validated operation even after this round
+        // has finished. A new request still cannot reuse an accepted entry identity.
+        if (intent?.roundId && !intent.continuation && (state.logicalRoundIds?.includes(intent.roundId) || state.logicalRound?.id === intent.roundId)) return {status: "identity-conflict", sessionId, reason: "Logical round identity has already been accepted; retry its original request."};
+
+        if (!this.atomicExecution) {
+            // Independent saved-stage state/result writes share the existing operation log.
+            // Finish publication before letting a successor move beyond the revision that
+            // proves a settled transition was saved; otherwise that proof would be lost.
+            const incomplete = await this.operationLog.listIncomplete().catch(error => {
+                throw new RuntimeCommandError("storage-error", error);
+            });
+            for (const record of incomplete) {
+                if (record.sessionId !== sessionId || record.requestId === requestId || record.capturedResult?.deliveryOnly !== true) continue;
+                const recovered = await this.reconcilePendingAttempt(sessionId, record.requestId);
+                if (recovered?.status !== "played") return recovered ?? {status: "recovery-required", sessionId, requestId: record.requestId,
+                    reason: "An earlier saved-stage delivery must finish publication before advancement."};
+                const completed = await this.readPendingAttempt(sessionId, record.requestId);
+                if (completed && completed.checkpoint !== "committed") return {status: "recovery-required", sessionId, requestId: record.requestId,
+                    reason: "Saved-stage recovery has not retained its publication checkpoint."};
+                this.liveSessions.delete(sessionId);
+                // Recovery can persist the transition, so reload its authoritative revision
+                // before validating this command's expected version and continuation.
+                return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode, intent);
             }
         }
         // A caller-declared precondition for a genuinely new round: if the repository is

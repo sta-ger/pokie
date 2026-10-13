@@ -62,5 +62,9 @@ export function validateOperationRecord(value: SpinOperationRecord, game: PokieG
     const rejected = validateComputedResult(captured, captured.newState, captured.previousState, captured.newVersion, game, live, sessionId);
     if (rejected) return rejected;
     if (captured.deliveryOnly === true && (!value.command || value.stakeAmount !== 0 || !validateSavedStageDelivery(captured.previousState as PokieSessionState, captured.newState as PokieSessionState, value.command))) return corrupt("Invalid captured saved-stage transition.");
+    if (captured.deliveryOnly !== true && captured.newState.logicalRound) {
+        const original = captured.newState.logicalRound.subrounds[captured.newState.logicalRound.cursor - 1].command as RepositoryCommand;
+        if (original.requestId !== requestId || (value.command && commandEnvelope(value.command) !== commandEnvelope(original))) return corrupt("Captured logical result differs from its accepted command.");
+    }
     return undefined;
 }

@@ -510,6 +510,11 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         }
 
         const finalCaptured: SpinOperationCapturedResult = {...captured, newVersion};
+        if (record.checkpoint === "settled") {
+            // Preserve the proven saved revision before another independent publication
+            // write can fail. A later retry then backfills history without saving old state.
+            await this.operationLog.record({...record, checkpoint: "session-saved", updatedAt: new Date().toISOString(), capturedResult: finalCaptured});
+        }
         const result = this.buildPlayedResult(record, finalCaptured);
         await this.idempotencyRepository.save(sessionId, requestId, result);
         await this.operationLog.record({...record, checkpoint: "committed", updatedAt: new Date().toISOString(), capturedResult: finalCaptured});
@@ -622,7 +627,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     private buildPlayedResult(record: SpinOperationRecord, captured: SpinOperationCapturedResult): SpinCommandResult {
         return {
             status: "played",
-            ...(captured.deliveryOnly ? {deliveryOnly: true, deliveryCommand: record.command} : {}),
+            ...(captured.deliveryOnly ? {deliveryOnly: true} : {}),
+            ...(record.command ? {deliveryCommand: record.command} : {}),
             sessionId: record.sessionId,
             state: captured.newState,
             previousState: captured.previousState,
