@@ -61,7 +61,10 @@ describe("ArtifactBuilderRegistry", () => {
         expect(descriptor.requiredSourceCapability).toBe(PAR_WORKBOOK_EXCHANGE_CAPABILITY);
         expect(descriptor.supportedSources).toEqual(["blueprint", "parWorkbook"]);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/Game Blueprint.*PAR workbook snapshot/i);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/preserving exact and weighted whole-sequence reels/i);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/generated\/per-symbol sources as diagnosed deterministic snapshots/i);
         expect(descriptor.unsupportedNotes.join(" ")).toMatch(/republishes an existing PAR workbook/i);
+        expect(descriptor.unsupportedNotes.join(" ")).toMatch(/does not recover a Blueprint from unrelated package or outcome artifacts/i);
         expect(descriptor.unsupportedNotes.join(" ")).not.toMatch(/does not derive.*blueprint/i);
     });
 

@@ -96,8 +96,8 @@ const UNSUPPORTED_NOTES: Readonly<Record<ArtifactTargetType, readonly string[]>>
             "those outcomes; that recovery is not supported by any builder.",
     ],
     parWorkbook: [
-        "Preserves exact and weighted whole-sequence Blueprint reels in PAR, materializes generated/per-symbol " +
-            "sources as diagnosed deterministic snapshots, or republishes an existing " +
+        "Exports a Game Blueprint to a PAR workbook snapshot, preserving exact and weighted whole-sequence reels " +
+            "and materializing generated/per-symbol sources as diagnosed deterministic snapshots, or republishes an existing " +
             "PAR workbook; it does not recover a Blueprint from unrelated package or outcome artifacts.",
     ],
     wasm: [
