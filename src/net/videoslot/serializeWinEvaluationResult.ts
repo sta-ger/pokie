@@ -1,13 +1,18 @@
+import type {ScreenGeometry} from "../../session/videoslot/coordinates/ScreenGeometry.js";
+import {assertEvaluationComponents} from "../../session/videoslot/coordinates/internal/assertEvaluationComponents.js";
+import {projectWinEvaluationResultNetworkData} from "./projectVideoSlotNetworkData.js";
 import type {WinEvaluationResult} from "../../session/videoslot/winevaluation/WinEvaluationResult.js";
 import type {WinEvaluationResultNetworkData} from "./VideoSlotNetworkData.js";
 
 // Extracted from VideoSlotSessionSerializer (which still uses it for a round's own win result) so
 // CascadeSessionSerializer can reuse the same mapping for each cascade step's win result instead of
-// duplicating it.
+// duplicating it. Omit geometry to retain evaluation-local data; pass geometry for a viewport DTO.
 export function serializeWinEvaluationResult<T extends string | number | symbol = string>(
     result: WinEvaluationResult<T>,
+    geometry?: ScreenGeometry,
 ): WinEvaluationResultNetworkData<T> {
-    return {
+    if (geometry) assertEvaluationComponents(result.getWinComponents(), geometry);
+    const data: WinEvaluationResultNetworkData<T> = {
         totalWin: result.getTotalWin(),
         winningPositions: result.getWinningPositions(),
         lineWins: result.getLineWins().map((component) => {
@@ -45,4 +50,5 @@ export function serializeWinEvaluationResult<T extends string | number | symbol 
         })),
         metadata: result.getMetadata(),
     };
+    return geometry ? projectWinEvaluationResultNetworkData(data, geometry) : data;
 }

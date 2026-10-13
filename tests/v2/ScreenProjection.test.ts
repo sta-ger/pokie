@@ -103,7 +103,9 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(new WaysWinCalculator(config).calculateWinningWays(1, generated).B.getWinAmount()).toBe(243);
         config.getPaytable().setPayoutForSymbol("B", 15, 2);
         expect(Object.values(new ClusterWinCalculator(config).calculateWinningClusters(1, generated)).map(win => win.getWinAmount())).toEqual([2]);
-        expect(new ValueWinCalculator<string>({S: 100000, W: 200000, A: 300000, B: 1}).calculateWinningValues(1, generated).B.getWinAmount()).toBe(15);
+        const values = new ValueWinCalculator<string>({S: 100000, W: 200000, A: 300000, B: 1}).calculateWinningValues(1, generated);
+        expect(Object.keys(values)).toEqual(["B"]);
+        expect(values.B.getWinAmount()).toBe(15);
     });
 
     it.each([1, 2, 4, 5])("crosses each evaluation boundary exactly once (generated row %s)", row => {

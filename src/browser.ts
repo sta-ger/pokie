@@ -79,3 +79,5 @@ export * from "./session/videoslot/coordinates/projectSymbolsCombination.js";
 export * from "./session/videoslot/coordinates/projectVisibleWinData.js";
 export * from "./artifact/PublicRoundArtifactProjector.js";
 export * from "./session/videoslot/coordinates/ScreenProjectionDescribing.js";
+export * from "./net/videoslot/serializeWinEvaluationResult.js";
+export * from "./net/videoslot/projectVideoSlotNetworkData.js";

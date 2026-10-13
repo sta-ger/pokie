@@ -116,6 +116,8 @@ describe("V2C-02 canonical runtime contracts", () => {
                     config.setSymbolsSequences(Array.from({length: 5}, () => new api.SymbolsSequence().fromArray(["A", "K", "S", "Q", "J", "W", "A"])));
                     const session = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(7)));
                     session.play();
+                    const publicWin = api.serializeWinEvaluationResult(session.getWinEvaluationResult(), geometry);
+                    if (publicWin.winningPositions.some(([reel, row]) => reel < 0 || reel >= 5 || row < 0 || row >= 3)) throw new Error("Public win-result serializer returned off-viewport positions.");
                     if (session.getSymbolsCombination().toMatrix()[0].length !== 7 || new api.VideoSlotSessionSerializer().getRoundData(session).reelsSymbols[0].length !== 3) throw new Error("Public runtime lost generated/visible ownership.");
                 }
                 await probe(esm, cjs, require("./game.cjs").legacyComposedGame, require("./extension.cjs").legacyRoundGame);
