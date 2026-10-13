@@ -37,6 +37,8 @@ import type {SpinOperationRecord} from "./SpinOperationRecord.js";
 import type {SpinReconciliationOutcome} from "./SpinReconciliationOutcome.js";
 import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
 
+// The following describes the legacy independent-port path. Explicit stores own their
+// separate reference-atomic or durable external-reconciliation dispatch boundaries.
 // Orchestrates a single spin end-to-end: replay an idempotent retry, load the persisted session
 // state (reconstructing a live session on a cache miss, e.g. after a restart), gate on
 // canPlayNextGame(), run play(), settle the wallet as two separate transactions (a stake debit and
@@ -94,11 +96,10 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 //     swallowed so it doesn't replace or hide the original error the caller of handle() sees, but it
 //     also means the compensation silently did not happen: the wallet and/or SessionRepository can be
 //     left reflecting a partially-applied attempt.
-// A production deployment that needs real durable atomicity across the wallet, SessionRepository,
-// and idempotencyRepository — surviving a process crash or a failed compensating write — is
-// must select the explicit `new SpinCommandHandler(game, transactionalRoundStore)` composition.
-// The store owns one transaction and every participating adapter. Independently configured ports,
-// even backed by the same database, remain on this weaker compensation path.
+// `new SpinCommandHandler(game, transactionalRoundStore)` supplies local reference atomicity
+// and owns every participating adapter in one transaction. `new SpinCommandHandler(game,
+// externalRoundStore)` supplies durable intent and independent-wallet reconciliation, never
+// distributed ACID. Independently configured ports remain on the weaker compensation path.
 //
 // Optimistic locking: when sessionRepository additionally implements VersionedSessionRepository (see
 // isVersionedSessionRepository.ts — InMemorySessionRepository/FileSessionRepository both do), the
@@ -165,7 +166,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined; readonly record?: string; readonly authority: LiveSessionAuthority}>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
-    /** Explicit atomic composition; the store owns every participant, never an external wallet. */
+    /** Explicit local reference atomicity or durable external reconciliation; never distributed ACID. */
     constructor(game: PokieGame, store: TransactionalRoundStore | ExternalRoundStore, options?: {
         captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string;
     });
@@ -234,7 +235,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             } else this.transactionalStore = sessionRepository;
             const store = sessionRepository;
             const options = wallet as {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string} | undefined;
-            const forbidden = (): Promise<never> => Promise.reject(new Error("Atomic participants are owned exclusively by the round store."));
+            const forbidden = (): Promise<never> => Promise.reject(new Error("Local participants are owned exclusively by the selected round store."));
             sessionRepository = {load: async id => (await store.readSession(id))?.state, save: forbidden};
             wallet = {getBalance: id => store.getBalance(id), setBalance: forbidden, debit: forbidden, credit: forbidden, reverse: forbidden};
             captureDebugSessionData = options?.captureDebugSessionData ?? true;
