@@ -1,5 +1,8 @@
 import {ControllableDurableWallet} from "../server/wallet/fixtures/ControllableDurableWallet.js";
 import fs from "node:fs";
+import {EventEmitter} from "node:events";
+import {Readable} from "node:stream";
+import type {IncomingMessage, ServerResponse} from "node:http";
 import path from "node:path";
 import {execFileSync} from "node:child_process";
 import ts from "typescript";
@@ -181,6 +184,77 @@ describe("canonical audited logical-round replay", () => {
         expect(retained.capturedResult!.audit).toEqual(result.audit);
         expect(result.audit!.deliveries[0].disposition.status).toBe("committed");
         expect(new api.AuditRoundReplay().replay(game, result.audit!).verification).toBe("verified");
+    });
+
+    it.each([
+        {failure: "execution-error", audit: true}, {failure: "blocked", audit: true},
+        {failure: "execution-error", audit: false}, {failure: "blocked", audit: false},
+    ])("translates an authentic $failure prefix with internal evidence only on opt-in (audit=$audit, no listener)", async ({failure, audit}) => {
+        let fail = true;
+        let calculations = 0;
+        const fixture = transactionalRoundGame(() => {
+            calculations++;
+            if (failure === "execution-error" && fail && calculations > 1) throw new Error("successor failed");
+        });
+        const game: api.PokieGame = {...fixture, ...(audit ? {getConfigHash: () => "adapter-prefix-model"} : {}),
+            createSession: context => {
+                const session = fixture.createSession(context);
+                const canPlay = session.canPlayNextGame.bind(session);
+                session.canPlayNextGame = () => !(failure === "blocked" && fail && calculations >= 1) && canPlay();
+                return session;
+            }};
+        const sessions = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(25);
+        const session = game.createSession({seed: "7"});
+        session.setCreditsAmount(25);
+        await sessions.save("adapter", api.captureInitialPokieSessionState({seed: "7"}, session, undefined, true, game));
+        const server = new api.PokieDevServer(game, {sessionRepository: sessions, wallet});
+        const handler = Reflect.get(server, "spinCommandHandler") as api.SpinCommandHandler;
+        const execute = jest.spyOn(handler, "execute");
+        const command = {requestId: "entry", roundId: "round", delivery: "composite"};
+        // Exercise the actual adapter, body parser and serializer without opening an HTTP listener.
+        const translate = async (includeInternal: boolean) => {
+            const request = Readable.from([Buffer.from(JSON.stringify(command))]) as unknown as IncomingMessage;
+            const response = Object.assign(new EventEmitter(), {writeHead: jest.fn(), end: jest.fn()});
+            await Reflect.apply(Reflect.get(server, "handleSpin"), server, ["adapter", request, response as unknown as ServerResponse, includeInternal]);
+            return {status: response.writeHead.mock.calls[0][0], body: JSON.parse(response.end.mock.calls[0][0])};
+        };
+        try {
+            const publicResponse = await translate(false);
+            expect(publicResponse).toMatchObject({status: failure === "blocked" ? 400 : 500, body: {code: failure,
+                committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, committedSession: {logicalRound: {status: "pending", cursor: 1}}}});
+            const prefix = (await execute.mock.results[0].value).committedResult!;
+            expect(publicResponse.body.committedSession).not.toHaveProperty("internal");
+            for (const hidden of ["audit", "auditUnavailableReason", "stateBefore", "stateAfter", "featureState", "executable", "context", "rng", "debugData"]) {
+                expect(publicResponse.body.committedSession).not.toHaveProperty(hidden);
+            }
+            const debugResponse = await translate(true);
+            expect(debugResponse.body.committedSession.internal).toEqual(expect.objectContaining({stateBefore: prefix.previousState, stateAfter: prefix.state, requestId: "entry", sessionVersion: prefix.version,
+                ...(audit ? {audit: prefix.audit} : {auditUnavailableReason: prefix.auditUnavailableReason})}));
+            if (audit) {
+                expect(prefix.audit!.deliveries).toHaveLength(1);
+                expect(debugResponse.body.committedSession.internal.audit).toEqual(prefix.audit);
+                expect(new api.ReplayRecorder().replay({...transactionalRoundGame(), getConfigHash: game.getConfigHash}, debugResponse.body.committedSession.internal.audit)).toMatchObject({auditStatus: "verified", auditCompletion: "pending", audit: prefix.audit});
+            } else {
+                expect(prefix.auditUnavailableReason).toContain("Exact audit requires");
+                expect(debugResponse.body.committedSession.internal).not.toHaveProperty("audit");
+            }
+            fail = false;
+            const resumed = await translate(true);
+            expect(resumed).toMatchObject({status: 200, body: {logicalRound: {status: "completed", cursor: 3}}});
+            if (audit) expect(resumed.body.internal.audit.deliveries[0]).toEqual(prefix.audit!.deliveries[0]);
+            const beforeRetry = calculations;
+            const beforeState = await sessions.loadVersioned("adapter");
+            const beforeBalance = await wallet.getBalance("adapter");
+            expect((await translate(true)).body).toEqual(resumed.body);
+            expect(calculations).toBe(beforeRetry);
+            expect(await sessions.loadVersioned("adapter")).toEqual(beforeState);
+            expect(await wallet.getBalance("adapter")).toBe(beforeBalance);
+            expect((await translate(false)).body).not.toHaveProperty("internal");
+        } finally {
+            execute.mockRestore();
+            await server.stop();
+        }
     });
 
     it("rejects a corrupted retained prefix before continuation execution or rehashing", async () => {

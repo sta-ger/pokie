@@ -440,6 +440,8 @@ export class StudioPlayService {
                 const prefix = handled.committedResult;
                 result.session = this.buildSessionView(sessionId, active.manifest, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload, active.session);
                 result.session.studioRequestId = (prefix.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? prefix.requestId;
+                result.session.debug = {...result.session.debug, stateBefore: prefix.previousState, requestId: prefix.requestId,
+                    ...(prefix.audit ? {recording: new ReplayRecorder().describeAudit(prefix.audit)} : {auditUnavailableReason: prefix.auditUnavailableReason})};
             }
         }
 

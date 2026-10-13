@@ -434,6 +434,10 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (result.committedResult) {
             const prefix = result.committedResult;
             committedSession = this.buildSessionResponse(prefix.sessionId, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload);
+            if (includeInternal) {
+                committedSession.internal = {...this.buildInternalSessionData(prefix.state, prefix.previousState, prefix.requestId, prefix.version),
+                    ...(prefix.audit ? {audit: prefix.audit} : {}), ...(prefix.auditUnavailableReason ? {auditUnavailableReason: prefix.auditUnavailableReason} : {})};
+            }
             if (prefix.state.logicalRound) {
                 const progress = projectLogicalRound(prefix.state.logicalRound);
                 committedSession.logicalRound = progress;

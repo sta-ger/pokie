@@ -6193,15 +6193,15 @@ describe("StudioServer", () => {
         it("manual composite failure exposes and records its retained prefix through HTTP", async () => {
             let fail = true;
             let calculations = 0;
-            const model = transactionalRoundGame(() => {
+            const model = {...transactionalRoundGame(() => {
                 calculations++;
-                if (fail && calculations === 2) throw new Error("successor failed");
-            });
+                if (fail && calculations > 1) throw new Error("successor failed");
+            }), getConfigHash: () => "studio-http-prefix-model"};
             const recorder = new StudioRoundRecorder();
             const service = new StudioPlayService(() => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, recorder);
             playServer = new StudioServer({pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: playStudioRoot,
                 jobService: createIsolatedJobService(playStudioRoot), homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", playStudioRoot, new StudioHomeService("1.0.0")),
-                playService: service, initialContext: {mode: "project", projectRoot: "/tmp/logical-slot"}});
+                playService: service, roundRecorder: recorder, replayService: new StudioReplayExecutionService(undefined, () => Promise.resolve(model)), initialContext: {mode: "project", projectRoot: "/tmp/logical-slot"}});
             const address = await playServer.start();
             const base = `http://${address.host}:${address.port}`;
             const created = await post(`${base}/api/project/play/session`, {seed: 1});
@@ -6210,10 +6210,32 @@ describe("StudioServer", () => {
             const failed = await post(`${base}/api/project/play/sessions/${sessionId}/spin`, entry);
             expect(failed).toMatchObject({status: 500, body: {code: "execution-error", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, session: {logicalRound: {status: "pending", cursor: 1}}}});
             expect(recorder.list()).toHaveLength(1);
+            const prefix = (failed.body as {session: {debug: {recording: import("@fromstan/pokie").ReplayDescriptor}}}).session.debug.recording;
+            expect(prefix).toMatchObject({auditCompletion: "pending", audit: {deliveries: [{disposition: {requestId: "entry", version: 2, status: "committed"}}]}});
+            expect(recorder.list()[0].debug!.recording).toEqual(prefix);
+            expect((await get(`${base}/api/project/rounds`)).body).toEqual(recorder.list());
+            // Replay uses the same compatible package without the injected successor failure.
             fail = false;
+            const inspected = await post(`${base}/api/project/replays/inspect-artifact`, JSON.parse(JSON.stringify(prefix)));
+            expect(inspected).toMatchObject({status: 200, body: {recording: prefix, auditStatus: "recorded", artifactWarnings: []}});
+            const started = await post(`${base}/api/project/replays`, {recording: (inspected.body as {recording: unknown}).recording});
+            expect(started.status).toBe(202);
+            const replayId = (started.body as {id: string}).id;
+            const terminal = await pollUntilTerminal(`${base}/api/project/replays/${replayId}`);
+            expect(terminal.body).toMatchObject({status: "completed", descriptor: {auditStatus: "verified", auditCompletion: "pending", audit: prefix.audit}});
+            const download = await fetch(`${base}/api/project/replays/${replayId}/download`);
+            expect(download.status).toBe(200);
+            expect(await download.json()).toMatchObject({auditCompletion: "pending", audit: prefix.audit});
             expect(await post(`${base}/api/project/play/sessions/${sessionId}/spin`, entry)).toMatchObject({status: 200, body: {session: {logicalRound: {status: "completed", cursor: 3}}}});
             expect(recorder.list()).toHaveLength(1);
             expect(recorder.list()[0].logicalRound?.status).toBe("completed");
+            const completed = recorder.list()[0].debug!.recording!;
+            expect(completed.audit!.deliveries[0]).toEqual(prefix.audit!.deliveries[0]);
+            const beforeRetry = calculations;
+            const rounds = (await get(`${base}/api/project/rounds`)).body;
+            expect(await post(`${base}/api/project/play/sessions/${sessionId}/spin`, entry)).toMatchObject({status: 200, body: {session: {debug: {recording: completed}}}});
+            expect(calculations).toBe(beforeRetry);
+            expect((await get(`${base}/api/project/rounds`)).body).toEqual(rounds);
         });
 
         it("a real manual composite disconnect retains the accepted prefix and stops successor work", async () => {
