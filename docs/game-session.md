@@ -283,7 +283,8 @@ command preparation → execution/settlement/save. A legitimate committed retry 
 selection even if a new, syntactically valid bet/mode was supplied. Invalid syntax, incompatible/corrupt
 records and unsupported new selections cannot initiate recovery writes. Restoration exceptions are
 `corrupt-state`, never an invitation to construct defaults. Settlement/save exceptions retain the original
-failure and use the existing compensation path; there is no cross-store atomicity claim.
+failure and use the existing compensation path when independent ports are selected;
+the explicit transactional round store below provides local reference atomicity.
 
 For unchanged packages, the live snapshot policy is captured separately for every built-in composition
 node at `primeSession()`. A custom decorator inside free-game or bet-mode sessions may have no codec or
@@ -291,3 +292,93 @@ an opaque legacy capture. The outer feature counters and selected modes still re
 complete built-in descendants cannot become partial because their parent is live-only. Retained current,
 previous, cached and captured results use this same policy. Without the trusted live object, these
 undeclared compositions reject restoration before constructing a replacement or writing recovery data.
+
+## Durable transactional reference rounds
+
+Select `SqliteTransactionalRoundStore` explicitly for canonical, completely restorable
+sessions. This is a **local test/reference ledger**, not an external wallet or RGS.
+The optional adapter requires Node >=22.16 with `node:sqlite` enabled (implementation
+verification uses Node 24.18). Other package runtimes remain supported for portable,
+browser and compensation paths. Root imports do not load SQLite; unsupported selection
+fails with an upgrade/configuration error and never falls back to memory.
+
+```ts
+import {
+    SqliteTransactionalRoundStore, SpinCommandHandler,
+    captureInitialPokieSessionState,
+} from "@fromstan/pokie";
+
+const store = await SqliteTransactionalRoundStore.open("./rounds.sqlite", {lockWaitMs: 5000});
+const context = {seed: "reference-seed"};
+const session = game.createSession(context);
+await store.initialize("session-1", captureInitialPokieSessionState(
+    context, session, game.getSessionSerializer?.(), true, game,
+), game);
+const handler = new SpinCommandHandler(game, store);
+const result = await handler.execute({kind: "spin", sessionId: "session-1",
+    requestId: "caller-stable-key", expectedVersion: 1, bet: 0.05});
+await store.close();
+// A new process opens the same file and retrieves the detached historical response,
+// without constructing a session or executing the domain engine:
+const reopened = await SqliteTransactionalRoundStore.open("./rounds.sqlite");
+const committed = await reopened.lookupResult("session-1", "caller-stable-key");
+await reopened.close();
+```
+
+Use a supported authored bet; fractional stakes remain numbers without integer conversion.
+Initialization rejects duplicate session IDs, incompatible/invalid state and live-only
+engines. The selected game must declare its complete codec and command authority.
+
+SQLite schema version 1/application ID `0x504f4b49` is validated on open; unknown or
+altered schemas fail, with no automatic migration. `sessions` holds executable state,
+RNG, revision and balance; `requests` holds the original intent and exact JSON response;
+`operations` holds the terminal calculation/settlement record; `ledger` holds debit and
+payout rows. WAL plus `synchronous=FULL`, foreign keys and one `BEGIN IMMEDIATE`
+transaction commit all these participants together. Exceptions before commit roll back
+all writes. Fresh executable objects are reconstructed inside ownership, discarded on
+failure and never published into a live cache. This avoids RNG/feature/selection drift.
+A rolled-back calculation may be attempted again after a crash; arbitrary callback side
+effects outside SQLite are **not** exactly once. One committed logical round and its
+saved result survive. Successful concurrent duplicates calculate only once.
+
+The database write lock is acquired before loading the revision, looking up identity,
+constructing an engine or calculating. It serializes all sessions on that database.
+Different keys with the same `expectedVersion` yield one winner and one `conflict`,
+without loser settlement. Without a version precondition, rounds consume successive
+committed states. Lock acquisition waits asynchronously, bounded by `lockWaitMs`,
+then reports `storage-error` before calculation; retry the same identity after contention
+ends. There is no automatic round retry. An uncertain commit is looked up on the
+connection after rollback/transaction completion; if storage itself cannot confirm it,
+reopen and look up the original key before executing again. Never guess or compensate.
+
+Durable request identity is `(sessionId, requestId, kind, supplied bet, supplied mode,
+supplied expectedVersion)`. Omitted fields are explicit absence, distinct from supplied
+values; later session selections never redefine identity. A changed payload under the
+same session/key returns `identity-conflict` (HTTP 409), during contention or after
+commit. Restore the original intent; a fresh key is not an identity-conflict recovery.
+An identical retry returns its historical response even after later revisions, including
+its original expectedVersion. The same key in different sessions is independent.
+Omitting requestId generates a new internal operation identity for each call: storage
+is still atomic, but caller retries cannot promise duplicate suppression. Responses
+and reads are detached JSON snapshots, including the original debug capture; HTTP
+still projects public and explicitly requested debug data separately.
+
+`TransactionalRoundStore.transact` owns the connection and supplies callback-scoped
+`RoundTransaction` participants. Never retain them, call outer store methods from that
+callback, or combine them with independent repositories/wallets. Outside the callback,
+use readSession/getBalance/lookupResult; initialize is the only direct creation write.
+`close()` rejects new calls, drains accepted work and releases the connection. Ordinary
+errors release transaction locks; a failed rollback quarantines/closes the connection
+while preserving the primary failure. Reopening after process death needs no manual
+lock cleanup. Direct library callers own close; a configured `PokieDevServer` owns it.
+Atomic reconciliation only observes complete results; it performs no compensating writes
+and has no incomplete committed operations to sweep. `primeSession` does not supply
+executable authority to this path.
+
+The existing repository/wallet constructor retains **weaker process-local compensation**,
+including its legacy replay semantics (changed bet/mode may replay an old saved result).
+Implementing existing port interfaces, even over one database, does not make that path
+atomic. `FileSessionRepository` instance-local queues are not cross-process locks.
+Studio Play/scenarios, pre-generated handlers and outcome-source serving retain their
+existing in-memory/compensation contracts. Durable Studio job records do not make Play
+rounds durable. Browser/portable/WASM consumers have no SQLite requirement.

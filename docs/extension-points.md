@@ -59,3 +59,25 @@ member — so overriding a method or two is all you need to write. Both `VideoSl
 ## Headless runtime contract
 
 The public root exports `SessionRuntimeHandling`, `SessionRuntime`, `SessionCommand`, `SessionCommandResult`, `RepositoryCommandHandling`, `RepositoryCommand`, `GameSessionIdentity`, `SessionStateRestoring`, `SpinCommandHandler`, and the existing repository/codec interfaces. Compose these around `PokieGame` and injected `GameSessionHandling` collaborators; no private imports or new package subpath are required. The maintained consumer example is `tests/v2/fixtures/RuntimeExtension.ts` in the repository; its focused test emits candidate declarations and strictly resolves both root ESM and CJS export conditions. Custom durable sessions explicitly promise a complete codec and validate opaque state before recovery; built-in subclasses do not inherit a completeness promise for added hidden state.
+
+### Transactional round storage
+
+`TransactionalRoundStore` is the explicit canonical round boundary. Its transaction
+callback receives `RoundTransaction` (versioned sessions, result repository, operation
+log and local ledger) tied to one owning transaction. Implementations must acquire
+cross-process ownership before loading/constructing/calculating, preserve supplied intent
+identity, roll back non-played results/exceptions, commit the whole tuple before success,
+return detached historical results and drain accepted calls on close. Existing independent
+port implementations do not gain this contract by sharing a database filename.
+
+`SqliteTransactionalRoundStore.open(filename, {lockWaitMs})` is the durable WAL/FULL
+reference implementation, lazily loading optional Node SQLite. `ReferenceRoundLedger`
+is a callback-owned **test/reference** participant; it cannot make external wallets ACID,
+and forbids separate compensation. Public root ESM/CJS declarations include these APIs;
+browser/portable entry points remain independent. See
+[configuration, schema, identity and recovery](game-session.md#durable-transactional-reference-rounds).
+`new SpinCommandHandler(game, store, captureOptions)` uses the existing `SessionRuntime`
+and capture/authority contracts. Direct initialize/readSession/lookupResult/close APIs
+support reopen without domain execution. A server's `transactionalRoundStore` option
+accepts exclusive ownership; pre-generated/outcome-source and Studio Play remain on
+separate, weaker settlement paths.

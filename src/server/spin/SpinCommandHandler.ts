@@ -1,3 +1,4 @@
+import type {TransactionalRoundStore} from "../storage/TransactionalRoundStore.js";
 import {captureLiveSessionAuthority, type LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
 import {validateOperationRecord, validateRetryResult} from "../../runtime/internal/validateRecoveryData.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
@@ -93,10 +94,9 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 //     left reflecting a partially-applied attempt.
 // A production deployment that needs real durable atomicity across the wallet, SessionRepository,
 // and idempotencyRepository — surviving a process crash or a failed compensating write — is
-// responsible for providing it itself, typically by implementing WalletPort/SessionRepository/
-// IdempotencyRepository (or a subset sharing state) over one transactional store and committing the
-// relevant writes together at that layer; this handler's own compensation is a correctness
-// improvement over doing nothing, not a substitute for that.
+// must select the explicit `new SpinCommandHandler(game, transactionalRoundStore)` composition.
+// The store owns one transaction and every participating adapter. Independently configured ports,
+// even backed by the same database, remain on this weaker compensation path.
 //
 // Optimistic locking: when sessionRepository additionally implements VersionedSessionRepository (see
 // isVersionedSessionRepository.ts — InMemorySessionRepository/FileSessionRepository both do), the
@@ -145,6 +145,8 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // WalletTransactionInspecting/SpinOperationLeasing) rather than ever trusting its own queue as sufficient
 // authority on its own.
 export class SpinCommandHandler implements SpinCommandHandling, RepositoryCommandHandling {
+    private readonly transactionalStore?: TransactionalRoundStore;
+    private atomicExecution = false;
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
     private readonly wallet: TransactionalWalletPort;
@@ -160,6 +162,10 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined; readonly record?: string; readonly authority: LiveSessionAuthority}>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
+    /** Explicit atomic composition; the store owns every participant, never an external wallet. */
+    constructor(game: PokieGame, store: TransactionalRoundStore, options?: {
+        captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string;
+    });
     // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
     // "Multi-instance safety" section) — defaults to false, the safe posture for any deployment that
     // can't rule out a second SpinCommandHandler instance sharing these same stores. Set it to true only
@@ -200,8 +206,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     );
     constructor(
         game: PokieGame,
-        sessionRepository: SessionRepository,
-        wallet: TransactionalWalletPort,
+        sessionRepository: SessionRepository | TransactionalRoundStore,
+        wallet?: TransactionalWalletPort | {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string},
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
         operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
         // Disambiguated at runtime below: a boolean here is overload 1's singleInstanceDeployment; an
@@ -214,6 +220,22 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         sessionCapturePolicyMode: SessionCaptureMode = "partial",
         pokieVersion = "unknown",
     ) {
+        if ("transact" in sessionRepository) {
+            if (arguments.length > 3 || (wallet !== undefined && (wallet === null || typeof wallet !== "object" ||
+                Object.keys(wallet).some(key => !["captureDebugSessionData", "sessionCapturePolicyMode", "pokieVersion"].includes(key)) || "getBalance" in wallet))) {
+                throw new Error("Transactional round store owns every participant; only capture options may accompany it.");
+            }
+            this.transactionalStore = sessionRepository;
+            const store = sessionRepository;
+            const options = wallet as {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string} | undefined;
+            const forbidden = (): Promise<never> => Promise.reject(new Error("Atomic participants are owned exclusively by the round store."));
+            sessionRepository = {load: async id => (await store.readSession(id))?.state, save: forbidden};
+            wallet = {getBalance: id => store.getBalance(id), setBalance: forbidden, debit: forbidden, credit: forbidden, reverse: forbidden};
+            captureDebugSessionData = options?.captureDebugSessionData ?? true;
+            sessionCapturePolicyMode = options?.sessionCapturePolicyMode ?? "partial";
+            pokieVersion = options?.pokieVersion ?? "unknown";
+        }
+        if (wallet === undefined || !("debit" in wallet)) throw new Error("SpinCommandHandler requires a wallet or an explicit transactional round store.");
         const legacyReconciliationService =
             typeof singleInstanceDeploymentOrLegacyReconciliationService === "boolean" ? undefined : singleInstanceDeploymentOrLegacyReconciliationService;
         const singleInstanceDeployment =
@@ -226,16 +248,23 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         this.operationLog = operationLog;
         // Precedence: an explicit reconciliationService — whichever overload it arrived through — always
         // wins; only when none was supplied at all does singleInstanceDeployment shape the default build.
-        this.reconciliationService =
+        this.reconciliationService = this.transactionalStore === undefined ?
             legacyReconciliationService ??
             reconciliationService ??
-            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game, sessionId => this.liveSessions.get(sessionId)?.authority);
+            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game, sessionId => this.liveSessions.get(sessionId)?.authority) : {
+                reconcileOne: async (sessionId, requestId) => ({
+                    status: await this.transactionalStore!.lookupResult(sessionId, requestId) === undefined ? "no-action-needed" : "already-committed",
+                    sessionId, requestId, reason: "Atomic storage contains only complete commits; SQLite rolls back abandoned transactions. No compensation is performed.",
+                }),
+                reconcileAll: () => Promise.resolve([]),
+            };
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
         this.pokieVersion = pokieVersion;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void {
+        if (this.transactionalStore !== undefined) return;
         this.liveSessions.set(sessionId, {session, committedVersion, authority: captureLiveSessionAuthority(session)});
     }
 
@@ -264,6 +293,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     // singleInstanceDeployment: true (see the constructor's own doc comment and the class doc comment's
     // "Multi-instance safety" section) — this method itself has no separate say in that.
     public reconcileOne(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
+        if (this.transactionalStore !== undefined) return this.reconciliationService.reconcileOne(sessionId, requestId);
         const invalid = validateRepositoryCommand({sessionId, requestId});
         if (invalid !== undefined) return Promise.reject(new Error(invalid));
         return this.enqueue(sessionId, async () => {
@@ -321,6 +351,21 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid !== undefined) return Promise.resolve({status: "invalid-command", sessionId: typeof command?.sessionId === "string" ? command.sessionId : "", reason: invalid});
         const {sessionId, requestId, expectedVersion, bet, mode} = command;
+        if (this.transactionalStore !== undefined) {
+            return this.transactionalStore.transact(command, (transaction, intent) => {
+                // Always reconstruct authoritative state inside ownership. A rolled-back mutable
+                // object never escapes or enters the outer handler's live cache.
+                const inner = new SpinCommandHandler(this.game, transaction.sessions, transaction.ledger,
+                    transaction.results, transaction.operations, false, undefined,
+                    this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
+                inner.atomicExecution = true;
+                return inner.dispatch(intent);
+            }).then(result => {
+                if (result.status !== "played") return result;
+                const invalid = validateRetryResult(result, this.game, sessionId, result.requestId!);
+                return invalid === undefined ? result : {...invalid, sessionId};
+            });
+        }
         return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode));
     }
 
@@ -427,6 +472,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         // after losing the live object could restart an RNG or finite feature
         // stream.  Do not turn that uncertainty into a paid spin.  Records
         // without the identity/capability envelope have already been rejected above.
+        if (this.atomicExecution && state.executionState !== "durably-restorable") return {status: "restoration-unsupported", sessionId,
+            reason: "Atomic rounds require complete durable executable state."};
         let resolvedSession: ReturnType<SpinCommandHandler["resolveExecutableSession"]>;
         try {
             resolvedSession = this.resolveExecutableSession(sessionId, state, version);
@@ -713,6 +760,10 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
             return cloneSessionData(result);
         } catch (error) {
+            if (this.atomicExecution) {
+                this.liveSessions.delete(sessionId);
+                throw new RuntimeCommandError(failureCode, error);
+            }
             let compensationFullySucceeded = true;
             // Before play(), the only mutable state this handler owns is the reversible command
             // projection (credits/bet/mode).  Restore it rather than evicting a sound live-only session

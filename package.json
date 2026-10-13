@@ -173,7 +173,8 @@
         "docs/weighted-outcome-library.md",
         "docs/v2-completion/V2C-01.md",
         "docs/v2-completion/V2C-02.md",
-        "docs/v2-completion/V2C-03.md"
+        "docs/v2-completion/V2C-03.md",
+        "docs/v2-completion/V2C-04.md"
     ],
     "dependencies": {
         "commander": "^14.0.3",

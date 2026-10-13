@@ -1,3 +1,5 @@
+import type {TransactionalRoundStore} from "./storage/TransactionalRoundStore.js";
+import {transactionBoundary} from "./storage/internal/transactionBoundary.js";
 import {SessionStateCorruptError} from "./session/FileSessionRepository.js";
 import {validatePersistedSession} from "../runtime/validatePersistedSession.js";
 import crypto from "crypto";
@@ -100,6 +102,7 @@ const DEFAULT_PORT = 3000;
 // `preGeneratedOutcomeLibrary`, both routes 404 exactly like any other unknown route — the existing
 // `/sessions` routes are entirely unaffected either way.
 export class PokieDevServer implements PokieDevServerHandling {
+    private readonly transactionalRoundStore?: TransactionalRoundStore;
     private readonly game: PokieGame;
     private readonly host: string;
     private readonly port: number;
@@ -127,14 +130,28 @@ export class PokieDevServer implements PokieDevServerHandling {
     private readonly preGeneratedSpinCommandHandler: PreGeneratedSpinCommandHandling | undefined;
     private readonly preGeneratedProjector = new PreGeneratedRoundResultProjector();
     private server: http.Server | undefined;
+    private shutdownPromise?: Promise<void>;
+    private readonly pendingRequests = new Set<Promise<void>>();
 
     constructor(game: PokieGame, options: PokieDevServerOptions = {}) {
+        if (options.transactionalRoundStore !== undefined && [options.sessionRepository, options.wallet,
+            options.idempotencyRepository, options.spinOperationLog, options.singleInstanceDeployment,
+            options.preGeneratedOutcomeLibrary, options.preGeneratedSessionRepository, options.preGeneratedIdempotencyRepository,
+            options.preGeneratedRoundRecorder].some(value => value !== undefined)) {
+            throw new Error("transactionalRoundStore owns every participant; independent settlement/reconciliation and pre-generated options are incompatible.");
+        }
+        this.transactionalRoundStore = options.transactionalRoundStore;
         this.game = game;
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
-        this.sessionRepository = options.sessionRepository ?? new InMemorySessionRepository();
+        const store = this.transactionalRoundStore;
+        const forbidden = (): Promise<never> => Promise.reject(new Error("Use the owning transactional round store."));
+        this.sessionRepository = store === undefined ? options.sessionRepository ?? new InMemorySessionRepository() : {
+            load: async id => (await store.readSession(id))?.state, loadVersioned: id => store.readSession(id),
+            save: forbidden, saveVersioned: forbidden,
+        } as import("./session/VersionedSessionRepository.js").VersionedSessionRepository;
         this.usesDefaultWallet = options.wallet === undefined;
-        this.wallet = options.wallet ?? new InMemoryWallet();
+        this.wallet = store === undefined ? options.wallet ?? new InMemoryWallet() : {getBalance: id => store.getBalance(id), setBalance: forbidden};
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.captureDebugSessionData = options.captureDebugSessionData ?? true;
         this.sessionCapturePolicyMode = options.sessionCapturePolicyMode ?? "partial";
@@ -147,7 +164,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         const transactionalWallet = isTransactionalWalletPort(this.wallet)
             ? this.wallet
             : new TransactionalWalletAdapter(this.wallet);
-        this.spinCommandHandler = new SpinCommandHandler(
+        this.spinCommandHandler = store === undefined ? new SpinCommandHandler(
             this.game,
             this.sessionRepository,
             transactionalWallet,
@@ -158,7 +175,10 @@ export class PokieDevServer implements PokieDevServerHandling {
             this.captureDebugSessionData,
             this.sessionCapturePolicyMode,
             this.pokieVersion,
-        );
+        ) : new SpinCommandHandler(this.game, store, {
+            captureDebugSessionData: this.captureDebugSessionData,
+            sessionCapturePolicyMode: this.sessionCapturePolicyMode, pokieVersion: this.pokieVersion,
+        });
 
         if (options.preGeneratedOutcomeLibrary !== undefined) {
             this.assertLibraryMatchesGameManifest(options.preGeneratedOutcomeLibrary, game.getManifest());
@@ -175,13 +195,19 @@ export class PokieDevServer implements PokieDevServerHandling {
     }
 
     public start(): Promise<PokieDevServerAddress> {
+        this.shutdownPromise = undefined;
         return new Promise((resolve, reject) => {
             const server = http.createServer((req, res) => {
-                this.handleRequest(req, res).catch((error) => {
-                    this.sendJson(res, 500, {error: error instanceof Error ? error.message : String(error)});
+                const request = this.handleRequest(req, res).catch((error) => {
+                    if (!res.headersSent && !res.destroyed) this.sendJson(res, 500, {error: error instanceof Error ? error.message : String(error)});
                 });
+                this.pendingRequests.add(request);
+                request.then(() => this.pendingRequests.delete(request), () => this.pendingRequests.delete(request));
             });
-            server.once("error", reject);
+            server.once("error", error => {
+                server.close();
+                (this.transactionalRoundStore?.close() ?? Promise.resolve()).then(() => reject(error), () => reject(error));
+            });
             server.listen(this.port, this.host, () => {
                 const address = server.address();
                 if (address === null || typeof address === "string") {
@@ -195,19 +221,31 @@ export class PokieDevServer implements PokieDevServerHandling {
     }
 
     public stop(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (!this.server) {
-                resolve();
-                return;
-            }
-            this.server.close((error) => {
-                if (error) {
-                    reject(error);
+        this.shutdownPromise ??= this.drainAndClose();
+        return this.shutdownPromise;
+    }
+
+    private async drainAndClose(): Promise<void> {
+        try {
+            await new Promise<void>((resolve, reject) => {
+                if (!this.server) {
+                    resolve();
                     return;
                 }
-                resolve();
+                this.server.close((error) => {
+                    if (error) {
+                        reject(error);
+                        return;
+                    }
+                    resolve();
+                });
             });
-        });
+            // Node may release a disconnected socket before its accepted command finishes.
+            // Drain the handler promises as well as HTTP connections before releasing storage/game.
+            await Promise.allSettled([...this.pendingRequests]);
+        } finally {
+            await this.transactionalRoundStore?.close();
+        }
     }
 
     private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -315,11 +353,11 @@ export class PokieDevServer implements PokieDevServerHandling {
         const session = this.game.createSession(context);
         const sessionId = crypto.randomUUID();
 
-        if (this.usesDefaultWallet) {
+        if (this.transactionalRoundStore === undefined && this.usesDefaultWallet) {
             // No wallet was configured: seed the default InMemoryWallet from this session's own
             // starting credits, same as pokie serve's original out-of-box behavior.
             await this.wallet.setBalance(sessionId, session.getCreditsAmount());
-        } else {
+        } else if (this.transactionalRoundStore === undefined) {
             // A wallet was explicitly configured: it's the sole source of truth for a new session's
             // starting balance (its initialBalance, or whatever a custom WalletPort.getBalance()
             // returns for an id it's never seen) — the session's own default credits never overwrite it.
@@ -327,7 +365,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         const state = captureInitialPokieSessionState(context, session, this.sessionSerializer, this.captureDebugSessionData, this.game);
-        await this.sessionRepository.save(sessionId, state);
+        if (this.transactionalRoundStore !== undefined) await this.transactionalRoundStore.initialize(sessionId, state, this.game);
+        else await this.sessionRepository.save(sessionId, state);
         // Bind the newly-created object to the record that actually committed.  A later handler
         // instance may only reuse a cache carrying this exact version.
         const committedVersion = isVersionedSessionRepository(this.sessionRepository)
@@ -370,12 +409,9 @@ export class PokieDevServer implements PokieDevServerHandling {
             return;
         }
 
-        if (result.status === "conflict") {
-            // A versioned SessionRepository (see VersionedSessionRepository) rejected this attempt's
-            // save because the session's version moved between load and save — e.g. a concurrent
-            // attempt on another PokieDevServer instance sharing this repository committed first.
-            // Every wallet transaction this attempt applied was already reversed by SpinCommandHandler
-            // before returning this, so there's nothing to roll back here; the client should retry.
+        if (result.status === "conflict" || result.status === "identity-conflict") {
+            // Identity reuse requires the original intent; stale-version conflicts are separate.
+            // Atomic losers have no effects. Legacy conflicts have attempted compensation.
             this.sendJson(res, 409, {code: result.status, error: result.reason});
             return;
         }
@@ -401,7 +437,20 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (includeInternal) {
             response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version);
         }
-        this.sendJson(res, 200, response);
+        if (this.transactionalRoundStore === undefined) {
+            this.sendJson(res, 200, response);
+        } else {
+            // Commit already owns the outcome; publication cannot compensate it.
+            const json = JSON.stringify(response);
+            await transactionBoundary(this.transactionalRoundStore, "before:response");
+            await transactionBoundary(this.transactionalRoundStore, "before:response-headers");
+            res.writeHead(200, {"Content-Type": "application/json"});
+            await transactionBoundary(this.transactionalRoundStore, "after:response-headers");
+            await transactionBoundary(this.transactionalRoundStore, "before:response-body");
+            res.end(json);
+            await transactionBoundary(this.transactionalRoundStore, "after:response-body");
+            await transactionBoundary(this.transactionalRoundStore, "after:response");
+        }
     }
 
     // Fails fast, before the server can ever start(): every outcome in a WeightedOutcomeLibrary shares
@@ -558,7 +607,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             this.sendJson(res, 409, {code: rejected.status, error: rejected.reason});
             return;
         }
-        const credits = await this.wallet.getBalance(sessionId);
+        const credits = this.transactionalRoundStore === undefined ? await this.wallet.getBalance(sessionId) : state.credits!;
         const response = this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state));
         if (includeInternal) {
             response.internal = this.buildInternalSessionData(state, undefined, undefined, versioned?.version);

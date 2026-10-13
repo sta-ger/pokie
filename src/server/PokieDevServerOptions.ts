@@ -1,3 +1,4 @@
+import type {TransactionalRoundStore} from "./storage/TransactionalRoundStore.js";
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
 import type {IdempotencyRepository} from "./idempotency/IdempotencyRepository.js";
 import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSessionRepository.js";
@@ -10,6 +11,10 @@ import type {SpinOperationLog} from "./spin/SpinOperationLog.js";
 import type {WalletPort} from "./wallet/WalletPort.js";
 
 export type PokieDevServerOptions = {
+    // Transfers ownership to the server: stop/startup failure drains and closes the store.
+    // Exclusive with separate repositories, wallet, reconciliation options and pre-generated routes.
+    // Local reference ledger only; not an external wallet/RGS transaction.
+    transactionalRoundStore?: TransactionalRoundStore;
     host?: string;
     port?: number;
     sessionRepository?: SessionRepository;

@@ -2889,12 +2889,10 @@ guarantee. Two concrete ways it can fall short:
   error `handle()` rejects with — but it also means the compensation silently didn't happen: the wallet and/or
   `SessionRepository` can be left reflecting a partially-applied attempt.
 
-A production deployment that needs real durable atomicity across the wallet, `SessionRepository`, and
-`idempotencyRepository` — one that survives a process crash or a failed compensating write — is responsible for
-providing it itself, typically by implementing `WalletPort`/`SessionRepository`/`IdempotencyRepository` (or a
-subset of them sharing state) over one transactional store and committing the relevant writes together at that
-layer. `SpinCommandHandler`'s own compensation is a correctness improvement over doing nothing on failure; it is
-not a substitute for that.
+For local reference atomicity, select the explicit `transactionalRoundStore` composition
+[documented below](#selecting-durable-reference-round-storage-from-a-library-server).
+Independent repositories/wallets remain on the compensation path, even when stored in the
+same database. External-wallet ACID requires a separate deployment-owned boundary.
 
 **`SpinReconciliationServicing`** (`reconcileOne(sessionId, requestId)`/`reconcileAll()`) is the shipped,
 v1.3-compatible palliative for exactly the "process crash" gap above — not a substitute for real cross-store
@@ -2906,10 +2904,13 @@ startup, against whatever a durable `SpinOperationLog` carried across a restart)
 record is too recent to safely act on), or an honest `"manual-recovery-required"` — carries a human-readable
 reason; nothing is ever inferred from a checkpoint alone when the wallet supports transaction inspection (see
 `isWalletTransactionInspecting`), and no branch ever re-invokes `session.play()` for an attempt being recovered —
-only already-computed data is ever replayed. True cross-store atomicity (one transactional store spanning wallet
-+ session + idempotency) remains a v2-scale architectural change, not something this palliative attempts.
+only already-computed data is ever replayed. This legacy reconciliation path does not provide
+atomicity; the explicitly selected transactional reference store is a separate configuration.
 
 #### Idempotency and concurrency
+
+This section describes the legacy independently configured ports. The explicit transactional
+store uses stricter payload identity and database ownership, documented below.
 
 Idempotency is a separate, additive `IdempotencyRepository`, keyed by `(sessionId, requestId)`:
 
@@ -3706,7 +3707,9 @@ a gap in coverage.
 Property-based and golden-output testing are implemented, as recorded in the
 [historical v1.3 closeout](v1.3-closeout-report.md#below-priority-infrastructure-gaps--resolved), alongside
 [performance benchmarks](testing.md#benchmarks). The closeout explicitly defers the docs site/playground and
-true cross-store atomicity to v2. Compensation and reconciliation do not provide a cross-store transaction.
+true cross-store atomicity to v2. The optional local transactional reference adapter is now documented
+below; independent external stores remain outside its guarantee. Compensation and reconciliation
+do not provide a cross-store transaction.
 A named expanding/sticky-wilds decorator and organization/npm migration remain future directions; this
 summary assigns no new release commitment. Math Targeting/Optimization is agreed but not implemented, with
 release scope unconfirmed. See the [reviewed status register](audit-corrections/README.md) for partial and
@@ -3715,3 +3718,38 @@ not-found directions, including authoring, analytics, certification, diff, reach
 ## Headless runtime contract
 
 Session API failures carry `code` alongside `error`: invalid-command (400), incompatible-state/corrupt-state/restoration-unsupported (409), storage-error/settlement-error (503), execution-error (500), not-found (404), and the existing conflict/recovery-required distinctions (409). The standalone client preserves failure codes and creates a replacement only after a true 404 or an explicit new-session request, never after corruption or an operational storage failure.
+
+### Selecting durable reference round storage from a library server
+
+`pokie serve` and `pokie dev` keep their existing compensation defaults and expose no
+SQLite flag. Public library composition can select canonical transactional rounds:
+
+```ts
+import {SqliteTransactionalRoundStore, PokieDevServer} from "@fromstan/pokie";
+const store = await SqliteTransactionalRoundStore.open("./rounds.sqlite");
+const server = new PokieDevServer(game, {port: 3000, transactionalRoundStore: store});
+await server.start();
+// POST /sessions with {"seed":"stable"} initializes state/version/reference balance together.
+// POST /sessions/:id/spin with {"requestId":"stable-key","expectedSessionVersion":1,"bet":0.05}
+// GET /sessions/:id reads committed state; ?debug=1 includes the committed revision.
+await server.stop(); // drains accepted transactions and closes its owned store
+```
+
+The store is exclusive with independently configured wallet/session/idempotency/log,
+single-instance reconciliation and pre-generated options. Outcome-source serving rejects
+it explicitly. This is a local **test/reference ledger**, not an external wallet/RGS;
+see [transaction ownership and runtime support](game-session.md#durable-transactional-reference-rounds).
+`identity-conflict` is HTTP 409 and differs from a stale-version `conflict`. Client errors
+preserve its code and original key; do not recover by creating a fresh key. Identical
+committed retries return historical public/debug projections even after later rounds.
+Studio sends no durable caller identity and has no transactional Play guarantee.
+
+The server has no command cancellation API. A disconnect before a complete request body
+is accepted prevents command dispatch. Once dispatched, a round continues to commit or
+roll back under store ownership, even when the client disconnects; response delivery
+cannot reverse a commit. Calculation/storage exceptions before commit abort every local
+participant. After commit, disconnect, lost response or shutdown cannot erase the saved
+result; retry its original identity. Shutdown stops acceptance and waits for the store's
+accepted work before connection/game-runtime release. Listen failures close the owned
+store. Constructor option errors occur before ownership is accepted; callers must close
+the store if construction fails. Callers should await stop before releasing game resources.

@@ -40,5 +40,6 @@ export type SpinCommandResult =
     | {status: "invalid-command" | "incompatible-state" | "corrupt-state" | "restoration-unsupported" | "storage-error" | "settlement-error" | "execution-error"; sessionId: string; reason: string}
     | {status: "blocked"; sessionId: string; reason: string}
     | {status: "not-found"; sessionId: string}
+    | {status: "identity-conflict"; sessionId: string; reason: string}
     | {status: "conflict"; sessionId: string; reason: string}
     | {status: "recovery-required"; sessionId: string; requestId: string; reason: string};
