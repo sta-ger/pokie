@@ -1,4 +1,5 @@
-import type {GameSessionHandling} from "@fromstan/pokie";
+import {AggregateSimulationRunner, SimulationReportBuilder, type GameSessionHandling, type VideoSlotSession} from "@fromstan/pokie";
+import {weightedBlueprint, weightedGame} from "../../../v2/fixtures/WeightedWholeSequenceGame.js";
 import {runChunkedSimulation} from "../../../../src/simulation/parallel/internal/runChunkedSimulation.js";
 
 function createJackpotAwareSession(options: {contributionPerRound?: number; awardEveryNth?: number; awardAmount?: number} = {}): GameSessionHandling {
@@ -35,6 +36,26 @@ function createJackpotAwareSession(options: {contributionPerRound?: number; awar
 }
 
 describe("runChunkedSimulation jackpot statistics", () => {
+    test("zero-round chunks preserve configured unseen and zero-weight coverage from a reused session", async () => {
+        const blueprint = JSON.parse(JSON.stringify(weightedBlueprint)) as typeof weightedBlueprint;
+        if (blueprint.reelSequences?.[0].type !== "weighted") throw new Error("Expected weighted reel");
+        blueprint.reelSequences[0].variants.push({id: "zero", symbols: ["A", "B"], weight: 0});
+        const game = weightedGame(blueprint),
+            session = game.createSession({seed: 1}) as VideoSlotSession;
+        session.play();
+        const before = session.toSessionState();
+        const direct = new AggregateSimulationRunner(session, 0).run().getStatistics();
+        const chunked = await runChunkedSimulation(session, 0, 1);
+        const statistics = chunked.accumulator.getStatistics();
+        expect(statistics).toEqual(direct);
+        expect(statistics.reelSequences![0]).toMatchObject({selections: 0, variants: [
+            {id: "all-A", count: 0, frequency: 0, uncovered: true},
+            {id: "all-B", count: 0, frequency: 0, uncovered: true},
+            {id: "zero", count: 0, frequency: 0, uncovered: false},
+        ]});
+        expect(session.toSessionState()).toEqual(before);
+        expect(new SimulationReportBuilder().build({manifest: game.getManifest(), requestedRounds: 0, statistics, durationMs: 0}).reelSequences).toEqual(direct.reelSequences);
+    });
     // Splitting the same total rounds into more/fewer chunks must never change the merged jackpot totals
     // -- each chunk's own AggregateSimulationRunner.getJackpotStatistics() is already scoped to just that
     // chunk's own rounds (subtractJackpotStatisticsSnapshots), so additively merging N chunks' worth is

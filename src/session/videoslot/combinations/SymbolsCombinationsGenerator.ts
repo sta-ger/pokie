@@ -35,6 +35,11 @@ implements SymbolsCombinationsGenerating<T> {
     public setSelectionContext(context: string): void {
         if (typeof context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(context) || context.includes("\0")) throw new Error("Invalid whole-sequence selection context.");
         this.assertWeightedDefinitionsUnchanged();
+        if (context.startsWith("implicit:")) {
+            const generation = Number(context.slice("implicit:".length));
+            if (!Number.isSafeInteger(generation)) throw new Error("Invalid implicit generation context.");
+            this.implicitGeneration = Math.max(this.implicitGeneration, generation);
+        }
         this.contextRequested = true;
         if (context !== this.context) {
             this.context = context;
@@ -71,9 +76,10 @@ implements SymbolsCombinationsGenerating<T> {
     public validateSelectionState(value: unknown): void {
         this.assertWeightedDefinitionsUnchanged();
         const state = value as ReturnType<SymbolsCombinationsGenerator<T>["getSelectionState"]>;
-        if (!state || typeof state.context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(state.context) || !Array.isArray(state.selections) || !Array.isArray(state.counts) || state.counts.length > this.config.getReelsNumber()) throw new Error("Invalid weighted selection context/state.");
+        if (!state || typeof state.context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(state.context) || state.context.includes("\0") || !Array.isArray(state.selections) || !Array.isArray(state.counts) || state.counts.length > this.config.getReelsNumber()) throw new Error("Invalid weighted selection context/state.");
         if (typeof state.contextRequested !== "boolean") throw new Error("Invalid pending selection context.");
         if (!Number.isSafeInteger(state.implicitGeneration) || state.implicitGeneration < 0) throw new Error("Invalid implicit generation counter.");
+        if (state.context.startsWith("implicit:") && (!Number.isSafeInteger(Number(state.context.slice(9))) || Number(state.context.slice(9)) > state.implicitGeneration)) throw new Error("Unreserved implicit generation context.");
         const seen = new Set<number>();
         for (const selection of state.selections) {
             const sequence = this.config.getSymbolsSequences()[selection.reelIndex];
@@ -113,7 +119,10 @@ implements SymbolsCombinationsGenerating<T> {
 
     public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
         this.validateSequenceDefinitions();
-        if (!this.contextRequested) this.setSelectionContext(`implicit:${++this.implicitGeneration}`);
+        if (!this.contextRequested) {
+            if (this.implicitGeneration === Number.MAX_SAFE_INTEGER) throw new Error("Implicit generation contexts exhausted.");
+            this.setSelectionContext(`implicit:${this.implicitGeneration + 1}`);
+        }
         this.contextRequested = false;
         const arr: T[][] = new Array(this.config.getReelsNumber());
         const stopPositions: number[] = new Array(this.config.getReelsNumber());

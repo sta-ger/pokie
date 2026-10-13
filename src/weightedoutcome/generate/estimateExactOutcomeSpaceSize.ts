@@ -1,4 +1,4 @@
-import {buildSequenceWindows} from "../../session/videoslot/combinations/buildSequenceWindows.js";
+import {isWeightedSymbolsSequence} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import {ForcedSymbolsCombinationsGenerator} from "./internal/ForcedSymbolsCombinationsGenerator.js";
 import type {OutcomeSpaceEstimate} from "./OutcomeSpaceEstimate.js";
@@ -18,7 +18,9 @@ export function estimateExactOutcomeSpaceSize(game: PokieGame): OutcomeSpaceEsti
     }
 
     const probe = game.createExactEnumerationSession(new ForcedSymbolsCombinationsGenerator<string>([]));
-    const reelSizes = probe.getSymbolsSequences().map((sequence) => buildSequenceWindows(sequence, 1).windows.length);
+    const reelSizes = probe.getSymbolsSequences().map(sequence => isWeightedSymbolsSequence(sequence)
+        ? sequence.getVariants().reduce((size, variant) => size + (variant.weight > 0 ? variant.symbols.length : 0), 0)
+        : sequence.getSize());
     const totalOutcomeSpaceSize = reelSizes.reduce((total, size) => total * BigInt(size), BigInt(1));
 
     return {

@@ -1,4 +1,5 @@
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
+import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -48,7 +49,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
     public static validateLogicalRoundProgress(session: GameSessionHandling, round: LogicalRound): void {
         const selections = (session as Partial<VideoSlotSessionHandling>).getSequenceSelections?.();
         const artifacts = round.subrounds[round.cursor - 1]?.artifacts;
-        if (selections?.length && JSON.stringify(selections) !== JSON.stringify(artifacts?.[artifacts.length - 1]?.sequenceSelections)) throw new Error("Retained weighted selections differ from the logical round.");
+        const retained = artifacts?.[artifacts.length - 1]?.sequenceSelections;
+        // Canonical JSON restoration sorts object keys. Compare identity fields, rather than the
+        // incidental insertion order of captured versus restored selection objects.
+        if (selections?.length && !sequenceSelectionsEqual(selections, retained)) throw new Error("Retained weighted selections differ from the logical round.");
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         // Exhaustion is an unfinished stop, not a claim that every feature counter completed.
         if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");

@@ -240,6 +240,12 @@ export class ReelCommand implements CliCommandHandling {
     // "parsheet-unsupported-reel-source" -- can actually export.
     private async executeMaterialize(blueprintPath: string, out: string | undefined, format: ReelGenerateFormat): Promise<number> {
         const blueprint = this.loadBlueprint(blueprintPath) as GameBlueprint;
+        if (blueprint.reelSequences !== undefined) {
+            const error = "Literal reel materialization does not support reelSequences; weighted whole-sequence definitions must be preserved in generated packages.";
+            if (format === "json") console.log(JSON.stringify({blueprintPath, materialized: false, code: "reel-sequences-materialization-unsupported", error}, null, 4));
+            else console.log(error);
+            return 1;
+        }
         const resolution = this.resolveGeneration(blueprint);
 
         if (!resolution.success) {

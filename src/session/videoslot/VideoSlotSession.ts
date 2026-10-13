@@ -66,6 +66,11 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
 
     public setSelectionContext(context: string): void {
         if (typeof context !== "string" || !(/^(implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(context) || context.includes("\0")) throw new Error("Invalid whole-sequence round context.");
+        if (context.startsWith("implicit:")) {
+            const round = Number(context.slice("implicit:".length));
+            if (!Number.isSafeInteger(round)) throw new Error("Invalid implicit round context.");
+            this.implicitRound = Math.max(this.implicitRound, round);
+        }
         this.selectionContext = context;
     }
 
@@ -207,6 +212,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         }
         this.resultValid = false;
         const contract = this.resolveUpcomingCoordinates();
+        if (this.selectionContext === undefined && this.implicitRound === Number.MAX_SAFE_INTEGER) throw new Error("Implicit round contexts exhausted.");
         this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
         this.selectionContext = undefined;
         const generated = this.combinationsGenerator.generateSymbolsCombination();
@@ -247,12 +253,13 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return (this.combinationsGenerator as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
     }
 
-    public toSessionState(): {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number} {
+    public toSessionState(): {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string} {
         const rngState = (this.combinationsGenerator as {getRandomState?: () => unknown}).getRandomState?.();
         const weighted = this.getSymbolsSequences().some(strip => isWeightedSymbolsSequence(strip));
         const generator = this.combinationsGenerator as SymbolsCombinationsGenerator<T>;
         return rngState === undefined ? {} : {rngState, reelStrips: weighted ? generator.getResolvedReelStrips() : this.getSymbolsSequences().map(strip => strip.getSymbols(0, strip.getSize())),
-            ...(weighted ? {sequenceState: generator.getSelectionState(), implicitRound: this.implicitRound} : {})};
+            ...(weighted ? {sequenceState: generator.getSelectionState(), implicitRound: this.implicitRound} : {}),
+            ...(this.selectionContext !== undefined ? {selectionContext: this.selectionContext} : {})};
     }
 
     public validateSessionState(state: unknown): void {
@@ -277,7 +284,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         }
     }
 
-    public fromSessionState(state: {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number}): this {
+    public fromSessionState(state: {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number; selectionContext?: string}): this {
         if (this.isSessionStateRestorable()) this.validateSessionState(state);
         if (typeof state !== "object" || state === null || state.rngState === undefined) {
             if (!this.isSessionStateRestorable() && typeof state === "object" && state !== null) return this;
@@ -289,8 +296,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             if (state.sequenceState !== undefined) {
                 (this.combinationsGenerator as SymbolsCombinationsGenerator<T>).setSelectionState(state.sequenceState);
                 this.implicitRound = state.implicitRound!;
-                this.selectionContext = undefined;
             }
+            this.selectionContext = state.selectionContext;
             if (state.reelStrips !== undefined) this.config.setSymbolsSequences(state.reelStrips.map((strip, index) => isWeightedSymbolsSequence(this.config.getSymbolsSequences()[index]) ? this.config.getSymbolsSequences()[index] : new SymbolsSequence<T>().fromArray(strip)));
             generator.setRandomState(state.rngState);
         }

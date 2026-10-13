@@ -1,5 +1,12 @@
 import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 
+/** Selection identity survives canonical JSON's object-key ordering. Array order remains bound. */
+export function sequenceSelectionsEqual(first: readonly ReelSequenceSelection[] | undefined, second: readonly ReelSequenceSelection[] | undefined): boolean {
+    if (first === undefined || second === undefined) return first === second;
+    if (!Array.isArray(first) || !Array.isArray(second)) return false;
+    return first.length === second.length && first.every((item, index) => item && second[index] && item.reelIndex === second[index].reelIndex && item.variantId === second[index].variantId && item.context === second[index].context);
+}
+
 export function validateSequenceSelections(value: unknown, reels: number, roundId?: string): void {
     if (value === undefined) return;
     if (!Array.isArray(value) || value.length === 0) throw new Error("Invalid sequence selections.");

@@ -1,4 +1,6 @@
 import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
+import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
+import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import {SessionRuntime} from "./SessionRuntime.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 import {restoreFeatureState} from "../server/session/restoreFeatureState.js";
@@ -81,8 +83,8 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             schema = schema.base;
             if (schema.kind === "custom") known = false;
         }
-        const selections = (feature as {sequenceState?: {context?: string; selections?: unknown}} | undefined)?.sequenceState;
-        if (selections && (selections.context !== `logical:${state.logicalRound.id}` || JSON.stringify(selections.selections) !== JSON.stringify(last.artifacts?.[last.artifacts.length - 1]?.sequenceSelections))) return {status: "corrupt-state", reason: "Weighted selections differ from retained logical round."};
+        const selections = (feature as {sequenceState?: {context?: string; selections?: ReelSequenceSelection[]}} | undefined)?.sequenceState;
+        if (selections && (selections.context !== `logical:${state.logicalRound.id}` || !sequenceSelectionsEqual(selections.selections, last.artifacts?.[last.artifacts.length - 1]?.sequenceSelections))) return {status: "corrupt-state", reason: "Weighted selections differ from retained logical round."};
         if (known && (state.logicalRound.mathematicalStatus === "pending") !== pending) return {status: "corrupt-state", reason: "Logical progress differs from executable feature progress."};
         if (state.logicalRound.bet !== state.bet) return {status: "corrupt-state", reason: "Logical entry bet differs from executable selection."};
     }

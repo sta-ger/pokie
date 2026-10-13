@@ -24,6 +24,12 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Executable state must be an object.");
     const state = value as Record<string, unknown>;
+    if (state.selectionContext !== undefined && (typeof state.selectionContext !== "string" ||
+        !(/^(implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(state.selectionContext) || state.selectionContext.includes("\0") ||
+        (state.selectionContext.startsWith("implicit:") && (!Number.isSafeInteger(Number(state.selectionContext.slice(9))) ||
+            (state.implicitRound !== undefined && Number(state.selectionContext.slice(9)) > (state.implicitRound as number)))))) throw new Error("Invalid pending whole-sequence round context.");
+    if (state.featureEntryPending !== undefined && (typeof state.featureEntryPending !== "boolean" ||
+        (state.featureEntryPending && !(typeof state.freeGamesSum === "number" && typeof state.freeGamesNum === "number" && state.freeGamesSum > state.freeGamesNum)))) throw new Error("Invalid pending feature entry.");
     if (schema?.kind === "base" && Object.keys(state).length !== 0) throw new Error("Base-game state must be empty.");
     if (partial && schema?.kind === "seeded-video-slot" && (state.rngState === undefined) !== (state.reelStrips === undefined)) throw new Error("Partial seeded state must omit RNG and reels together.");
     if (!partial && schema?.kind === "seeded-video-slot" && state.rngState === undefined) throw new Error("Required seeded RNG snapshot is missing.");
@@ -38,6 +44,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
         const strips = state.reelStrips as (string | number)[][];
         const selection = state.sequenceState as {context: string; contextRequested: boolean; implicitGeneration: number; selections: import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[]; counts: Record<string, number>[]};
         if (!selection || !Array.isArray(selection.selections) || selection.selections.length !== schema.weightedReels.length || typeof selection.context !== "string" || !Array.isArray(selection.counts) || selection.counts.length !== strips.length || typeof selection.contextRequested !== "boolean" || !Number.isSafeInteger(selection.implicitGeneration) || selection.implicitGeneration < 0 || !Number.isSafeInteger(state.implicitRound) || (state.implicitRound as number) < 0) throw new Error("Missing weighted selection state.");
+        if (selection.context.startsWith("implicit:") && (!Number.isSafeInteger(Number(selection.context.slice(9))) || Number(selection.context.slice(9)) > Math.min(selection.implicitGeneration, state.implicitRound as number))) throw new Error("Unreserved implicit weighted context.");
         if (selection.context !== "initialization") validateSequenceSelections(selection.selections, strips.length);
         for (const reel of schema.weightedReels) {
             const definition = new WeightedSymbolsSequence(reel.variants, schema.symbols);

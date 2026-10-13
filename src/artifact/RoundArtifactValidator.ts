@@ -1,4 +1,4 @@
-import {validateSequenceSelections} from "./validateSequenceSelections.js";
+import {sequenceSelectionsEqual, validateSequenceSelections} from "./validateSequenceSelections.js";
 import {computeRoundArtifactHash} from "./computeRoundArtifactHash.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 import type {RoundStepArtifact} from "./RoundStepArtifact.js";
@@ -65,7 +65,7 @@ implements ValidationRule<RoundArtifact<T>> {
             validateSequenceSelections(artifact.sequenceSelections, artifact.screen.length, artifact.roundId);
             for (const step of artifact.steps) {
                 validateSequenceSelections(step.sequenceSelections, step.screen.length, artifact.roundId);
-                if (JSON.stringify(step.sequenceSelections) !== JSON.stringify(artifact.sequenceSelections)) throw new Error("Step selection differs from retained round selection.");
+                if (!sequenceSelectionsEqual(step.sequenceSelections, artifact.sequenceSelections)) throw new Error("Step selection differs from retained round selection.");
             }
             return issues;
         } catch (error) {

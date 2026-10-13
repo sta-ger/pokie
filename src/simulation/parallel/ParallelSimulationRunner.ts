@@ -124,7 +124,8 @@ export class ParallelSimulationRunner {
                 return Promise.reject(new SimulationCancelledError());
             }
 
-            return workers === 1 ? this.runInProcess() : this.runAcrossWorkers(workers);
+            // Zero rounds still need the model's configured coverage, but have no worker shares.
+            return workers === 1 || this.rounds === 0 ? this.runInProcess(workers) : this.runAcrossWorkers(workers);
         } catch (error) {
             return Promise.reject(error);
         }
@@ -135,7 +136,7 @@ export class ParallelSimulationRunner {
     // in exactly one AggregateSimulationRunner.run() call, identical to calling it directly). A
     // smaller chunkSize is purely an orchestration detail (progress/cancellation granularity for a
     // caller like Studio) that never changes the resulting statistics.
-    private async runInProcess(): Promise<ParallelSimulationResult> {
+    private async runInProcess(workers = 1): Promise<ParallelSimulationResult> {
         const loadGame = this.options.loadGame ?? loadPokieGame;
         const game = await loadGame(this.packageRoot);
         try {
@@ -177,8 +178,8 @@ export class ParallelSimulationRunner {
                 statistics: accumulator.getStatistics(),
                 breakdown,
                 jackpot,
-                workers: 1,
-                workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, 1),
+                workers,
+                workerSeedStrategy: WorkerSeedStrategy.describe(this.options.seed, workers),
                 betMode: this.options.betModeId,
                 stopReason,
                 convergence: convergenceChecker?.buildOutcome(),

@@ -15,6 +15,190 @@ const variants = [{id: "a", symbols: ["A", "A"], weight: 1}, {id: "b", symbols: 
 const json = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 describe("canonical weighted whole sequences", () => {
+    it("selects anew for a base round and successive purchased features across direct, restored and audited delivery", () => {
+        const blueprint = json(weightedBlueprint);
+        blueprint.scatters = ["S"];
+        blueprint.mechanics = {freeGames: {scatterSymbol: "S", awardsByCount: {1: 0}}};
+        blueprint.betModes = [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 5, forcedFreeGames: 3}];
+        const game = weightedGame(blueprint),
+            seed = 42;
+        const stepwise = game.createSession({seed}) as api.VideoSlotWithBetModesSession;
+        const composite = game.createSession({seed}) as api.VideoSlotWithBetModesSession;
+        const direct = game.createSession({seed}) as api.VideoSlotWithBetModesSession;
+        const runtimes = [new api.SessionRuntime(stepwise), new api.SessionRuntime(composite)];
+        const commands: api.SessionCommand[] = [];
+        for (const [index, id] of ["first", "purchase", "purchase-again"].entries()) {
+            const command: api.SessionCommand = {kind: "spin", roundId: id, ...(index ? {mode: "buy"} : {}), delivery: "composite", maxSubrounds: 10};
+            commands.push(command);
+            const complete = runtimes[1].execute(command);
+            let result = runtimes[0].execute({...command, delivery: "stepwise"});
+            expect(result.status).toBe("played");
+            if (result.status !== "played") throw new Error("Expected played entry");
+            expect(stepwise.getSequenceSelections()[0].context).toBe(`logical:${id}`);
+            expect(api.validateLogicalRound(result.logicalRound)).toBeUndefined();
+            const restored = game.createSession({seed}) as api.VideoSlotWithBetModesSession;
+            restored.fromSessionState(json(stepwise.toSessionState()));
+            restored.setCreditsAmount(stepwise.getCreditsAmount());
+            restored.setBet(stepwise.getBet());
+            const resumed = new api.SessionRuntime(restored, result.logicalRound);
+            while (result.logicalRound?.status === "pending") {
+                const continuation: api.SessionCommand = {kind: "spin", continuation: {roundId: id, cursor: result.logicalRound.deliveryCursor}, delivery: "stepwise"};
+                result = runtimes[0].execute(continuation);
+                expect(resumed.execute(continuation)).toEqual(result);
+                if (result.status !== "played") throw new Error("Expected played continuation");
+                expect(api.validateLogicalRound(result.logicalRound)).toBeUndefined();
+            }
+            expect(complete.status).toBe("played");
+            expect(restored.toSessionState()).toEqual(stepwise.toSessionState());
+            expect(composite.toSessionState()).toEqual(stepwise.toSessionState());
+            expect(stepwise.getSequenceStatistics()[0].selections).toBe(index + 1);
+            if (index) direct.setBetMode("buy");
+            for (let spin = 0; spin < (index ? 3 : 1); spin++) direct.play();
+            expect(direct.getSequenceStatistics()).toEqual(stepwise.getSequenceStatistics());
+            expect(direct.getSymbolsCombination().toMatrix()).toEqual(stepwise.getSymbolsCombination().toMatrix());
+            expect(direct.getWinAmount()).toBe(stepwise.getWinAmount());
+            expect(direct.getCreditsAmount()).toBe(stepwise.getCreditsAmount());
+            expect(direct.toSessionState()).toMatchObject({base: {base: {rngState: (stepwise.toSessionState().base as {base: {rngState: number}}).base.rngState}}});
+            resumed.release();
+        }
+        const recorder = new api.ReplayRecorder(),
+            audited = game.createSession({seed}) as api.VideoSlotWithBetModesSession;
+        const descriptor = recorder.recordAudit(game, audited, commands, {status: "calculated", sessionId: "purchases", durability: "detached"}, {seed});
+        expect(audited.toSessionState()).toEqual(stepwise.toSessionState());
+        expect(new api.AuditRoundReplay().replay(game, json(descriptor.audit!)).verification).toBe("verified");
+        recorder.releaseAuditSession(audited);
+        runtimes.forEach(runtime => runtime.release());
+    });
+
+    it.each(["logical:requested", "implicit:7"])("restores a pending context %s and its next RNG draws", context => {
+        const game = weightedGame(),
+            first = game.createSession({seed: 19}) as api.VideoSlotSession;
+        first.play();
+        first.setSelectionContext(context);
+        const saved = json(first.toSessionState()),
+            restored = game.createSession({seed: 19}) as api.VideoSlotSession;
+        expect(saved.selectionContext).toBe(context);
+        api.validateExecutableState(saved, first.getSessionStateSchema());
+        restored.fromSessionState(saved);
+        first.play();
+        restored.play();
+        expect(restored.getSequenceSelections()[0].context).toBe(context);
+        expect(restored.toSessionState()).toEqual(first.toSessionState());
+        expect(restored.getSymbolsCombination().toMatrix()).toEqual(first.getSymbolsCombination().toMatrix());
+        first.play();
+        restored.play();
+        expect(restored.toSessionState()).toEqual(first.toSessionState());
+        const invalid = {...saved, selectionContext: "implicit:0"};
+        expect(() => restored.fromSessionState(invalid)).toThrow("context");
+        if (context.startsWith("implicit:")) expect(() => restored.fromSessionState({...saved, implicitRound: 0})).toThrow("context");
+    });
+
+    it("captures a newly forced feature before its first draw without treating it as a continuation", () => {
+        const blueprint = json(weightedBlueprint);
+        blueprint.scatters = ["S"];
+        blueprint.mechanics = {freeGames: {scatterSymbol: "S", awardsByCount: {1: 0}}};
+        const game = weightedGame(blueprint),
+            session = game.createSession({seed: 9}) as api.VideoSlotWithFreeGamesSession;
+        session.play();
+        session.setFreeGamesSum(2);
+        session.setSelectionContext("logical:forced");
+        const saved = json(session.toSessionState());
+        expect(saved.featureEntryPending).toBe(true);
+        const restored = game.createSession({seed: 9}) as api.VideoSlotWithFreeGamesSession;
+        restored.fromSessionState(saved);
+        restored.setCreditsAmount(session.getCreditsAmount());
+        for (let round = 0; round < 2; round++) {
+            session.play();
+            restored.play();
+            expect(restored.toSessionState()).toEqual(session.toSessionState());
+            expect(restored.getSequenceSelections()[0].context).toBe("logical:forced");
+            expect(restored.getSequenceStatistics()[0].selections).toBe(2);
+        }
+    });
+
+    it.each(["terminal-only", "multi-step", "bounded-exhaustion"])("validates, reconstructs and audits retained weighted %s cascades", kind => {
+        const generated = weightedGame({...weightedBlueprint, paytable: {}});
+        const game: api.PokieGame = {...generated, createSession: context => {
+            const session = generated.createSession(context) as api.VideoSlotSession & api.CascadeResultProviding;
+            session.getCascadeResult = () => {
+                const screen = session.getSymbolsCombination().toMatrix(),
+                    evaluation = new api.WinEvaluationResult<string>();
+                const steps = kind === "terminal-only" ? [] : [new api.CascadeStep(screen, evaluation, [], []), new api.CascadeStep(screen, evaluation, [], [])];
+                return new api.CascadeResult(screen, screen, steps, {maxCascadeStepsExceeded: kind === "bounded-exhaustion"}, {}, {}, kind === "bounded-exhaustion" ? undefined : evaluation);
+            };
+            return session;
+        }};
+        const session = game.createSession({seed: 8}) as api.VideoSlotSession,
+            runtime = new api.SessionRuntime(session);
+        let result = runtime.execute({kind: "spin", roundId: "cascade", delivery: "stepwise"});
+        if (result.status !== "played" || !result.logicalRound) throw new Error("Expected logical cascade");
+        expect(api.validateLogicalRound(result.logicalRound)).toBeUndefined();
+        const retained = json(result.logicalRound);
+        expect(() => new api.SessionRuntime(session, retained)).not.toThrow();
+        while (result.logicalRound.status === "pending") {
+            result = runtime.execute({kind: "spin", continuation: {roundId: "cascade", cursor: result.logicalRound.deliveryCursor}, delivery: "stepwise"});
+            if (result.status !== "played" || !result.logicalRound) throw new Error("Expected cascade delivery");
+        }
+        expect(api.validateLogicalRound(result.logicalRound)).toBeUndefined();
+        const template = api.buildRoundArtifactFromSession(session, {roundId: "cascade", provenance: {game: game.getManifest(), pokieVersion: "1"}});
+        const artifact = api.buildLogicalRoundArtifact(result.logicalRound, template);
+        artifact.steps.forEach(step => expect(step.sequenceSelections).toEqual(session.getSequenceSelections()));
+        const recorder = new api.ReplayRecorder(),
+            audited = game.createSession({seed: 8});
+        const descriptor = recorder.recordAudit(game, audited, [{kind: "spin", roundId: "cascade", delivery: "composite", maxSubrounds: 10}], {status: "calculated", sessionId: "cascade", durability: "detached"}, {seed: 8});
+        expect(new api.AuditRoundReplay().replay(game, json(descriptor.audit!)).verification).toBe("verified");
+        recorder.releaseAuditSession(audited);
+        runtime.release();
+    });
+
+    it("reserves explicitly used implicit contexts for both session and standalone allocation", () => {
+        const config = weightedConfig();
+        const session = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(3)));
+        session.setSelectionContext("implicit:1");
+        session.play();
+        session.play();
+        expect(session.getSequenceSelections()[0].context).toBe("implicit:2");
+        expect(session.getSequenceStatistics()[0].selections).toBe(2);
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(3));
+        generator.setSelectionContext("implicit:1");
+        generator.generateSymbolsCombination();
+        const restored = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(3));
+        restored.setSelectionState(json(generator.getSelectionState()));
+        expect(() => restored.setSelectionState({...generator.getSelectionState(), implicitGeneration: 0})).toThrow("Unreserved");
+        restored.setRandomState(generator.getRandomState());
+        restored.generateSymbolsCombination();
+        expect(restored.getSequenceSelections()[0].context).toBe("implicit:2");
+        expect(restored.getSequenceStatistics()[0].selections).toBe(2);
+        restored.setSelectionContext("logical:pending-generator");
+        const pending = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(3));
+        pending.setSelectionState(json(restored.getSelectionState()));
+        pending.setRandomState(restored.getRandomState());
+        expect(pending.generateSymbolsCombination().toMatrix()).toEqual(restored.generateSymbolsCombination().toMatrix());
+        expect(pending.getSelectionState()).toEqual(restored.getSelectionState());
+        expect(pending.getSequenceSelections()[0].context).toBe("logical:pending-generator");
+    });
+
+    it.each([Number.MIN_VALUE, 1e-200])("rejects positive stop/joint mass underflow for weight %s", weight => {
+        const reel = new api.WeightedSymbolsSequence(variants.map((variant, index) => ({...variant, weight: index ? 1 : weight})));
+        expect(reel.getProbabilities()[0]).toBeGreaterThan(0);
+        expect(() => api.SymbolsCombinationsAnalyzer.getWeightedCombinations([reel, reel], 1)).toThrow("not representable in binary64");
+    });
+
+    it("estimates exact and positive weighted stop cardinality without reading or constructing windows", async () => {
+        const game = weightedGame(),
+            probe = game.createExactEnumerationSession!(new ForcedSymbolsCombinationsGenerator([]));
+        const exact = new api.SymbolsSequence().fromArray(Array.from({length: 1000}, () => "A"));
+        const weighted = new api.WeightedSymbolsSequence([...variants, {id: "zero", symbols: ["A", "B"], weight: 0}]);
+        const reads = [jest.spyOn(exact, "getSymbols"), jest.spyOn(weighted, "getSymbols")];
+        reads.forEach(read => read.mockImplementation(() => {
+            throw new Error("Must not enumerate windows");
+        }));
+        probe.getSymbolsSequences = () => [exact, weighted];
+        const large = {...game, createExactEnumerationSession: () => probe};
+        expect(api.estimateExactOutcomeSpaceSize(large)).toMatchObject({reelSizes: [1000, 4], totalOutcomeSpaceSize: BigInt(4000)});
+        await expect(api.generateExactWeightedOutcomeLibrary({libraryId: "capped", game: large, pokieVersion: "1", maxOutcomeSpaceSize: BigInt(10)})).rejects.toThrow();
+        reads.forEach(read => expect(read).not.toHaveBeenCalled());
+    });
     it.each([0, 1, 2, 3])("selects 1:3 boundary %i as one intact array", draw => {
         const definition = new api.WeightedSymbolsSequence(variants);
         const calls: number[][] = [];
@@ -441,6 +625,9 @@ describe("canonical weighted whole sequences", () => {
             expect(retry.status).toBe("played");
             if (retry.status === "played") expect(retry.state.featureState).toEqual(result.state.featureState);
             const saved = (await store.readSession("weighted"))!.state;
+            const reordered = json(saved) as api.PokieSessionState & {featureState: {sequenceState: {selections: api.ReelSequenceSelection[]}}};
+            reordered.featureState.sequenceState.selections = reordered.featureState.sequenceState.selections.map(({context: retainedContext, reelIndex, variantId}) => ({variantId, context: retainedContext, reelIndex}));
+            expect(api.validatePersistedSession(reordered, game)).toBeUndefined();
             await files.save("weighted", saved);
             expect((await files.load("weighted"))!.featureState).toEqual(result.state.featureState);
             const tampered = json(saved) as api.PokieSessionState & {featureState: {sequenceState: {context: string}}};

@@ -362,10 +362,18 @@ export class SymbolsCombinationsAnalyzer {
     }
 
     public static getWeightedCombinations<T extends string | number | symbol>(sequences: SymbolsSequenceDescribing<T>[], rows: number): {combination: T[][]; probability: number}[] {
+        const requirePositiveMass = (probability: number): number => {
+            if (!(probability > 0) || !Number.isFinite(probability)) throw new Error("A positive joint variant/stop probability is not representable in binary64; use exact rational weights or runtime selection.");
+            return probability;
+        };
         const events = sequences.map(sequence => {
-            if (!(isWeightedSymbolsSequence(sequence))) return Array.from({length: sequence.getSize()}, (_, stop) => ({window: sequence.getSymbols(stop, rows), probability: 1 / sequence.getSize()}));
-            if (sequence.getVariants().some((variant, index) => variant.weight > 0 && sequence.getProbabilities()[index] === 0)) throw new Error("A positive weighted probability is below binary64 precision; use exact rational weights or runtime selection.");
-            return sequence.getVariants().flatMap((variant, index) => Array.from({length: variant.symbols.length}, (_, stop) => ({window: Array.from({length: rows}, (_, row) => variant.symbols[(stop + row) % variant.symbols.length]), probability: sequence.getProbabilities()[index] / variant.symbols.length})));
+            if (!(isWeightedSymbolsSequence(sequence))) return Array.from({length: sequence.getSize()}, (_, stop) => ({window: sequence.getSymbols(stop, rows), probability: requirePositiveMass(1 / sequence.getSize())}));
+            const probabilities = sequence.getProbabilities();
+            return sequence.getVariants().flatMap((variant, index) => {
+                if (variant.weight === 0) return [];
+                const probability = requirePositiveMass(probabilities[index] / variant.symbols.length);
+                return Array.from({length: variant.symbols.length}, (_, stop) => ({window: Array.from({length: rows}, (_, row) => variant.symbols[(stop + row) % variant.symbols.length]), probability}));
+            });
         });
         const combinations = new Map<string, {combination: T[][]; probability: number}>();
         const visit = (reel: number, grid: T[][], probability: number): void => {
@@ -376,7 +384,7 @@ export class SymbolsCombinationsAnalyzer {
                 else combinations.set(key, {combination: grid, probability});
                 return;
             }
-            for (const event of events[reel]) if (event.probability > 0) visit(reel + 1, [...grid, event.window], probability * event.probability);
+            for (const event of events[reel]) visit(reel + 1, [...grid, event.window], requirePositiveMass(probability * event.probability));
         };
         visit(0, [], 1);
         return [...combinations.values()];

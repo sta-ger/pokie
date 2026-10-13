@@ -9,7 +9,10 @@ import {
     SimulationWorkerCoordinatorRunOptions,
     SimulationWorkerRequest,
     SimulationWorkerResult,
+    AggregateSimulationRunner,
+    SimulationReportBuilder,
 } from "@fromstan/pokie";
+import {weightedBlueprint, weightedGame} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -80,6 +83,21 @@ function createFakeGame(): PokieGame & {createdWith: (PokieGameContext | undefin
 type PokieGameContext = {seed?: string | number};
 
 describe("ParallelSimulationRunner (workers=1, in-process)", () => {
+    test.each([1, 4])("zero-round public results and reports retain configured coverage with %i workers", async workers => {
+        const blueprint = JSON.parse(JSON.stringify(weightedBlueprint)) as typeof weightedBlueprint;
+        if (blueprint.reelSequences?.[0].type !== "weighted") throw new Error("Expected weighted reel");
+        blueprint.reelSequences[0].variants.push({id: "zero", symbols: ["A", "B"], weight: 0});
+        const game = weightedGame(blueprint);
+        const expected = new AggregateSimulationRunner(game.createSession({seed: "zero"}), 0).run().getStatistics();
+        const coordinator = jest.fn();
+        const result = await new ParallelSimulationRunner("/fake/weighted", 0, {seed: "zero", workers, loadGame: () => Promise.resolve(game), createWorkerCoordinator: coordinator}).run();
+        expect(coordinator).not.toHaveBeenCalled();
+        expect(result.workers).toBe(workers);
+        expect(result.statistics.reelSequences).toEqual(expected.reelSequences);
+        expect(result.statistics.reelSequences![0].variants.map(variant => [variant.count, variant.frequency, variant.uncovered])).toEqual([[0, 0, true], [0, 0, true], [0, 0, false]]);
+        const report = new SimulationReportBuilder().build({manifest: result.manifest, requestedRounds: 0, statistics: result.statistics, durationMs: 0});
+        expect(JSON.parse(JSON.stringify(report)).reelSequences).toEqual(expected.reelSequences);
+    });
     test("releases every real package-runtime snapshot after repeated completed runs", async () => {
         const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-parallel-runtime-lease-"));
         const packageRoot = path.join(workDir, "game");

@@ -70,6 +70,22 @@ import {
 } from "../../../../../cli/studio-client/src/domain/blueprintFormOps";
 
 describe("blueprintFormOps", () => {
+    it("preserves malformed retained reels while traversing and renaming valid symbol references", () => {
+        const blueprint: Record<string, unknown> = {symbols: ["A", "B"], paytable: {A: {2: 4}}, reelSequences: [
+            null, 7, [], {type: "weighted", variants: [null, false, {symbols: null}, {id: "valid", symbols: ["A", 9, null], weight: 1}]},
+            {type: "exact", symbols: ["A", "B"]}, {type: "weighted", variants: "invalid"},
+        ]};
+        const before = JSON.stringify(blueprint);
+        expect(getSymbolDeletionBlockers(blueprint, "A")).toEqual(["reelSequences[3]", "reelSequences[4]", "paytable"]);
+        expect(renameSymbol(blueprint, "A", "B")).toContain("already exists");
+        expect(JSON.stringify(blueprint)).toBe(before);
+        expect(renameSymbol(blueprint, "A", "AA")).toBeUndefined();
+        expect(blueprint.reelSequences).toEqual([
+            null, 7, [], {type: "weighted", variants: [null, false, {symbols: null}, {id: "valid", symbols: ["AA", 9, null], weight: 1}]},
+            {type: "exact", symbols: ["AA", "B"]}, {type: "weighted", variants: "invalid"},
+        ]);
+        expect(blueprint.paytable).toEqual({AA: {2: 4}});
+    });
     describe("symbols", () => {
         it("adds, sets, removes, duplicates, and moves symbols", () => {
             const b: Record<string, unknown> = {symbols: ["A", "B"]};

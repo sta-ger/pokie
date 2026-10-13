@@ -5,16 +5,26 @@ import {SymbolsTable} from "../../../../../../cli/studio-client/src/components/b
 import {createRoutedFakeFetch} from "../../testUtils/fakeFetch";
 import {renderWithProviders} from "../../testUtils/renderWithProviders";
 
-function Harness() {
-    const [blueprint, setBlueprint] = useState<Record<string, unknown>>({symbols: ["A"], paytable: {A: {3: 1}}});
-    return <SymbolsTable blueprint={blueprint} mutate={(change) => setBlueprint((current) => {
+function Harness({initial = {symbols: ["A"], paytable: {A: {3: 1}}}}: {initial?: Record<string, unknown>}) {
+    const [blueprint, setBlueprint] = useState<Record<string, unknown>>(initial);
+    return <><output aria-label="Retained draft">{JSON.stringify(blueprint)}</output><SymbolsTable blueprint={blueprint} mutate={(change) => setBlueprint((current) => {
         const draft = JSON.parse(JSON.stringify(current)) as Record<string, unknown>;
         change(draft);
         return draft;
-    })} />;
+    })} /></>;
 }
 
 describe("SymbolsTable", () => {
+    it("renders malformed retained reels and displays a failed rename diagnostic without changing the symbol", async () => {
+        const user = userEvent.setup();
+        renderWithProviders(<Harness initial={{symbols: ["A", "B"], reelSequences: [null, {type: "weighted", variants: [null, {symbols: ["A"]}]}]}} />);
+        const input = screen.getByRole("textbox", {name: "Symbol 1 id"});
+        await user.clear(input);
+        await user.type(input, "B");
+        await user.tab();
+        expect(await screen.findByText(/already exists/)).toBeVisible();
+        expect(JSON.parse(screen.getByLabelText("Retained draft").textContent!)).toEqual({symbols: ["A", "B"], reelSequences: [null, {type: "weighted", variants: [null, {symbols: ["A"]}]}]});
+    });
     it("falls back to the rendered server filesystem browser when native artwork picking is unavailable", async () => {
         const user = userEvent.setup();
         const {fetchImpl, calls} = createRoutedFakeFetch({

@@ -43,8 +43,8 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     const cascadeSteps = cascade?.getCascadeSteps();
     const terminal = cascade?.getTerminalEvaluation();
     let sources: RoundArtifactStepSource<T>[] | undefined;
-    if (cascade && terminal) sources = [...(cascadeSteps ?? []).map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult()})), {screen: cascade.getFinalScreen(), winEvaluationResult: terminal}];
-    else if (cascadeSteps?.length) sources = cascadeSteps.map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult()}));
+    if (cascade && terminal) sources = [...(cascadeSteps ?? []).map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult(), ...selectionEvidence})), {screen: cascade.getFinalScreen(), winEvaluationResult: terminal, ...selectionEvidence}];
+    else if (cascadeSteps?.length) sources = cascadeSteps.map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult(), ...selectionEvidence}));
     const artifact = buildRoundArtifact({
         roundId: options.roundId,
         provenance: options.provenance,
