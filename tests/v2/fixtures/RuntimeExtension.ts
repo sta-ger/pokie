@@ -1,5 +1,5 @@
 import {
-    VideoSlotConfig, VideoSlotSession, VideoSlotWinCalculator,
+    GameSession, VideoSlotConfig, VideoSlotSession, VideoSlotWinCalculator,
     SymbolsCombinationsGenerator, SeededRandomNumberGenerator, ReelsSymbolsSequencesGenerator,
     InMemorySessionRepository, InMemoryWallet, SpinCommandHandler,
     captureInitialPokieSessionState, resolveGameSessionIdentity,
@@ -71,4 +71,30 @@ export async function extensionRound(): Promise<SpinCommandResult> {
     if (result.status === "played") result.state.featureState satisfies unknown;
     else if (result.status !== "not-found") result.reason satisfies string;
     return result;
+}
+
+// Pre-existing extension signatures: no new schema, capability or restoration declarations.
+export class LegacyRoundSession extends GameSession {
+    private round = 0;
+
+    public override play(): void {
+        super.play();
+        this.round++;
+    }
+
+    public toSessionState(): {round: number} {
+        return {round: this.round};
+    }
+
+    public fromSessionState(state: {round: number}): this {
+        this.round = state.round;
+        return this;
+    }
+}
+
+export function legacyRoundGame(): PokieGame {
+    return {
+        getManifest: () => ({id: "legacy-round", name: "Legacy round", version: "1"}),
+        createSession: () => new LegacyRoundSession(),
+    };
 }

@@ -380,6 +380,37 @@ describe("StudioPlayService", () => {
         }
     });
 
+    it("plays an unchanged CJS GameSession subclass and preserves restrictions and opaque snapshots", async () => {
+        const game = publicRuntime.roundGame();
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Subclass Play session creation failed");
+            const id = created.session.sessionId;
+            const active = Reflect.get(service, "active") as {spinHandler: SpinCommandHandler};
+            const repository = Reflect.get(active.spinHandler, "sessionRepository") as InMemorySessionRepository;
+            const initial = (await repository.load(id))!;
+            expect(initial).toMatchObject({stateSchema: {kind: "custom"}, featureState: {round: 0}, executionState: "live-only"});
+            initial.commandCapabilities = {bets: [1]};
+            await repository.save(id, initial);
+            active.spinHandler.primeSession(id, active.spinHandler.getLiveSession(id)!, 2);
+            for (const round of [1, 2]) {
+                expect(await service.spin(id, undefined, 1)).toMatchObject({status: "ok", session: {debug: {stateAfter: {featureState: {round}, commandCapabilities: {bets: [1]}}}}});
+                const before = await repository.loadVersioned(id);
+                const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(game, "createSession")];
+                expect(await service.spin(id, undefined, 2)).toMatchObject({status: "error", code: "invalid-command"});
+                expect(await repository.loadVersioned(id)).toEqual(before);
+                writes.forEach(spy => {
+                    expect(spy).not.toHaveBeenCalled();
+                    spy.mockRestore();
+                });
+            }
+        } finally {
+            service.reset();
+        }
+    });
+
     it("plays and searches scenarios with an unchanged getManifest/createSession-only package", async () => {
         const {session, getAttempts} = createControllableVideoSlotSession(attempt => attempt >= 3 ? "A" : undefined);
         const game: PokieGame = {getManifest: () => manifest, createSession: () => session};

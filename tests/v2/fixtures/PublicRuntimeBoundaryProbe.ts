@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import type * as PublicApi from "@fromstan/pokie";
 import type {PokieGame, PokieSessionState, SpinCommandResult, VideoSlotSessionHandling} from "@fromstan/pokie";
+import type {legacyRoundGame} from "./RuntimeExtension.js";
 import type {legacyComposedGame} from "./LegacyComposedGame.js";
 
 type Api = typeof PublicApi;
 
 /** Runs under native Node with import/require package resolution, not Jest's source mapper. */
-export async function probe(host: Api, guest: Api, legacyGame: typeof legacyComposedGame): Promise<void> {
+export async function probe(host: Api, guest: Api, legacyGame: typeof legacyComposedGame, roundGame: typeof legacyRoundGame): Promise<void> {
     assert.notEqual(host.VideoSlotSession, guest.VideoSlotSession);
     assert.notEqual(host.AbstractVideoSlotSessionDecorator, guest.AbstractVideoSlotSessionDecorator);
     for (const composition of ["free-games", "bet-modes", "bet-free", "free-bet"] as const) {
@@ -26,6 +27,7 @@ export async function probe(host: Api, guest: Api, legacyGame: typeof legacyComp
         },
     };
     await playLive(host, opaqueGame);
+    await playLive(host, roundGame());
     // Complete children must keep their own strict RNG codec under live-only parents.
     for (const location of ["current", "cached-state", "cached-previous", "captured-state", "captured-previous"] as const) {
         for (const corruption of ["mode", "restriction", "rng", "injected-rng"] as const) {

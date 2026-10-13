@@ -20,6 +20,7 @@ import {
     SessionRepository,
     SessionStateRestoring,
     SeededRandomNumberGenerator,
+    SpinCommandHandler,
     StakeAmountDetermining,
     SymbolsCombinationsGenerator,
     SymbolsSequence,
@@ -374,6 +375,53 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
                 construction.mockRestore();
                 await restarted.stop();
             }
+        }
+    });
+
+    it("serves an unchanged CJS GameSession subclass, retains restrictions and refuses reconstruction after loss", async () => {
+        const game = publicRuntime.roundGame(),
+            repository = new InMemorySessionRepository();
+        expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
+        const address = await server.start(),
+            url = `http://${address.host}:${address.port}`;
+        let sessionId: string;
+        try {
+            const created = await postJson(`${url}/sessions`);
+            expect(created.status).toBe(201);
+            sessionId = created.body.sessionId as string;
+            const initial = (await repository.load(sessionId))!;
+            expect(initial).toMatchObject({stateSchema: {kind: "custom"}, featureState: {round: 0}, executionState: "live-only"});
+            initial.commandCapabilities = {bets: [1]};
+            await repository.save(sessionId, initial);
+            const handler = Reflect.get(server, "spinCommandHandler") as SpinCommandHandler;
+            handler.primeSession(sessionId, handler.getLiveSession(sessionId)!, 2);
+            for (const [round, requestId] of [[1, "first"], [2, "second"]] as const) {
+                const played = await postJson(`${url}/sessions/${sessionId}/spin`, {bet: 1, requestId});
+                expect(played.status).toBe(200);
+                expect(await postJson(`${url}/sessions/${sessionId}/spin`, {requestId})).toEqual(played);
+                expect((await getJson(`${url}/sessions/${sessionId}`)).status).toBe(200);
+                expect(await repository.load(sessionId)).toMatchObject({featureState: {round}, commandCapabilities: {bets: [1]}});
+                const before = await repository.loadVersioned(sessionId);
+                expect(await postJson(`${url}/sessions/${sessionId}/spin`, {bet: 2})).toMatchObject({status: 400, body: {code: "invalid-command"}});
+                expect(await repository.loadVersioned(sessionId)).toEqual(before);
+            }
+        } finally {
+            await server.stop();
+        }
+        const restarted = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository});
+        const nextAddress = await restarted.start(),
+            nextUrl = `http://${nextAddress.host}:${nextAddress.port}`;
+        const before = await repository.loadVersioned(sessionId!);
+        const writes = [jest.spyOn(game, "createSession"), jest.spyOn(repository, "saveVersioned")];
+        try {
+            expect(await getJson(`${nextUrl}/sessions/${sessionId!}`)).toMatchObject({status: 409, body: {code: "restoration-unsupported"}});
+            expect(await postJson(`${nextUrl}/sessions/${sessionId!}/spin`)).toMatchObject({status: 409, body: {code: "restoration-unsupported"}});
+            expect(await repository.loadVersioned(sessionId!)).toEqual(before);
+            writes.forEach(spy => expect(spy).not.toHaveBeenCalled());
+        } finally {
+            writes.forEach(spy => spy.mockRestore());
+            await restarted.stop();
         }
     });
 

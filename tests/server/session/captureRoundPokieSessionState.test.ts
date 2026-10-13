@@ -62,6 +62,17 @@ function createFakeVideoSlotSession(): GameSessionHandling & VideoSlotSessionHan
 const emptyPreviousState: PokieSessionState = {bet: 5, win: 0};
 
 describe("captureRoundPokieSessionState", () => {
+    it("carries stored selection restrictions without aliasing the record or rebuilding model capabilities", () => {
+        const session = {...createFakeSession(), getAvailableBets: () => [5, 10]};
+        const previousState: PokieSessionState = {bet: 5, win: 0, commandCapabilities: {bets: [5], modes: ["base"]}};
+        const state = captureRoundPokieSessionState(undefined, session, previousState);
+        expect(state.commandCapabilities).toEqual(previousState.commandCapabilities);
+        const mutable = state.commandCapabilities as {bets: number[]; modes: string[]};
+        mutable.bets.push(10);
+        mutable.modes.push("ante");
+        expect(previousState.commandCapabilities).toEqual({bets: [5], modes: ["base"]});
+    });
+
     it("omits roundPayload entirely when no serializer is given", () => {
         const state = captureRoundPokieSessionState(undefined, createFakeSession(), emptyPreviousState);
 

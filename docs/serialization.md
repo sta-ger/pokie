@@ -284,7 +284,9 @@ this workflow does not migrate historical snapshots or silently reset them.
 construction or RNG draws. Repository validation uses this declaration or process-local authority
 captured from a trusted primed session, including for HTTP reads, cached results and direct reconciliation.
 Persisted capability lists may restrict the trusted set but may never expand it; the current bet and captured
-mode must belong to those lists. A record claiming durable recovery without declarations is `incompatible-state`;
+mode must belong to those lists. Each subsequent round retains the validated lists in persisted, cached
+and captured recovery snapshots; successful play and recovery never broaden them back to model capabilities.
+A record claiming durable recovery without declarations is `incompatible-state`;
 a live-only record without retained authority is `restoration-unsupported`. Forged selections are
 `corrupt-state`. Existing `getManifest()`/`createSession()` packages remain playable through their primed
 live session without adding methods. Initial capture marks them `live-only` when either declaration is
@@ -379,3 +381,11 @@ built-in seeded numeric codec. This does not certify reconstruction: loss of liv
 new commands and undeclared-codec recovery before construction or recovery writes. Complete seeded
 children and declared codecs retain their existing strict validation. At each retained built-in mode
 node, the selected mode must also satisfy any applicable validated stored capability restriction.
+
+The plain built-in `GameSession` retains its strict empty executable codec. Existing subclasses with
+`toSessionState(): {round: number}` and `fromSessionState(state: {round: number}): this` keep those
+signatures through the public ESM/CJS declarations. An inherited base codec does not describe their
+custom state: without an explicit complete codec they capture a custom, opaque, live-only snapshot.
+An unchanged package can play that subclass through direct execution, primed repository commands,
+HTTP and Studio without new declarations. Losing its trusted live state refuses reconstruction and
+undeclared-codec recovery before construction or recovery writes.

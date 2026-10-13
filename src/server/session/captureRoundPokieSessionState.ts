@@ -64,6 +64,9 @@ export function captureRoundPokieSessionState(
     const state = captureBaseSessionState(context, session);
     state.capturePolicy = capturePolicy;
     state.identity = previousState.identity;
+    // The validated record may restrict the model's selections for this session.
+    // Carry that authority through settlement, retries and captured recovery state.
+    if (previousState.commandCapabilities !== undefined) state.commandCapabilities = previousState.commandCapabilities;
     if (previousState.executionState === "live-only") state.executionState = "live-only";
 
     if (previousState.initialPayload !== undefined) {

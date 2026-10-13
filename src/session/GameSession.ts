@@ -1,6 +1,6 @@
 import {VideoSlotConfig} from "./videoslot/VideoSlotConfig.js";
 import {VideoSlotWithFreeGamesConfig} from "./videoslot/VideoSlotWithFreeGamesConfig.js";
-import type {SessionStateRestoring} from "./SessionStateRestoring.js";
+import type {SessionStateRestoring, SessionStateSchema} from "./SessionStateRestoring.js";
 import {GameSessionConfig} from "./GameSessionConfig.js";
 import type {GameSessionConfigRepresenting} from "./GameSessionConfigRepresenting.js";
 import type {GameSessionHandling} from "./GameSessionHandling.js";
@@ -23,8 +23,10 @@ export class GameSession implements GameSessionHandling, SessionStateRestoring {
         this.credits = config.getCreditsAmount();
     }
 
-    public getSessionStateSchema(): {readonly kind: "base"} {
-        return {kind: "base"};
+    public getSessionStateSchema(): SessionStateSchema {
+        // Subclasses may already own opaque snapshot methods. Only the plain built-in
+        // session promises the empty codec; inherited methods do not certify extensions.
+        return {kind: this.constructor === GameSession ? "base" : "custom"};
     }
 
     public usesConfig(config: GameSessionConfigRepresenting): boolean {
@@ -37,7 +39,7 @@ export class GameSession implements GameSessionHandling, SessionStateRestoring {
         return this.constructor === GameSession && resolved && this.winCalculator.constructor === NoWinAmount;
     }
 
-    public toSessionState(): Record<string, never> {
+    public toSessionState(): unknown {
         return {};
     }
 
@@ -45,7 +47,7 @@ export class GameSession implements GameSessionHandling, SessionStateRestoring {
         if (typeof state !== "object" || state === null || Array.isArray(state) || Object.keys(state).length !== 0) throw new Error("Invalid base game state.");
     }
 
-    public fromSessionState(state: Record<string, never>): this {
+    public fromSessionState(state: unknown): this {
         this.validateSessionState(state);
         return this;
     }
