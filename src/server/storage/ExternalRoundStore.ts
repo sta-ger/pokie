@@ -6,11 +6,13 @@ import type {SpinCommandResult} from "../spin/SpinCommandResult.js";
 
 export interface ExternalRoundPreparation extends VersionedSessionState {
     readonly balance: number;
+    /** The same captured envelope that the store binds to this request identity. */
+    readonly command: RepositoryCommand;
 }
 
 export interface ExternalRoundCandidate {
     readonly result: SpinCommandResult;
-    readonly payout?: number;
+    readonly settlement?: {readonly debit: number; readonly payout: {readonly kind: "debit" | "credit"; readonly amount: number}};
 }
 
 /** Durable local intent plus independent provider reconciliation; explicitly NOT distributed ACID.

@@ -6,10 +6,10 @@ import {WalletInsufficientFundsError} from "../../../../src/server/wallet/Wallet
  * Faults affect acknowledgement, never local POKIE intent storage. No detached work or timers.
  */
 export class ControllableDurableWallet implements DurableWalletPort {
-    public readonly capabilities = {durableIdempotency: true, authoritativeInspection: true, immutableTransactionIdentity: true} as const;
+    public readonly capabilities = {durableIdempotency: true, authoritativeInspection: true, immutableTransactionIdentity: true, terminalRejection: true} as const;
     public fault?: "before-debit" | "after-debit" | "before-credit" | "after-credit" | "hang-debit" | "hang-credit";
     public inspection?: DurableWalletTransaction | "throw" | "hang";
-    public onDispatch?: (kind: "debit" | "credit") => void;
+    public onDispatch?: (kind: "debit" | "credit") => void | Promise<void>;
     private readonly database: DatabaseSync;
     private constructor(database: DatabaseSync) {
         this.database = database;
@@ -18,7 +18,7 @@ export class ControllableDurableWallet implements DurableWalletPort {
         const {DatabaseSync: Database} = await import("node:sqlite");
         const db = new Database(filename);
         db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=1000;");
-        db.exec("CREATE TABLE IF NOT EXISTS balances (session TEXT PRIMARY KEY, balance REAL NOT NULL); CREATE TABLE IF NOT EXISTS transactions (session TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, amount REAL NOT NULL, balance REAL NOT NULL, reversed INTEGER NOT NULL, PRIMARY KEY(session, id))");
+        db.exec("CREATE TABLE IF NOT EXISTS rejections (session TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, amount REAL NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(session, id)); CREATE TABLE IF NOT EXISTS balances (session TEXT PRIMARY KEY, balance REAL NOT NULL); CREATE TABLE IF NOT EXISTS transactions (session TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, amount REAL NOT NULL, balance REAL NOT NULL, reversed INTEGER NOT NULL, PRIMARY KEY(session, id))");
         return new ControllableDurableWallet(db);
     }
     public getBalance(sessionId: string): Promise<number> {
@@ -49,7 +49,7 @@ export class ControllableDurableWallet implements DurableWalletPort {
             this.database.exec("COMMIT");
             return this.getBalance(session);
         } catch (error) {
-            this.database.exec("ROLLBACK");
+            if (this.database.isTransaction) this.database.exec("ROLLBACK");
             return Promise.reject(error); 
         }
     }
@@ -57,9 +57,15 @@ export class ControllableDurableWallet implements DurableWalletPort {
         if (this.inspection === "hang") return new Promise(() => { /* Store timeout owns the bounded wait. */ });
         if (this.inspection === "throw") return Promise.reject(new Error("Provider inspection disconnected."));
         if (this.inspection) return Promise.resolve(this.inspection);
+        const rejected = this.database.prepare("SELECT * FROM rejections WHERE session=? AND id=?").get(session, id);
+        if (rejected) return Promise.resolve({status: "rejected", kind: rejected.kind as "debit" | "credit", amount: Number(rejected.amount), reason: String(rejected.reason)});
         const row = this.database.prepare("SELECT * FROM transactions WHERE session=? AND id=?").get(session, id);
         if (!row) return Promise.resolve({status: "not-applied"});
         return Promise.resolve(row.reversed ? {status: "compensated"} : {status: "committed", kind: row.kind as "debit" | "credit", amount: Number(row.amount), balance: Number(row.balance)});
+    }
+    public transactions(session: string): Array<{id: string; kind: "debit" | "credit"; amount: number; balance: number}> {
+        return this.database.prepare("SELECT id, kind, amount, balance FROM transactions WHERE session=? ORDER BY rowid").all(session)
+            .map(row => ({id: String(row.id), kind: row.kind as "debit" | "credit", amount: Number(row.amount), balance: Number(row.balance)}));
     }
     public counts(session: string): {debit: number; credit: number} {
         return {debit: Number(this.database.prepare("SELECT COUNT(*) AS n FROM transactions WHERE session=? AND kind='debit'").get(session)!.n),
@@ -71,8 +77,8 @@ export class ControllableDurableWallet implements DurableWalletPort {
     private balance(session: string): number {
         return Number(this.database.prepare("SELECT balance FROM balances WHERE session=?").get(session)?.balance ?? 1000); 
     }
-    private change(session: string, id: string, kind: "debit" | "credit", amount: number): Promise<number> {
-        this.onDispatch?.(kind);
+    private async change(session: string, id: string, kind: "debit" | "credit", amount: number): Promise<number> {
+        await this.onDispatch?.(kind);
         if (this.fault === `before-${kind}`) {
             this.fault = undefined;
             return Promise.reject(new Error("Disconnected before dispatch.")); 
@@ -85,13 +91,20 @@ export class ControllableDurableWallet implements DurableWalletPort {
         let next: number;
         try {
             if (!Number.isFinite(amount) || amount < 0) throw new Error("Invalid amount.");
+            const rejected = this.database.prepare("SELECT * FROM rejections WHERE session=? AND id=?").get(session, id);
+            if (rejected) throw new Error(String(rejected.reason));
             const old = this.database.prepare("SELECT * FROM transactions WHERE session=? AND id=?").get(session, id);
             if (old) {
                 if (old.kind !== kind || old.amount !== amount || old.reversed) throw new Error("Conflicting/reversed permanent identity.");
                 next = Number(old.balance);
             } else {
                 const balance = this.balance(session);
-                if (kind === "debit" && amount > balance) throw new WalletInsufficientFundsError(session, amount, balance);
+                if (kind === "debit" && amount > balance) {
+                    const error = new WalletInsufficientFundsError(session, amount, balance);
+                    this.database.prepare("INSERT INTO rejections VALUES (?, ?, ?, ?, ?)").run(session, id, kind, amount, error.message);
+                    this.database.exec("COMMIT");
+                    return Promise.reject(error);
+                }
                 next = kind === "debit" ? balance - amount : balance + amount;
                 if (!Number.isFinite(next) || next < 0) throw new Error("Invalid resulting balance.");
                 this.database.prepare("INSERT INTO balances VALUES (?, ?) ON CONFLICT(session) DO UPDATE SET balance=excluded.balance").run(session, next);
@@ -99,7 +112,7 @@ export class ControllableDurableWallet implements DurableWalletPort {
             }
             this.database.exec("COMMIT");
         } catch (error) {
-            this.database.exec("ROLLBACK");
+            if (this.database.isTransaction) this.database.exec("ROLLBACK");
             return Promise.reject(error); 
         }
         if (this.fault === `after-${kind}`) {

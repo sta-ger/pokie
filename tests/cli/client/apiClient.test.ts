@@ -1,4 +1,4 @@
-import {createSession, FetchLike, getSession, spin} from "../../../cli/client/apiClient.js";
+import {SessionCommandError, createSession, FetchLike, getSession, spin} from "../../../cli/client/apiClient.js";
 
 type FakeCall = {url: string; init?: {method?: string; headers?: Record<string, string>; body?: string}};
 
@@ -183,4 +183,12 @@ describe("apiClient", () => {
             expect(new URL(call.url).search).toBe("");
         }
     });
+    it.each([undefined, "safe-to-retry", "untrusted"])("carries only an explicit confirmed pre-effect retry disposition (%s)", async retryDisposition => {
+        const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {code: "settlement-error", error: "Provider unavailable", retryDisposition}}));
+        await expect(spin(fetchImpl, "http://api.test", "s1", "round")).rejects.toMatchObject({
+            code: "settlement-error", retryDisposition: retryDisposition === "safe-to-retry" ? "safe-to-retry" : undefined,
+        });
+        await expect(spin(fetchImpl, "http://api.test", "s1", "round")).rejects.toBeInstanceOf(SessionCommandError);
+    });
+
 });

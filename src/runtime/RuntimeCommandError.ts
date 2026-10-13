@@ -5,7 +5,7 @@ export class RuntimeCommandError extends Error {
     public readonly code: RuntimeFailureCode;
     public readonly cause: unknown;
 
-    constructor(code: RuntimeFailureCode, cause: unknown) {
+    constructor(code: RuntimeFailureCode, cause: unknown, public readonly retryDisposition?: "safe-to-retry") {
         super(cause instanceof Error ? cause.message : String(cause));
         this.name = "RuntimeCommandError";
         this.code = code;

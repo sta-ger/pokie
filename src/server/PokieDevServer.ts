@@ -443,7 +443,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (result.status !== "played") {
             const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
             const status = statusCodes[result.status] ?? 409;
-            this.sendJson(res, status, {code: result.status, error: result.reason});
+            this.sendJson(res, status, {code: result.status, error: result.reason, ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {})});
             return;
         }
 

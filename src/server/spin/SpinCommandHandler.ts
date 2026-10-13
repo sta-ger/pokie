@@ -357,15 +357,16 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
     public execute(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const sessionId = typeof command?.sessionId === "string" ? command.sessionId : "";
-        return this.dispatch(command, signal).catch(error => ({status: error instanceof RuntimeCommandError ? error.code : "execution-error",
+        return this.dispatch(command, signal).catch(error => ({...((error instanceof RuntimeCommandError && error.retryDisposition) ? {retryDisposition: error.retryDisposition} : {}), status: error instanceof RuntimeCommandError ? error.code : "execution-error",
             sessionId, reason: error instanceof Error ? error.message : String(error)}));
     }
 
     private dispatch(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid !== undefined) return Promise.resolve({status: "invalid-command", sessionId: typeof command?.sessionId === "string" ? command.sessionId : "", reason: invalid});
+        command = Object.freeze({...command});
         const {sessionId, requestId, expectedVersion, bet, mode} = command;
-        if (this.externalStore !== undefined) return this.externalStore.execute(command, this.game, snapshot => this.prepareExternal(command, snapshot), signal);
+        if (this.externalStore !== undefined) return this.externalStore.execute(command, this.game, snapshot => this.prepareExternal(snapshot), signal);
         if (this.transactionalStore !== undefined) {
             return this.transactionalStore.transact(command, (transaction, intent) => {
                 // Always reconstruct authoritative state inside ownership. A rolled-back mutable
@@ -384,14 +385,22 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode));
     }
 
-    private async prepareExternal(command: RepositoryCommand, snapshot: ExternalRoundPreparation): Promise<ExternalRoundCandidate> {
+    private async prepareExternal(snapshot: ExternalRoundPreparation): Promise<ExternalRoundCandidate> {
+        const command = snapshot.command;
         let state = cloneSessionData(snapshot.state),
             version = snapshot.version;
         const ledger = new InMemoryWallet(snapshot.balance);
-        let payout: number | undefined;
+        let debit: number | undefined,
+            payout: {kind: "debit" | "credit"; amount: number} | undefined;
+        const debitCall = ledger.debit.bind(ledger);
+        ledger.debit = (sessionId, transactionId, amount) => {
+            if (debit === undefined) debit = amount;
+            else payout = {kind: "debit", amount};
+            return debitCall(sessionId, transactionId, amount);
+        };
         const credit = ledger.credit.bind(ledger);
         ledger.credit = (sessionId, transactionId, amount) => {
-            payout = amount; // Preserve the canonical handler's exact delta calculation, including tiny stakes.
+            payout = {kind: "credit", amount}; // Preserve the canonical handler's exact delta calculation, including tiny stakes.
             return credit(sessionId, transactionId, amount);
         };
         const inner = new SpinCommandHandler(this.game, {
@@ -406,7 +415,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         } as import("../session/VersionedSessionRepository.js").VersionedSessionRepository, ledger,
         undefined, undefined, false, undefined, this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
         inner.atomicExecution = true;
-        return {result: await inner.dispatch(command), payout};
+        const result = await inner.dispatch(command);
+        return {result, settlement: debit !== undefined && payout !== undefined ? {debit, payout} : undefined};
     }
 
     private async reconcileExternal(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {

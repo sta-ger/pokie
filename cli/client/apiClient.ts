@@ -66,8 +66,8 @@ export async function spin(
         body,
     });
     if (!response.ok) {
-        const errorBody = (await safeJson(response)) as {error?: string; code?: string} | undefined;
-        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`);
+        const errorBody = (await safeJson(response)) as {error?: string; code?: string; retryDisposition?: unknown} | undefined;
+        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`, errorBody?.retryDisposition === "safe-to-retry" ? "safe-to-retry" : undefined);
     }
     return (await response.json()) as SessionResponse;
 }
@@ -81,7 +81,7 @@ async function safeJson(response: {json(): Promise<unknown>}): Promise<unknown> 
 }
 
 export class SessionCommandError extends Error {
-    constructor(public readonly code: string, message: string) {
+    constructor(public readonly code: string, message: string, public readonly retryDisposition?: "safe-to-retry") {
         super(`${code}: ${message}`);
         this.name = "SessionCommandError";
     }

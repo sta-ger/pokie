@@ -89,4 +89,22 @@ describe("independent durable wallet contract", () => {
         expect(isDurableWalletPort({...wallet, capabilities: wallet.capabilities})).toBe(false);
         expect(isDurableWalletPort(wallet)).toBe(true);
     });
+    it("permanent insufficient rejection survives restart and prevents every late duplicate", async () => {
+        await expect(wallet.debit("s", "rejected", 101)).rejects.toThrow();
+        expect(await wallet.inspectTransaction("s", "rejected")).toMatchObject({status: "rejected", kind: "debit", amount: 101});
+        wallet.close();
+        const reopened = await ControllableDurableWallet.open(path.join(directory, "provider.sqlite"));
+        await reopened.credit("s", "unrelated", 10);
+        await expect(reopened.debit("s", "rejected", 101)).rejects.toThrow();
+        await expect(reopened.debit("s", "rejected", 0.05)).rejects.toThrow();
+        await expect(reopened.credit("s", "rejected", 101)).rejects.toThrow();
+        expect(await reopened.getBalance("s")).toBe(110);
+        expect(reopened.counts("s")).toEqual({debit: 0, credit: 1});
+        reopened.close();
+    });
+    it("requires a declared terminal rejection fence before admitting strong settlement", () => {
+        Object.assign(wallet, {capabilities: {...wallet.capabilities, terminalRejection: undefined}});
+        expect(isDurableWalletPort(wallet)).toBe(false);
+    });
+
 });

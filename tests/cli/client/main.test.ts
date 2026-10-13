@@ -169,7 +169,7 @@ describe("Player session boot", () => {
             init: expect.objectContaining({method: "POST"}),
         });
     });
-    it.each(["transport", "recovery-required", "identity-conflict"])("retries %s with retained round identity/payload and prevents a new charge", async code => {
+    it.each(["transport", "recovery-required", "identity-conflict", "settlement-error", "execution-error", "storage-error"])("retries %s with retained round identity/payload and prevents a new charge", async code => {
         const calls: Array<{requestId: string; bet?: number}> = [];
         let failure = true;
         window.fetch = jest.fn((url: string, init?: {body?: string}) => {
@@ -225,6 +225,39 @@ describe("Player session boot", () => {
         await flushPromises();
         await flushPromises();
         expect(submitted).toEqual([pending]);
+    });
+
+    it.each(["settlement-error", "execution-error"])("recovers Retry and fresh Spin after confirmed pre-effect %s", async code => {
+        const calls: Array<{requestId: string}> = [];
+        let failure = true;
+        window.fetch = jest.fn((url: string, init?: {body?: string}) => {
+            if (url === "/config") return Promise.resolve(response({apiBaseUrl: "http://api.test"}));
+            if (url.endsWith("/spin")) {
+                calls.push(JSON.parse(init!.body!));
+                if (failure) return Promise.resolve({ok: false, status: 503, json: () => Promise.resolve({code, error: "Confirmed no effect", retryDisposition: "safe-to-retry"})});
+            }
+            return Promise.resolve(response(session("stable-session")));
+        }) as unknown as typeof window.fetch;
+        await import("../../../cli/client/main.js");
+        await flushPromises();
+        await flushPromises();
+        const spinButton = document.getElementById("spin-button") as HTMLButtonElement;
+        spinButton.click();
+        await flushPromises();
+        await flushPromises();
+        expect(spinButton.disabled).toBe(false);
+        expect((document.getElementById("spin-reconnect-button") as HTMLButtonElement).disabled).toBe(false);
+        expect(window.localStorage.getItem("pokie.player.pendingRound:http://api.test:stable-session")).toBeNull();
+        failure = false;
+        (document.getElementById("spin-retry-button") as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+        expect(calls[1].requestId).not.toBe(calls[0].requestId);
+        expect(spinButton.disabled).toBe(false);
+        spinButton.click();
+        await flushPromises();
+        await flushPromises();
+        expect(calls).toHaveLength(3);
     });
 
 });

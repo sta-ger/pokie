@@ -299,4 +299,209 @@ describe("public transactional runtime compositions", () => {
         expect(await store.readSession("s")).toEqual(before);
     });
 
+    it.each([0.05, 7.5, 1e-7])("dispatches the exact canonical legs for %s and a zero-stake continuation after restart", async bet => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        const state = (await store.readSession("s"))!.state;
+        const repository = new api.InMemorySessionRepository();
+        await repository.save("s", state);
+        const ledger = new api.InMemoryWallet(1000);
+        const canonicalLegs: Array<{kind: "debit" | "credit"; amount: number}> = [];
+        for (const kind of ["debit", "credit"] as const) {
+            const original = ledger[kind].bind(ledger);
+            ledger[kind] = (session, id, amount) => {
+                canonicalLegs.push({kind, amount});
+                return original(session, id, amount);
+            };
+        }
+        const canonical = new api.SpinCommandHandler(transactionalRoundGame(), repository, ledger);
+        const command = {...intent, bet};
+        const expected = await canonical.execute(command);
+        provider.fault = "after-credit";
+        expect(await new api.SpinCommandHandler(transactionalRoundGame(), store).execute(command)).toMatchObject({status: "recovery-required"});
+        await store.close();
+        const reopened = await open(provider);
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(), reopened);
+        const result = await handler.execute(command);
+        expect(result).toMatchObject({status: "played"});
+        if (expected.status !== "played" || result.status !== "played") throw new Error("Expected played results");
+        expect(result.credits).toBe(expected.credits);
+        expect(result.state).toEqual(expected.state);
+        expect(provider.transactions("s").map(({kind, amount}) => ({kind, amount}))).toEqual(canonicalLegs);
+        const free = {...command, requestId: "free", expectedVersion: 2};
+        expect(await canonical.execute(free)).toMatchObject({status: "played", stake: 0});
+        provider.fault = "after-debit";
+        expect(await handler.execute(free)).toMatchObject({status: "recovery-required"});
+        await reopened.close();
+        const recovered = await open(provider);
+        expect(await new api.SpinCommandHandler(transactionalRoundGame(), recovered).execute(free)).toMatchObject({status: "played", stake: 0});
+        expect(provider.transactions("s").map(({kind, amount}) => ({kind, amount}))).toEqual(canonicalLegs);
+    });
+
+    it("captures one envelope before a caller can mutate its command", async () => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
+        const command = {...intent};
+        const work = handler.execute(command);
+        command.bet = 7.5;
+        command.mode = "double";
+        command.requestId = "changed";
+        command.expectedVersion = 99;
+        const result = await work;
+        expect(result).toMatchObject({status: "played", stake: 0.05, mode: "base", requestId: "round", version: 2});
+        expect(provider.transactions("s")[0]).toMatchObject({kind: "debit", amount: 0.05});
+        expect(await store.lookupResult("s", "round")).toEqual(result);
+        expect(await handler.execute(intent)).toEqual(result);
+        expect(await handler.execute({...intent, bet: 7.5})).toMatchObject({status: "identity-conflict"});
+    });
+
+    it.each(["debit", "credit"] as const)("recovers committed settlement despite unrelated provider activity before %s", async phase => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
+        const unrelated = provider.credit.bind(provider);
+        let added = false;
+        Object.assign(provider, {onDispatch: async (kind: "debit" | "credit") => {
+            if (kind === phase && !added) {
+                added = true;
+                const fault = provider.fault;
+                provider.fault = undefined;
+                await unrelated("s", "unrelated", 10);
+                Object.assign(provider, {fault});
+            }
+        }});
+        provider.fault = `after-${phase}`;
+        expect(await handler.execute(intent)).toMatchObject({status: "recovery-required"});
+        await store.close();
+        const reopened = await open(provider);
+        const recovery = new api.SpinCommandHandler(transactionalRoundGame(), reopened);
+        const result = await recovery.execute(intent);
+        expect(result).toMatchObject({status: "played", version: 2});
+        if (result.status !== "played") throw new Error("Expected played result");
+        expect(result.credits).toBe(await provider.getBalance("s"));
+        expect(result.state.credits).toBe(result.credits);
+        expect(provider.counts("s")).toEqual({debit: 1, credit: 2});
+        expect(await recovery.execute(intent)).toEqual(result);
+    });
+
+    it("keeps a timed-out debit owned after insufficient rejection and not-applied until its delayed effect resolves", async () => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        const original = provider.debit.bind(provider);
+        let applyLate!: () => Promise<number>;
+        let resolveLate!: (balance: number) => void;
+        let rejectNext = false;
+        provider.debit = (session, id, amount) => {
+            if (rejectNext) return Promise.reject(new api.WalletInsufficientFundsError(session, amount, 0));
+            rejectNext = true;
+            applyLate = () => original(session, id, amount);
+            return new Promise(resolve => {
+                resolveLate = resolve;
+            });
+        };
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
+        expect(await handler.execute(intent)).toMatchObject({status: "recovery-required"});
+        expect(await handler.execute(intent)).toMatchObject({status: "recovery-required"});
+        expect(await store.lookupResult("s", "round")).toBeUndefined();
+        expect(await handler.execute({...intent, requestId: "other"})).toMatchObject({status: "recovery-required"});
+        expect(await store.readSession("s")).toMatchObject({version: 1});
+        resolveLate(await applyLate());
+        await store.close();
+        const reopened = await open(provider);
+        expect(await new api.SpinCommandHandler(transactionalRoundGame(), reopened).execute(intent)).toMatchObject({status: "played", version: 2});
+        expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
+    });
+
+    it("releases only a provider's permanent rejected debit and preserves its terminal historical error", async () => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        Object.assign(provider, {onDispatch: async (kind: "debit" | "credit") => {
+            if (kind === "debit") await provider.setBalance("s", 0);
+        }});
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
+        expect(await handler.execute(intent)).toMatchObject({status: "recovery-required"});
+        const terminal = await handler.execute(intent);
+        expect(terminal).toMatchObject({status: "settlement-error", retryDisposition: "safe-to-retry"});
+        Object.assign(provider, {onDispatch: undefined});
+        await provider.setBalance("s", 1000);
+        expect(await handler.execute(intent)).toEqual(terminal);
+        expect(await handler.execute({...intent, requestId: "fresh"})).toMatchObject({status: "played", version: 2});
+        expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
+    });
+
+    it.each(["balance", "execution"])("HTTP reports confirmed pre-effect %s failure and retries recover after restart", async phase => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        const original = provider.getBalance.bind(provider);
+        if (phase === "balance") provider.getBalance = () => Promise.reject(new Error("Transient provider outage"));
+        if (!("externalSettlement" in store)) throw new Error("Expected external store");
+        const game = phase === "execution" ? transactionalRoundGame(undefined, "capture") : transactionalRoundGame();
+        const instance = new api.PokieDevServer(game, {port: 0, externalRoundStore: store});
+        servers.push(instance);
+        const address = await instance.start();
+        const body = {requestId: "round", expectedSessionVersion: 1, bet: 0.05, mode: "base"};
+        const failed = await post(`http://127.0.0.1:${address.port}`, "s", body);
+        expect(failed).toMatchObject({status: phase === "balance" ? 503 : 500, body: {code: phase === "balance" ? "settlement-error" : "execution-error", retryDisposition: "safe-to-retry"}});
+        expect(provider.counts("s")).toEqual({debit: 0, credit: 0});
+        expect(await store.lookupResult("s", "round")).toBeUndefined();
+        expect(await store.readSession("s")).toMatchObject({version: 1});
+        await instance.stop();
+        provider.getBalance = original;
+        const reopened = await open(provider),
+            base = await server(reopened);
+        expect((await post(base, "s", {...body, bet: 7.5})).body).toMatchObject({code: "identity-conflict"});
+        expect((await post(base, "s", body)).status).toBe(200);
+        expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
+    });
+
+    it("preserves a canonical debit payout leg instead of coercing its kind to credit", async () => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        const game = transactionalRoundGame();
+        const create = game.createSession.bind(game);
+        game.createSession = context => {
+            const session = create(context),
+                play = session.play.bind(session);
+            session.play = () => {
+                play();
+                session.setCreditsAmount(session.getCreditsAmount() - 0.5);
+            };
+            return session;
+        };
+        const repository = new api.InMemorySessionRepository();
+        await repository.save("s", (await store.readSession("s"))!.state);
+        const ledger = new api.InMemoryWallet(1000);
+        const legs: Array<{kind: "debit" | "credit"; amount: number}> = [];
+        for (const kind of ["debit", "credit"] as const) {
+            const original = ledger[kind].bind(ledger);
+            ledger[kind] = (session, id, amount) => {
+                legs.push({kind, amount});
+                return original(session, id, amount);
+            };
+        }
+        const expected = await new api.SpinCommandHandler(game, repository, ledger).execute(intent);
+        const actual = await new api.SpinCommandHandler(game, store).execute(intent);
+        expect(actual).toMatchObject({status: "played"});
+        if (actual.status !== "played" || expected.status !== "played") throw new Error("Expected played results");
+        expect(actual.credits).toBe(expected.credits);
+        expect(legs.map(leg => leg.kind)).toEqual(["debit", "debit"]);
+        expect(provider.transactions("s").map(({kind, amount}) => ({kind, amount}))).toEqual(legs);
+    });
+    it("rejects a provider without a terminal fence before opening storage or effects", async () => {
+        const provider = await wallet();
+        Object.assign(provider, {capabilities: {...provider.capabilities, terminalRejection: undefined}});
+        const filename = path.join(directory, "incapable.sqlite");
+        await expect(api.SqliteExternalRoundStore.open(filename, provider)).rejects.toThrow("capabilities");
+        expect(fs.existsSync(filename)).toBe(false);
+        expect(provider.counts("s")).toEqual({debit: 0, credit: 0});
+    });
+
 });

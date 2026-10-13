@@ -404,7 +404,7 @@ await handler.execute({kind: "spin", sessionId, requestId: "stable-logical-round
 ```
 
 A provider explicitly declares durable idempotency, authoritative inspection and permanent
-session/kind/amount identity binding. These are provider promises requiring independent
+session/kind/amount identity binding, plus a durable terminal-rejection fence. These are provider promises requiring independent
 contract verification, not inferred from method names. Duplicate debit/credit calls must
 return their **original** balance even after unrelated transactions or provider restart.
 In-memory wallets, plain `WalletPort`, `TransactionalWalletAdapter`, incomplete inspection,
@@ -418,17 +418,25 @@ both composition and capability contracts; browser/WASM entries remain portable.
 
 The external store first reserves the session and freezes the command envelope. It restores
 and calculates through the canonical handler using a private local ledger, then persists
-both permanent wallet IDs, amounts, complete executable/RNG continuation and detached
+both permanent wallet IDs and exact canonical leg kinds/amounts (captured from ledger calls,
+never reconstructed from balances), complete executable/RNG continuation and detached
 response **before the first effective remote action**. No real wallet calls run inside the
 reference store transaction. Each remote phase has committed local intent before dispatch.
 Only confirmed settlement publishes the new session revision and retained result together.
+Committed kind/amount must match the captured leg; its original provider balance is authoritative
+even when unrelated provider activity changes the balance. The response and persisted session
+credits use the payout leg’s historical provider balance. Calculation payloads and artifacts
+retain the calculation snapshot; no exclusive provider balance ownership is assumed.
 A pending round blocks other request IDs for that session across store/handler instances;
 owner tokens and bounded leases fence late local publication. Expired ownership permits
 recovery with the original remote IDs, never replacement charge IDs. Provider idempotency
 must cover overlapping late dispatches from stale owners.
 
 Inspection distinguishes `unknown`, `pending`, `not-applied` (authoritative), `committed`
-(with original kind, amount and balance), and `compensated`. A provider reservation that
+(with original kind, amount and balance), `compensated`, and terminal `rejected`
+(with bound kind, amount and reason). `rejected` must permanently fence all earlier in-flight
+and future dispatches of that identity. `not-applied` permits redispatch of the same identity
+but cannot prove terminal rejection, even following an insufficient-funds response. A provider reservation that
 remains pending must finish through its provider lifecycle or operator recovery; POKIE
 cannot guess its outcome. Unknown/pending/compensated, malformed inspection, inspection
 failure and exhausted budgets return `recovery-required`, retaining intent and blocking
@@ -452,8 +460,15 @@ Different payloads conflict; keys across sessions remain independent. Numeric st
 0.05, 7.5, 1e-7 and zero free stakes, remain numbers without rounding or string conversion.
 Invalid commands, blocked/insufficient funds, corruption, identity/revision conflicts,
 storage/settlement/execution failures and unresolved recovery are non-success outcomes.
-The external composition retains rejected pre-effect results under their original identity;
-use a new logical command only after an explicit terminal rejection, never after ambiguity.
+Confirmed preparation/balance failures release the session reservation and report
+`retryDisposition: "safe-to-retry"` through domain and HTTP errors. The original envelope
+remains bound but preparation can run again after recovery; these transient errors are not
+permanently saved as completed results. The player can Retry or submit a fresh logical round
+after that explicit disposition. A provider’s terminal rejected debit retains its historical
+error and also permits a fresh round. Transport loss, errors without the disposition,
+`recovery-required` and `identity-conflict` preserve the original pending identity and payload;
+they never authorize a new charge key. A rejected payout after committed debit still requires
+operator recovery and keeps the session reserved.
 
 The controllable independent provider for controller verification is
 `tests/server/wallet/fixtures/ControllableDurableWallet.ts`. Its separate SQLite database,

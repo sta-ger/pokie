@@ -10,13 +10,12 @@ import type {PokieSessionState} from "../session/PokieSessionState.js";
 import type {VersionedSessionState} from "../session/VersionedSessionRepository.js";
 import type {SpinCommandResult} from "../spin/SpinCommandResult.js";
 import {isDurableWalletPort, type DurableWalletPort, type DurableWalletTransaction} from "../wallet/DurableWalletPort.js";
-import {WalletInsufficientFundsError} from "../wallet/WalletInsufficientFundsError.js";
 import type {ExternalRoundCandidate, ExternalRoundPreparation, ExternalRoundStore} from "./ExternalRoundStore.js";
 
 type Played = Extract<SpinCommandResult, {status: "played"}>;
 type Intent = {
     command: RepositoryCommand; snapshot: VersionedSessionState; balance?: number; candidate?: Played;
-    debitId: string; payoutId: string; debit?: number; payout?: number;
+    debitId: string; payoutId: string; debit?: number; payout?: number; payoutKind?: "debit" | "credit"; reusable?: boolean;
     phase: "prepare" | "debit" | "payout" | "commit";
 };
 const SCHEMA = [
@@ -101,7 +100,7 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
     public execute(command: RepositoryCommand, game: PokieGame, prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>, signal?: AbortSignal): Promise<SpinCommandResult> {
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid || command.requestId === undefined) return Promise.resolve({status: "invalid-command", sessionId: command?.sessionId ?? "", reason: invalid ?? "Durable external rounds require a stable requestId."});
-        const frozen = {...command};
+        const frozen = Object.freeze({...command});
         return this.enqueue(() => this.run(frozen, game, prepare, signal));
     }
     public close(): Promise<void> {
@@ -162,11 +161,12 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                     busy = true;
                     return;
                 }
-                if (!existing && command.expectedVersion !== undefined && command.expectedVersion !== session.version) {
+                if ((!existing || decode<Intent>(existing.intent).reusable) && command.expectedVersion !== undefined && command.expectedVersion !== session.version) {
                     outcome = {status: "conflict", sessionId, reason: "Session revision does not match expectedVersion."};
                     return;
                 }
                 intent = existing ? decode<Intent>(existing.intent) : {command, snapshot: session, debitId: `${sessionId}:${randomUUID()}:debit`, payoutId: `${sessionId}:${randomUUID()}:credit`, phase: "prepare"};
+                if (intent.reusable) intent = {...intent, snapshot: session, balance: undefined, reusable: undefined};
                 this.database.prepare("INSERT INTO external_requests VALUES (?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(session_id, request_id) DO UPDATE SET owner=excluded.owner, expires=excluded.expires")
                     .run(sessionId, requestId, envelope, encode(intent), owner, Date.now() + this.timeoutMs * 8 + this.recoveryWaitMs);
                 this.database.prepare("UPDATE external_sessions SET pending=? WHERE id=?").run(requestId, sessionId);
@@ -213,14 +213,16 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                 const balance = current.balance ?? await this.bounded(abort => this.wallet.getBalance(sessionId, abort), signal);
                 current = {...current, balance};
                 if (!Number.isFinite(balance) || balance < 0) throw new Error("Invalid external balance.");
-                const prepared = await prepare({...current.snapshot, balance});
+                const prepared = await prepare({...current.snapshot, balance, command: Object.freeze({...current.command})});
                 const candidate = prepared.result;
                 if (candidate.status !== "played") return await finish(candidate);
                 const invalid = validateRetryResult(candidate, game, sessionId, requestId);
                 if (invalid) return await finish({...invalid, sessionId});
-                const debit = candidate.stake!,
-                    payout = candidate.credits - (balance - debit);
-                current = {...current, candidate, debit, payout};
+                const debit = prepared.settlement?.debit,
+                    payout = prepared.settlement?.payout.amount,
+                    payoutKind = prepared.settlement?.payout.kind;
+                if (debit === undefined || payout === undefined || (payoutKind !== "credit" && payoutKind !== "debit")) throw new Error("Missing canonical settlement legs.");
+                current = {...current, candidate, debit, payout, payoutKind};
                 if (![debit, payout].every(value => Number.isFinite(value) && value >= 0) || candidate.version !== current.snapshot.version + 1) throw new Error("Invalid calculated external accounting envelope.");
                 current.phase = "debit";
                 await persist(); // Candidate, RNG continuation, both identities and debit intent BEFORE any effect.
@@ -228,14 +230,16 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
             const candidate = current.candidate!;
             const rejected = validateRetryResult(candidate, game, sessionId, requestId);
             if (rejected || candidate.state.executionState !== "durably-restorable" || !Number.isFinite(current.debit) || current.debit! < 0 || !Number.isFinite(current.payout) || current.payout! < 0 ||
-                current.debit !== candidate.stake || candidate.credits !== current.balance! - current.debit! + current.payout! || candidate.version !== current.snapshot.version + 1 ||
+                current.debit !== candidate.stake || !["credit", "debit"].includes(current.payoutKind!) ||
+                candidate.credits !== (current.payoutKind === "credit" ? current.balance! - current.debit! + current.payout! : current.balance! - current.debit! - current.payout!) || candidate.version !== current.snapshot.version + 1 ||
                 encode(candidate.previousState) !== encode(current.snapshot.state)) return unresolved("Corrupt captured accounting/continuation; settlement blocked.");
+            let settledBalance: number | undefined;
             for (const phase of ["debit", "payout"] as const) {
                 const dispatchAllowed = current.phase === phase;
                 const alreadyAcknowledged = current.phase === "commit" || (current.phase === "payout" && phase === "debit");
                 if (!dispatchAllowed && !alreadyAcknowledged) continue;
                 const id = phase === "debit" ? current.debitId : current.payoutId;
-                const kind = phase === "debit" ? "debit" : "credit";
+                const kind = phase === "debit" ? "debit" : current.payoutKind!;
                 const amount = phase === "debit" ? current.debit! : current.payout!;
                 let inspected: DurableWalletTransaction;
                 try {
@@ -243,42 +247,45 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                 } catch {
                     return unresolved("Inspection unavailable or timed out; intent retained.");
                 }
-                if (!inspected || !["unknown", "pending", "not-applied", "compensated", "committed"].includes(inspected.status)) return unresolved("Malformed inspection; intent retained.");
+                if (!inspected || !["unknown", "pending", "not-applied", "compensated", "committed", "rejected"].includes(inspected.status)) return unresolved("Malformed inspection; intent retained.");
                 if (inspected.status === "unknown" || inspected.status === "pending" || inspected.status === "compensated") return unresolved(`${inspected.status}: original transaction remains unresolved.`);
-                const expectedBalance = phase === "debit" ? current.balance! - amount : candidate.credits;
+                if (inspected.status === "rejected") {
+                    if (inspected.kind !== kind || inspected.amount !== amount || typeof inspected.reason !== "string") return unresolved("Invalid terminal rejection.");
+                    if (phase !== "debit" || alreadyAcknowledged) return unresolved("Settlement leg rejected after debit; operator recovery required.");
+                    return await finish({status: "settlement-error", sessionId, reason: inspected.reason, retryDisposition: "safe-to-retry"});
+                }
                 if (inspected.status === "committed") {
-                    if (inspected.kind !== kind || inspected.amount !== amount || inspected.balance !== expectedBalance) return unresolved("Provider committed accounting differs from captured intent.");
+                    if (inspected.kind !== kind || inspected.amount !== amount || !Number.isFinite(inspected.balance) || inspected.balance < 0) return unresolved("Provider committed accounting differs from captured intent.");
+                    settledBalance = inspected.balance;
                 } else {
                     if (alreadyAcknowledged) return unresolved("Provider lost an acknowledged transaction; settlement blocked.");
                     // The phase itself is durable dispatch intent. A reject/timeout NEVER clears it.
                     const balance = await this.bounded(abort => this.wallet[kind](sessionId, id, amount, abort), signal);
-                    if (balance !== expectedBalance) return unresolved("Provider returned inconsistent historical balance.");
+                    if (!Number.isFinite(balance) || balance < 0) return unresolved("Provider returned invalid historical balance.");
+                    settledBalance = balance;
                 }
                 if (dispatchAllowed) {
                     current = {...current, phase: phase === "debit" ? "payout" : "commit"};
                     await persist();
                 }
             }
-            return await finish(candidate);
+            return await finish({...candidate, credits: settledBalance!, state: {...candidate.state, credits: settledBalance!}});
         } catch (error) {
             if (error instanceof RuntimeCommandError && error.code === "storage-error") throw error;
             if (current.phase === "prepare") {
                 const failure = error instanceof RuntimeCommandError ? error : new RuntimeCommandError(current.balance === undefined ? "settlement-error" : "execution-error", error);
-                await finish({status: failure.code, sessionId, reason: failure.message});
-                throw failure;
+                // No remote leg was dispatched. Preserve envelope binding but allow preparation to
+                // run again after the provider/game recovers, and release the session reservation.
+                current = {...current, balance: undefined, reusable: true};
+                await persist();
+                await this.write(() => {
+                    this.assertOwner(sessionId, requestId, owner);
+                    this.database.prepare("UPDATE external_sessions SET pending=NULL WHERE id=?").run(sessionId);
+                });
+                throw new RuntimeCommandError(failure.code, failure.cause, "safe-to-retry");
             }
-            if (current.phase === "debit" && error instanceof WalletInsufficientFundsError) {
-                try {
-                    const status = await this.bounded(abort => this.wallet.inspectTransaction(sessionId, current.debitId, abort), signal);
-                    if (status?.status === "not-applied") {
-                        await finish({status: "settlement-error", sessionId, reason: error.message});
-                        throw new RuntimeCommandError("settlement-error", error);
-                    }
-                } catch (failure) {
-                    if (failure instanceof RuntimeCommandError) throw failure;
-                    // Ambiguity retains the original intent.
-                }
-            }
+            // Even insufficient funds plus not-applied cannot exclude a prior timed-out call.
+            // Only provider inspection of a permanent rejected identity can release this round.
             return unresolved(`External action/calculation interrupted: ${error instanceof Error ? error.message : String(error)}. Inspect and retry the same identity.`);
         } finally {
             await this.write(() => {

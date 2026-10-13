@@ -395,7 +395,8 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
                         return;
                     }
                     showSpinError(elements, error, attemptSpin, () => reconnect(elements, fetchImpl));
-                    if (error instanceof SessionCommandError && ["invalid-command", "blocked", "conflict", "not-found"].includes(error.code)) {
+                    if (error instanceof SessionCommandError && (["invalid-command", "blocked", "conflict", "not-found"].includes(error.code) ||
+                        (["settlement-error", "execution-error"].includes(error.code) && error.retryDisposition === "safe-to-retry"))) {
                         pendingRound = undefined;
                         window.localStorage.removeItem(pendingKey);
                     }
