@@ -1,5 +1,5 @@
 import {
-    AbstractVideoSlotSessionDecorator,
+    AbstractVideoSlotSessionDecorator, SessionRuntime,
     Paytable, SeededRandomNumberGenerator, LineWinCalculator, ScatterWinCalculator, ClusterWinCalculator, WaysWinCalculator,
     VideoSlotWithBetModesSession, captureInitialPokieSessionState, VideoSlotSessionHandling, SessionStateRestoring,
     ClusterWinCalculating,
@@ -36,7 +36,24 @@ import {
     WinningWayDescribing,
 } from "@fromstan/pokie";
 
+import {legacyComposedGame, legacyCompositions} from "../../v2/fixtures/LegacyComposedGame.js";
+
 describe("ExtensionPoints", () => {
+    test.each(legacyCompositions)("preserves custom decorator execution and live-only capture in %s", composition => {
+        for (const opaque of [false, true]) {
+            const game = legacyComposedGame(composition, opaque),
+                session = game.createSession();
+            const runtime = new SessionRuntime(session);
+            expect(runtime.execute({kind: "spin"})).toMatchObject({status: "played"});
+            expect(runtime.execute({kind: "spin"})).toMatchObject({status: "played"});
+            const state = captureInitialPokieSessionState(undefined, session, undefined, false, game);
+            expect(state.executionState).toBe("live-only");
+            let feature = state.featureState as {base?: unknown};
+            while (feature.base !== undefined) feature = feature.base as typeof feature;
+            if (opaque) expect(feature).toEqual(["opaque legacy snapshot", 2]);
+            else expect(feature).not.toHaveProperty("base");
+        }
+    });
     test.each(["paytable", "config", "lines", "patterns", "sequence", "nested-line", "nested-scatter", "nested-cluster", "nested-ways", "calculator-config", "free-config"])("does not certify hidden state in %s collaborators", collaborator => {
         class CountingPaytable extends Paytable {
             public calls = 0;

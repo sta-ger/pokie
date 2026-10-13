@@ -1,6 +1,6 @@
 import type {LiveSessionAuthority} from "./internal/LiveSessionAuthority.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
-import {sessionStateSchemasMatch} from "../session/SessionStateRestoring.js";
+import {sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 import {validateExecutableState} from "./validateExecutableState.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieSessionState} from "../server/session/PokieSessionState.js";
@@ -57,18 +57,15 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             validateExecutableState(state.featureState, schema,
                 validator === undefined ? undefined : value => Reflect.apply(validator, game, [value, state.context]), state.executionState === "live-only" && game.validateLiveSessionState !== undefined);
             if (schema.kind !== "custom" && validator !== undefined) Reflect.apply(validator, game, [state.featureState, state.context]);
-            if (schema.kind === "bet-modes" && !capabilities.modes?.includes((state.featureState as {betModeId: string}).betModeId)) {
-                throw new Error("Persisted bet mode is not supported by the resolved model.");
-            }
         } else {
             if (state.executionState === "durably-restorable") return {status: "incompatible-state", reason: "Selected game does not declare an authoritative executable state codec."};
             // Legacy packages with no executable codec retain observable live-only envelopes.
             // They cannot authorize reconstruction or selection from this metadata.
             if (live !== undefined) {
                 if (!sessionStateSchemasMatch(live.schema, state.stateSchema)) throw new Error("Stored executable schema does not match the trusted live session.");
-                if (live.schema.kind !== "custom") validateExecutableState(state.featureState, live.schema, undefined, live.partial);
-                else if (state.featureState !== undefined) validateExecutableState(state.featureState);
-            } else if (state.featureState !== undefined) validateExecutableState(state.featureState);
+                validateExecutableState(state.featureState, live.schema, undefined, false, live.snapshotPolicy);
+            } else if (game.getSessionCommandCapabilities === undefined) return {status: "restoration-unsupported", reason: "Session requires trusted live snapshot authority; its live executable state has been lost."};
+            else if (state.featureState !== undefined) validateExecutableState(state.featureState);
             game.validateLiveSessionState?.(state.featureState, state.context);
         }
         const declared = game.getSessionCommandCapabilities?.(state.context);
@@ -77,6 +74,11 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         if (authority === undefined) return {status: "restoration-unsupported", reason: "Session requires trusted live command authority; its live executable state has been lost."};
         if (!supportsSelections(authority.bets, capabilities.bets) || !supportsSelections(authority.modes, capabilities.modes)) {
             throw new Error("Stored command capabilities do not match the selected game model.");
+        }
+        const selectedMode = (state.featureState as {betModeId?: unknown} | undefined)?.betModeId;
+        if (schema !== undefined || live === undefined) validateSelectedModes(state.featureState, schema, authority.modes);
+        else if (live?.schema.kind === "bet-modes" && !authority.modes?.includes(selectedMode as string)) {
+            throw new Error("Persisted bet mode is not supported by the resolved model.");
         }
     } catch (error) {
         return {status: "corrupt-state", reason: error instanceof Error ? error.message : String(error)};
@@ -99,4 +101,13 @@ function isSnapshotData(value: unknown, parents = new Set<object>(), depth = 0):
 function supportsSelections<T extends string | number>(expected: readonly T[] | undefined, actual: readonly T[] | undefined): boolean {
     if (actual === undefined) return true;
     return Array.isArray(expected) && new Set(actual).size === actual.length && actual.every(selection => expected.includes(selection));
+}
+
+// Declared authority applies throughout its codec and its observable-only retry fallback.
+// Trusted live compositions validate each node against its own captured construction policy.
+function validateSelectedModes(value: unknown, schema: SessionStateSchema | undefined, modes: readonly string[] | undefined): void {
+    if ((schema !== undefined && schema.kind !== "free-games" && schema.kind !== "bet-modes") || value === undefined) return;
+    const state = value as {betModeId?: string; base?: unknown};
+    if ((schema?.kind === "bet-modes" || (schema === undefined && state.betModeId !== undefined)) && !modes?.includes(state.betModeId as string)) throw new Error("Persisted bet mode is not supported by the resolved model.");
+    validateSelectedModes(state.base, schema?.base, modes);
 }

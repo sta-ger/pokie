@@ -284,3 +284,10 @@ selection even if a new, syntactically valid bet/mode was supplied. Invalid synt
 records and unsupported new selections cannot initiate recovery writes. Restoration exceptions are
 `corrupt-state`, never an invitation to construct defaults. Settlement/save exceptions retain the original
 failure and use the existing compensation path; there is no cross-store atomicity claim.
+
+For unchanged packages, the live snapshot policy is captured separately for every built-in composition
+node at `primeSession()`. A custom decorator inside free-game or bet-mode sessions may have no codec or
+an opaque legacy capture. The outer feature counters and selected modes still receive validation, and
+complete built-in descendants cannot become partial because their parent is live-only. Retained current,
+previous, cached and captured results use this same policy. Without the trusted live object, these
+undeclared compositions reject restoration before constructing a replacement or writing recovery data.

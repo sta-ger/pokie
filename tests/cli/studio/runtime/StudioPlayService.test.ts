@@ -1,5 +1,5 @@
 import {
-    buildRoundArtifact,
+    buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
     GamePackageGenerator,
@@ -34,6 +34,8 @@ import {
     outcomeLibraryBundleTestProvenance,
 } from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
+
+import {legacyComposedGame, legacyCompositions} from "../../../v2/fixtures/LegacyComposedGame.js";
 
 const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
     getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
@@ -307,6 +309,43 @@ function createFakeNonVideoSlotGame(): PokieGame {
 }
 
 describe("StudioPlayService", () => {
+    it.each(legacyCompositions)("plays and searches unchanged composed %s packages without declarations", async composition => {
+        for (const opaque of [false, true]) {
+            const game = legacyComposedGame(composition, opaque);
+            const service = new StudioPlayService(() => Promise.resolve(game));
+            try {
+                const created = await service.newSession("/fake/project");
+                if (created.status !== "ok") throw new Error("Composed Play session creation failed");
+                const id = created.session.sessionId;
+                expect(await service.spin(id)).toMatchObject({status: "ok"});
+                expect(await service.findAnyWin(id)).toMatchObject({status: "ok"});
+                expect(await service.findSymbolWin(id, "A")).toMatchObject({status: "ok"});
+                if (composition === "free-games" || composition === "free-bet") expect(await service.findFreeGames(id)).toMatchObject({status: "ok"});
+                const active = Reflect.get(service, "active") as {spinHandler: SpinCommandHandler};
+                const repository = Reflect.get(active.spinHandler, "sessionRepository") as InMemorySessionRepository;
+                const record = (await repository.loadVersioned(id))!;
+                expect(record.state.executionState).toBe("live-only");
+                if (composition !== "free-games") {
+                    let feature = record.state.featureState as {betModeId?: string; base?: unknown};
+                    while (feature.betModeId === undefined) feature = feature.base as typeof feature;
+                    feature.betModeId = "nonexistent";
+                    await repository.save(id, record.state);
+                    const before = await repository.loadVersioned(id);
+                    const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(game, "createSession")];
+                    expect(await service.spin(id)).toMatchObject({status: "error", code: "corrupt-state"});
+                    expect(await service.findAnyWin(id)).toMatchObject({status: "error", code: "corrupt-state"});
+                    expect(await repository.loadVersioned(id)).toEqual(before);
+                    writes.forEach(spy => {
+                        expect(spy).not.toHaveBeenCalled();
+                        spy.mockRestore();
+                    });
+                }
+            } finally {
+                service.reset();
+            }
+        }
+    });
+
     it("plays and searches scenarios with an unchanged getManifest/createSession-only package", async () => {
         const {session, getAttempts} = createControllableVideoSlotSession(attempt => attempt >= 3 ? "A" : undefined);
         const game: PokieGame = {getManifest: () => manifest, createSession: () => session};

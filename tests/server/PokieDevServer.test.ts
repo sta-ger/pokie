@@ -30,6 +30,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
+import {legacyComposedGame, legacyCompositions} from "../v2/fixtures/LegacyComposedGame.js";
+
 const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
     getSessionStateSchema: () => ({kind: "custom"}),
     getSessionCommandCapabilities: () => ({bets: [1, 2, 5, 10, 20], modes: ["base", "ante", "buy", "buyFeature"]}),
@@ -252,6 +254,61 @@ async function getJson(url: string): Promise<{status: number; body: Record<strin
 }
 
 describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
+    it.each(legacyCompositions)("serves unchanged composed %s packages and rejects mode corruption before publication", async composition => {
+        for (const opaque of [false, true]) {
+            const game = legacyComposedGame(composition, opaque),
+                repository = new InMemorySessionRepository(),
+                wallet = new InMemoryWallet(1000);
+            const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository, wallet});
+            const address = await server.start(),
+                url = `http://${address.host}:${address.port}`;
+            let sessionId = "";
+            try {
+                const created = await postJson(`${url}/sessions`);
+                expect(created.status).toBe(201);
+                sessionId = created.body.sessionId as string;
+                expect((await getJson(`${url}/sessions/${sessionId}`)).status).toBe(200);
+                const played = await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"});
+                expect(played.status).toBe(200);
+                expect(await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).toEqual(played);
+                const record = (await repository.loadVersioned(sessionId))!;
+                expect(record.state.executionState).toBe("live-only");
+                if (composition !== "free-games") {
+                    let feature = record.state.featureState as {betModeId?: string; base?: unknown};
+                    while (feature.betModeId === undefined) feature = feature.base as typeof feature;
+                    feature.betModeId = "nonexistent";
+                    await repository.save(sessionId, record.state);
+                    const before = await repository.loadVersioned(sessionId),
+                        balance = await wallet.getBalance(sessionId);
+                    const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"), jest.spyOn(game, "createSession")];
+                    expect(await getJson(`${url}/sessions/${sessionId}`)).toMatchObject({status: 409, body: {code: "corrupt-state"}});
+                    expect(await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).toMatchObject({status: 409, body: {code: "corrupt-state"}});
+                    expect(await repository.loadVersioned(sessionId)).toEqual(before);
+                    expect(await wallet.getBalance(sessionId)).toBe(balance);
+                    writes.forEach(spy => {
+                        expect(spy).not.toHaveBeenCalled();
+                        spy.mockRestore();
+                    });
+                }
+            } finally {
+                await server.stop();
+            }
+            const restarted = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository, wallet});
+            const next = await restarted.start(),
+                nextUrl = `http://${next.host}:${next.port}`;
+            const before = await repository.loadVersioned(sessionId),
+                construction = jest.spyOn(game, "createSession");
+            try {
+                expect(await postJson(`${nextUrl}/sessions/${sessionId}/spin`)).toMatchObject({status: 409, body: {code: "restoration-unsupported"}});
+                expect(await repository.loadVersioned(sessionId)).toEqual(before);
+                expect(construction).not.toHaveBeenCalled();
+            } finally {
+                construction.mockRestore();
+                await restarted.stop();
+            }
+        }
+    });
+
     it("creates, reads and spins an unchanged package, then refuses continuation after live-state loss", async () => {
         const game: PokieGame = {getManifest: () => ({id: "unchanged", name: "Unchanged", version: "1"}), createSession: () => new GameSession()};
         expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);

@@ -364,3 +364,10 @@ This does not grant reconciliation ownership or replace durable wallet settlemen
 
 Durable game-state recovery alone does not preserve the default in-memory wallet, idempotency store,
 operation log or Studio active-session registry across a process restart.
+
+Trusted live snapshot validation distinguishes missing custom captures from required built-in children.
+It derives this distinction from constructed composition, never from a stored schema, capability list
+or `executionState` flag. Opaque legacy custom captures remain finite serializable data; they are not
+durable codecs. Free-game counters, banks and nested built-in snapshots remain required. Every retained
+bet-mode node is checked against the selected game's declared modes or that live node's trusted modes,
+including current state and both states of cached/captured results, before publication or recovery writes.
