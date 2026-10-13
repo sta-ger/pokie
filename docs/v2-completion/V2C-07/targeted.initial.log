@@ -1,0 +1,790 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/artifact/PokieJsonRoundArtifactProjector.test.ts tests/artifact/RoundArtifactValidator.test.ts tests/artifact/buildRoundArtifactFromSession.test.ts tests/cli/commands/ReplayCommand.test.ts tests/cli/studio-client/src/api/apiClient.test.ts tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx tests/cli/studio-client/src/components/project/ReplayTab.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio/replay/buildReplayDownload.test.ts tests/cli/studio/replay/validateReplayRequest.test.ts tests/cli/studio/runtime/StudioPlayService.test.ts tests/project/wasm/WasmRuntimeCompactState.test.ts tests/replay/ReplayRecorder.test.ts tests/server/session/captureRoundPokieSessionState.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/v2/AuditRoundReplay.test.ts tests/v2/LogicalRoundPackaging.test.ts tests/v2/ScreenProjection.test.ts tests/v2/TransactionalRoundStore.test.ts tests/v2/TransactionalRuntimeBoundary.test.ts
+
+PASS pokie tests/cli/studio/runtime/StudioPlayService.test.ts (26.794 s)
+PASS pokie tests/cli/studio-client/src/api/apiClient.test.ts
+PASS pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+FAIL studio-client-components tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx (7.887 s)
+  ● RoundArtifactInspector win amount presentation › labels a Stake Engine import's reconstructed win as aggregate and explains why positions aren't available, instead of showing a bare '0'
+
+    TestingLibraryElementError: Unable to find an element with the text: /unavailable.*reconstructed from an imported round/. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+    Ignored nodes: comments, script, style
+    [36m<table[39m
+      [33mclass[39m=[32m"m_b23fa0ef mantine-Table-table"[39m
+      [33mstyle[39m=[32m"--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));"[39m
+    [36m>[39m
+      [36m<thead[39m
+        [33mclass[39m=[32m"m_b242d975 mantine-Table-thead"[39m
+      [36m>[39m
+        [36m<tr[39m
+          [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+          [33mdata-with-row-border[39m=[32m"true"[39m
+        [36m>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mType[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mSymbol[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mAmount[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mPositions[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mMultiplier[0m
+          [36m</th>[39m
+        [36m</tr>[39m
+      [36m</thead>[39m
+      [36m<tbody[39m
+        [33mclass[39m=[32m"m_b2404537 mantine-Table-tbody"[39m
+      [36m>[39m
+        [36m<tr[39m
+          [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+          [33mdata-with-row-border[39m=[32m"true"[39m
+        [36m>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mvalue[0m
+            [36m<div[39m
+              [33mclass[39m=[32m"m_347db0ec mantine-Badge-root"[39m
+              [33mdata-size[39m=[32m"xs"[39m
+              [33mdata-variant[39m=[32m"light"[39m
+              [33mstyle[39m=[32m"--badge-height: var(--badge-height-xs); --badge-padding-x: var(--badge-padding-x-xs); --badge-fz: var(--badge-fz-xs); --badge-bg: var(--mantine-color-gray-light); --badge-color: var(--mantine-color-gray-light-color); --badge-bd: calc(0.0625rem * var(--mantine-scale)) solid transparent;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"m_5add502a mantine-Badge-label"[39m
+              [36m>[39m
+                [0maggregate[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mwild[0m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0m12.50 (12.50x stake)[0m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mnot applicable — an aggregate win, not attributed to specific positions[0m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mnot applicable — no multiplier applied to this win[0m
+          [36m</td>[39m
+        [36m</tr>[39m
+      [36m</tbody>[39m
+    [36m</table>[39m
+
+      128 |         expect(within(table).getByText("aggregate")).toBeTruthy();
+      129 |         expect(queryByText("0", {selector: "td"})).toBeNull();
+    > 130 |         expect(within(table).getByText(/unavailable.*reconstructed from an imported round/)).toBeTruthy();
+          |                              ^
+      131 |     });
+      132 |
+      133 |     it("labels a symbol-less aggregate win (jackpot/legacy-style) with an explicit reason instead of the literal string 'undefined'", () => {
+
+      at Object.getElementError (node_modules/@testing-library/dom/dist/config.js:37:19)
+      at node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+      at node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+      at node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+      at Object.<anonymous> (tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx:130:30)
+
+  ● RoundArtifactInspector win amount presentation › labels a symbol-less aggregate win (jackpot/legacy-style) with an explicit reason instead of the literal string 'undefined'
+
+    InvalidJsonValueError: Value at "steps[0].wins[0].symbolId" is not valid canonical JSON: undefined is not a valid JSON value.
+
+      39 |     }
+      40 |     if (type === "undefined") {
+    > 41 |         throw new InvalidJsonValueError(path, "undefined is not a valid JSON value");
+         |               ^
+      42 |     }
+      43 |     if (type === "bigint") {
+      44 |         throw new InvalidJsonValueError(path, "a bigint is not a valid JSON value");
+
+      at toCanonicalJson (src/json/toCanonicalJson.ts:41:15)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:104:30)
+      at src/json/toCanonicalJson.ts:84:48
+          at Array.map (<anonymous>)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:84:24)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:104:30)
+      at src/json/toCanonicalJson.ts:84:48
+          at Array.map (<anonymous>)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:84:24)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:104:30)
+      at describeRoundArtifact (cli/studio-client/src/domain/interpret/Replay.ts:70:96)
+      at Object.<anonymous> (tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx:134:47)
+
+  ● RoundArtifactInspector imported-artifact and incomplete-debug presentation › renders an imported (Stake Engine reconstruction) round's aggregate win and its own debug payload without state snapshots, rather than silently omitting either section
+
+    TestingLibraryElementError: Unable to find an element with the text: unavailable — reconstructed from an imported round, per-position detail wasn't preserved. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+    Ignored nodes: comments, script, style
+    [36m<body>[39m
+      [36m<div>[39m
+        [36m<div>[39m
+          [36m<table[39m
+            [33mclass[39m=[32m"m_b23fa0ef mantine-Table-table"[39m
+            [33mstyle[39m=[32m"--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));"[39m
+          [36m>[39m
+            [36m<tbody[39m
+              [33mclass[39m=[32m"m_b2404537 mantine-Table-tbody"[39m
+            [36m>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mGame[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                  [33mstyle[39m=[32m"overflow-wrap: anywhere;"[39m
+                [36m>[39m
+                  [0mA (id: "a", v1.0.0)[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mPokie version[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                [36m>[39m
+                  [0m1.0.0[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mBet mode[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                [36m>[39m
+                  [0mbase[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mStake[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                [36m>[39m
+                  [0m5.00[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+            [36m</tbody>[39m
+          [36m</table>[39m
+          [36m<div[39m
+            [33maria-label[39m=[32m"Game player"[39m
+            [33mclass[39m=[32m"pokie-player"[39m
+            [33mdata-pokie-player[39m=[32m"canonical-v1"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"player-bet-info"[39m
+            [36m/>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"player-mode-info"[39m
+            [36m/>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"pokie-player-grid-scroll"[39m
+            [36m>[39m
+              [36m<div>[39m
+                [36m<table[39m
+                  [33mclass[39m=[32m"player-grid"[39m
+                [36m>[39m
+                  [36m<tr>[39m
+                    [36m<td[39m
+                      [33mclass[39m=[32m"player-reel"[39m
+                    [36m>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"0:0"[39m
+                      [36m>[39m
+                        [0mR0P0[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"1:0"[39m
+                      [36m>[39m
+                        [0mR0P1[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"2:0"[39m
+                      [36m>[39m
+                        [0mR0P2[0m
+                      [36m</div>[39m
+                    [36m</td>[39m
+                    [36m<td[39m
+                      [33mclass[39m=[32m"player-reel"[39m
+                    [36m>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"0:1"[39m
+                      [36m>[39m
+                        [0mR1P0[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"1:1"[39m
+                      [36m>[39m
+                        [0mR1P1[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"2:1"[39m
+                      [36m>[39m
+                        [0mR1P2[0m
+                      [36m</div>[39m
+                    [36m</td>[39m
+                    [36m<td[39m
+                      [33mclass[39m=[32m"player-reel"[39m
+                    [36m>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"0:2"[39m
+                      [36m>[39m
+                        [0mR2P0[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"1:2"[39m
+                      [36m>[39m
+                        [0mR2P1[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"2:2"[39m
+                      [36m>[39m
+                        [0mR2P2[0m
+                      [36m</div>[39m
+                    [36m</td>[39m
+                  [36m</tr>[39m
+                [36m</table>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<dl[39m
+              [33maria-label[39m=[32m"Round totals"[39m
+              [33mclass[39m=[32m"player-round-totals"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"player-round-total"[39m
+                [33mhidden[39m=[32m""[39m
+              [36m>[39m
+                [36m<dt>[39m
+                  [0mCredits[0m
+                [36m</dt>[39m
+                [36m<dd />[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"player-round-total"[39m
+              [36m>[39m
+                [36m<dt>[39m
+                  [0mTotal win[0m
+                [36m</dt>[39m
+                [36m<dd>[39m
+                  [0m12.50[0m
+                [36m</dd>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"player-round-total"[39m
+              [36m>[39m
+                [36m<dt>[39m
+                  [0mPayout multiplier[0m
+                [36m</dt>[39m
+                [36m<dd>[39m
+                  [0m2.50[0m
+                [36m</dd>[39m
+              [36m</div>[39m
+           ...
+
+      309 |
+      310 |         expect(getByText("aggregate")).toBeTruthy();
+    > 311 |         expect(getByText("unavailable — reconstructed from an imported round, per-position detail wasn't preserved")).toBeTruthy();
+          |                ^
+      312 |         expect(getByText("Debug data")).toBeTruthy();
+      313 |         expect(getByText("game-provided, may include RNG/reel-stop data")).toBeTruthy();
+      314 |         // Both the "Debug data" CodeBlock and the "Full artifact" CodeBlock at the bottom of Advanced
+
+      at Object.getElementError (node_modules/@testing-library/dom/dist/config.js:37:19)
+      at node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+      at node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+      at node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+      at Object.<anonymous> (tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx:311:16)
+
+PASS pokie tests/v2/TransactionalRoundStore.test.ts (197.313 s)
+PASS pokie tests/server/session/captureRoundPokieSessionState.test.ts
+PASS pokie tests/artifact/RoundArtifactValidator.test.ts
+PASS pokie tests/project/wasm/WasmRuntimeCompactState.test.ts (13.011 s)
+  ● Console
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.056293000001460314,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":134.88733800000045,"roundsPerSecond":74135.94298969682,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1228.0291840000136,"roundsPerSecond":81431.28950264335,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.04795100001501851,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":187.36498300000676,"roundsPerSecond":53371.76584377903,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1805.2719700000016,"roundsPerSecond":55393.31561216225,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.016357999993488193,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":176.4562300000107,"roundsPerSecond":56671.27763071553,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1281.270921999996,"roundsPerSecond":78047.50602152533,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.043298999982653186,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":178.2179799999867,"roundsPerSecond":56111.06129696199,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1768.0651110000035,"roundsPerSecond":56559.003046805665,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"collector-paired","completedRounds":100000,"capacity":8,"retainedEntries":8,"dropped":99993,"bytes":139,"elapsedMs":6502.671056000021,"roundsPerSecond":30756.59191086712}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:91:13
+
+    console.log
+      {"surface":"explicit-tape","completedRounds":10000,"continuationBytes":321,"inputTapeDraws":20002,"inputTapeBytes":385412,"elapsedMs":272.30943599998136,"diagnostics":{"inputTapeLength":20002,"verificationDraws":20002,"legacyPrefixDraws":0,"generatedDraws":20002,"hostRestorations":10000,"hostPayloadBytes":1932057,"snapshotPayloadBytes":321}}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:112:13
+
+PASS pokie tests/artifact/PokieJsonRoundArtifactProjector.test.ts
+PASS pokie tests/artifact/buildRoundArtifactFromSession.test.ts
+PASS pokie tests/cli/studio/replay/validateReplayRequest.test.ts
+PASS pokie tests/cli/studio/replay/buildReplayDownload.test.ts
+PASS pokie tests/v2/AuditRoundReplay.test.ts (33.988 s)
+PASS pokie tests/v2/TransactionalRuntimeBoundary.test.ts (11.698 s)
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts (5.341 s)
+PASS studio-client-components tests/cli/studio-client/src/components/project/ReplayTab.test.tsx
+PASS pokie tests/v2/ScreenProjection.test.ts
+PASS pokie tests/cli/studio/replay/StudioReplayExecutionService.test.ts
+PASS pokie tests/cli/commands/ReplayCommand.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+PASS pokie tests/cli/studio-client/src/domain/interpret/Replay.test.ts
+
+Summary of all failing tests
+FAIL tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx (7.887 s)
+  ● RoundArtifactInspector win amount presentation › labels a Stake Engine import's reconstructed win as aggregate and explains why positions aren't available, instead of showing a bare '0'
+
+    TestingLibraryElementError: Unable to find an element with the text: /unavailable.*reconstructed from an imported round/. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+    Ignored nodes: comments, script, style
+    [36m<table[39m
+      [33mclass[39m=[32m"m_b23fa0ef mantine-Table-table"[39m
+      [33mstyle[39m=[32m"--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));"[39m
+    [36m>[39m
+      [36m<thead[39m
+        [33mclass[39m=[32m"m_b242d975 mantine-Table-thead"[39m
+      [36m>[39m
+        [36m<tr[39m
+          [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+          [33mdata-with-row-border[39m=[32m"true"[39m
+        [36m>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mType[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mSymbol[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mAmount[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mPositions[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+          [36m>[39m
+            [0mMultiplier[0m
+          [36m</th>[39m
+        [36m</tr>[39m
+      [36m</thead>[39m
+      [36m<tbody[39m
+        [33mclass[39m=[32m"m_b2404537 mantine-Table-tbody"[39m
+      [36m>[39m
+        [36m<tr[39m
+          [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+          [33mdata-with-row-border[39m=[32m"true"[39m
+        [36m>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mvalue[0m
+            [36m<div[39m
+              [33mclass[39m=[32m"m_347db0ec mantine-Badge-root"[39m
+              [33mdata-size[39m=[32m"xs"[39m
+              [33mdata-variant[39m=[32m"light"[39m
+              [33mstyle[39m=[32m"--badge-height: var(--badge-height-xs); --badge-padding-x: var(--badge-padding-x-xs); --badge-fz: var(--badge-fz-xs); --badge-bg: var(--mantine-color-gray-light); --badge-color: var(--mantine-color-gray-light-color); --badge-bd: calc(0.0625rem * var(--mantine-scale)) solid transparent;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"m_5add502a mantine-Badge-label"[39m
+              [36m>[39m
+                [0maggregate[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mwild[0m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0m12.50 (12.50x stake)[0m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mnot applicable — an aggregate win, not attributed to specific positions[0m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+          [36m>[39m
+            [0mnot applicable — no multiplier applied to this win[0m
+          [36m</td>[39m
+        [36m</tr>[39m
+      [36m</tbody>[39m
+    [36m</table>[39m
+
+      128 |         expect(within(table).getByText("aggregate")).toBeTruthy();
+      129 |         expect(queryByText("0", {selector: "td"})).toBeNull();
+    > 130 |         expect(within(table).getByText(/unavailable.*reconstructed from an imported round/)).toBeTruthy();
+          |                              ^
+      131 |     });
+      132 |
+      133 |     it("labels a symbol-less aggregate win (jackpot/legacy-style) with an explicit reason instead of the literal string 'undefined'", () => {
+
+      at Object.getElementError (node_modules/@testing-library/dom/dist/config.js:37:19)
+      at node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+      at node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+      at node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+      at Object.<anonymous> (tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx:130:30)
+
+  ● RoundArtifactInspector win amount presentation › labels a symbol-less aggregate win (jackpot/legacy-style) with an explicit reason instead of the literal string 'undefined'
+
+    InvalidJsonValueError: Value at "steps[0].wins[0].symbolId" is not valid canonical JSON: undefined is not a valid JSON value.
+
+      39 |     }
+      40 |     if (type === "undefined") {
+    > 41 |         throw new InvalidJsonValueError(path, "undefined is not a valid JSON value");
+         |               ^
+      42 |     }
+      43 |     if (type === "bigint") {
+      44 |         throw new InvalidJsonValueError(path, "a bigint is not a valid JSON value");
+
+      at toCanonicalJson (src/json/toCanonicalJson.ts:41:15)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:104:30)
+      at src/json/toCanonicalJson.ts:84:48
+          at Array.map (<anonymous>)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:84:24)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:104:30)
+      at src/json/toCanonicalJson.ts:84:48
+          at Array.map (<anonymous>)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:84:24)
+      at toCanonicalJson (src/json/toCanonicalJson.ts:104:30)
+      at describeRoundArtifact (cli/studio-client/src/domain/interpret/Replay.ts:70:96)
+      at Object.<anonymous> (tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx:134:47)
+
+  ● RoundArtifactInspector imported-artifact and incomplete-debug presentation › renders an imported (Stake Engine reconstruction) round's aggregate win and its own debug payload without state snapshots, rather than silently omitting either section
+
+    TestingLibraryElementError: Unable to find an element with the text: unavailable — reconstructed from an imported round, per-position detail wasn't preserved. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+    Ignored nodes: comments, script, style
+    [36m<body>[39m
+      [36m<div>[39m
+        [36m<div>[39m
+          [36m<table[39m
+            [33mclass[39m=[32m"m_b23fa0ef mantine-Table-table"[39m
+            [33mstyle[39m=[32m"--table-vertical-spacing: calc(0.4375rem * var(--mantine-scale));"[39m
+          [36m>[39m
+            [36m<tbody[39m
+              [33mclass[39m=[32m"m_b2404537 mantine-Table-tbody"[39m
+            [36m>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mGame[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                  [33mstyle[39m=[32m"overflow-wrap: anywhere;"[39m
+                [36m>[39m
+                  [0mA (id: "a", v1.0.0)[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mPokie version[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                [36m>[39m
+                  [0m1.0.0[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mBet mode[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                [36m>[39m
+                  [0mbase[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+              [36m<tr[39m
+                [33mclass[39m=[32m"m_4e7aa4fd mantine-Table-tr"[39m
+              [36m>[39m
+                [36m<th[39m
+                  [33mclass[39m=[32m"m_4e7aa4f3 mantine-Table-th"[39m
+                [36m>[39m
+                  [0mStake[0m
+                [36m</th>[39m
+                [36m<td[39m
+                  [33mclass[39m=[32m"m_4e7aa4ef mantine-Table-td"[39m
+                [36m>[39m
+                  [0m5.00[0m
+                [36m</td>[39m
+              [36m</tr>[39m
+            [36m</tbody>[39m
+          [36m</table>[39m
+          [36m<div[39m
+            [33maria-label[39m=[32m"Game player"[39m
+            [33mclass[39m=[32m"pokie-player"[39m
+            [33mdata-pokie-player[39m=[32m"canonical-v1"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"player-bet-info"[39m
+            [36m/>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"player-mode-info"[39m
+            [36m/>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"pokie-player-grid-scroll"[39m
+            [36m>[39m
+              [36m<div>[39m
+                [36m<table[39m
+                  [33mclass[39m=[32m"player-grid"[39m
+                [36m>[39m
+                  [36m<tr>[39m
+                    [36m<td[39m
+                      [33mclass[39m=[32m"player-reel"[39m
+                    [36m>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"0:0"[39m
+                      [36m>[39m
+                        [0mR0P0[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"1:0"[39m
+                      [36m>[39m
+                        [0mR0P1[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"2:0"[39m
+                      [36m>[39m
+                        [0mR0P2[0m
+                      [36m</div>[39m
+                    [36m</td>[39m
+                    [36m<td[39m
+                      [33mclass[39m=[32m"player-reel"[39m
+                    [36m>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"0:1"[39m
+                      [36m>[39m
+                        [0mR1P0[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"1:1"[39m
+                      [36m>[39m
+                        [0mR1P1[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"2:1"[39m
+                      [36m>[39m
+                        [0mR1P2[0m
+                      [36m</div>[39m
+                    [36m</td>[39m
+                    [36m<td[39m
+                      [33mclass[39m=[32m"player-reel"[39m
+                    [36m>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"0:2"[39m
+                      [36m>[39m
+                        [0mR2P0[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"1:2"[39m
+                      [36m>[39m
+                        [0mR2P1[0m
+                      [36m</div>[39m
+                      [36m<div[39m
+                        [33mclass[39m=[32m"player-cell"[39m
+                        [33mdata-cell[39m=[32m"2:2"[39m
+                      [36m>[39m
+                        [0mR2P2[0m
+                      [36m</div>[39m
+                    [36m</td>[39m
+                  [36m</tr>[39m
+                [36m</table>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<dl[39m
+              [33maria-label[39m=[32m"Round totals"[39m
+              [33mclass[39m=[32m"player-round-totals"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"player-round-total"[39m
+                [33mhidden[39m=[32m""[39m
+              [36m>[39m
+                [36m<dt>[39m
+                  [0mCredits[0m
+                [36m</dt>[39m
+                [36m<dd />[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"player-round-total"[39m
+              [36m>[39m
+                [36m<dt>[39m
+                  [0mTotal win[0m
+                [36m</dt>[39m
+                [36m<dd>[39m
+                  [0m12.50[0m
+                [36m</dd>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"player-round-total"[39m
+              [36m>[39m
+                [36m<dt>[39m
+                  [0mPayout multiplier[0m
+                [36m</dt>[39m
+                [36m<dd>[39m
+                  [0m2.50[0m
+                [36m</dd>[39m
+              [36m</div>[39m
+           ...
+
+      309 |
+      310 |         expect(getByText("aggregate")).toBeTruthy();
+    > 311 |         expect(getByText("unavailable — reconstructed from an imported round, per-position detail wasn't preserved")).toBeTruthy();
+          |                ^
+      312 |         expect(getByText("Debug data")).toBeTruthy();
+      313 |         expect(getByText("game-provided, may include RNG/reel-stop data")).toBeTruthy();
+      314 |         // Both the "Debug data" CodeBlock and the "Full artifact" CodeBlock at the bottom of Advanced
+
+      at Object.getElementError (node_modules/@testing-library/dom/dist/config.js:37:19)
+      at node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+      at node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+      at node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+      at Object.<anonymous> (tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx:311:16)
+
+
+Test Suites: 1 failed, 20 passed, 21 total
+Tests:       3 failed, 851 passed, 854 total
+Snapshots:   0 total
+Time:        306.66 s
+Ran all test suites within paths "tests/artifact/PokieJsonRoundArtifactProjector.test.ts", "tests/artifact/RoundArtifactValidator.test.ts", "tests/artifact/buildRoundArtifactFromSession.test.ts", "tests/cli/commands/ReplayCommand.test.ts", "tests/cli/studio-client/src/api/apiClient.test.ts", "tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx", "tests/cli/studio-client/src/components/project/ReplayTab.test.tsx", "tests/cli/studio-client/src/domain/interpret/Replay.test.ts", "tests/cli/studio/replay/StudioReplayExecutionService.test.ts", "tests/cli/studio/replay/buildReplayDownload.test.ts", "tests/cli/studio/replay/validateReplayRequest.test.ts", "tests/cli/studio/runtime/StudioPlayService.test.ts", "tests/project/wasm/WasmRuntimeCompactState.test.ts", "tests/replay/ReplayRecorder.test.ts", "tests/server/session/captureRoundPokieSessionState.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts", "tests/v2/AuditRoundReplay.test.ts", "tests/v2/LogicalRoundPackaging.test.ts", "tests/v2/ScreenProjection.test.ts", "tests/v2/TransactionalRoundStore.test.ts", "tests/v2/TransactionalRuntimeBoundary.test.ts" in 2 projects.
