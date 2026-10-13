@@ -219,7 +219,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
             }
             if (next.status !== "played") return {...next, committedProgress};
             result = next;
-            ledger.set(key, this.saveDelivery(command, result));
+            // The successor may be a historical retry after another round has started. Share
+            // its accepted delivery node rather than reading the session's newer live round.
+            const accepted = ledger.get(`${continuation.roundId}:${continuation.cursor}`)!;
+            ledger.set(key, {...accepted, command: JSON.stringify(command)});
             advanced++;
         }
         return result;

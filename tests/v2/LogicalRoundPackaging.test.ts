@@ -183,6 +183,28 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(calls).toBe(3);
     });
 
+    it("a failed direct composite completed by its successor remains retryable after a later round", () => {
+        const session = transactionalRoundGame().createSession({seed: 7});
+        const runtime = new api.SessionRuntime(session);
+        const play = session.play.bind(session);
+        let calls = 0;
+        session.play = () => {
+            if (calls === 2) throw new Error("third subround failed");
+            play();
+            calls++;
+        };
+        const entry: api.SessionCommand = {kind: "spin", roundId: "first", delivery: "composite"};
+        expect(() => runtime.execute(entry)).toThrow("third subround failed");
+        session.play = play;
+        const completed = played(runtime.execute({kind: "spin", delivery: "stepwise", continuation: {roundId: "first", cursor: 2}}));
+        const later = played(runtime.execute({kind: "spin", roundId: "later", delivery: "composite"}));
+        const before = snapshot(session);
+        expect(runtime.execute(entry)).toEqual(completed);
+        expect(runtime.execute(entry)).toEqual(completed);
+        expect(runtime.getLogicalRound()).toEqual(later.logicalRound);
+        expect(snapshot(session)).toEqual(before);
+    });
+
     it.each(["result", "checkpoint"])("independent saved-stage %s write failure recovers exact delivery without math or settlement", async fault => {
         let calculations = 0;
         const model = cascadeGame(() => calculations++);
