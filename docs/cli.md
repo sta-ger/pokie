@@ -2399,7 +2399,7 @@ depends on whether the loaded game implements the optional `PokieGame.getSession
   }
   ```
 - **`getSessionSerializer()` implemented**: `{sessionId, game, credits, ...serializer.getInitialData(session)}` —
-  `credits` is always the authoritative wallet balance, overriding whatever the serializer itself computed. For a
+  `credits` is server settlement accounting, overriding serializer fields; completed retries retain the original balance and durable reads expose the last settled revision during external recovery. For a
   game returning `new VideoSlotSessionSerializer()` (what `pokie build`/`pokie init` scaffold by default), that
   means `bet`, `availableBets`, `reelsSymbols`, `availableSymbols`, `paytable`, `linesDefinitions`, and more — see
   [Network Serialization](serialization.md) for the full shape, including the `MultiStageRoundSessionSerializer`/
@@ -2892,7 +2892,7 @@ guarantee. Two concrete ways it can fall short:
 For local reference atomicity, select the explicit `transactionalRoundStore` composition
 [documented below](#selecting-durable-reference-round-storage-from-a-library-server).
 Independent repositories/wallets remain on the compensation path, even when stored in the
-same database. External-wallet ACID requires a separate deployment-owned boundary.
+same database. The explicit external outbox composition provides reconciliation, not external-wallet ACID.
 
 **`SpinReconciliationServicing`** (`reconcileOne(sessionId, requestId)`/`reconcileAll()`) is the shipped,
 v1.3-compatible palliative for exactly the "process crash" gap above — not a substitute for real cross-store
@@ -3753,3 +3753,22 @@ result; retry its original identity. Shutdown stops acceptance and waits for the
 accepted work before connection/game-runtime release. Listen failures close the owned
 store. Constructor option errors occur before ownership is accepted; callers must close
 the store if construction fails. Callers should await stop before releasing game resources.
+
+### External settlement and player retry identities
+
+Library servers may explicitly select `externalRoundStore` with
+`settlementGuarantee: "external-reconciliation"`; see
+[the capability and recovery contract](game-session.md#durable-external-wallet-reconciliation).
+It is a durable local outbox with independent provider reconciliation, never cross-store
+ACID. `pokie serve`, `pokie dev`, outcome-source/pre-generated routes and Studio Play retain
+explicit weaker compensation/ephemeral support; no storage flags or top-level export command
+are introduced.
+
+The bundled player gives each logical round a UUID and captures its numeric bet/mode payload.
+Response-loss Retry resubmits that same identity and payload, including after restoring the
+same session from localStorage. An unresolved round disables fresh Spin and reconnect; Retry
+keeps its identity for `recovery-required` and `identity-conflict`. A successful response
+clears the retained command; explicit invalid/blocked/stale/not-found rejection permits a
+new logical command. External unknown/pending inspection is not permission to charge again.
+Direct API callers must likewise retain their original requestId and payload; optional
+`expectedSessionVersion` remains numeric and part of strong identity.

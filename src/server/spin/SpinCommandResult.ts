@@ -37,7 +37,7 @@ export type SpinCommandResult =
           requestId?: string;
           version?: number;
       }
-    | {status: "invalid-command" | "incompatible-state" | "corrupt-state" | "restoration-unsupported" | "storage-error" | "settlement-error" | "execution-error"; sessionId: string; reason: string}
+    | {status: "invalid-command" | "incompatible-state" | "corrupt-state" | "restoration-unsupported" | "storage-error" | "settlement-error" | "execution-error"; sessionId: string; reason: string; retryDisposition?: "safe-to-retry"}
     | {status: "blocked"; sessionId: string; reason: string}
     | {status: "not-found"; sessionId: string}
     | {status: "identity-conflict"; sessionId: string; reason: string}

@@ -1,5 +1,5 @@
-// Money balance, kept separate from SessionRepository's persisted game state (credits are
-// explicitly not part of it — see PokieDevServer) so the two can vary independently: a
+// Independent money balance. Captured session credits record historical results; they do not
+// confer authority over this wallet. On the weaker independent-port path the stores can diverge: a
 // FileSessionRepository can survive a restart while balances stay process-local.
 //
 // A plain read/full-overwrite pair, unchanged since the original "pokie serve" wallet support.

@@ -1,3 +1,4 @@
+import type {ExternalRoundStore} from "./storage/ExternalRoundStore.js";
 import type {TransactionalRoundStore} from "./storage/TransactionalRoundStore.js";
 import type {WeightedOutcomeLibrary} from "../weightedoutcome/WeightedOutcomeLibrary.js";
 import type {IdempotencyRepository} from "./idempotency/IdempotencyRepository.js";
@@ -15,6 +16,10 @@ export type PokieDevServerOptions = {
     // Exclusive with separate repositories, wallet, reconciliation options and pre-generated routes.
     // Local reference ledger only; not an external wallet/RGS transaction.
     transactionalRoundStore?: TransactionalRoundStore;
+    // Explicit durable external reconciliation; exclusive with all independent participants.
+    externalRoundStore?: ExternalRoundStore;
+    // Independent ports default to the legacy weaker process-local compensation path.
+    settlementGuarantee?: "compensation" | "external-reconciliation" | "reference-atomic";
     host?: string;
     port?: number;
     sessionRepository?: SessionRepository;

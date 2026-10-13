@@ -1,4 +1,4 @@
-import {FetchLike, spin} from "./apiClient.js";
+import {FetchLike, spin, SessionCommandError} from "./apiClient.js";
 import {describeClientGameTitle} from "./clientPresentation.js";
 import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButton} from "./dom.js";
 import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
@@ -88,6 +88,15 @@ function storageForBootGeneration(generation: number): StorageLike {
             }
         },
     };
+}
+
+// getRandomValues also works for an HTTP dev host without randomUUID's secure-context API.
+function createRoundIdentity(): string {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -349,13 +358,30 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
         renderStatus(elements.status, `Connected to ${apiBaseUrl}`);
         rerender();
         elements.spinButton.disabled = false;
+        const pendingKey = `pokie.player.pendingRound:${apiBaseUrl}:${current.sessionId}`;
+        let pendingRound: {requestId: string; bet?: number; mode?: string} | undefined;
+        const retained = window.localStorage.getItem(pendingKey);
+        if (retained) {
+            const parsed = JSON.parse(retained) as typeof pendingRound;
+            if (!parsed || typeof parsed.requestId !== "string" || !parsed.requestId ||
+                (parsed.bet !== undefined && (!Number.isFinite(parsed.bet) || parsed.bet < 0)) ||
+                (parsed.mode !== undefined && typeof parsed.mode !== "string")) throw new Error("Invalid retained round identity; restore the original payload before settlement.");
+            pendingRound = parsed;
+        }
+        let submissionRunning = false;
         const attemptSpin = (): void => {
+            if (submissionRunning) return;
+            submissionRunning = true;
+            pendingRound ??= {requestId: createRoundIdentity(), bet: selectedBet, mode: selectedMode};
+            window.localStorage.setItem(pendingKey, JSON.stringify(pendingRound));
             elements.spinButton.disabled = true;
-            spin(fetchImpl, apiBaseUrl, current.sessionId, undefined, selectedBet, selectedMode)
+            spin(fetchImpl, apiBaseUrl, current.sessionId, pendingRound.requestId, pendingRound.bet, pendingRound.mode)
                 .then((response) => {
                     if (generation !== bootGeneration) {
                         return;
                     }
+                    pendingRound = undefined;
+                    window.localStorage.removeItem(pendingKey);
                     current = response;
                     renderSessionId(elements, current.sessionId);
                     stageIndex = 0;
@@ -369,15 +395,27 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
                         return;
                     }
                     showSpinError(elements, error, attemptSpin, () => reconnect(elements, fetchImpl));
+                    if (error instanceof SessionCommandError && (["invalid-command", "blocked", "conflict", "not-found"].includes(error.code) ||
+                        (["settlement-error", "execution-error"].includes(error.code) && error.retryDisposition === "safe-to-retry"))) {
+                        pendingRound = undefined;
+                        window.localStorage.removeItem(pendingKey);
+                    }
+                    elements.spinReconnectButton.disabled = pendingRound !== undefined;
                 })
                 .finally(() => {
+                    submissionRunning = false;
                     if (generation === bootGeneration) {
-                        elements.spinButton.disabled = false;
+                        elements.spinButton.disabled = pendingRound !== undefined;
                     }
                 });
         };
 
         wireSpinButton(elements.spinButton, attemptSpin);
+        if (pendingRound) {
+            elements.spinButton.disabled = true;
+            showSpinError(elements, new Error("An earlier round is unresolved. Retry its retained identity."), attemptSpin, () => reconnect(elements, fetchImpl));
+            elements.spinReconnectButton.disabled = true;
+        }
     } catch (error) {
         if (generation !== bootGeneration) {
             return;

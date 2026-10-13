@@ -1,4 +1,4 @@
-import {createSession, FetchLike, getSession, spin} from "../../../cli/client/apiClient.js";
+import {SessionCommandError, createSession, FetchLike, getSession, spin} from "../../../cli/client/apiClient.js";
 
 type FakeCall = {url: string; init?: {method?: string; headers?: Record<string, string>; body?: string}};
 
@@ -82,6 +82,12 @@ describe("apiClient", () => {
     });
 
     describe("spin", () => {
+        it.each([0.05, 7.5, 1e-7])("forwards exact %s and the caller's original revision", async bet => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {sessionId: "s", credits: 1}}));
+            await spin(fetchImpl, "http://api.test", "s", "logical", bet, "base", 2);
+            expect(JSON.parse(calls[0].init!.body!)).toEqual({requestId: "logical", bet, mode: "base", expectedSessionVersion: 2});
+        });
+
         it("preserves identity conflicts without issuing another request or replacing its key", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: false, status: 409,
                 body: {code: "identity-conflict", error: "Restore the original intent; do not retry with a fresh key."}}));
@@ -177,4 +183,12 @@ describe("apiClient", () => {
             expect(new URL(call.url).search).toBe("");
         }
     });
+    it.each([undefined, "safe-to-retry", "untrusted"])("carries only an explicit confirmed pre-effect retry disposition (%s)", async retryDisposition => {
+        const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {code: "settlement-error", error: "Provider unavailable", retryDisposition}}));
+        await expect(spin(fetchImpl, "http://api.test", "s1", "round")).rejects.toMatchObject({
+            code: "settlement-error", retryDisposition: retryDisposition === "safe-to-retry" ? "safe-to-retry" : undefined,
+        });
+        await expect(spin(fetchImpl, "http://api.test", "s1", "round")).rejects.toBeInstanceOf(SessionCommandError);
+    });
+
 });

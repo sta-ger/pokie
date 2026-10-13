@@ -275,6 +275,7 @@ export class StudioPlayService {
         const wallet = new InMemoryWallet();
         const sessionRepository = new InMemorySessionRepository();
         const transactionalWallet = isTransactionalWalletPort(wallet) ? wallet : new TransactionalWalletAdapter(wallet);
+        // Explicit legacy independent-port composition: Studio Play is ephemeral compensation.
         const spinHandler = new SpinCommandHandler(
             game,
             sessionRepository,

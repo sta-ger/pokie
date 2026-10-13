@@ -8,6 +8,7 @@ type TransactionRecord = {
     type: "debit" | "credit";
     amount: number;
     reversed: boolean;
+    balance: number;
 };
 
 // Adapts any plain WalletPort (getBalance/setBalance only — including a consumer's existing custom
@@ -26,6 +27,7 @@ type TransactionRecord = {
 export class TransactionalWalletAdapter implements TransactionalWalletPort, WalletTransactionInspecting {
     private readonly wallet: WalletPort;
     private readonly transactions = new Map<string, TransactionRecord>();
+    private readonly queues = new Map<string, Promise<unknown>>();
 
     constructor(wallet: WalletPort) {
         this.wallet = wallet;
@@ -39,42 +41,50 @@ export class TransactionalWalletAdapter implements TransactionalWalletPort, Wall
         return this.wallet.setBalance(sessionId, balance);
     }
 
-    public async debit(sessionId: string, transactionId: string, amount: number): Promise<number> {
+    public debit(sessionId: string, transactionId: string, amount: number): Promise<number> {
+        return this.enqueue(sessionId, () => this.change(sessionId, transactionId, "debit", amount));
+    }
+
+    public credit(sessionId: string, transactionId: string, amount: number): Promise<number> {
+        return this.enqueue(sessionId, () => this.change(sessionId, transactionId, "credit", amount));
+    }
+
+    public reverse(sessionId: string, transactionId: string): Promise<number> {
+        return this.enqueue(sessionId, () => this.reverseSerialized(sessionId, transactionId));
+    }
+
+    // Reads straight off the same ledger debit()/credit()/reverse() already maintain — never a second,
+    // separate tracking structure to keep in sync. "absent" covers both "never applied" and "this
+    // instance has no memory of it" (e.g. after a restart, since the ledger is in-memory-only) — the two
+    // are indistinguishable from here, which cannot establish authoritative absence after a crash. This adapter is admitted only
+    // to the weaker compensation path, never to durable external reconciliation.
+    public getTransactionStatus(sessionId: string, transactionId: string): Promise<WalletTransactionStatus> {
+        const record = this.transactions.get(this.keyFor(sessionId, transactionId));
+        if (!record) {
+            return Promise.resolve("absent");
+        }
+        return Promise.resolve(record.reversed ? "reversed" : "applied");
+    }
+
+    private async change(sessionId: string, transactionId: string, type: "debit" | "credit", amount: number): Promise<number> {
+        if (!Number.isFinite(amount) || amount < 0) throw new Error("Wallet amount must be finite and non-negative.");
         const key = this.keyFor(sessionId, transactionId);
         const existing = this.transactions.get(key);
-        // Only a still-applied transaction short-circuits as an idempotent replay. One that was
-        // since reversed no longer has any effect on the balance, so a fresh call reusing its id
-        // (e.g. a retried command after its first attempt was compensated) must be allowed to apply
-        // for real again — otherwise it would silently no-op, leaving the wallet and whatever the
-        // caller persists elsewhere (e.g. session state) diverging.
         if (existing && !existing.reversed) {
-            return this.wallet.getBalance(sessionId);
+            if (existing.type !== type || existing.amount !== amount) throw new Error("Conflicting wallet transaction identity.");
+            return existing.balance;
         }
-
         const balance = await this.wallet.getBalance(sessionId);
-        if (amount > balance) {
-            throw new WalletInsufficientFundsError(sessionId, amount, balance);
-        }
-        const newBalance = balance - amount;
-        await this.wallet.setBalance(sessionId, newBalance);
-        this.transactions.set(key, {type: "debit", amount, reversed: false});
-        return newBalance;
+        if (!Number.isFinite(balance) || balance < 0) throw new Error("Invalid wallet balance.");
+        if (type === "debit" && amount > balance) throw new WalletInsufficientFundsError(sessionId, amount, balance);
+        const next = type === "debit" ? balance - amount : balance + amount;
+        if (!Number.isFinite(next) || next < 0) throw new Error("Invalid resulting wallet balance.");
+        await this.wallet.setBalance(sessionId, next);
+        this.transactions.set(key, {type, amount, reversed: false, balance: next});
+        return next;
     }
 
-    public async credit(sessionId: string, transactionId: string, amount: number): Promise<number> {
-        const key = this.keyFor(sessionId, transactionId);
-        const existing = this.transactions.get(key);
-        if (existing && !existing.reversed) {
-            return this.wallet.getBalance(sessionId);
-        }
-
-        const newBalance = (await this.wallet.getBalance(sessionId)) + amount;
-        await this.wallet.setBalance(sessionId, newBalance);
-        this.transactions.set(key, {type: "credit", amount, reversed: false});
-        return newBalance;
-    }
-
-    public async reverse(sessionId: string, transactionId: string): Promise<number> {
+    private async reverseSerialized(sessionId: string, transactionId: string): Promise<number> {
         const key = this.keyFor(sessionId, transactionId);
         const record = this.transactions.get(key);
         if (!record) {
@@ -91,17 +101,14 @@ export class TransactionalWalletAdapter implements TransactionalWalletPort, Wall
         return newBalance;
     }
 
-    // Reads straight off the same ledger debit()/credit()/reverse() already maintain — never a second,
-    // separate tracking structure to keep in sync. "absent" covers both "never applied" and "this
-    // instance has no memory of it" (e.g. after a restart, since the ledger is in-memory-only) — the two
-    // are indistinguishable from here, which is exactly why SpinReconciliationService only ever treats
-    // "absent" as "safe to proceed as if nothing happened," never as proof a transaction was reversed.
-    public getTransactionStatus(sessionId: string, transactionId: string): Promise<WalletTransactionStatus> {
-        const record = this.transactions.get(this.keyFor(sessionId, transactionId));
-        if (!record) {
-            return Promise.resolve("absent");
-        }
-        return Promise.resolve(record.reversed ? "reversed" : "applied");
+    private enqueue<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
+        const result = (this.queues.get(sessionId) ?? Promise.resolve()).then(work);
+        const tail = result.catch(() => undefined);
+        this.queues.set(sessionId, tail);
+        tail.then(() => {
+            if (this.queues.get(sessionId) === tail) this.queues.delete(sessionId);
+        });
+        return result;
     }
 
     private keyFor(sessionId: string, transactionId: string): string {

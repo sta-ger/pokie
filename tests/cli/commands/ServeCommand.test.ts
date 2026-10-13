@@ -316,7 +316,7 @@ describe("ServeCommand", () => {
         await command.run(["./sample-slot", "--port", "4321", "--host", "0.0.0.0"]);
 
         expect(receivedGame).toBe(game);
-        expect(receivedOptions).toEqual({host: "0.0.0.0", port: 4321});
+        expect(receivedOptions).toEqual({host: "0.0.0.0", port: 4321, settlementGuarantee: "compensation"});
         expect(stubServer.startCalls).toBe(1);
 
         logSpy.mockRestore();

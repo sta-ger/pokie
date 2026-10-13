@@ -1,3 +1,4 @@
+import {isExternalRoundStore, type ExternalRoundStore} from "./storage/ExternalRoundStore.js";
 import type {TransactionalRoundStore} from "./storage/TransactionalRoundStore.js";
 import {transactionBoundary} from "./storage/internal/transactionBoundary.js";
 import {SessionStateCorruptError} from "./session/FileSessionRepository.js";
@@ -102,7 +103,7 @@ const DEFAULT_PORT = 3000;
 // `preGeneratedOutcomeLibrary`, both routes 404 exactly like any other unknown route — the existing
 // `/sessions` routes are entirely unaffected either way.
 export class PokieDevServer implements PokieDevServerHandling {
-    private readonly transactionalRoundStore?: TransactionalRoundStore;
+    private readonly transactionalRoundStore?: TransactionalRoundStore | ExternalRoundStore;
     private readonly game: PokieGame;
     private readonly host: string;
     private readonly port: number;
@@ -134,13 +135,21 @@ export class PokieDevServer implements PokieDevServerHandling {
     private readonly pendingRequests = new Set<Promise<void>>();
 
     constructor(game: PokieGame, options: PokieDevServerOptions = {}) {
-        if (options.transactionalRoundStore !== undefined && [options.sessionRepository, options.wallet,
+        if (options.externalRoundStore && !isExternalRoundStore(options.externalRoundStore)) throw new Error("External settlement requires durable intent/result storage and session fencing.");
+        if (options.transactionalRoundStore && options.externalRoundStore) throw new Error("Reference and external stores are exclusive.");
+        const defaultGuarantee = options.transactionalRoundStore ? "reference-atomic" : "compensation";
+        const guarantee = options.settlementGuarantee ?? (options.externalRoundStore ? "external-reconciliation" : defaultGuarantee);
+        if (!["compensation", "external-reconciliation", "reference-atomic"].includes(guarantee)) throw new Error("Unsupported settlement guarantee.");
+        if ((guarantee === "external-reconciliation" && !options.externalRoundStore) || (guarantee === "reference-atomic" && !options.transactionalRoundStore) ||
+            (guarantee === "compensation" && (options.transactionalRoundStore || options.externalRoundStore)) ||
+            (guarantee === "reference-atomic" && options.externalRoundStore) || (guarantee === "external-reconciliation" && options.transactionalRoundStore)) throw new Error("Selected settlement guarantee requires its exclusive capable store.");
+        if ((options.transactionalRoundStore !== undefined || options.externalRoundStore !== undefined) && [options.sessionRepository, options.wallet,
             options.idempotencyRepository, options.spinOperationLog, options.singleInstanceDeployment,
             options.preGeneratedOutcomeLibrary, options.preGeneratedSessionRepository, options.preGeneratedIdempotencyRepository,
             options.preGeneratedRoundRecorder].some(value => value !== undefined)) {
             throw new Error("transactionalRoundStore owns every participant; independent settlement/reconciliation and pre-generated options are incompatible.");
         }
-        this.transactionalRoundStore = options.transactionalRoundStore;
+        this.transactionalRoundStore = options.transactionalRoundStore ?? options.externalRoundStore;
         this.game = game;
         this.host = options.host ?? DEFAULT_HOST;
         this.port = options.port ?? DEFAULT_PORT;
@@ -150,7 +159,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             load: async id => (await store.readSession(id))?.state, loadVersioned: id => store.readSession(id),
             save: forbidden, saveVersioned: forbidden,
         } as import("./session/VersionedSessionRepository.js").VersionedSessionRepository;
-        this.usesDefaultWallet = options.wallet === undefined;
+        this.usesDefaultWallet = options.wallet === undefined && options.externalRoundStore === undefined;
         this.wallet = store === undefined ? options.wallet ?? new InMemoryWallet() : {getBalance: id => store.getBalance(id), setBalance: forbidden};
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.captureDebugSessionData = options.captureDebugSessionData ?? true;
@@ -198,8 +207,13 @@ export class PokieDevServer implements PokieDevServerHandling {
         this.shutdownPromise = undefined;
         return new Promise((resolve, reject) => {
             const server = http.createServer((req, res) => {
+                if (this.shutdownPromise !== undefined) {
+                    this.sendJson(res, 503, {code: "storage-error", error: "Server is stopping; retry the original identity on a live owner."});
+                    return;
+                }
                 const request = this.handleRequest(req, res).catch((error) => {
                     if (!res.headersSent && !res.destroyed) this.sendJson(res, 500, {error: error instanceof Error ? error.message : String(error)});
+                    else if (!res.destroyed) res.destroy(error instanceof Error ? error : new Error(String(error)));
                 });
                 this.pendingRequests.add(request);
                 request.then(() => this.pendingRequests.delete(request), () => this.pendingRequests.delete(request));
@@ -357,7 +371,7 @@ export class PokieDevServer implements PokieDevServerHandling {
             // No wallet was configured: seed the default InMemoryWallet from this session's own
             // starting credits, same as pokie serve's original out-of-box behavior.
             await this.wallet.setBalance(sessionId, session.getCreditsAmount());
-        } else if (this.transactionalRoundStore === undefined) {
+        } else if (this.transactionalRoundStore === undefined || "externalSettlement" in this.transactionalRoundStore) {
             // A wallet was explicitly configured: it's the sole source of truth for a new session's
             // starting balance (its initialBalance, or whatever a custom WalletPort.getBalance()
             // returns for an id it's never seen) — the session's own default credits never overwrite it.
@@ -429,7 +443,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (result.status !== "played") {
             const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
             const status = statusCodes[result.status] ?? 409;
-            this.sendJson(res, status, {code: result.status, error: result.reason});
+            this.sendJson(res, status, {code: result.status, error: result.reason, ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {})});
             return;
         }
 
@@ -682,8 +696,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         // `serializedPayload` is whichever of initialPayload/roundPayload/their merge the caller
         // determined is right for this endpoint (session creation/spin/restore respectively) — see
         // captureInitialPokieSessionState.ts/captureRoundPokieSessionState.ts and this class's own
-        // handleCreateSession/handleSpin/handleGetSession. `credits` is always the authoritative
-        // wallet balance, overriding whatever the serializer itself computed from
+        // handleCreateSession/handleSpin/handleGetSession. `credits` is the selected composition's settled accounting
+        // (historical on replay), overriding whatever the serializer itself computed from
         // session.getCreditsAmount().
         if (serializedPayload !== undefined) {
             return {...serializedPayload, sessionId, game, credits};

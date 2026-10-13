@@ -1,7 +1,8 @@
 import type {PokieInternalSessionData} from "./PokieInternalSessionData.js";
 
-// `sessionId`/`game`/`credits` are always present, server-computed fields (credits always the
-// authoritative wallet balance, never a game's own possibly-stale getCreditsAmount()). Everything
+// `sessionId`/`game`/`credits` are server-computed. Completed retries retain their original
+// settlement balance; durable reads expose the last settled revision, including during external
+// recovery. Legacy current-session reads consult their configured wallet. Everything
 // else depends on whether the loaded game provided a serializer (see PokieGame.getSessionSerializer):
 // without one, the response is the original narrow shape (`bet`/`win?`/`screen?`, still declared
 // here for documentation/DX); with one, it's `{...serializer.getInitialData()/.getRoundData()

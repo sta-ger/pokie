@@ -273,6 +273,7 @@ describe("DevCommand", () => {
         expect(receivedApiOptions).toEqual({
             host: undefined,
             port: 3000,
+            settlementGuarantee: "compensation",
             sessionCapturePolicyMode: "full",
             pokieVersion: "unknown",
         });

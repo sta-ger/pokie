@@ -46,8 +46,9 @@ export async function spin(
     requestId?: string,
     bet?: number,
     mode?: string,
+    expectedSessionVersion?: number,
 ): Promise<SessionResponse> {
-    const payload: {requestId?: string; bet?: number; mode?: string} = {};
+    const payload: {requestId?: string; bet?: number; mode?: string; expectedSessionVersion?: number} = {};
     if (requestId !== undefined) {
         payload.requestId = requestId;
     }
@@ -57,6 +58,7 @@ export async function spin(
     if (mode !== undefined) {
         payload.mode = mode;
     }
+    if (expectedSessionVersion !== undefined) payload.expectedSessionVersion = expectedSessionVersion;
     const body = Object.keys(payload).length === 0 ? undefined : JSON.stringify(payload);
     const response = await fetchImpl(`${apiBaseUrl}/sessions/${encodeURIComponent(sessionId)}/spin`, {
         method: "POST",
@@ -64,8 +66,8 @@ export async function spin(
         body,
     });
     if (!response.ok) {
-        const errorBody = (await safeJson(response)) as {error?: string; code?: string} | undefined;
-        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`);
+        const errorBody = (await safeJson(response)) as {error?: string; code?: string; retryDisposition?: unknown} | undefined;
+        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`, errorBody?.retryDisposition === "safe-to-retry" ? "safe-to-retry" : undefined);
     }
     return (await response.json()) as SessionResponse;
 }
@@ -79,7 +81,7 @@ async function safeJson(response: {json(): Promise<unknown>}): Promise<unknown> 
 }
 
 export class SessionCommandError extends Error {
-    constructor(public readonly code: string, message: string) {
+    constructor(public readonly code: string, message: string, public readonly retryDisposition?: "safe-to-retry") {
         super(`${code}: ${message}`);
         this.name = "SessionCommandError";
     }
