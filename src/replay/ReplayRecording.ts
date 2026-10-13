@@ -15,6 +15,7 @@ export interface PreGeneratedReplayRecording {
 
 /** Actual execution capture and recorded-evidence verification; legacy recording stays independently usable. */
 export interface AuditReplayRecording {
+    /** A successor failure exposes the immutable accepted prefix as error.committedRecording. Retry with the original inputs to resume it. */
     recordAudit(game: import("../gamepackage/PokieGame.js").PokieGame, session: import("../session/GameSessionHandling.js").GameSessionHandling,
         commands: readonly import("../runtime/SessionCommand.js").SessionCommand[], disposition: import("./AuditRoundRecording.js").AuditDisposition,
         context?: import("../gamepackage/PokieGameContext.js").PokieGameContext): ReplayDescriptor;

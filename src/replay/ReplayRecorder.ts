@@ -27,12 +27,21 @@ import type {PreGeneratedReplayRecordingOptions, ReplayRecordingOptions} from ".
 type SessionWithSymbolsCombination = GameSessionHandling & {
     getSymbolsCombination(): {toMatrix(transposed?: boolean): unknown[][]};
 };
+type AuditOperation = {
+    inputs: string;
+    commands: readonly SessionCommand[];
+    disposition: AuditDisposition;
+    context?: PokieGameContext;
+    deliveries: AuditDelivery[];
+    completedCommands: number;
+    descriptor?: ReplayDescriptor;
+};
 
 // There is no seek-to-round primitive in GameSessionHandling, so this replays a round best-effort by
 // playing a fresh session forward from round 1 up to the requested round. Reproducibility for a given
 // seed depends entirely on the game package actually threading context.seed into a deterministic setup.
 export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecording, AuditReplayRecording {
-    private readonly auditHistory = new WeakMap<GameSessionHandling, {operations: Map<string, {inputs: string; descriptor: ReplayDescriptor}>; deliveries: number}>();
+    private readonly auditHistory = new WeakMap<GameSessionHandling, {operations: Map<string, AuditOperation>; deliveries: number}>();
 
     constructor(private readonly auditRetentionLimit = 10000) {
         if (!Number.isSafeInteger(auditRetentionLimit) || auditRetentionLimit < 1 || auditRetentionLimit > 10000) throw new Error("Audit retention limit must be an integer in 1..10000.");
@@ -55,32 +64,44 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         const historical = requestKey ? history.operations.get(requestKey) : undefined;
         if (historical) {
             if (historical.inputs !== inputs) throw new AuditReplayError("audit-identity", "operation", "Retry conflicts with the original commands, disposition, context or model.");
-            return historical.descriptor;
+            if (historical.completedCommands === historical.commands.length && historical.descriptor) return historical.descriptor;
         }
         // Reserve the maximum accepted boundaries before executing; a capacity rejection draws nothing.
         const required = commands.reduce((count, command) => count + (command.delivery === "composite" ? command.maxSubrounds ?? 1000 : 1), 0);
-        if (!required || history.deliveries + required > this.auditRetentionLimit) throw new AuditReplayError("audit-order", "commands", "Audit retry retention limit reached; export evidence and release the session.");
+        if (!required || history.deliveries + required - (historical?.deliveries.length ?? 0) > this.auditRetentionLimit) throw new AuditReplayError("audit-order", "commands", "Audit retry retention limit reached; export evidence and release the session.");
         this.auditHistory.set(session, history);
         const startedAt = new Date().toISOString();
-        const deliveries: AuditDelivery[] = [];
-        let before = captureAuditBoundary(session);
+        const operation: AuditOperation = historical ?? {
+            inputs, commands: deepFreeze(JSON.parse(JSON.stringify(commands))),
+            disposition: deepFreeze(JSON.parse(JSON.stringify({...disposition, startedAt: disposition.startedAt ?? startedAt}))),
+            ...(context ? {context: deepFreeze(JSON.parse(JSON.stringify(context)))} : {}),
+            deliveries: [], completedCommands: 0,
+        };
+        let before = operation.deliveries[operation.deliveries.length - 1]?.after ?? captureAuditBoundary(session);
         const runtime = new SessionRuntime(session, undefined, (command, result) => {
-            const delivery = captureAuditDelivery(game, session, command, before, result,
-                {...disposition, startedAt: disposition.startedAt ?? startedAt, recordedAt: disposition.recordedAt ?? new Date().toISOString()}, "accepted-boundary");
-            deliveries.push(delivery);
+            const delivery = deepFreeze(captureAuditDelivery(game, session, command, before, result,
+                {...operation.disposition, recordedAt: operation.disposition.recordedAt ?? new Date().toISOString()}, "accepted-boundary"));
+            operation.deliveries.push(delivery);
+            if (requestKey) history.operations.set(requestKey, operation);
             history.deliveries++;
             before = delivery.after;
         });
-        for (const command of commands) {
-            const result = runtime.execute(command);
-            if (result.status !== "played") throw new AuditReplayError("audit-command", "command", result.reason);
+        try {
+            while (operation.completedCommands < operation.commands.length) {
+                const result = runtime.execute(operation.commands[operation.completedCommands]);
+                if (result.status !== "played") throw new AuditReplayError("audit-command", "command", result.reason);
+                operation.completedCommands++;
+            }
+        } catch (error) {
+            // Keep the runtime's original exception/progress and expose immutable exportable evidence.
+            const failure = error instanceof Error ? error : new Error(String(error));
+            if (operation.deliveries.length) operation.descriptor = deepFreeze(this.describeAudit(buildAuditRoundRecording(game, operation.context, operation.deliveries)));
+            if (operation.descriptor) Object.assign(failure, {committedRecording: operation.descriptor});
+            throw failure;
         }
-        if (!deliveries.length) throw new AuditReplayError("audit-order", "commands", "Historical delivery was not captured by this recorder; export its original retained evidence.");
-        const recording = buildAuditRoundRecording(game, context, deliveries);
-        const descriptor = deepFreeze(this.describeAudit(recording));
-        if (requestKey) history.operations.set(requestKey, {inputs, descriptor});
-        this.auditHistory.set(session, history);
-        return descriptor;
+        if (!operation.deliveries.length) throw new AuditReplayError("audit-order", "commands", "Historical delivery was not captured by this recorder; export its original retained evidence.");
+        operation.descriptor = deepFreeze(this.describeAudit(buildAuditRoundRecording(game, operation.context, operation.deliveries)));
+        return operation.descriptor;
     }
 
     /** Recorder history has the same owner lifetime as direct runtime retained deliveries. */

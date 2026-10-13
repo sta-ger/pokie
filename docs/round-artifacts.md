@@ -312,6 +312,13 @@ cursors. `walletPayout` records the actual signed post-stake wallet adjustment (
 debit), including floating-point residue; mathematical stakes and wins remain unchanged.
 Captured evidence survives compensation with a compensated disposition. Recovery validates
 the original digest and owning operation identity before publishing a new disposition.
+When a successor fails, the thrown error retains the immutable accepted prefix in
+`committedRecording`. Export its `audit` for detached replay; its logical completion
+describes only the accepted prefix. Retrying with the original inputs resumes the interrupted command
+and appends newly accepted deliveries without calculating the prefix again. Capacity
+reservation charges only the operation's remaining delivery budget. Recovery checks
+assigned result revisions against the audit; pre-save operation captures may still
+have an unassigned `newVersion`.
 
 ```ts
 const recording = recorder.recordAudit(game, session, [originalCommand], {

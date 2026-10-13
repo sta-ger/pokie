@@ -1,6 +1,6 @@
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, SessionRuntime, AuditRoundReplay, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
+import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
 import path from "path";
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
@@ -288,5 +288,56 @@ describe("direct audit operation identity and retention", () => {
         expect(descriptor.audit!.deliveries.every(delivery => delivery.disposition.requestId === "composite")).toBe(true);
         expect(new AuditRoundReplay().replay(game, descriptor.audit!).verification).toBe("verified");
         recorder.releaseAuditSession(session);
+    });
+
+    it.each([2, 3, 4])("exports the accepted prefix on calculation %s failure and resumes the original bounded operation exactly once", failedCalculation => {
+        let calculations = 0;
+        const failure = new Error("successor failed");
+        const model = {...transactionalRoundGame(() => {
+            if (++calculations === failedCalculation) throw failure;
+        }), getConfigHash: () => "interrupted-model"};
+        const recorder = new ReplayRecorder(6),
+            context = {seed: "original"},
+            session = model.createSession(context),
+            play = jest.spyOn(session, "play"),
+            accepted = {...disposition, requestId: "interrupted", expectedVersion: 1, version: 2};
+        const commands: SessionCommand[] = [
+            {kind: "spin", roundId: "first", delivery: "composite", maxSubrounds: 3},
+            {kind: "spin", roundId: "second", delivery: "composite", maxSubrounds: 3},
+        ];
+        let prefix: ReplayDescriptor | undefined;
+        try {
+            recorder.recordAudit(model, session, commands, accepted, context);
+        } catch (error) {
+            expect(error).toBe(failure);
+            prefix = (error as Error & {committedRecording: ReplayDescriptor}).committedRecording;
+        }
+        expect(prefix!.audit!.deliveries).toHaveLength(failedCalculation - 1);
+        expect(Object.isFrozen(prefix)).toBe(true);
+        expect(prefix!.audit!.deliveries[0].command).toEqual(commands[0]);
+        expect(prefix!.audit!.deliveries[0].disposition).toMatchObject(accepted);
+        expect(prefix!.audit!.context).toEqual(context);
+        expect(prefix!.auditCompletion).toBe(failedCalculation === 4 ? "completed" : "pending");
+        const count = play.mock.calls.length;
+        context.seed = "replacement";
+        expect(() => recorder.recordAudit(model, session, commands, accepted, context)).toThrow("audit-identity at operation");
+        context.seed = "original";
+        expect(() => recorder.recordAudit(model, session, [{...commands[0], maxSubrounds: 2}, commands[1]], accepted, context)).toThrow("audit-identity at operation");
+        expect(() => recorder.recordAudit(model, session, commands, {...accepted, version: 999}, context)).toThrow("audit-identity at operation");
+        expect(play).toHaveBeenCalledTimes(count);
+        // At exact capacity, accepted deliveries are not reserved or charged a second time.
+        const resumed = recorder.recordAudit(model, session, commands, accepted, context);
+        expect(play).toHaveBeenCalledTimes(7); // Six accepted calculations plus the failed attempt.
+        expect(resumed.audit!.deliveries).toHaveLength(6);
+        expect(resumed.audit!.deliveries.slice(0, failedCalculation - 1)).toEqual(prefix!.audit!.deliveries);
+        expect(resumed.auditCompletion).toBe("completed");
+        expect(recorder.recordAudit(model, session, commands, accepted, context)).toBe(resumed);
+        expect(() => recorder.recordAudit(model, session, [{kind: "spin"}], disposition)).toThrow("retention limit");
+        expect(play).toHaveBeenCalledTimes(7);
+        recorder.releaseAuditSession(session);
+        const restored = new AuditRoundReplay().replay(model, JSON.parse(JSON.stringify(resumed.audit)));
+        expect(restored).toMatchObject({verification: "verified", completion: "completed"});
+        expect(restored.recording.deliveries).toEqual(resumed.audit!.deliveries);
+        expect(new AuditRoundReplay().replay(model, JSON.parse(JSON.stringify(prefix!.audit))).verification).toBe("verified");
     });
 });

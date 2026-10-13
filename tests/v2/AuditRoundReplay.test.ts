@@ -10,6 +10,7 @@ import {transactionalRoundGame} from "./fixtures/TransactionalRoundGame.js";
 import {auditCascadeGame} from "./fixtures/AuditCascadeGame.js";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 import {setTransactionBoundaryHook} from "../../src/server/storage/internal/transactionBoundary.js";
+import {validateOperationRecord, validateRetryResult} from "../../src/runtime/internal/validateRecoveryData.js";
 
 const feature: api.GameBlueprint = {
     manifest: {id: "audit-feature", name: "Audit feature", version: "1"}, reels: 3, rows: 1,
@@ -202,6 +203,132 @@ describe("canonical audited logical-round replay", () => {
         expect(await history.load("prefix", "next")).toBeUndefined();
         expect(await sessions.load("prefix")).toEqual(state);
         expect(await wallet.getBalance("prefix")).toBe(balance);
+    });
+
+    it.each([false, true])("binds cached and captured assigned revisions before historical delivery/reconciliation (saved stage=%s)", async savedStage => {
+        const calculate = jest.fn();
+        const game = savedStage ? auditCascadeGame(calculate) : createOverscanGame();
+        const sessions = new api.InMemorySessionRepository(),
+            history = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            log = new api.InMemorySpinOperationLog(),
+            wallet = new api.InMemoryWallet(25);
+        const session = game.createSession({seed: "7"});
+        session.setCreditsAmount(25);
+        await sessions.save("revision", api.captureInitialPokieSessionState({seed: "7"}, session, undefined, false, game));
+        const handler = new api.SpinCommandHandler(game, sessions, wallet, history, log);
+        let command: api.RepositoryCommand = {kind: "spin", sessionId: "revision", requestId: "entry", roundId: "revision-round", delivery: "stepwise"};
+        let result = played(await handler.execute(command));
+        if (savedStage) {
+            command = {kind: "spin", sessionId: "revision", requestId: "stage", delivery: "stepwise", continuation: {roundId: "revision-round", cursor: result.state.logicalRound!.deliveryCursor}};
+            result = played(await handler.execute(command));
+            expect(result.deliveryOnly).toBe(true);
+        }
+        const record = (await log.load("revision", command.requestId!))!;
+        expect(validateRetryResult(result, game, "revision", command.requestId!)).toBeUndefined();
+        expect(validateOperationRecord(record, game, "revision", command.requestId!)).toBeUndefined();
+        const pendingAudit = api.updateAuditDisposition(record.capturedResult!.audit!, {status: "pending"});
+        const presave = {...record, checkpoint: "settled" as const, capturedResult: {...record.capturedResult!, newVersion: undefined, audit: pendingAudit}};
+        expect(validateOperationRecord(presave, game, "revision", command.requestId!)).toBeUndefined();
+        expect(validateOperationRecord({...presave, capturedResult: {...presave.capturedResult, newVersion: 999}}, game, "revision", command.requestId!)).toMatchObject({status: "corrupt-state", reason: "Audit and retained result revision disagree."});
+        const compensated = {...presave, checkpoint: "compensated" as const, capturedResult: {...presave.capturedResult, audit: api.updateAuditDisposition(pendingAudit, {status: "compensated"})}};
+        expect(validateOperationRecord(compensated, game, "revision", command.requestId!)).toBeUndefined();
+        let progress = result;
+        while (progress.state.logicalRound?.status === "pending") progress = played(await handler.execute({kind: "spin", sessionId: "revision", requestId: `finish:${progress.version}`, delivery: "stepwise", continuation: {roundId: "revision-round", cursor: progress.state.logicalRound.deliveryCursor}}));
+        played(await handler.execute({kind: "spin", sessionId: "revision", requestId: "later", roundId: "later", delivery: "composite"}));
+        expect(await handler.execute(command)).toEqual(result);
+        const before = await sessions.loadVersioned("revision"),
+            balance = await wallet.getBalance("revision"),
+            mutations = [jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"), jest.spyOn(wallet, "reverse")],
+            save = jest.spyOn(history, "save");
+        calculate.mockClear();
+        for (const version of [999, undefined]) {
+            await history.save("revision", command.requestId!, {...result, version});
+            save.mockClear();
+            expect(await handler.execute(command)).toMatchObject({status: "corrupt-state", reason: "Audit and retained result revision disagree."});
+            expect(save).not.toHaveBeenCalled();
+        }
+        await history.save("revision", command.requestId!, result);
+        const reconcile = new api.SpinReconciliationService(wallet, sessions, history, log, true, false, 0, undefined, undefined, game);
+        for (const checkpoint of ["session-saved", "committed", "compensated"] as const) {
+            for (const newVersion of [999, undefined]) {
+                // Compensation may legitimately preserve an unassigned pre-save revision.
+                if (checkpoint === "compensated" && newVersion === undefined) continue;
+                const audit = api.updateAuditDisposition(record.capturedResult!.audit!, {status: checkpoint === "session-saved" ? "pending" : checkpoint});
+                const corrupt = {...record, checkpoint, capturedResult: {...record.capturedResult!, newVersion, audit}};
+                await log.record(corrupt);
+                save.mockClear();
+                expect(await reconcile.reconcileOne("revision", command.requestId!)).toMatchObject({status: "manual-recovery-required", reason: "Audit and retained result revision disagree."});
+                expect(await log.load("revision", command.requestId!)).toEqual(corrupt);
+                expect(save).not.toHaveBeenCalled();
+            }
+        }
+        expect(calculate).not.toHaveBeenCalled();
+        expect(await sessions.loadVersioned("revision")).toEqual(before);
+        expect(await wallet.getBalance("revision")).toBe(balance);
+        for (const mutation of mutations) expect(mutation).not.toHaveBeenCalled();
+        await log.record(record);
+        expect(await handler.execute(command)).toEqual(result);
+    });
+
+    it.each([false, true])("recovers an authentic pre-save capture without an assigned newVersion (saved stage=%s)", async savedStage => {
+        const calculate = jest.fn();
+        const game = savedStage ? auditCascadeGame(calculate) : createOverscanGame();
+        const sessions = new api.InMemorySessionRepository(),
+            history = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            log = new api.InMemorySpinOperationLog(),
+            wallet = new api.InMemoryWallet(25);
+        const session = game.createSession({seed: "7"});
+        session.setCreditsAmount(25);
+        await sessions.save("presave", api.captureInitialPokieSessionState({seed: "7"}, session, undefined, false, game));
+        const handler = new api.SpinCommandHandler(game, sessions, wallet, history, log, true);
+        let command: api.RepositoryCommand = {kind: "spin", sessionId: "presave", requestId: "entry", roundId: "presave-round", delivery: "stepwise"};
+        if (savedStage) {
+            const entry = played(await handler.execute(command));
+            command = {kind: "spin", sessionId: "presave", requestId: "stage", delivery: "stepwise", continuation: {roundId: "presave-round", cursor: entry.state.logicalRound!.deliveryCursor}};
+        }
+        jest.spyOn(sessions, "saveVersioned").mockRejectedValueOnce(new Error("save failed"));
+        if (!savedStage) jest.spyOn(wallet, "reverse").mockRejectedValue(new Error("reverse failed"));
+        expect(await handler.execute(command)).toMatchObject({status: "storage-error"});
+        const record = (await log.load("presave", command.requestId!))!;
+        expect(record.checkpoint).toBe("settled");
+        expect(record.capturedResult!.newVersion).toBeUndefined();
+        const deliveries = record.capturedResult!.audit!.deliveries;
+        expect(deliveries[deliveries.length - 1].disposition.version).toBe(record.expectedVersion! + 1);
+        expect(validateOperationRecord(record, game, "presave", command.requestId!)).toBeUndefined();
+        calculate.mockClear();
+        const reconcile = new api.SpinReconciliationService(wallet, sessions, history, log, true, false, 0, undefined, undefined, game);
+        expect(await reconcile.reconcileOne("presave", command.requestId!)).toMatchObject({status: "resumed"});
+        const result = played((await history.load("presave", command.requestId!))!);
+        expect(result.version).toBe(record.expectedVersion! + 1);
+        expect(validateRetryResult(result, game, "presave", command.requestId!)).toBeUndefined();
+        expect((await log.load("presave", command.requestId!))!.capturedResult!.audit).toEqual(result.audit);
+        expect(calculate).not.toHaveBeenCalled();
+        expect(await handler.execute(command)).toEqual(result);
+    });
+
+    it("preserves revision-free audit results from an unversioned repository", async () => {
+        const game = createOverscanGame(),
+            sessions = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(25),
+            history = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            log = new api.InMemorySpinOperationLog();
+        const session = game.createSession({seed: "7"});
+        session.setCreditsAmount(25);
+        await sessions.save("unversioned", api.captureInitialPokieSessionState({seed: "7"}, session, undefined, false, game));
+        const repository = {load: sessions.load.bind(sessions), save: sessions.save.bind(sessions)};
+        const handler = new api.SpinCommandHandler(game, repository, wallet, history, log);
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "unversioned", requestId: "request"};
+        const result = played(await handler.execute(command));
+        const record = (await log.load("unversioned", "request"))!;
+        expect(result.version).toBeUndefined();
+        expect(result.audit!.deliveries[0].disposition.version).toBeUndefined();
+        expect(record.capturedResult!.newVersion).toBeUndefined();
+        expect(validateRetryResult(result, game, "unversioned", "request")).toBeUndefined();
+        expect(validateOperationRecord(record, game, "unversioned", "request")).toBeUndefined();
+        expect(await handler.execute(command)).toEqual(result);
+        const reconcile = new api.SpinReconciliationService(wallet, repository, history, log, true, false, 0, undefined, undefined, game);
+        expect(await reconcile.reconcileOne("unversioned", "request")).toMatchObject({status: "already-committed"});
+        expect(await history.load("unversioned", "request")).toEqual(result);
     });
 
     it("refuses to rehash corrupted evidence when changing disposition", () => {

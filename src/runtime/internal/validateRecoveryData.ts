@@ -18,6 +18,10 @@ const revision = (value: unknown): boolean => value === undefined || (typeof val
 
 /** Validate the complete published envelope, not only its executable snapshot. */
 export function validateRetryResult(value: unknown, game: PokieGame, sessionId: string, requestId: string, live?: LiveSessionAuthority): Rejection {
+    return validateRetainedResult(value, game, sessionId, requestId, live);
+}
+
+function validateRetainedResult(value: unknown, game: PokieGame, sessionId: string, requestId: string, live?: LiveSessionAuthority, allowUnassignedRevision = false): Rejection {
     if (!object(value) || value.sessionId !== sessionId || (value.requestId !== undefined && value.requestId !== requestId)) return corrupt("Invalid cached result identifiers.");
     if (value.status !== "played") {
         if (!["invalid-command", "incompatible-state", "corrupt-state", "restoration-unsupported", "storage-error", "settlement-error", "execution-error", "blocked", "not-found", "conflict", "recovery-required"].includes(String(value.status)) ||
@@ -31,6 +35,7 @@ export function validateRetryResult(value: unknown, game: PokieGame, sessionId: 
         try {
             validateAuditRoundRecording(value.audit, game);
             const last = value.audit.deliveries[value.audit.deliveries.length - 1];
+            if (!(allowUnassignedRevision && value.version === undefined) && last.disposition.version !== value.version) return corrupt("Audit and retained result revision disagree.");
             if (last.disposition.sessionId !== sessionId || last.disposition.requestId !== requestId || last.result.win !== value.win || last.result.credits !== value.credits ||
                 (value.stake !== undefined && last.result.stake !== value.stake) || (value.mode !== undefined && last.result.mode !== value.mode) ||
                 last.after.bet !== (value.state as PokieSessionState).bet ||
@@ -78,10 +83,13 @@ export function validateOperationRecord(value: SpinOperationRecord, game: PokieG
     if (rejected) return rejected;
     if (captured.audit !== undefined) {
         // Validate the ORIGINAL digest/envelope before any reconciliation stamps a new disposition.
-        const invalidAudit = validateRetryResult({status: "played", sessionId, requestId, state: captured.newState,
+        // Settled captures predict the accepted revision before saveVersioned assigns it.
+        // Compensation can preserve that same pre-save capture; saved/published records cannot.
+        const allowUnassignedRevision = value.checkpoint === "settled" || value.checkpoint === "compensated";
+        const invalidAudit = validateRetainedResult({status: "played", sessionId, requestId, state: captured.newState,
             previousState: captured.previousState, version: captured.newVersion, win: captured.win, credits: captured.credits,
             stake: captured.stake, mode: captured.mode, audit: captured.audit,
-            ...(value.command ? {deliveryCommand: value.command} : {}), ...(captured.deliveryOnly ? {deliveryOnly: true} : {})}, game, sessionId, requestId, live);
+            ...(value.command ? {deliveryCommand: value.command} : {}), ...(captured.deliveryOnly ? {deliveryOnly: true} : {})}, game, sessionId, requestId, live, allowUnassignedRevision);
         if (invalidAudit) return invalidAudit;
         const last = captured.audit.deliveries[captured.audit.deliveries.length - 1];
         const disposition = last.disposition;
@@ -89,6 +97,7 @@ export function validateOperationRecord(value: SpinOperationRecord, game: PokieG
             (captured.deliveryOnly !== true && disposition.creditTransactionId !== value.creditTransactionId) || disposition.expectedVersion !== value.expectedVersion ||
             disposition.startedAt !== value.startedAt || last.result.stake !== value.stakeAmount ||
             (value.command && commandEnvelope(last.command as RepositoryCommand) !== commandEnvelope(value.command)) ||
+            (["settled", "session-saved"].includes(value.checkpoint) && disposition.status !== "pending") ||
             (value.checkpoint === "committed" && disposition.status !== "committed") ||
             (value.checkpoint === "compensated" && disposition.status !== "compensated")) return corrupt("Captured audit identity or disposition differs from its operation.");
     }
