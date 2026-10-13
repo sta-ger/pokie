@@ -3795,3 +3795,26 @@ explicit unavailable reason. Public HTTP responses omit this execution evidence.
 Local atomic stores, independent compensation ports and external-provider intents
 keep their distinct durability/recovery guarantees; offline verification never
 settles or reconciles an imported operation.
+
+
+### Weighted whole-sequence PAR interchange
+
+`pokie par export`, `pokie par import`, `pokie build SOURCE --target parWorkbook`,
+`pokie build WORKBOOK --target blueprint` and `pokie import WORKBOOK` preserve
+weighted full sequences and mixed exact/weighted reels. Supported automatic
+intermediates reach TypeScript packages without flattening variants. Output locations
+must be unused; import publishes the Blueprint and its conversion-evidence sidecar.
+Dry-run/JSON diagnostics use the same mappings and validation as direct library APIs.
+
+Studio Home Design and Project Reels provide rendered variant controls, validated
+inspection, explicit Apply and explicit Save. PAR Diagnose/Preview/Apply uses the
+same workbook model; managed Save binds trusted evidence to workbook bytes and
+imported content. Invalid, cancelled and stale edits leave authored source unchanged.
+See [whole-sequence workbook contracts](reels-and-sequences.md#whole-sequence-studio-and-par-workflow)
+for sheet columns, context versions and provenance.
+
+`pokie report` and Studio downloads retain configured/observed frequencies, coverage
+and selection denominators. `pokie diff` explains sequence order, weight, symbol-array
+and context/model changes independently of payout differences. Weighted outcome
+libraries retain their capability-directed report/diff routes; they are not reel
+variants or per-symbol weights. WASM remains unsupported for `reelSequences`.

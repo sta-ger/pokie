@@ -1,3 +1,5 @@
+import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
+import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
 import ExcelJS from "exceljs";
 import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
@@ -38,7 +40,7 @@ import {cellToText} from "./mapping/sheetCellParsing.js";
 // can recognize "this .xlsx has the required PAR sheets" against the exact same list this importer itself
 // requires, rather than maintaining a second copy that could silently drift out of sync.
 export const REQUIRED_SHEETS = ["Manifest", "Symbols", "Paytable"];
-const OPTIONAL_SHEETS = ["ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
+const OPTIONAL_SHEETS = ["ReelSequences", "ReelStrips", "Paylines", "AvailableBets", "WinModel", "Mechanics", "BetModes", "Meta"];
 const KNOWN_SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SHEETS];
 const BLUEPRINT_HASH_PATTERN = /^sha256:[0-9a-f]{64}$/;
 type ConversionFact = NonNullable<ParSheetImportResult["conversionEvidence"]>["facts"][number];
@@ -56,6 +58,7 @@ export class ParSheetImporter implements ParSheetImporting {
     private readonly winModelMapper: WinModelSheetMapping;
     private readonly mechanicsMapper: MechanicsSheetMapping;
     private readonly betModesMapper: BetModesSheetMapping;
+    private readonly reelSequencesMapper: ReelSequencesSheetMapping;
 
     constructor(
         manifestMapper: ManifestSheetMapping = new ManifestSheetMapper(),
@@ -76,6 +79,7 @@ export class ParSheetImporter implements ParSheetImporting {
         winModelMapper: WinModelSheetMapping = new WinModelSheetMapper(),
         mechanicsMapper: MechanicsSheetMapping = new MechanicsSheetMapper(),
         betModesMapper: BetModesSheetMapping = new BetModesSheetMapper(),
+        reelSequencesMapper: ReelSequencesSheetMapping = new ReelSequencesSheetMapper(),
     ) {
         this.manifestMapper = manifestMapper;
         this.symbolsMapper = symbolsMapper;
@@ -89,6 +93,7 @@ export class ParSheetImporter implements ParSheetImporting {
         this.winModelMapper = winModelMapper;
         this.mechanicsMapper = mechanicsMapper;
         this.betModesMapper = betModesMapper;
+        this.reelSequencesMapper = reelSequencesMapper;
     }
 
     public async importFromFile(filePath: string): Promise<ParSheetImportResult> {
@@ -146,6 +151,12 @@ export class ParSheetImporter implements ParSheetImporting {
             blueprint.scatters = symbolsResult.value.scatters;
         }
 
+        if (sheetsByName.has("ReelSequences")) {
+            const result = this.reelSequencesMapper.fromRows(gridFor("ReelSequences"), blueprint.reels);
+            blueprint.reelSequences = result.value;
+            issues.push(...result.issues);
+            if (sheetsByName.has("ReelStrips")) issues.push({code: "parsheet-reel-source-conflict", severity: "error", message: "ReelSequences and ReelStrips cannot both define the reel source."});
+        }
         if (sheetsByName.has("ReelStrips")) {
             const reelStripsResult = this.reelStripsMapper.fromRows(gridFor("ReelStrips"), manifestResult.value.reels);
             issues.push(...reelStripsResult.issues);

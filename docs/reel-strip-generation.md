@@ -438,8 +438,10 @@ Do not replace alternatives with a generated strip: doing so changes the model.
 See [weighted whole-sequence reels](reels-and-sequences.md#weighted-whole-sequence-reels)
 for the canonical authoring and context rules.
 
-Studio identifies this source as **Whole-sequence variants**. Author alternatives
-in the JSON editor; unrelated form edits preserve them. Source-mode edits are
+Studio identifies this source as **Whole-sequence variants**. Use rendered controls
+in Home Design or Project Reels to add/edit/remove complete alternatives. Preview
+validates the current definitions; Apply changes the draft and Save persists it.
+Unrelated form edits preserve unapplied definitions. Source-mode edits are
 reversible drafts and reach the file only through Save. Preview shows alternatives
 without selecting or saving them. Validation/save/build share canonical diagnostics
 with reel/variant paths in the Reels section. Invalid authored content can still be

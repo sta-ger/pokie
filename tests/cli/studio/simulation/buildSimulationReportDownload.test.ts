@@ -45,7 +45,8 @@ describe("buildSimulationReportDownload", () => {
         expect(download.contentType).toBe("application/json; charset=utf-8");
         expect(download.filename).toBe("sample-slot-0.1.0-job-1.json");
         expect(JSON.parse(download.body)).toEqual(report);
-        expect(download.body).toContain("\n"); // pretty-printed, not a single line
+        expect(download.body).toContain("\n");
+        // pretty-printed, not a single line
     });
 
     it("produces a Markdown body containing the key metrics", () => {
@@ -82,10 +83,28 @@ describe("buildSimulationReportDownload", () => {
     });
 
     it("renders an old report shape (missing breakdown/warnings/recommendations/reproducibility) without throwing", () => {
-        const report = createReport(); // already has none of these optional fields
+        const report = createReport();
+        // already has none of these optional fields
 
         expect(() => buildSimulationReportDownload(report, "job-1", "markdown")).not.toThrow();
         expect(() => buildSimulationReportDownload(report, "job-1", "html")).not.toThrow();
         expect(() => buildSimulationReportDownload(report, "job-1", "json")).not.toThrow();
     });
+});
+
+it("retains sequence denominators, zero coverage and exact underflow ratios in every downloadable format", () => {
+    const report = createReport();
+    report.reelSequences = [{reelIndex: 0, context: "logical-round", model: "defined", selections: 0, variants: [
+        {id: "tiny", weight: Number.MIN_VALUE, probability: 0, probabilityRatio: {numerator: "1", denominator: "123456789012345678901234567890"}, count: 0, frequency: 0, uncovered: true},
+        {id: "zero", weight: 0, probability: 0, count: 0, frequency: 0, uncovered: false},
+    ]}];
+    expect(JSON.parse(buildSimulationReportDownload(report, "weighted", "json").body).reelSequences).toEqual(report.reelSequences);
+    for (const format of ["markdown", "html"] as const) {
+        const rendered = buildSimulationReportDownload(report, "weighted", format).body;
+        expect(rendered).toContain("0 selections");
+        expect(rendered).toContain("1/123456789012345678901234567890");
+        expect(rendered).toContain("zero weight");
+        expect(rendered).toContain("uncovered");
+        expect(rendered).not.toContain("NaN");
+    }
 });

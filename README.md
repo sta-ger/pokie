@@ -315,3 +315,12 @@ POKIE. It's an updated, API-verified version of the original
 ## License
 
 ISC — see [LICENSE](LICENSE).
+
+
+Weighted whole-sequence reels support rendered Studio editing (Preview → Apply →
+Save), mixed exact/weighted PAR XLSX round trips with versioned context/provenance,
+and simulation reports with per-reel selection denominators. `pokie diff` explains
+variant order, weight, full-array and context/model changes. See
+[reels and sequences](docs/reels-and-sequences.md#whole-sequence-studio-and-par-workflow).
+Per-symbol weights and weighted outcome libraries remain separate capabilities;
+WASM does not support whole-sequence variants.

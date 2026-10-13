@@ -375,3 +375,32 @@ describe("SimulationReportDiffer betMode", () => {
         expect(diff.betMode).toEqual({left: null, right: "ante", changed: true});
     });
 });
+
+it.each(["unchanged", "order", "weight", "context", "symbols", "added", "removed", "missing", "sampling"])("explains whole-sequence %s changes with identical payout metrics", kind => {
+    const variants = [{id: "a", weight: 1, probability: 0.25, count: 0, frequency: 0, uncovered: true}, {id: "b", weight: 3, probability: 0.75, count: 0, frequency: 0, uncovered: true}];
+    const model = {context: "logical-round-v1", rows: 1, reels: [[{id: "a", weight: 1, symbols: ["A"]}, {id: "b", weight: 3, symbols: ["B"]}]]};
+    const before: SimulationReport = {...left, reelSequences: [{reelIndex: 0, context: "logical-round", selections: 0, model: JSON.stringify(model), variants}]};
+    const after: SimulationReport = JSON.parse(JSON.stringify(before));
+    if (kind === "order") {
+ after.reelSequences![0] = {...after.reelSequences![0], variants: [...variants].reverse()};
+ model.reels[0].reverse();
+    }
+    if (kind === "weight") {
+ after.reelSequences![0] = {...after.reelSequences![0], variants: [{...variants[0], weight: 2}, variants[1]]};
+ model.reels[0][0].weight = 2;
+    }
+    if (kind === "context") model.context = "future-context-v2";
+    if (kind === "symbols") model.reels[0][0].symbols = ["B", "A"];
+    if (kind === "added") after.reelSequences![0] = {...after.reelSequences![0], variants: [...variants, {...variants[0], id: "new"}]};
+    if (kind === "removed") after.reelSequences![0] = {...after.reelSequences![0], variants: [variants[0]]};
+    if (kind === "sampling") after.reelSequences![0] = {...after.reelSequences![0], selections: 2, variants: variants.map(v => ({...v, count: 1, frequency: 0.5, uncovered: false}))};
+    after.reelSequences![0] = {...after.reelSequences![0], model: JSON.stringify(model)};
+    if (kind === "missing") Reflect.deleteProperty(after, "reelSequences");
+    const result = new SimulationReportDiffer().diff(before, after);
+    expect(result.rtp.delta).toBe(0);
+    expect(result.changed).toBe(kind !== "unchanged");
+    expect(result.reelSequences?.configuredChanged).toBe(!["unchanged", "sampling"].includes(kind));
+    expect(result.reelSequences?.observationsChanged).toBe(kind === "sampling");
+    if (!["unchanged", "sampling"].includes(kind)) expect(result.reelSequences?.changes.some(change => change.kind === (kind === "missing" ? "availability" : kind))).toBe(true);
+    if (kind === "unchanged") expect(result.reelSequences?.changes).toEqual([]);
+});

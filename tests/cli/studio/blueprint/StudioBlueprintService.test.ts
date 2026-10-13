@@ -1269,6 +1269,38 @@ describe("StudioBlueprintService", () => {
             expect(afterDrift).toEqual(expect.objectContaining({status: "error", error: expect.stringContaining("workbook changed")}));
         });
 
+        it("persists weighted PAR data and trusted evidence across restart, invalidates edited drafts and refuses workbook drift", async () => {
+            const workbookPath = path.join(tmpDir, "weighted.xlsx");
+            const exporter = new ParSheetExporter("1");
+            const model = JSON.parse(JSON.stringify(weightedBlueprint)) as GameBlueprint;
+            const issues = await exporter.exportToFile(model, workbookPath);
+            expect(issues.filter(issue => issue.severity === "error")).toEqual([]);
+            const prepared = await createService().importParSheet(workbookPath);
+            if (prepared.status !== "ok") throw new Error("Expected weighted import");
+            expect(prepared.conversionEvidence.losslessEligible).toBe(true);
+            const managedDir = path.join(tmpDir, "managed-weighted");
+            const saved = await createServiceWithManagedDirectory(managedDir).saveManaged(prepared.blueprint, workbookPath);
+            if (saved.status !== "ok" || !saved.conversionEvidencePath) throw new Error("Expected weighted managed save");
+            expect(JSON.parse(fs.readFileSync(saved.path, "utf8")).reelSequences).toEqual(model.reelSequences);
+            expect(JSON.parse(fs.readFileSync(saved.conversionEvidencePath, "utf8")).losslessEligible).toBe(true);
+            const edited = JSON.parse(JSON.stringify(model)) as GameBlueprint;
+            (edited.reelSequences![0] as {variants: {weight: number}[]}).variants[0].weight = 0.5;
+            const changed = await createServiceWithManagedDirectory(path.join(tmpDir, "edited-weighted")).saveManaged(edited, workbookPath);
+            if (changed.status !== "ok" || !changed.conversionEvidencePath) throw new Error("Expected edited managed save");
+            expect(JSON.parse(fs.readFileSync(changed.conversionEvidencePath, "utf8")).losslessEligible).toBe(false);
+            expect(JSON.parse(fs.readFileSync(changed.path, "utf8")).reelSequences).toEqual(edited.reelSequences);
+            const untouched = fs.readFileSync(workbookPath);
+            const cancelled = new AbortController();
+            cancelled.abort();
+            expect(await createService().exportParSheet(model, path.join(tmpDir, "cancelled-weighted.xlsx"), false, undefined, cancelled.signal)).toMatchObject({status: "error"});
+            expect(fs.existsSync(path.join(tmpDir, "cancelled-weighted.xlsx"))).toBe(false);
+            expect(fs.readFileSync(workbookPath)).toEqual(untouched);
+            fs.appendFileSync(workbookPath, "changed bytes");
+            const rejected = await createServiceWithManagedDirectory(path.join(tmpDir, "drift-weighted")).saveManaged(model, workbookPath);
+            expect(rejected.status).toBe("error");
+            expect(fs.existsSync(path.join(tmpDir, "drift-weighted", "blueprint.json"))).toBe(false);
+        });
+
         it("does not accept client-supplied PAR conversion evidence as an authority", async () => {
             const managedDir = path.join(tmpDir, "POKIE Projects", "sample-slot");
             const service = createServiceWithManagedDirectory(managedDir);

@@ -946,6 +946,7 @@ export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelG
 // in-progress mode choice without rebuilding their reels from scratch.
 export type ReelGenerationModeDrafts = {
     reelSequences?: unknown;
+    wholeSequenceDraft?: {definitions: Record<string, unknown>[]; base: string; dirty: boolean};
     reelStrips?: string[][];
     reelStripGeneration?: Record<string, unknown>[];
     symbolWeights?: Record<string, number>;
@@ -1030,4 +1031,10 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
         Reflect.deleteProperty(blueprint, "reelStripGeneration");
         Reflect.deleteProperty(blueprint, "symbolWeights");
     }
+}
+
+
+/** Stores the shared editor's unapplied definitions in its owning editor's ref bookkeeping. */
+export function retainWholeSequenceDraft(drafts: ReelGenerationModeDrafts, definitions: Record<string, unknown>[], base: string, dirty: boolean): void {
+    drafts.wholeSequenceDraft = {definitions, base, dirty};
 }

@@ -766,3 +766,22 @@ describe("DiffCommand (integration, real outcome-source artifacts)", () => {
         expect(fs.readFileSync(path.join(rightStakeDir, "index.json"), "utf-8")).toBe(stakeIndexBefore);
     });
 });
+
+it("prints and serializes whole-sequence changes even when payouts agree", async () => {
+    const sequence = {reelIndex: 0, context: "logical-round" as const, model: "model", selections: 0, variants: [{id: "a", weight: 1, probability: 1, count: 0, frequency: 0, uncovered: true}]};
+    const before = {...left, reelSequences: [sequence]};
+    const after = {...before, reelSequences: [{...sequence, variants: [{...sequence.variants[0], weight: 2}]}]};
+    const command = new DiffCommand(createStubReadFile({"left.json": JSON.stringify(before), "right.json": JSON.stringify(after)}));
+    const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+        await command.run(["left.json", "right.json"]);
+        expect(log.mock.calls.map(call => String(call[0])).join("\n")).toContain("Whole-sequence weight change");
+        log.mockClear();
+        await command.run(["left.json", "right.json", "--format", "json"]);
+        const parsed = JSON.parse(String(log.mock.calls[0][0]));
+        expect(parsed.changed).toBe(true);
+        expect(parsed.reelSequences.configuredChanged).toBe(true);
+    } finally {
+        log.mockRestore();
+    }
+});

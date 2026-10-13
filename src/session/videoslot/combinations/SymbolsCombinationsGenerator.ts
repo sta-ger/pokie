@@ -60,7 +60,7 @@ implements SymbolsCombinationsGenerating<T> {
                 weights = sequence.getIntegerWeights();
             const denominator = weights.reduce((sum, weight) => sum + weight, BigInt(0)).toString();
             const selections = Object.values(this.counts[reelIndex] ?? {}).reduce((sum, count) => sum + count, 0);
-            return [{reelIndex, context: "logical-round" as const, model: JSON.stringify({context: "logical-round-v1", rows: this.config.getReelsSymbolsNumber(), geometry: this.config.getScreenGeometry?.(), reels: this.config.getSymbolsSequences().map(strip => isWeightedSymbolsSequence(strip) ? strip.getVariants() : strip.toArray())}), selections,
+            return [{reelIndex, context: "logical-round" as const, model: JSON.stringify({context: "logical-round-v1", sampling: "binary64-integer-ratios-v1", rows: this.config.getReelsSymbolsNumber(), geometry: this.config.getScreenGeometry?.(), reels: this.config.getSymbolsSequences().map(strip => isWeightedSymbolsSequence(strip) ? strip.getVariants() : strip.toArray())}), selections,
                 variants: variants.map((variant, index) => {
                     const count = this.counts[reelIndex]?.[variant.id] ?? 0;
                     return {id: variant.id, weight: variant.weight, probability: probabilities[index], probabilityRatio: {numerator: weights[index].toString(), denominator}, count, frequency: selections ? count / selections : 0, uncovered: variant.weight > 0 && count === 0};

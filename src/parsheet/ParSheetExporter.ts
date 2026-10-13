@@ -1,3 +1,5 @@
+import {ReelSequencesSheetMapper} from "./mapping/ReelSequencesSheetMapper.js";
+import type {ReelSequencesSheetMapping} from "./mapping/ReelSequencesSheetMapping.js";
 import ExcelJS from "exceljs";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import type {GameBlueprintValidating} from "../generated/GameBlueprintValidating.js";
@@ -43,7 +45,6 @@ export function prepareBlueprintForParSheetExport(
     validator: GameBlueprintValidating = new GameBlueprintValidator(),
 ): ParSheetBlueprintPreparation {
     const validationIssues = validator.validate(blueprint);
-    if (typeof blueprint === "object" && blueprint !== null && "reelSequences" in blueprint) return {blueprint: undefined, issues: [...validationIssues, {code: "parsheet-weighted-sequences-unsupported", severity: "error", message: "PAR workbooks do not support reelSequences. Build a TypeScript package to preserve whole-sequence variants."}]};
     if (typeof blueprint === "object" && blueprint !== null && "screenGeometry" in blueprint) {
         return {blueprint: undefined, issues: [...validationIssues, {code: "parsheet-screen-geometry-unsupported", severity: "error", message: "PAR workbooks do not support screenGeometry. Build a TypeScript package to preserve coordinate semantics."}]};
     }
@@ -80,6 +81,8 @@ export function prepareBlueprintForParSheetExport(
             )],
         };
     }
+
+    if (authored.reelSequences !== undefined) return {blueprint: {...authored}, issues: validationIssues};
 
     if (authored.reelStrips !== undefined) return {blueprint: removeSharedWeights({...authored}), issues: validationIssues};
 
@@ -155,6 +158,7 @@ export class ParSheetExporter implements ParSheetExporting {
     private readonly winModelMapper: WinModelSheetMapping;
     private readonly mechanicsMapper: MechanicsSheetMapping;
     private readonly betModesMapper: BetModesSheetMapping;
+    private readonly reelSequencesMapper: ReelSequencesSheetMapping;
 
     constructor(
         pokieVersion: string,
@@ -174,6 +178,7 @@ export class ParSheetExporter implements ParSheetExporting {
         winModelMapper: WinModelSheetMapping = new WinModelSheetMapper(),
         mechanicsMapper: MechanicsSheetMapping = new MechanicsSheetMapper(),
         betModesMapper: BetModesSheetMapping = new BetModesSheetMapper(),
+        reelSequencesMapper: ReelSequencesSheetMapping = new ReelSequencesSheetMapper(),
     ) {
         this.pokieVersion = pokieVersion;
         this.manifestMapper = manifestMapper;
@@ -189,6 +194,7 @@ export class ParSheetExporter implements ParSheetExporting {
         this.winModelMapper = winModelMapper;
         this.mechanicsMapper = mechanicsMapper;
         this.betModesMapper = betModesMapper;
+        this.reelSequencesMapper = reelSequencesMapper;
     }
 
     // Runs full validation itself — the caller (CLI or any other library consumer) never needs to
@@ -221,7 +227,11 @@ export class ParSheetExporter implements ParSheetExporting {
         );
         addSheet(workbook, this.paytableMapper.sheetName, this.paytableMapper.toRows(typedBlueprint.paytable));
         // checkReelSource above guarantees reelStrips is defined whenever we get here.
-        addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(typedBlueprint.reelStrips as string[][]));
+        if (typedBlueprint.reelSequences !== undefined) {
+            addSheet(workbook, this.reelSequencesMapper.sheetName, this.reelSequencesMapper.toRows(typedBlueprint.reelSequences));
+        } else {
+            addSheet(workbook, this.reelStripsMapper.sheetName, this.reelStripsMapper.toRows(typedBlueprint.reelStrips as string[][]));
+        }
         if (typedBlueprint.paylines) {
             addSheet(workbook, this.paylinesMapper.sheetName, this.paylinesMapper.toRows(typedBlueprint.paylines));
         }
@@ -245,7 +255,7 @@ export class ParSheetExporter implements ParSheetExporting {
                 this.pokieVersion,
                 this.now(),
                 sourcePath,
-                !issues.some((issue) => issue.details?.losslessEligible === false),
+                options?.losslessEligible !== false && !issues.some((issue) => issue.details?.losslessEligible === false),
             ),
         );
 
@@ -255,7 +265,7 @@ export class ParSheetExporter implements ParSheetExporting {
             await writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath), () => {
                 options?.onProgress?.({message: "Committing PAR workbook"});
                 assertNotCancelled(options);
-            });
+            }, false);
         } else {
             await this.writeWorkbook(workbook, filePath);
             options?.onProgress?.({message: "Committing PAR workbook"});
@@ -267,7 +277,7 @@ export class ParSheetExporter implements ParSheetExporting {
 }
 
 const defaultWriteWorkbook = (workbook: ExcelJS.Workbook, filePath: string): Promise<void> =>
-    writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath));
+    writeFileAtomically(filePath, (tempPath) => workbook.xlsx.writeFile(tempPath), undefined, false);
 
 function assertNotCancelled(options: ParSheetExportOptions | undefined): void {
     if (options?.signal?.aborted) throw new Error("PAR workbook export was cancelled.");

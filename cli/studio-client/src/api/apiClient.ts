@@ -322,8 +322,9 @@ export async function relocateProjectRegistryEntry(
 }
 
 // Never writes/reads anything on disk — see StudioBlueprintService.validate()'s own doc comment.
-export async function validateBlueprint(fetchImpl: FetchLike, blueprint: unknown): Promise<StudioBlueprintValidationView> {
+export async function validateBlueprint(fetchImpl: FetchLike, blueprint: unknown, signal?: AbortSignal): Promise<StudioBlueprintValidationView> {
     const response = await fetchImpl("/api/home/blueprints/validate", {
+        signal,
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({blueprint}),
@@ -652,8 +653,9 @@ export async function getGameModel(fetchImpl: FetchLike, sharedWeightsSampleSeed
 // previewGameModel()'s own doc comment. Never writes/reads anything on disk, and never throws for a
 // structurally incomplete draft -- that comes back as an ordinary "unavailable" projection instead.
 // `sharedWeightsSampleSeed` -- see getGameModel's own doc comment above.
-export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown, sharedWeightsSampleSeed?: number): Promise<GameModelProjection> {
+export async function previewGameModel(fetchImpl: FetchLike, blueprint: unknown, sharedWeightsSampleSeed?: number, signal?: AbortSignal): Promise<GameModelProjection> {
     const response = await fetchImpl("/api/home/blueprints/game-model-preview", {
+        signal,
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({blueprint, sharedWeightsSampleSeed}),

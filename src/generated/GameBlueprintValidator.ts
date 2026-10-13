@@ -298,11 +298,11 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
                     message: `"mechanics.freeGames.awardsByCount" has an invalid match-count key "${count}" (expected an integer >= 2).`,
                 });
             }
-            if (!(typeof awarded === "number" && Number.isInteger(awarded) && awarded > 0)) {
+            if (!(typeof awarded === "number" && Number.isInteger(awarded) && awarded >= 0)) {
                 issues.push({
                     code: "blueprint-mechanics-freegames-invalid-award",
                     severity: "error",
-                    message: `"mechanics.freeGames.awardsByCount.${count}" must be a positive integer.`,
+                    message: `"mechanics.freeGames.awardsByCount.${count}" must be a nonnegative integer.`,
                 });
             }
         }

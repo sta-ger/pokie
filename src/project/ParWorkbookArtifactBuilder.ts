@@ -66,10 +66,10 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
         try {
             reportArtifactBuildProgress(options, {status: "running", message: "Reading PAR workbook"});
             if (source.type === "blueprint") {
-                reportArtifactBuildProgress(options, {status: "running", message: "Materializing Blueprint reels for PAR workbook"});
-                const prepared = this.assertBlueprintCanExport(source.rootPath);
+                reportArtifactBuildProgress(options, {status: "running", message: "Preparing Blueprint reel source for PAR workbook"});
+                this.assertBlueprintCanExport(source.rootPath);
                 reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
-                const exportIssues = await this.exporter.exportToFile(prepared, destinationPath, source.rootPath, {
+                const exportIssues = await this.exporter.exportToFile(this.loadBlueprint(source.rootPath), destinationPath, source.rootPath, {
                     signal: options?.signal,
                     onProgress: (progress) => reportArtifactBuildProgress(options, {status: "running", message: progress.message}),
                 });
@@ -93,6 +93,7 @@ export class ParWorkbookArtifactBuilder implements ArtifactBuilder {
 
             reportArtifactBuildProgress(options, {status: "running", message: "Publishing PAR workbook"});
             const exportIssues = await this.exporter.exportToFile(imported.blueprint, destinationPath, source.rootPath, {
+                losslessEligible: imported.conversionEvidence?.losslessEligible ?? false,
                 signal: options?.signal,
                 onProgress: (progress) => reportArtifactBuildProgress(options, {status: "running", message: progress.message}),
             });

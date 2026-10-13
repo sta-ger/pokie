@@ -254,6 +254,7 @@ export function BlueprintEditorPage({
     // away from JSON mode (or navigating away) used to cause. Reset on every wholesale replace
     // (New/Load/a successful JSON apply all bump formGeneration) since BlueprintJsonPanel remounts fresh,
     // in sync, at that point -- see the formGeneration effect below.
+    const [sequenceDraftDirty, setSequenceDraftDirty] = useState(false);
     const [jsonDraftDirty, setJsonDraftDirty] = useState(false);
     // Save success mutates cleanRevisionRef from an async callback, which (being a ref) doesn't itself
     // trigger a re-render -- this forces one so `isDirty` below gets recomputed against whatever
@@ -270,6 +271,7 @@ export function BlueprintEditorPage({
             nextFormGenerationIsClean.current = false;
         }
         setJsonDraftDirty(false);
+        setSequenceDraftDirty(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editor.formGeneration]);
     // Refs must never be read during render (react-hooks/refs) -- reading cleanRevisionRef.current here,
@@ -282,7 +284,7 @@ export function BlueprintEditorPage({
     const [isDirty, setIsDirty] = useState(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        const dirty = editor.state.revision !== cleanRevisionRef.current || jsonDraftDirty;
+        const dirty = editor.state.revision !== cleanRevisionRef.current || jsonDraftDirty || sequenceDraftDirty;
         setIsDirty(dirty);
         onDirtyChange?.(dirty);
     });
@@ -729,16 +731,22 @@ export function BlueprintEditorPage({
         setUndoSnapshot(undefined);
     };
 
-    const handleLoad = (path: string): void => {
+    const runLoad = (path: string): void => {
         if (!loadGuard.begin()) {
             return;
         }
         const draftIdentity = draftIdentityRef.current;
+        const loadedRevision = editor.getCurrentState().revision;
+        const sequenceDraft = JSON.stringify(editor.modeDrafts.current.wholeSequenceDraft);
         setLoadView({status: "loading"});
         loadBlueprint(fetchImpl, path)
             .then((result) => {
                 if (draftIdentity !== draftIdentityRef.current) return;
                 if (result.status === "ok") {
+                    if (editor.getCurrentState().revision !== loadedRevision || JSON.stringify(editor.modeDrafts.current.wholeSequenceDraft) !== sequenceDraft) {
+                        setLoadView({status: "error", message: "The draft changed while loading. Load again when you are ready to replace it."});
+                        return;
+                    }
                     resetDraftIdentity();
                     nextFormGenerationIsClean.current = true;
                     editor.loadFrom(result.blueprint);
@@ -770,6 +778,11 @@ export function BlueprintEditorPage({
             .finally(() => loadGuard.end());
     };
 
+    const handleLoad = (path: string): void => {
+        if (sequenceDraftDirty) confirm("Load another Blueprint and discard unapplied whole-sequence edits?", () => runLoad(path));
+        else runLoad(path);
+    };
+
     // Draft recovery -- "Restore" replaces the current (still-blank, since `persistedDraft` only reads
     // non-undefined when nothing else has loaded first -- see its own doc comment) draft with whatever
     // this tab's own recovery slot held. A wholesale replace like Load, except deliberately NOT marked
@@ -791,7 +804,7 @@ export function BlueprintEditorPage({
             setParConversionEvidence(persistedDraft.conversionEvidence as ParSheetConversionEvidence | undefined);
             setDraftRecoveryDismissed(true);
         };
-        if (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty) {
+        if (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty || sequenceDraftDirty) {
             confirm("Restore the retained draft? The unsaved design and unapplied JSON edits will be replaced.", restore);
         } else {
             restore();
@@ -808,7 +821,7 @@ export function BlueprintEditorPage({
     // own success branch does, reusing `sourcePath` (the .xlsx path) as this blueprint's own
     // BlueprintBuildPanel `sourcePath` going forward. `overwriteConfirmedForPath` resets since this isn't
     // a JSON path Save has ever confirmed overwriting.
-    const handleApplyImportedBlueprint = (importedBlueprint: unknown, sourcePath: string, conversionEvidence: ParSheetConversionEvidence): void => {
+    const applyImportedBlueprint = (importedBlueprint: unknown, sourcePath: string, conversionEvidence: ParSheetConversionEvidence): void => {
         resetDraftIdentity();
         nextFormGenerationIsClean.current = true;
         editor.loadFrom(importedBlueprint);
@@ -829,6 +842,11 @@ export function BlueprintEditorPage({
         setImportedFromParSheetPath(sourcePath);
         setParConversionEvidence(conversionEvidence);
         importedParBlueprintRevisionRef.current = editor.state.revision + 1;
+    };
+
+    const handleApplyImportedBlueprint = (importedBlueprint: unknown, sourcePath: string, conversionEvidence: ParSheetConversionEvidence): void => {
+        if (sequenceDraftDirty) confirm("Apply this workbook and discard unapplied whole-sequence edits?", () => applyImportedBlueprint(importedBlueprint, sourcePath, conversionEvidence));
+        else applyImportedBlueprint(importedBlueprint, sourcePath, conversionEvidence);
     };
 
     // "Restore built blueprint"/"Discard unbuilt changes" (BlueprintBuildPanel's own confirm already
@@ -890,7 +908,7 @@ export function BlueprintEditorPage({
             setUndoSnapshot(undefined);
             setDraftRecoveryDismissed(true);
         };
-        if (!recoveryGuardedByNavigation && (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty)) {
+        if (!recoveryGuardedByNavigation && (editor.getCurrentState().revision !== cleanRevisionRef.current || jsonDraftDirty || sequenceDraftDirty)) {
             confirm("Recover this Design job? The unsaved design and unapplied JSON edits will be replaced.", replaceDraft);
         } else {
             replaceDraft();
@@ -903,16 +921,21 @@ export function BlueprintEditorPage({
     }, [recoveryRequest]);
 
     const runSave = (path: string, overwrite: boolean): void => {
+        if (sequenceDraftDirty || editor.modeDrafts.current.wholeSequenceDraft?.dirty) {
+            setSaveView({status: "error", message: "Apply or cancel whole-sequence edits before saving."});
+            return;
+        }
         if (!saveGuard.begin()) {
             return;
         }
         // Captured now, at request-send time -- so a further edit made while this save is in flight can
         // never get attributed as "saved" by markClean below once the response actually arrives.
-        const savedRevision = editor.state.revision;
+        const snapshot = editor.getCurrentState();
+        const savedRevision = snapshot.revision;
         const draftIdentity = draftIdentityRef.current;
         setSaveView({status: "loading"});
         const expectedHash = sourceVersionRef.current?.path === path ? sourceVersionRef.current.hash : undefined;
-        saveBlueprint(fetchImpl, path, editor.state.blueprint, overwrite, expectedHash)
+        saveBlueprint(fetchImpl, path, snapshot.blueprint, overwrite, expectedHash)
             .then((result) => {
                 if (draftIdentity !== draftIdentityRef.current) return;
                 setSaveView(describeSaveResult(result));
@@ -947,6 +970,11 @@ export function BlueprintEditorPage({
     // save chooses a managed project; subsequent saves overwrite its confirmed source path.
     // Success clears the recoverable draft and opens the saved project's workspace.
     const saveGuidedProject = (savedRevision: number, savedBlueprint: Record<string, unknown>): void => {
+        if (editor.modeDrafts.current.wholeSequenceDraft?.dirty) {
+            setManagedSaveView({status: "error", message: "Apply or cancel whole-sequence edits before saving."});
+            saveGuard.end();
+            return;
+        }
         // A retry begins a new Workspace-open lifecycle too, so an older open request cannot reconcile
         // this attempt's UI after it settles.
         workspaceOpenRequestIdRef.current += 1;
@@ -1038,7 +1066,7 @@ export function BlueprintEditorPage({
     const getValidatedGuidedSaveState = (): ReturnType<typeof editor.getCurrentState> | undefined => {
         const currentState = editor.getCurrentState();
         const completedValidation = completedValidationRef.current;
-        return sourceDrift === undefined && completedValidation?.validation.status === "ok"
+        return !editor.modeDrafts.current.wholeSequenceDraft?.dirty && sourceDrift === undefined && completedValidation?.validation.status === "ok"
             && completedValidation.revision === currentState.revision
             && completedValidation.blueprint === currentState.blueprint ? currentState : undefined;
     };
@@ -1086,7 +1114,7 @@ export function BlueprintEditorPage({
             <BetsList blueprint={blueprint} mutate={mutateBlueprint} />
             <PaylinesEditor blueprint={blueprint} mutate={mutateBlueprint} />
             <PaytableEditor blueprint={blueprint} mutate={mutateBlueprint} />
-            <ReelGenerationModeSelector blueprint={blueprint} mutate={mutateBlueprint} drafts={editor.drafts} modeDrafts={editor.modeDrafts} revision={revision} />
+            <ReelGenerationModeSelector blueprint={blueprint} mutate={mutateBlueprint} drafts={editor.drafts} modeDrafts={editor.modeDrafts} revision={revision} onDirtyChange={setSequenceDraftDirty} />
         </div>
     );
     // A pending automatic validation is a prerequisite of the guided save, so the one conflicting
@@ -1305,6 +1333,10 @@ export function BlueprintEditorPage({
                             });
                             return;
                         }
+                        if (sequenceDraftDirty && nextMode !== mode) {
+                            confirm("Switch editor mode? Unapplied whole-sequence edits are retained until Apply or Cancel.", () => setMode(nextMode));
+                            return;
+                        }
                         setMode(nextMode);
                     }}
                     data={[
@@ -1347,7 +1379,10 @@ export function BlueprintEditorPage({
                     key={`json-${editor.formGeneration}`}
                     jsonText={editor.state.jsonText}
                     jsonError={editor.state.jsonError}
-                    onApply={editor.applyJson}
+                    onApply={text => {
+                        if (sequenceDraftDirty) confirm("Replace the Blueprint and discard unapplied whole-sequence edits?", () => editor.applyJson(text));
+                        else editor.applyJson(text);
+                    }}
                     onDraftDirtyChange={setJsonDraftDirty}
                 />
             )}
