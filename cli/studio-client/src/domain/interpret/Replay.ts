@@ -874,6 +874,7 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
     let completeness: string;
     if (spin.debug?.recording?.audit) completeness = "Full audit export -- executable inputs, commands, canonical artifacts and disposition are retained separately from this visible display.";
+    else if (spin.debug?.auditUnavailableReason) completeness = `Audit unavailable -- ${spin.debug.auditUnavailableReason}`;
     else if (spin.debug?.artifact !== undefined) {
         completeness = "Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.";
     } else if (spin.debug?.artifactUnavailableReason !== undefined) {
@@ -893,7 +894,8 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
         timestamp: spin.studioRecordedAt ? new Date(spin.studioRecordedAt).toLocaleString() : "(unknown)",
         completeness,
         capabilities: {...describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
-            ...(spin.debug?.recording?.audit ? {reproducible: {status: "available" as const, reason: "Load the recorded executable evidence for audit replay."}} : {})},
+            ...(spin.debug?.recording?.audit ? {reproducible: {status: "available" as const, reason: "Load the recorded executable evidence for audit replay."}} : {}),
+            ...(spin.debug?.auditUnavailableReason ? {reproducible: {status: "unavailable" as const, reason: spin.debug.auditUnavailableReason}} : {})},
     };
 }
 

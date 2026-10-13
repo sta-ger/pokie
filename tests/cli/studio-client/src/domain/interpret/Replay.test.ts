@@ -1132,3 +1132,13 @@ it("requires the shared verifier verdict and complete audit boundary instead of 
     expect(describeReplayComparison({recording}, {recording: {...recording, auditStatus: "verified", auditCompletion: "pending"}}).status).toBe("unavailable");
     expect(describeReplayComparison({recording}, {recording: {...recording, auditStatus: "verified", audit: {...recording.audit!, hash: "sha256:other"}}}).status).toBe("unavailable");
 });
+
+
+it("shows custom audit unavailability separately from an inspectable mathematical result", () => {
+    const reason = "Selected custom game has no complete executable codec.";
+    const card = describeLoadedReplay({source: "spin", canExport: true, spin: {
+        sessionId: "custom", game: {id: "custom", name: "Custom", version: "1"}, debug: {auditUnavailableReason: reason},
+    }});
+    expect(card.completeness).toBe(`Audit unavailable -- ${reason}`);
+    expect(card.capabilities.reproducible).toEqual({status: "unavailable", reason});
+});

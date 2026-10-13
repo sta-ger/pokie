@@ -384,6 +384,7 @@ export function ReplayTab({
     if (result?.auditStatus === "verified") runReproducibilityLabel = result.auditCompletion === "completed"
         ? "Audit verified -- complete recorded operation."
         : `Executable prefix verified -- logical operation remains ${result.auditCompletion ?? "incomplete"}.`;
+    else if (result?.auditStatus === "legacy-best-effort") runReproducibilityLabel = "Legacy best-effort -- complete executable audit evidence is unavailable.";
     else if (findMethod === "artifact" && comparison) runReproducibilityLabel = COMPARISON_STATUS_LABEL[comparison.status];
     // Export is an action, not a page: always visible (disabled until there's something to export)
     // rather than gated behind navigating anywhere. Ready exactly once the *currently loaded* source
