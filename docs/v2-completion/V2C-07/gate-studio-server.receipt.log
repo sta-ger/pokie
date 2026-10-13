@@ -1,0 +1,22 @@
+Source: f0313184c6399872f3dd4114ad831090eb12dc43
+Command: npm run test:targeted -- tests/cli/studio/StudioServer.test.ts
+Exit: 0
+Output excerpt:
+PASS pokie-integration tests/cli/studio/StudioServer.test.ts (30.754 s)
+      ✓ loads Recent Rounds audit evidence through inspect/start/download and rejects a corrupt audit without seed fallback (149 ms)
+      ✓ previews a conflict (409) for a pre-existing non-empty destination, agreeing with what build() itself would report, and never writes to it (8 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       320 passed, 320 total
+Snapshots:   0 total
+Time:        30.981 s, estimated 33 s
+Ran all test suites within paths "tests/cli/studio/StudioServer.test.ts".
+
+Command: npm run typecheck
+Exit: 0 (identical source bytes before commit)
+> @fromstan/pokie@1.3.0 typecheck
+> tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client
+
+
+> @fromstan/pokie@1.3.0 typecheck-studio-client
+> tsc --project cli/studio-client/tsconfig.json --noEmit

@@ -849,6 +849,11 @@ export type OutcomeSourceReplayDescriptorView = {
 // The server's copy of this same type lives in "pokie" itself (src/replay/ReplayDescriptor.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type ReplayDescriptor = {
+    audit?: import("../../../../src/replay/AuditRoundRecording.js").AuditRoundRecording;
+    auditStatus?: "verified" | "recorded" | "legacy-best-effort" | "unsupported";
+    auditCompletion?: "completed" | "pending" | "exhausted";
+    auditUnavailableReason?: string;
+    originalSessionId?: string;
     // The identity of the actual game session this replay created and played forward -- distinct from
     // the replay job id (StudioReplayJobView.id, minted before this session even exists) that tracks the
     // run itself. See src/replay/ReplayDescriptor.ts's own doc comment.
@@ -915,6 +920,8 @@ export type StudioReplayJobView = {
     durationMs: number;
     game?: {id: string; name: string; version: string};
     descriptor?: ReplayDescriptor;
+    auditPrefix?: ReplayDescriptor["audit"];
+    nextCommand?: import("../../../../src/runtime/SessionCommand.js").SessionCommand;
     error?: string;
     recovery?: StudioJobView["recovery"];
     // The real outcome-library mode this job replays/replayed -- undefined for an ordinary
@@ -998,6 +1005,8 @@ export type StudioRuntimeSessionView = {
     studioModeName?: string;
     replay?: OutcomeSourceReplayDescriptorView;
     debug?: {
+        recording?: ReplayDescriptor;
+        auditUnavailableReason?: string;
         stateAfter?: unknown;
         stateBefore?: unknown;
         debugData?: Record<string, unknown>;

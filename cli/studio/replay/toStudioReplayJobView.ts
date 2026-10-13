@@ -17,6 +17,8 @@ export function toStudioReplayJobView(record: StudioReplayJobRecord): StudioRepl
         configHash: record.configHash,
         descriptor: record.status === "completed" ? record.descriptor : undefined,
         error: record.error,
+        ...(record.status !== "completed" && record.auditPrefix ? {auditPrefix: record.auditPrefix,
+            nextCommand: record.recording?.audit.deliveries[record.auditPrefix.deliveries.length]?.command} : {}),
         modeName: record.modeName,
     };
 }

@@ -1,3 +1,4 @@
+import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
 import {RoundArtifactValidator} from "./RoundArtifactValidator.js";
 import type {RoundArtifactProjector} from "./RoundArtifactProjector.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -25,7 +26,7 @@ export class PublicRoundArtifactProjector<T extends string | number = string> im
         const steps = artifact.steps.map(projectPublicRoundStep);
         const result = {roundId: artifact.roundId, stake: artifact.stake, betMode: artifact.betMode, totalWin: artifact.totalWin,
             payoutMultiplier: artifact.payoutMultiplier, screen: artifact.screen, steps, wins: steps.flatMap(step => step.wins),
-            ...(artifact.featureEvents ? {featureEvents: artifact.featureEvents} : {})};
+            ...(artifact.featureEvents ? {featureEvents: artifact.featureEvents.map(projectPublicFeatureEvent)} : {})};
         return deepFreeze(toCanonicalJson(result) as unknown as PublicRoundArtifact<T>);
     }
 }
@@ -34,8 +35,10 @@ export function projectPublicRoundStep<T extends string | number>(step: RoundSte
     validateArtifactCoordinates(step);
     const projection = step.geometry ? new ScreenProjection(step.geometry) : undefined;
     const wins = step.wins.map(win => {
-        if (!projection) return win;
-        const metadata = {...win.metadata};
+        const metadata = Object.fromEntries(Object.entries(win.metadata).filter(([key]) => ["definition", "symbolsPositions", "wildSymbolsPositions", "lineId", "count", "pattern", "poolId", "stakeEngineImportSynthetic"].includes(key)));
+        const publicWin = {type: win.type, id: win.id, symbolId: (win.symbolId ?? null) as T, winAmount: win.winAmount, winningPositions: win.winningPositions,
+            multiplierBreakdown: win.multiplierBreakdown.map(item => ({source: item.source, positions: item.positions, values: item.values, combinedMultiplier: item.combinedMultiplier})), metadata};
+        if (!projection) return publicWin;
         if (win.type === "line" && Array.isArray(metadata.definition)) {
             const definition = projectVisiblePayline(metadata.definition as number[], projection);
             if (definition) metadata.definition = definition;
@@ -46,10 +49,16 @@ export function projectPublicRoundStep<T extends string | number>(step: RoundSte
         if (win.type !== "line" && Array.isArray(metadata.symbolsPositions)) {
             metadata.symbolsPositions = projectVisiblePositions(metadata.symbolsPositions as number[][], projection);
         }
-        return {...win, metadata, winningPositions: projectVisiblePositions(win.winningPositions, projection),
-            multiplierBreakdown: win.multiplierBreakdown.map(item => ({...item, positions: projectVisiblePositions(item.positions, projection)}))};
+        return {...publicWin, metadata, winningPositions: projectVisiblePositions(win.winningPositions, projection),
+            multiplierBreakdown: publicWin.multiplierBreakdown.map(item => ({...item, positions: projectVisiblePositions(item.positions, projection)}))};
     });
     return deepFreeze(toCanonicalJson({index: step.index, screen: step.screen, totalWin: step.totalWin, wins,
-        ...(step.featureEvents ? {featureEvents: step.featureEvents} : {}),
+        ...(step.featureEvents ? {featureEvents: step.featureEvents.map(projectPublicFeatureEvent)} : {}),
         ...(projection ? {visibleRowCoverage: projection.getVisibleCoverage()} : {})}) as unknown as PublicRoundStep<T>);
+}
+
+/** Generic public event markers expose type and supported counters, never arbitrary audit data. */
+export function projectPublicFeatureEvent(event: RoundArtifactFeatureEvent): RoundArtifactFeatureEvent {
+    const count = event.data?.count;
+    return {type: event.type, ...(typeof count === "number" && Number.isFinite(count) && count >= 0 ? {data: {count}} : {})};
 }

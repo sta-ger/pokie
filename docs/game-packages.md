@@ -206,3 +206,15 @@ own strict validation requirements, including the game validator for custom payl
 ## Generated, visible and evaluated coordinates
 
 Blueprint screenGeometry, generated packages and conversion support: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+
+### Exact audit capability
+
+A generated seeded game declares its model hash, compatible executable schema and
+command capabilities. A hand-authored game must supply the same authorities for
+exact audit replay, including a `getConfigHash` covering effective math configuration
+and all custom collaborators. Manifest id/version alone cannot prove model equality.
+`createSession` must return a detached executable instance, never a live serving
+session. Custom state requires complete capture, restore, session validation and
+selected-package validation; dynamic variants and RNG algorithms/state must be
+covered by that model/codec compatibility promise. Missing authority leaves ordinary
+play and legacy seed-forward replay available, with exact audit explicitly unavailable.

@@ -63,6 +63,8 @@ export type StudioRuntimeSessionView = {
     // reconstruct a private descriptor just to move the round to `pokie replay`.
     replay?: PreGeneratedRoundReplayDescriptor;
     debug?: {
+        recording?: import("@fromstan/pokie").ReplayDescriptor;
+        auditUnavailableReason?: string;
         stateAfter?: unknown;
         stateBefore?: unknown;
         debugData?: Record<string, unknown>;

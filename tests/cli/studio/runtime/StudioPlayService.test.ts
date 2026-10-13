@@ -2,7 +2,7 @@ import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGam
 import {createOverscanGame, overscanBlueprint, overscanGeometry} from "../../../v2/fixtures/OverscanGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import {
-    ReplayRecorder, buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
+    ReplayRecorder, buildRoundArtifact, InMemorySessionRepository, InMemoryWallet, SpinCommandHandler,
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
     GamePackageGenerator,
@@ -37,6 +37,9 @@ import {
     outcomeLibraryBundleTestProvenance,
 } from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
+
+import {buildReplayDownload} from "../../../../cli/studio/replay/buildReplayDownload.js";
+import {validateReplayRequest} from "../../../../cli/studio/replay/validateReplayRequest.js";
 
 import {legacyCompositions} from "../../../v2/fixtures/LegacyComposedGame.js";
 
@@ -1630,27 +1633,82 @@ describe("Studio logical history retention", () => {
     });
 });
 
-it("Studio retains and records a committed composite prefix across thrown successor failure", async () => {
+it.each([
+    {failure: "execution-error", audit: true}, {failure: "blocked", audit: true},
+    {failure: "execution-error", audit: false}, {failure: "blocked", audit: false},
+])("Studio retains committed-prefix evidence across $failure (audit=$audit)", async ({failure, audit}) => {
     let fail = true;
     let calculations = 0;
-    const model = transactionalRoundGame(() => {
+    const fixture = transactionalRoundGame(() => {
         calculations++;
-        if (fail && calculations === 2) throw new Error("successor failed");
+        if (failure === "execution-error" && fail && calculations > 1) throw new Error("successor failed");
     });
+    const model: PokieGame = {...fixture, ...(audit ? {getConfigHash: () => "prefix-audit-model"} : {}),
+        createSession: context => {
+            const session = fixture.createSession(context);
+            const canPlay = session.canPlayNextGame.bind(session);
+            session.canPlayNextGame = () => !(failure === "blocked" && fail && calculations >= 1) && canPlay();
+            return session;
+        }};
     const recorder = new StudioRoundRecorder();
     const service = new StudioPlayService(() => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, recorder);
+    const execute = jest.spyOn(SpinCommandHandler.prototype, "execute");
+    const writes = [jest.spyOn(InMemoryWallet.prototype, "debit"), jest.spyOn(InMemoryWallet.prototype, "credit"), jest.spyOn(InMemoryWallet.prototype, "reverse"),
+        jest.spyOn(InMemorySessionRepository.prototype, "saveVersioned")];
     try {
         const created = await service.newSession("/logical", "1");
         if (created.status !== "ok") throw new Error("No Play session");
         const intent = {requestId: "entry", roundId: "round", delivery: "composite" as const};
         const failed = await service.spin(created.session.sessionId, "spin", undefined, undefined, intent);
-        expect(failed).toMatchObject({status: "error", code: "execution-error", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, session: {logicalRound: {cursor: 1, status: "pending"}}});
-        expect(recorder.list()).toHaveLength(1);
+        expect(failed).toMatchObject({status: failure === "blocked" ? "blocked" : "error", code: failure,
+            committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, session: {logicalRound: {cursor: 1, status: "pending"}}});
+        if (failed.status !== "error" && failed.status !== "blocked") throw new Error("No committed prefix");
+        const retained = (await execute.mock.results[0].value).committedResult!;
+        expect(recorder.list()).toEqual([failed.session]);
+        const recording = failed.session?.debug?.recording;
+        if (audit) {
+            expect(recording?.audit).toEqual(retained.audit);
+            expect(recording).toMatchObject({auditCompletion: "pending", sessionId: created.session.sessionId,
+                audit: {deliveries: [{disposition: {requestId: "entry", status: "committed", version: retained.version}}]}});
+            expect(recording!.audit!.deliveries).toHaveLength(1);
+            const exported = JSON.parse(buildReplayDownload(recording!, "prefix").body);
+            const imported = validateReplayRequest({recording: exported}).recording!;
+            expect(imported).toEqual(recording);
+            const beforeWrites = writes.map(write => write.mock.calls.length);
+            const replayGame = {...transactionalRoundGame(), getConfigHash: model.getConfigHash};
+            expect(new ReplayRecorder().replay(replayGame, imported.audit)).toMatchObject({auditStatus: "verified", auditCompletion: "pending", audit: retained.audit});
+            expect(writes.map(write => write.mock.calls.length)).toEqual(beforeWrites);
+            expect(recorder.list()).toEqual([failed.session]);
+        } else {
+            expect(recording).toBeUndefined();
+            expect(failed.session?.debug?.auditUnavailableReason).toBe(retained.auditUnavailableReason);
+            expect(retained.auditUnavailableReason).toContain("Exact audit requires");
+        }
+        const repeated = await service.spin(created.session.sessionId, "spin", undefined, undefined, intent);
+        expect(repeated).toMatchObject({code: failure, session: {debug: failed.session!.debug}});
+        expect(recorder.list()).toEqual([failed.session]);
         fail = false;
-        expect(await service.spin(created.session.sessionId, "spin", undefined, undefined, intent)).toMatchObject({status: "ok", session: {logicalRound: {status: "completed", cursor: 3, totalStake: 0.05}}});
+        const completed = await service.spin(created.session.sessionId, "spin", undefined, undefined, intent);
+        expect(completed).toMatchObject({status: "ok", session: {logicalRound: {status: "completed", cursor: 3, totalStake: 0.05}}});
         expect(recorder.list()).toHaveLength(1);
-        expect(recorder.list()[0].logicalRound?.status).toBe("completed");
+        const completedView = recorder.list()[0];
+        if (audit) {
+            expect(completedView.debug!.recording!.audit!.deliveries[0]).toEqual(recording!.audit!.deliveries[0]);
+            expect(completedView.debug!.recording!.audit!.deliveries.map(delivery => delivery.disposition.requestId)).toEqual(["entry", "entry:subround:1", "entry:subround:2"]);
+        }
+        await service.spin(created.session.sessionId, "spin", undefined, undefined, {requestId: "later", roundId: "later", delivery: "composite"});
+        const beforeRetry = calculations;
+        const history = recorder.list();
+        const writeCounts = writes.map(write => write.mock.calls.length);
+        const historical = await service.spin(created.session.sessionId, "spin", undefined, undefined, intent);
+        expect(historical).toMatchObject({status: "ok", session: {debug: completedView.debug}});
+        expect(calculations).toBe(beforeRetry);
+        expect(writes.map(write => write.mock.calls.length)).toEqual(writeCounts);
+        expect(recorder.list()).toEqual(history);
+        expect(recorder.list()).toHaveLength(2);
     } finally {
         await service.reset();
+        execute.mockRestore();
+        writes.forEach(write => write.mockRestore());
     }
 });

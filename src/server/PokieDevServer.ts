@@ -434,6 +434,10 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (result.committedResult) {
             const prefix = result.committedResult;
             committedSession = this.buildSessionResponse(prefix.sessionId, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload);
+            if (includeInternal) {
+                committedSession.internal = {...this.buildInternalSessionData(prefix.state, prefix.previousState, prefix.requestId, prefix.version),
+                    ...(prefix.audit ? {audit: prefix.audit} : {}), ...(prefix.auditUnavailableReason ? {auditUnavailableReason: prefix.auditUnavailableReason} : {})};
+            }
             if (prefix.state.logicalRound) {
                 const progress = projectLogicalRound(prefix.state.logicalRound);
                 committedSession.logicalRound = progress;
@@ -486,7 +490,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
         response.logicalRoundDurability = this.transactionalRoundStore ? "durable-store" : "independent-ports";
         if (includeInternal) {
-            response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version);
+            response.internal = {...this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version),
+                ...(result.audit ? {audit: result.audit} : {}), ...(result.auditUnavailableReason ? {auditUnavailableReason: result.auditUnavailableReason} : {})};
         }
         if (this.transactionalRoundStore === undefined) {
             this.sendJson(res, 200, response);

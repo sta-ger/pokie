@@ -30,6 +30,7 @@ export interface PokieGame {
 
     getSessionCompatibility?(): {readonly version: string; readonly stateSchemaVersion: string};
 
+    /** Creates a detached executable instance. Exact offline audit replay must never return a live serving session. */
     createSession(context?: PokieGameContext): GameSessionHandling;
 
     // Present on a game returned by loadPokieGame().  It releases that loader invocation's isolated
@@ -54,6 +55,9 @@ export interface PokieGame {
     // SpinCommandHandler stamps this into a "full" capture's RoundArtifactProvenance.configHash for every
     // live round it settles, so a recorded artifact can be traced back to the exact config that produced
     // it. A game that doesn't implement this simply has no configHash captured — never a fabricated one.
+    /** Exact audit requires this authority for hand-authored games too: include all effective math/model collaborators.
+     * Manifest identity alone is insufficient. Capture/restore must include any dynamic variant/configuration inputs.
+     */
     getConfigHash?(): string;
 
     // Optional, feature-detected (same pattern as getSessionSerializer): a game MAY declare its

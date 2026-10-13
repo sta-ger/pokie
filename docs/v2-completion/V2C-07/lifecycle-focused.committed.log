@@ -1,0 +1,15 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/replay/ReplayRecorder.test.ts tests/v2/AuditRoundReplay.test.ts tests/server/spin/SpinCommandHandler.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/server/spin/SpinReconciliationService.test.ts
+
+PASS pokie tests/v2/AuditRoundReplay.test.ts (35.664 s)
+PASS pokie tests/server/spin/SpinCommandHandler.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+PASS pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+PASS pokie tests/server/spin/SpinReconciliationService.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       191 passed, 191 total
+Snapshots:   0 total
+Time:        38.516 s, estimated 40 s
+Ran all test suites within paths "tests/replay/ReplayRecorder.test.ts", "tests/v2/AuditRoundReplay.test.ts", "tests/server/spin/SpinCommandHandler.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts", "tests/server/spin/SpinReconciliationService.test.ts".

@@ -1429,3 +1429,11 @@ describe("studio-client apiClient", () => {
         });
     });
 });
+
+
+it("forwards the complete imported package recording in audit replay requests", async () => {
+    const recording = {sessionId: "original", audit: {hash: "sha256:original"}} as import("../../../../../../cli/studio-client/src/api/types").ReplayDescriptor;
+    const fetch = jest.fn().mockResolvedValue({ok: true, status: 200, json: () => Promise.resolve({status: "created", job: {id: "replay"}})});
+    await runReplay(fetch, 1, "seed", undefined, undefined, undefined, recording);
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({round: 1, seed: "seed", recording});
+});

@@ -41,6 +41,7 @@ export type ExpectedReplayState =
     | {status: "error"; message: string}
     | {
           status: "loaded";
+          recording?: import("../../api/types").ReplayDescriptor;
           round: number;
           seed?: string;
           modeName?: string;
@@ -181,7 +182,7 @@ export function ReplayTab({
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
     error: string | undefined;
-    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView) => void;
+    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView, recording?: import("../../api/types").ReplayDescriptor) => void;
     onCancel: () => void;
     onRetry: () => void;
     listView: ReplayListView;
@@ -218,15 +219,6 @@ export function ReplayTab({
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
     useEffect(() => {
-        if (recoveryRequest === undefined) return;
-        const round = typeof recoveryRequest.round === "number" ? recoveryRequest.round : undefined;
-        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
-        if (round !== undefined || seed !== undefined) form.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
-        if (typeof recoveryRequest.modeName === "string") setSelectedMode(recoveryRequest.modeName);
-        // Mantine's uncontrolled form object is intentionally stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [recoveryRequest]);
-    useEffect(() => {
         if (selectedMode === null && availableModes !== undefined && availableModes.length > 0) {
             setSelectedMode(availableModes[0]);
         }
@@ -250,6 +242,21 @@ export function ReplayTab({
     // `markLoaded(method, false)`, which is what keeps a prior target's terminal progress/retry/error/
     // result from being presented as this target's state.
     const [jobLoaded, setJobLoaded] = useState(false);
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        if (recoveryRequest.recording) {
+            setFindMethod("artifact");
+            onLoadExpectedFromPaste(JSON.stringify(recoveryRequest.recording));
+            setLoadedForMethod("artifact");
+            setJobLoaded(false);
+        }
+        const round = typeof recoveryRequest.round === "number" ? recoveryRequest.round : undefined;
+        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
+        if (round !== undefined || seed !== undefined) form.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
+        if (typeof recoveryRequest.modeName === "string") setSelectedMode(recoveryRequest.modeName);
+        // Mantine's uncontrolled form object is intentionally stable.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
     const [pending, setPending] = useState<ReplayLoadTarget>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
@@ -379,10 +386,12 @@ export function ReplayTab({
     // has a known prior result loaded to actually compare a fresh run against (`comparison`, built from
     // `expected`); Recreate from seed/Recent Simulation are always a fresh forward replay with nothing to
     // compare, so their honest status is "not verified", never a guessed match/mismatch.
-    const runReproducibilityLabel =
-        findMethod === "artifact" && comparison
-            ? COMPARISON_STATUS_LABEL[comparison.status]
-            : "Not verified -- a fresh forward replay with no prior recorded result to compare against.";
+    let runReproducibilityLabel = "Not verified -- a fresh forward replay with no prior recorded result to compare against.";
+    if (result?.auditStatus === "verified") runReproducibilityLabel = result.auditCompletion === "completed"
+        ? "Audit verified -- complete recorded operation."
+        : `Executable prefix verified -- logical operation remains ${result.auditCompletion ?? "incomplete"}.`;
+    else if (result?.auditStatus === "legacy-best-effort") runReproducibilityLabel = "Legacy best-effort -- complete executable audit evidence is unavailable.";
+    else if (findMethod === "artifact" && comparison) runReproducibilityLabel = COMPARISON_STATUS_LABEL[comparison.status];
     // Export is an action, not a page: always visible (disabled until there's something to export)
     // rather than gated behind navigating anywhere. Ready exactly once the *currently loaded* source
     // has something to export -- `isCurrentSourceLoaded` keeps this from staying enabled off a stale
@@ -781,6 +790,13 @@ export function ReplayTab({
                                     </Button>
                                 </QuickActions>
                             </PageSection>
+                            {selectedSpin.debug?.recording && (
+                                <Button variant="default" onClick={() => {
+                                    setFindMethod("artifact");
+                                    onLoadExpectedFromPaste(JSON.stringify(selectedSpin.debug!.recording));
+                                    markLoaded("artifact", false);
+                                }}>Load for audit replay</Button>
+                            )}
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
                             {selectedSpin.debug?.artifact ? (
@@ -1003,9 +1019,7 @@ export function ReplayTab({
                                 forward from round 1 through the target round. Never a lookup of any existing
                                 session/round, even when the seed matches one that was recorded before. */}
                             <Text size="sm" c="dimmed" mb="sm">
-                                Reproducing will create a new replay session and play it forward from round 1 through
-                                round {target.round}, using {target.seed ? `seed "${target.seed}"` : "a freshly generated seed"}, to
-                                reach round {target.round}.
+                                Reproducing will create a new replay session and play it forward from round 1 through round {target.round}, using {target.seed ? `seed "${target.seed}"` : "a freshly generated seed"}, to reach round {target.round}.
                             </Text>
                         </div>
                     )}
@@ -1032,6 +1046,7 @@ export function ReplayTab({
                                                 findMethod === "artifact" ? true : undefined,
                                                 reproduceTarget.modeName,
                                                 findMethod === "artifact" && expected.status === "loaded" ? expected.outcomeSource : undefined,
+                                                findMethod === "artifact" && expected.status === "loaded" ? expected.recording : undefined,
                                             );
                                             setJobLoaded(true);
                                         }}
@@ -1068,9 +1083,8 @@ export function ReplayTab({
                                             style={{overflowWrap: "anywhere"}}
                                         >
                                             <Text size="sm" mb="xs">
-                                                The replay session hit an error partway through -- most likely a bug in the game&apos;s own logic
-                                                triggered by this seed/round, not something wrong with Replay itself. &quot;Run again with the same
-                                                parameters&quot; below retries it as-is.
+                                                Replay stopped before a completed result could be published. Inspect the server message and
+                                                any retained execution prefix before retrying with the same parameters.
                                             </Text>
                                             <AdvancedDisclosure detail="server message">
                                                 <Text size="sm">{progress.error ?? "Replay failed."}</Text>
@@ -1091,6 +1105,11 @@ export function ReplayTab({
                                         <Text size="sm" mb={4}>
                                             {progress.status} — {progress.completedRounds}/{progress.round} rounds
                                         </Text>
+                                        {!active && progress.verifiedDeliveries !== undefined && (
+                                            <Text size="sm">Verified prefix: {progress.verifiedDeliveries} deliveries. Replay remains incomplete.
+                                                {progress.nextCommand?.continuation && ` Next continuation: ${progress.nextCommand.continuation.roundId}, cursor ${progress.nextCommand.continuation.cursor}.`}
+                                            </Text>
+                                        )}
                                         {/* This is the completed replay's real public artifact, kept with the
                                             terminal status rather than in the page-wide action footer. A person
                                             can now reach the result and its JSON through one rendered operation
@@ -1210,7 +1229,7 @@ export function ReplayTab({
 
             <QuickActions>
                 {findMethod === "spin" && selectedSpin && exportReady && (
-                    <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin)}>
+                    <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin.debug?.recording ?? selectedSpin)}>
                         Download JSON
                     </Button>
                 )}

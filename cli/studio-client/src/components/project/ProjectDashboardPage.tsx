@@ -850,6 +850,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: job.descriptor.seed ?? undefined,
                         modeName: job.descriptor.outcomeSource?.modeName,
                         outcomeSource: job.descriptor.outcomeSource,
+                        recording: job.descriptor.audit ? job.descriptor : undefined,
                         artifact: resolveReplayArtifact(job.descriptor),
                         artifactWarnings: [],
                         credits: job.descriptor.credits,
@@ -905,6 +906,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                         seed: response.seed,
                         modeName: response.modeName,
                         outcomeSource: response.outcomeSource,
+                        recording: response.recording,
                         artifact: response.outcomeSource ? response.artifact : parsedDescriptor?.artifact,
                         artifactWarnings: response.artifactWarnings,
                         credits: parsedDescriptor?.credits,
@@ -931,11 +933,11 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // otherwise a stale `expectedReplay` from an earlier artifact-compare attempt would produce a bogus
     // match/mismatch banner on a later, unrelated Recreate from seed / Recent Simulation reproduction.
     const runReplay = useCallback(
-        (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: import("../../api/types").OutcomeSourceReplayDescriptorView) => {
+        (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: import("../../api/types").OutcomeSourceReplayDescriptorView, recording?: import("../../api/types").ReplayDescriptor) => {
             if (!keepExpected) {
                 clearExpectedReplay();
             }
-            replay.run(round, seed, simulationId, modeName, outcomeSource);
+            replay.run(round, seed, simulationId, modeName, outcomeSource, recording);
         },
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [replay.run, clearExpectedReplay],
@@ -968,10 +970,13 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // the reproduction has completed -- always via describeReplayComparison, which safely resolves to
     // its own "unavailable" status (with diagnostics) rather than the page silently omitting the banner
     // when the expected artifact turns out malformed (requirement 1).
+    const importedAuditRecording = expectedReplay.status === "loaded" ? expectedReplay.recording : undefined;
+    const storedAuditRecording = replay.job?.descriptor?.audit ? replay.job.descriptor : undefined;
     const replayComparison =
         expectedReplay.status === "loaded" && replay.job?.status === "completed"
             ? describeReplayComparison(
                 {
+                    recording: expectedReplay.recording,
                     outcomeSource: expectedReplay.outcomeSource,
                     seed: expectedReplay.seed,
                     round: expectedReplay.round,
@@ -983,6 +988,7 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                     identity: expectedReplay.identity,
                 },
                 {
+                    recording: replay.job.descriptor?.audit ? replay.job.descriptor : undefined,
                     outcomeSource: replay.job.descriptor?.outcomeSource,
                     seed: replay.job.descriptor?.seed ?? undefined,
                     round: replay.job.descriptor?.round,
@@ -1441,6 +1447,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                             replay.job.simulationId,
                                             expectedReplay.status === "loaded",
                                             replay.job.modeName,
+                                            expectedReplay.status === "loaded" ? expectedReplay.outcomeSource : replay.job.descriptor?.outcomeSource,
+                                            importedAuditRecording ?? storedAuditRecording,
                                         )
                                     }
                                     listView={replayListView}

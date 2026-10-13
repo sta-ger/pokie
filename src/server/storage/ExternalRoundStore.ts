@@ -6,6 +6,9 @@ import type {SpinCommandResult} from "../spin/SpinCommandResult.js";
 
 export interface ExternalRoundPreparation extends VersionedSessionState {
     readonly balance: number;
+    /** Selected historical operation captured inside ownership; callbacks must not re-enter store queues. */
+    readonly retainedRoundId?: string;
+    readonly retainedRound?: SpinCommandResult;
     /** The same captured envelope that the store binds to this request identity. */
     readonly command: RepositoryCommand;
 }
@@ -26,6 +29,7 @@ export interface ExternalRoundStore {
     initialize(sessionId: string, state: PokieSessionState, game: PokieGame): Promise<void>;
     readSession(sessionId: string): Promise<VersionedSessionState | undefined>;
     getBalance(sessionId: string): Promise<number>;
+    lookupRound?(sessionId: string, roundId: string): Promise<SpinCommandResult | undefined>;
     lookupResult(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined>;
     execute(command: RepositoryCommand, game: PokieGame,
         prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>, signal?: AbortSignal): Promise<SpinCommandResult>;

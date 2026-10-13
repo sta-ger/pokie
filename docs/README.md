@@ -307,3 +307,10 @@ The shared [headless command workflow](game-session.md#headless-commands-and-rep
 Durable public round support: [reference SQLite and independent external-wallet
 reconciliation](game-session.md#durable-external-wallet-reconciliation), with candidate
 implementation evidence and pending independent verification in [V2C-05](v2-completion/V2C-05.md).
+
+Recorded executable package audit replay is documented in
+[Round artifacts](round-artifacts.md#recorded-executable-audit-replay),
+[Serialization](serialization.md#executable-audit-state-and-public-display) and
+[CLI](cli.md#replay-recorded-package-evidence). The
+[V2C-07 candidate receipt](v2-completion/V2C-07.md) records implementer checks and
+identifies controller-owned independent verification still pending.

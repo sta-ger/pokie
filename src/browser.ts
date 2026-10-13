@@ -85,3 +85,5 @@ export * from "./net/videoslot/projectVideoSlotNetworkData.js";
 export * from "./runtime/LogicalRound.js";
 export * from "./artifact/buildLogicalRoundArtifact.js";
 export * from "./runtime/projectLogicalRound.js";
+
+export type {AuditRoundRecording, AuditBoundary, AuditDelivery, AuditDisposition} from "./replay/AuditRoundRecording.js";

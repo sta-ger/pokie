@@ -1,0 +1,103 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/artifact/PokieJsonRoundArtifactProjector.test.ts tests/artifact/RoundArtifactValidator.test.ts tests/artifact/buildRoundArtifactFromSession.test.ts tests/cli/commands/ReplayCommand.test.ts tests/cli/studio-client/src/api/apiClient.test.ts tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx tests/cli/studio-client/src/components/project/ReplayTab.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio/replay/buildReplayDownload.test.ts tests/cli/studio/replay/validateReplayRequest.test.ts tests/cli/studio/runtime/StudioPlayService.test.ts tests/project/wasm/WasmRuntimeCompactState.test.ts tests/replay/ReplayRecorder.test.ts tests/server/session/captureRoundPokieSessionState.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/v2/AuditRoundReplay.test.ts tests/v2/LogicalRoundPackaging.test.ts tests/v2/ScreenProjection.test.ts tests/v2/TransactionalRoundStore.test.ts tests/v2/TransactionalRuntimeBoundary.test.ts
+
+PASS pokie tests/v2/TransactionalRoundStore.test.ts (209.116 s)
+PASS pokie tests/v2/AuditRoundReplay.test.ts (31.331 s)
+PASS pokie tests/cli/studio/runtime/StudioPlayService.test.ts (25.21 s)
+PASS pokie tests/project/wasm/WasmRuntimeCompactState.test.ts (12.714 s)
+  ● Console
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.05687700002454221,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":147.5581419999944,"roundsPerSecond":67769.89642496569,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1190.9344840000267,"roundsPerSecond":83967.67525290481,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.048614999977871776,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":181.88125099998433,"roundsPerSecond":54980.92818814437,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":1,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1713.9850549999974,"roundsPerSecond":58343.56589532815,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.013407000049483031,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":120.63267500000075,"roundsPerSecond":82896.27996726375,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"direct","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1175.2356650000438,"roundsPerSecond":85089.31695839598,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":0,"bytes":130,"elapsedMs":0.037828000029549,"roundsPerSecond":null,"totalPayout":0}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":10000,"bytes":137,"elapsedMs":172.93278000003193,"roundsPerSecond":57825.93675992576,"totalPayout":7425}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"worker","repetition":2,"runtime":"v24.18.0","fixture":"sha256:36dcda61ebd1ea44c8fcf1f6a6baae2f46df386b8a9874f9fb62a5a1db6cfb96","seed":"compact-measurement","bet":1,"bankroll":1000000,"warmupRounds":100,"completedRounds":100000,"bytes":139,"elapsedMs":1722.080103000044,"roundsPerSecond":58069.308057034934,"totalPayout":75019}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:52:29
+
+    console.log
+      {"surface":"collector-paired","completedRounds":100000,"capacity":8,"retainedEntries":8,"dropped":99993,"bytes":139,"elapsedMs":6519.622626000026,"roundsPerSecond":30676.622171720035}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:91:13
+
+    console.log
+      {"surface":"explicit-tape","completedRounds":10000,"continuationBytes":321,"inputTapeDraws":20002,"inputTapeBytes":385412,"elapsedMs":271.42915699997684,"diagnostics":{"inputTapeLength":20002,"verificationDraws":20002,"legacyPrefixDraws":0,"generatedDraws":20002,"hostRestorations":10000,"hostPayloadBytes":1932057,"snapshotPayloadBytes":321}}
+
+      at tests/project/wasm/WasmRuntimeCompactState.test.ts:112:13
+
+PASS pokie tests/v2/TransactionalRuntimeBoundary.test.ts (11.441 s)
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts
+PASS studio-client-components tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx
+PASS pokie tests/v2/ScreenProjection.test.ts
+PASS studio-client-components tests/cli/studio-client/src/components/project/ReplayTab.test.tsx
+PASS pokie tests/cli/studio/replay/StudioReplayExecutionService.test.ts
+PASS pokie tests/cli/commands/ReplayCommand.test.ts
+PASS pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+PASS pokie tests/server/session/captureRoundPokieSessionState.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+PASS pokie tests/artifact/RoundArtifactValidator.test.ts
+PASS pokie tests/artifact/PokieJsonRoundArtifactProjector.test.ts
+PASS pokie tests/cli/studio/replay/validateReplayRequest.test.ts
+PASS pokie tests/artifact/buildRoundArtifactFromSession.test.ts
+PASS pokie tests/cli/studio-client/src/domain/interpret/Replay.test.ts
+PASS pokie tests/cli/studio-client/src/api/apiClient.test.ts
+PASS pokie tests/cli/studio/replay/buildReplayDownload.test.ts
+
+Test Suites: 21 passed, 21 total
+Tests:       856 passed, 856 total
+Snapshots:   0 total
+Time:        307.529 s
+Ran all test suites within paths "tests/artifact/PokieJsonRoundArtifactProjector.test.ts", "tests/artifact/RoundArtifactValidator.test.ts", "tests/artifact/buildRoundArtifactFromSession.test.ts", "tests/cli/commands/ReplayCommand.test.ts", "tests/cli/studio-client/src/api/apiClient.test.ts", "tests/cli/studio-client/src/components/common/RoundArtifactInspector.test.tsx", "tests/cli/studio-client/src/components/project/ReplayTab.test.tsx", "tests/cli/studio-client/src/domain/interpret/Replay.test.ts", "tests/cli/studio/replay/StudioReplayExecutionService.test.ts", "tests/cli/studio/replay/buildReplayDownload.test.ts", "tests/cli/studio/replay/validateReplayRequest.test.ts", "tests/cli/studio/runtime/StudioPlayService.test.ts", "tests/project/wasm/WasmRuntimeCompactState.test.ts", "tests/replay/ReplayRecorder.test.ts", "tests/server/session/captureRoundPokieSessionState.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts", "tests/v2/AuditRoundReplay.test.ts", "tests/v2/LogicalRoundPackaging.test.ts", "tests/v2/ScreenProjection.test.ts", "tests/v2/TransactionalRoundStore.test.ts", "tests/v2/TransactionalRuntimeBoundary.test.ts" in 2 projects.

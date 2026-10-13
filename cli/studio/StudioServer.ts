@@ -3549,6 +3549,15 @@ export class StudioServer implements StudioServerHandling {
         }
 
         const record = body as Record<string, unknown>;
+        if (record.audit !== undefined) {
+            try {
+                await this.replayService.inspectRecording(this.currentContext.projectRoot, record);
+                this.sendJson(res, 200, {round: record.round, seed: record.seed, recording: record, auditStatus: "recorded", artifactWarnings: []});
+            } catch (error) {
+                this.sendJson(res, 400, {error: error instanceof Error ? error.message : String(error)});
+            }
+            return;
+        }
         let validated;
         try {
             const outcomeSource = record.outcomeSource;

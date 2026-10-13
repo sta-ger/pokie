@@ -2143,10 +2143,10 @@ describe("PokieDevServer logical recovery and capability (controller-owned HTTP 
     it("returns the retained prefix and exact successor identity when a composite successor throws", async () => {
         let fail = true;
         let calculations = 0;
-        const game = transactionalRoundGame(() => {
+        const game = {...transactionalRoundGame(() => {
             calculations++;
-            if (fail && calculations === 2) throw new Error("successor calculation failed");
-        });
+            if (fail && calculations > 1) throw new Error("successor calculation failed");
+        }), getConfigHash: () => "http-prefix-model"};
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
         try {
             const address = await server.start();
@@ -2158,9 +2158,21 @@ describe("PokieDevServer logical recovery and capability (controller-owned HTTP 
             expect(failed).toMatchObject({status: 500, body: {code: "execution-error", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, committedSession: {logicalRound: {status: "pending", cursor: 1}}}});
             expect(failed.body.committedSession).not.toHaveProperty("featureState");
             expect(failed.body.committedSession).not.toHaveProperty("internal");
+            const debug = await postJson(`${base}/sessions/${sessionId}/spin?debug=1`, entry);
+            expect(debug).toMatchObject({status: 500, body: {committedSession: {internal: {requestId: "entry", sessionVersion: 2}}}});
+            const internal = (debug.body.committedSession as {internal: import("@fromstan/pokie").PokieInternalSessionData}).internal;
+            expect(internal.audit!.deliveries).toHaveLength(1);
+            expect(internal.audit!.deliveries[0]).toMatchObject({disposition: {requestId: "entry", status: "committed", version: 2}, result: {logicalRound: {status: "pending", deliveryCursor: 1}}});
             fail = false;
             const resumed = await postJson(`${base}/sessions/${sessionId}/spin`, entry);
             expect(resumed).toMatchObject({status: 200, body: {logicalRound: {status: "completed", cursor: 3, totalStake: 0.05}}});
+            expect(resumed.body).not.toHaveProperty("internal");
+            const beforeRetry = calculations;
+            const historical = await postJson(`${base}/sessions/${sessionId}/spin?debug=true`, entry);
+            const audit = (historical.body.internal as import("@fromstan/pokie").PokieInternalSessionData).audit!;
+            expect(audit.deliveries[0]).toEqual(internal.audit!.deliveries[0]);
+            expect(audit.deliveries.map(delivery => delivery.disposition.requestId)).toEqual(["entry", "entry:subround:1", "entry:subround:2"]);
+            expect(calculations).toBe(beforeRetry);
         } finally {
             await server.stop();
         }

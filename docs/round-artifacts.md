@@ -279,3 +279,95 @@ addressing for capable game packages. WASM/outcome sources do not gain feature
 mechanics through this option. Studio's recorded Play history already holds the
 original commands, prefix/final artifact and provenance, so re-delivery creates
 no additional history record.
+
+## Recorded executable audit replay
+
+`RoundArtifact` schema 1 remains the canonical mathematical observation. A hashed
+JSON artifact is validated against its digest when supplied to `RoundArtifactValidator`.
+A visible projection has no canonical hash and is not independently replayable.
+`AuditRoundRecording` (`pokie.audit-round.v1`, runtime contract
+`pokie.session-runtime.v1`) binds artifacts to executable inputs and disposition:
+
+- selected game compatibility/state schema and effective model hash;
+- original context, variant/mode, bet, delivery policy, operation/request/attempt
+  identities, revision and settlement transaction identities where available;
+- complete executable starting/resulting state, including the RNG stream;
+- ordered accepted deliveries, mathematical subrounds and saved cascade stages;
+- canonical generated/visible screens, evaluated-step evidence, wins, feature
+  counters, deferred bank, wallet payout and credits.
+
+`ReplayRecorder.recordAudit(game, liveSession, commands, disposition, context)`
+records the supplied session's actual execution without funding or seed substitution.
+It is a detached calculation recorder; a caller-provided disposition is evidence,
+not authority to settle. `SpinCommandHandler` captures the same evidence inside
+its owning result publication boundary. Its retained result exposes `audit`, or
+`auditUnavailableReason` when the model/codec cannot support exact reconstruction.
+Full history belongs to retained operation/results, not recursive session snapshots.
+
+Direct retries require a request identity or explicit logical delivery identity. Identical
+unkeyed calls execute separately. A retry returns its immutable original descriptor and
+digest; changed commands, construction context, disposition or model are rejected before
+execution. Composite subdeliveries share their owning request and retain distinct logical
+cursors. `walletPayout` records the actual signed post-stake wallet adjustment (credit or
+debit), including floating-point residue; mathematical stakes and wins remain unchanged.
+Captured evidence survives compensation with a compensated disposition. Recovery validates
+the original digest and owning operation identity before publishing a new disposition.
+When a successor calculation fails, the thrown error retains the immutable accepted prefix in
+`committedRecording`. Export its `audit` for detached replay; its logical completion
+describes only the accepted prefix. Retrying with the original inputs resumes the interrupted command
+and appends newly accepted deliveries without calculating the prefix again. Capacity
+reservation charges only the operation's remaining delivery budget. Recovery checks
+assigned result revisions against the audit; pre-save operation captures may still
+have an unassigned `newVersion`.
+
+Audit capture is fallible after runtime acceptance. The recorder binds original inputs and
+charges each accepted delivery before capturing its evidence. It retries capture once at
+that same boundary, without another calculation. If both attempts fail, it throws the stable
+`audit-capture-unavailable` error with `acceptedDeliveries`, the immutable `operation`
+(commands, context and disposition), and `uncapturedDelivery` (command, pre-play boundary,
+accepted result and disposition). `committedRecording` contains the valid preceding prefix
+when one exists; a first-delivery failure has no independently replayable recording.
+
+Persistent capture failure blocks further recording on that session, including identical
+retries and fresh unkeyed calls. Conflicting original inputs still reject before calculation.
+Export the available evidence and call `releaseAuditSession`; this retires the session rather
+than resuming from a later boundary. An exported prefix carries a digest-bound
+`captureUnavailable.acceptedDeliveries` count. Detached replay verifies only that available
+prefix and reports `pending`, even if its last captured logical round completed. Partially
+verified Studio prefixes preserve the original accepted count; Studio labels the export
+incomplete and cannot report a complete audit match. Legacy and fully captured recordings
+keep their existing contracts.
+
+```ts
+const recording = recorder.recordAudit(game, session, [originalCommand], {
+    status: "calculated", sessionId: originalSessionId, durability: "detached",
+}, originalContext);
+const portable = JSON.parse(JSON.stringify(recording));
+validateAuditReplayDescriptor(portable, compatibleGame);
+const reproduced = recorder.replay(compatibleGame, portable.audit);
+// auditStatus: verified; auditCompletion: completed, pending, or exhausted.
+```
+
+`AuditRoundReplay` uses the existing `SessionRuntime` and selected game calculation
+path, restoring detached executable state at every accepted boundary. It has no
+wallet, store, provider, reconciliation or publication dependencies. Transactional
+status is preserved and validated, never applied offline. Retries return retained
+historical evidence; they do not append another calculation. A completed verification
+of a pending/exhausted prefix does not complete the logical round. Mathematical
+steps and saved-stage deliveries remain different; exhaustion retains the evaluated
+prefix and final unevaluated refill.
+
+The audit SHA-256 covers the complete envelope; artifact SHA-256 covers canonical
+artifact content. Object key ordering is canonical, array ordering is significant.
+Errors expose stable `AuditReplayError.code` and `path`: structure/hash, version,
+identity, codec unsupported, state, command, order, artifact, execution mismatch or
+cancellation. Validation happens before reconstruction, with selected-package
+identity/schema/capabilities as authority. Hash-valid semantic inconsistencies also
+fail validation or reproduction. Content hashes detect corruption relative to a
+trusted digest; a consistently rewritten and rehashed recording is not authenticated.
+No signatures, KMS, notarization or stronger fairness claim are added.
+
+Root ESM/CJS exports provide recording and replay. The browser entry exports the
+recording types only; Studio uses the server verifier's verdict. Native outcome
+libraries retain their selection/hash profile; portable WASM retains its current
+runtime replay and compact state, without package audit support.

@@ -355,3 +355,24 @@ not acquire durable round identity or external-wallet guarantees from shared han
 Project/reset staleness guards, exact numeric selection, last settled views and scenario
 cancellation remain its support boundary. Durable library HTTP execution is separately
 [configured](game-session.md#durable-external-wallet-reconciliation).
+
+### Recorded audit workflow
+
+Play retains actual settled audit evidence in Recent Rounds when the game declares
+exact model/codec authority. Session Spin offers **Load for audit replay** and exports
+the full descriptor. Paste that export into Replay Artifact: inspect preserves the
+complete commands/executable evidence, and start passes it through to the shared
+server verifier. Invalid audit input is rejected rather than reduced to seed/round.
+Compatible-package validation occurs against the selected project; downloads retain
+the original envelope and digest alongside the new replay session/job identity.
+
+Visible screens and public state are redacted displays. Full artifact JSON includes
+canonical generated/debug data; full audit export additionally includes executable
+state and RNG evidence. A server verdict, not a UI-only comparison, establishes audit
+verification. Pending/exhausted prefixes remain explicitly incomplete. Legacy seed
+runs are best-effort and lack exact audit evidence. Replay releases its runtime lease
+before publishing a descriptor. Cancellation and failure preserve verified prefix evidence
+and next-command identity in job views and durable job detail, with no completed download.
+Terminal publication saves the compatibility view before durable completion; failed saves
+retain a failed recoverable job consistently in live and restarted views. Studio Play
+sessions remain process-only even when replay jobs use durable job storage.

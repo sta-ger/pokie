@@ -1,3 +1,4 @@
+import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
 import {validateSavedStageDelivery} from "../../runtime/internal/validateSavedStageDelivery.js";
 import {commandEnvelope} from "../../runtime/commandEnvelope.js";
 import type {DatabaseSync} from "node:sqlite";
@@ -97,6 +98,9 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
     }
     public lookupResult(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined> {
         return this.enqueue(() => Promise.resolve(this.saved(sessionId, requestId)));
+    }
+    public lookupRound(sessionId: string, roundId: string): Promise<SpinCommandResult | undefined> {
+        return this.enqueue(() => Promise.resolve(this.latestRound(sessionId, roundId)));
     }
     public pendingCommands(): Promise<readonly RepositoryCommand[]> {
         return this.enqueue(() => Promise.resolve(this.database.prepare("SELECT intent FROM external_requests WHERE result IS NULL").all()
@@ -218,6 +222,9 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
             });
         };
         const finish = async (result: SpinCommandResult): Promise<SpinCommandResult> => {
+            if (result.status === "played" && result.audit) result = {...result, audit: updateAuditDisposition(result.audit, {
+                status: "committed", durability: "external-provider", attemptId: owner, debitTransactionId: current.debitId, creditTransactionId: current.payoutId,
+            })};
             const data = encode(result);
             await this.write(() => {
                 this.assertOwner(sessionId, requestId, owner);
@@ -236,7 +243,9 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                 const balance = current.balance ?? await this.bounded(abort => this.wallet.getBalance(sessionId, abort), signal);
                 current = {...current, balance};
                 if (!Number.isFinite(balance) || balance < 0) throw new Error("Invalid external balance.");
-                const prepared = await prepare({...current.snapshot, balance, command: Object.freeze({...current.command})});
+                const retainedRoundId = current.command.continuation?.roundId ?? current.command.roundId;
+                const prepared = await prepare({...current.snapshot, balance, command: Object.freeze({...current.command}),
+                    ...(retainedRoundId ? {retainedRoundId, retainedRound: this.latestRound(sessionId, retainedRoundId)} : {})});
                 const candidate = prepared.result;
                 if (candidate.status !== "played") return await finish(candidate);
                 const invalid = validateRetryResult(candidate, game, sessionId, requestId);
@@ -335,6 +344,10 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
             !result.state || !result.previousState || result.state.credits !== result.credits || result.state.win !== result.win ||
             ![result.credits, result.win, result.stake].every(value => typeof value === "number" && Number.isFinite(value) && value >= 0))) throw new Error("Corrupt retained external accounting result.");
         return result;
+    }
+    private latestRound(sessionId: string, roundId: string): SpinCommandResult | undefined {
+        const row = this.database.prepare("SELECT result FROM external_requests WHERE session_id=? AND json_extract(result, '$.state.logicalRound.id')=? ORDER BY json_extract(result, '$.version') DESC LIMIT 1").get(sessionId, roundId);
+        return row?.result ? decode<SpinCommandResult>(row.result) : undefined;
     }
     private read(sessionId: string): VersionedSessionState | undefined {
         const row = this.database.prepare("SELECT state, version FROM external_sessions WHERE id=?").get(sessionId);

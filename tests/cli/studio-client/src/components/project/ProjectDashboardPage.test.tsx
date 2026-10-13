@@ -1,3 +1,5 @@
+import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
+import {GameSession} from "../../../../../../src/session/GameSession";
 import {screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {createFakeFetch, createRoutedFakeFetch} from "../../testUtils/fakeFetch";
@@ -541,4 +543,44 @@ describe("ProjectDashboardPage", () => {
         expect(await screen.findByRole("heading", {name: "Projects"})).toBeInTheDocument();
         expect(calls.some((call) => call.url === "/api/projects/close")).toBe(false);
     });
+});
+
+
+it("preserves Recent Rounds audit evidence through inspection, submission and retry", async () => {
+    const game = {
+        getManifest: () => ({id: "sample-slot", name: "Sample Slot", version: "1.0.0"}),
+        getConfigHash: () => "dashboard-audit",
+        getSessionStateSchema: () => ({kind: "base" as const}),
+        getSessionCommandCapabilities: () => ({bets: new GameSession().getAvailableBets()}),
+        validateSessionState: (state: unknown) => new GameSession().validateSessionState(state),
+        createSession: () => new GameSession(),
+    };
+    const recorder = new ReplayRecorder(),
+        session = game.createSession();
+    const recording = recorder.recordAudit(game, session, [{kind: "spin", roundId: "dashboard-round", delivery: "stepwise"}], {status: "calculated", sessionId: "dashboard-session", durability: "detached"}, {seed: "dashboard"});
+    recorder.releaseAuditSession(session);
+    const failed = {id: "audit-job", status: "failed", round: 1, completedRounds: 0, startedAt: "2026-10-13T00:00:00Z", durationMs: 1,
+        error: "Replay terminal publication failed", auditPrefix: recording.audit};
+    const {fetchImpl, calls} = createRoutedFakeFetch({
+        ...baseFetchRoutes(),
+        "/api/project/rounds": () => ({ok: true, status: 200, body: [{sessionId: recording.sessionId, game: recording.game, win: recording.totalWin,
+            studioRound: 1, studioRecordedAt: "2026-10-13T00:00:00Z", studioSource: "play", studioOperation: "spin", debug: {recording}}]}),
+        "/api/project/replays/inspect-artifact": () => ({ok: true, status: 200, body: {round: 1, seed: "dashboard", recording, artifactWarnings: [], auditStatus: "recorded"}}),
+        "/api/project/replays": call => call.init?.method === "POST"
+            ? {ok: true, status: 202, body: {id: "audit-job", status: "queued", round: 1, completedRounds: 0, startedAt: failed.startedAt, durationMs: 0}}
+            : {ok: true, status: 200, body: []},
+        "/api/project/replays/audit-job": () => ({ok: true, status: 200, body: failed}),
+    });
+    const user = userEvent.setup();
+    renderRoutedApp({fetchImpl, initialEntries: ["/project/replay"]});
+    await user.click(await screen.findByRole("radio", {name: "Session Spin"}));
+    await user.click(await screen.findByRole("button", {name: /Session 1.*Round 1.*Spin/}));
+    await user.click(screen.getByRole("button", {name: "Load for audit replay"}));
+    await user.click(await screen.findByRole("button", {name: "Reproduce"}));
+    await user.click(await screen.findByRole("button", {name: "Run again with the same parameters"}));
+    await waitFor(() => expect(calls.filter(call => call.url === "/api/project/replays" && call.init?.method === "POST")).toHaveLength(2));
+    expect(JSON.parse(calls.find(call => call.url === "/api/project/replays/inspect-artifact")!.init!.body!)).toEqual(JSON.parse(JSON.stringify(recording)));
+    for (const call of calls.filter(call => call.url === "/api/project/replays" && call.init?.method === "POST")) {
+        expect(JSON.parse(call.init!.body!)).toMatchObject({round: 1, recording: JSON.parse(JSON.stringify(recording))});
+    }
 });

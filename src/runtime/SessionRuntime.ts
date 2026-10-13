@@ -6,6 +6,7 @@ import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromS
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {validateLogicalRound, type LogicalRound, type LogicalSubround, type LogicalRoundProgressProviding} from "./LogicalRound.js";
 
+const releasedSessions = new WeakSet<GameSessionHandling>();
 const logicalRounds = new WeakMap<GameSessionHandling, LogicalRound>();
 type Played = Extract<SessionCommandResult, {status: "played"}>;
 type SubroundNode = {subround: LogicalSubround; previous?: SubroundNode};
@@ -26,9 +27,11 @@ export type PreparedSessionCommand =
 /** Portable command boundary. The injected session remains the sole owner of domain math. */
 export class SessionRuntime implements SessionRuntimeHandling {
     private readonly session: GameSessionHandling;
+    private readonly onAccepted?: (command: SessionCommand, result: Played) => void;
 
-    constructor(session: GameSessionHandling, round?: LogicalRound) {
+    constructor(session: GameSessionHandling, round?: LogicalRound, onAccepted?: (command: SessionCommand, result: Played) => void) {
         this.session = session;
+        this.onAccepted = onAccepted;
         if (round !== undefined) {
             const invalid = validateLogicalRound(round);
             if (invalid) throw new Error(invalid);
@@ -56,7 +59,20 @@ export class SessionRuntime implements SessionRuntimeHandling {
         return logicalRounds.get(this.session)?.status === "pending";
     }
 
+    /** Caller owns the session lifetime and retained retry results. Release retires execution too. */
+    public release(): void {
+        logicalRounds.delete(this.session);
+        deliveries.delete(this.session);
+        retainedTails.delete(this.session);
+        releasedSessions.add(this.session);
+    }
+
+    public getRetainedDeliveryCount(): number {
+        return deliveries.get(this.session)?.size ?? 0;
+    }
+
     public execute(command: SessionCommand, signal?: AbortSignal): SessionCommandResult {
+        if (releasedSessions.has(this.session)) return {status: "blocked", reason: "Session was released; create a new session."};
         let key: string | undefined;
         if (command?.continuation) key = `${command.continuation.roundId}:${command.continuation.cursor}`;
         else if (command?.roundId) key = `${command.roundId}:entry`;
@@ -69,6 +85,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (signal?.aborted) return {status: "blocked", reason: "Cancelled before acceptance."};
         const invalid = this.validateSelection(command);
         if (invalid !== undefined) return {status: "invalid-command", reason: invalid};
+        if ((deliveries.get(this.session)?.size ?? 0) >= 10000) return {status: "blocked", reason: "Direct session retry retention limit reached; export evidence and release the session."};
         const session = this.session;
         const previousRound = logicalRounds.get(session);
         const before = (command.delivery !== undefined || command.continuation !== undefined) && isSessionStateRestorable(session)
@@ -95,6 +112,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
             ledger.set(key, this.saveDelivery(command, result));
             deliveries.set(session, ledger);
         }
+        this.onAccepted?.(command, cloneSessionData(result));
         if (command.delivery === "composite") return this.completeComposite(command, result, key!, signal);
         if (key) {
             const ledger = deliveries.get(this.session) ?? new Map();
@@ -108,6 +126,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const invalid = validateSessionCommand(command);
         if (invalid !== undefined) return invalid;
         const round = logicalRounds.get(this.session);
+        if (command.continuation && round && round.deliveryCursor >= 10000) return "Logical round delivery bound reached; retain its incomplete evidence.";
         if (command.continuation) {
             if (!round || round.id !== command.continuation.roundId || round.status !== "pending" || round.deliveryCursor !== command.continuation.cursor) return "Continuation does not name the next pending subround.";
             if (this.session.getBet() !== round.bet) return "Continuation cannot change the entry bet.";
@@ -131,6 +150,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
     }
 
     public prepare(command: SessionCommand, balance: number): PreparedSessionCommand {
+        if (releasedSessions.has(this.session)) return {status: "blocked", reason: "Session was released; create a new session.", restored: true};
         const invalid = this.validateSelection(command);
         if (invalid !== undefined) return {status: "blocked", reason: invalid, restored: true};
         const session = this.session;
@@ -260,14 +280,17 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const stageCursor = artifacts?.length ? 1 : 0;
         const exhausted = (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true;
         const finalScreen = exhausted ? (session as Partial<CascadeResultProviding>).getCascadeResult?.().getFinalScreen() : undefined;
-        const subround = {id: `${id}:${index}`, index, command: cloneSessionData(command), stake, win, payout, credits,
+        // Optional command selections may arrive as explicit undefined values from adapters.
+        // Retain their JSON representation, matching audit capture and retry envelope binding.
+        const retainedCommand = cloneSessionData(Object.fromEntries(Object.entries(command).filter(([, value]) => value !== undefined))) as SessionCommand;
+        const subround = {id: `${id}:${index}`, index, command: retainedCommand, stake, win, payout, credits,
             ...(screen ? {screen: screen.map(reel => [...reel])} : {}), ...(finalScreen ? {finalScreen} : {}), ...(artifacts ? {artifacts} : {})};
         let mathematicalStatus: LogicalRound["status"] = "completed";
         if (this.isDomainPending()) mathematicalStatus = "pending";
         if (exhausted) mathematicalStatus = "exhausted";
         let status = mathematicalStatus;
         if (!exhausted && stageCursor < (artifacts?.length ?? 0)) status = "pending";
-        const round: LogicalRound = deepFreeze({id, entry: previous?.entry ?? cloneSessionData(command), bet: previous?.bet ?? bet,
+        const round: LogicalRound = deepFreeze({id, entry: previous?.entry ?? retainedCommand, bet: previous?.bet ?? bet,
             ...(previous?.mode ?? mode ? {mode: previous?.mode ?? mode} : {}), cursor: index + 1, deliveryCursor: (previous?.deliveryCursor ?? 0) + 1, stageCursor,
             mathematicalStatus,
             status, totalStake: (previous?.totalStake ?? 0) + stake,

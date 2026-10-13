@@ -199,3 +199,10 @@ accounting and focused regression commands.
 ## Generated, visible and evaluated coordinates
 
 screenGeometry is explicitly unsupported by canonical WASM and PAR conversion: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+
+V2C-07 package audit envelopes are not a new WASM feature. The browser entry exposes
+portable recording types for future reuse, while execution stays on the shared
+package SessionRuntime path in Node/Studio. Existing canonical WASM `runtime.replay`,
+compact snapshots and bounded traces are unchanged; no command history is added to
+portable WASM state. Native outcome libraries likewise retain their existing
+selection provenance, hashes and fairness verification profile.

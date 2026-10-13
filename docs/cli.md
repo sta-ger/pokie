@@ -3772,3 +3772,26 @@ clears the retained command; explicit invalid/blocked/stale/not-found rejection 
 new logical command. External unknown/pending inspection is not permission to charge again.
 Direct API callers must likewise retain their original requestId and payload; optional
 `expectedSessionVersion` remains numeric and part of strong identity.
+
+### Replay recorded package evidence
+
+`pokie replay <compatible-project> --recording recording.json [--out verified.json]`
+imports a `ReplayDescriptor` with its complete audit envelope and reproduces the
+original executable inputs. It rejects contradictory descriptor/artifact/result
+fields, unsupported versions/model/codec and mismatches. `--recording` binds the
+commands/selections and cannot be combined with replacement seed, round, unit or
+mode flags. The descriptor separates the original operation/session identities from
+the new replay session and timing. Its `round: 1` addresses this recorded operation;
+the original logical-round/request/revision identities are in the audit envelope.
+
+`--seed`/`--round` package replay remains explicitly `legacy-best-effort`: it creates
+and funds a fresh session and seeks forward. It cannot prove reproduction of a
+previous operation or its original credits. WASM and native outcome-library replay
+keep their existing profiles; package audit import requires a compatible game package.
+No top-level export command is introduced.
+
+Reference server spin debug/internal responses include retained `audit` or an
+explicit unavailable reason. Public HTTP responses omit this execution evidence.
+Local atomic stores, independent compensation ports and external-provider intents
+keep their distinct durability/recovery guarantees; offline verification never
+settles or reconciles an imported operation.

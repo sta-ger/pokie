@@ -27,6 +27,8 @@ export type ReplayProgressView = {
     // StudioReplayExecutionService), not an API-call failure (those are rendered separately by
     // main.ts's own catch handling around each apiClient call).
     error?: string;
+    verifiedDeliveries?: number;
+    nextCommand?: StudioReplayJobView["nextCommand"];
 };
 
 export function describeReplayProgress(job: StudioReplayJobView): ReplayProgressView {
@@ -39,6 +41,8 @@ export function describeReplayProgress(job: StudioReplayJobView): ReplayProgress
         percent,
         durationMs: job.durationMs,
         error: job.error,
+        verifiedDeliveries: job.auditPrefix?.deliveries.length,
+        nextCommand: job.nextCommand,
     };
 }
 
@@ -67,8 +71,9 @@ export type RoundArtifactDisplayView = Omit<RoundArtifact, "screen" | "steps" | 
 };
 
 export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string}): RoundArtifactDisplayView {
-    const visible = artifact.geometry || artifact.steps.some(step => step.geometry)
-        ? new PublicRoundArtifactProjector<string | number>().project(toCanonicalJson(artifact) as unknown as CanonicalRoundArtifact<string | number>) : artifact;
+    // Legacy aggregate inspection may omit symbolId; only coordinate-bearing evidence requires canonical normalization here.
+    const source = artifact.geometry || artifact.steps.some(step => step.geometry) ? toCanonicalJson(artifact) : artifact;
+    const visible = new PublicRoundArtifactProjector<string | number>().project(source as unknown as CanonicalRoundArtifact<string | number>);
     const {geometry: _geometry, generatedScreen: _generatedScreen, ...details} = artifact;
     return {
         ...details,
@@ -84,6 +89,8 @@ function formatScreenGrid(screen: readonly (readonly (string | number)[])[]): st
 }
 
 export type ReplayResultView = {
+    auditStatus?: ReplayDescriptor["auditStatus"];
+    auditCompletion?: ReplayDescriptor["auditCompletion"];
     // The replay job id (StudioReplayJobView.id) -- what onInspectStored/onCompareStored/
     // buildReplayDownloadUrl are all keyed by. Never the replay session's own identity -- see
     // `sessionId` below.
@@ -137,6 +144,8 @@ export function describeReplayResult(job: StudioReplayJobView): ReplayResultView
         seed: descriptor.seed,
         totalBet: descriptor.totalBet,
         totalWin: descriptor.totalWin,
+        auditStatus: descriptor.auditStatus,
+        auditCompletion: descriptor.auditCompletion,
         credits: descriptor.credits,
         screen: descriptor.screen ? descriptor.screen.map((row) => row.map(formatScreenCell)) : undefined,
         timestamp: descriptor.timestamp,
@@ -211,6 +220,7 @@ export type ReplayComparisonView = {
 // actually live in at the call site (ProjectDashboardPage.tsx), keeping this module decoupled from that
 // tab's own view-model types.
 export type ComparableReplayResult = {
+    recording?: ReplayDescriptor;
     outcomeSource?: OutcomeSourceReplayDescriptorView;
     seed?: string;
     round?: number;
@@ -298,6 +308,13 @@ export function describeReplayComparison(expected: ComparableReplayResult, repro
     const recorded = describeComparisonSide("recorded", expected);
     const recreated = describeComparisonSide("recreated", reproduced);
 
+    if (expected.recording?.audit) {
+        const verified = reproduced.recording?.auditStatus === "verified" && reproduced.recording.audit?.hash === expected.recording.audit.hash;
+        const complete = reproduced.recording?.auditCompletion === "completed";
+        const reason = verified && !complete ? `Verified executable prefix; operation remains ${reproduced.recording?.auditCompletion}.` : "Shared audit verifier has not verified this recording.";
+        return {status: verified && complete ? "match" : "unavailable", ...(verified && complete ? {} : {unavailableReason: reason}),
+            dimensions: verified ? {screen: {status: "match"}, wins: {status: "match"}, totalPayout: {status: "match"}, steps: {status: "match"}, featureEvents: {status: "match"}, state: {status: "match"}, rngReelStops: {status: "match"}} : unavailableDimensions(reason), recorded, recreated};
+    }
     if (expected.artifactWarnings && expected.artifactWarnings.length > 0) {
         const unavailableReason = `Replay succeeded, but the expected artifact is malformed, so deterministic comparison is unavailable: ${expected.artifactWarnings.join(" ")}`;
         return {status: "unavailable", unavailableReason, dimensions: unavailableDimensions(unavailableReason), recorded, recreated};
@@ -547,6 +564,12 @@ export function describeReplayReproducibility(
     expected: ComparableReplayResult,
     currentGame: {id: string; version: string} | undefined,
 ): ReplayReproducibilityGate {
+    if (expected.recording?.audit) {
+        const game = expected.recording.audit.game;
+        return currentGame && (game.id !== currentGame.id || game.version !== currentGame.version)
+            ? {status: "blocked", reason: "Selected package differs from recorded audit identity.", remediation: "Open the compatible original package."}
+            : {status: "ready"};
+    }
     if (expected.seed === undefined || expected.seed.trim().length === 0) {
         return {
             status: "blocked",
@@ -854,7 +877,9 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
     }
     const hasDebugBundle = spin.debug?.debugData !== undefined || spin.debug?.stateBefore !== undefined || spin.debug?.stateAfter !== undefined;
     let completeness: string;
-    if (spin.debug?.artifact !== undefined) {
+    if (spin.debug?.recording?.audit) completeness = "Full audit export -- executable inputs, commands, canonical artifacts and disposition are retained separately from this visible display.";
+    else if (spin.debug?.auditUnavailableReason) completeness = `Audit unavailable -- ${spin.debug.auditUnavailableReason}`;
+    else if (spin.debug?.artifact !== undefined) {
         completeness = "Full -- a complete round artifact (screen, wins, steps, debug) plus state was captured for this spin.";
     } else if (spin.debug?.artifactUnavailableReason !== undefined) {
         completeness = `Partial -- debug data was captured, but no round artifact could be built for this game: ${spin.debug.artifactUnavailableReason}`;
@@ -872,7 +897,9 @@ function describeLoadedSpin(spin: StudioRuntimeSessionView, canExport: boolean):
         versionHash: `${spin.game.id} v${spin.game.version}`,
         timestamp: spin.studioRecordedAt ? new Date(spin.studioRecordedAt).toLocaleString() : "(unknown)",
         completeness,
-        capabilities: describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
+        capabilities: {...describeReplayCapabilities({source: "spin", hasResult: true, hasComparisonTarget: false, canExport}),
+            ...(spin.debug?.recording?.audit ? {reproducible: {status: "available" as const, reason: "Load the recorded executable evidence for audit replay."}} : {}),
+            ...(spin.debug?.auditUnavailableReason ? {reproducible: {status: "unavailable" as const, reason: spin.debug.auditUnavailableReason}} : {})},
     };
 }
 
@@ -972,7 +999,11 @@ function describeLoadedArtifact(
         versionHashParts.push(`library ${expected.outcomeSource.libraryId}, hash ${expected.outcomeSource.libraryHash}`);
     }
     let completeness: string;
-    if (reproducibility === undefined) {
+    if (expected.recording?.audit) {
+        completeness = expected.recording.audit.captureUnavailable
+            ? "Incomplete audit export -- an accepted delivery could not be captured; only the preceding executable prefix is available."
+            : `Full audit export -- original operation ${expected.recording.auditCompletion ?? "unknown"}; executable inputs and disposition are retained. Visible display excludes private state.`;
+    } else if (reproducibility === undefined) {
         completeness = "(not yet validated)";
     } else if (reproducibility.status === "ready") {
         completeness = expected.outcomeSource

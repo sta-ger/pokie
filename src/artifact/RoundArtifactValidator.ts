@@ -1,3 +1,4 @@
+import {computeRoundArtifactHash} from "./computeRoundArtifactHash.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 import type {RoundStepArtifact} from "./RoundStepArtifact.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
@@ -73,6 +74,12 @@ implements ValidationRule<RoundArtifact<T>> {
     private validateInternal(artifact: RoundArtifact<T>): ValidationIssue[] {
         const a = artifact as unknown as Loose<RoundArtifact<T>>;
         const issues: ValidationIssue[] = [];
+        if (artifact && typeof artifact === "object" && "hash" in artifact) {
+            const {hash, ...content} = artifact as RoundArtifact<T> & {hash: unknown};
+            if (typeof hash !== "string" || !(/^sha256:[a-f0-9]{64}$/).test(hash) || hash !== computeRoundArtifactHash(content)) {
+                issues.push({code: "round-artifact-hash-invalid", severity: "error", message: "hash is malformed or differs from canonical artifact content."});
+            }
+        }
 
         if (!isNonEmptyString(a.roundId)) {
             issues.push({code: "round-artifact-round-id-invalid", severity: "error", message: "roundId must be a non-empty string."});
