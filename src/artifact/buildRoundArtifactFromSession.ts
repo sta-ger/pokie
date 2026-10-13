@@ -1,6 +1,8 @@
-import {captureScreen} from "../server/session/captureScreen.js";
+import type {RoundArtifactStepSource} from "./RoundArtifactStepSource.js";
+import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
+import {captureScreen} from "../session/captureScreen.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
-import {determineStakeAmount} from "../server/session/determineStakeAmount.js";
+import {determineStakeAmount} from "../session/determineStakeAmount.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import type {WonFreeGamesNumberDetermining} from "../session/WonFreeGamesNumberDetermining.js";
 import {buildRoundArtifact} from "./buildRoundArtifact.js";
@@ -35,13 +37,19 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     const stake = options.stake ?? determineStakeAmount(session, session.getBet());
     const featureEvents = deriveStandardFeatureEvents(session);
 
-    return buildRoundArtifact({
+    const cascade = (session as Partial<CascadeResultProviding<T>>).getCascadeResult?.();
+    const cascadeSteps = cascade?.getCascadeSteps();
+    const terminal = cascade?.getTerminalEvaluation();
+    let sources: RoundArtifactStepSource<T>[] | undefined;
+    if (cascade && terminal) sources = [...(cascadeSteps ?? []).map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult()})), {screen: cascade.getFinalScreen(), winEvaluationResult: terminal}];
+    else if (cascadeSteps?.length) sources = cascadeSteps.map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult()}));
+    const artifact = buildRoundArtifact({
         roundId: options.roundId,
         provenance: options.provenance,
         betMode: options.betMode,
         stake,
         debug: options.debug,
-        steps: [
+        steps: sources ?? [
             {
                 screen: captureScreen(session) as T[][],
                 ...coordinateEvidence,
@@ -50,6 +58,7 @@ export function buildRoundArtifactFromSession<T extends string | number = string
             },
         ],
     });
+    return artifact;
 }
 
 function deriveStandardFeatureEvents(session: unknown): RoundArtifactFeatureEventInput[] {

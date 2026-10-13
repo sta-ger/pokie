@@ -1,3 +1,4 @@
+import type {LogicalRoundDelivery} from "../../../../../src/runtime/projectLogicalRound.js";
 import {useLayoutEffect, useRef} from "react";
 import {
     createPlayerRoundElements,
@@ -27,6 +28,7 @@ import {useActiveSymbolArtwork} from "./SymbolPresentation";
 // already apply when a session never reports more than one choice.
 export function CanonicalPlayerView({
     reelsSymbols,
+    logicalRound,
     wins,
     visibleRowCoverage,
     paytable,
@@ -43,6 +45,7 @@ export function CanonicalPlayerView({
     payoutMultiplier,
 }: {
     reelsSymbols: string[][];
+    logicalRound?: LogicalRoundDelivery;
     visibleRowCoverage?: readonly number[];
     wins?: readonly GenericRoundArtifactWin[];
     paytable?: PaytableViewData;
@@ -58,6 +61,10 @@ export function CanonicalPlayerView({
     totalWin?: number;
     payoutMultiplier?: number;
 }) {
+    const displayedScreen = logicalRound?.currentStep ? logicalRound.currentStep.screen.map(reel => [...reel]) as string[][] : reelsSymbols;
+    const displayedWins = logicalRound?.currentStep?.wins ?? wins;
+    const displayedWin = logicalRound?.currentStep?.totalWin ?? totalWin;
+    const displayedCoverage = logicalRound?.currentStep?.visibleRowCoverage ?? visibleRowCoverage;
     const artwork = useActiveSymbolArtwork();
     const playerRootRef = useRef<HTMLDivElement>(null);
 
@@ -65,17 +72,17 @@ export function CanonicalPlayerView({
         if (!playerRootRef.current) {
             return;
         }
-        const highlights = deriveWinHighlightsFromRoundArtifactWins(wins ?? [], reelsSymbols.length);
+        const highlights = deriveWinHighlightsFromRoundArtifactWins(displayedWins ?? [], displayedScreen.length);
         renderPlayerRound(
             createPlayerRoundElements(playerRootRef.current),
             {
                 credits,
-                totalWin,
+                totalWin: displayedWin,
                 payoutMultiplier,
                 formatTotalWin: (value) => value.toFixed(2),
                 formatPayoutMultiplier: (value) => value.toFixed(2),
-                reelsSymbols,
-                visibleRowCoverage,
+                reelsSymbols: displayedScreen,
+                visibleRowCoverage: displayedCoverage,
                 highlights,
                 featureCounters,
                 lines,
@@ -92,7 +99,7 @@ export function CanonicalPlayerView({
                 },
             },
         );
-    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, visibleRowCoverage, wins]);
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, displayedScreen, displayedWin, displayedCoverage, displayedWins]);
 
     return <div ref={playerRootRef} />;
 }

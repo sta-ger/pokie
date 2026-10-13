@@ -1,3 +1,4 @@
+import type {RepositoryCommand} from "../../runtime/RepositoryCommand.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import type {SpinOperationCheckpoint} from "./SpinOperationCheckpoint.js";
 
@@ -24,6 +25,7 @@ export type SpinOperationCapturedResult = {
 export type SpinOperationRecord = {
     readonly sessionId: string;
     readonly requestId: string;
+    readonly command?: RepositoryCommand;
     readonly attemptId: string;
     readonly debitTransactionId: string;
     readonly creditTransactionId: string;

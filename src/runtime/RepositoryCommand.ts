@@ -8,7 +8,7 @@ export type RepositoryCommand = SessionCommand & {
 };
 
 export interface RepositoryCommandHandling {
-    execute(command: RepositoryCommand): Promise<SpinCommandResult>;
+    execute(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult>;
 }
 
 export function validateRepositoryCommand(value: unknown): string | undefined {

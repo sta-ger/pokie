@@ -81,3 +81,7 @@ export * from "./artifact/PublicRoundArtifactProjector.js";
 export * from "./session/videoslot/coordinates/ScreenProjectionDescribing.js";
 export * from "./net/videoslot/serializeWinEvaluationResult.js";
 export * from "./net/videoslot/projectVideoSlotNetworkData.js";
+
+export * from "./runtime/LogicalRound.js";
+export * from "./artifact/buildLogicalRoundArtifact.js";
+export * from "./runtime/projectLogicalRound.js";

@@ -1,3 +1,4 @@
+import type {SessionCommand} from "../../src/runtime/SessionCommand.js";
 import type {SessionResponse} from "./types.js";
 
 // The subset of the Fetch API this client needs — kept minimal and structurally compatible with
@@ -47,8 +48,9 @@ export async function spin(
     bet?: number,
     mode?: string,
     expectedSessionVersion?: number,
+    logical: Pick<SessionCommand, "delivery" | "roundId" | "continuation" | "maxSubrounds"> = {},
 ): Promise<SessionResponse> {
-    const payload: {requestId?: string; bet?: number; mode?: string; expectedSessionVersion?: number} = {};
+    const payload: {requestId?: string; bet?: number; mode?: string; expectedSessionVersion?: number} & typeof logical = {...logical};
     if (requestId !== undefined) {
         payload.requestId = requestId;
     }

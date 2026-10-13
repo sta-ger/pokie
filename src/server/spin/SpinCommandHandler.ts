@@ -1,3 +1,6 @@
+import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
+import {commandEnvelope} from "../../runtime/commandEnvelope.js";
+import {buildLogicalRoundArtifact} from "../../artifact/buildLogicalRoundArtifact.js";
 import {isExternalRoundStore, type ExternalRoundStore, type ExternalRoundPreparation, type ExternalRoundCandidate} from "../storage/ExternalRoundStore.js";
 import {InMemoryWallet} from "../wallet/InMemoryWallet.js";
 import type {TransactionalRoundStore} from "../storage/TransactionalRoundStore.js";
@@ -164,6 +167,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     // Keeping that binding beside the object is what makes two handlers sharing one versioned store
     // converge instead of alternately replaying stale RNG/feature progress.
     private readonly liveSessions = new Map<string, {readonly session: GameSessionHandling; readonly committedVersion: number | undefined; readonly record?: string; readonly authority: LiveSessionAuthority}>();
+    private readonly acceptedDeliveries = new Set<Promise<SpinCommandResult>>();
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     /** Explicit local reference atomicity or durable external reconciliation; never distributed ACID. */
@@ -349,40 +353,77 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         return this.reconciliationService;
     }
 
+    public async drain(): Promise<void> {
+        await Promise.allSettled([...this.acceptedDeliveries]);
+    }
+
     public handle(sessionId: string, requestId?: string, expectedVersion?: number, bet?: number, mode?: string): Promise<SpinCommandResult> {
-        return this.dispatch({kind: "spin", sessionId, requestId, expectedVersion, bet, mode}).catch(error => {
+        return this.trackDelivery(this.dispatch({kind: "spin", sessionId, requestId, expectedVersion, bet, mode})).catch(error => {
             throw error instanceof RuntimeCommandError ? error.cause : error;
         });
     }
 
     public execute(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const sessionId = typeof command?.sessionId === "string" ? command.sessionId : "";
-        return this.dispatch(command, signal).catch(error => ({...((error instanceof RuntimeCommandError && error.retryDisposition) ? {retryDisposition: error.retryDisposition} : {}), status: error instanceof RuntimeCommandError ? error.code : "execution-error",
+        return this.trackDelivery(this.deliver(command, signal)).catch(error => ({...((error instanceof RuntimeCommandError && error.retryDisposition) ? {retryDisposition: error.retryDisposition} : {}), status: error instanceof RuntimeCommandError ? error.code : "execution-error",
             sessionId, reason: error instanceof Error ? error.message : String(error)}));
+    }
+
+    private trackDelivery(work: Promise<SpinCommandResult>): Promise<SpinCommandResult> {
+        this.acceptedDeliveries.add(work);
+        work.then(() => this.acceptedDeliveries.delete(work), () => this.acceptedDeliveries.delete(work));
+        return work;
+    }
+
+    private async deliver(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
+        const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
+        if (invalid) return {status: "invalid-command", sessionId: command?.sessionId ?? "", reason: invalid};
+        const explicit = command.delivery !== undefined || command.continuation !== undefined;
+        if (explicit && !command.requestId) return {status: "invalid-command", sessionId: command.sessionId, reason: "Logical delivery requires a stable requestId."};
+        const entry = {...command, ...(explicit && !command.continuation ? {roundId: command.roundId ?? command.requestId} : {})};
+        let result = await this.dispatch(entry, signal);
+        const limit = command.maxSubrounds ?? 1000;
+        let advanced = 1;
+        while (command.delivery === "composite" && result.status === "played" && result.state.logicalRound?.status === "pending" &&
+            advanced < limit && !signal?.aborted) {
+            const round = result.state.logicalRound;
+            const next = await this.dispatch({kind: "spin", sessionId: command.sessionId,
+                requestId: `${command.requestId}:subround:${round.deliveryCursor}`, delivery: "stepwise",
+                continuation: {roundId: round.id, cursor: round.deliveryCursor}, expectedVersion: result.version}, signal);
+            if (next.status !== "played") return {...next, committedProgress: {roundId: round.id, cursor: round.deliveryCursor, requestId: result.requestId!}, ...("reason" in next ? {reason: `${next.reason} Committed prefix: round ${round.id}, cursor ${round.cursor}.`} : {})};
+            result = next;
+            advanced++;
+        }
+        return result;
     }
 
     private dispatch(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid !== undefined) return Promise.resolve({status: "invalid-command", sessionId: typeof command?.sessionId === "string" ? command.sessionId : "", reason: invalid});
-        command = Object.freeze({...command});
+        command = Object.freeze({...command, ...(command.continuation ? {continuation: Object.freeze({...command.continuation})} : {})});
         const {sessionId, requestId, expectedVersion, bet, mode} = command;
         if (this.externalStore !== undefined) return this.externalStore.execute(command, this.game, snapshot => this.prepareExternal(snapshot), signal);
         if (this.transactionalStore !== undefined) {
-            return this.transactionalStore.transact(command, (transaction, intent) => {
+            return this.transactionalStore.transact(command, async (transaction, intent) => {
+                if (signal?.aborted) return {status: "blocked", sessionId, reason: "Cancelled before transaction acceptance."};
                 // Always reconstruct authoritative state inside ownership. A rolled-back mutable
                 // object never escapes or enters the outer handler's live cache.
                 const inner = new SpinCommandHandler(this.game, transaction.sessions, transaction.ledger,
                     transaction.results, transaction.operations, false, undefined,
                     this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
                 inner.atomicExecution = true;
-                return inner.dispatch(intent);
+                const result = await inner.dispatch(intent);
+                return signal?.aborted ? {status: "blocked", sessionId, reason: "Cancelled before local commit; subround rolled back."} : result;
             }).then(result => {
                 if (result.status !== "played") return result;
                 const invalid = validateRetryResult(result, this.game, sessionId, result.requestId!);
                 return invalid === undefined ? result : {...invalid, sessionId};
             });
         }
-        return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode));
+        return this.enqueue(sessionId, async () => {
+            if (signal?.aborted && (requestId === undefined || await this.readRetryResult(sessionId, requestId) === undefined)) return {status: "blocked", sessionId, reason: "Cancelled before acceptance."};
+            return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode, command);
+        });
     }
 
     private async prepareExternal(snapshot: ExternalRoundPreparation): Promise<ExternalRoundCandidate> {
@@ -400,7 +441,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         };
         const credit = ledger.credit.bind(ledger);
         ledger.credit = (sessionId, transactionId, amount) => {
-            payout = {kind: "credit", amount}; // Preserve the canonical handler's exact delta calculation, including tiny stakes.
+            payout = {kind: "credit", amount};
+            // Preserve the canonical handler's exact delta calculation, including tiny stakes.
             return credit(sessionId, transactionId, amount);
         };
         const inner = new SpinCommandHandler(this.game, {
@@ -461,6 +503,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         expectedVersion?: number,
         bet?: number,
         mode?: string,
+        intent?: RepositoryCommand,
     ): Promise<SpinCommandResult> {
         let loaded: {state: PokieSessionState | undefined; version: number | undefined};
         try {
@@ -485,6 +528,10 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority) ??
                     (retained === undefined ? undefined : this.validatePendingState(retained, sessionId, requestId));
                 if (invalid !== undefined) return {...invalid, sessionId};
+                if ((intent?.delivery !== undefined || intent?.continuation !== undefined) && cached.status === "played") {
+                    const original = cached.deliveryCommand ?? cached.state.logicalRound?.subrounds[cached.state.logicalRound.subrounds.length - 1]?.command;
+                    if (!original || commandEnvelope(original as RepositoryCommand) !== commandEnvelope(intent!)) return {status: "identity-conflict", sessionId, reason: "Logical request identity was already used for a different command."};
+                }
                 return cloneSessionData(cached);
             }
         }
@@ -500,6 +547,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
         const pending = requestId === undefined ? undefined : await this.readPendingAttempt(sessionId, requestId);
         if (pending !== undefined) {
+            if (intent && pending.command && commandEnvelope(pending.command) !== commandEnvelope(intent)) return {status: "identity-conflict", sessionId, reason: "Pending logical request owns a different command envelope."};
             const invalid = this.validatePendingState(pending, sessionId, requestId!);
             if (invalid !== undefined) return {...invalid, sessionId};
         }
@@ -513,7 +561,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 const recovered = await this.reconcilePendingAttempt(sessionId, requestId);
                 if (recovered !== undefined) return cloneSessionData(recovered);
                 if (pending.checkpoint !== "compensated" && pending.checkpoint !== "started") {
-                    return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode);
+                    return this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode, intent);
                 }
             }
         }
@@ -550,7 +598,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 reason: resolvedSession.reason,
             };
         }
-        const selectionError = new SessionRuntime(resolvedSession.session).validateSelection({kind: "spin", bet, mode});
+        const runtime = new SessionRuntime(resolvedSession.session, state.logicalRound);
+        const selectionError = runtime.validateSelection(intent ?? {kind: "spin", bet, mode});
         if (selectionError !== undefined) return {status: "invalid-command", sessionId, reason: selectionError};
         let balanceBeforePlay: number;
         try {
@@ -559,7 +608,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             throw new RuntimeCommandError("settlement-error", error);
         }
         if (!Number.isFinite(balanceBeforePlay) || balanceBeforePlay < 0) throw new RuntimeCommandError("settlement-error", new Error("Wallet balance must be finite and non-negative."));
-        const command = this.applyCommand(resolvedSession.session, balanceBeforePlay, bet, mode);
+        const command = runtime.prepare(intent ?? {kind: "spin", bet, mode}, balanceBeforePlay);
         if (command.status === "blocked") {
             // A rejected command is normally reversible and deliberately leaves the live instance
             // usable (an omitted-command retry must observe the old bet/mode).  A setter may however
@@ -577,7 +626,18 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             };
         }
 
-        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback, command.execute);
+        if (command.deliveryOnly) {
+            const executed = command.execute();
+            const nextState = cloneSessionData({...state, logicalRound: executed.logicalRound});
+            if (!isVersionedSessionRepository(this.sessionRepository) || version === undefined || !requestId) return {status: "restoration-unsupported", sessionId, reason: "Saved-stage delivery requires versioned result storage."};
+            const nextVersion = await this.sessionRepository.saveVersioned(sessionId, nextState, version);
+            const result: SpinCommandResult = {status: "played", deliveryOnly: true, deliveryCommand: intent, sessionId, requestId, previousState: state, state: nextState,
+                credits: state.credits!, win: state.win, stake: 0, version: nextVersion};
+            await this.idempotencyRepository.save(sessionId, requestId, result);
+            this.liveSessions.set(sessionId, {session: resolvedSession.session, committedVersion: nextVersion, record: JSON.stringify(nextState), authority: captureLiveSessionAuthority(resolvedSession.session)});
+            return cloneSessionData(result);
+        }
+        return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback, command.execute, intent);
     }
 
     // Reads both the state and, when sessionRepository supports it, the version it was read at — a
@@ -676,6 +736,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         requestId: string | undefined,
         rollbackCommand: () => boolean,
         executeCommand: Extract<PreparedSessionCommand, {status: "ready"}>["execute"],
+        intent?: RepositoryCommand,
     ): Promise<SpinCommandResult> {
         const roundId = requestId ?? crypto.randomUUID();
         const attemptId = crypto.randomUUID();
@@ -713,6 +774,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     creditTransactionId,
                     stakeAmount,
                     expectedVersion,
+                    ...(intent?.delivery !== undefined || intent?.continuation !== undefined ? {command: intent} : {}),
                     startedAt,
                     ...record,
                 });
@@ -770,6 +832,14 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             newState.credits = newBalance;
+            if (state.logicalRoundStatistics) newState.logicalRoundStatistics = state.logicalRoundStatistics;
+            if (executed.logicalRound) {
+                if (executed.logicalRound.mathematicalStatus === "completed" && (state.logicalRound?.id !== executed.logicalRound.id || state.logicalRound.mathematicalStatus !== "completed")) {
+                    newState.logicalRoundStatistics = mergeLogicalRoundStatistics(state.logicalRoundStatistics ?? emptyLogicalRoundStatistics(), {rounds: 1, steps: executed.logicalRound.cursor, totalStake: executed.logicalRound.totalStake, totalWin: executed.logicalRound.totalWin});
+                }
+                newState.logicalRound = executed.logicalRound;
+                if (newState.roundArtifact) newState.roundArtifact = buildLogicalRoundArtifact(executed.logicalRound, newState.roundArtifact);
+            }
             const invalidState = this.validateStoredSession(sessionId, newState);
             if (invalidState !== undefined) throw new Error(invalidState.reason);
             failureCode = "storage-error";
@@ -952,15 +1022,6 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             };
         }
         return {status: "ready", session: this.createSessionFromState(state)};
-    }
-
-    private applyCommand(
-        session: GameSessionHandling,
-        balance: number,
-        bet: number | undefined,
-        mode: string | undefined,
-    ): PreparedSessionCommand {
-        return new SessionRuntime(session).prepare({kind: "spin", bet, mode}, balance);
     }
 
     private createSessionFromState(state: PokieSessionState): GameSessionHandling {

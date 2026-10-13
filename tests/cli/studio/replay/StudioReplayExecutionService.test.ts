@@ -1,3 +1,4 @@
+import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
@@ -900,7 +901,8 @@ describe("StudioReplayExecutionService", () => {
             throw new Error("expected job to be created");
         }
         await flushMacrotask();
-        expect(gate.pendingCount()).toBe(1); // paused right after the first chunk (10 rounds)
+        expect(gate.pendingCount()).toBe(1);
+        // paused right after the first chunk (10 rounds)
         expect(service.getStatus("/a", result.job.id)?.completedRounds).toBe(10);
         expect(service.getStatus("/a", result.job.id)?.status).toBe("running");
 
@@ -914,7 +916,8 @@ describe("StudioReplayExecutionService", () => {
 
         expect(job.status).toBe("completed");
         expect(job.completedRounds).toBe(25);
-        expect(sessionsCreated).toBe(1); // the same session was reused for every chunk
+        expect(sessionsCreated).toBe(1);
+        // the same session was reused for every chunk
     });
 
     it("returns undefined for an unknown replay id", () => {
@@ -1006,7 +1009,8 @@ describe("StudioReplayExecutionService", () => {
             throw new Error("expected job to be created");
         }
         await flushMacrotask();
-        expect(gate.pendingCount()).toBe(1); // paused right after the first chunk (10 rounds)
+        expect(gate.pendingCount()).toBe(1);
+        // paused right after the first chunk (10 rounds)
         expect(service.getStatus("/a", result.job.id)?.completedRounds).toBe(10);
 
         // Cancellation can only take effect between chunks (see StudioReplayExecutionService.run()'s
@@ -1680,4 +1684,22 @@ describe("Overscan Studio replay", () => {
 
         }
     });
+});
+
+it("replays the same logical entry and ordered subrounds through Studio", async () => {
+    const model = transactionalRoundGame();
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(model));
+    const started = service.start("/logical", {round: 1, seed: "7", unit: "logical-round", entryCommands: [{kind: "spin", bet: 7.5, mode: "double"}]});
+    if (started.status !== "created") throw new Error("Replay not created");
+    try {
+        const terminal = await waitForTerminal(service, "/logical", started.job.id);
+        expect(terminal.status).toBe("completed");
+        const download = service.getDownload("/logical", started.job.id);
+        expect(download.status).toBe("ok");
+        if (download.status !== "ok") throw new Error("Missing descriptor");
+        expect(download.descriptor.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 15});
+        expect(download.descriptor.commands).toEqual([{kind: "spin", bet: 7.5, mode: "double"}]);
+    } finally {
+        await service.cancelAll();
+    }
 });

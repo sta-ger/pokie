@@ -7,7 +7,7 @@ export interface SpinCommandHandling {
     /** Validate a stored envelope using declared or trusted process-local authority. */
     validateStoredSession?(sessionId: string, state: unknown): ReturnType<typeof validatePersistedSession>;
 
-    execute?(command: RepositoryCommand): Promise<SpinCommandResult>;
+    execute?(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult>;
     // Registers an already-constructed live session for sessionId.  When the repository is versioned,
     // `committedVersion` is the version of the record that this object represents.  A handler never
     // executes an object against a different committed record: durable records are reconstructed and

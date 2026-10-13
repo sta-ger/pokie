@@ -1,3 +1,5 @@
+import {projectLogicalRound} from "../runtime/projectLogicalRound.js";
+import {validateSessionCommand, type SessionCommand} from "../runtime/SessionCommand.js";
 import {isExternalRoundStore, type ExternalRoundStore} from "./storage/ExternalRoundStore.js";
 import type {TransactionalRoundStore} from "./storage/TransactionalRoundStore.js";
 import {transactionBoundary} from "./storage/internal/transactionBoundary.js";
@@ -390,6 +392,7 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const credits = await this.wallet.getBalance(sessionId);
         const response = this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload);
+        response.logicalRoundDeliverySupported = (this.game.supportsLogicalRoundDelivery?.() ?? state.stateSchema?.kind !== "custom");
         if (includeInternal) {
             // The save above always went through the plain save() (a fresh sessionId has no prior
             // version to be conditional on), so the version it landed at is read back separately here
@@ -400,7 +403,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     }
 
     private async handleSpin(sessionId: string, req: IncomingMessage, res: ServerResponse, includeInternal: boolean): Promise<void> {
-        let spinRequest: {requestId?: string; expectedVersion?: number; bet?: number; mode?: string};
+        let spinRequest: Omit<SessionCommand, "kind"> & {requestId?: string; expectedVersion?: number};
         try {
             spinRequest = await this.readSpinRequest(req);
         } catch (error) {
@@ -409,9 +412,23 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         const command = {kind: "spin" as const, sessionId, ...spinRequest};
-        const result = this.spinCommandHandler.execute === undefined
-            ? await this.spinCommandHandler.handle(sessionId, spinRequest.requestId, spinRequest.expectedVersion, spinRequest.bet, spinRequest.mode)
-            : await this.spinCommandHandler.execute(command);
+        if (!this.spinCommandHandler.execute && (spinRequest.delivery || spinRequest.continuation)) {
+            this.sendJson(res, 400, {code: "invalid-command", error: "This custom adapter does not support logical delivery."});
+            return;
+        }
+        const disconnect = new AbortController();
+        const abortDelivery = (): void => disconnect.abort();
+        req.once("aborted", abortDelivery);
+        res.once("close", abortDelivery);
+        let result: import("./spin/SpinCommandResult.js").SpinCommandResult;
+        try {
+            result = this.spinCommandHandler.execute === undefined
+                ? await this.spinCommandHandler.handle(sessionId, spinRequest.requestId, spinRequest.expectedVersion, spinRequest.bet, spinRequest.mode)
+                : await this.spinCommandHandler.execute(command, disconnect.signal);
+        } finally {
+            req.off("aborted", abortDelivery);
+            res.off("close", abortDelivery);
+        }
 
         if (result.status === "not-found") {
             this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`});
@@ -448,6 +465,14 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
 
         const response = this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win, result.state.roundPayload);
+        response.logicalRoundDeliverySupported = (this.game.supportsLogicalRoundDelivery?.() ?? result.state.stateSchema?.kind !== "custom");
+        if (result.state.logicalRound) {
+            const progress = projectLogicalRound(result.state.logicalRound);
+            response.logicalRound = progress;
+            const delivered = progress.currentStep;
+            if (delivered) Object.assign(response, {screen: delivered.screen, reelsSymbols: delivered.screen, totalWin: delivered.totalWin});
+        }
+        response.logicalRoundDurability = this.transactionalRoundStore ? "durable-store" : "independent-ports";
         if (includeInternal) {
             response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version);
         }
@@ -623,6 +648,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
         const credits = this.transactionalRoundStore === undefined ? await this.wallet.getBalance(sessionId) : state.credits!;
         const response = this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state));
+        response.logicalRoundDeliverySupported = (this.game.supportsLogicalRoundDelivery?.() ?? state.stateSchema?.kind !== "custom");
+        if (state.logicalRound) response.logicalRound = projectLogicalRound(state.logicalRound);
         if (includeInternal) {
             response.internal = this.buildInternalSessionData(state, undefined, undefined, versioned?.version);
         }
@@ -748,7 +775,7 @@ export class PokieDevServer implements PokieDevServerHandling {
     // value is rejected.
     private async readSpinRequest(
         req: IncomingMessage,
-    ): Promise<{requestId?: string; expectedVersion?: number; bet?: number; mode?: string}> {
+    ): Promise<Omit<SessionCommand, "kind"> & {requestId?: string; expectedVersion?: number}> {
         const raw = await this.readBody(req);
         if (!raw) {
             return {};
@@ -764,6 +791,9 @@ export class PokieDevServer implements PokieDevServerHandling {
             return {};
         }
 
+        const logical = parsed as Omit<SessionCommand, "kind">;
+        const invalidCommand = validateSessionCommand({kind: "spin", ...logical});
+        if (invalidCommand) throw new Error(invalidCommand);
         const {requestId, expectedSessionVersion, bet, mode} = parsed as {
             requestId?: unknown;
             expectedSessionVersion?: unknown;
@@ -792,6 +822,7 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         return {
             requestId: requestId as string | undefined,
+            delivery: logical.delivery, roundId: logical.roundId, continuation: logical.continuation, maxSubrounds: logical.maxSubrounds,
             expectedVersion: expectedSessionVersion as number | undefined,
             bet: bet as number | undefined,
             mode: mode as string | undefined,

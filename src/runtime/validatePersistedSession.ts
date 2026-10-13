@@ -1,3 +1,4 @@
+import {validateLogicalRound} from "./LogicalRound.js";
 import {captureCoordinatePublicPayload} from "../server/session/internal/captureCoordinatePublicPayload.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSessionAuthority, LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
@@ -58,6 +59,13 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
     }
     if (state.roundArtifactUnavailableReason !== undefined && typeof state.roundArtifactUnavailableReason !== "string") return {status: "corrupt-state", reason: "Invalid round artifact diagnostic."};
     if (state.roundArtifact !== undefined && new RoundArtifactValidator().validate(state.roundArtifact).length > 0) return {status: "corrupt-state", reason: "Invalid captured round artifact."};
+    if (state.logicalRound !== undefined) {
+        const invalid = validateLogicalRound(state.logicalRound);
+        if (invalid) return {status: "corrupt-state", reason: invalid};
+        if (state.logicalRound.bet !== state.bet) return {status: "corrupt-state", reason: "Logical entry bet differs from executable selection."};
+    }
+    const statistics = state.logicalRoundStatistics;
+    if (statistics !== undefined && (!statistics || !Number.isSafeInteger(statistics.rounds) || statistics.rounds < 0 || !Number.isSafeInteger(statistics.steps) || statistics.steps < statistics.rounds || ![statistics.totalStake, statistics.totalWin].every(n => Number.isFinite(n) && n >= 0))) return {status: "corrupt-state", reason: "Invalid logical-round statistics."};
     const capabilities = state.commandCapabilities;
     if (capabilities === undefined || capabilities === null || typeof capabilities !== "object" || Array.isArray(capabilities) || !Array.isArray(capabilities.bets) || capabilities.bets.length === 0 ||
         !capabilities.bets.every(bet => typeof bet === "number" && Number.isFinite(bet) && bet > 0) || !capabilities.bets.includes(state.bet) ||

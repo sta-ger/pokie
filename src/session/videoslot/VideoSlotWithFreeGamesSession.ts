@@ -185,6 +185,10 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         return this.config.getPaytable();
     }
 
+    public hasPendingLogicalRound(): boolean {
+        return this.hasUnfinishedFreeGames();
+    }
+
     private hasUnfinishedFreeGames(): boolean {
         return this.freeGamesSum > 0 && this.freeGamesNum < this.freeGamesSum;
     }

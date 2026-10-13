@@ -136,3 +136,20 @@ Note the `undefined` placeholders — TypeScript only applies a parameter defaul
 ## Headless runtime contract
 
 Repository continuation through `SpinCommandHandler.execute()` retains nested seeded RNG, current progress, retriggers, banked wins and last grant. A zero-stake continuation remains playable at zero wallet balance; the final free spin releases the bank, and subsequent paid play charges its real stake. See [executable repository records](serialization.md#executable-repository-records) for the supported composition and custom-codec boundary.
+
+### Entry and payout boundaries
+
+A logical entry captures the bet, selected mode and actual stake before domain
+mutation. Natural missing/zero grants finish the paid entry without another draw.
+A forcing purchase still requires a positive integer grant and an explicit entry
+action; command preparation rejects unsupported purchases and restores the old
+selection. Continuations cannot select a purchase or change the entry bet.
+A consumed forcing mode resets to the default before its executable state is
+captured, so restore, retries and final delivery cannot re-arm it.
+
+The paid trigger's monetary win settles at entry. Free-step wins enter the
+existing bank; a retrigger on the nominal last free game extends the same round
+and postpones bank release. The bank settles when the extended feature truly
+ends. Logical `totalWin` sums evaluated step wins; `totalPayout` sums actual
+settlement awards. Both delivery policies preserve this timing, including
+fractional entry stakes and zero continuation stake.

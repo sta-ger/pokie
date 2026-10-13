@@ -49,6 +49,94 @@ describe("public transactional runtime compositions", () => {
         const response = await fetch(`${base}/sessions/${id}/spin${debug ? "?debug=1" : ""}`, {method: "POST", body: JSON.stringify(body)});
         return {status: response.status, body: await response.json() as Record<string, unknown>};
     }
+
+    it.each(["calculation", "capture", "serialization"] as const)("a failed %s subround preserves the committed prefix and its RNG successor", async failure => {
+        const store = await open();
+        await initialize(store);
+        const game = transactionalRoundGame();
+        const first = await new api.SpinCommandHandler(game, store).execute({kind: "spin", sessionId: "s", requestId: "entry", roundId: "round", delivery: "stepwise"});
+        expect(first.status).toBe("played");
+        const before = await store.readSession("s"), 
+            balance = await store.getBalance("s");
+        const next: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "next", delivery: "stepwise", continuation: {roundId: "round", cursor: 1}};
+        const failed = await new api.SpinCommandHandler(transactionalRoundGame(undefined, failure), store).execute(next);
+        expect(failed.status).not.toBe("played");
+        expect(await store.readSession("s")).toEqual(before);
+        expect(await store.getBalance("s")).toBe(balance);
+        expect(await store.lookupResult("s", "next")).toBeUndefined();
+        const resumed = await new api.SpinCommandHandler(game, store).execute(next);
+        expect(resumed).toMatchObject({status: "played", stake: 0, state: {logicalRound: {cursor: 2}}});
+    });
+
+    it("local cancellation before commit rolls back only the uncommitted subround", async () => {
+        const store = await open();
+        await initialize(store);
+        const game = transactionalRoundGame(), 
+            handler = new api.SpinCommandHandler(game, store);
+        await handler.execute({kind: "spin", sessionId: "s", requestId: "entry", roundId: "round", delivery: "stepwise"});
+        const before = await store.readSession("s"), 
+            balance = await store.getBalance("s"), 
+            abort = new AbortController();
+        setTransactionBoundaryHook(store, boundary => {
+            if (boundary === "after:operation-committed") abort.abort();
+            return Promise.resolve();
+        });
+        const next: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "next", delivery: "stepwise", continuation: {roundId: "round", cursor: 1}};
+        expect(await handler.execute(next, abort.signal)).toMatchObject({status: "blocked"});
+        expect(await store.readSession("s")).toEqual(before);
+        expect(await store.getBalance("s")).toBe(balance);
+        setTransactionBoundaryHook(store, () => Promise.resolve());
+        expect(await handler.execute(next)).toMatchObject({status: "played", state: {logicalRound: {cursor: 2}}});
+    });
+
+    it.each([false, true])("logical continuation recovers uncertainty and only one cursor owner advances (external=%s)", async external => {
+        const provider = external ? await wallet() : undefined;
+        const store = await open(provider);
+        await initialize(store);
+        if (provider) await provider.setBalance("s", 1000);
+        const game = transactionalRoundGame();
+        const entry: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "logical", delivery: "stepwise", roundId: "logical", expectedVersion: 1};
+        if (provider) provider.fault = "after-credit";
+        const handler = new api.SpinCommandHandler(game, store);
+        let first = await handler.execute(entry);
+        if (first.status !== "played") first = await new api.SpinCommandHandler(game, store).execute(entry);
+        expect(first.status).toBe("played");
+        if (first.status !== "played") throw new Error("No committed entry");
+        expect(first.state.logicalRound).toMatchObject({status: "pending", cursor: 1, deliveryCursor: 1});
+        const next: api.RepositoryCommand = {kind: "spin", sessionId: "s", requestId: "subround", delivery: "stepwise", continuation: {roundId: "logical", cursor: 1}, expectedVersion: first.version};
+        const [owner, rival] = await Promise.all([new api.SpinCommandHandler(game, store).execute(next), new api.SpinCommandHandler(game, store).execute({...next, requestId: "rival"})]);
+        expect([owner.status, rival.status].filter(status => status === "played")).toHaveLength(1);
+        const second = owner.status === "played" ? owner : rival;
+        if (second.status !== "played") throw new Error("Missing owner");
+        const last = await new api.SpinCommandHandler(game, store).execute({kind: "spin", sessionId: "s", requestId: "final", continuation: {roundId: "logical", cursor: 2}, delivery: "stepwise", expectedVersion: second.version});
+        expect(last).toMatchObject({status: "played", state: {logicalRound: {status: "completed", cursor: 3}, logicalRoundStatistics: {rounds: 1, steps: 3}}});
+        const before = await store.readSession("s"), 
+            balance = await store.getBalance("s");
+        expect(await new api.SpinCommandHandler(game, store).execute(entry)).toEqual(first);
+        const saved = await store.lookupResult("s", "final");
+        expect(saved).toEqual(last);
+        expect(await store.readSession("s")).toEqual(before);
+        expect(await store.getBalance("s")).toBe(balance);
+        expect(await handler.execute({...entry, continuation: {roundId: "logical", cursor: 1}, roundId: undefined})).toMatchObject({status: "identity-conflict"});
+    });
+
+    it("HTTP logical continuation returns retained output after response loss and after a later round", async () => {
+        const store = await open();
+        const base = await server(store);
+        const created = await fetch(`${base}/sessions`, {method: "POST", body: JSON.stringify({seed: 1})});
+        const initial = await created.json() as {sessionId: string};
+        const entry = {requestId: "entry", roundId: "round", delivery: "stepwise"};
+        const first = await post(base, initial.sessionId, entry);
+        expect(first.status).toBe(200);
+        const progress = first.body.logicalRound as {cursor: number; status: string};
+        expect(progress).toMatchObject({cursor: 1, status: "pending"});
+        // Simulate a lost published reply by discarding it; retry through public HTTP only.
+        await post(base, initial.sessionId, {requestId: "second", delivery: "composite", continuation: {roundId: "round", cursor: 1}});
+        await post(base, initial.sessionId, {requestId: "later", roundId: "later", delivery: "composite"});
+        expect(await post(base, initial.sessionId, entry)).toEqual(first);
+        expect(first.body).not.toHaveProperty("featureState");
+    });
+
     it.each([false, true])("HTTP creation, duplicate concurrency, restart and historical public/debug replay (external=%s)", async external => {
         const provider = external ? await wallet() : undefined;
         const store = await open(provider);
@@ -507,7 +595,8 @@ describe("public transactional runtime compositions", () => {
         if (!("externalSettlement" in reopened)) throw new Error("Expected external store");
         const recovery = new api.SpinCommandHandler(transactionalRoundGame(count), reopened);
         await verifyRecovery(recovery);
-        expect(await reopened.readSession("s")).toEqual(settled); // Includes executable state and RNG.
+        expect(await reopened.readSession("s")).toEqual(settled);
+        // Includes executable state and RNG.
         expect(await reopened.lookupResult("s", "fresh")).toEqual(fresh);
         expect(await reopened.lookupResult("s", "round")).toBeUndefined();
         expect(await recovery.execute({...command, mode: "double"})).toMatchObject({status: "identity-conflict"});

@@ -1,3 +1,4 @@
+import type {SessionCommand} from "../../../../src/runtime/SessionCommand.js";
 import type {
     FairnessCommitment,
     GameModelProjection,
@@ -908,8 +909,8 @@ export async function createPlaySession(fetchImpl: FetchLike, seed?: string | nu
     return {status: "error", message: body.error};
 }
 
-export async function spinPlaySession(fetchImpl: FetchLike, sessionId: string, bet?: number, mode?: string): Promise<PlaySpinResult> {
-    const body: Record<string, unknown> = {};
+export async function spinPlaySession(fetchImpl: FetchLike, sessionId: string, bet?: number, mode?: string, intent: Omit<SessionCommand, "kind" | "bet" | "mode"> & {requestId?: string} = {}): Promise<PlaySpinResult> {
+    const body: Record<string, unknown> = {...intent};
     if (bet !== undefined) {
         body.bet = bet;
     }

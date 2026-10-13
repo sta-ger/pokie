@@ -1,3 +1,4 @@
+import type {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import {CascadeStep} from "./CascadeStep.js";
 
 export class CascadeResult<T extends string | number | symbol = string> {
@@ -7,6 +8,7 @@ export class CascadeResult<T extends string | number | symbol = string> {
     private readonly metadata: Record<string, unknown>;
     private readonly rngInfo: Record<string, unknown>;
     private readonly debugInfo: Record<string, unknown>;
+    private readonly terminalEvaluation?: WinEvaluationResult<T>;
 
     constructor(
         initialScreen: T[][],
@@ -15,6 +17,7 @@ export class CascadeResult<T extends string | number | symbol = string> {
         metadata: Record<string, unknown> = {},
         rngInfo: Record<string, unknown> = {},
         debugInfo: Record<string, unknown> = {},
+        terminalEvaluation: WinEvaluationResult<T> | undefined = undefined,
     ) {
         this.initialScreen = initialScreen.map((reel) => [...reel]);
         this.finalScreen = finalScreen.map((reel) => [...reel]);
@@ -22,6 +25,11 @@ export class CascadeResult<T extends string | number | symbol = string> {
         this.metadata = {...metadata};
         this.rngInfo = {...rngInfo};
         this.debugInfo = {...debugInfo};
+        this.terminalEvaluation = terminalEvaluation;
+    }
+
+    public getTerminalEvaluation(): WinEvaluationResult<T> | undefined {
+        return this.terminalEvaluation;
     }
 
     public getInitialScreen(): T[][] {

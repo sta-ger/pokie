@@ -1,3 +1,4 @@
+import type {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 import {SymbolsCombination} from "../combinations/SymbolsCombination.js";
@@ -32,6 +33,7 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
         this.config = config;
         this.refillProvider = refillProvider;
         this.gridTransformer = gridTransformer;
+        if (!Number.isSafeInteger(options.maxCascadeSteps ?? 100) || (options.maxCascadeSteps ?? 100) < 1 || !["throw", "stop"].includes(options.onMaxCascadeStepsExceeded ?? "throw")) throw new Error("Cascade bound must be a positive safe integer and exhaustion policy must be throw or stop.");
         this.options = {
             maxCascadeSteps: options.maxCascadeSteps ?? 100,
             onMaxCascadeStepsExceeded: options.onMaxCascadeStepsExceeded ?? "throw",
@@ -43,6 +45,7 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
         const steps: CascadeStep<T>[] = [];
         let currentScreen = initialScreen.map((reel) => [...reel]);
         let stepIndex = 0;
+        let terminalEvaluation: WinEvaluationResult<T> | undefined;
         for (;;) {
             if (stepIndex >= this.options.maxCascadeSteps) {
                 if (this.options.onMaxCascadeStepsExceeded === "stop") {
@@ -71,6 +74,7 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
             );
             const removedPositions = result.getWinningPositions();
             if (removedPositions.length === 0) {
+                terminalEvaluation = result;
                 break;
             }
             const refillResult = this.normalizeRefillResult(
@@ -98,7 +102,7 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
             cascadeStepCount: steps.length,
         }, {
             totalCascadeWin: steps.reduce((sum, step) => sum + step.getWinEvaluationResult().getTotalWin(), 0),
-        });
+        }, terminalEvaluation);
     }
 
     private normalizeRefillResult(refillResult: T[][] | CascadeRefillResult<T>): CascadeRefillResult<T> {

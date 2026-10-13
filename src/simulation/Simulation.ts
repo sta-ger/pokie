@@ -1,3 +1,4 @@
+import {observeLogicalSubround, emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {AsyncSimulationHandling} from "./AsyncSimulationHandling.js";
 import type {BetForNextSimulationRoundSetting} from "./BetForNextSimulationRoundSetting.js";
@@ -6,6 +7,7 @@ import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessi
 import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
 
 export class Simulation implements AsyncSimulationHandling {
+    private logicalRounds = emptyLogicalRoundStatistics();
     private readonly session: GameSessionHandling;
     private readonly numberOfRounds: number;
     private readonly changeBetStrategy: BetForNextSimulationRoundSetting | undefined;
@@ -30,6 +32,10 @@ export class Simulation implements AsyncSimulationHandling {
         this.numberOfRounds = config.getNumberOfRounds();
         this.changeBetStrategy = config.getChangeBetStrategy();
         this.playStrategy = config.getPlayStrategy();
+    }
+
+    public getLogicalRoundStatistics(): LogicalRoundStatistics {
+        return {...this.logicalRounds};
     }
 
     public run(): void {
@@ -196,6 +202,8 @@ export class Simulation implements AsyncSimulationHandling {
         this.currentRoundNumber++;
         this.setBetBeforePlay();
         const result = executeSessionCommand(this.session);
+        const observation = observeLogicalSubround(this.session, result.stake, result.win);
+        if (observation) this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds, observation);
         this.totalBetAmount += result.stake;
         this.betsPerRound.push(result.stake);
         this.totalPayoutAmount += result.win;

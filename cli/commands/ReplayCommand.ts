@@ -27,6 +27,7 @@ type ReplayOptions = {
     packageRoot: string;
     seed?: string;
     round: number;
+    unit?: "step" | "logical-round";
     out?: string;
     mode?: string;
 };
@@ -111,6 +112,7 @@ export class ReplayCommand implements CliCommandHandling {
         } catch (error) {
             throw describeRuntimePackageLoadError(options.packageRoot, error);
         }
+        if (options.unit === "logical-round" && (project?.type === "wasm" || project?.type === "outcomeLibrary" || project?.type === "stakeAdapter")) throw new Error("Logical-round replay is supported only by game packages declaring logical progress.");
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceReplay(project, options);
             return;
@@ -129,7 +131,7 @@ export class ReplayCommand implements CliCommandHandling {
         }
         let descriptor;
         try {
-            descriptor = this.recorder.record({game, seed: options.seed, round: options.round});
+            descriptor = this.recorder.record({game, seed: options.seed, round: options.round, unit: options.unit});
         } finally {
             await releasePokieGame(game);
         }
@@ -220,6 +222,10 @@ export class ReplayCommand implements CliCommandHandling {
                 }
                 return parsed;
             })
+            .option("--unit <unit>", "package replay address unit: step or logical-round", (value: string) => {
+                if (value !== "step" && value !== "logical-round") throw new Error("--unit must be step or logical-round");
+                return value;
+            })
             .option("--out <file>", "write the replay descriptor JSON to this path")
             .option("--format <format>", "only \"json\" is supported (validated, but the output is always JSON)", (value: string) => {
                 if (value !== "json") {
@@ -233,14 +239,14 @@ export class ReplayCommand implements CliCommandHandling {
             .option("--mode <modeName>", "outcome-library mode to replay (required when <packageRoot> is a native outcome-library bundle)")
             .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; --mode is unavailable.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(
-                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string}) => {
+                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string; unit?: "step" | "logical-round"}) => {
                     if (excess.length > 0) {
                         throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                     }
                     if (options.round === undefined) {
                         throw new Error(`--round is required. ${USAGE}`);
                     }
-                    resultRef.value = {packageRoot, seed: options.seed, round: options.round, out: options.out, mode: options.mode};
+                    resultRef.value = {packageRoot, seed: options.seed, round: options.round, out: options.out, mode: options.mode, unit: options.unit};
                 },
             );
     }

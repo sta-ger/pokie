@@ -1,3 +1,4 @@
+import type {SessionCommand} from "../../../../src/runtime/SessionCommand.js";
 import {useCallback, useRef, useState} from "react";
 import {createPlaySession, findAnyWinPlaySession, findFreeGamesPlaySession, findSymbolWinPlaySession, spinPlaySession} from "../api/apiClient";
 import {useStudioApi} from "../context/StudioApiProvider";
@@ -28,6 +29,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     // one level simpler here: Play has only ever one in-flight-mutation slot (newSession/spin), never a
     // separate state/session pair to guard against each other.
     const requestIdRef = useRef(0);
+    const pendingSpinRef = useRef<(Omit<SessionCommand, "kind"> & {requestId: string}) | undefined>(undefined);
     // A Play action must target the session that was actually accepted by the session-creation
     // response, even while React is scheduling the render that exposes its Spin control. Keeping that
     // identity alongside the rendered state avoids a click being silently discarded by a callback that
@@ -55,6 +57,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                     }
                     if (result.status === "ok") {
                         setSession(describePlaySessionResult(result));
+                        pendingSpinRef.current = undefined;
                         activeSessionRef.current = result.session;
                         activeSessionIdRef.current = result.session.sessionId;
                         setSessionId(result.session.sessionId);
@@ -132,8 +135,20 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         [fetchImpl, onRoundRecorded],
     );
 
-    const spin = useCallback((bet?: number, mode?: string) => {
-        runSpinAction("This spin", (sid) => spinPlaySession(fetchImpl, sid, bet, mode));
+    const spin = useCallback((bet?: number, mode?: string, delivery: "stepwise" | "composite" = "stepwise") => {
+        const current = activeSessionRef.current;
+        if (!pendingSpinRef.current) {
+            const requestId = globalThis.crypto.randomUUID();
+            const round = current?.logicalRound;
+            if (!current?.logicalRoundDeliverySupported) pendingSpinRef.current = {requestId, bet, mode};
+            else if (round?.status === "pending") pendingSpinRef.current = {requestId, delivery, continuation: {roundId: round.roundId, cursor: round.cursor}};
+            else pendingSpinRef.current = {requestId, delivery, roundId: requestId, bet, mode};
+        }
+        const intent = pendingSpinRef.current;
+        runSpinAction("This spin", (sid) => spinPlaySession(fetchImpl, sid, intent.bet, intent.mode, intent).then(result => {
+            if (result.status === "ok" && pendingSpinRef.current === intent) pendingSpinRef.current = undefined;
+            return result;
+        }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runSpinAction, fetchImpl]);
 
@@ -171,6 +186,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
     const resetForProjectSwitch = useCallback(() => {
         requestIdRef.current++;
         activeSessionRef.current = undefined;
+        pendingSpinRef.current = undefined;
         activeSessionIdRef.current = undefined;
         setSession({status: "idle"});
         setSessionId(undefined);

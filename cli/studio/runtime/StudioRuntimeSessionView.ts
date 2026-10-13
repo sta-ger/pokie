@@ -1,4 +1,4 @@
-import type {PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "@fromstan/pokie";
+import type {LogicalRoundDelivery, PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "@fromstan/pokie";
 
 // Studio's own session response DTO for a played/drawn round — built by StudioPlayService directly off
 // a real, in-process PokieSessionState (see its own buildSessionView() doc comment): every public field
@@ -8,6 +8,8 @@ import type {PreGeneratedRoundReplayDescriptor, RoundArtifactJson} from "@fromst
 // attached. Never the raw PokieSessionState/repository/wallet objects themselves — only their own
 // public+internal projection.
 export type StudioRuntimeSessionView = {
+    logicalRound?: LogicalRoundDelivery;
+    logicalRoundDurability?: "process-only";
     sessionId: string;
     game: {id: string; name: string; version: string};
     // Absent only for a stateless one-shot draw with no session/wallet of its own at all (the Outcome

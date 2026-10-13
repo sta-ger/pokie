@@ -1,3 +1,4 @@
+import {observeLogicalSubround} from "./LogicalRoundStatistics.js";
 import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {JackpotStatisticsProviding} from "../session/JackpotStatisticsProviding.js";
 import type {JackpotStatisticsSnapshot} from "../session/JackpotStatisticsSnapshot.js";
@@ -100,6 +101,8 @@ export class AggregateSimulationRunner {
             // payout. This same denominator reaches accumulator, breakdown,
             // worker merge and report -- no mode-specific alternate RTP.
             accumulator.addRound(stakeAmount, payout);
+            const logical = observeLogicalSubround(this.session, stakeAmount, payout);
+            if (logical) accumulator.addLogicalRound(logical);
 
             if (category !== undefined) {
                 categorizationSupported = true;

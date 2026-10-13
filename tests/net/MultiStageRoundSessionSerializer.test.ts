@@ -45,3 +45,20 @@ describe("MultiStageRoundSessionSerializer", () => {
         expect(roundtripThroughJson(initialData)).toEqual(initialData);
     });
 });
+
+it("detaches nested retained stages and never advances the domain on repeated projection", () => {
+    const session = new GameSession(new GameSessionConfig());
+    const play = jest.spyOn(session, "play");
+    const retained = [{label: "first"}, {label: "second"}];
+    class RetainedSerializer extends MultiStageRoundSessionSerializer<GameSessionHandling, FakeStage> {
+        protected getStages(): FakeStage[] {
+            return retained; 
+        }
+    }
+    const serializer = new RetainedSerializer({getInitialData: s => ({credits: s.getCreditsAmount(), bet: s.getBet(), availableBets: s.getAvailableBets()}), getRoundData: s => ({credits: s.getCreditsAmount(), bet: s.getBet()})});
+    const first = serializer.getRoundData(session);
+    first.stages[0].label = "changed";
+    expect(serializer.getRoundData(session).stages).toEqual(retained);
+    expect(retained[0].label).toBe("first");
+    expect(play).not.toHaveBeenCalled();
+});

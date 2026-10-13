@@ -97,3 +97,28 @@ describe("usePlaySession - canonical runtime failures", () => {
         expect(onRoundRecorded).not.toHaveBeenCalled();
     });
 });
+
+it("keeps the same entry identity after response loss and then sends only the saved successor", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const pending = {roundId: "round", cursor: 1, mathematicalCursor: 1, mathematicalStatus: "pending" as const, stageCursor: 1, status: "pending" as const, entry: {bet: 1}, totalStake: 1, totalWin: 0, totalPayout: 0, subrounds: []};
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/play/session") return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true})})});
+        bodies.push(JSON.parse(String(init?.body)));
+        if (bodies.length === 1) return Promise.reject(new Error("Published response lost"));
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true, logicalRound: pending})})});
+    };
+    const {result} = renderHook(() => usePlaySession(), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => result.current.newSession());
+    await waitFor(() => expect(result.current.sessionId).toBe("stable"));
+    act(() => result.current.spin(1, "buy", "stepwise"));
+    await waitFor(() => expect(result.current.session.status).toBe("error"));
+    act(() => result.current.spin(7.5, "base", "composite"));
+    await waitFor(() => expect(result.current.session.status).toBe("ok"));
+    expect(bodies[1]).toEqual(bodies[0]);
+    act(() => result.current.spin(7.5, "buy"));
+    await waitFor(() => expect(bodies).toHaveLength(3));
+    expect(bodies[2]).toMatchObject({delivery: "stepwise", continuation: {roundId: "round", cursor: 1}});
+    expect(bodies[2]).not.toHaveProperty("bet");
+    expect(bodies[2]).not.toHaveProperty("mode");
+    await waitFor(() => expect(result.current.session.status).toBe("ok"));
+});

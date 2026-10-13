@@ -9,6 +9,8 @@ import type {PokieGameManifest} from "./PokieGameManifest.js";
 
 export interface PokieGame {
     getManifest(): PokieGameManifest;
+    /** Custom sessions explicitly promise the LogicalRoundProgressProviding contract. */
+    supportsLogicalRoundDelivery?(): boolean;
 
     /** Authoritative codec declaration, resolved without constructing a session. Required for durable recovery. */
     getSessionStateSchema?(): SessionStateSchema;

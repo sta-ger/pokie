@@ -1,3 +1,4 @@
+import {cloneSessionData} from "../runtime/internal/cloneSessionData.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {GameInitialNetworkData, GameRoundNetworkData} from "./GameNetworkData.js";
 import type {MultiStageRoundNetworkData} from "./MultiStageRoundNetworkData.js";
@@ -31,11 +32,11 @@ export abstract class MultiStageRoundSessionSerializer<
     }
 
     public getInitialData(session: TSession): TBaseInitialData & MultiStageRoundNetworkData<TStage> {
-        return {...this.baseSerializer.getInitialData(session), stages: this.getStages(session)};
+        return cloneSessionData({...this.baseSerializer.getInitialData(session), stages: this.getStages(session)});
     }
 
     public getRoundData(session: TSession): TBaseRoundData & MultiStageRoundNetworkData<TStage> {
-        return {...this.baseSerializer.getRoundData(session), stages: this.getStages(session)};
+        return cloneSessionData({...this.baseSerializer.getRoundData(session), stages: this.getStages(session)});
     }
 
     protected abstract getStages(session: TSession): TStage[];

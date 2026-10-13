@@ -1,4 +1,4 @@
-import type {PokieProject, ReplayDescriptor} from "@fromstan/pokie";
+import type {SessionCommand, PokieProject, ReplayDescriptor} from "@fromstan/pokie";
 import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 
 // The internal, mutable job record StudioReplayExecutionService/StudioReplayRepository hold —
@@ -10,6 +10,8 @@ export type StudioReplayJobRecord = {
     projectRoot: string;
     status: StudioReplayStatus;
     round: number;
+    unit?: "step" | "logical-round";
+    entryCommands?: readonly SessionCommand[];
     seed?: string;
     // Only set when this job originated from the Replay tab's "Recent Simulation" source (see
     // ValidatedReplayRequest.simulationId) -- the id of the completed simulation report this round was

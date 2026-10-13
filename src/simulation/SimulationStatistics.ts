@@ -1,4 +1,6 @@
+import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 export type SimulationStatistics = {
+    logicalRounds?: LogicalRoundStatistics;
     rounds: number;
     hitCount: number;
     totalBet: number;

@@ -1,3 +1,4 @@
+import type {LogicalRoundDelivery} from "../../../../../src/runtime/projectLogicalRound.js";
 import type {RoundArtifactWin} from "../../api/types";
 import type {FeatureCounter, LineDefinitionView, PaytableView} from "../../../../client/player";
 import {CanonicalPlayerView} from "./CanonicalPlayerView";
@@ -18,6 +19,7 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 // tests/cli/client/player/renderPlayer.test.ts's own fixture-round test calls directly).
 export function GameScreenView({
     screen,
+    logicalRound,
     wins,
     visibleRowCoverage,
     credits,
@@ -34,6 +36,7 @@ export function GameScreenView({
     onSelectMode,
 }: {
     screen: string[][];
+    logicalRound?: LogicalRoundDelivery;
     visibleRowCoverage?: readonly number[];
     wins?: readonly RoundArtifactWin[];
     credits?: number;
@@ -51,6 +54,7 @@ export function GameScreenView({
 }) {
     return (
         <CanonicalPlayerView
+            logicalRound={logicalRound}
             reelsSymbols={screen}
             wins={wins}
             visibleRowCoverage={visibleRowCoverage}

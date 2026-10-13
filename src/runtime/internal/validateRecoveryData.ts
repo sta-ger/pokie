@@ -1,3 +1,5 @@
+import {validateRepositoryCommand} from "../RepositoryCommand.js";
+import {validateSessionCommand} from "../SessionCommand.js";
 import type {LiveSessionAuthority} from "./LiveSessionAuthority.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import type {SpinOperationRecord} from "../../server/spin/SpinOperationRecord.js";
@@ -37,6 +39,7 @@ export function validateOperationRecord(value: SpinOperationRecord, game: PokieG
         !amount(value.stakeAmount) || !revision(value.expectedVersion) ||
         !["started", "debited", "settled", "session-saved", "committed", "compensated"].includes(value.checkpoint) ||
         !Number.isFinite(Date.parse(value.startedAt)) || !Number.isFinite(Date.parse(value.updatedAt))) return corrupt("Invalid operation record envelope.");
+    if (value.command !== undefined && (validateRepositoryCommand(value.command) || validateSessionCommand(value.command) || value.command.sessionId !== sessionId || value.command.requestId !== requestId)) return corrupt("Invalid retained logical command envelope.");
     const captured = value.capturedResult;
     if (captured === undefined) return undefined;
     if (!object(captured) || captured.previousState === undefined || captured.newState === undefined) return corrupt("Invalid captured result envelope.");

@@ -1,3 +1,4 @@
+import type {SessionCommand} from "../../src/runtime/SessionCommand.js";
 import {FetchLike, spin, SessionCommandError} from "./apiClient.js";
 import {describeClientGameTitle} from "./clientPresentation.js";
 import {renderRawJson, renderRoundView, renderStages, renderStatus, wireSpinButton} from "./dom.js";
@@ -5,6 +6,7 @@ import {extractKnownRoundView, extractStages} from "./interpretResponse.js";
 import {
     clearConnectionError,
     createPlayerRoundElements,
+    deriveWinHighlightsFromRoundArtifactWins,
     renderConnectionError,
     renderPlayerRound,
     type PlayerRoundElements,
@@ -36,6 +38,7 @@ type Elements = {
     payoutMultiplier: HTMLElement;
     screen: HTMLElement;
     spinButton: HTMLButtonElement;
+    roundDelivery?: HTMLSelectElement;
     sessionSeed: HTMLInputElement;
     sessionId: HTMLInputElement;
     startSessionButton: HTMLButtonElement;
@@ -117,6 +120,7 @@ function queryElements(): Elements {
         payoutMultiplier: requireElement("payout-multiplier"),
         screen: requireElement("screen"),
         spinButton: requireElement("spin-button"),
+        roundDelivery: (document.getElementById("round-delivery") as HTMLSelectElement | null) ?? undefined,
         sessionSeed: requireElement("session-seed"),
         sessionId: requireElement("session-id"),
         startSessionButton: requireElement("start-session-button"),
@@ -189,7 +193,9 @@ function renderVideoSlotRound(
     onSelectMode: (modeId: string) => void,
     credits: number,
 ): void {
-    const highlights = deriveWinHighlights(response);
+    const logical = (response as unknown as SessionResponse).logicalRound?.currentStep;
+    if (logical) response = {...response, reelsSymbols: logical.screen.map(reel => [...reel]) as string[][], totalWin: logical.totalWin};
+    const highlights = logical ? deriveWinHighlightsFromRoundArtifactWins(logical.wins, logical.screen.length) : deriveWinHighlights(response);
     const totalWin = typeof response.totalWin === "number" ? response.totalWin : undefined;
     const bet = typeof response.bet === "number" ? response.bet : selectedBet;
     renderPlayerRound(
@@ -358,8 +364,10 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
         renderStatus(elements.status, `Connected to ${apiBaseUrl}`);
         rerender();
         elements.spinButton.disabled = false;
+        elements.spinButton.textContent = current.logicalRound?.status === "pending" ? "Continue round" : "Spin";
+        if (elements.roundDelivery) elements.roundDelivery.disabled = !current.logicalRoundDeliverySupported;
         const pendingKey = `pokie.player.pendingRound:${apiBaseUrl}:${current.sessionId}`;
-        let pendingRound: {requestId: string; bet?: number; mode?: string} | undefined;
+        let pendingRound: ({requestId: string; bet?: number; mode?: string} & Pick<SessionCommand, "delivery" | "roundId" | "continuation">) | undefined;
         const retained = window.localStorage.getItem(pendingKey);
         if (retained) {
             const parsed = JSON.parse(retained) as typeof pendingRound;
@@ -372,10 +380,17 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
         const attemptSpin = (): void => {
             if (submissionRunning) return;
             submissionRunning = true;
-            pendingRound ??= {requestId: createRoundIdentity(), bet: selectedBet, mode: selectedMode};
+            if (!pendingRound) {
+                const requestId = createRoundIdentity();
+                const progress = current.logicalRound;
+                const delivery = elements.roundDelivery?.value === "composite" ? "composite" : "stepwise";
+                if (!current.logicalRoundDeliverySupported) pendingRound = {requestId, bet: selectedBet, mode: selectedMode};
+                else if (progress?.status === "pending") pendingRound = {requestId, delivery, continuation: {roundId: progress.roundId, cursor: progress.cursor}};
+                else pendingRound = {requestId, roundId: requestId, delivery, bet: selectedBet, mode: selectedMode};
+            }
             window.localStorage.setItem(pendingKey, JSON.stringify(pendingRound));
             elements.spinButton.disabled = true;
-            spin(fetchImpl, apiBaseUrl, current.sessionId, pendingRound.requestId, pendingRound.bet, pendingRound.mode)
+            spin(fetchImpl, apiBaseUrl, current.sessionId, pendingRound.requestId, pendingRound.bet, pendingRound.mode, undefined, {delivery: pendingRound.delivery, roundId: pendingRound.roundId, continuation: pendingRound.continuation})
                 .then((response) => {
                     if (generation !== bootGeneration) {
                         return;
@@ -384,6 +399,7 @@ async function boot(elements: Elements, fetchImpl: FetchLike, preferredSessionId
                     window.localStorage.removeItem(pendingKey);
                     current = response;
                     renderSessionId(elements, current.sessionId);
+                    elements.spinButton.textContent = current.logicalRound?.status === "pending" ? "Continue round" : "Spin";
                     stageIndex = 0;
                     selectedBet = typeof current.bet === "number" ? current.bet : selectedBet;
                     selectedMode = deriveBetModeId((current as VideoSlotRoundResponse).betModeId) ?? selectedMode;

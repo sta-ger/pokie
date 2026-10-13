@@ -1,3 +1,5 @@
+import {validateSavedStageDelivery} from "../../runtime/internal/validateSavedStageDelivery.js";
+import {commandEnvelope} from "../../runtime/commandEnvelope.js";
 import {SessionStateCorruptError} from "../session/FileSessionRepository.js";
 import type {DatabaseSync} from "node:sqlite";
 import {randomUUID} from "node:crypto";
@@ -125,8 +127,8 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
         // from a later session selection. The composite primary key permits cross-session reuse.
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid !== undefined) return Promise.resolve({status: "invalid-command", sessionId: command?.sessionId ?? "", reason: invalid});
-        const intent = {...command};
-        const envelope = encode([intent.sessionId, intent.requestId ?? null, intent.kind, intent.bet ?? null, intent.mode ?? null, intent.expectedVersion ?? null]);
+        const intent = {...command, ...(command.continuation ? {continuation: Object.freeze({...command.continuation})} : {})};
+        const envelope = commandEnvelope(intent);
         return this.enqueue(async () => {
             await this.acquire();
             let active = true;
@@ -144,6 +146,8 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
                     if (!result) throw new Error("Committed request is missing its saved result.");
                     return result;
                 }
+                const previous = this.read(intent.sessionId);
+                const priorLedgerEntries = this.database.prepare("SELECT COUNT(*) AS count FROM ledger WHERE session_id=?").get(intent.sessionId)!.count;
                 const previousVersion = this.database.prepare("SELECT version FROM sessions WHERE id=?").get(intent.sessionId)?.version;
                 if (previousVersion === undefined) {
                     this.rollback();
@@ -175,7 +179,10 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
                     response = this.result(intent.sessionId, requestId),
                     operation = this.operation(intent.sessionId, requestId);
                 const settlement = operation === undefined ? [] : this.database.prepare("SELECT transaction_id FROM ledger WHERE session_id=? AND transaction_id IN (?, ?)").all(intent.sessionId, operation.debitTransactionId, operation.creditTransactionId);
-                if (!state || !response || operation?.checkpoint !== "committed" || settlement.length !== 2 || state.version !== Number(previousVersion) + 1 || result.version !== state.version ||
+                const savedDelivery = result.deliveryOnly === true && operation === undefined && settlement.length === 0 && result.stake === 0 &&
+                    previous !== undefined && validateSavedStageDelivery(previous.state, result.state, intent) &&
+                    this.database.prepare("SELECT COUNT(*) AS count FROM ledger WHERE session_id=?").get(intent.sessionId)!.count === priorLedgerEntries;
+                if (!state || !response || (result.deliveryOnly === true ? !savedDelivery : operation?.checkpoint !== "committed" || settlement.length !== 2) || state.version !== Number(previousVersion) + 1 || result.version !== state.version ||
                     state.state.credits !== this.balance(intent.sessionId) || encode(state.state) !== encode(result.state) || encode(response) !== encode(result)) {
                     throw new Error("Incomplete or inconsistent atomic round tuple.");
                 }

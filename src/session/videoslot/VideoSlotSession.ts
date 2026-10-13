@@ -172,6 +172,10 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return this.baseSession.canPlayNextGame();
     }
 
+    public hasPendingLogicalRound(): boolean {
+        return false;
+    }
+
     public play(): void {
         // GameSession.play() silently no-ops the debit on insufficient credits — check the same
         // precondition here too, so a round that couldn't be paid for never generates a screen,

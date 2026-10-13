@@ -507,7 +507,7 @@ describe("WinRuntimeContract", () => {
             {calculateWinningClusters: () => ({0: new WinningCluster("A", [[0, 0]], 7)})},
             {calculateWinningValues: () => ({V: new WinningValue("V", [[1, 0]], 11)})},
             {calculateWinningWays: () => ({W: new WinningWay("W", [[2, 0]], 2, 13)})},
-            {aggregationPolicy: new SumAllEnabledWinAggregationPolicy()},
+            {aggregationPolicy: new SumAllEnabledWinAggregationPolicy(), minimumClusterSize: 1},
         );
         const generator = {
             generateSymbolsCombination: (): SymbolsCombination<string> =>
