@@ -32,7 +32,10 @@ export function validateRetryResult(value: unknown, game: PokieGame, sessionId: 
             validateAuditRoundRecording(value.audit, game);
             const last = value.audit.deliveries[value.audit.deliveries.length - 1];
             if (last.disposition.sessionId !== sessionId || last.disposition.requestId !== requestId || last.result.win !== value.win || last.result.credits !== value.credits ||
-                last.after.bet !== (value.state as PokieSessionState).bet || JSON.stringify(toCanonicalJson(last.after.state)) !== JSON.stringify(toCanonicalJson((value.state as PokieSessionState).featureState))) return corrupt("Audit and retained result disagree.");
+                (value.stake !== undefined && last.result.stake !== value.stake) || (value.mode !== undefined && last.result.mode !== value.mode) ||
+                last.after.bet !== (value.state as PokieSessionState).bet ||
+                JSON.stringify(toCanonicalJson(last.before.state)) !== JSON.stringify(toCanonicalJson((value.previousState as PokieSessionState).featureState)) ||
+                JSON.stringify(toCanonicalJson(last.after.logicalRound ?? null)) !== JSON.stringify(toCanonicalJson((value.state as PokieSessionState).logicalRound ?? null)) || JSON.stringify(toCanonicalJson(last.after.state)) !== JSON.stringify(toCanonicalJson((value.state as PokieSessionState).featureState))) return corrupt("Audit and retained result disagree.");
         } catch (error) {
             return corrupt(error instanceof Error ? error.message : String(error));
         }
@@ -73,6 +76,22 @@ export function validateOperationRecord(value: SpinOperationRecord, game: PokieG
     if (captured.stake !== undefined && captured.stake !== value.stakeAmount) return corrupt("Captured stake does not match the operation.");
     const rejected = validateComputedResult(captured, captured.newState, captured.previousState, captured.newVersion, game, live, sessionId);
     if (rejected) return rejected;
+    if (captured.audit !== undefined) {
+        // Validate the ORIGINAL digest/envelope before any reconciliation stamps a new disposition.
+        const invalidAudit = validateRetryResult({status: "played", sessionId, requestId, state: captured.newState,
+            previousState: captured.previousState, version: captured.newVersion, win: captured.win, credits: captured.credits,
+            stake: captured.stake, mode: captured.mode, audit: captured.audit,
+            ...(value.command ? {deliveryCommand: value.command} : {}), ...(captured.deliveryOnly ? {deliveryOnly: true} : {})}, game, sessionId, requestId, live);
+        if (invalidAudit) return invalidAudit;
+        const last = captured.audit.deliveries[captured.audit.deliveries.length - 1];
+        const disposition = last.disposition;
+        if (disposition.attemptId !== value.attemptId || (captured.deliveryOnly !== true && disposition.debitTransactionId !== value.debitTransactionId) ||
+            (captured.deliveryOnly !== true && disposition.creditTransactionId !== value.creditTransactionId) || disposition.expectedVersion !== value.expectedVersion ||
+            disposition.startedAt !== value.startedAt || last.result.stake !== value.stakeAmount ||
+            (value.command && commandEnvelope(last.command as RepositoryCommand) !== commandEnvelope(value.command)) ||
+            (value.checkpoint === "committed" && disposition.status !== "committed") ||
+            (value.checkpoint === "compensated" && disposition.status !== "compensated")) return corrupt("Captured audit identity or disposition differs from its operation.");
+    }
     if (captured.deliveryOnly === true && (!value.command || value.stakeAmount !== 0 || !validateSavedStageDelivery(captured.previousState as PokieSessionState, captured.newState as PokieSessionState, value.command))) return corrupt("Invalid captured saved-stage transition.");
     if (captured.deliveryOnly !== true && captured.newState.logicalRound) {
         const original = captured.newState.logicalRound.subrounds[captured.newState.logicalRound.cursor - 1].command as RepositoryCommand;

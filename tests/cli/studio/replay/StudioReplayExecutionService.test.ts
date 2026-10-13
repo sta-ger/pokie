@@ -2,6 +2,7 @@ import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGam
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
     CascadeResult,
+    computeAuditRoundHash,
     GameSessionHandling,
     GameSessionSerializing,
     loadPokieGame,
@@ -1794,4 +1795,101 @@ it("verifies imported audit inputs through the shared engine, keeps original ide
     expect(download.status).toBe("ok");
     if (download.status === "ok") expect(download.descriptor).toMatchObject({auditStatus: "verified", originalSessionId: "live-session", audit: recording.audit, credits: recording.credits});
     await successful.cancelAll();
+});
+
+
+it("retains the verified audit prefix and exact continuation after execution failure across restart", async () => {
+    const game = {...transactionalRoundGame(), getConfigHash: () => "studio-prefix"};
+    const context = {seed: "prefix"},
+        session = game.createSession(context),
+        recorder = new ReplayRecorder();
+    const original = recorder.recordAudit(game, session, [{kind: "spin", delivery: "composite", roundId: "prefix"}], {status: "calculated", sessionId: "original", durability: "detached"}, context);
+    const audit = JSON.parse(JSON.stringify(original.audit!)) as NonNullable<typeof original.audit>;
+    (audit.deliveries[audit.deliveries.length - 1].after.state as {rng: number}).rng = 123;
+    const {hash: _hash, ...body} = audit;
+    const recording = {...original, audit: {...body, hash: computeAuditRoundHash(body)}};
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-audit-prefix-"));
+    const jobs = new StudioJobService(new FileStudioJobRepository(directory));
+    const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1);
+    service.attachJobService(jobs);
+    try {
+        const started = service.start("/prefix", {round: 1, recording});
+        if (started.status !== "created") throw new Error("Missing job");
+        for (let index = 0; index < 5; index++) await new Promise<void>(resolve => {
+            setImmediate(resolve);
+        });
+        await service.cancelAll();
+        const view = service.getStatus("/prefix", started.job.id)!;
+        expect(view.status).toBe("failed");
+        expect(view.error).toContain("audit-execution-mismatch");
+        expect(view.auditPrefix!.deliveries).toEqual(recording.audit.deliveries.slice(0, -1));
+        expect(view.nextCommand).toEqual(recording.audit.deliveries[recording.audit.deliveries.length - 1].command);
+        expect(view.nextCommand!.continuation).toEqual({roundId: "prefix", cursor: 2});
+        expect(service.getDownload("/prefix", started.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+        const restarted = new StudioReplayExecutionService();
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+        expect(restarted.getStatus("/prefix", started.job.id)).toMatchObject({status: "failed", auditPrefix: view.auditPrefix, nextCommand: view.nextCommand});
+        expect(restarted.getDownload("/prefix", started.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+        recorder.releaseAuditSession(session);
+    }
+});
+
+it.each(["compatibility", "durable"] as const)("terminal %s save failure never publishes a completed audit descriptor before or after restart", async failure => {
+    const game = createOverscanGame(),
+        context = {seed: "terminal"},
+        session = game.createSession(context),
+        recorder = new ReplayRecorder();
+    const descriptor = recorder.recordAudit(game, session, [{kind: "spin"}], {status: "calculated", sessionId: "original", durability: "detached"}, context);
+    const recording = {...descriptor, audit: descriptor.audit!};
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-audit-terminal-"));
+    const durable = new FileStudioJobRepository(directory),
+        jobs = new StudioJobService(durable),
+        compatibility = new InMemoryStudioReplayRepository();
+    const service = new StudioReplayExecutionService(compatibility, () => Promise.resolve(game));
+    service.attachJobService(jobs);
+    let injected = false;
+    if (failure === "compatibility") {
+        const save = compatibility.save.bind(compatibility);
+        jest.spyOn(compatibility, "save").mockImplementation(record => {
+            if (record.status === "completed" && !injected) {
+                injected = true;
+                throw new Error("terminal-save failure");
+            }
+            save(record);
+        });
+    } else {
+        const save = durable.save.bind(durable);
+        jest.spyOn(durable, "save").mockImplementation(job => {
+            if (job.status === "completed" && !injected) {
+                injected = true;
+                throw new Error("terminal-save failure");
+            }
+            save(job);
+        });
+    }
+    try {
+        const started = service.start("/terminal", {round: 1, recording});
+        if (started.status !== "created") throw new Error("Missing job");
+        await new Promise<void>(resolve => {
+            setImmediate(resolve);
+        });
+        await service.cancelAll();
+        expect(injected).toBe(true);
+        const view = service.getStatus("/terminal", started.job.id)!;
+        expect(view).toMatchObject({status: "failed", error: expect.stringContaining("terminal-save failure"), auditPrefix: recording.audit});
+        expect(view.descriptor).toBeUndefined();
+        expect(service.getDownload("/terminal", started.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+        expect(jobs.get("/terminal", started.job.id)?.result?.outputs).toBeUndefined();
+        const restarted = new StudioReplayExecutionService();
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+        expect(restarted.getStatus("/terminal", started.job.id)).toMatchObject({status: "failed", error: view.error, auditPrefix: recording.audit});
+        expect(restarted.getDownload("/terminal", started.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+        recorder.releaseAuditSession(session);
+    }
 });

@@ -27,6 +27,8 @@ export type ReplayProgressView = {
     // StudioReplayExecutionService), not an API-call failure (those are rendered separately by
     // main.ts's own catch handling around each apiClient call).
     error?: string;
+    verifiedDeliveries?: number;
+    nextCommand?: StudioReplayJobView["nextCommand"];
 };
 
 export function describeReplayProgress(job: StudioReplayJobView): ReplayProgressView {
@@ -39,6 +41,8 @@ export function describeReplayProgress(job: StudioReplayJobView): ReplayProgress
         percent,
         durationMs: job.durationMs,
         error: job.error,
+        verifiedDeliveries: job.auditPrefix?.deliveries.length,
+        nextCommand: job.nextCommand,
     };
 }
 

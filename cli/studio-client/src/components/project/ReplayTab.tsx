@@ -219,15 +219,6 @@ export function ReplayTab({
     const form = useForm<FindFormValues>({mode: "uncontrolled", initialValues: {round: 1, seed: ""}});
     const [selectedMode, setSelectedMode] = useState<string | null>(null);
     useEffect(() => {
-        if (recoveryRequest === undefined) return;
-        const round = typeof recoveryRequest.round === "number" ? recoveryRequest.round : undefined;
-        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
-        if (round !== undefined || seed !== undefined) form.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
-        if (typeof recoveryRequest.modeName === "string") setSelectedMode(recoveryRequest.modeName);
-        // Mantine's uncontrolled form object is intentionally stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [recoveryRequest]);
-    useEffect(() => {
         if (selectedMode === null && availableModes !== undefined && availableModes.length > 0) {
             setSelectedMode(availableModes[0]);
         }
@@ -251,6 +242,21 @@ export function ReplayTab({
     // `markLoaded(method, false)`, which is what keeps a prior target's terminal progress/retry/error/
     // result from being presented as this target's state.
     const [jobLoaded, setJobLoaded] = useState(false);
+    useEffect(() => {
+        if (recoveryRequest === undefined) return;
+        if (recoveryRequest.recording) {
+            setFindMethod("artifact");
+            onLoadExpectedFromPaste(JSON.stringify(recoveryRequest.recording));
+            setLoadedForMethod("artifact");
+            setJobLoaded(false);
+        }
+        const round = typeof recoveryRequest.round === "number" ? recoveryRequest.round : undefined;
+        const seed = typeof recoveryRequest.seed === "string" ? recoveryRequest.seed : undefined;
+        if (round !== undefined || seed !== undefined) form.setValues({...(round === undefined ? {} : {round}), ...(seed === undefined ? {} : {seed})});
+        if (typeof recoveryRequest.modeName === "string") setSelectedMode(recoveryRequest.modeName);
+        // Mantine's uncontrolled form object is intentionally stable.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [recoveryRequest]);
     const [pending, setPending] = useState<ReplayLoadTarget>();
     const [artifactText, setArtifactText] = useState("");
     const [selectedSpin, setSelectedSpin] = useState<StudioRuntimeSessionView>();
@@ -1077,9 +1083,8 @@ export function ReplayTab({
                                             style={{overflowWrap: "anywhere"}}
                                         >
                                             <Text size="sm" mb="xs">
-                                                The replay session hit an error partway through -- most likely a bug in the game&apos;s own logic
-                                                triggered by this seed/round, not something wrong with Replay itself. &quot;Run again with the same
-                                                parameters&quot; below retries it as-is.
+                                                Replay stopped before a completed result could be published. Inspect the server message and
+                                                any retained execution prefix before retrying with the same parameters.
                                             </Text>
                                             <AdvancedDisclosure detail="server message">
                                                 <Text size="sm">{progress.error ?? "Replay failed."}</Text>
@@ -1100,6 +1105,11 @@ export function ReplayTab({
                                         <Text size="sm" mb={4}>
                                             {progress.status} — {progress.completedRounds}/{progress.round} rounds
                                         </Text>
+                                        {!active && progress.verifiedDeliveries !== undefined && (
+                                            <Text size="sm">Verified prefix: {progress.verifiedDeliveries} deliveries. Replay remains incomplete.
+                                                {progress.nextCommand?.continuation && ` Next continuation: ${progress.nextCommand.continuation.roundId}, cursor ${progress.nextCommand.continuation.cursor}.`}
+                                            </Text>
+                                        )}
                                         {/* This is the completed replay's real public artifact, kept with the
                                             terminal status rather than in the page-wide action footer. A person
                                             can now reach the result and its JSON through one rendered operation

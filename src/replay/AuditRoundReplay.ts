@@ -149,15 +149,24 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
             if (disposition[key] !== undefined && (typeof disposition[key] !== "string" || !Number.isFinite(Date.parse(disposition[key]!)))) throw new AuditReplayError("audit-structure", `${path}.disposition.${key}`, "Invalid original operation time.");
         }
         for (const key of ["walletPayout", "walletCredits"] as const) {
-            if (disposition[key] !== undefined && (!Number.isFinite(disposition[key]) || disposition[key]! < 0)) throw new AuditReplayError("audit-state", `${path}.disposition.${key}`, "Invalid settlement amount.");
+            if (disposition[key] !== undefined && (!Number.isFinite(disposition[key]) || (key === "walletCredits" && disposition[key]! < 0))) throw new AuditReplayError("audit-state", `${path}.disposition.${key}`, "Invalid settlement amount.");
         }
         if ((disposition.expectedVersion === undefined) !== (disposition.version === undefined) || (disposition.expectedVersion !== undefined &&
             (!Number.isSafeInteger(disposition.expectedVersion) || disposition.expectedVersion < 1 || disposition.version !== disposition.expectedVersion + 1))) throw new AuditReplayError("audit-identity", `${path}.disposition.version`, "Invalid accepted revision transition.");
-        if (index && disposition.expectedVersion !== undefined && r.deliveries[index - 1].disposition.version !== disposition.expectedVersion) throw new AuditReplayError("audit-order", `${path}.disposition.expectedVersion`, "Revision sequence does not follow prior delivery.");
+        const previousDisposition = r.deliveries[index - 1]?.disposition;
+        const sameCompositeOperation = disposition.requestId !== undefined && previousDisposition?.requestId === disposition.requestId &&
+            previousDisposition.attemptId === disposition.attemptId && previousDisposition.expectedVersion === disposition.expectedVersion && previousDisposition.version === disposition.version;
+        if (index && disposition.expectedVersion !== undefined && !sameCompositeOperation && previousDisposition?.version !== disposition.expectedVersion) throw new AuditReplayError("audit-order", `${path}.disposition.expectedVersion`, "Revision sequence does not follow prior delivery.");
         if ((command.sessionId !== undefined && command.sessionId !== delivery.disposition.sessionId) || (command.requestId !== undefined && command.requestId !== delivery.disposition.requestId) ||
             (command.expectedVersion !== undefined && command.expectedVersion !== delivery.disposition.expectedVersion)) throw new AuditReplayError("audit-identity", `${path}.command`, "Command and settlement identities/revisions differ.");
         if (index && delivery.disposition.sessionId !== r.deliveries[0].disposition.sessionId) throw new AuditReplayError("audit-identity", `${path}.disposition.sessionId`, "Foreign session.");
-        const key = delivery.disposition.requestId ?? (command.continuation ? `${command.continuation.roundId}:${command.continuation.cursor}` : command.roundId);
+        // One composite request owns several distinct accepted delivery boundaries.
+        let deliveryKey: (string | number)[] | undefined;
+        if (command.continuation) deliveryKey = [command.continuation.roundId, command.continuation.cursor];
+        else if (command.roundId) deliveryKey = [command.roundId, "entry"];
+        let key: string | undefined;
+        if (disposition.requestId) key = JSON.stringify([disposition.requestId, deliveryKey ?? null]);
+        else if (deliveryKey) key = JSON.stringify(deliveryKey);
         if (key && identities.has(key)) throw new AuditReplayError("audit-order", path, "Duplicate delivery; retries reference historical evidence instead of appending calculation.");
         if (key) identities.add(key);
         for (const boundary of ["before", "after"] as const) {
@@ -206,25 +215,27 @@ export class AuditRoundReplay implements AuditRoundReplaying {
         const deliveries: AuditDelivery[] = [];
         for (const [index, delivery] of recording.deliveries.entries()) {
             if (signal?.aborted) throw new AuditReplayError("audit-cancelled", `deliveries[${index}]`, "Cancelled before execution.");
-            const session = game.createSession(recording.context);
-            if (!isSessionStateRestorable(session)) throw new AuditReplayError("audit-codec-unsupported", "session", "Selected session has no complete executable codec.");
-            if (!sessionStateSchemasMatch(resolveSessionStateSchema(session), recording.stateSchema)) throw new AuditReplayError("audit-version", "session.stateSchema", "Selected session codec differs from package declaration.");
-            restoreFeatureState(session, toCanonicalJson(delivery.before.state));
-            session.setBet(delivery.before.bet);
-            session.setCreditsAmount(delivery.before.credits);
-            const runtime = new SessionRuntime(session, delivery.before.logicalRound);
-            let result: SessionCommandResult;
+            let actual: AuditDelivery;
             try {
+                const session = game.createSession(recording.context);
+                if (!isSessionStateRestorable(session)) throw new AuditReplayError("audit-codec-unsupported", `deliveries[${index}].session`, "Selected session has no complete executable codec.");
+                if (!sessionStateSchemasMatch(resolveSessionStateSchema(session), recording.stateSchema)) throw new AuditReplayError("audit-version", `deliveries[${index}].session.stateSchema`, "Selected session codec differs from package declaration.");
+                restoreFeatureState(session, toCanonicalJson(delivery.before.state));
+                session.setBet(delivery.before.bet);
+                session.setCreditsAmount(delivery.before.credits);
+                const runtime = new SessionRuntime(session, delivery.before.logicalRound);
+                let result: SessionCommandResult;
                 if (delivery.execution === "accepted-boundary") {
                     const prepared = runtime.prepare(delivery.command, delivery.before.credits);
                     result = prepared.status === "ready" ? prepared.execute() : {status: "blocked", reason: prepared.reason};
                 } else result = runtime.execute(delivery.command, signal);
+                if (result.status !== "played") throw new AuditReplayError("audit-execution-mismatch", `deliveries[${index}].command`, result.reason);
+                actual = captureAuditDelivery(game, session, delivery.command, delivery.before, result, delivery.disposition, delivery.execution);
+                equal(actual, delivery, `deliveries[${index}]`, "audit-execution-mismatch");
             } catch (error) {
-                throw new AuditReplayError("audit-execution-mismatch", `deliveries[${index}]`, String(error));
+                if (error instanceof AuditReplayError && error.path.startsWith(`deliveries[${index}]`)) throw error;
+                throw new AuditReplayError("audit-execution-mismatch", `deliveries[${index}]`, error instanceof Error ? error.message : String(error));
             }
-            if (result.status !== "played") throw new AuditReplayError("audit-execution-mismatch", `deliveries[${index}].command`, result.reason);
-            const actual = captureAuditDelivery(game, session, delivery.command, delivery.before, result, delivery.disposition, delivery.execution);
-            equal(actual, delivery, `deliveries[${index}]`, "audit-execution-mismatch");
             deliveries.push(actual);
             yield {completedDeliveries: index + 1, delivery: actual};
         }

@@ -23,6 +23,9 @@ export type StudioReplayJobView = {
     configHash?: string;
     // Only present once `status` is "completed" — see StudioReplayExecutionService.run().
     descriptor?: ReplayDescriptor;
+    /** Verified execution only, never a completed download. */
+    auditPrefix?: import("@fromstan/pokie").AuditRoundRecording;
+    nextCommand?: import("@fromstan/pokie").SessionCommand;
     // Only present once `status` is "failed" — a safe message, never a stack trace.
     error?: string;
     // The real outcome-library mode this job replays/replayed -- see StudioReplayJobRecord's own doc

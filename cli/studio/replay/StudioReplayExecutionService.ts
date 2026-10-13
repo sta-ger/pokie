@@ -506,10 +506,10 @@ export class StudioReplayExecutionService {
                         if (record.abortController.signal.aborted) {
                             record.completedRounds += played + (record.unit !== "logical-round" || logicalRound?.status === "completed" ? 1 : 0);
                             this.cancelRecord(record);
-                            return; 
+                            return;
                         }
                         if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Logical replay exceeded its bound; no completed descriptor can be published.");
-                        const stake = logicalRound?.totalStake ?? result.stake, 
+                        const stake = logicalRound?.totalStake ?? result.stake,
                             win = logicalRound?.totalWin ?? result.win;
                         totalBet += stake;
                         totalWin += win;
@@ -925,6 +925,8 @@ export class StudioReplayExecutionService {
             record.descriptor = {...record.descriptor, durationMs: record.durationMs};
         }
         try {
+            // Durable completion is the publication boundary. Save the compatibility view first.
+            this.repository.save(record);
             if (record.status === "completed") {
                 this.jobService?.complete(record.id, {
                     summary: record.source === "outcome-source-sample" ? "Outcome Library draw recorded." : "Replay completed.",
@@ -935,16 +937,35 @@ export class StudioReplayExecutionService {
             } else if (record.status === "cancelled") {
                 this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds, ...(record.auditPrefix ? {auditPrefix: record.auditPrefix, nextCommand: record.recording?.audit.deliveries[record.auditPrefix.deliveries.length]?.command} : {})}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
             } else if (record.status === "failed") {
-                this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the replay again."});
+                this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the replay again."}, this.prefixResult(record));
             }
-            this.repository.save(record);
         } catch (error) {
+            // A store may throw after committing. Its retained terminal remains authoritative.
+            const durable = this.jobService?.get(record.projectRoot, record.id);
+            const published = durable && descriptorFromDurableDetail(durable);
+            if (published) {
+                record.status = "completed";
+                record.descriptor = published;
+                return;
+            }
             Reflect.deleteProperty(record, "descriptor");
             record.status = "failed";
             record.error = `Replay terminal publication failed: ${error instanceof Error ? error.message : String(error)}`;
-            this.repository.save(record);
-            throw error;
+            this.jobService?.fail(record.id, record.error, {action: "retry", reason: record.error}, this.prefixResult(record));
+            // The compatibility repository can remain unavailable; the durable failed view owns restart.
+            try {
+                this.repository.save(record);
+            } catch {
+                // It may already retain the same record by reference. Never publish success here.
+            }
         }
+    }
+
+    private prefixResult(record: StudioReplayJobRecord): import("../jobs/StudioJobView.js").StudioJobResultView | undefined {
+        if (!record.auditPrefix) return undefined;
+        return {summary: "Replay incomplete; retained verified execution prefix.", provenance: {replayId: record.id, projectRoot: record.projectRoot},
+            detail: {replayId: record.id, rounds: record.completedRounds, ...(record.auditPrefix ? {auditPrefix: record.auditPrefix,
+                nextCommand: record.recording?.audit.deliveries[record.auditPrefix.deliveries.length]?.command} : {})}};
     }
 
     private publishPendingTerminal(record: StudioReplayJobRecord): void {
@@ -976,6 +997,7 @@ export class StudioReplayExecutionService {
         if (common?.operation !== "replay") return view;
         return {
             ...view,
+            ...this.prefixView(common),
             status: common.status,
             ...(common.startedAt === undefined ? {} : {startedAt: new Date(common.startedAt).toISOString()}),
             ...(common.durationMs === undefined ? {} : {durationMs: common.durationMs}),
@@ -984,10 +1006,19 @@ export class StudioReplayExecutionService {
         };
     }
 
+    private prefixView(job: StudioJobView): Pick<StudioReplayJobView, "auditPrefix" | "nextCommand"> {
+        const detail = job.result?.detail;
+        return {auditPrefix: detail?.auditPrefix as StudioReplayJobView["auditPrefix"], nextCommand: detail?.nextCommand as StudioReplayJobView["nextCommand"]};
+    }
+
     private projectDurableJob(job: StudioJobView): StudioReplayJobView {
         const descriptor = descriptorFromDurableDetail(job);
         const modeName = descriptor?.outcomeSource?.modeName ?? (typeof job.request.modeName === "string" ? job.request.modeName : undefined);
+        const round = typeof job.request.round === "number" ? job.request.round : 0;
+        let completedRounds = typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0);
+        if (job.request.recording) completedRounds = descriptor ? round : 0;
         return {
+            ...this.prefixView(job),
             ...(descriptor === undefined ? {} : {
                 game: descriptor.game,
                 configHash: descriptor.artifact?.provenance.configHash,
@@ -995,12 +1026,12 @@ export class StudioReplayExecutionService {
             }),
             id: job.id,
             status: job.status,
-            round: typeof job.request.round === "number" ? job.request.round : 0,
+            round,
             ...(typeof job.request.seed === "string" ? {seed: job.request.seed} : {}),
             ...(typeof job.request.simulationId === "string" ? {simulationId: job.request.simulationId} : {}),
             ...(modeName === undefined ? {} : {modeName}),
             startedAt: new Date(job.startedAt ?? job.createdAt).toISOString(),
-            completedRounds: typeof job.progress?.current === "number" ? job.progress.current : Number(job.progress?.current ?? 0),
+            completedRounds,
             durationMs: job.durationMs ?? 0,
             ...(job.error === undefined ? {} : {error: job.error}),
             ...(job.recovery === undefined ? {} : {recovery: job.recovery}),

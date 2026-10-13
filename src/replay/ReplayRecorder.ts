@@ -1,5 +1,8 @@
 import {AuditRoundReplay, buildAuditRoundRecording, captureAuditBoundary, captureAuditDelivery, validateAuditRoundRecording} from "./AuditRoundReplay.js";
 import type {AuditDelivery, AuditDisposition, AuditRoundRecording} from "./AuditRoundRecording.js";
+import {deepFreeze} from "../internal/deepFreeze.js";
+import {toCanonicalJson} from "../json/toCanonicalJson.js";
+import {resolveGameSessionIdentity} from "../runtime/GameSessionIdentity.js";
 import {AuditReplayError} from "./AuditReplayError.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieGameContext} from "../gamepackage/PokieGameContext.js";
@@ -29,15 +32,35 @@ type SessionWithSymbolsCombination = GameSessionHandling & {
 // playing a fresh session forward from round 1 up to the requested round. Reproducibility for a given
 // seed depends entirely on the game package actually threading context.seed into a deterministic setup.
 export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecording, AuditReplayRecording {
-    private readonly auditHistory = new WeakMap<GameSessionHandling, Map<string, {recording: AuditRoundRecording; length: number}>>();
+    private readonly auditHistory = new WeakMap<GameSessionHandling, {operations: Map<string, {inputs: string; descriptor: ReplayDescriptor}>; deliveries: number}>();
+
+    constructor(private readonly auditRetentionLimit = 10000) {
+        if (!Number.isSafeInteger(auditRetentionLimit) || auditRetentionLimit < 1 || auditRetentionLimit > 10000) throw new Error("Audit retention limit must be an integer in 1..10000.");
+    }
 
     /** Capture the actual injected session without changing its funding, commands or RNG. */
     public recordAudit(game: PokieGame, session: GameSessionHandling, commands: readonly SessionCommand[], disposition: AuditDisposition, context?: PokieGameContext): ReplayDescriptor {
         if (!game.getConfigHash || !game.getSessionStateSchema || !game.getSessionCommandCapabilities) throw new AuditReplayError("audit-codec-unsupported", "game", "Exact audit requires model identity and authoritative executable codecs.");
-        const history = this.auditHistory.get(session) ?? new Map();
-        const requestKey = JSON.stringify(commands);
-        const historical = history.get(requestKey);
-        if (historical) return this.describeAudit(buildAuditRoundRecording(game, context, historical.recording.deliveries.slice(0, historical.length)));
+        const history = this.auditHistory.get(session) ?? {operations: new Map(), deliveries: 0};
+        const commandRequest = (commands[0] as SessionCommand & {requestId?: string})?.requestId;
+        const operationId = disposition.requestId ?? commandRequest;
+        const logicalKeys = commands.map(command => {
+            if (command.continuation) return [command.continuation.roundId, command.continuation.cursor];
+            return command.roundId ? [command.roundId, "entry"] : null;
+        });
+        let requestKey: string | undefined;
+        if (operationId) requestKey = JSON.stringify([disposition.sessionId, "request", operationId]);
+        else if (logicalKeys.length && logicalKeys.every(key => key !== null)) requestKey = JSON.stringify([disposition.sessionId, "logical", logicalKeys]);
+        const inputs = JSON.stringify(toCanonicalJson({commands, disposition, ...(context ? {context} : {}), identity: resolveGameSessionIdentity(game), game: JSON.parse(JSON.stringify(game.getManifest())), stateSchema: JSON.parse(JSON.stringify(game.getSessionStateSchema()))}));
+        const historical = requestKey ? history.operations.get(requestKey) : undefined;
+        if (historical) {
+            if (historical.inputs !== inputs) throw new AuditReplayError("audit-identity", "operation", "Retry conflicts with the original commands, disposition, context or model.");
+            return historical.descriptor;
+        }
+        // Reserve the maximum accepted boundaries before executing; a capacity rejection draws nothing.
+        const required = commands.reduce((count, command) => count + (command.delivery === "composite" ? command.maxSubrounds ?? 1000 : 1), 0);
+        if (!required || history.deliveries + required > this.auditRetentionLimit) throw new AuditReplayError("audit-order", "commands", "Audit retry retention limit reached; export evidence and release the session.");
+        this.auditHistory.set(session, history);
         const startedAt = new Date().toISOString();
         const deliveries: AuditDelivery[] = [];
         let before = captureAuditBoundary(session);
@@ -45,6 +68,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             const delivery = captureAuditDelivery(game, session, command, before, result,
                 {...disposition, startedAt: disposition.startedAt ?? startedAt, recordedAt: disposition.recordedAt ?? new Date().toISOString()}, "accepted-boundary");
             deliveries.push(delivery);
+            history.deliveries++;
             before = delivery.after;
         });
         for (const command of commands) {
@@ -53,15 +77,16 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         }
         if (!deliveries.length) throw new AuditReplayError("audit-order", "commands", "Historical delivery was not captured by this recorder; export its original retained evidence.");
         const recording = buildAuditRoundRecording(game, context, deliveries);
-        for (const [index, delivery] of deliveries.entries()) history.set(JSON.stringify([delivery.command]), {recording, length: index + 1});
-        history.set(requestKey, {recording, length: deliveries.length});
+        const descriptor = deepFreeze(this.describeAudit(recording));
+        if (requestKey) history.operations.set(requestKey, {inputs, descriptor});
         this.auditHistory.set(session, history);
-        return this.describeAudit(recording);
+        return descriptor;
     }
 
     /** Recorder history has the same owner lifetime as direct runtime retained deliveries. */
     public releaseAuditSession(session: GameSessionHandling): void {
         this.auditHistory.delete(session);
+        new SessionRuntime(session).release();
     }
 
     public describeAudit(audit: AuditRoundRecording): ReplayDescriptor {

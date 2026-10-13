@@ -65,6 +65,150 @@ describe("canonical audited logical-round replay", () => {
         expect(current.audit.deliveries[0].artifact?.screen[0]).toHaveLength(3);
     });
 
+    it.each([0.05, 7.5, 1e-7].flatMap(bet => ["independent", "atomic", "external"].map(composition => ({bet, composition}))))("exports generated losing settlement without rounding stakes ($composition, $bet)", async ({bet, composition}) => {
+        const blueprint = {...overscanBlueprint, paytable: {A: {"5": 0}, B: {"5": 0}, W: {"5": 0}, S: {"2": 0, "3": 0, "5": 0}}};
+        const game = createOverscanGame(blueprint),
+            context = {seed: "7"};
+        const session = game.createSession(context);
+        session.setCreditsAmount(25);
+        const initial = api.captureInitialPokieSessionState(context, session, undefined, false, game);
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "losing", requestId: "loss", bet};
+        let store: api.SqliteTransactionalRoundStore | api.SqliteExternalRoundStore | undefined;
+        let provider: ControllableDurableWallet | undefined;
+        try {
+            let result: ReturnType<typeof played>;
+            if (composition === "independent") {
+                const sessions = new api.InMemorySessionRepository();
+                await sessions.save("losing", initial);
+                const wallet = new api.InMemoryWallet(25);
+                result = played(await new api.SpinCommandHandler(game, sessions, wallet).execute(command));
+                expect(await wallet.getBalance("losing")).toBe(25 - bet);
+            } else {
+                const filename = path.join(runtime.directory, `losing-${composition}-${bet}.sqlite`);
+                if (composition === "external") {
+                    provider = await ControllableDurableWallet.open(`${filename}-provider`);
+                    await provider.setBalance("losing", 25);
+                    store = await api.SqliteExternalRoundStore.open(filename, provider);
+                } else store = await api.SqliteTransactionalRoundStore.open(filename);
+                await store.initialize("losing", initial, game);
+                result = played(await new api.SpinCommandHandler(game, store).execute(command));
+            }
+            expect(result).toMatchObject({win: 0, stake: bet, credits: 25 - bet});
+            const delivery = result.audit!.deliveries[0];
+            expect(delivery.result.stake).toBe(bet);
+            expect(delivery.disposition.walletPayout).toBe(delivery.after.credits - delivery.before.credits + bet);
+            expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(result.audit))).verification).toBe("verified");
+        } finally {
+            await store?.close();
+            provider?.close();
+        }
+    });
+
+    it.each(["createSession", "fromSessionState", "setBet", "setCreditsAmount"] as const)("wraps throwing reconstruction hook %s with its delivery path", hook => {
+        const current = recorded(createOverscanGame(feature), {kind: "spin", roundId: "hooks", mode: "buy", delivery: "composite"});
+        const create = current.game.createSession.bind(current.game);
+        let index = 0;
+        const game = {...current.game, createSession(context?: api.PokieGameContext) {
+            const session = create(context);
+            if (index++ === 1) {
+                if (hook === "createSession") throw new Error("reconstruction failed");
+                Object.assign(session, {[hook]: () => {
+                    throw new Error("reconstruction failed");
+                }});
+            }
+            return session;
+        }};
+        expect(() => new api.AuditRoundReplay().replay(game, current.audit)).toThrow("audit-execution-mismatch at deliveries[1]: reconstruction failed");
+    });
+
+    it.each([false, true])("retains actual compensated/recovered audit and rejects original corruption (recovery=%s)", async recover => {
+        const game = createOverscanGame(),
+            context = {seed: "7"};
+        const sessions = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(25),
+            history = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            log = new api.InMemorySpinOperationLog();
+        const session = game.createSession(context);
+        session.setCreditsAmount(25);
+        await sessions.save("lifecycle", api.captureInitialPokieSessionState(context, session, undefined, false, game));
+        jest.spyOn(history, "save").mockRejectedValueOnce(new Error("result-save failed"));
+        if (recover) {
+            jest.spyOn(wallet, "reverse").mockRejectedValue(new Error("reversal failed"));
+            jest.spyOn(sessions, "save").mockRejectedValueOnce(new Error("state restore failed"));
+        }
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "lifecycle", requestId: "request"};
+        const handler = new api.SpinCommandHandler(game, sessions, wallet, history, log, true);
+        expect(await handler.execute(command)).toMatchObject({status: "storage-error"});
+        const record = (await log.load("lifecycle", "request"))!;
+        expect(record.checkpoint).toBe(recover ? "session-saved" : "compensated");
+        expect(record.capturedResult!.audit!.deliveries[0].disposition.status).toBe(recover ? "pending" : "compensated");
+        expect(new api.AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(record.capturedResult!.audit))).verification).toBe("verified");
+        if (!recover) {
+            expect(await wallet.getBalance("lifecycle")).toBeCloseTo(25, 12);
+            const service = new api.SpinReconciliationService(wallet, sessions, history, log, true, false, 0, undefined, undefined, game);
+            expect(await service.reconcileOne("lifecycle", "request")).toMatchObject({status: "no-action-needed"});
+            expect(await log.load("lifecycle", "request")).toEqual(record);
+            return;
+        }
+        const reconcile = new api.SpinReconciliationService(wallet, sessions, history, log, true, false, 0, undefined, undefined, game);
+        const corrupt = JSON.parse(JSON.stringify(record)) as api.SpinOperationRecord;
+        (corrupt.capturedResult!.audit!.deliveries[0].disposition as {requestId: string}).requestId = "forged";
+        await log.record(corrupt);
+        const save = jest.spyOn(history, "save"),
+            state = await sessions.load("lifecycle"),
+            balance = await wallet.getBalance("lifecycle");
+        save.mockClear();
+        expect(await reconcile.reconcileOne("lifecycle", "request")).toMatchObject({status: "manual-recovery-required", reason: expect.stringContaining("audit-hash")});
+        expect(save).not.toHaveBeenCalled();
+        expect(await log.load("lifecycle", "request")).toEqual(corrupt);
+        expect(await sessions.load("lifecycle")).toEqual(state);
+        expect(await wallet.getBalance("lifecycle")).toBe(balance);
+        const substituted = {...corrupt, capturedResult: {...corrupt.capturedResult!, audit: rehash(corrupt.capturedResult!.audit!)}};
+        await log.record(substituted);
+        expect(await reconcile.reconcileOne("lifecycle", "request")).toMatchObject({status: "manual-recovery-required", reason: expect.stringContaining("audit-identity")});
+        const foreignAttempt = JSON.parse(JSON.stringify(record)) as api.SpinOperationRecord;
+        (foreignAttempt.capturedResult!.audit!.deliveries[0].disposition as {attemptId: string}).attemptId = "other-attempt";
+        await log.record({...foreignAttempt, capturedResult: {...foreignAttempt.capturedResult!, audit: rehash(foreignAttempt.capturedResult!.audit!)}});
+        expect(await reconcile.reconcileOne("lifecycle", "request")).toMatchObject({status: "manual-recovery-required", reason: expect.stringContaining("Captured audit identity")});
+        expect(save).not.toHaveBeenCalled();
+        await log.record(record);
+        const resumed = await reconcile.reconcileOne("lifecycle", "request");
+        expect(resumed.status).toBe("resumed");
+        const retained = (await log.load("lifecycle", "request"))!;
+        const result = played((await history.load("lifecycle", "request"))!);
+        expect(retained.checkpoint).toBe("committed");
+        expect(retained.capturedResult!.audit).toEqual(result.audit);
+        expect(result.audit!.deliveries[0].disposition.status).toBe("committed");
+        expect(new api.AuditRoundReplay().replay(game, result.audit!).verification).toBe("verified");
+    });
+
+    it("rejects a corrupted retained prefix before continuation execution or rehashing", async () => {
+        const calculate = jest.fn();
+        const game = {...transactionalRoundGame(calculate), getConfigHash: () => "prefix-model"};
+        const sessions = new api.InMemorySessionRepository(),
+            history = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            wallet = new api.InMemoryWallet(25);
+        const session = game.createSession({seed: "7"});
+        session.setCreditsAmount(25);
+        await sessions.save("prefix", api.captureInitialPokieSessionState({seed: "7"}, session, undefined, false, game));
+        const handler = new api.SpinCommandHandler(game, sessions, wallet, history);
+        const first = played(await handler.execute({kind: "spin", sessionId: "prefix", requestId: "entry", roundId: "round", delivery: "stepwise"}));
+        const state = await sessions.load("prefix"),
+            balance = await wallet.getBalance("prefix");
+        calculate.mockClear();
+        jest.spyOn(history, "loadRound").mockResolvedValue({...first, audit: {...first.audit!, hash: "sha256:" + "0".repeat(64)}});
+        expect(await handler.execute({kind: "spin", sessionId: "prefix", requestId: "next", continuation: {roundId: "round", cursor: 1}, delivery: "stepwise"})).toMatchObject({status: "corrupt-state", reason: expect.stringContaining("audit-hash")});
+        expect(calculate).not.toHaveBeenCalled();
+        expect(await history.load("prefix", "next")).toBeUndefined();
+        expect(await sessions.load("prefix")).toEqual(state);
+        expect(await wallet.getBalance("prefix")).toBe(balance);
+    });
+
+    it("refuses to rehash corrupted evidence when changing disposition", () => {
+        const current = recorded();
+        expect(() => api.updateAuditDisposition({...current.audit, hash: "sha256:" + "0".repeat(64)}, {status: "committed"})).toThrow("audit-hash");
+    });
+
     it("records free-game entry, continuations, retriggers and deferred bank without synthetic funding", () => {
         const current = recorded(createOverscanGame(feature), {kind: "spin", mode: "buy", bet: 0.05, delivery: "composite", roundId: "free"}, 25);
         expect(current.audit.deliveries[0].before.credits).toBe(25);

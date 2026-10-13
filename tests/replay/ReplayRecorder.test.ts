@@ -1,6 +1,6 @@
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, SessionRuntime} from "@fromstan/pokie";
+import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, SessionRuntime, AuditRoundReplay, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
 import path from "path";
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
@@ -226,5 +226,67 @@ describe("fractional logical replay payout", () => {
             expect(actual.subrounds[0].payout).toBe(0);
             expect(actual.subrounds[actual.cursor - 1].payout).toBe(actual.totalWin);
         }
+    });
+});
+
+describe("direct audit operation identity and retention", () => {
+    const disposition = {status: "calculated" as const, sessionId: "direct", durability: "detached" as const};
+    const game = {...transactionalRoundGame(), getConfigHash: () => "recorder-model"};
+
+    it("executes identical unkeyed operations separately, reserves a checked bound and retires owned runtime references", () => {
+        expect(() => new ReplayRecorder(0)).toThrow("1..10000");
+        expect(() => new ReplayRecorder(10001)).toThrow("1..10000");
+        const recorder = new ReplayRecorder(3),
+            session = game.createSession(),
+            play = jest.spyOn(session, "play");
+        const first = recorder.recordAudit(game, session, [{kind: "spin"}], disposition);
+        const second = recorder.recordAudit(game, session, [{kind: "spin"}], disposition);
+        expect(play).toHaveBeenCalledTimes(2);
+        expect(second.audit!.deliveries[0].before).toEqual(first.audit!.deliveries[0].after);
+        expect(second.audit!.hash).not.toBe(first.audit!.hash);
+        const keyed: SessionCommand = {kind: "spin", roundId: "retained"};
+        const third = recorder.recordAudit(game, session, [keyed], {...disposition, requestId: "third"});
+        expect(recorder.recordAudit(game, session, [keyed], {...disposition, requestId: "third"})).toEqual(third);
+        expect(new SessionRuntime(session).getRetainedDeliveryCount()).toBe(1);
+        expect(() => recorder.recordAudit(game, session, [{kind: "spin"}], disposition)).toThrow("retention limit");
+        expect(play).toHaveBeenCalledTimes(3);
+        recorder.releaseAuditSession(session);
+        expect(new SessionRuntime(session).getRetainedDeliveryCount()).toBe(0);
+        expect(new SessionRuntime(session).execute({kind: "spin"})).toMatchObject({status: "blocked"});
+        expect(new AuditRoundReplay().replay(game, JSON.parse(JSON.stringify(second.audit))).verification).toBe("verified");
+    });
+
+    it("preserves historical digest/context and rejects command, context, disposition and model substitutions before execution", () => {
+        const recorder = new ReplayRecorder(2),
+            session = game.createSession(),
+            context = {seed: "original"},
+            accepted = {...disposition, requestId: "identity"};
+        const command: SessionCommand = {kind: "spin"};
+        const first = recorder.recordAudit(game, session, [command], accepted, context);
+        recorder.recordAudit(game, session, [{kind: "spin"}], {...disposition, requestId: "later"}, context);
+        const before = captureAuditBoundary(session),
+            play = jest.spyOn(session, "play");
+        expect(recorder.recordAudit(game, session, [command], accepted, context)).toBe(first);
+        for (const attempt of [
+            () => recorder.recordAudit(game, session, [{...command, bet: 2}], accepted, context),
+            () => recorder.recordAudit(game, session, [command], accepted, {seed: "replacement"}),
+            () => recorder.recordAudit(game, session, [command], {...accepted, status: "committed"}, context),
+            () => recorder.recordAudit({...game, getConfigHash: () => "replacement"}, session, [command], accepted, context),
+        ]) expect(attempt).toThrow("audit-identity at operation");
+        expect(play).not.toHaveBeenCalled();
+        expect(captureAuditBoundary(session)).toEqual(before);
+        expect(first.audit!.context).toEqual(context);
+        expect(Object.isFrozen(first)).toBe(true);
+        recorder.releaseAuditSession(session);
+    });
+
+    it("distinguishes every accepted delivery of a request-bearing composite recording", () => {
+        const recorder = new ReplayRecorder(),
+            session = game.createSession();
+        const descriptor = recorder.recordAudit(game, session, [{kind: "spin", mode: "double", delivery: "composite", roundId: "round"}], {...disposition, requestId: "composite", expectedVersion: 1, version: 2});
+        expect(descriptor.audit!.deliveries.length).toBeGreaterThan(1);
+        expect(descriptor.audit!.deliveries.every(delivery => delivery.disposition.requestId === "composite")).toBe(true);
+        expect(new AuditRoundReplay().replay(game, descriptor.audit!).verification).toBe("verified");
+        recorder.releaseAuditSession(session);
     });
 });

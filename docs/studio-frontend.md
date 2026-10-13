@@ -371,6 +371,8 @@ canonical generated/debug data; full audit export additionally includes executab
 state and RNG evidence. A server verdict, not a UI-only comparison, establishes audit
 verification. Pending/exhausted prefixes remain explicitly incomplete. Legacy seed
 runs are best-effort and lack exact audit evidence. Replay releases its runtime lease
-before publishing a descriptor; cancellation preserves verified prefix evidence and
-next-command identity in durable job detail, with no completed download. Studio Play
+before publishing a descriptor. Cancellation and failure preserve verified prefix evidence
+and next-command identity in job views and durable job detail, with no completed download.
+Terminal publication saves the compatibility view before durable completion; failed saves
+retain a failed recoverable job consistently in live and restarted views. Studio Play
 sessions remain process-only even when replay jobs use durable job storage.

@@ -1,5 +1,5 @@
 import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
-import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery} from "../../replay/AuditRoundReplay.js";
+import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery, validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
 import {AuditReplayError} from "../../replay/AuditReplayError.js";
 import type {AuditDisposition} from "../../replay/AuditRoundRecording.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
@@ -40,7 +40,7 @@ import {SpinReconciliationService} from "./SpinReconciliationService.js";
 import type {SpinCommandHandling} from "./SpinCommandHandling.js";
 import type {SpinCommandResult} from "./SpinCommandResult.js";
 import type {SpinOperationLog} from "./SpinOperationLog.js";
-import type {SpinOperationRecord} from "./SpinOperationRecord.js";
+import type {SpinOperationCapturedResult, SpinOperationRecord} from "./SpinOperationRecord.js";
 import type {SpinReconciliationOutcome} from "./SpinReconciliationOutcome.js";
 import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js";
 
@@ -553,6 +553,13 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             }
         }
 
+        if (intent?.continuation) {
+            const prior = await this.idempotencyRepository.loadRound?.(sessionId, intent.continuation.roundId);
+            if (prior?.status === "played" && prior.audit) {
+                const invalid = validateRetryResult(prior, this.game, sessionId, prior.requestId ?? "", this.liveSessions.get(sessionId)?.authority);
+                if (invalid) return {...invalid, sessionId};
+            }
+        }
         if ((intent?.delivery !== undefined || intent?.continuation !== undefined) && this.game.supportsLogicalRoundDelivery?.() === false) return {status: "invalid-command", sessionId, reason: "Selected game does not support logical delivery."};
 
         const capabilities = this.game.getSessionCommandCapabilities?.(state.context) ?? this.liveSessions.get(sessionId)?.authority.capabilities;
@@ -813,6 +820,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const delivery = captureAuditDelivery(this.game, session, command, before, executed, disposition, "accepted-boundary");
         const prior = command.continuation ? await this.idempotencyRepository.loadRound?.(command.sessionId, command.continuation.roundId) : undefined;
         if (prior?.status === "played" && prior.audit) {
+            validateAuditRoundRecording(prior.audit, this.game);
             return {audit: buildAuditRoundRecording(this.game, state.context, [...prior.audit.deliveries, delivery])};
         }
         try {
@@ -844,6 +852,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         let playStarted = false;
         let uncertainTransactionId: string | undefined;
         let failureCode: RuntimeFailureCode = "execution-error";
+        let capturedResult: SpinOperationCapturedResult | undefined;
         let checkpoint: ((record: Omit<SpinOperationRecord, "sessionId" | "requestId" | "attemptId" | "debitTransactionId" | "creditTransactionId" | "stakeAmount" | "expectedVersion" | "startedAt">) => Promise<void>) | undefined;
         try {
             // applyCommand() has already made the reversible command projection.  Everything from the
@@ -861,6 +870,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             // Every checkpoint() call below is a no-op unless requestId is defined — SpinOperationLog is
             // scoped to requestId-bearing attempts only, the same scope idempotency itself already has.
             checkpoint = (record) => {
+                if (record.capturedResult) capturedResult = record.capturedResult;
                 if (requestId === undefined) return Promise.resolve();
                 return this.operationLog.record({
                     sessionId,
@@ -1041,7 +1051,9 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                             await this.operationLog.delete(sessionId, requestId);
                         }
                     } else {
-                        await checkpoint?.({checkpoint: "compensated", updatedAt: new Date().toISOString()});
+                        await checkpoint?.({checkpoint: "compensated", updatedAt: new Date().toISOString(),
+                            ...(capturedResult ? {capturedResult: {...capturedResult,
+                                ...(capturedResult.audit ? {audit: updateAuditDisposition(capturedResult.audit, {status: "compensated"})} : {})}} : {})});
                     }
                 } catch {
                     // Cleanup is deliberately best-effort.  The command's original failure is the response

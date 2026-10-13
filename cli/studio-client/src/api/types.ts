@@ -920,6 +920,8 @@ export type StudioReplayJobView = {
     durationMs: number;
     game?: {id: string; name: string; version: string};
     descriptor?: ReplayDescriptor;
+    auditPrefix?: ReplayDescriptor["audit"];
+    nextCommand?: import("../../../../src/runtime/SessionCommand.js").SessionCommand;
     error?: string;
     recovery?: StudioJobView["recovery"];
     // The real outcome-library mode this job replays/replayed -- undefined for an ordinary

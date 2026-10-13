@@ -5821,6 +5821,32 @@ describe("StudioServer", () => {
             wins: [],
         };
 
+        it("loads Recent Rounds audit evidence through inspect/start/download and rejects a corrupt audit without seed fallback", async () => {
+            const game = {...transactionalRoundGame(), getConfigHash: () => "http-audit-model"};
+            await openSampleSlot(game);
+            await pollUntilProjectContextSettled(`${baseUrl}/api/project/context`);
+            const created = await post(`${baseUrl}/api/project/play/session`, {seed: "http-audit"});
+            expect(created.status).toBe(201);
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+            expect((await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {delivery: "composite"})).status).toBe(200);
+            const rounds = (await get(`${baseUrl}/api/project/rounds`)).body as Array<{debug: {recording: import("@fromstan/pokie").ReplayDescriptor}}>;
+            const recording = rounds[0].debug.recording;
+            expect(recording.audit).toBeDefined();
+            const inspected = await post(`${baseUrl}/api/project/replays/inspect-artifact`, recording);
+            expect(inspected).toMatchObject({status: 200, body: {recording, auditStatus: "recorded", artifactWarnings: []}});
+            const started = await post(`${baseUrl}/api/project/replays`, {round: recording.round, recording: (inspected.body as {recording: unknown}).recording});
+            expect(started.status).toBe(202);
+            const id = (started.body as {id: string}).id;
+            const terminal = await pollUntilTerminal(`${baseUrl}/api/project/replays/${id}`);
+            expect(terminal.body).toMatchObject({status: "completed", descriptor: {auditStatus: "verified", originalSessionId: recording.sessionId, audit: recording.audit}});
+            const download = await fetch(`${baseUrl}/api/project/replays/${id}/download`);
+            expect(download.status).toBe(200);
+            expect(await download.json()).toMatchObject({auditStatus: "verified", audit: recording.audit});
+            const corrupt = {...recording, audit: {...recording.audit!, hash: "sha256:" + "0".repeat(64)}};
+            expect(await post(`${baseUrl}/api/project/replays/inspect-artifact`, corrupt)).toMatchObject({status: 400, body: {error: expect.stringContaining("audit-hash")}});
+            expect(await post(`${baseUrl}/api/project/replays`, {round: recording.round, recording: corrupt})).toMatchObject({status: 400, body: {error: expect.stringContaining("audit-hash")}});
+        });
+
         it("returns 409 when there is no active project", async () => {
             const {status, body} = await post(`${baseUrl}/api/project/replays/inspect-artifact`, {round: 5, seed: "demo"});
 

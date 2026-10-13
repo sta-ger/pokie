@@ -229,7 +229,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
             case "compensated":
                 // Also terminal the same way: written only after this attempt's own compensating writes
                 // already finished, synchronously, in the same call — no live-attempt race possible.
-                await this.operationLog.delete(sessionId, requestId);
+                // Keep exportable calculation evidence until the owner starts a new attempt or retires it.
+                if (!record.capturedResult?.audit) await this.operationLog.delete(sessionId, requestId);
                 return {
                     status: "no-action-needed",
                     sessionId,
@@ -518,7 +519,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         }
         const result = this.buildPlayedResult(record, finalCaptured);
         await this.idempotencyRepository.save(sessionId, requestId, result);
-        await this.operationLog.record({...record, checkpoint: "committed", updatedAt: new Date().toISOString(), capturedResult: finalCaptured});
+        await this.operationLog.record({...record, checkpoint: "committed", updatedAt: new Date().toISOString(), capturedResult: {...finalCaptured,
+            ...(result.status === "played" && result.audit ? {audit: result.audit} : {})}});
 
         return {
             status: "resumed",

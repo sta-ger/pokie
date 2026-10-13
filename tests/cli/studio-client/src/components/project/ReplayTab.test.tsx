@@ -1,3 +1,6 @@
+import {useState} from "react";
+import {ReplayRecorder} from "../../../../../../src/replay/ReplayRecorder";
+import {transactionalRoundGame} from "../../../../../v2/fixtures/TransactionalRoundGame";
 import {MantineProvider} from "@mantine/core";
 import {render, screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -5,7 +8,7 @@ import {readFileSync} from "fs";
 import path from "path";
 import type {StudioReplayJobView} from "../../../../../../cli/studio-client/src/api/types";
 import {describeReplayProgress, describeReplayResult} from "../../../../../../cli/studio-client/src/domain/interpret/Replay";
-import {ReplayTab} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
+import {ReplayTab, type ExpectedReplayState} from "../../../../../../cli/studio-client/src/components/project/ReplayTab";
 
 // P5-POLISH-19: proves the real Studio Replay presentation entry point (ReplayTab -> RoundArtifactInspector
 // -> GameScreenView -> CanonicalPlayerView -> cli/client/player's own DOM functions) actually renders the
@@ -196,5 +199,73 @@ describe("ReplayTab renders a real captured Studio Replay round through the actu
         await user.click(screen.getByRole("button", {name: "Next"}));
         expect(screen.getByText("Round 2 of 2")).toBeInTheDocument();
         expect(screen.getByRole("button", {name: /Session 1.*Round 2.*Find any win.*win 8.*2026/i})).toHaveAttribute("aria-current", "true");
+    });
+});
+
+
+describe("ReplayTab audit wiring", () => {
+    function captureRecording() {
+        const game = {...transactionalRoundGame(), getConfigHash: () => "component-model"};
+        const recorder = new ReplayRecorder(),
+            session = game.createSession({seed: "component"});
+        const recording = recorder.recordAudit(game, session, [{kind: "spin", delivery: "stepwise", roundId: "component-round"}], {status: "calculated", sessionId: "component-session", durability: "detached"}, {seed: "component"});
+        recorder.releaseAuditSession(session);
+        return recording;
+    }
+
+    function AuditSurface({onRun = jest.fn(), onLoad = jest.fn(), failed = false, recovered = false}: {onRun?: jest.Mock; onLoad?: jest.Mock; failed?: boolean; recovered?: boolean}) {
+        const [recording] = useState(captureRecording);
+        const [recoveryRequest] = useState(() => recovered ? {round: recording.round, recording} : undefined);
+        const [expected, setExpected] = useState<ExpectedReplayState>({status: "empty"});
+        const job: StudioReplayJobView = {id: "failed-audit", status: "failed", round: 3, completedRounds: 1, durationMs: 1,
+            startedAt: "2026-10-13T00:00:00Z", error: "audit-execution-mismatch at deliveries[1]", auditPrefix: recording.audit,
+            nextCommand: {kind: "spin", delivery: "stepwise", continuation: {roundId: "component-round", cursor: 1}}};
+        return <MantineProvider><ReplayTab progress={failed ? describeReplayProgress(job) : undefined} result={undefined} error={undefined}
+            onRun={onRun} onCancel={() => undefined} onRetry={() => undefined} listView={{status: "empty"}} listError={undefined}
+            onRefreshList={() => undefined} onInspectStored={() => Promise.resolve()} onCompareStored={() => undefined}
+            expected={expected} onLoadExpectedFromPaste={raw => {
+                onLoad(JSON.parse(raw));
+                setExpected({status: "loaded", round: recording.round, seed: String(recording.seed), recording, artifactWarnings: []});
+            }} onClearExpected={() => setExpected({status: "empty"})} comparison={undefined}
+            recentSpins={{status: "loaded", entries: [{sessionId: "component-session", game: recording.game, win: recording.totalWin,
+                studioRound: 1, studioRecordedAt: "2026-10-13T00:00:00Z", studioSource: "play", studioOperation: "spin", debug: {recording}}]}}
+            recentSpinsError={undefined} onRefreshRecentSpins={() => undefined} recentRuns={{status: "empty"}} recentRunsError={undefined}
+            onRefreshRecentRuns={() => undefined} currentGame={recording.game} recoveryRequest={recoveryRequest} /></MantineProvider>;
+    }
+
+    it("loads the full Recent Rounds recording and passes it unchanged into the reproduce action", async () => {
+        const user = userEvent.setup(),
+            onRun = jest.fn(),
+            onLoad = jest.fn();
+        render(<AuditSurface onRun={onRun} onLoad={onLoad} />);
+        await user.click(screen.getByRole("radio", {name: "Session Spin"}));
+        await user.click(screen.getByRole("button", {name: /Session 1.*Round 1.*Spin/}));
+        await user.click(screen.getByRole("button", {name: "Load for audit replay"}));
+        const loaded = onLoad.mock.calls[0][0];
+        expect(loaded.audit.deliveries[0].command.roundId).toBe("component-round");
+        await user.click(screen.getByRole("button", {name: "Reproduce"}));
+        expect(onRun.mock.calls[0][6]).toEqual(loaded);
+    });
+
+    it("restores the original durable audit request for reproduction", async () => {
+        const user = userEvent.setup(),
+            onRun = jest.fn(),
+            onLoad = jest.fn();
+        render(<AuditSurface recovered onRun={onRun} onLoad={onLoad} />);
+        await user.click(screen.getByRole("button", {name: "Reproduce"}));
+        expect(onRun.mock.calls[0][6]).toEqual(onLoad.mock.calls[0][0]);
+        expect(onRun.mock.calls[0][6].audit.deliveries[0].command.roundId).toBe("component-round");
+    });
+
+    it("presents a failed verified prefix and exact next continuation without offering a completed download", async () => {
+        const user = userEvent.setup();
+        render(<AuditSurface failed />);
+        await user.click(screen.getByRole("radio", {name: "Recreate from seed"}));
+        // Load enables the run/status surface; the retained failed status comes from the real transform.
+        await user.click(screen.getByRole("button", {name: "Load"}));
+        await user.click(screen.getByRole("button", {name: "Run again"}));
+        expect(screen.getByText(/Verified prefix: 1 deliveries.*Replay remains incomplete/)).toBeInTheDocument();
+        expect(screen.getByText(/Next continuation: component-round, cursor 1/)).toBeInTheDocument();
+        expect(screen.queryByRole("link", {name: "Download replay JSON"})).not.toBeInTheDocument();
     });
 });

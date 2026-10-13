@@ -970,6 +970,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
     // the reproduction has completed -- always via describeReplayComparison, which safely resolves to
     // its own "unavailable" status (with diagnostics) rather than the page silently omitting the banner
     // when the expected artifact turns out malformed (requirement 1).
+    const importedAuditRecording = expectedReplay.status === "loaded" ? expectedReplay.recording : undefined;
+    const storedAuditRecording = replay.job?.descriptor?.audit ? replay.job.descriptor : undefined;
     const replayComparison =
         expectedReplay.status === "loaded" && replay.job?.status === "completed"
             ? describeReplayComparison(
@@ -1445,6 +1447,8 @@ export function ProjectDashboardPage({requestedProjectRoot}: {requestedProjectRo
                                             replay.job.simulationId,
                                             expectedReplay.status === "loaded",
                                             replay.job.modeName,
+                                            expectedReplay.status === "loaded" ? expectedReplay.outcomeSource : replay.job.descriptor?.outcomeSource,
+                                            importedAuditRecording ?? storedAuditRecording,
                                         )
                                     }
                                     listView={replayListView}

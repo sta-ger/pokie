@@ -304,6 +304,15 @@ its owning result publication boundary. Its retained result exposes `audit`, or
 `auditUnavailableReason` when the model/codec cannot support exact reconstruction.
 Full history belongs to retained operation/results, not recursive session snapshots.
 
+Direct retries require a request identity or explicit logical delivery identity. Identical
+unkeyed calls execute separately. A retry returns its immutable original descriptor and
+digest; changed commands, construction context, disposition or model are rejected before
+execution. Composite subdeliveries share their owning request and retain distinct logical
+cursors. `walletPayout` records the actual signed post-stake wallet adjustment (credit or
+debit), including floating-point residue; mathematical stakes and wins remain unchanged.
+Captured evidence survives compensation with a compensated disposition. Recovery validates
+the original digest and owning operation identity before publishing a new disposition.
+
 ```ts
 const recording = recorder.recordAudit(game, session, [originalCommand], {
     status: "calculated", sessionId: originalSessionId, durability: "detached",

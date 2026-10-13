@@ -459,7 +459,11 @@ retires execution. Owners must drain work before release. Pending logical delive
 is bounded to 10,000 deliveries; repeated composite batches cannot bypass that bound.
 Durable result retention remains the store owner's lifecycle responsibility.
 
-A direct `ReplayRecorder` keeps bounded historical recording references for its
-session owner, including deliveries observed inside composite commands. Exported
-recordings remain usable after the session is gone. Owners can release recorder
-references with `releaseAuditSession(session)` when retiring the direct runtime.
+A direct `ReplayRecorder` retains at most 10,000 accepted audit deliveries per session,
+including unkeyed calls and deliveries observed inside composite commands. Its optional
+constructor retention limit must be an integer in 1..10,000. Before execution it reserves
+the requested command bounds (a composite's `maxSubrounds`, default 1,000); insufficient
+capacity rejects without drawing or changing the session. Historical retries remain
+available at capacity. Exported recordings remain usable after the session is gone.
+`releaseAuditSession(session)` drops recorder references and releases/retires the direct
+runtime's retained results; drain work and export evidence before release.

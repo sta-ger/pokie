@@ -24,6 +24,7 @@ export type AuditDisposition = {
     readonly version?: number;
     readonly debitTransactionId?: string;
     readonly creditTransactionId?: string;
+    /** Actual signed post-stake wallet adjustment: positive credit, negative debit (including numeric residue). */
     readonly walletPayout?: number;
     readonly walletCredits?: number;
     readonly durability: "detached" | "process-only" | "atomic-local" | "external-provider" | "independent-ports";
