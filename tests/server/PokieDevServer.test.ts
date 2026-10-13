@@ -264,7 +264,9 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
     it.each(["cached-state", "cached-previous", "captured-state", "captured-previous"] as const)("rejects CJS nested mode corruption in %s through real HTTP", async location => {
         const game = publicRuntime.legacyGame("free-bet", true);
         const repository = new InMemorySessionRepository(),
-            wallet = new InMemoryWallet();
+            // An injected wallet owns the starting balance; fund the paid round that
+            // produces the retry/recovery envelopes these corruption cases exercise.
+            wallet = new InMemoryWallet(1000);
         const idempotency = new InMemoryIdempotencyRepository<SpinCommandResult>(),
             operations = new InMemorySpinOperationLog();
         const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository, wallet,
@@ -275,7 +277,17 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
             const created = await postJson(`${url}/sessions`),
                 sessionId = created.body.sessionId as string;
             expect(created.status).toBe(201);
-            expect((await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).status).toBe(200);
+            expect(Object.keys(game).sort()).toEqual(["createSession", "getManifest"]);
+            expect(await wallet.getBalance(sessionId)).toBe(1000);
+            const played = await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"});
+            expect(played.status).toBe(200);
+            expect(await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).toEqual(played);
+            const settled = (await operations.load(sessionId, "retry"))!;
+            expect(settled.checkpoint).toBe("committed");
+            expect(settled.capturedResult!.newState.executionState).toBe("live-only");
+            expect(settled.capturedResult!.newState.featureState).toMatchObject({base: {betModeId: "base"}});
+            const committedView = await getJson(`${url}/sessions/${sessionId}`);
+            expect(committedView.status).toBe(200);
             const corrupt = (state: PokieSessionState): void => {
                 (state.featureState as {base: {betModeId: string}}).base.betModeId = "nonexistent";
             };
@@ -293,10 +305,10 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
                 retained = await operations.load(sessionId, "retry"),
                 cached = await idempotency.load(sessionId, "retry"),
                 balance = await wallet.getBalance(sessionId);
-            const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"),
+            const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(wallet, "setBalance"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"), jest.spyOn(wallet, "reverse"),
                 jest.spyOn(operations, "record"), jest.spyOn(operations, "delete"), jest.spyOn(idempotency, "save"), jest.spyOn(game, "createSession")];
             expect(await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).toMatchObject({status: 409, body: {code: "corrupt-state"}});
-            expect((await getJson(`${url}/sessions/${sessionId}`)).status).toBe(200);
+            expect(await getJson(`${url}/sessions/${sessionId}`)).toEqual(committedView);
             expect(await repository.loadVersioned(sessionId)).toEqual(before);
             expect(await operations.load(sessionId, "retry")).toEqual(retained);
             expect(await idempotency.load(sessionId, "retry")).toEqual(cached);

@@ -371,7 +371,11 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         if (requestId !== undefined) {
             const cached = await this.readRetryResult(sessionId, requestId);
             if (cached !== undefined) {
-                const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority);
+                // A cached reply does not authorize a corrupt retained recovery envelope.
+                // Validate both before publishing success, without reconstructing or recovering.
+                const retained = await this.readPendingAttempt(sessionId, requestId);
+                const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority) ??
+                    (retained === undefined ? undefined : this.validatePendingState(retained, sessionId, requestId));
                 if (invalid !== undefined) return {...invalid, sessionId};
                 return cloneSessionData(cached);
             }
