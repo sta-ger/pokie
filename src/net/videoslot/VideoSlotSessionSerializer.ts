@@ -31,8 +31,11 @@ implements VideoSlotSessionSerializing<T> {
 
     public getInitialData(session: VideoSlotSessionHandling<T>): VideoSlotInitialNetworkData<T> {
         const availableSymbols = session.getAvailableSymbols();
-        const reelsNumber = session.getReelsNumber();
-        const reelsSymbolsNumber = session.getReelsSymbolsNumber();
+        const geometry = session.getScreenGeometry?.();
+        const projection = geometry && new ScreenProjection(geometry);
+        const dimensions = session.getSettledScreenDimensions?.();
+        const reelsNumber = dimensions?.reels ?? geometry?.generated.reels ?? session.getReelsNumber();
+        const reelsSymbolsNumber = dimensions?.rows ?? projection?.getRows("visible") ?? session.getReelsSymbolsNumber();
         const paytable = session.getPaytable().toMap();
         const linesDefinitions: Record<string, number[]> = {};
         session
@@ -40,8 +43,7 @@ implements VideoSlotSessionSerializing<T> {
             .getLinesIds()
             .forEach((lineId) => {
                 const definition = session.getLinesDefinitions().getLineDefinition(lineId);
-                const geometry = session.getScreenGeometry?.();
-                const visible = geometry ? projectVisiblePayline(definition, new ScreenProjection(geometry)) : definition;
+                const visible = projection ? projectVisiblePayline(definition, projection) : definition;
                 if (visible) linesDefinitions[lineId] = visible;
             });
         const r: VideoSlotInitialNetworkData<T> = {

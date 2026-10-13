@@ -25,6 +25,25 @@ export function areScreenGeometriesCompatible(first?: ScreenGeometry, second?: S
     return JSON.stringify(a.getGeometry()) === JSON.stringify(b.getGeometry());
 }
 
+/** Reconcile a newly generated result with the contract resolved before that generation.
+ * An authoritative ordinary contract rejects overscan tags; absent legacy declarations may
+ * learn a contract from the new tag. Older settled tags are never consulted here.
+ */
+export function resolveGeneratedScreenGeometry<T extends string | number | symbol>(
+    combination: SymbolsCombinationDescribing<T>, geometry?: ScreenGeometry, authoritative = false,
+): ScreenGeometry | undefined {
+    if (combination.getCoordinateSpace && combination.getCoordinateSpace() !== "generated") {
+        throw new Error("A session generator must supply the generated coordinate space.");
+    }
+    const attached = combination.getScreenGeometry?.();
+    if (attached && (geometry || authoritative) && !areScreenGeometriesCompatible(geometry, attached)) {
+        throw new Error("Generated combination geometry differs from the upcoming coordinate contract.");
+    }
+    const resolved = geometry ?? attached;
+    const projection = resolved && new ScreenProjection(resolved);
+    return projection?.getGeometry();
+}
+
 /** Safety boundary also used by directly invoked calculators. Never infers overscan from shape. */
 export function projectEvaluationSymbols<T extends string | number | symbol>(
     combination: SymbolsCombinationDescribing<T>, config?: VideoSlotConfigDescribing<T>,
@@ -44,9 +63,9 @@ export function projectEvaluationSymbols<T extends string | number | symbol>(
     return new SymbolsCombination<T>().fromMatrix(projection.project(combination.toMatrix(), "evaluated")).withCoordinates(geometry, "evaluated");
 }
 
-export function validateEvaluationPaylines<T extends string | number | symbol>(config: VideoSlotConfigDescribing<T>, combination?: SymbolsCombinationDescribing<T>): LinesDefinitionsDescribing {
+export function validateEvaluationPaylines<T extends string | number | symbol>(config: VideoSlotConfigDescribing<T>, combination?: SymbolsCombinationDescribing<T>, resolvedProjection?: ScreenProjection): LinesDefinitionsDescribing {
     const attached = combination?.getScreenGeometry?.();
-    const projection = resolveScreenProjection(config) ?? (attached ? new ScreenProjection(attached) : undefined);
+    const projection = resolvedProjection ?? resolveScreenProjection(config) ?? (attached ? new ScreenProjection(attached) : undefined);
     const matrix = combination?.toMatrix();
     const definitions = config.getLinesDefinitions();
     for (const id of definitions.getLinesIds()) {

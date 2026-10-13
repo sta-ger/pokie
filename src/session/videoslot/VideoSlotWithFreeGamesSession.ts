@@ -1,4 +1,4 @@
-import {areScreenGeometriesCompatible, projectEvaluationSymbols, resolveScreenProjection} from "./coordinates/projectSymbolsCombination.js";
+import {areScreenGeometriesCompatible, resolveScreenProjection} from "./coordinates/projectSymbolsCombination.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../SessionStateRestoring.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
@@ -192,7 +192,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     private determineWonFreeGamesNumber(): number {
         let wonFreeGamesNumber = 0;
         // Feature grants depend on landed scatters, independently of monetary payouts.
-        const matrix = projectEvaluationSymbols(this.getSymbolsCombination(), this.config).toMatrix();
+        const matrix = this.getEvaluatedSymbolsCombination().toMatrix();
         for (const symbolId of this.config.getScatterSymbols()) {
             const grant = this.config.getFreeGamesForScatters(
                 symbolId,

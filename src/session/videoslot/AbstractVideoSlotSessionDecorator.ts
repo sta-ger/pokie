@@ -40,6 +40,14 @@ implements VideoSlotSessionHandling<T> {
         this.baseSession.validateScreenCoordinates?.();
     }
 
+    public getSettledScreenDimensions(): {reels: number; rows: number} {
+        const geometry = this.getScreenGeometry();
+        return this.baseSession.getSettledScreenDimensions?.() ?? {
+            reels: geometry?.generated.reels ?? this.getReelsNumber(),
+            rows: geometry ? new ScreenProjection(geometry).getRows("visible") : this.getReelsSymbolsNumber(),
+        };
+    }
+
     public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
         const geometry = this.getScreenGeometry();
         const generated = this.getSymbolsCombination();
@@ -47,7 +55,10 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public getEvaluatedSymbolsCombination(): SymbolsCombinationDescribing<T> {
-        return projectEvaluationSymbols(this.getSymbolsCombination(), this);
+        const geometry = this.getScreenGeometry();
+        const generated = this.getSymbolsCombination();
+        return projectEvaluationSymbols(geometry
+            ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated);
     }
 
     public getPaytable(): PaytableRepresenting<T> {

@@ -1,4 +1,4 @@
-import {overscanGeometry} from "./fixtures/OverscanGame.js";
+import {overscanGeometry, overscanConfig, adversarialScreen} from "./fixtures/OverscanGame.js";
 import vm from "node:vm";
 import {execFileSync} from "node:child_process";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
@@ -10,7 +10,7 @@ import {
     BetModeDefinition, BetModesConfig, FreeGamesForcedFeatureEntryHandler, VideoSlotWithBetModesSession, type VideoSlotSessionHandling, SessionRuntime, SpinCommandHandler, Simulation, SimulationConfig, AggregateSimulationRunner, ReplayRecorder, generateExactWeightedOutcomeLibrary, InMemorySessionRepository, InMemoryWallet, InMemorySpinOperationLog,
     captureInitialPokieSessionState, VideoSlotSession, VideoSlotWithFreeGamesSession,
     VideoSlotWithFreeGamesConfig, VideoSlotConfig, VideoSlotWinCalculator, Paytable,
-    SymbolsCombinationsGenerator, SeededRandomNumberGenerator, SymbolsSequence,
+    SymbolsCombination, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, SymbolsSequence,
     CustomLinesDefinitions, VideoSlotSessionSerializer,
     renderBuiltGameModule, renderBuiltGameModuleSource,
     InMemoryIdempotencyRepository, SpinReconciliationService, type SpinCommandResult, GameSession, type PokieGame, type GameBlueprint, type PokieSessionState, type RepositoryCommand,
@@ -276,6 +276,44 @@ describe("V2C-02 canonical runtime contracts", () => {
             construction.mockRestore();
             save.mockRestore();
         }
+    });
+
+    it("F8 command settlement compensates a new tag contradicting authoritative ordinary generation", async () => {
+        let contradictory = false;
+        const game: PokieGame = {
+            getManifest: () => ({id: "coordinate-contract", name: "Coordinate contract", version: "1.0.0"}),
+            createSession: () => {
+                const config = overscanConfig();
+                config.setScreenGeometry(undefined);
+                return new VideoSlotSession(config, {getScreenGeometry: () => undefined,
+                    generateSymbolsCombination: () => contradictory
+                        ? new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(overscanGeometry)
+                        : new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"])),});
+            },
+            getSessionSerializer: () => new VideoSlotSessionSerializer(),
+        };
+        const repository = new InMemorySessionRepository(), 
+            wallet = new InMemoryWallet(), 
+            operations = new InMemorySpinOperationLog();
+        const session = game.createSession({seed: "contract"});
+        const initial = captureInitialPokieSessionState({seed: "contract"}, session, game.getSessionSerializer?.(), false, game);
+        await repository.save("session", initial);
+        await wallet.setBalance("session", initial.credits!);
+        const handler = new SpinCommandHandler(game, repository, wallet, new InMemoryIdempotencyRepository(), operations, true);
+        handler.primeSession("session", session, 1);
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "first"})).toMatchObject({status: "played", win: 3});
+        const state = await repository.load("session"), 
+            balance = await wallet.getBalance("session");
+        contradictory = true;
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "contradiction"})).toMatchObject({
+            status: "execution-error", reason: expect.stringContaining("upcoming coordinate contract"),
+        });
+        expect(await repository.load("session")).toEqual(state);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        contradictory = false;
+        // A failed live-only executable remains invalidated, rather than replaying a stale award.
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "after"})).toMatchObject({status: "restoration-unsupported"});
+        expect(await wallet.getBalance("session")).toBe(balance);
     });
 
     it.each([false, true])("preserves ordinary free-game wrappers with independent grant configuration (legacy capabilities %s)", legacy => {

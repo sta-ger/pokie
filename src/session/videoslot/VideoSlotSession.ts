@@ -1,6 +1,6 @@
 import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import {assertEvaluationComponents} from "./coordinates/internal/assertEvaluationComponents.js";
-import {areScreenGeometriesCompatible, projectEvaluationSymbols, resolveScreenProjection, validateEvaluationPaylines} from "./coordinates/projectSymbolsCombination.js";
+import {areScreenGeometriesCompatible, projectEvaluationSymbols, resolveGeneratedScreenGeometry, resolveScreenProjection, validateEvaluationPaylines} from "./coordinates/projectSymbolsCombination.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {SymbolsSequence} from "./combinations/SymbolsSequence.js";
 import {validateExecutableState} from "../../runtime/validateExecutableState.js";
@@ -35,6 +35,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     private winAmount = 0;
     private resultValid = true;
     private roundGeometry?: ScreenGeometry;
+    private roundDimensions = {reels: 0, rows: 0};
 
     private symbolsCombination: SymbolsCombinationDescribing<T> = new SymbolsCombination<T>();
 
@@ -48,11 +49,12 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.combinationsGenerator = combinationsGenerator;
         this.winCalculator = winCalculator;
         this.baseSession = baseSession;
-        this.validateScreenCoordinates();
-        this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
-        this.validateScreenCoordinates();
-        const geometry = this.config.getScreenGeometry?.() ?? this.symbolsCombination.getScreenGeometry?.();
-        this.roundGeometry = geometry && new ScreenProjection(geometry).getGeometry();
+        const contract = this.resolveUpcomingCoordinates();
+        const generated = this.combinationsGenerator.generateSymbolsCombination();
+        const geometry = this.validateGeneratedCoordinates(generated, contract, true);
+        this.symbolsCombination = generated;
+        this.roundGeometry = geometry;
+        this.roundDimensions = this.captureScreenDimensions(geometry);
     }
 
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
@@ -73,8 +75,12 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return this.roundGeometry && new ScreenProjection(this.roundGeometry).getGeometry();
     }
 
+    public getSettledScreenDimensions(): {reels: number; rows: number} {
+        return {...this.roundDimensions};
+    }
+
     public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
-        const projection = resolveScreenProjection(this);
+        const projection = this.roundGeometry && new ScreenProjection(this.roundGeometry);
         return projection ? new SymbolsCombination<T>().fromMatrix(projection.project(this.symbolsCombination.toMatrix(), "visible")).withCoordinates(projection.getGeometry(), "visible") : this.symbolsCombination;
     }
 
@@ -84,13 +90,9 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public validateScreenCoordinates(): void {
-        resolveScreenProjection({
-            getScreenGeometry: () => this.getConfiguredScreenGeometry(),
-            getReelsNumber: () => this.config.getReelsNumber(),
-            getReelsSymbolsNumber: () => this.config.getReelsSymbolsNumber(),
-        });
-        validateEvaluationPaylines(this.config);
+        this.resolveUpcomingCoordinates();
     }
+
     public getPaytable(): PaytableRepresenting<T> {
         return this.config.getPaytable();
     }
@@ -179,24 +181,21 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             return;
         }
         this.resultValid = false;
-        this.validateScreenCoordinates();
+        const contract = this.resolveUpcomingCoordinates();
         const generated = this.combinationsGenerator.generateSymbolsCombination();
-        const declared = this.config.getScreenGeometry?.() ?? generated.getScreenGeometry?.();
-        if (declared) {
-            if (generated.getCoordinateSpace && generated.getCoordinateSpace() !== "generated") throw new Error("A session generator must supply the generated coordinate space.");
-            new ScreenProjection(declared).assertMatrix(generated.toMatrix(), "generated");
-        }
-        const evaluated = projectEvaluationSymbols(generated, this.config);
-        validateEvaluationPaylines(this.config, evaluated);
+        const geometry = this.validateGeneratedCoordinates(generated, contract);
+        const evaluationSource = geometry
+            ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated;
+        const evaluated = projectEvaluationSymbols(evaluationSource);
         this.winCalculator.calculateWin(this.getBet(), evaluated);
-        const geometry = this.config.getScreenGeometry?.() ?? generated.getScreenGeometry?.();
         if (geometry) {
             const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
             assertEvaluationComponents(result.getWinComponents(), geometry);
         }
         this.baseSession.play();
         this.symbolsCombination = generated;
-        this.roundGeometry = geometry && new ScreenProjection(geometry).getGeometry();
+        this.roundGeometry = geometry;
+        this.roundDimensions = this.captureScreenDimensions(geometry);
         this.resultValid = true;
         this.winAmount = this.getWinAmount();
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
@@ -274,6 +273,38 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
 
     public getLinesPatterns(): LinesPatternsDescribing {
         return this.config.getLinesPatterns();
+    }
+
+    private captureScreenDimensions(geometry?: ScreenGeometry): {reels: number; rows: number} {
+        return {reels: geometry?.generated.reels ?? this.config.getReelsNumber(),
+            rows: geometry ? new ScreenProjection(geometry).getRows("visible") : this.config.getReelsSymbolsNumber()};
+    }
+
+    private resolveUpcomingCoordinates(): {geometry?: ScreenGeometry; authoritative: boolean} {
+        const geometry = this.getConfiguredScreenGeometry();
+        const projection = this.validateCoordinateGeometry(geometry);
+        validateEvaluationPaylines(this.config, undefined, projection);
+        return {geometry, authoritative: typeof this.combinationsGenerator.getScreenGeometry === "function"};
+    }
+
+    private validateCoordinateGeometry(geometry?: ScreenGeometry): ScreenProjection | undefined {
+        return resolveScreenProjection({
+            getScreenGeometry: () => geometry,
+            getReelsNumber: () => this.config.getReelsNumber(),
+            getReelsSymbolsNumber: () => this.config.getReelsSymbolsNumber(),
+        });
+    }
+
+    private validateGeneratedCoordinates(generated: SymbolsCombinationDescribing<T>, contract: {geometry?: ScreenGeometry; authoritative: boolean}, initializing = false): ScreenGeometry | undefined {
+        const geometry = resolveGeneratedScreenGeometry(generated, contract.geometry, contract.authoritative);
+        const projection = this.validateCoordinateGeometry(geometry);
+        // Exact-enumeration metadata probes historically initialize with an empty, untagged
+        // display placeholder. It may not be projected or settled; play always validates the matrix.
+        if (!initializing || generated.toMatrix().length !== 0 || generated.getScreenGeometry?.()) {
+            projection?.assertMatrix(generated.toMatrix(), "generated");
+        }
+        validateEvaluationPaylines(this.config, generated, projection);
+        return geometry;
     }
 
     private supportsWinEvaluationResult(): boolean {

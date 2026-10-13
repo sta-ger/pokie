@@ -15,6 +15,8 @@ export interface VideoSlotSessionHandling<T extends string | number | symbol = s
      * Settled geometry remains owned by getScreenGeometry.
      */
     getConfiguredScreenGeometry?(): ScreenGeometry | undefined;
+    /** Display dimensions captured with the current settled (or initial) screen. */
+    getSettledScreenDimensions?(): {reels: number; rows: number};
     getVisibleSymbolsCombination?(): SymbolsCombinationDescribing<T>;
     getEvaluatedSymbolsCombination?(): SymbolsCombinationDescribing<T>;
     validateScreenCoordinates?(): void;
