@@ -1,0 +1,19 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/AuditRoundReplay.test.ts tests/replay/ReplayRecorder.test.ts tests/server/spin/SpinCommandHandler.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/server/spin/SpinReconciliationService.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio-client/src/components/project/ReplayTab.test.tsx tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx tests/cli/studio-client/src/domain/interpret/Replay.test.ts
+
+PASS pokie tests/v2/AuditRoundReplay.test.ts (35.76 s)
+PASS studio-client-workflows tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx (11.037 s)
+PASS studio-client-components tests/cli/studio-client/src/components/project/ReplayTab.test.tsx
+PASS pokie tests/cli/studio/replay/StudioReplayExecutionService.test.ts
+PASS pokie tests/server/spin/SpinCommandHandler.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+PASS pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+PASS pokie tests/server/spin/SpinReconciliationService.test.ts
+PASS pokie tests/cli/studio-client/src/domain/interpret/Replay.test.ts
+
+Test Suites: 9 passed, 9 total
+Tests:       392 passed, 392 total
+Snapshots:   0 total
+Time:        54.566 s
+Ran all test suites within paths "tests/v2/AuditRoundReplay.test.ts", "tests/replay/ReplayRecorder.test.ts", "tests/server/spin/SpinCommandHandler.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts", "tests/server/spin/SpinReconciliationService.test.ts", "tests/cli/studio/replay/StudioReplayExecutionService.test.ts", "tests/cli/studio-client/src/components/project/ReplayTab.test.tsx", "tests/cli/studio-client/src/components/project/ProjectDashboardPage.test.tsx", "tests/cli/studio-client/src/domain/interpret/Replay.test.ts" in 3 projects.
