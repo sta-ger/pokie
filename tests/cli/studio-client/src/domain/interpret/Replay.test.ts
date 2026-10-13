@@ -1142,3 +1142,15 @@ it("shows custom audit unavailability separately from an inspectable mathematica
     expect(card.completeness).toBe(`Audit unavailable -- ${reason}`);
     expect(card.capabilities.reproducible).toEqual({status: "unavailable", reason});
 });
+
+it("labels an unavailable accepted delivery as an incomplete audit export and withholds a complete match", () => {
+    const recording = createDescriptor({audit: {hash: "sha256:prefix", captureUnavailable: {acceptedDeliveries: 4}} as NonNullable<ReplayDescriptor["audit"]>,
+        auditStatus: "recorded", auditCompletion: "pending"});
+    const expected = {recording};
+    const card = describeLoadedReplay({source: "artifact", expected, canExport: true});
+    expect(card.completeness).toContain("Incomplete audit export");
+    expect(card.completeness).toContain("accepted delivery could not be captured");
+    const comparison = describeReplayComparison(expected, {recording: {...recording, auditStatus: "verified"}});
+    expect(comparison.status).toBe("unavailable");
+    expect(comparison.unavailableReason).toBe("Verified executable prefix; operation remains pending.");
+});

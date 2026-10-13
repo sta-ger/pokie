@@ -1000,7 +1000,9 @@ function describeLoadedArtifact(
     }
     let completeness: string;
     if (expected.recording?.audit) {
-        completeness = `Full audit export -- original operation ${expected.recording.auditCompletion ?? "unknown"}; executable inputs and disposition are retained. Visible display excludes private state.`;
+        completeness = expected.recording.audit.captureUnavailable
+            ? "Incomplete audit export -- an accepted delivery could not be captured; only the preceding executable prefix is available."
+            : `Full audit export -- original operation ${expected.recording.auditCompletion ?? "unknown"}; executable inputs and disposition are retained. Visible display excludes private state.`;
     } else if (reproducibility === undefined) {
         completeness = "(not yet validated)";
     } else if (reproducibility.status === "ready") {

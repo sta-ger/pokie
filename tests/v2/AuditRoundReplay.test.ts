@@ -555,6 +555,90 @@ describe("canonical audited logical-round replay", () => {
         recorder.releaseAuditSession(session);
     });
 
+    it.each([1, 2])("recovers generated evidence after transient capture failure at delivery %s for fresh ESM/CJS replay", failedDelivery => {
+        const blueprint = {...feature, reelStrips: Array.from({length: 3}, () => ["A"])},
+            game = createOverscanGame(blueprint),
+            context = {seed: "7"},
+            command: api.SessionCommand = {kind: "spin", delivery: "composite", roundId: "capture", mode: "buy", maxSubrounds: 5},
+            reference = recorded(game, command),
+            session = game.createSession(context),
+            codec = session as api.GameSessionHandling & api.ConvertableToSessionState,
+            capture = codec.toSessionState.bind(codec),
+            play = jest.spyOn(session, "play"),
+            recorder = new api.ReplayRecorder(5);
+        session.setCreditsAmount(1000);
+        let failed = false;
+        jest.spyOn(codec, "toSessionState").mockImplementation(() => {
+            if (play.mock.calls.length === failedDelivery && !failed) {
+                failed = true;
+                throw new Error("post-acceptance capture failure");
+            }
+            return capture();
+        });
+        const descriptor = recorder.recordAudit(game, session, [command], detached, context);
+        expect(failed).toBe(true);
+        expect(descriptor.audit!.deliveries).toHaveLength(reference.audit.deliveries.length);
+        expect(play).toHaveBeenCalledTimes(reference.audit.deliveries.length);
+        expect(descriptor.audit!.deliveries.map(({command, before, after, result, artifact}) => ({command, before, after, result, artifact}))).toEqual(
+            reference.audit.deliveries.map(({command, before, after, result, artifact}) => ({command, before, after, result, artifact})));
+        expect(recorder.recordAudit(game, session, [command], detached, context)).toBe(descriptor);
+        recorder.releaseAuditSession(session);
+        for (const extension of ["mjs", "cjs"]) {
+            const file = path.join(runtime.directory, "capture-input.json");
+            fs.writeFileSync(file, JSON.stringify({recording: descriptor.audit, blueprint}));
+            const result = JSON.parse(execFileSync(process.execPath, [path.join(runtime.directory, `AuditRoundReplayProcess.${extension}`), file], {encoding: "utf-8", timeout: 10000}));
+            expect(result.pid).not.toBe(process.pid);
+            expect(result).toMatchObject({status: "verified", completion: "completed", audit: JSON.parse(JSON.stringify(descriptor.audit))});
+        }
+    });
+
+    it("keeps unavailable capture evidence pending across export, descriptor validation and fresh process verification", () => {
+        const blueprint = {...feature, reelStrips: Array.from({length: 3}, () => ["A"])},
+            game = createOverscanGame(blueprint),
+            session = game.createSession({seed: "7"}),
+            codec = session as api.GameSessionHandling & api.ConvertableToSessionState,
+            capture = codec.toSessionState.bind(codec),
+            play = jest.spyOn(session, "play"),
+            recorder = new api.ReplayRecorder(10);
+        session.setCreditsAmount(1000);
+        // Complete one command, then accept the next entry without capturing its boundary.
+        jest.spyOn(codec, "toSessionState").mockImplementation(() => {
+            if (new api.SessionRuntime(session).getLogicalRound()?.id === "unavailable") throw new Error("persistent capture failure");
+            return capture();
+        });
+        let prefix: api.ReplayDescriptor | undefined;
+        try {
+            recorder.recordAudit(game, session, [
+                {kind: "spin", delivery: "composite", roundId: "complete", mode: "buy", maxSubrounds: 5},
+                {kind: "spin", delivery: "composite", roundId: "unavailable", maxSubrounds: 5},
+            ], detached, {seed: "7"});
+        } catch (error) {
+            expect(error).toMatchObject({code: "audit-capture-unavailable"});
+            prefix = (error as Error & {committedRecording: api.ReplayDescriptor}).committedRecording;
+        }
+        expect(prefix).toMatchObject({auditCompletion: "pending", logicalRound: {status: "completed"}});
+        expect(prefix!.audit!.captureUnavailable).toEqual({acceptedDeliveries: play.mock.calls.length});
+        expect(() => api.validateAuditReplayDescriptor(JSON.parse(JSON.stringify(prefix)), game)).not.toThrow();
+        expect(() => api.validateAuditReplayDescriptor({...prefix, auditCompletion: "completed"}, game)).toThrow("auditCompletion");
+        expect(() => api.validateAuditRoundRecording({...prefix!.audit, captureUnavailable: undefined}, game)).toThrow("audit-structure");
+        expect(() => api.validateAuditRoundRecording(rehash({...prefix!.audit!, captureUnavailable: {acceptedDeliveries: 10001}}), game)).toThrow("captureUnavailable");
+        expect(() => api.validateAuditRoundRecording(rehash({...prefix!.audit!, captureUnavailable: {acceptedDeliveries: prefix!.audit!.deliveries.length}}), game)).toThrow("captureUnavailable");
+        // Studio stores partially verified prefixes with the same original accepted count.
+        const partial = rehash({...prefix!.audit!, deliveries: prefix!.audit!.deliveries.slice(0, 1)});
+        expect(new api.ReplayRecorder().replay(game, partial)).toMatchObject({auditStatus: "verified", auditCompletion: "pending"});
+        // Removing the incompleteness marker changes the canonical digest.
+        const {captureUnavailable: _captureUnavailable, ...withoutMarker} = prefix!.audit!;
+        expect(() => api.validateAuditRoundRecording(withoutMarker, game)).toThrow("audit-hash");
+        recorder.releaseAuditSession(session);
+        for (const extension of ["mjs", "cjs"]) {
+            const file = path.join(runtime.directory, "unavailable-input.json");
+            fs.writeFileSync(file, JSON.stringify({recording: prefix!.audit, blueprint}));
+            const result = JSON.parse(execFileSync(process.execPath, [path.join(runtime.directory, `AuditRoundReplayProcess.${extension}`), file], {encoding: "utf-8", timeout: 10000}));
+            expect(result.pid).not.toBe(process.pid);
+            expect(result).toMatchObject({status: "verified", completion: "pending", audit: JSON.parse(JSON.stringify(prefix!.audit))});
+        }
+    });
+
     it("rejects malformed contexts and codecs with stable diagnostics before constructing a session", () => {
         const current = recorded(),
             create = jest.spyOn(current.game, "createSession");

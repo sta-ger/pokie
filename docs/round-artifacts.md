@@ -312,13 +312,31 @@ cursors. `walletPayout` records the actual signed post-stake wallet adjustment (
 debit), including floating-point residue; mathematical stakes and wins remain unchanged.
 Captured evidence survives compensation with a compensated disposition. Recovery validates
 the original digest and owning operation identity before publishing a new disposition.
-When a successor fails, the thrown error retains the immutable accepted prefix in
+When a successor calculation fails, the thrown error retains the immutable accepted prefix in
 `committedRecording`. Export its `audit` for detached replay; its logical completion
 describes only the accepted prefix. Retrying with the original inputs resumes the interrupted command
 and appends newly accepted deliveries without calculating the prefix again. Capacity
 reservation charges only the operation's remaining delivery budget. Recovery checks
 assigned result revisions against the audit; pre-save operation captures may still
 have an unassigned `newVersion`.
+
+Audit capture is fallible after runtime acceptance. The recorder binds original inputs and
+charges each accepted delivery before capturing its evidence. It retries capture once at
+that same boundary, without another calculation. If both attempts fail, it throws the stable
+`audit-capture-unavailable` error with `acceptedDeliveries`, the immutable `operation`
+(commands, context and disposition), and `uncapturedDelivery` (command, pre-play boundary,
+accepted result and disposition). `committedRecording` contains the valid preceding prefix
+when one exists; a first-delivery failure has no independently replayable recording.
+
+Persistent capture failure blocks further recording on that session, including identical
+retries and fresh unkeyed calls. Conflicting original inputs still reject before calculation.
+Export the available evidence and call `releaseAuditSession`; this retires the session rather
+than resuming from a later boundary. An exported prefix carries a digest-bound
+`captureUnavailable.acceptedDeliveries` count. Detached replay verifies only that available
+prefix and reports `pending`, even if its last captured logical round completed. Partially
+verified Studio prefixes preserve the original accepted count; Studio labels the export
+incomplete and cannot report a complete audit match. Legacy and fully captured recordings
+keep their existing contracts.
 
 ```ts
 const recording = recorder.recordAudit(game, session, [originalCommand], {

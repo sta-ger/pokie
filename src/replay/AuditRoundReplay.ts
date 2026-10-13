@@ -82,13 +82,13 @@ function rngProfile(schema: AuditRoundRecording["stateSchema"]): AuditRoundRecor
     if (leaf.kind === "base") return "none";
     return "custom-codec-v1";
 }
-export function buildAuditRoundRecording(game: PokieGame, context: PokieGameContext | undefined, deliveries: readonly AuditDelivery[]): AuditRoundRecording {
+export function buildAuditRoundRecording(game: PokieGame, context: PokieGameContext | undefined, deliveries: readonly AuditDelivery[], captureUnavailable?: AuditRoundRecording["captureUnavailable"]): AuditRoundRecording {
     const identity = resolveGameSessionIdentity(game);
     if (!identity.modelHash || !game.getSessionStateSchema || !game.getSessionCommandCapabilities) throw new AuditReplayError("audit-codec-unsupported", "identity", "Exact audit requires selected model hash, authoritative codec and command capabilities.");
     const stateSchema = game.getSessionStateSchema();
     const body: Omit<AuditRoundRecording, "hash"> = dto({schemaVersion: "pokie.audit-round.v1", runtimeVersion: "pokie.session-runtime.v1", identity,
         game: game.getManifest(), stateSchema, rngProfile: rngProfile(stateSchema),
-        ...(context ? {context} : {}), deliveries});
+        ...(context ? {context} : {}), deliveries, ...(captureUnavailable ? {captureUnavailable} : {})});
     const recording = {...body, hash: computeAuditRoundHash(body)};
     validateAuditRoundRecording(recording, game);
     return deepFreeze(recording);
@@ -115,6 +115,9 @@ function validateAuditStructure(value: unknown, game?: PokieGame): void {
     if (r.schemaVersion !== "pokie.audit-round.v1" || r.runtimeVersion !== "pokie.session-runtime.v1") throw new AuditReplayError("audit-version", "schemaVersion/runtimeVersion", "Unsupported audit/runtime version.");
     const {hash, ...body} = r;
     if (typeof hash !== "string" || !(/^sha256:[a-f0-9]{64}$/).test(hash) || computeAuditRoundHash(body) !== hash) throw new AuditReplayError("audit-hash", "hash", "Missing, malformed or mismatched canonical digest.");
+    if (r.captureUnavailable !== undefined && (!r.captureUnavailable || typeof r.captureUnavailable !== "object" ||
+        Object.keys(r.captureUnavailable).length !== 1 || !Number.isSafeInteger(r.captureUnavailable.acceptedDeliveries) ||
+        r.captureUnavailable.acceptedDeliveries <= r.deliveries.length || r.captureUnavailable.acceptedDeliveries > 10000)) throw new AuditReplayError("audit-structure", "captureUnavailable", "Expected a bounded accepted delivery count greater than the available prefix.");
     if (!r.identity || [r.identity.modelHash, r.identity.gameId, r.identity.compatibilityVersion, r.identity.stateSchemaVersion, r.game?.id, r.game?.name, r.game?.version].some(item => typeof item !== "string" || !item.trim()) || r.identity.gameId !== r.game?.id || !r.stateSchema) throw new AuditReplayError("audit-identity", "identity", "Missing or contradictory model/game/codec identity.");
     if (r.context !== undefined && (typeof r.context !== "object" || r.context === null || Array.isArray(r.context) ||
         (r.context.seed !== undefined && typeof r.context.seed !== "string" && (typeof r.context.seed !== "number" || !Number.isFinite(r.context.seed))) ||
@@ -239,6 +242,6 @@ export class AuditRoundReplay implements AuditRoundReplaying {
             deliveries.push(actual);
             yield {completedDeliveries: index + 1, delivery: actual};
         }
-        return {verification: "verified", completion: deliveries[deliveries.length - 1].result.logicalRound?.status ?? "completed", recording, deliveries};
+        return {verification: "verified", completion: recording.captureUnavailable ? "pending" : deliveries[deliveries.length - 1].result.logicalRound?.status ?? "completed", recording, deliveries};
     }
 }

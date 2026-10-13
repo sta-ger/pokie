@@ -48,5 +48,7 @@ export type AuditRoundRecording = {
     readonly rngProfile: "seeded-mulberry32-v1" | "custom-codec-v1" | "none";
     readonly context?: PokieGameContext;
     readonly deliveries: readonly AuditDelivery[];
+    /** A valid (possibly partially verified) prefix of an operation with unavailable accepted evidence. */
+    readonly captureUnavailable?: {readonly acceptedDeliveries: number};
     readonly hash: string;
 };

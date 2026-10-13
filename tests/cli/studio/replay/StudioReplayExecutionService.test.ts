@@ -3,6 +3,7 @@ import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
     CascadeResult,
     computeAuditRoundHash,
+    ConvertableToSessionState,
     GameSessionHandling,
     GameSessionSerializing,
     loadPokieGame,
@@ -15,7 +16,9 @@ import {
     ProjectTargetResolver,
     REPLAY_OPERATION,
     ReplayRecorder,
+    ReplayDescriptor,
     SessionRuntime,
+    validateAuditRoundRecording,
     WinEvaluationResult,
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
@@ -1830,6 +1833,66 @@ it("retains the verified audit prefix and exact continuation after execution fai
         restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
         expect(restarted.getStatus("/prefix", started.job.id)).toMatchObject({status: "failed", auditPrefix: view.auditPrefix, nextCommand: view.nextCommand});
         expect(restarted.getDownload("/prefix", started.job.id)).toEqual({status: "not-ready", jobStatus: "failed"});
+    } finally {
+        await service.cancelAll();
+        fs.rmSync(directory, {recursive: true, force: true});
+        recorder.releaseAuditSession(session);
+    }
+});
+
+it.each([false, true])("preserves capture unavailability through Studio verification, cancellation and restart (cancel=%s)", async cancel => {
+    const game = {...transactionalRoundGame(), getConfigHash: () => "capture-prefix"},
+        context = {seed: "capture"},
+        session = game.createSession(context),
+        codec = session as GameSessionHandling & ConvertableToSessionState,
+        capture = codec.toSessionState.bind(codec),
+        recorder = new ReplayRecorder(6);
+    jest.spyOn(codec, "toSessionState").mockImplementation(() => {
+        if (new SessionRuntime(session).getLogicalRound()?.id === "missing") throw new Error("capture unavailable");
+        return capture();
+    });
+    let descriptor: ReplayDescriptor | undefined;
+    try {
+        recorder.recordAudit(game, session, [
+            {kind: "spin", delivery: "composite", roundId: "complete", maxSubrounds: 3},
+            {kind: "spin", delivery: "composite", roundId: "missing", maxSubrounds: 3},
+        ], {status: "calculated", sessionId: "original", requestId: "capture", durability: "detached"}, context);
+    } catch (error) {
+        expect(error).toMatchObject({code: "audit-capture-unavailable"});
+        descriptor = (error as Error & {committedRecording: ReplayDescriptor}).committedRecording;
+    }
+    let cancelling: Promise<void> | undefined;
+    const recording = {...descriptor!, audit: descriptor!.audit!},
+        directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-studio-capture-"));
+    const service: StudioReplayExecutionService = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1, undefined, () => {
+        // Cancel at the first verifier yield, with only one delivery verified.
+        if (cancel) cancelling = service.cancelAll();
+        return Promise.resolve();
+    });
+    service.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+    try {
+        const started = service.start("/capture", {round: 1, recording});
+        if (started.status !== "created") throw new Error("Missing job");
+        await new Promise<void>(resolve => {
+            setImmediate(resolve);
+        });
+        await cancelling;
+        const restarted = new StudioReplayExecutionService();
+        restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
+        const view = restarted.getStatus("/capture", started.job.id)!;
+        if (cancel) {
+            expect(view.status).toBe("cancelled");
+            expect(view.auditPrefix!.deliveries).toHaveLength(1);
+            expect(view.auditPrefix!.captureUnavailable).toEqual({acceptedDeliveries: 4});
+            expect(() => validateAuditRoundRecording(view.auditPrefix, game)).not.toThrow();
+            expect(new ReplayRecorder().replay(game, view.auditPrefix!)).toMatchObject({auditStatus: "verified", auditCompletion: "pending"});
+            expect(restarted.getDownload("/capture", started.job.id).status).toBe("not-ready");
+        } else {
+            expect(view).toMatchObject({status: "completed", descriptor: {auditStatus: "verified", auditCompletion: "pending", audit: recording.audit}});
+            const download = restarted.getDownload("/capture", started.job.id);
+            expect(download.status).toBe("ok");
+            if (download.status === "ok") expect(download.descriptor).toMatchObject({auditCompletion: "pending", auditUnavailableReason: expect.stringContaining("could not be captured")});
+        }
     } finally {
         await service.cancelAll();
         fs.rmSync(directory, {recursive: true, force: true});

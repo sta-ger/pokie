@@ -33,15 +33,18 @@ type AuditOperation = {
     disposition: AuditDisposition;
     context?: PokieGameContext;
     deliveries: AuditDelivery[];
+    acceptedDeliveries: number;
     completedCommands: number;
     descriptor?: ReplayDescriptor;
+    captureFailure?: AuditReplayError;
 };
+type AuditHistory = {operations: Map<string, AuditOperation>; deliveries: number; unavailable?: AuditOperation};
 
 // There is no seek-to-round primitive in GameSessionHandling, so this replays a round best-effort by
 // playing a fresh session forward from round 1 up to the requested round. Reproducibility for a given
 // seed depends entirely on the game package actually threading context.seed into a deterministic setup.
 export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecording, AuditReplayRecording {
-    private readonly auditHistory = new WeakMap<GameSessionHandling, {operations: Map<string, AuditOperation>; deliveries: number}>();
+    private readonly auditHistory = new WeakMap<GameSessionHandling, AuditHistory>();
 
     constructor(private readonly auditRetentionLimit = 10000) {
         if (!Number.isSafeInteger(auditRetentionLimit) || auditRetentionLimit < 1 || auditRetentionLimit > 10000) throw new Error("Audit retention limit must be an integer in 1..10000.");
@@ -50,7 +53,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
     /** Capture the actual injected session without changing its funding, commands or RNG. */
     public recordAudit(game: PokieGame, session: GameSessionHandling, commands: readonly SessionCommand[], disposition: AuditDisposition, context?: PokieGameContext): ReplayDescriptor {
         if (!game.getConfigHash || !game.getSessionStateSchema || !game.getSessionCommandCapabilities) throw new AuditReplayError("audit-codec-unsupported", "game", "Exact audit requires model identity and authoritative executable codecs.");
-        const history = this.auditHistory.get(session) ?? {operations: new Map(), deliveries: 0};
+        const history: AuditHistory = this.auditHistory.get(session) ?? {operations: new Map(), deliveries: 0};
         const commandRequest = (commands[0] as SessionCommand & {requestId?: string})?.requestId;
         const operationId = disposition.requestId ?? commandRequest;
         const logicalKeys = commands.map(command => {
@@ -66,25 +69,50 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             if (historical.inputs !== inputs) throw new AuditReplayError("audit-identity", "operation", "Retry conflicts with the original commands, disposition, context or model.");
             if (historical.completedCommands === historical.commands.length && historical.descriptor) return historical.descriptor;
         }
+        // An unkeyed failed capture must not turn a retry into a fresh operation either.
+        if (history.unavailable) {
+            if (!requestKey && history.unavailable.inputs !== inputs) throw new AuditReplayError("audit-identity", "operation", "Retry conflicts with the original unavailable operation.");
+            throw history.unavailable.captureFailure!;
+        }
         // Reserve the maximum accepted boundaries before executing; a capacity rejection draws nothing.
         const required = commands.reduce((count, command) => count + (command.delivery === "composite" ? command.maxSubrounds ?? 1000 : 1), 0);
-        if (!required || history.deliveries + required - (historical?.deliveries.length ?? 0) > this.auditRetentionLimit) throw new AuditReplayError("audit-order", "commands", "Audit retry retention limit reached; export evidence and release the session.");
+        if (!required || history.deliveries + required - (historical?.acceptedDeliveries ?? 0) > this.auditRetentionLimit) throw new AuditReplayError("audit-order", "commands", "Audit retry retention limit reached; export evidence and release the session.");
         this.auditHistory.set(session, history);
         const startedAt = new Date().toISOString();
         const operation: AuditOperation = historical ?? {
             inputs, commands: deepFreeze(JSON.parse(JSON.stringify(commands))),
             disposition: deepFreeze(JSON.parse(JSON.stringify({...disposition, startedAt: disposition.startedAt ?? startedAt}))),
             ...(context ? {context: deepFreeze(JSON.parse(JSON.stringify(context)))} : {}),
-            deliveries: [], completedCommands: 0,
+            deliveries: [], acceptedDeliveries: 0, completedCommands: 0,
         };
-        let before = operation.deliveries[operation.deliveries.length - 1]?.after ?? captureAuditBoundary(session);
+        let before = operation.deliveries[operation.deliveries.length - 1]?.after ?? deepFreeze(JSON.parse(JSON.stringify(captureAuditBoundary(session))));
         const runtime = new SessionRuntime(session, undefined, (command, result) => {
-            const delivery = deepFreeze(captureAuditDelivery(game, session, command, before, result,
-                {...operation.disposition, recordedAt: operation.disposition.recordedAt ?? new Date().toISOString()}, "accepted-boundary"));
-            operation.deliveries.push(delivery);
+            // Runtime already accepted this boundary. Bind and charge it before any fallible capture.
             if (requestKey) history.operations.set(requestKey, operation);
+            operation.acceptedDeliveries++;
             history.deliveries++;
-            before = delivery.after;
+            const accepted = deepFreeze(JSON.parse(JSON.stringify({command, before, result,
+                disposition: {...operation.disposition, recordedAt: operation.disposition.recordedAt ?? new Date().toISOString()}})));
+            let delivery: AuditDelivery | undefined;
+            // A transient codec/artifact failure can be recovered at this same live boundary.
+            // Never resume calculation or recapture from a later session state to fill the gap.
+            for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                    delivery = deepFreeze(captureAuditDelivery(game, session, accepted.command, accepted.before, accepted.result, accepted.disposition, "accepted-boundary"));
+                    break;
+                } catch (error) {
+                    if (attempt === 0) continue;
+                    operation.captureFailure = Object.assign(new AuditReplayError("audit-capture-unavailable", `deliveries[${operation.deliveries.length}]`,
+                        `Accepted delivery evidence is unavailable; release this session after exporting its prefix. ${error instanceof Error ? error.message : String(error)}`), {
+                        acceptedDeliveries: operation.acceptedDeliveries, uncapturedDelivery: accepted,
+                        operation: deepFreeze({commands: operation.commands, disposition: operation.disposition, context: operation.context}),
+                    });
+                    history.unavailable = operation;
+                    throw operation.captureFailure;
+                }
+            }
+            operation.deliveries.push(delivery!);
+            before = delivery!.after;
         });
         try {
             while (operation.completedCommands < operation.commands.length) {
@@ -95,7 +123,8 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         } catch (error) {
             // Keep the runtime's original exception/progress and expose immutable exportable evidence.
             const failure = error instanceof Error ? error : new Error(String(error));
-            if (operation.deliveries.length) operation.descriptor = deepFreeze(this.describeAudit(buildAuditRoundRecording(game, operation.context, operation.deliveries)));
+            if (operation.deliveries.length) operation.descriptor = deepFreeze(this.describeAudit(buildAuditRoundRecording(game, operation.context, operation.deliveries,
+                operation.captureFailure ? {acceptedDeliveries: operation.acceptedDeliveries} : undefined)));
             if (operation.descriptor) Object.assign(failure, {committedRecording: operation.descriptor});
             throw failure;
         }
@@ -115,7 +144,8 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         const last = audit.deliveries[audit.deliveries.length - 1];
         const artifact = [...audit.deliveries].reverse().find(delivery => delivery.artifact)?.artifact;
         const round = last.result.logicalRound;
-        return {audit, auditStatus: "recorded", auditCompletion: round?.status ?? "completed", sessionId: last.disposition.sessionId, game: audit.game,
+        return {audit, auditStatus: "recorded", auditCompletion: audit.captureUnavailable ? "pending" : round?.status ?? "completed",
+            ...(audit.captureUnavailable ? {auditUnavailableReason: "An accepted delivery could not be captured; only the preceding executable prefix is available."} : {}), sessionId: last.disposition.sessionId, game: audit.game,
             seed: audit.context?.seed === undefined ? null : String(audit.context.seed), round: 1,
             commands: audit.deliveries.map(delivery => delivery.command), ...(round ? {logicalRound: round, unit: "logical-round"} : {}),
             totalBet: round?.totalStake ?? audit.deliveries.reduce((sum, delivery) => sum + delivery.result.stake, 0),

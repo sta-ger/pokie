@@ -1,6 +1,6 @@
 import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../v2/fixtures/OverscanGame.js";
-import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
+import {GameSessionHandling, loadPokieGame, PokieGame, PokieGameContext, PokieGameManifest, ReplayRecorder, ReplayDescriptor, SessionRuntime, AuditRoundReplay, AuditReplayError, ConvertableToSessionState, captureAuditBoundary, SessionCommand} from "@fromstan/pokie";
 import path from "path";
 
 function createFakeSession(): GameSessionHandling & {getSymbolsCombination(): {toMatrix(): string[][]}} {
@@ -339,5 +339,132 @@ describe("direct audit operation identity and retention", () => {
         expect(restored).toMatchObject({verification: "verified", completion: "completed"});
         expect(restored.recording.deliveries).toEqual(resumed.audit!.deliveries);
         expect(new AuditRoundReplay().replay(model, JSON.parse(JSON.stringify(prefix!.audit))).verification).toBe("verified");
+    });
+
+    it.each([1, 2, 3, 4])("recovers transient capture failure at accepted delivery %s without recalculating or omitting it", failedDelivery => {
+        let calculations = 0,
+            failed = false;
+        const model = {...transactionalRoundGame(() => calculations++), getConfigHash: () => "capture-model"};
+        const session = model.createSession({seed: "original"}),
+            codec = session as GameSessionHandling & ConvertableToSessionState,
+            capture = codec.toSessionState.bind(codec),
+            before = captureAuditBoundary(session),
+            recorder = new ReplayRecorder(6),
+            accepted = {...disposition, requestId: "capture", expectedVersion: 1, version: 2},
+            context = {seed: "original"};
+        const commands: SessionCommand[] = [
+            {kind: "spin", roundId: "first", delivery: "composite", maxSubrounds: 3},
+            {kind: "spin", roundId: "second", delivery: "composite", maxSubrounds: 3},
+        ];
+        jest.spyOn(codec, "toSessionState").mockImplementation(() => {
+            if (calculations === failedDelivery && !failed) {
+                failed = true;
+                throw new Error("transient post-acceptance capture failure");
+            }
+            return capture();
+        });
+        const recording = recorder.recordAudit(model, session, commands, accepted, context);
+        expect(failed).toBe(true);
+        expect(calculations).toBe(6);
+        expect(recording.audit!.deliveries).toHaveLength(6);
+        expect(recording.audit!.deliveries[0].before).toEqual(before);
+        expect(recording.audit!.deliveries.map(delivery => delivery.command.continuation?.cursor ?? "entry")).toEqual(["entry", 1, 2, "entry", 1, 2]);
+        expect(recording.audit!.captureUnavailable).toBeUndefined();
+        expect(recording.audit!.deliveries.every(delivery => delivery.disposition.requestId === "capture")).toBe(true);
+        expect(recording.audit!.context).toEqual(context);
+        expect(recorder.recordAudit(model, session, commands, accepted, context)).toBe(recording);
+        expect(() => recorder.recordAudit(model, session, commands, accepted, {seed: "later"})).toThrow("audit-identity at operation");
+        expect(() => recorder.recordAudit(model, session, [{kind: "spin"}], disposition)).toThrow("retention limit");
+        expect(calculations).toBe(6);
+        recorder.releaseAuditSession(session);
+        expect(new AuditRoundReplay().replay(model, JSON.parse(JSON.stringify(recording.audit)))).toMatchObject({verification: "verified", completion: "completed"});
+    });
+
+    it.each([1, 2, 3, 4])("binds persistent capture failure at accepted delivery %s and never advances past its unavailable boundary", failedDelivery => {
+        let calculations = 0;
+        const model = {...transactionalRoundGame(() => calculations++), getConfigHash: () => "capture-model"};
+        const context = {seed: "original"},
+            session = model.createSession(context),
+            codec = session as GameSessionHandling & ConvertableToSessionState,
+            capture = codec.toSessionState.bind(codec),
+            originalBoundary = captureAuditBoundary(session),
+            recorder = new ReplayRecorder(6),
+            accepted = {...disposition, requestId: "capture", expectedVersion: 1, version: 2};
+        const commands: SessionCommand[] = [
+            {kind: "spin", roundId: "first", delivery: "composite", maxSubrounds: 3},
+            {kind: "spin", roundId: "second", delivery: "composite", maxSubrounds: 3},
+        ];
+        const snapshot = jest.spyOn(codec, "toSessionState").mockImplementation(() => {
+            if (calculations === failedDelivery) throw new Error("persistent post-acceptance capture failure");
+            return capture();
+        });
+        type Failure = AuditReplayError & {acceptedDeliveries: number; committedRecording?: ReplayDescriptor; uncapturedDelivery: {before: unknown; command: SessionCommand}; operation: {commands: readonly SessionCommand[]; context: PokieGameContext; disposition: typeof accepted}};
+        let failure: Failure | undefined;
+        try {
+            recorder.recordAudit(model, session, commands, accepted, context);
+        } catch (error) {
+            failure = error as Failure;
+        }
+        expect(failure).toMatchObject({code: "audit-capture-unavailable", path: `deliveries[${failedDelivery - 1}]`, acceptedDeliveries: failedDelivery});
+        expect(calculations).toBe(failedDelivery);
+        expect(new SessionRuntime(session).getRetainedDeliveryCount()).toBe(failedDelivery);
+        expect(failure!.operation).toMatchObject({commands, context, disposition: accepted});
+        expect(Object.isFrozen(failure!.operation)).toBe(true);
+        expect(Object.isFrozen(failure!.uncapturedDelivery)).toBe(true);
+        if (failedDelivery === 1) {
+            expect(failure!.uncapturedDelivery.before).toEqual(originalBoundary);
+            expect(failure!.uncapturedDelivery.command).toEqual(commands[0]);
+            expect(failure!.committedRecording).toBeUndefined();
+        } else {
+            const prefix = failure!.committedRecording!;
+            expect(Object.isFrozen(prefix)).toBe(true);
+            expect(prefix.audit!.deliveries).toHaveLength(failedDelivery - 1);
+            expect(prefix.audit!.deliveries[0].before).toEqual(originalBoundary);
+            expect(prefix.audit!.captureUnavailable).toEqual({acceptedDeliveries: failedDelivery});
+            expect(prefix.auditCompletion).toBe("pending");
+            expect(prefix.auditUnavailableReason).toContain("could not be captured");
+            expect(failure!.uncapturedDelivery.before).toEqual(prefix.audit!.deliveries[failedDelivery - 2].after);
+            expect(new AuditRoundReplay().replay({...model, createSession: transactionalRoundGame().createSession}, JSON.parse(JSON.stringify(prefix.audit)))).toMatchObject({verification: "verified", completion: "pending"});
+            // Even a prefix ending in a completed earlier command cannot complete the operation.
+            if (failedDelivery === 4) expect(prefix.logicalRound!.status).toBe("completed");
+        }
+        const attempts = snapshot.mock.calls.length;
+        // A later recovery of the codec cannot substitute a new boundary for lost evidence.
+        snapshot.mockImplementation(capture);
+        expect(() => recorder.recordAudit(model, session, commands, accepted, context)).toThrow(failure!);
+        expect(snapshot).toHaveBeenCalledTimes(attempts);
+        context.seed = "changed";
+        expect(() => recorder.recordAudit(model, session, commands, accepted, context)).toThrow("audit-identity at operation");
+        context.seed = "original";
+        expect(() => recorder.recordAudit(model, session, [{...commands[0], maxSubrounds: 2}, commands[1]], accepted, context)).toThrow("audit-identity at operation");
+        expect(() => recorder.recordAudit(model, session, commands, {...accepted, status: "committed"}, context)).toThrow("audit-identity at operation");
+        expect(() => recorder.recordAudit(model, session, [{kind: "spin"}], {...disposition, requestId: "new"})).toThrow(failure!);
+        expect(calculations).toBe(failedDelivery);
+        expect(new SessionRuntime(session).getRetainedDeliveryCount()).toBe(failedDelivery);
+        recorder.releaseAuditSession(session);
+        expect(new SessionRuntime(session).getRetainedDeliveryCount()).toBe(0);
+    });
+
+    it("charges an unkeyed accepted capture failure and prevents a retry from starting a successor-only recording", () => {
+        const recorder = new ReplayRecorder(1),
+            session = game.createSession(),
+            codec = session as GameSessionHandling & ConvertableToSessionState,
+            capture = codec.toSessionState.bind(codec),
+            play = jest.spyOn(session, "play");
+        jest.spyOn(codec, "toSessionState").mockImplementation(() => {
+            if (play.mock.calls.length) throw new Error("capture failed");
+            return capture();
+        });
+        let failure: Error | undefined;
+        try {
+            recorder.recordAudit(game, session, [{kind: "spin"}], disposition);
+        } catch (error) {
+            failure = error as Error;
+        }
+        expect(failure).toMatchObject({code: "audit-capture-unavailable", acceptedDeliveries: 1});
+        expect(() => recorder.recordAudit(game, session, [{kind: "spin"}], disposition)).toThrow(failure!);
+        expect(() => recorder.recordAudit(game, session, [{kind: "spin", bet: 7.5}], disposition)).toThrow("audit-identity at operation");
+        expect(play).toHaveBeenCalledTimes(1);
+        recorder.releaseAuditSession(session);
     });
 });
