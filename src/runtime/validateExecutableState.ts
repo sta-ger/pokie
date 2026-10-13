@@ -33,7 +33,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     if (schema?.kind === "free-games" && (state.freeGamesNum === undefined || state.freeGamesSum === undefined || state.freeGamesBank === undefined)) throw new Error("Required free-games state is missing.");
     if (schema?.kind === "bet-modes" && state.betModeId === undefined) throw new Error("Required bet-mode state is missing.");
     if ((schema?.kind === "free-games" || schema?.kind === "bet-modes") && (schema.base === undefined || (state.base === undefined && live?.base?.optional !== true))) throw new Error("Required base schema/state is missing.");
-    if ("rngState" in state && (typeof state.rngState !== "number" || !Number.isSafeInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffffffff)) {
+    if ("rngState" in state && live?.opaqueRng !== true && (typeof state.rngState !== "number" || !Number.isSafeInteger(state.rngState) || state.rngState < 0 || state.rngState > 0xffffffff)) {
         throw new Error("Invalid seeded RNG snapshot.");
     }
     if ("freeGamesNum" in state || "freeGamesSum" in state || "freeGamesBank" in state) {
@@ -47,6 +47,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if ("betModeId" in state && (typeof state.betModeId !== "string" || !state.betModeId || (state.base === undefined && live?.base?.optional !== true))) throw new Error("Invalid bet-mode state.");
     if (schema?.kind === "bet-modes" && live !== undefined && !live.modes?.includes(state.betModeId as string)) throw new Error("Persisted bet mode is not supported by the trusted live model.");
+    if ((schema?.kind === "free-games" || schema?.kind === "bet-modes") && live !== undefined && live.base === undefined) throw new Error("Trusted nested snapshot policy is missing.");
     if (state.base !== undefined) validateExecutableState(state.base,
         schema?.kind === "free-games" || schema?.kind === "bet-modes" ? schema.base : undefined, customValidator, partial, live?.base);
 }

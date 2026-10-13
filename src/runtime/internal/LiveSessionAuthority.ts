@@ -2,7 +2,6 @@ import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema} from "../../session/SessionStateRestoring.js";
 import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
 import type {ConvertableToSessionState} from "../../session/ConvertableToSessionState.js";
-import {AbstractVideoSlotSessionDecorator} from "../../session/videoslot/AbstractVideoSlotSessionDecorator.js";
 import {cloneSessionData} from "./cloneSessionData.js";
 
 /** Process-local authority captured from a trusted constructed/primed object, never a repository record.
@@ -29,6 +28,7 @@ export type LiveSnapshotPolicy = {
     readonly optional: boolean;
     readonly opaque: boolean;
     readonly partial: boolean;
+    readonly opaqueRng: boolean;
     readonly modes?: readonly string[];
     readonly base?: LiveSnapshotPolicy;
 };
@@ -40,10 +40,22 @@ function captureSnapshotPolicy(session: GameSessionHandling, snapshot: unknown):
         optional: schema.kind === "custom" && snapshot === undefined,
         opaque: schema.kind === "custom",
         partial: schema.kind === "seeded-video-slot" && !isSessionStateRestorable(session) && state?.rngState === undefined && state?.reelStrips === undefined,
+        opaqueRng: schema.kind === "seeded-video-slot" && state?.rngState !== undefined && !isSessionStateRestorable(session) &&
+            (session as {getRandomStateCodec?: () => string}).getRandomStateCodec?.() !== "seeded",
         ...(supportsBetModeSelecting(session) ? {modes: [...session.getAvailableBetModeIds()]} : {}),
         // The built-in decorators own this protected composition field. Inspect only a trusted
         // constructed object, never a snapshot's base or a repository-provided collaborator.
-        ...((schema.kind === "free-games" || schema.kind === "bet-modes") && session instanceof AbstractVideoSlotSessionDecorator ?
-            {base: captureSnapshotPolicy(Reflect.get(session, "baseSession") as GameSessionHandling, (snapshot as {base?: unknown} | undefined)?.base)} : {}),
+        ...((schema.kind === "free-games" || schema.kind === "bet-modes") ?
+            {base: captureSnapshotPolicy(trustedBaseSession(session), (snapshot as {base?: unknown} | undefined)?.base)} : {}),
     };
+}
+
+// Both public module formats own the same composition field, but have distinct constructors.
+// This traversal receives only a trusted constructed session, never stored snapshot objects.
+function trustedBaseSession(session: GameSessionHandling): GameSessionHandling {
+    const base = Reflect.get(session, "baseSession") as GameSessionHandling | undefined;
+    if (base === undefined || base === session || typeof base.getAvailableBets !== "function" || typeof base.play !== "function") {
+        throw new Error("Trusted built-in composition requires its constructed base session.");
+    }
+    return base;
 }

@@ -371,3 +371,11 @@ or `executionState` flag. Opaque legacy custom captures remain finite serializab
 durable codecs. Free-game counters, banks and nested built-in snapshots remain required. Every retained
 bet-mode node is checked against the selected game's declared modes or that live node's trusted modes,
 including current state and both states of cached/captured results, before publication or recovery writes.
+
+The trusted composition policy follows constructed children across the public ESM and CommonJS
+module instances; constructor identity in the host is not composition authority. An injected RNG
+whose capture is finite opaque data can continue in its primed live session without adopting the
+built-in seeded numeric codec. This does not certify reconstruction: loss of live authority refuses
+new commands and undeclared-codec recovery before construction or recovery writes. Complete seeded
+children and declared codecs retain their existing strict validation. At each retained built-in mode
+node, the selected mode must also satisfy any applicable validated stored capability restriction.

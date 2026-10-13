@@ -149,6 +149,10 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             this.winCalculator instanceof VideoSlotWinCalculator && this.winCalculator.usesConfig(this.config) && this.winCalculator.isStatelessForSessionRestoration();
     }
 
+    public getRandomStateCodec(): "seeded" | "opaque" {
+        return (this.combinationsGenerator as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
+    }
+
     public toSessionState(): {rngState?: unknown; reelStrips?: T[][]} {
         const rngState = (this.combinationsGenerator as {getRandomState?: () => unknown}).getRandomState?.();
         return rngState === undefined ? {} : {rngState, reelStrips: this.getSymbolsSequences().map(strip => strip.getSymbols(0, strip.getSize()))};

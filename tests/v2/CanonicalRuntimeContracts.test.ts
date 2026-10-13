@@ -1,4 +1,6 @@
 import vm from "node:vm";
+import {execFileSync} from "node:child_process";
+import {emitPublicRuntime} from "./helpers/publicRuntime.js";
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -88,6 +90,30 @@ async function initialize(game: PokieGame, seed: string | number, repository: In
 }
 
 describe("V2C-02 canonical runtime contracts", () => {
+    it("validates actual ESM/CJS host/game instances in both directions before publication and recovery", () => {
+        const runtime = emitPublicRuntime();
+        try {
+            const probe = fs.readFileSync(path.join(root, "tests/v2/fixtures/PublicRuntimeBoundaryProbe.ts"), "utf8");
+            fs.writeFileSync(path.join(runtime.directory, "probe.mjs"), ts.transpileModule(probe, {
+                compilerOptions: {module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022},
+            }).outputText);
+            fs.writeFileSync(path.join(runtime.directory, "run.mjs"), `
+                import * as esm from "@fromstan/pokie";
+                import {createRequire} from "node:module";
+                import {legacyComposedGame as esmGame} from "./game.mjs";
+                import {probe} from "./probe.mjs";
+                const require = createRequire(import.meta.url);
+                const cjs = require("@fromstan/pokie");
+                await probe(esm, cjs, require("./game.cjs").legacyComposedGame);
+                await probe(cjs, esm, esmGame);
+                console.log("Both public ESM/CJS runtime directions passed.");
+            `);
+            expect(execFileSync(process.execPath, [path.join(runtime.directory, "run.mjs")], {encoding: "utf8", timeout: 60000})).toContain("Both public ESM/CJS runtime directions passed.");
+        } finally {
+            runtime.dispose();
+        }
+    }, 60000);
+
     it.each(legacyCompositions)("executes unchanged %s decorators with absent and opaque nested snapshots", async composition => {
         for (const opaque of [false, true]) {
             const game = legacyComposedGame(composition, opaque);

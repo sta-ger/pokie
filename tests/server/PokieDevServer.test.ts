@@ -1,3 +1,4 @@
+import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
 import {
     BuildableFromSessionState,
     captureInitialPokieSessionState,
@@ -9,6 +10,7 @@ import {
     GameSessionHandling,
     GameSessionSerializing,
     InMemorySessionRepository,
+    InMemoryIdempotencyRepository, InMemorySpinOperationLog, type SpinCommandResult,
     InMemoryWallet,
     loadPokieGame,
     PokieDevServer,
@@ -30,7 +32,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import {legacyComposedGame, legacyCompositions} from "../v2/fixtures/LegacyComposedGame.js";
+import {legacyCompositions} from "../v2/fixtures/LegacyComposedGame.js";
 
 const fixtureCodec: Pick<PokieGame, "getSessionStateSchema" | "getSessionCommandCapabilities" | "validateSessionState" | "validateLiveSessionState"> = {
     getSessionStateSchema: () => ({kind: "custom"}),
@@ -254,9 +256,63 @@ async function getJson(url: string): Promise<{status: number; body: Record<strin
 }
 
 describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
-    it.each(legacyCompositions)("serves unchanged composed %s packages and rejects mode corruption before publication", async composition => {
+    let publicRuntime: ReturnType<typeof emitPublicRuntime>;
+    beforeAll(() => {
+        publicRuntime = emitPublicRuntime();
+    }, 60000);
+    afterAll(() => publicRuntime?.dispose());
+    it.each(["cached-state", "cached-previous", "captured-state", "captured-previous"] as const)("rejects CJS nested mode corruption in %s through real HTTP", async location => {
+        const game = publicRuntime.legacyGame("free-bet", true);
+        const repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet();
+        const idempotency = new InMemoryIdempotencyRepository<SpinCommandResult>(),
+            operations = new InMemorySpinOperationLog();
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository, wallet,
+            idempotencyRepository: idempotency, spinOperationLog: operations, singleInstanceDeployment: true});
+        const address = await server.start(),
+            url = `http://${address.host}:${address.port}`;
+        try {
+            const created = await postJson(`${url}/sessions`),
+                sessionId = created.body.sessionId as string;
+            expect(created.status).toBe(201);
+            expect((await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).status).toBe(200);
+            const corrupt = (state: PokieSessionState): void => {
+                (state.featureState as {base: {betModeId: string}}).base.betModeId = "nonexistent";
+            };
+            if (location.startsWith("cached")) {
+                const result = (await idempotency.load(sessionId, "retry"))!;
+                if (result.status !== "played") throw new Error("No settled result");
+                corrupt(location === "cached-state" ? result.state : result.previousState!);
+                await idempotency.save(sessionId, "retry", result);
+            } else {
+                const record = (await operations.load(sessionId, "retry"))!;
+                corrupt(location === "captured-state" ? record.capturedResult!.newState : record.capturedResult!.previousState);
+                await operations.record({...record, checkpoint: "settled", updatedAt: new Date(0).toISOString()});
+            }
+            const before = await repository.loadVersioned(sessionId),
+                retained = await operations.load(sessionId, "retry"),
+                cached = await idempotency.load(sessionId, "retry"),
+                balance = await wallet.getBalance(sessionId);
+            const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(wallet, "debit"), jest.spyOn(wallet, "credit"),
+                jest.spyOn(operations, "record"), jest.spyOn(operations, "delete"), jest.spyOn(idempotency, "save"), jest.spyOn(game, "createSession")];
+            expect(await postJson(`${url}/sessions/${sessionId}/spin`, {requestId: "retry"})).toMatchObject({status: 409, body: {code: "corrupt-state"}});
+            expect((await getJson(`${url}/sessions/${sessionId}`)).status).toBe(200);
+            expect(await repository.loadVersioned(sessionId)).toEqual(before);
+            expect(await operations.load(sessionId, "retry")).toEqual(retained);
+            expect(await idempotency.load(sessionId, "retry")).toEqual(cached);
+            expect(await wallet.getBalance(sessionId)).toBe(balance);
+            writes.forEach(spy => {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore();
+            });
+        } finally {
+            await server.stop();
+        }
+    });
+
+    it.each(legacyCompositions)("serves unchanged CJS composed %s packages and rejects mode corruption before publication", async composition => {
         for (const opaque of [false, true]) {
-            const game = legacyComposedGame(composition, opaque),
+            const game = publicRuntime.legacyGame(composition, opaque),
                 repository = new InMemorySessionRepository(),
                 wallet = new InMemoryWallet(1000);
             const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0, sessionRepository: repository, wallet});

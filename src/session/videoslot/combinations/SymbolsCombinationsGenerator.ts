@@ -41,6 +41,10 @@ implements SymbolsCombinationsGenerating<T> {
         return this.constructor === SymbolsCombinationsGenerator && this.rng.constructor === SeededRandomNumberGenerator;
     }
 
+    public getRandomStateCodec(): "seeded" | "opaque" {
+        return this.isRandomStateRestorable() ? "seeded" : "opaque";
+    }
+
     public getRandomState(): unknown {
         return (this.rng as {toSessionState?: () => unknown}).toSessionState?.();
     }

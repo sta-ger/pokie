@@ -1,4 +1,4 @@
-import type {LiveSessionAuthority} from "./internal/LiveSessionAuthority.js";
+import type {LiveSessionAuthority, LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
 import {sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 import {validateExecutableState} from "./validateExecutableState.js";
@@ -75,11 +75,7 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         if (!supportsSelections(authority.bets, capabilities.bets) || !supportsSelections(authority.modes, capabilities.modes)) {
             throw new Error("Stored command capabilities do not match the selected game model.");
         }
-        const selectedMode = (state.featureState as {betModeId?: unknown} | undefined)?.betModeId;
-        if (schema !== undefined || live === undefined) validateSelectedModes(state.featureState, schema, authority.modes);
-        else if (live?.schema.kind === "bet-modes" && !authority.modes?.includes(selectedMode as string)) {
-            throw new Error("Persisted bet mode is not supported by the resolved model.");
-        }
+        validateSelectedModes(state.featureState, schema ?? live?.schema, authority.modes, capabilities.modes, schema === undefined ? live?.snapshotPolicy : undefined);
     } catch (error) {
         return {status: "corrupt-state", reason: error instanceof Error ? error.message : String(error)};
     }
@@ -105,9 +101,9 @@ function supportsSelections<T extends string | number>(expected: readonly T[] | 
 
 // Declared authority applies throughout its codec and its observable-only retry fallback.
 // Trusted live compositions validate each node against its own captured construction policy.
-function validateSelectedModes(value: unknown, schema: SessionStateSchema | undefined, modes: readonly string[] | undefined): void {
+function validateSelectedModes(value: unknown, schema: SessionStateSchema | undefined, modes: readonly string[] | undefined, restrictions?: readonly string[], live?: LiveSnapshotPolicy): void {
     if ((schema !== undefined && schema.kind !== "free-games" && schema.kind !== "bet-modes") || value === undefined) return;
     const state = value as {betModeId?: string; base?: unknown};
-    if ((schema?.kind === "bet-modes" || (schema === undefined && state.betModeId !== undefined)) && !modes?.includes(state.betModeId as string)) throw new Error("Persisted bet mode is not supported by the resolved model.");
-    validateSelectedModes(state.base, schema?.base, modes);
+    if ((schema?.kind === "bet-modes" || (schema === undefined && state.betModeId !== undefined)) && (!(live?.modes ?? modes)?.includes(state.betModeId as string) || (restrictions !== undefined && !restrictions.includes(state.betModeId as string)))) throw new Error("Persisted bet mode is not supported by the resolved model.");
+    validateSelectedModes(state.base, schema?.base, modes, restrictions, live?.base);
 }

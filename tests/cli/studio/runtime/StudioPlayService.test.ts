@@ -1,3 +1,4 @@
+import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import {
     buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
     GameSessionHandling,
@@ -35,7 +36,7 @@ import {
 } from "../../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {buildStakeEngineTestLibrary} from "../../../stakeengine/StakeEngineTestFixtures.js";
 
-import {legacyComposedGame, legacyCompositions} from "../../../v2/fixtures/LegacyComposedGame.js";
+import {legacyCompositions} from "../../../v2/fixtures/LegacyComposedGame.js";
 
 const fixtureCommandAuthority: Pick<PokieGame, "getSessionCommandCapabilities"> = {
     getSessionCommandCapabilities: () => ({bets: [0.05, 7.5, 1e-7, 1, 2, 3, 4, 5, 10, 20, 30, 40, 50, 100], modes: ["base", "ante", "buyFeature"]}),
@@ -309,9 +310,42 @@ function createFakeNonVideoSlotGame(): PokieGame {
 }
 
 describe("StudioPlayService", () => {
-    it.each(legacyCompositions)("plays and searches unchanged composed %s packages without declarations", async composition => {
+    let publicRuntime: ReturnType<typeof emitPublicRuntime>;
+    beforeAll(() => {
+        publicRuntime = emitPublicRuntime();
+    }, 60000);
+    afterAll(() => publicRuntime?.dispose());
+    it("rejects a CJS selected mode excluded by retained capabilities in Play and scenario callers", async () => {
+        const game = publicRuntime.legacyGame("bet-free", true);
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/fake/project");
+            if (created.status !== "ok") throw new Error("Play session creation failed");
+            const id = created.session.sessionId;
+            expect(await service.spin(id)).toMatchObject({status: "ok"});
+            const active = Reflect.get(service, "active") as {spinHandler: SpinCommandHandler};
+            const repository = Reflect.get(active.spinHandler, "sessionRepository") as InMemorySessionRepository;
+            const record = (await repository.loadVersioned(id))!;
+            record.state.commandCapabilities = {...record.state.commandCapabilities!, modes: []};
+            await repository.save(id, record.state);
+            const before = await repository.loadVersioned(id);
+            const writes = [jest.spyOn(repository, "saveVersioned"), jest.spyOn(game, "createSession")];
+            for (const result of [await service.spin(id), await service.findAnyWin(id), await service.findSymbolWin(id, "A")]) {
+                expect(result).toMatchObject({status: "error", code: "corrupt-state"});
+            }
+            expect(await repository.loadVersioned(id)).toEqual(before);
+            writes.forEach(spy => {
+                expect(spy).not.toHaveBeenCalled();
+                spy.mockRestore();
+            });
+        } finally {
+            service.reset();
+        }
+    });
+
+    it.each(legacyCompositions)("plays and searches unchanged CJS composed %s packages without declarations", async composition => {
         for (const opaque of [false, true]) {
-            const game = legacyComposedGame(composition, opaque);
+            const game = publicRuntime.legacyGame(composition, opaque);
             const service = new StudioPlayService(() => Promise.resolve(game));
             try {
                 const created = await service.newSession("/fake/project");
