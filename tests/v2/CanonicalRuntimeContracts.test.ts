@@ -15,7 +15,7 @@ import {
     renderBuiltGameModule, renderBuiltGameModuleSource,
     InMemoryIdempotencyRepository, SpinReconciliationService, type SpinCommandResult, GameSession, type PokieGame, type GameBlueprint, type PokieSessionState, type RepositoryCommand,
 } from "@fromstan/pokie";
-import {fractionalBetBlueprint, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
+import {fractionalBetBlueprint, fractionalBetConfig, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import {extensionGame, extensionRound, legacyRoundGame, LegacyRoundSession} from "./fixtures/RuntimeExtension.js";
 import {inspectRuntimeGraph} from "./helpers/runtimeGraph.js";
@@ -119,6 +119,15 @@ describe("V2C-02 canonical runtime contracts", () => {
                     const publicWin = api.serializeWinEvaluationResult(session.getWinEvaluationResult(), geometry);
                     if (publicWin.winningPositions.some(([reel, row]) => reel < 0 || reel >= 5 || row < 0 || row >= 3)) throw new Error("Public win-result serializer returned off-viewport positions.");
                     if (session.getSymbolsCombination().toMatrix()[0].length !== 7 || new api.VideoSlotSessionSerializer().getRoundData(session).reelsSymbols[0].length !== 3) throw new Error("Public runtime lost generated/visible ownership.");
+                }
+                for (const [host, source] of [[esm, cjs], [cjs, esm]]) {
+                    const config = new source.VideoSlotConfig();
+                    config.setReelsNumber(3);
+                    config.setReelsSymbolsNumber(1);
+                    const base = new source.VideoSlotSession(config);
+                    const free = new host.VideoSlotWithFreeGamesSession(undefined, undefined, undefined, base);
+                    free.play();
+                    if (free.getScreenGeometry() !== undefined || free.getSymbolsCombination().toMatrix().length !== 3 || free.getSymbolsCombination().toMatrix()[0].length !== 1) throw new Error("Cross-module ordinary free-games wrapper changed screen ownership.");
                 }
                 await probe(esm, cjs, require("./game.cjs").legacyComposedGame, require("./extension.cjs").legacyRoundGame);
                 await probe(cjs, esm, esmGame, esmRoundGame);
@@ -267,6 +276,73 @@ describe("V2C-02 canonical runtime contracts", () => {
             construction.mockRestore();
             save.mockRestore();
         }
+    });
+
+    it.each([false, true])("preserves ordinary free-game wrappers with independent grant configuration (legacy capabilities %s)", legacy => {
+        for (const ante of [false, true]) {
+            const config = fractionalBetConfig([0.05]);
+            const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)));
+            const nested = legacy ? new Proxy(base, {get(target, property) {
+                if (property === "getConfiguredScreenGeometry" || property === "validateScreenCoordinates") return undefined;
+                const value = Reflect.get(target, property);
+                return typeof value === "function" ? value.bind(target) : value;
+            }}) : base;
+            const grants = new VideoSlotWithFreeGamesConfig(undefined, {});
+            grants.setScatterSymbols(["A"]);
+            grants.setFreeGamesForScatters("A", 3, 2);
+            // The unchanged default grant configuration is 5x3; the base owns a 3x1 screen.
+            const free = new VideoSlotWithFreeGamesSession(grants, undefined, undefined, nested);
+            const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([
+                new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+            ]));
+            if (ante) session.setBetMode("ante");
+            const credits = session.getCreditsAmount();
+            expect(new SessionRuntime(session).execute({kind: "spin"})).toMatchObject({status: "played"});
+            expect(session.getSymbolsCombination().toMatrix()).toEqual([["A"], ["A"], ["A"]]);
+            expect(session.getScreenGeometry()).toBeUndefined();
+            expect(session.getWinAmount()).toBe(0.25);
+            expect(session.getCreditsAmount()).toBeCloseTo(credits + 0.25 - (ante ? 0.1 : 0.05), 10);
+            expect(free.getWonFreeGamesNumber()).toBe(2);
+            expect(free.getFreeGamesSum()).toBe(2);
+            // The separately authored grant remains independent of monetary scatter awards.
+            expect(session.getWinningScatters()).toEqual({});
+            const paidCredits = session.getCreditsAmount();
+            expect(new SessionRuntime(session).execute({kind: "spin"})).toMatchObject({status: "played", stake: 0});
+            expect(free.getFreeGamesNum()).toBe(1);
+            expect(session.getCreditsAmount()).toBe(paidCredits);
+        }
+    });
+
+    it.each(["configuration", "base"] as const)("rejects declared identity dimension conflicts owned by %s before ante or free-game mutation", owner => {
+        const config = fractionalBetConfig([0.05]);
+        const rng = new SeededRandomNumberGenerator(7);
+        const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const grants = new VideoSlotWithFreeGamesConfig(undefined, {});
+        const free = new VideoSlotWithFreeGamesSession(grants, undefined, undefined, base);
+        const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([
+            new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+        ]));
+        session.setBetMode("ante");
+        session.play();
+        free.setFreeGamesSum(2);
+        const snapshot = {credits: session.getCreditsAmount(), state: session.toSessionState(),
+            screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), rng: rng.toSessionState()};
+        const dimensions = owner === "configuration" ? {reels: 5, rows: 3} : {reels: 3, rows: 1};
+        const declared = owner === "configuration" ? grants : config;
+        declared.setScreenGeometry({generated: dimensions, visible: {rowOffset: 0, rows: dimensions.rows},
+            evaluated: {rowOffset: 0, rows: dimensions.rows}, paylineSpace: "evaluated"});
+        expect(() => session.play()).toThrow(/same upcoming coordinate contract/);
+        expect(() => new VideoSlotWithFreeGamesSession(grants, undefined, undefined, base)).toThrow(/same upcoming coordinate contract/);
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
+        expect(session.toSessionState()).toEqual(snapshot.state);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+        expect(session.getScreenGeometry()).toBeUndefined();
+        expect(session.getWinAmount()).toBe(snapshot.win);
+        expect(rng.toSessionState()).toBe(snapshot.rng);
+        declared.setScreenGeometry(undefined);
+        expect(() => session.play()).not.toThrow();
+        expect(free.getFreeGamesNum()).toBe(1);
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
     });
 
     it.each(["current", "cached-state", "cached-previous", "captured-state", "captured-previous"] as const)("rejects unsupported selected modes in %s before execution, publication or recovery writes", async location => {

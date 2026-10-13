@@ -55,9 +55,12 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         super.validateScreenCoordinates();
         const projection = resolveScreenProjection(this.config);
         const baseGeometry = this.getConfiguredScreenGeometry();
+        // Legacy ordinary wrappers use their configuration for grants, while the base owns
+        // the screen dimensions. Declared coordinates require both owners to agree.
         if (!areScreenGeometriesCompatible(projection?.getGeometry(), baseGeometry) ||
-            this.config.getReelsNumber() !== this.baseSession.getReelsNumber() ||
-            this.config.getReelsSymbolsNumber() !== this.baseSession.getReelsSymbolsNumber()) {
+            ((projection || baseGeometry) &&
+                (this.config.getReelsNumber() !== this.baseSession.getReelsNumber() ||
+                this.config.getReelsSymbolsNumber() !== this.baseSession.getReelsSymbolsNumber()))) {
             throw new Error("Free-games base session must expose the same upcoming coordinate contract.");
         }
     }
