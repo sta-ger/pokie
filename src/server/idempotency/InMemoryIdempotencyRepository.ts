@@ -7,6 +7,15 @@ import type {IdempotencyRepository} from "./IdempotencyRepository.js";
 export class InMemoryIdempotencyRepository<T = unknown> implements IdempotencyRepository<T> {
     private readonly results = new Map<string, T>();
 
+    public loadRound(sessionId: string, roundId: string): Promise<T | undefined> {
+        let latest: T | undefined;
+        for (const [key, value] of this.results) {
+            const result = value as {state?: {logicalRound?: {id: string}}};
+            if (key.startsWith(`${sessionId}\0`) && result.state?.logicalRound?.id === roundId) latest = value;
+        }
+        return Promise.resolve(latest === undefined ? undefined : cloneSessionData(latest));
+    }
+
     public load(sessionId: string, requestId: string): Promise<T | undefined> {
         const result = this.results.get(this.keyFor(sessionId, requestId));
         return Promise.resolve(result === undefined ? undefined : cloneSessionData(result));

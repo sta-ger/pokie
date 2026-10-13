@@ -486,7 +486,8 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
         response.logicalRoundDurability = this.transactionalRoundStore ? "durable-store" : "independent-ports";
         if (includeInternal) {
-            response.internal = this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version);
+            response.internal = {...this.buildInternalSessionData(result.state, result.previousState, result.requestId, result.version),
+                ...(result.audit ? {audit: result.audit} : {}), ...(result.auditUnavailableReason ? {auditUnavailableReason: result.auditUnavailableReason} : {})};
         }
         if (this.transactionalRoundStore === undefined) {
             this.sendJson(res, 200, response);

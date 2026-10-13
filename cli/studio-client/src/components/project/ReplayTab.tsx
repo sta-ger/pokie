@@ -41,6 +41,7 @@ export type ExpectedReplayState =
     | {status: "error"; message: string}
     | {
           status: "loaded";
+          recording?: import("../../api/types").ReplayDescriptor;
           round: number;
           seed?: string;
           modeName?: string;
@@ -181,7 +182,7 @@ export function ReplayTab({
     progress: ReplayProgressView | undefined;
     result: ReplayResultView | undefined;
     error: string | undefined;
-    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView) => void;
+    onRun: (round: number, seed: string | undefined, simulationId?: string, keepExpected?: boolean, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView, recording?: import("../../api/types").ReplayDescriptor) => void;
     onCancel: () => void;
     onRetry: () => void;
     listView: ReplayListView;
@@ -379,10 +380,11 @@ export function ReplayTab({
     // has a known prior result loaded to actually compare a fresh run against (`comparison`, built from
     // `expected`); Recreate from seed/Recent Simulation are always a fresh forward replay with nothing to
     // compare, so their honest status is "not verified", never a guessed match/mismatch.
-    const runReproducibilityLabel =
-        findMethod === "artifact" && comparison
-            ? COMPARISON_STATUS_LABEL[comparison.status]
-            : "Not verified -- a fresh forward replay with no prior recorded result to compare against.";
+    let runReproducibilityLabel = "Not verified -- a fresh forward replay with no prior recorded result to compare against.";
+    if (result?.auditStatus === "verified") runReproducibilityLabel = result.auditCompletion === "completed"
+        ? "Audit verified -- complete recorded operation."
+        : `Executable prefix verified -- logical operation remains ${result.auditCompletion ?? "incomplete"}.`;
+    else if (findMethod === "artifact" && comparison) runReproducibilityLabel = COMPARISON_STATUS_LABEL[comparison.status];
     // Export is an action, not a page: always visible (disabled until there's something to export)
     // rather than gated behind navigating anywhere. Ready exactly once the *currently loaded* source
     // has something to export -- `isCurrentSourceLoaded` keeps this from staying enabled off a stale
@@ -781,6 +783,13 @@ export function ReplayTab({
                                     </Button>
                                 </QuickActions>
                             </PageSection>
+                            {selectedSpin.debug?.recording && (
+                                <Button variant="default" onClick={() => {
+                                    setFindMethod("artifact");
+                                    onLoadExpectedFromPaste(JSON.stringify(selectedSpin.debug!.recording));
+                                    markLoaded("artifact", false);
+                                }}>Load for audit replay</Button>
+                            )}
                             {/* The Loaded replay card's Reproducible row above already says there's nothing to reproduce;
                                 its Identities/Timestamp rows already name the session/round/request/recorded-at/source/mode. */}
                             {selectedSpin.debug?.artifact ? (
@@ -1003,9 +1012,7 @@ export function ReplayTab({
                                 forward from round 1 through the target round. Never a lookup of any existing
                                 session/round, even when the seed matches one that was recorded before. */}
                             <Text size="sm" c="dimmed" mb="sm">
-                                Reproducing will create a new replay session and play it forward from round 1 through
-                                round {target.round}, using {target.seed ? `seed "${target.seed}"` : "a freshly generated seed"}, to
-                                reach round {target.round}.
+                                Reproducing will create a new replay session and play it forward from round 1 through round {target.round}, using {target.seed ? `seed "${target.seed}"` : "a freshly generated seed"}, to reach round {target.round}.
                             </Text>
                         </div>
                     )}
@@ -1032,6 +1039,7 @@ export function ReplayTab({
                                                 findMethod === "artifact" ? true : undefined,
                                                 reproduceTarget.modeName,
                                                 findMethod === "artifact" && expected.status === "loaded" ? expected.outcomeSource : undefined,
+                                                findMethod === "artifact" && expected.status === "loaded" ? expected.recording : undefined,
                                             );
                                             setJobLoaded(true);
                                         }}
@@ -1210,7 +1218,7 @@ export function ReplayTab({
 
             <QuickActions>
                 {findMethod === "spin" && selectedSpin && exportReady && (
-                    <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin)}>
+                    <Button variant="default" onClick={() => downloadJsonBlob(`spin-${selectedSpin.sessionId}.json`, selectedSpin.debug?.recording ?? selectedSpin)}>
                         Download JSON
                     </Button>
                 )}

@@ -1,3 +1,4 @@
+import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
 import type {LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
@@ -627,6 +628,8 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     private buildPlayedResult(record: SpinOperationRecord, captured: SpinOperationCapturedResult): SpinCommandResult {
         return {
             status: "played",
+            ...(captured.audit ? {audit: updateAuditDisposition(captured.audit, {status: "committed"})} : {}),
+            ...(captured.auditUnavailableReason ? {auditUnavailableReason: captured.auditUnavailableReason} : {}),
             ...(captured.deliveryOnly ? {deliveryOnly: true} : {}),
             ...(record.command ? {deliveryCommand: record.command} : {}),
             sessionId: record.sessionId,

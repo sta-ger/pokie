@@ -1,3 +1,5 @@
+import {toCanonicalJson} from "../../json/toCanonicalJson.js";
+import {validateAuditRoundRecording} from "../../replay/AuditRoundReplay.js";
 import {commandEnvelope} from "../commandEnvelope.js";
 import type {PokieSessionState} from "../../server/session/PokieSessionState.js";
 import {validateSavedStageDelivery} from "./validateSavedStageDelivery.js";
@@ -25,6 +27,16 @@ export function validateRetryResult(value: unknown, game: PokieGame, sessionId: 
     if (value.requestId !== requestId || value.previousState === undefined) return corrupt("Incomplete cached result envelope.");
     const rejected = validateComputedResult(value, value.state, value.previousState, value.version, game, live, sessionId);
     if (rejected) return rejected;
+    if (value.audit !== undefined) {
+        try {
+            validateAuditRoundRecording(value.audit, game);
+            const last = value.audit.deliveries[value.audit.deliveries.length - 1];
+            if (last.disposition.sessionId !== sessionId || last.disposition.requestId !== requestId || last.result.win !== value.win || last.result.credits !== value.credits ||
+                last.after.bet !== (value.state as PokieSessionState).bet || JSON.stringify(toCanonicalJson(last.after.state)) !== JSON.stringify(toCanonicalJson((value.state as PokieSessionState).featureState))) return corrupt("Audit and retained result disagree.");
+        } catch (error) {
+            return corrupt(error instanceof Error ? error.message : String(error));
+        }
+    }
     const state = value.state as PokieSessionState;
     const previous = value.previousState as PokieSessionState;
     const command = value.deliveryCommand as RepositoryCommand | undefined;

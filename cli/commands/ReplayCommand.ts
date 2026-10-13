@@ -1,5 +1,6 @@
 import {Command} from "commander";
 import {
+    validateAuditReplayDescriptor,
     describeUnavailableArtifactOperation,
     loadPokieGame,
     OutcomeSourceReplayResult,
@@ -30,6 +31,7 @@ type ReplayOptions = {
     unit?: "step" | "logical-round";
     out?: string;
     mode?: string;
+    recording?: string;
 };
 
 // Deliberately the non-generic (T = string) instantiation of replayOutcomeSourceProject's own signature --
@@ -112,6 +114,7 @@ export class ReplayCommand implements CliCommandHandling {
         } catch (error) {
             throw describeRuntimePackageLoadError(options.packageRoot, error);
         }
+        if (options.recording && (project?.type === "wasm" || project?.type === "outcomeLibrary" || project?.type === "stakeAdapter")) throw new Error("Recorded package audit requires a compatible game package; WASM and outcome libraries retain their existing replay profiles.");
         if (options.unit === "logical-round" && (project?.type === "wasm" || project?.type === "outcomeLibrary" || project?.type === "stakeAdapter")) throw new Error("Logical-round replay is supported only by game packages declaring logical progress.");
         if (project !== undefined && (project.type === "outcomeLibrary" || project.type === "stakeAdapter")) {
             await this.runOutcomeSourceReplay(project, options);
@@ -131,7 +134,11 @@ export class ReplayCommand implements CliCommandHandling {
         }
         let descriptor;
         try {
-            descriptor = this.recorder.record({game, seed: options.seed, round: options.round, unit: options.unit});
+            if (options.recording) {
+                const recording: unknown = JSON.parse(fs.readFileSync(options.recording, "utf-8"));
+                validateAuditReplayDescriptor(recording, game);
+                descriptor = new ReplayRecorder().replay(game, recording.audit);
+            } else descriptor = this.recorder.record({game, seed: options.seed, round: options.round, unit: options.unit});
         } finally {
             await releasePokieGame(game);
         }
@@ -214,6 +221,7 @@ export class ReplayCommand implements CliCommandHandling {
             .description(this.getDescription())
             .argument("<packageRoot>", "a POKIE game package, Blueprint, canonical WASM artifact, or native outcome-library bundle (with --mode)")
             .argument("[excess...]", "rejected if present -- this command takes no further positionals")
+            .option("--recording <file>", "verify recorded audit evidence against this compatible package; no wallet or live session required")
             .option("--seed <string>", "seed to replay against (WASM default: pokie-wasm-replay; required for a native outcome-library bundle)")
             .option("--round <number>", "round index to replay (required)", (value: string) => {
                 const parsed = Number(value);
@@ -239,14 +247,15 @@ export class ReplayCommand implements CliCommandHandling {
             .option("--mode <modeName>", "outcome-library mode to replay (required when <packageRoot> is a native outcome-library bundle)")
             .addHelpText("after", "\nCanonical WASM: --round N replays N rounds and reports cumulative totalBet/totalWin.\nUse the same explicit --seed as run/sim; --mode is unavailable.\nExample: pokie sim game.wasm --rounds 6 --workers 1 --seed demo --format json\n         pokie replay game.wasm --round 6 --seed demo\n")
             .action(
-                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string; unit?: "step" | "logical-round"}) => {
+                (packageRoot: string, excess: string[], options: {seed?: string; round?: number; out?: string; format?: string; mode?: string; unit?: "step" | "logical-round"; recording?: string}) => {
                     if (excess.length > 0) {
                         throw new Error(`Unknown option "${excess[0]}". ${USAGE}`);
                     }
-                    if (options.round === undefined) {
+                    if (options.recording && (options.seed !== undefined || options.round !== undefined || options.unit !== undefined || options.mode !== undefined)) throw new Error("--recording already binds commands, selections, seed and operation identity.");
+                    if (options.round === undefined && !options.recording) {
                         throw new Error(`--round is required. ${USAGE}`);
                     }
-                    resultRef.value = {packageRoot, seed: options.seed, round: options.round, out: options.out, mode: options.mode, unit: options.unit};
+                    resultRef.value = {packageRoot, seed: options.seed, round: options.round ?? 1, recording: options.recording, out: options.out, mode: options.mode, unit: options.unit};
                 },
             );
     }

@@ -1,3 +1,4 @@
+import type {AuditRoundRecording} from "../../replay/AuditRoundRecording.js";
 import type {RepositoryCommand} from "../../runtime/RepositoryCommand.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 import type {SpinOperationCheckpoint} from "./SpinOperationCheckpoint.js";
@@ -9,6 +10,8 @@ import type {SpinOperationCheckpoint} from "./SpinOperationCheckpoint.js";
 // a second time to recompute it. Mirrors the "played" SpinCommandResult's own fields exactly, minus
 // requestId (the record is already keyed by it).
 export type SpinOperationCapturedResult = {
+    readonly audit?: AuditRoundRecording;
+    readonly auditUnavailableReason?: string;
     readonly deliveryOnly?: boolean;
     readonly previousState: PokieSessionState;
     readonly newState: PokieSessionState;

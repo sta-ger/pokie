@@ -74,7 +74,7 @@ export function useReplayPoll(onTerminal?: () => void) {
             });
     }
 
-    function run(round: number, seed: string | undefined, simulationId?: string, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView): void {
+    function run(round: number, seed: string | undefined, simulationId?: string, modeName?: string, outcomeSource?: OutcomeSourceReplayDescriptorView, recording?: import("../api/types").ReplayDescriptor): void {
         if (!runGuard.begin()) {
             return;
         }
@@ -83,7 +83,7 @@ export function useReplayPoll(onTerminal?: () => void) {
         runGuardGenerationRef.current = generation;
         setError(undefined);
         setProgress({status: "queued", completedRounds: 0, round, percent: 0, durationMs: 0});
-        runReplay(fetchImpl, round, seed, simulationId, modeName, outcomeSource)
+        runReplay(fetchImpl, round, seed, simulationId, modeName, outcomeSource, recording)
             .then((result) => {
                 if (!isCurrent(generation)) {
                     return;

@@ -1,3 +1,7 @@
+import {updateAuditDisposition} from "../../replay/updateAuditDisposition.js";
+import {auditBoundaryFromState, buildAuditRoundRecording, captureAuditDelivery} from "../../replay/AuditRoundReplay.js";
+import {AuditReplayError} from "../../replay/AuditReplayError.js";
+import type {AuditDisposition} from "../../replay/AuditRoundRecording.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics} from "../../simulation/LogicalRoundStatistics.js";
 import {commandEnvelope} from "../../runtime/commandEnvelope.js";
 import {buildLogicalRoundArtifact} from "../../artifact/buildLogicalRoundArtifact.js";
@@ -465,9 +469,12 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 return Promise.resolve(++version);
             },
         } as import("../session/VersionedSessionRepository.js").VersionedSessionRepository, ledger,
-        undefined, undefined, false, undefined, this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
+        {load: () => Promise.resolve(undefined),
+            save: () => Promise.resolve(),
+            ...(snapshot.retainedRoundId ? {loadRound: (_sessionId: string, roundId: string) => Promise.resolve(roundId === snapshot.retainedRoundId ? snapshot.retainedRound : undefined)} : {})}, undefined, false, undefined, this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
         inner.atomicExecution = true;
-        const result = await inner.dispatch(command);
+        let result = await inner.dispatch(command);
+        if (result.status === "played" && result.audit) result = {...result, audit: updateAuditDisposition(result.audit, {status: "pending", durability: "external-provider"})};
         return {result, settlement: debit !== undefined && payout !== undefined ? {debit, payout} : undefined};
     }
 
@@ -581,7 +588,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         }
         // The original owner can recover its validated operation even after this round
         // has finished. A new request still cannot reuse an accepted entry identity.
-        if (intent?.roundId && !intent.continuation && (state.logicalRoundIds?.includes(intent.roundId) || state.logicalRound?.id === intent.roundId)) return {status: "identity-conflict", sessionId, reason: "Logical round identity has already been accepted; retry its original request."};
+        if (intent?.roundId && !intent.continuation && ((await this.idempotencyRepository.loadRound?.(sessionId, intent.roundId)) !== undefined || state.logicalRoundIds?.includes(intent.roundId) || state.logicalRound?.id === intent.roundId)) return {status: "identity-conflict", sessionId, reason: "Logical round identity has already been accepted; retry its original request."};
 
         if (!this.atomicExecution) {
             // Independent saved-stage state/result writes share the existing operation log.
@@ -637,6 +644,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 reason: resolvedSession.reason,
             };
         }
+        if (!this.idempotencyRepository.loadRound && (state.logicalRoundIds?.length ?? 0) >= 10000 && !intent?.continuation) return {status: "blocked", sessionId, reason: "Session identity retention bound reached; retire this session without discarding historical retry results."};
         let runtime: SessionRuntime;
         try {
             runtime = new SessionRuntime(resolvedSession.session, state.logicalRound);
@@ -679,22 +687,25 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             const nextState = cloneSessionData({...state, logicalRound: executed.logicalRound});
             const attemptId = crypto.randomUUID();
             const startedAt = new Date().toISOString();
+            const auditEvidence = await this.captureOperationAudit(resolvedSession.session, state, executed, intent!, {status: "committed", sessionId, requestId, attemptId, startedAt, recordedAt: new Date().toISOString(),
+                expectedVersion: version, version: version + 1, walletCredits: state.credits!, walletPayout: 0,
+                durability: this.atomicExecution ? "atomic-local" : "independent-ports"}, state.credits!);
             let record: SpinOperationRecord = {sessionId, requestId, command: intent, attemptId,
                 debitTransactionId: `${sessionId}:${attemptId}:debit`, creditTransactionId: `${sessionId}:${attemptId}:credit`, stakeAmount: 0,
                 expectedVersion: version, checkpoint: "settled", startedAt, updatedAt: startedAt,
-                capturedResult: {deliveryOnly: true, previousState: state, newState: nextState, win: state.win, credits: state.credits!, stake: 0}};
+                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"})} : {}), deliveryOnly: true, previousState: state, newState: nextState, win: state.win, credits: state.credits!, stake: 0}};
             let result: Extract<SpinCommandResult, {status: "played"}> | undefined;
             try {
                 // Retain the computed transition before either independent write. Recovery uses
                 // the existing operation log and never calculates or settles a saved stage.
                 if (!this.atomicExecution) await this.operationLog.record(record);
                 const nextVersion = await this.sessionRepository.saveVersioned(sessionId, nextState, version);
-                result = {status: "played", deliveryOnly: true, deliveryCommand: intent, sessionId, requestId, previousState: state, state: nextState,
+                result = {...auditEvidence, status: "played", deliveryOnly: true, deliveryCommand: intent, sessionId, requestId, previousState: state, state: nextState,
                     credits: state.credits!, win: state.win, stake: 0, version: nextVersion};
                 record = {...record, checkpoint: "session-saved", capturedResult: {...record.capturedResult!, newVersion: nextVersion}};
                 if (!this.atomicExecution) await this.operationLog.record(record);
                 await this.idempotencyRepository.save(sessionId, requestId, result);
-                if (!this.atomicExecution) await this.operationLog.record({...record, checkpoint: "committed"});
+                if (!this.atomicExecution) await this.operationLog.record({...record, checkpoint: "committed", capturedResult: {...record.capturedResult!, ...auditEvidence}});
                 this.liveSessions.set(sessionId, {session: resolvedSession.session, committedVersion: nextVersion, record: JSON.stringify(nextState), authority: captureLiveSessionAuthority(resolvedSession.session)});
                 return cloneSessionData(result);
             } catch (error) {
@@ -792,6 +803,24 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         // genuinely fresh spin below.
         this.liveSessions.delete(sessionId);
         return undefined;
+    }
+
+    private async captureOperationAudit(session: GameSessionHandling, state: PokieSessionState, executed: Extract<import("../../runtime/SessionRuntimeHandling.js").SessionCommandResult, {status: "played"}>, command: RepositoryCommand, disposition: AuditDisposition, credits: number): Promise<Pick<Extract<SpinCommandResult, {status: "played"}>, "audit" | "auditUnavailableReason">> {
+        if (!this.game.getConfigHash || !this.game.getSessionStateSchema || !this.game.getSessionCommandCapabilities || state.executionState !== "durably-restorable") {
+            return {auditUnavailableReason: "Exact audit requires model identity and a complete authoritative executable codec."};
+        }
+        const before = auditBoundaryFromState(state, credits);
+        const delivery = captureAuditDelivery(this.game, session, command, before, executed, disposition, "accepted-boundary");
+        const prior = command.continuation ? await this.idempotencyRepository.loadRound?.(command.sessionId, command.continuation.roundId) : undefined;
+        if (prior?.status === "played" && prior.audit) {
+            return {audit: buildAuditRoundRecording(this.game, state.context, [...prior.audit.deliveries, delivery])};
+        }
+        try {
+            return {audit: buildAuditRoundRecording(this.game, state.context, [delivery])};
+        } catch (error) {
+            if (error instanceof AuditReplayError && error.code === "audit-codec-unsupported") return {auditUnavailableReason: error.message};
+            throw error;
+        }
     }
 
     private async playAndSettle(
@@ -899,8 +928,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             newState.credits = newBalance;
-            if (state.logicalRoundIds) newState.logicalRoundIds = state.logicalRoundIds;
-            if (executed.logicalRound && !intent?.continuation) newState.logicalRoundIds = [...new Set([...(state.logicalRoundIds ?? []), ...(state.logicalRound ? [state.logicalRound.id] : []), executed.logicalRound.id])];
+            if (!this.idempotencyRepository.loadRound && state.logicalRoundIds) newState.logicalRoundIds = state.logicalRoundIds;
+            if (!this.idempotencyRepository.loadRound && executed.logicalRound && !intent?.continuation) newState.logicalRoundIds = [...new Set([...(state.logicalRoundIds ?? []), ...(state.logicalRound ? [state.logicalRound.id] : []), executed.logicalRound.id])];
             if (state.logicalRoundStatistics) newState.logicalRoundStatistics = state.logicalRoundStatistics;
             if (executed.logicalRound) {
                 if (executed.logicalRound.mathematicalStatus === "completed" && (state.logicalRound?.id !== executed.logicalRound.id || state.logicalRound.mathematicalStatus !== "completed")) {
@@ -909,13 +938,18 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 newState.logicalRound = executed.logicalRound;
                 if (newState.roundArtifact) newState.roundArtifact = buildLogicalRoundArtifact(executed.logicalRound, newState.roundArtifact);
             }
+            const auditEvidence = await this.captureOperationAudit(session, state, executed, intent ?? {kind: "spin", sessionId, requestId}, {
+                status: "committed", sessionId, ...(requestId ? {requestId} : {}), attemptId, debitTransactionId, creditTransactionId, startedAt, recordedAt: new Date().toISOString(),
+                ...(expectedVersion === undefined ? {} : {expectedVersion, version: expectedVersion + 1}), walletCredits: newBalance, walletPayout: creditAmount,
+                durability: this.atomicExecution ? "atomic-local" : "independent-ports",
+            }, balanceBeforePlay);
             const invalidState = this.validateStoredSession(sessionId, newState);
             if (invalidState !== undefined) throw new Error(invalidState.reason);
             failureCode = "storage-error";
             await checkpoint({
                 checkpoint: "settled",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {previousState: state, newState, win, credits: newBalance, stake: stakeAmount, mode: betMode},
+                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"})} : {}), previousState: state, newState, win, credits: newBalance, stake: stakeAmount, mode: betMode},
             });
 
             let newVersion: number | undefined;
@@ -928,10 +962,11 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             await checkpoint({
                 checkpoint: "session-saved",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
+                capturedResult: {...auditEvidence, ...(auditEvidence.audit ? {audit: updateAuditDisposition(auditEvidence.audit, {status: "pending"})} : {}), previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
             });
 
             const result: SpinCommandResult = {
+                ...auditEvidence,
                 status: "played",
                 ...(intent?.delivery !== undefined || intent?.continuation !== undefined ? {deliveryCommand: intent} : {}),
                 sessionId,
@@ -959,7 +994,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             await checkpoint({
                 checkpoint: "committed",
                 updatedAt: new Date().toISOString(),
-                capturedResult: {previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
+                capturedResult: {...auditEvidence, previousState: state, newState, win, credits: newBalance, newVersion, stake: stakeAmount, mode: betMode},
             });
 
             // The cache advances only after every durable/checkpointed commit has succeeded.  A

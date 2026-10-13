@@ -279,3 +279,61 @@ addressing for capable game packages. WASM/outcome sources do not gain feature
 mechanics through this option. Studio's recorded Play history already holds the
 original commands, prefix/final artifact and provenance, so re-delivery creates
 no additional history record.
+
+## Recorded executable audit replay
+
+`RoundArtifact` schema 1 remains the canonical mathematical observation. A hashed
+JSON artifact is validated against its digest when supplied to `RoundArtifactValidator`.
+A visible projection has no canonical hash and is not independently replayable.
+`AuditRoundRecording` (`pokie.audit-round.v1`, runtime contract
+`pokie.session-runtime.v1`) binds artifacts to executable inputs and disposition:
+
+- selected game compatibility/state schema and effective model hash;
+- original context, variant/mode, bet, delivery policy, operation/request/attempt
+  identities, revision and settlement transaction identities where available;
+- complete executable starting/resulting state, including the RNG stream;
+- ordered accepted deliveries, mathematical subrounds and saved cascade stages;
+- canonical generated/visible screens, evaluated-step evidence, wins, feature
+  counters, deferred bank, wallet payout and credits.
+
+`ReplayRecorder.recordAudit(game, liveSession, commands, disposition, context)`
+records the supplied session's actual execution without funding or seed substitution.
+It is a detached calculation recorder; a caller-provided disposition is evidence,
+not authority to settle. `SpinCommandHandler` captures the same evidence inside
+its owning result publication boundary. Its retained result exposes `audit`, or
+`auditUnavailableReason` when the model/codec cannot support exact reconstruction.
+Full history belongs to retained operation/results, not recursive session snapshots.
+
+```ts
+const recording = recorder.recordAudit(game, session, [originalCommand], {
+    status: "calculated", sessionId: originalSessionId, durability: "detached",
+}, originalContext);
+const portable = JSON.parse(JSON.stringify(recording));
+validateAuditReplayDescriptor(portable, compatibleGame);
+const reproduced = recorder.replay(compatibleGame, portable.audit);
+// auditStatus: verified; auditCompletion: completed, pending, or exhausted.
+```
+
+`AuditRoundReplay` uses the existing `SessionRuntime` and selected game calculation
+path, restoring detached executable state at every accepted boundary. It has no
+wallet, store, provider, reconciliation or publication dependencies. Transactional
+status is preserved and validated, never applied offline. Retries return retained
+historical evidence; they do not append another calculation. A completed verification
+of a pending/exhausted prefix does not complete the logical round. Mathematical
+steps and saved-stage deliveries remain different; exhaustion retains the evaluated
+prefix and final unevaluated refill.
+
+The audit SHA-256 covers the complete envelope; artifact SHA-256 covers canonical
+artifact content. Object key ordering is canonical, array ordering is significant.
+Errors expose stable `AuditReplayError.code` and `path`: structure/hash, version,
+identity, codec unsupported, state, command, order, artifact, execution mismatch or
+cancellation. Validation happens before reconstruction, with selected-package
+identity/schema/capabilities as authority. Hash-valid semantic inconsistencies also
+fail validation or reproduction. Content hashes detect corruption relative to a
+trusted digest; a consistently rewritten and rehashed recording is not authenticated.
+No signatures, KMS, notarization or stronger fairness claim are added.
+
+Root ESM/CJS exports provide recording and replay. The browser entry exports the
+recording types only; Studio uses the server verifier's verdict. Native outcome
+libraries retain their selection/hash profile; portable WASM retains its current
+runtime replay and compact state, without package audit support.

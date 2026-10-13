@@ -1,3 +1,4 @@
+import {createOverscanGame} from "../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
     loadPokieGame,
@@ -11,6 +12,7 @@ import {
     ProjectTargetResolver,
     REPLAY_OPERATION,
     ReplayDescriptor,
+    ReplayRecorder,
 } from "@fromstan/pokie";
 import ExcelJS from "exceljs";
 import fs from "fs";
@@ -526,5 +528,33 @@ describe("ReplayCommand outcome-source routing (integration, real outcome-librar
         expect(typeof descriptor.outcomeSource?.outcomeId).toBe("string");
 
         logSpy.mockRestore();
+    });
+});
+
+
+describe("recorded audit CLI", () => {
+    it("consumes original recorded state instead of seed-forward funding, and rejects outer tampering", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-audit-cli-"));
+        const game = createOverscanGame();
+        const context = {seed: "audit-cli"};
+        const session = game.createSession(context);
+        session.setCreditsAmount(20);
+        const descriptor = new ReplayRecorder().recordAudit(game, session, [{kind: "spin", delivery: "composite", roundId: "original"}], {status: "calculated", sessionId: "original-session", durability: "detached"}, context);
+        const file = path.join(directory, "recording.json");
+        fs.writeFileSync(file, JSON.stringify(descriptor));
+        const write = jest.fn(),
+            log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new ReplayCommand(() => Promise.resolve(game), write, undefined, undefined, stubProjectResolver(undefined));
+            await command.run(["/package", "--recording", file, "--out", path.join(directory, "verified.json")]);
+            const result = JSON.parse(write.mock.calls[0][1]);
+            expect(result).toMatchObject({auditStatus: "verified", originalSessionId: "original-session", credits: descriptor.credits, audit: JSON.parse(JSON.stringify(descriptor.audit))});
+            fs.writeFileSync(file, JSON.stringify({...descriptor, totalWin: -1}));
+            await expect(command.run(["/package", "--recording", file])).rejects.toThrow(/audit-structure at totalWin/);
+            await expect(command.run(["/package", "--recording", file, "--seed", "replacement"])).rejects.toThrow(/already binds/);
+        } finally {
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
     });
 });

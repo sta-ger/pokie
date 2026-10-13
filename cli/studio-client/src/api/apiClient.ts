@@ -761,6 +761,7 @@ export async function runReplay(
     simulationId?: string,
     modeName?: string,
     outcomeSource?: OutcomeSourceReplayDescriptorView,
+    recording?: import("./types").ReplayDescriptor,
 ): Promise<StartReplayResult> {
     const response = await fetchImpl("/api/project/replays", {
         method: "POST",
@@ -771,6 +772,7 @@ export async function runReplay(
             ...(simulationId !== undefined ? {simulationId} : {}),
             ...(modeName !== undefined ? {modeName} : {}),
             ...(outcomeSource !== undefined ? {outcomeSource} : {}),
+            ...(recording !== undefined ? {recording} : {}),
         }),
     });
 
@@ -819,6 +821,8 @@ export function buildReplayDownloadUrl(id: string): string {
 }
 
 export type InspectReplayArtifactResult = {
+    recording?: import("./types").ReplayDescriptor;
+    auditStatus?: "recorded";
     round: number;
     seed?: string;
     modeName?: string;

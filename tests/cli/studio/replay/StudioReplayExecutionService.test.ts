@@ -800,11 +800,8 @@ describe("StudioReplayExecutionService", () => {
             }
             const job = await waitForTerminal(service, "/a", result.job.id);
 
-            expect(job.descriptor?.stateBefore).toMatchObject({initialPayload: {paytable: "fake-paytable"}});
-            expect(job.descriptor?.stateAfter).toMatchObject({
-                initialPayload: {paytable: "fake-paytable"},
-                roundPayload: {lastBet: 1},
-            });
+            expect(Object.keys(job.descriptor?.stateBefore ?? {}).sort()).toEqual(["bet", "credits", "screen", "win"]);
+            expect(Object.keys(job.descriptor?.stateAfter ?? {}).sort()).toEqual(["bet", "credits", "screen", "win"]);
             // The internal/debug-only payloads must never leak into the public state section.
             expect(job.descriptor?.stateBefore).not.toHaveProperty("initialDebugPayload");
             expect(job.descriptor?.stateAfter).not.toHaveProperty("initialDebugPayload");
@@ -1612,9 +1609,9 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
         const job = await waitForTerminal(service, serializerFixtureRoot, result.job.id);
 
         expect(job.status).toBe("completed");
-        expect(job.descriptor?.stateBefore).toHaveProperty("initialPayload");
-        expect(job.descriptor?.stateAfter).toHaveProperty("initialPayload");
-        expect(job.descriptor?.stateAfter).toHaveProperty("roundPayload");
+        expect(job.descriptor?.stateBefore).not.toHaveProperty("initialPayload");
+        expect(job.descriptor?.stateAfter).not.toHaveProperty("initialPayload");
+        expect(job.descriptor?.stateAfter).not.toHaveProperty("roundPayload");
         // This fixture's VideoSlotSessionSerializer doesn't implement the optional debug hooks, so
         // there's nothing for the artifact's debug bag to carry -- confirms the debug wiring is purely
         // feature-detected, never fabricated when the hook is absent.
@@ -1758,4 +1755,43 @@ describe("Studio fractional logical replay payout", () => {
             await service.cancelAll();
         }
     });
+});
+
+
+it("verifies imported audit inputs through the shared engine, keeps original identity and withholds evidence through lease release", async () => {
+    const game = createOverscanGame();
+    const context = {seed: "audit-studio"};
+    const session = game.createSession(context);
+    session.setCreditsAmount(20);
+    const recording = new ReplayRecorder().recordAudit(game, session, [{kind: "spin", delivery: "composite", roundId: "original"}], {status: "calculated", sessionId: "live-session", durability: "detached"}, context);
+    let release!: () => void;
+    const released = new Promise<void>(resolve => {
+        release = resolve;
+    });
+    const service = new StudioReplayExecutionService(undefined, () => Promise.resolve(game), 1, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, () => released);
+    const started = service.start("/audit", {round: 1, recording: recording as typeof recording & {audit: NonNullable<typeof recording.audit>}});
+    if (started.status !== "created") throw new Error("Missing audit job");
+    try {
+        await new Promise<void>(resolve => {
+            setImmediate(resolve);
+        });
+        expect(service.getDownload("/audit", started.job.id).status).toBe("not-ready");
+        release();
+        await service.cancelAll();
+        // cancelAll accepts a cancellation during release and suppresses staged success.
+        expect(service.getDownload("/audit", started.job.id).status).toBe("not-ready");
+    } finally {
+        release();
+        await service.cancelAll();
+    }
+    const successful = new StudioReplayExecutionService(undefined, () => Promise.resolve(game));
+    const job = successful.start("/audit", {round: 1, recording: recording as typeof recording & {audit: NonNullable<typeof recording.audit>}});
+    if (job.status !== "created") throw new Error("Missing audit job");
+    await new Promise<void>(resolve => {
+        setImmediate(resolve);
+    });
+    const download = successful.getDownload("/audit", job.job.id);
+    expect(download.status).toBe("ok");
+    if (download.status === "ok") expect(download.descriptor).toMatchObject({auditStatus: "verified", originalSessionId: "live-session", audit: recording.audit, credits: recording.credits});
+    await successful.cancelAll();
 });

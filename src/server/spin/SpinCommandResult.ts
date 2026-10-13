@@ -1,3 +1,4 @@
+import type {AuditRoundRecording} from "../../replay/AuditRoundRecording.js";
 import type {RepositoryCommand} from "../../runtime/RepositoryCommand.js";
 import type {PokieSessionState} from "../session/PokieSessionState.js";
 
@@ -28,6 +29,8 @@ import type {PokieSessionState} from "../session/PokieSessionState.js";
 type SpinCommandOutcome =
     | {
           status: "played";
+          audit?: AuditRoundRecording;
+          auditUnavailableReason?: string;
           deliveryOnly?: boolean;
           deliveryCommand?: RepositoryCommand;
           sessionId: string;

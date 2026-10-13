@@ -3,6 +3,9 @@
 // the command running again — used by SpinCommandHandler to avoid double-charging a wallet for a
 // retried spin. Two different sessionIds are free to reuse the same requestId independently.
 export interface IdempotencyRepository<T = unknown> {
+    /** Latest retained delivery of an operation; owns identity history outside compact session state. */
+    loadRound?(sessionId: string, roundId: string): Promise<T | undefined>;
+
     load(sessionId: string, requestId: string): Promise<T | undefined>;
 
     save(sessionId: string, requestId: string, result: T): Promise<void>;

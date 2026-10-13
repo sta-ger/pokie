@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import {sha256} from "../json/internal/sha256.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {RoundArtifact} from "./RoundArtifact.js";
 
@@ -11,5 +11,5 @@ import type {RoundArtifact} from "./RoundArtifact.js";
 export function computeRoundArtifactHash<T extends string | number = string>(
     artifact: RoundArtifact<T>,
 ): string {
-    return `sha256:${crypto.createHash("sha256").update(JSON.stringify(toCanonicalJson(artifact))).digest("hex")}`;
+    return `sha256:${sha256(JSON.stringify(toCanonicalJson(artifact)))}`;
 }

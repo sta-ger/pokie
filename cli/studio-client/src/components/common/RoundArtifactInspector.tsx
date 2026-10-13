@@ -19,7 +19,7 @@ const DIMENSION_LABELS: Record<keyof ReplayComparisonDimensions, string> = {
     recordedResult: "Selected outcome",
     screen: "Visible screen",
     wins: "Wins",
-    totalPayout: "Total payout",
+    totalPayout: "Mathematical win",
     steps: "Round steps",
     featureEvents: "Feature events",
     state: "State transition",
@@ -35,7 +35,7 @@ const DIMENSION_WHY_IT_MATTERS: Record<keyof ReplayComparisonDimensions, string>
     recordedResult: "The selected outcome id, weight, stake and payout must agree.",
     screen: "The visible symbols are what the player actually saw -- a difference means the recreated round landed a different outcome.",
     wins: "Wins are what turns the outcome into a payout -- a difference here means credits would be awarded differently.",
-    totalPayout: "The round's bottom-line payout is the one number that reaches the player's balance.",
+    totalPayout: "Mathematical win is distinct from wallet payout and credits. A feature bank may settle at a later boundary.",
     steps: "Round steps capture cascades/re-spins/free-game progression -- a difference means the round played out differently even if the final screen and total payout happen to match.",
     featureEvents: "Feature events (free spins triggered, bonus entered, ...) drive what happens in later rounds -- a difference here can change downstream game state without changing this round's payout.",
     state: "The session state transition is what every subsequent round is computed from -- a difference here would silently affect every round that follows, not just this one.",
@@ -164,6 +164,8 @@ export function RoundArtifactInspector({
                 availableModeIds={presentation.availableModeIds}
                 currentModeId={presentation.currentModeId}
             />
+
+            <Text size="xs" c="dimmed">Screens use the visible projection. Full artifact JSON contains canonical generated and debug data; exact replay also requires the separate audit recording.</Text>
 
             <PageSection legend={hasMultipleSteps ? `Step ${stepIndex + 1} of ${artifact.steps.length}` : "Round detail"}>
                 {hasMultipleSteps && (

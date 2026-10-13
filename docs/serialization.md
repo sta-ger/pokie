@@ -430,3 +430,36 @@ keeps one record per logical round and retains committed history across project
 changes, while late responses cannot replace another project's active session.
 Canonical WASM and outcome-source Play reject unsupported logical continuation;
 their existing single-outcome/session contracts remain unchanged.
+
+## Executable audit state and public display
+
+Exact package audit replay requires an authoritative `getSessionStateSchema`,
+`getSessionCommandCapabilities`, `getConfigHash` and complete session
+capture/restore/validate contract. Custom codecs also need the selected game's
+nonmutating `validateSessionState`. Snapshots must contain finite, acyclic, lossless
+JSON covering every collaborator that can affect future calculation. A presentation
+serializer does not establish this contract. Unsupported codecs are explicit;
+a throwing codec cannot publish successful audit evidence.
+
+The initial executable boundary is captured without asking for nonexistent round
+serializer data. Later boundaries retain original credits and RNG continuation.
+Public replay state uses an explicit bet/win/credits/visible-screen allowlist;
+executable state, context, RNG, command identities and debug payloads belong to
+internal/audit exports. Public artifacts expose visible wins and supported feature
+counters, excluding arbitrary metadata/debug/generated cells. Studio's full artifact
+JSON and full audit download intentionally include private evidence and are labelled
+separately from the visible display.
+
+Built-in retained-result repositories own logical identity history outside session
+snapshots. Custom independent ports without `loadRound` retain a bounded identity
+fallback (10,000 entries) and must retire the session at its bound. Direct runtime
+retry retention is bounded to 10,000 deliveries; historical duplicates remain
+available at the bound. `SessionRuntime.release()` clears retained results and
+retires execution. Owners must drain work before release. Pending logical delivery
+is bounded to 10,000 deliveries; repeated composite batches cannot bypass that bound.
+Durable result retention remains the store owner's lifecycle responsibility.
+
+A direct `ReplayRecorder` keeps bounded historical recording references for its
+session owner, including deliveries observed inside composite commands. Exported
+recordings remain usable after the session is gone. Owners can release recorder
+references with `releaseAuditSession(session)` when retiring the direct runtime.

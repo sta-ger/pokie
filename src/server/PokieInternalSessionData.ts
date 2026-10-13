@@ -5,6 +5,8 @@ import type {PokieSessionState} from "./session/PokieSessionState.js";
 // parameter — see PokieDevServer's public/internal split, docs/cli.md "pokie serve"). POKIE is still
 // not an RGS: this is a dev-friendly window into normally-hidden state, not an audit-grade guarantee.
 export type PokieInternalSessionData = {
+    audit?: import("../replay/AuditRoundRecording.js").AuditRoundRecording;
+    auditUnavailableReason?: string;
     // The session's raw, persisted PokieSessionState right after this response's round (or, for
     // POST /sessions and GET /sessions/:id, the state as it currently stands) — context, bet, win,
     // screen, featureState, and the serializer's own initialPayload/roundPayload, unfiltered.

@@ -268,6 +268,10 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
                 },
             }),
             results: {
+                loadRound: (sessionId, roundId) => query(() => {
+                    const row = this.database.prepare("SELECT result FROM requests WHERE session_id=? AND json_extract(result, '$.state.logicalRound.id')=? ORDER BY json_extract(result, '$.version') DESC LIMIT 1").get(sessionId, roundId);
+                    return row?.result ? JSON.parse(String(row.result)) as SpinCommandResult : undefined;
+                }),
                 load: (sessionId, requestId) => query(() => {
                     assertOwner(sessionId, requestId);
                     return this.result(sessionId, requestId);

@@ -6,6 +6,8 @@ import type {StudioReplayStatus} from "./StudioReplayStatus.js";
 // toStudioReplayJobView for the one place this is turned into the safe, plain-data StudioReplayJobView
 // the API actually sends. Mirrors StudioSimulationJobRecord's own shape/reasoning.
 export type StudioReplayJobRecord = {
+    auditPrefix?: NonNullable<ReplayDescriptor["audit"]>;
+    recording?: ReplayDescriptor & {audit: NonNullable<ReplayDescriptor["audit"]>};
     id: string;
     projectRoot: string;
     status: StudioReplayStatus;

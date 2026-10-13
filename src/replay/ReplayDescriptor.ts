@@ -1,3 +1,4 @@
+import type {AuditRoundRecording} from "./AuditRoundRecording.js";
 import type {SessionCommand} from "../runtime/SessionCommand.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
 import type {RoundArtifactJson} from "../artifact/RoundArtifactJson.js";
@@ -8,6 +9,11 @@ export type ReplayDescriptor = {
     // each run, independent of any job/request id a caller (e.g. Studio's StudioReplayExecutionService)
     // tracks the run itself under. Two runs of the same seed/round produce two different sessionIds,
     // since each is a brand-new session, never a lookup of a prior one.
+    audit?: AuditRoundRecording;
+    auditStatus?: "verified" | "recorded" | "legacy-best-effort" | "unsupported";
+    auditCompletion?: "completed" | "pending" | "exhausted";
+    auditUnavailableReason?: string;
+    originalSessionId?: string;
     sessionId: string;
     game: {id: string; name: string; version: string};
     seed: string | null;

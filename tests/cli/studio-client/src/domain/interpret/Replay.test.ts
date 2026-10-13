@@ -1122,3 +1122,13 @@ describe("Canonical inspection ownership", () => {
         expect(view.canonicalArtifact!.hash).toBe("original-hash");
     });
 });
+
+
+it("requires the shared verifier verdict and complete audit boundary instead of UI-only matches", () => {
+    const recording = createDescriptor({audit: {hash: "sha256:original", game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"}} as NonNullable<ReplayDescriptor["audit"]>, auditStatus: "recorded", auditCompletion: "completed"});
+    expect(describeReplayReproducibility({recording}, recording.game)).toEqual({status: "ready"});
+    expect(describeReplayComparison({recording}, {recording}).status).toBe("unavailable");
+    expect(describeReplayComparison({recording}, {recording: {...recording, auditStatus: "verified"}}).status).toBe("match");
+    expect(describeReplayComparison({recording}, {recording: {...recording, auditStatus: "verified", auditCompletion: "pending"}}).status).toBe("unavailable");
+    expect(describeReplayComparison({recording}, {recording: {...recording, auditStatus: "verified", audit: {...recording.audit!, hash: "sha256:other"}}}).status).toBe("unavailable");
+});

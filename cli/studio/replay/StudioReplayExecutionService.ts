@@ -1,11 +1,11 @@
-import {executeLogicalReplayCommand} from "../../../src/replay/internal/executeLogicalReplayCommand.js";
+import {deepFreeze} from "../../../src/internal/deepFreeze.js";
 import {
+    ReplayRecorder, computeAuditRoundHash, validateAuditReplayDescriptor, toCanonicalJson,
     buildLogicalRoundArtifact, type LogicalRound, type CascadeResultProviding,
     buildRoundArtifactFromSession,
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
     captureScreen,
-    executeSessionCommand,
     describeUnavailableArtifactOperation,
     describeWasmLifecycleBoundary,
     hasDeclaredCanonicalWasmOperation,
@@ -131,6 +131,15 @@ export class StudioReplayExecutionService {
         this.releaseRuntimeGame = releaseRuntimeGame;
     }
 
+    public async inspectRecording(projectRoot: string, recording: unknown): Promise<void> {
+        const game = await this.loadRuntimeGame(projectRoot);
+        try {
+            validateAuditReplayDescriptor(recording, game);
+        } finally {
+            await this.releaseRuntimeGame(game);
+        }
+    }
+
     public attachJobService(jobService: StudioJobService): void {
         this.jobService = jobService;
     }
@@ -180,6 +189,11 @@ export class StudioReplayExecutionService {
     // `projectRoot`'s own type itself).
     public start(projectRoot: string, request: ValidatedReplayRequest, outcomeSourceProject?: PokieProject): StudioReplayStartResult {
         projectRoot = canonicalStudioProjectIdentity(projectRoot);
+        if (request.recording) {
+            validateAuditReplayDescriptor(request.recording);
+            request = {...request, recording: deepFreeze(toCanonicalJson(request.recording)) as unknown as NonNullable<ValidatedReplayRequest["recording"]>};
+        }
+        if (request.recording && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "Recorded package audit is unavailable for WASM and outcome libraries; use their existing replay profiles."};
         if (request.unit === "logical-round" && (isWasmComponentFile(projectRoot) || outcomeSourceProject)) return {status: "unsupported", message: "This runtime cannot replay feature logical rounds."};
         // Keep the no-job WASM boundary inside the shared lifecycle as well as
         // StudioServer. A direct caller must not be able to queue work that
@@ -193,7 +207,7 @@ export class StudioReplayExecutionService {
         const common = this.jobService?.start({
             projectId: projectRoot,
             operation: "replay",
-            request: {round: request.round, ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
+            request: {round: request.round, ...(request.recording ? {recording: request.recording} : {}), ...(request.unit ? {unit: request.unit} : {}), ...(request.entryCommands ? {entryCommands: request.entryCommands} : {}), ...(request.seed === undefined ? {} : {seed: request.seed}), ...(request.simulationId === undefined ? {} : {simulationId: request.simulationId}), ...(request.modeName === undefined ? {} : {modeName: request.modeName})},
             conflictKey: `replay:${projectRoot}`,
             recoveryOnRestart: {action: "retry", reason: "A replay cannot safely resume after Studio restarts. Run it again with these captured parameters."},
         });
@@ -213,6 +227,7 @@ export class StudioReplayExecutionService {
             projectRoot,
             status: "queued",
             round: request.round,
+            recording: request.recording,
             unit: request.unit, entryCommands: request.entryCommands,
             seed: request.seed,
             simulationId: request.simulationId,
@@ -391,6 +406,34 @@ export class StudioReplayExecutionService {
             record.game = {id: manifest.id, name: manifest.name, version: manifest.version};
             record.configHash = game.getConfigHash?.();
 
+            if (record.recording) {
+                validateAuditReplayDescriptor(record.recording, game);
+                const execution = new ReplayRecorder().replaySteps(game, record.recording.audit, record.abortController.signal);
+                let next = execution.next();
+                while (!next.done) {
+                    const {hash: _hash, ...body} = record.recording.audit;
+                    const prefix = {...body, deliveries: body.deliveries.slice(0, next.value.completedDeliveries)};
+                    record.auditPrefix = {...prefix, hash: computeAuditRoundHash(prefix)};
+                    this.jobService?.progress(record.id, {stage: "audit verification", unit: "deliveries", current: next.value.completedDeliveries, total: body.deliveries.length});
+                    if (next.value.completedDeliveries % this.chunkSize === 0) await this.yieldToEventLoop();
+                    if (record.abortController.signal.aborted) {
+                        this.cancelRecord(record);
+                        return;
+                    }
+                    next = execution.next();
+                }
+                const descriptor = next.value;
+                if (record.abortController.signal.aborted) {
+                    this.cancelRecord(record);
+                    return;
+                }
+                record.completedRounds = record.round;
+                record.descriptor = descriptor;
+                record.status = "completed";
+                this.markTerminal(record);
+                return;
+            }
+
             const context: PokieGameContext | undefined = record.seed === undefined ? undefined : {seed: record.seed};
             // Minted here, at the exact moment the brand-new session is created -- never reused from
             // `record.id` (the job id, minted in start() before this session exists at all). Two runs of
@@ -413,6 +456,7 @@ export class StudioReplayExecutionService {
                 return;
             }
 
+            const execution = new ReplayRecorder().execute({game, seed: record.seed, round: record.round, unit: record.unit, entryCommands: record.entryCommands}, record.abortController.signal, session);
             const serializer = resolveGameSessionSerializer(game);
             // Best-effort: a throwing custom game/serializer must never fail the whole replay over a state
             // snapshot — see captureStateSafely()'s own doc comment. Captured once, right after the session
@@ -455,9 +499,9 @@ export class StudioReplayExecutionService {
                             stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
                         }
 
-                        const result = record.unit === "logical-round"
-                            ? executeLogicalReplayCommand(session, {...record.entryCommands?.[actualRound], kind: "spin", delivery: "composite", roundId: `replay:${actualRound + 1}`}, record.abortController.signal)
-                            : executeSessionCommand(session, record.entryCommands?.[actualRound], record.abortController.signal);
+                        const next = execution.next();
+                        if (next.done || next.value.result.status !== "played") throw new Error("Package replay did not return an accepted command.");
+                        const result = next.value.result;
                         logicalRound = result.logicalRound;
                         if (record.abortController.signal.aborted) {
                             record.completedRounds += played + (record.unit !== "logical-round" || logicalRound?.status === "completed" ? 1 : 0);
@@ -489,7 +533,10 @@ export class StudioReplayExecutionService {
                 return;
             }
 
+            const final = execution.next();
+            if (!final.done) throw new Error("Package replay did not complete.");
             const descriptor: ReplayDescriptor = {
+                ...final.value,
                 sessionId,
                 game: record.game,
                 seed: record.seed ?? null,
@@ -768,8 +815,7 @@ export class StudioReplayExecutionService {
     // section shown alongside the round; they're merged into the artifact's own `debug` bag instead (see
     // mergeDebugPayloads below).
     private toPublicSessionState(state: PokieSessionState): Record<string, unknown> {
-        const {initialDebugPayload: _initialDebugPayload, roundDebugPayload: _roundDebugPayload, ...publicState} = state;
-        return publicState;
+        return {bet: state.bet, win: state.win, ...(state.credits === undefined ? {} : {credits: state.credits}), ...(state.screen === undefined ? {} : {screen: state.screen.map(reel => [...reel])})};
     }
 
     // Same merge PokieDevServer's own private mergeSerializedDebugPayloads() performs (that method isn't
@@ -878,18 +924,26 @@ export class StudioReplayExecutionService {
             // results and the round-history completion hook.
             record.descriptor = {...record.descriptor, durationMs: record.durationMs};
         }
-        this.repository.save(record);
-        if (record.status === "completed") {
-            this.jobService?.complete(record.id, {
-                summary: record.source === "outcome-source-sample" ? "Outcome Library draw recorded." : "Replay completed.",
-                outputs: [{label: "Replay descriptor", downloadPath: `/api/project/replays/${encodeURIComponent(record.id)}/download`}],
-                provenance: {replayId: record.id, projectRoot: record.projectRoot},
-                detail: {replayId: record.id, round: record.round, descriptor: record.descriptor},
-            });
-        } else if (record.status === "cancelled") {
-            this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
-        } else if (record.status === "failed") {
-            this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the replay again."});
+        try {
+            if (record.status === "completed") {
+                this.jobService?.complete(record.id, {
+                    summary: record.source === "outcome-source-sample" ? "Outcome Library draw recorded." : "Replay completed.",
+                    outputs: [{label: "Replay descriptor", downloadPath: `/api/project/replays/${encodeURIComponent(record.id)}/download`}],
+                    provenance: {replayId: record.id, projectRoot: record.projectRoot},
+                    detail: {replayId: record.id, round: record.round, descriptor: record.descriptor},
+                });
+            } else if (record.status === "cancelled") {
+                this.jobService?.cancelled(record.id, {summary: "Replay cancelled after the last completed round.", provenance: {replayId: record.id, projectRoot: record.projectRoot}, detail: {replayId: record.id, rounds: record.completedRounds, ...(record.auditPrefix ? {auditPrefix: record.auditPrefix, nextCommand: record.recording?.audit.deliveries[record.auditPrefix.deliveries.length]?.command} : {})}}, {action: "retry", reason: "Run the replay again with the captured parameters."});
+            } else if (record.status === "failed") {
+                this.jobService?.fail(record.id, record.error ?? "Replay failed.", {action: "retry", reason: record.error ?? "Correct the reported problem and run the replay again."});
+            }
+            this.repository.save(record);
+        } catch (error) {
+            Reflect.deleteProperty(record, "descriptor");
+            record.status = "failed";
+            record.error = `Replay terminal publication failed: ${error instanceof Error ? error.message : String(error)}`;
+            this.repository.save(record);
+            throw error;
         }
     }
 

@@ -1,6 +1,6 @@
 import type {ValidatedPlaySpinRequest} from "./validatePlaySpinRequest.js";
 import {
-    projectLogicalRound, SessionRuntime,
+    ReplayRecorder, projectLogicalRound, SessionRuntime,
     captureInitialPokieSessionState,
     describeUnsupportedProjectOperation,
     GameSessionHandling,
@@ -433,7 +433,8 @@ export class StudioPlayService {
                     ),
                 };
                 result.session.studioRequestId = (handled.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? handled.requestId;
-                result.session.debug = {...result.session.debug, stateBefore: handled.previousState, requestId: handled.requestId};
+                result.session.debug = {...result.session.debug, stateBefore: handled.previousState, requestId: handled.requestId,
+                    ...(handled.audit ? {recording: new ReplayRecorder().describeAudit(handled.audit)} : {auditUnavailableReason: handled.auditUnavailableReason})};
             }
             if (handled.status !== "played" && handled.committedResult && (result.status === "error" || result.status === "blocked")) {
                 const prefix = handled.committedResult;

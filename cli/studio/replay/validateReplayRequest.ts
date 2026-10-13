@@ -1,7 +1,9 @@
-import {validateSessionCommand, type SessionCommand} from "@fromstan/pokie";
+import {deepFreeze} from "../../../src/internal/deepFreeze.js";
+import {validateAuditReplayDescriptor, validateSessionCommand, type ReplayDescriptor, type SessionCommand, toCanonicalJson} from "@fromstan/pokie";
 import {MAX_STUDIO_REPLAY_ROUND} from "./StudioReplayLimits.js";
 
 export type ReplayRequestInput = {
+    recording?: unknown;
     round?: unknown;
     unit?: unknown;
     entryCommands?: unknown;
@@ -26,6 +28,7 @@ export type ReplayRequestInput = {
 };
 
 export type ValidatedReplayRequest = {
+    recording?: ReplayDescriptor & {audit: NonNullable<ReplayDescriptor["audit"]>};
     round: number;
     unit?: "step" | "logical-round";
     entryCommands?: readonly SessionCommand[];
@@ -48,6 +51,12 @@ export type ReplayValidationOptions = {
 // but not a non-empty string, or a `simulationId`/`modeName` that's present but not a non-empty string.
 // Mirrors validateSimulationRequest.ts's own shape/reasoning.
 export function validateReplayRequest(input: ReplayRequestInput, options: ReplayValidationOptions = {}): ValidatedReplayRequest {
+    if (input.recording !== undefined) {
+        validateAuditReplayDescriptor(input.recording);
+        if (input.entryCommands !== undefined || input.unit !== undefined || input.outcomeSource !== undefined || input.modeName !== undefined || input.simulationId !== undefined ||
+            (input.round !== undefined && input.round !== input.recording.round) || (input.seed !== undefined && input.seed !== input.recording.seed)) throw new Error("Audit replay request contradicts its recorded inputs.");
+        return {recording: deepFreeze(toCanonicalJson(input.recording)) as unknown as NonNullable<ValidatedReplayRequest["recording"]>, round: input.recording.round, ...(input.recording.seed === null ? {} : {seed: input.recording.seed})};
+    }
     const {round, seed, simulationId, modeName} = input;
     if (input.unit !== undefined && input.unit !== "step" && input.unit !== "logical-round") throw new Error("Replay unit must be step or logical-round.");
     if (input.entryCommands !== undefined && (!Array.isArray(input.entryCommands) || input.entryCommands.length > 100000 || input.entryCommands.some(command => validateSessionCommand(command) || command.continuation !== undefined))) throw new Error("Replay entryCommands must contain valid entry selections.");
