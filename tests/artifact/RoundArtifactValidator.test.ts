@@ -4,10 +4,12 @@ import {
     RoundArtifactValidator,
     RoundStepArtifact,
     SymbolsCombination,
-    VideoSlotConfig,
+    VideoSlotConfig, VideoSlotSession, PublicRoundArtifactProjector, buildRoundArtifactFromSession,
     VideoSlotWinCalculator,
     buildRoundArtifact,
 } from "@fromstan/pokie";
+
+import {overscanConfig, overscanGeometry, adversarialScreen} from "../v2/fixtures/OverscanGame.js";
 
 const provenance: RoundArtifactProvenance = {
     game: {id: "sample-slot", name: "Sample Slot", version: "0.1.0"},
@@ -41,6 +43,33 @@ function codesOf(artifact: RoundArtifact<string>): string[] {
 describe("RoundArtifactValidator", () => {
     it("reports no issues for a validly-built artifact", () => {
         expect(new RoundArtifactValidator().validate(validArtifact())).toEqual([]);
+    });
+
+    it.each(["definition", "symbolsPositions", "wildSymbolsPositions", "winningPositions", "positionCell", "multiplierPositions", "multiplierBreakdown", "metadataPositions"] as const)("rejects sparse canonical %s at validation and public projection boundaries", field => {
+        const session = new VideoSlotSession(overscanConfig(), {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(overscanGeometry)});
+        session.play();
+        const artifact = buildRoundArtifactFromSession(session, {roundId: "sparse", provenance});
+        expect(codesOf(artifact)).toEqual([]);
+        expect(() => new PublicRoundArtifactProjector().project(artifact)).not.toThrow();
+        const sparse = new Array<number>(5);
+        sparse[0] = sparse[1] = sparse[2] = 0;
+        let win = {...artifact.wins[0]};
+        if (field === "definition" || field === "symbolsPositions" || field === "wildSymbolsPositions") {
+            win = {...win, metadata: {...win.metadata, [field]: sparse}};
+        } else if (field === "winningPositions" || field === "positionCell") {
+            win = {...win, winningPositions: field === "positionCell" ? [new Array<number>(2)] : new Array<number[]>(1)};
+        } else if (field === "multiplierPositions") {
+            win = {...win, multiplierBreakdown: [{source: "custom", positions: new Array<number[]>(1), values: [2], combinedMultiplier: 2}]};
+        } else if (field === "multiplierBreakdown") {
+            const breakdown = [...win.multiplierBreakdown];
+            breakdown.length = 1;
+            win = {...win, multiplierBreakdown: breakdown};
+        } else {
+            win = {...win, type: "value", metadata: {symbolsPositions: new Array<number[]>(1)}};
+        }
+        const malformed = {...artifact, wins: [win], steps: [{...artifact.steps[0], wins: [win]}]};
+        expect(codesOf(malformed)).toContain("round-artifact-coordinates-invalid");
+        expect(() => new PublicRoundArtifactProjector().project(malformed)).toThrow(/Artifact|integer/);
     });
 
     it("flags an empty roundId", () => {

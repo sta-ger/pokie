@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {ReelStripAnalysis} from "../reels/ReelStripAnalysis.js";
 import type {ReelStripGenerationDiagnostic} from "../reels/ReelStripGenerationDiagnostic.js";
 import type {ReelStripSymbolWeightsConversionDiagnostic} from "../reels/ReelStripSymbolWeightsConversionDiagnostic.js";
@@ -17,7 +18,7 @@ export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClu
 // `paylineCount` is only meaningful for the "lines" win model (paylines are ignored otherwise -- see
 // GameBlueprintWinModel's own doc comment) -- omitted for "ways"/"clusters" rather than reporting a
 // possibly-misleading 0.
-export type GameModelLayout = {reels?: number; rows?: number; winModel: GameModelWinModel; paylineCount?: number};
+export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: ScreenGeometry; winModel: GameModelWinModel; paylineCount?: number};
 
 export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
@@ -32,7 +33,7 @@ export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScat
 // strip for "symbolWeights"/"default" (see GameModelReels.sharedWeightsSample) -- never an invented grid.
 // `wrapsAround` is always true: every reel strip in this engine is a circular sequence (see
 // ReelStrip.getSymbolAt), so a stop near a strip's own end always wraps back to its start.
-export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]};
+export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]; screenGeometry?: ScreenGeometry; visibleRowCoverage?: number[]};
 
 // One position on a reel's own resolved strip -- `locked` is only ever true for a "generated" reel whose
 // own reelStripGeneration entry pins that position via lockedPositions; `stackSize` is this position's own

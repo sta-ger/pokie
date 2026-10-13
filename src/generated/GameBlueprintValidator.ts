@@ -1,3 +1,5 @@
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {GameBlueprintValidating} from "./GameBlueprintValidating.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
 
@@ -66,6 +68,16 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             });
         }
 
+        let evaluatedRows = rows;
+        if (b.screenGeometry !== undefined) {
+            try {
+                const projection = new ScreenProjection(b.screenGeometry as ScreenGeometry);
+                if (projection.getGeometry().generated.reels !== reels || projection.getRows("visible") !== rows) throw new Error("Geometry must match reels and visible rows.");
+                evaluatedRows = projection.getRows("evaluated");
+            } catch (error) {
+                issues.push({code: "blueprint-screen-geometry-invalid", severity: "error", message: String(error), path: "screenGeometry"});
+            }
+        }
         const symbols = b.symbols;
         const symbolsValid =
             Array.isArray(symbols) && symbols.length > 0 && symbols.every((s) => typeof s === "string" && s.length > 0);
@@ -93,12 +105,12 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         const isClustersWinModel = this.isClustersWinModel(b.winModel);
         let maxMatchCount: number | undefined;
         if (isClustersWinModel) {
-            maxMatchCount = reelsValid && rowsValid ? (reels as number) * (rows as number) : undefined;
+            maxMatchCount = reelsValid && rowsValid ? (reels as number) * (evaluatedRows as number) : undefined;
         } else {
             maxMatchCount = reelsValid ? (reels as number) : undefined;
         }
         const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, maxMatchCount, issues);
-        this.validatePaylines(b.paylines, reels, reelsValid, rows, rowsValid, issues);
+        this.validatePaylines(b.paylines, reels, reelsValid, evaluatedRows, rowsValid, issues);
         const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
         const reelStripGenerationSymbols = this.validateReelStripGeneration(b.reelStripGeneration, symbolSet, symbolsValid, reels, reelsValid, issues);
         const weightSymbols = this.validateSymbolWeights(b.symbolWeights, symbolSet, symbolsValid, issues);
@@ -744,11 +756,11 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
 
         const seenLines = new Map<string, number>();
-        paylines.forEach((line, index) => {
+        Array.from(paylines).forEach((line, index) => {
             const valid =
                 Array.isArray(line) &&
                 (!reelsValid || line.length === reels) &&
-                line.every(
+                Array.from(line).every(
                     (row) => typeof row === "number" && Number.isInteger(row) && row >= 0 && (!rowsValid || row < (rows as number)),
                 );
             if (!valid) {

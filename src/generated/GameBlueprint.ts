@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {BetMode} from "../gamepackage/BetMode.js";
 import type {ReelStripGenerationSpec} from "./ReelStripGenerationSpec.js";
 
@@ -41,6 +42,8 @@ export type GameBlueprint = {
     manifest: GameBlueprintManifest;
     reels: number;
     rows: number;
+    /** rows describes discrete visible cells; paylines are evaluation-local. */
+    screenGeometry?: ScreenGeometry;
     symbols: string[];
     wilds?: string[];
     scatters?: string[];

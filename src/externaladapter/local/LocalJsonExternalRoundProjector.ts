@@ -1,3 +1,4 @@
+import {PublicRoundArtifactProjector} from "../../artifact/PublicRoundArtifactProjector.js";
 import {PokieJsonRoundArtifactProjector} from "../../artifact/PokieJsonRoundArtifactProjector.js";
 import type {RoundArtifact} from "../../artifact/RoundArtifact.js";
 import type {JsonObject} from "../../json/JsonValue.js";
@@ -11,6 +12,6 @@ export class LocalJsonExternalRoundProjector<T extends string | number = string>
     private readonly inner = new PokieJsonRoundArtifactProjector<T>();
 
     public project(artifact: RoundArtifact<T>): JsonObject {
-        return this.inner.project(artifact) as unknown as JsonObject;
+        return (artifact.geometry || artifact.steps.some(step => step.geometry) ? new PublicRoundArtifactProjector<T>().project(artifact) : this.inner.project(artifact)) as unknown as JsonObject;
     }
 }

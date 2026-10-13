@@ -1,3 +1,4 @@
+import {adversarialScreen, overscanConfig, overscanGeometry} from "../../v2/fixtures/OverscanGame.js";
 import {SymbolsCombination, VideoSlotConfig, VideoSlotWinCalculator, serializeWinEvaluationResult} from "@fromstan/pokie";
 
 function roundtripThroughJson<T>(value: T): T {
@@ -61,5 +62,21 @@ describe("serializeWinEvaluationResult", () => {
         expect(serialized.clusterWins).toEqual([]);
         expect(serialized.valueWins).toEqual([]);
         expect(serialized.waysWins).toEqual([]);
+    });
+    it("supports direct viewport serialization without changing evaluated results or settled amounts", () => {
+        const calculator = new VideoSlotWinCalculator(overscanConfig());
+        calculator.calculateWin(1, new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(overscanGeometry));
+        const result = calculator.getWinEvaluationResult();
+        const evaluated = serializeWinEvaluationResult(result);
+        const visible = serializeWinEvaluationResult(result, overscanGeometry);
+        expect(evaluated.winningPositions).toHaveLength(15);
+        expect(visible.winningPositions).toHaveLength(10);
+        expect(visible.totalWin).toBe(evaluated.totalWin);
+        expect(visible.lineWins).toHaveLength(3);
+        expect(visible.lineWins[0].definition).toEqual([1, 1, 1, 1, 1]);
+        expect(visible.lineWins[0].symbolsPositions).toEqual([0, 1, 2, 3, 4]);
+        expect(visible.lineWins[2]).toMatchObject({definition: [], visiblePositions: [], winAmount: 1});
+        expect(result.getWinningPositions()).toEqual(evaluated.winningPositions);
+        expect(roundtripThroughJson(visible)).toEqual(visible);
     });
 });

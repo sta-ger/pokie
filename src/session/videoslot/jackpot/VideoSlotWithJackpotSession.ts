@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
 import type {JackpotPoolStatisticsSnapshot, JackpotStatisticsSnapshot} from "../../JackpotStatisticsSnapshot.js";
@@ -167,7 +168,13 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         return this;
     }
 
+    public override validateScreenCoordinates(): void {
+        super.validateScreenCoordinates();
+        rejectScreenGeometry({getScreenGeometry: () => this.getConfiguredScreenGeometry()}, "Jackpot");
+    }
+
     public override play(): void {
+        this.validateScreenCoordinates();
         if (!this.canPlayNextGame()) {
             return;
         }

@@ -1,3 +1,5 @@
+import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
+import {resolveScreenProjection} from "../coordinates/projectSymbolsCombination.js";
 import {SeededRandomNumberGenerator} from "./SeededRandomNumberGenerator.js";
 import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
 import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
@@ -18,6 +20,7 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        resolveScreenProjection(this.config);
         const arr: T[][] = new Array(this.config.getReelsNumber());
         const stopPositions: number[] = new Array(this.config.getReelsNumber());
         for (let i = 0; i < this.config.getReelsNumber(); i++) {
@@ -26,7 +29,13 @@ implements SymbolsCombinationsGenerating<T> {
             stopPositions[i] = reel.position;
         }
         this.lastStopPositions = stopPositions;
-        return new SymbolsCombination<T>().fromMatrix(arr);
+        const combination = new SymbolsCombination<T>().fromMatrix(arr);
+        const geometry = this.config.getScreenGeometry?.();
+        return geometry ? combination.withCoordinates(geometry) : combination;
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return resolveScreenProjection(this.config)?.getGeometry();
     }
 
     public getLastStopPositions(): number[] {
@@ -61,6 +70,6 @@ implements SymbolsCombinationsGenerating<T> {
     private getRandomReelSymbols(reelId: number): {symbols: T[]; position: number} {
         const sequence = this.config.getSymbolsSequences()[reelId];
         const position = this.rng.getRandomInt(0, sequence.getSize());
-        return {symbols: sequence.getSymbols(position, this.config.getReelsSymbolsNumber()), position};
+        return {symbols: sequence.getSymbols(position, resolveScreenProjection(this.config)?.getRows("generated") ?? this.config.getReelsSymbolsNumber()), position};
     }
 }

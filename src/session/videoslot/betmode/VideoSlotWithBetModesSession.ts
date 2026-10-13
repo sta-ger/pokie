@@ -109,6 +109,7 @@ export class VideoSlotWithBetModesSession<T extends string | number | symbol = s
     }
 
     public override play(): void {
+        this.validateScreenCoordinates();
         if (!this.canPlayNextGame()) {
             return;
         }

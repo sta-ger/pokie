@@ -1,3 +1,4 @@
+import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
     GameSessionSerializing,
@@ -1626,5 +1627,57 @@ describe("StudioReplayExecutionService (integration, real loadPokieGame + fixtur
 
         expect(job.status).toBe("failed");
         expect(job.error).toContain("package.json");
+    });
+});
+
+
+describe("Overscan Studio replay", () => {
+    it("agrees with ReplayRecorder and keeps generated evidence in the target artifact", async () => {
+        const game = createOverscanGame();
+        const release = jest.fn(() => Promise.resolve());
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(game), 3, undefined, undefined, undefined, "1.3.0", undefined, undefined, undefined, undefined, release);
+        try {
+            const started = service.start("/overscan", {round: 12, seed: "7"});
+            if (started.status !== "created") throw new Error("expected replay");
+            const result = await waitForTerminal(service, "/overscan", started.job.id);
+            const reference = new ReplayRecorder().record({game, seed: "7", round: 12});
+            expect(result.status).toBe("completed");
+            expect(result.descriptor?.totalWin).toBe(reference.totalWin);
+            expect(result.descriptor?.screen).toEqual(reference.screen);
+            expect(result.descriptor?.artifact?.generatedScreen).toEqual(reference.artifact?.generatedScreen);
+            expect(result.descriptor?.artifact?.geometry).toEqual(reference.artifact?.geometry);
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            await service.cancelAll();
+
+        }
+    });
+
+    it("cancels after a settled overscan command without publishing a partial descriptor", async () => {
+        const game = createOverscanGame();
+        const session = game.createSession({seed: "7"});
+        game.createSession = () => session;
+        const release = jest.fn(() => Promise.resolve());
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(game), 3, undefined, undefined, () => "overscan-cancel", "1.3.0", undefined, undefined, undefined, undefined, release);
+        const play = session.play.bind(session);
+        const spy = jest.spyOn(session, "play").mockImplementation(() => {
+            play();
+            service.cancel("/overscan", "overscan-cancel");
+
+        });
+        try {
+            const started = service.start("/overscan", {round: 12, seed: "7"});
+            if (started.status !== "created") throw new Error("expected replay");
+            const result = await waitForTerminal(service, "/overscan", started.job.id);
+            expect(result.status).toBe("cancelled");
+            expect(result.completedRounds).toBe(1);
+            expect(result.descriptor).toBeUndefined();
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            spy.mockRestore();
+            await service.cancelAll();
+
+        }
     });
 });

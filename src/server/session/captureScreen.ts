@@ -1,6 +1,10 @@
+import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
+import type {ScreenGeometry} from "../../session/videoslot/coordinates/ScreenGeometry.js";
 import type {GameSessionHandling} from "../../session/GameSessionHandling.js";
 
 type SessionWithScreen = GameSessionHandling & {
+    getScreenGeometry?(): ScreenGeometry | undefined;
+    getVisibleSymbolsCombination?(): {toMatrix(): unknown[][]};
     getSymbolsCombination(): {toMatrix(transposed?: boolean): unknown[][]};
 };
 
@@ -11,7 +15,10 @@ export function captureScreen(session: GameSessionHandling): unknown[][] | null 
     if (!hasSymbolsCombination(session)) {
         return null;
     }
-    return session.getSymbolsCombination().toMatrix();
+    if (session.getVisibleSymbolsCombination) return session.getVisibleSymbolsCombination().toMatrix();
+    const generated = session.getSymbolsCombination().toMatrix();
+    const geometry = session.getScreenGeometry?.();
+    return geometry ? new ScreenProjection(geometry).project(generated, "visible") : generated;
 }
 
 function hasSymbolsCombination(session: GameSessionHandling): session is SessionWithScreen {

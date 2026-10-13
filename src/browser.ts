@@ -72,3 +72,12 @@ export type {PokieSessionState} from "./server/session/PokieSessionState.js";
 export type {SessionRepository} from "./server/session/SessionRepository.js";
 export type {VersionedSessionRepository, VersionedSessionState} from "./server/session/VersionedSessionRepository.js";
 export type {SpinCommandResult} from "./server/spin/SpinCommandResult.js";
+
+export * from "./session/videoslot/coordinates/ScreenGeometry.js";
+export * from "./session/videoslot/coordinates/ScreenProjection.js";
+export * from "./session/videoslot/coordinates/projectSymbolsCombination.js";
+export * from "./session/videoslot/coordinates/projectVisibleWinData.js";
+export * from "./artifact/PublicRoundArtifactProjector.js";
+export * from "./session/videoslot/coordinates/ScreenProjectionDescribing.js";
+export * from "./net/videoslot/serializeWinEvaluationResult.js";
+export * from "./net/videoslot/projectVideoSlotNetworkData.js";

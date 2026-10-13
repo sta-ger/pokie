@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../../../session/videoslot/coordinates/projectSymbolsCombination.js";
 import type {CascadeResultProviding} from "../../../session/videoslot/cascade/CascadeResultProviding.js";
 import type {VideoSlotSessionHandling} from "../../../session/videoslot/VideoSlotSessionHandling.js";
 import {MultiStageRoundSessionSerializer} from "../../MultiStageRoundSessionSerializer.js";
@@ -30,6 +31,7 @@ export class CascadeSessionSerializer<T extends string | number | symbol = strin
     }
 
     public override getRoundData(session: CascadeCapableSession<T>): CascadeRoundNetworkData<T> {
+        rejectScreenGeometry(session, "CascadeSessionSerializer");
         const cascadeResult = session.getCascadeResult();
         return {
             ...super.getRoundData(session),
@@ -47,6 +49,7 @@ export class CascadeSessionSerializer<T extends string | number | symbol = strin
     }
 
     protected getStages(session: CascadeCapableSession<T>): CascadeStepNetworkData<T>[] {
+        rejectScreenGeometry(session, "CascadeSessionSerializer");
         return session
             .getCascadeResult()
             .getCascadeSteps()

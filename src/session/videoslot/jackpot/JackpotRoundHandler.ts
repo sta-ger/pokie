@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {WinEvaluationResult} from "../winevaluation/WinEvaluationResult.js";
 import {applyJackpotPoolStatisticsDelta} from "./applyJackpotPoolStatisticsDelta.js";
 import type {JackpotAwarding} from "./JackpotAwarding.js";
@@ -45,6 +46,7 @@ export class JackpotRoundHandler<T extends string | number | symbol = string> im
         stake: number,
         baseWinEvaluationResult: WinEvaluationResult<T> = new WinEvaluationResult<T>(),
     ): void {
+        rejectScreenGeometry(session, "Jackpot");
         const pools = session.getJackpotPools();
         let poolStatistics = session.getJackpotPoolStatistics();
 

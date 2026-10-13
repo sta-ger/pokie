@@ -1,3 +1,4 @@
+import {projectEvaluationSymbols} from "../coordinates/projectSymbolsCombination.js";
 import type {ScatterWinCalculating} from "./ScatterWinCalculating.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
 import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
@@ -20,6 +21,7 @@ export class ScatterWinCalculator<T extends string | number | symbol = string> i
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,
     ): Record<T, WinningScatterDescribing<T>> {
+        symbolsCombination = projectEvaluationSymbols(symbolsCombination, this.config);
         const winningScatters = {} as Record<T, WinningScatterDescribing<T>>;
         if (this.config.getScatterSymbols() !== null) {
             for (const scatter of this.config.getScatterSymbols()) {

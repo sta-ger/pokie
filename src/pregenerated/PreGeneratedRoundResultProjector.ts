@@ -1,3 +1,4 @@
+import {PublicRoundArtifactProjector} from "../artifact/PublicRoundArtifactProjector.js";
 import type {PreGeneratedRoundInternalView} from "./PreGeneratedRoundInternalView.js";
 import type {PreGeneratedRoundPublicView} from "./PreGeneratedRoundPublicView.js";
 import type {PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
@@ -9,7 +10,9 @@ import type {PreGeneratedRoundResult} from "./PreGeneratedRoundResult.js";
 // never sent unless a caller explicitly asks for it.
 export class PreGeneratedRoundResultProjector<T extends string | number = string> {
     public projectPublic(result: PreGeneratedRoundResult<T>): PreGeneratedRoundPublicView<T> {
-        const {runtime, artifact} = result;
+        const {runtime} = result;
+        const artifact = new PublicRoundArtifactProjector<T>().project(result.artifact);
+        const coverage = artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage;
         return {
             roundId: runtime.roundId,
             sessionId: runtime.sessionId,
@@ -19,6 +22,7 @@ export class PreGeneratedRoundResultProjector<T extends string | number = string
             payoutMultiplier: artifact.payoutMultiplier,
             screen: artifact.screen,
             wins: artifact.wins,
+            ...(coverage ? {visibleRowCoverage: coverage} : {}),
         };
     }
 

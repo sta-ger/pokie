@@ -1,3 +1,6 @@
+import type {RoundArtifact as CanonicalRoundArtifact} from "../../../../../src/artifact/RoundArtifact.js";
+import {toCanonicalJson} from "../../../../../src/json/toCanonicalJson.js";
+import {PublicRoundArtifactProjector} from "../../../../../src/artifact/PublicRoundArtifactProjector.js";
 import type {
     OutcomeSourceReplayDescriptorView,
     ReplayDescriptor,
@@ -47,25 +50,32 @@ export function isReplayTerminal(job: StudioReplayJobView): boolean {
     return job.status === "completed" || job.status === "failed" || job.status === "cancelled" || job.status === "recovery-required";
 }
 
-// A RoundArtifact with every screen (round-level and each step's own) pre-formatted to display
-// strings via formatScreenCell, ready for ScreenTable — everything else (wins, feature events,
-// provenance, debug) passes through as-is, since it's already the exact JSON-safe shape the Inspect
-// step needs. `hash` is optional, not `RoundArtifactJson`'s own required field -- this is the one
+// A presentation object with an untouched canonicalArtifact and every screen pre-formatted
+// to display strings via formatScreenCell, ready for ScreenTable. Wins/steps use visible coordinates.
+// Canonical geometry, generated cells, evaluation-local wins and debug evidence remain untouched
+// in canonicalArtifact, which owns the Full artifact JSON and its original hash. The optional
+// presentation hash identifies that canonical source -- this is the one
 // shared shape every "round we can inspect" is normalized into (Replay's own recorded/recreated
 // artifacts, Session Spin's `debug.artifact`, and an Outcome Source draw's `selection.outcome.artifact`
 // -- see RoundArtifactInspector's own callers), and only the first of those three ever actually carries
 // a content hash.
-export type RoundArtifactDisplayView = Omit<RoundArtifact, "screen" | "steps"> & {
+export type RoundArtifactDisplayView = Omit<RoundArtifact, "screen" | "steps" | "geometry" | "generatedScreen"> & {
     hash?: string;
+    canonicalArtifact?: RoundArtifact & {hash?: string};
     screen: string[][];
-    steps: (Omit<RoundArtifact["steps"][number], "screen"> & {screen: string[][]})[];
+    steps: (Omit<RoundArtifact["steps"][number], "screen"> & {screen: string[][]; visibleRowCoverage?: readonly number[]})[];
 };
 
 export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string}): RoundArtifactDisplayView {
+    const visible = artifact.geometry || artifact.steps.some(step => step.geometry)
+        ? new PublicRoundArtifactProjector<string | number>().project(toCanonicalJson(artifact) as unknown as CanonicalRoundArtifact<string | number>) : artifact;
+    const {geometry: _geometry, generatedScreen: _generatedScreen, ...details} = artifact;
     return {
-        ...artifact,
-        screen: formatScreenGrid(artifact.screen),
-        steps: artifact.steps.map((step) => ({...step, screen: formatScreenGrid(step.screen)})),
+        ...details,
+        canonicalArtifact: artifact,
+        wins: visible.wins,
+        screen: formatScreenGrid(visible.screen),
+        steps: visible.steps.map((step) => ({...step, screen: formatScreenGrid(step.screen)})),
     };
 }
 

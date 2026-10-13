@@ -1,3 +1,8 @@
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
+import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
+import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
+import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
+import {captureScreen} from "../server/session/captureScreen.js";
 import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import crypto from "crypto";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
@@ -37,6 +42,12 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             totalWin += result.win;
         }
         const durationMs = Date.now() - startedAt;
+        const slot = session as Partial<VideoSlotSessionHandling>;
+        const geometry = slot.getScreenGeometry?.();
+        const artifact = geometry && !new ScreenProjection(geometry).isIdentity() && slot.getWinEvaluationResult
+            ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
+                roundId: `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
+            })) : undefined;
 
         return {
             sessionId: crypto.randomUUID(),
@@ -46,6 +57,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             totalBet,
             totalWin,
             screen: this.captureScreen(session),
+            ...(artifact ? {artifact} : {}),
             timestamp: startedAt,
             durationMs,
         };
@@ -75,7 +87,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         if (!this.hasSymbolsCombination(session)) {
             return null;
         }
-        return session.getSymbolsCombination().toMatrix();
+        return captureScreen(session);
     }
 
     private hasSymbolsCombination(session: GameSessionHandling): session is SessionWithSymbolsCombination {

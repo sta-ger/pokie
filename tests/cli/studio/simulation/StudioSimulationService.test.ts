@@ -1,3 +1,4 @@
+import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
     loadPokieGame,
@@ -1160,5 +1161,36 @@ describe("StudioSimulationService (integration, real loadPokieGame + fixture gam
         expect(base.rounds).toBeGreaterThan(0);
         expect(freeGames.rounds).toBeGreaterThan(0);
         expect(base.rounds + freeGames.rounds).toBe(job.report!.rounds);
+    });
+});
+
+
+describe("Overscan Studio simulation lifecycle", () => {
+    it("cancels after a settled command, releases materialization and suppresses a partial report", async () => {
+        const game = createOverscanGame();
+        const session = game.createSession({seed: "7"});
+        game.createSession = () => session;
+        const release = jest.fn(() => Promise.resolve());
+        const service = new StudioSimulationService(new InMemoryStudioSimulationRepository(), () => Promise.resolve(game), undefined, 3, undefined, undefined, () => "overscan-cancel", undefined, undefined, undefined, () => Promise.resolve({runtimePath: "/overscan", release}));
+        const play = session.play.bind(session);
+        const spy = jest.spyOn(session, "play").mockImplementation(() => {
+            play();
+            service.cancel("overscan-cancel");
+
+        });
+        try {
+            const started = service.start("/overscan", {rounds: 12, seed: "7"});
+            if (started.status !== "created") throw new Error("expected simulation");
+            const result = await waitForTerminal(service, started.job.id);
+            expect(result.status).toBe("cancelled");
+            expect(result.roundsCompleted).toBe(1);
+            expect(result.report).toBeUndefined();
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            spy.mockRestore();
+            await service.cancelAll();
+
+        }
     });
 });

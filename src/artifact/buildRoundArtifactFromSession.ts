@@ -1,3 +1,5 @@
+import {captureScreen} from "../server/session/captureScreen.js";
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import {determineStakeAmount} from "../server/session/determineStakeAmount.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import type {WonFreeGamesNumberDetermining} from "../session/WonFreeGamesNumberDetermining.js";
@@ -27,6 +29,9 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     session: VideoSlotSessionHandling<T>,
     options: RoundArtifactFromSessionOptions,
 ): RoundArtifact<T> {
+    const geometry = session.getScreenGeometry?.();
+    const coordinateEvidence = geometry && !new ScreenProjection(geometry).isIdentity()
+        ? {geometry, generatedScreen: session.getSymbolsCombination().toMatrix()} : {};
     const stake = options.stake ?? determineStakeAmount(session, session.getBet());
     const featureEvents = deriveStandardFeatureEvents(session);
 
@@ -38,7 +43,8 @@ export function buildRoundArtifactFromSession<T extends string | number = string
         debug: options.debug,
         steps: [
             {
-                screen: session.getSymbolsCombination().toMatrix(),
+                screen: captureScreen(session) as T[][],
+                ...coordinateEvidence,
                 winEvaluationResult: session.getWinEvaluationResult(),
                 ...(featureEvents.length > 0 ? {featureEvents} : {}),
             },

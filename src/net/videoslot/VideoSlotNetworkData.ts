@@ -16,6 +16,8 @@ export type VideoSlotInitialNetworkData<T extends string | number | symbol = str
 
 export type VideoSlotRoundNetworkData<T extends string | number | symbol = string> = {
     reelsSymbols: T[][];
+    /** Coverage of each visible cell row, independent of evaluation eligibility. */
+    visibleRowCoverage?: number[];
     // A round replaces the player view in browser consumers. Keep the session's real bet choices
     // with it so a win/feature re-render cannot silently discard selectable bet controls.
     availableBets?: number[];
@@ -36,6 +38,9 @@ export type VideoSlotRoundNetworkData<T extends string | number | symbol = strin
 
 export type WinningLineNetworkData<T extends string | number | symbol = string> = {
     definition: number[];
+    /** Present with overscan: visible grid positions; legacy reel-index arrays remain unchanged. */
+    visiblePositions?: number[][];
+    visibleWildPositions?: number[][];
     pattern: number[];
     symbolId: T;
     lineId: string;

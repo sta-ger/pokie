@@ -1,3 +1,7 @@
+import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
+import {projectEvaluationSymbols} from "./coordinates/projectSymbolsCombination.js";
+import {SymbolsCombination} from "./combinations/SymbolsCombination.js";
+import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
 import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
@@ -19,6 +23,42 @@ implements VideoSlotSessionHandling<T> {
 
     constructor(baseSession: VideoSlotSessionHandling<T>) {
         this.baseSession = baseSession;
+    }
+
+    public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
+        if (this.baseSession.getConfiguredScreenGeometry) return this.baseSession.getConfiguredScreenGeometry();
+        // Capability absence permits legacy detection; an authoritative undefined return above
+        // must never be replaced with geometry belonging to the previous settled combination.
+        return this.baseSession.getSymbolsCombination().getScreenGeometry?.() ?? this.baseSession.getScreenGeometry?.();
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return this.baseSession.getScreenGeometry?.();
+    }
+
+    public validateScreenCoordinates(): void {
+        this.baseSession.validateScreenCoordinates?.();
+    }
+
+    public getSettledScreenDimensions(): {reels: number; rows: number} {
+        const geometry = this.getScreenGeometry();
+        return this.baseSession.getSettledScreenDimensions?.() ?? {
+            reels: geometry?.generated.reels ?? this.getReelsNumber(),
+            rows: geometry ? new ScreenProjection(geometry).getRows("visible") : this.getReelsSymbolsNumber(),
+        };
+    }
+
+    public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        const geometry = this.getScreenGeometry();
+        const generated = this.getSymbolsCombination();
+        return geometry ? new SymbolsCombination<T>().fromMatrix(new ScreenProjection(geometry).project(generated.toMatrix(), "visible")).withCoordinates(geometry, "visible") : generated;
+    }
+
+    public getEvaluatedSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        const geometry = this.getScreenGeometry();
+        const generated = this.getSymbolsCombination();
+        return projectEvaluationSymbols(geometry
+            ? new SymbolsCombination<T>().fromMatrix(generated.toMatrix()).withCoordinates(geometry) : generated);
     }
 
     public getPaytable(): PaytableRepresenting<T> {

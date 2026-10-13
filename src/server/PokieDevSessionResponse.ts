@@ -23,5 +23,6 @@ export type PokieDevSessionResponse = {
     bet?: number;
     win?: number;
     screen?: unknown[][];
+    visibleRowCoverage?: number[];
     internal?: PokieInternalSessionData;
 } & Record<string, unknown>;

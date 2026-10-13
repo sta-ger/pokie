@@ -1,3 +1,4 @@
+import {projectEvaluationSymbols, validateEvaluationPaylines} from "../coordinates/projectSymbolsCombination.js";
 import {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
 import {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 
@@ -14,7 +15,8 @@ export class WinEvaluationContext<T extends string | number | symbol = string> {
         metadata: Record<string, unknown> = {},
     ) {
         this.bet = bet;
-        this.symbolsCombination = symbolsCombination;
+        this.symbolsCombination = projectEvaluationSymbols(symbolsCombination, config);
+        validateEvaluationPaylines(config, this.symbolsCombination);
         this.config = config;
         this.metadata = {...metadata};
     }

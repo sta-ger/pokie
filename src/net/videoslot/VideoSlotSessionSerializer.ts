@@ -1,3 +1,6 @@
+import {projectVideoSlotNetworkData} from "./projectVideoSlotNetworkData.js";
+import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
+import {projectVisiblePayline} from "../../session/videoslot/coordinates/projectVisibleWinData.js";
 import {GameSessionSerializer} from "../GameSessionSerializer.js";
 import type {GameSessionSerializing} from "../GameSessionSerializing.js";
 import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
@@ -28,15 +31,20 @@ implements VideoSlotSessionSerializing<T> {
 
     public getInitialData(session: VideoSlotSessionHandling<T>): VideoSlotInitialNetworkData<T> {
         const availableSymbols = session.getAvailableSymbols();
-        const reelsNumber = session.getReelsNumber();
-        const reelsSymbolsNumber = session.getReelsSymbolsNumber();
+        const geometry = session.getScreenGeometry?.();
+        const projection = geometry && new ScreenProjection(geometry);
+        const dimensions = session.getSettledScreenDimensions?.();
+        const reelsNumber = dimensions?.reels ?? geometry?.generated.reels ?? session.getReelsNumber();
+        const reelsSymbolsNumber = dimensions?.rows ?? projection?.getRows("visible") ?? session.getReelsSymbolsNumber();
         const paytable = session.getPaytable().toMap();
         const linesDefinitions: Record<string, number[]> = {};
         session
             .getLinesDefinitions()
             .getLinesIds()
             .forEach((lineId) => {
-                linesDefinitions[lineId] = session.getLinesDefinitions().getLineDefinition(lineId);
+                const definition = session.getLinesDefinitions().getLineDefinition(lineId);
+                const visible = projection ? projectVisiblePayline(definition, projection) : definition;
+                if (visible) linesDefinitions[lineId] = visible;
             });
         const r: VideoSlotInitialNetworkData<T> = {
             ...this.baseSerializer.getInitialData(session),
@@ -54,7 +62,10 @@ implements VideoSlotSessionSerializing<T> {
     }
 
     public getRoundData(session: VideoSlotSessionHandling<T>): VideoSlotRoundNetworkData<T> {
-        const symbolsCombination = session.getSymbolsCombination();
+        const symbolsCombination = session.getVisibleSymbolsCombination?.() ?? session.getSymbolsCombination();
+        const geometry = session.getScreenGeometry?.();
+        const visibleScreen = geometry && !session.getVisibleSymbolsCombination
+            ? new ScreenProjection(geometry).project(symbolsCombination.toMatrix(), "visible") : symbolsCombination.toMatrix();
         const winEvaluationResult = session.getWinEvaluationResult();
         const winningLines = session.getWinningLines();
         const winningScatters = session.getWinningScatters();
@@ -63,7 +74,7 @@ implements VideoSlotSessionSerializing<T> {
         const winningWays = this.getDerivedWinningWays(session, winEvaluationResult);
         const r: VideoSlotRoundNetworkData<T> = {
             ...this.baseSerializer.getRoundData(session),
-            reelsSymbols: symbolsCombination.toMatrix(),
+            reelsSymbols: visibleScreen,
             availableBets: session.getAvailableBets(),
             totalWin: session.getWinAmount(),
             winningPositions: winEvaluationResult.getWinningPositions(),
@@ -155,7 +166,7 @@ implements VideoSlotSessionSerializing<T> {
         if (supportsBetModeSelecting(session)) {
             r.betModeId = session.getBetModeId();
         }
-        return r;
+        return geometry ? projectVideoSlotNetworkData(r, geometry) : r;
     }
 
     private getDerivedWinningClusters(

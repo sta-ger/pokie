@@ -384,7 +384,7 @@ describe("renderPlayerRound", () => {
 describe("canonical Player source reachability", () => {
     it("adapts a legacy companion only in an owned candidate copy", () => {
         const staging = mkdtempSync(resolve(process.cwd(), "node_modules/.cache/pokie-tmp/player-adaptation-"));
-        const original = resolve(staging, "original"), 
+        const original = resolve(staging, "original"),
             candidate = resolve(staging, "candidate");
         const ui = 'import {renderPlayerRound} from "pokie/client/player"; const schema = "pokie.round";';
         const manifest = JSON.stringify({private: true, dependencies: {pokie: "^1.3.0", vite: "4.3.9"}});
@@ -401,7 +401,7 @@ describe("canonical Player source reachability", () => {
             expect(readFileSync(resolve(original, "src/ui/ui.ts"), "utf8")).toBe(ui);
             expect(readFileSync(resolve(original, "package-lock.json"), "utf8")).toBe("original lock bytes");
         } finally {
-            rmSync(staging, {recursive: true, force: true}); 
+            rmSync(staging, {recursive: true, force: true});
         }
     });
 
@@ -705,5 +705,29 @@ describe("canonical player fixture round parity: reaches the same shared present
         expect(winningCellA.style.backgroundColor).not.toBe("");
         expect(winningCellB.style.backgroundColor).toBe(winningCellA.style.backgroundColor);
         expect(nonWinningCell.style.backgroundColor).toBe("");
+    });
+});
+
+
+describe("Viewport-only player data", () => {
+    it("F7 scales fractional rows with the active desktop/mobile cell size and keeps visible highlights", () => {
+        const response = {winningLines: {edge: {lineId: "edge", definition: [], symbolsPositions: [0, 1, 2], wildSymbolsPositions: [0], visiblePositions: [[0, 1], [1, 1]], symbolId: "A", winAmount: 3}}};
+        const highlights = deriveWinHighlights(response);
+        expect(highlights[0].positions).toEqual([[0, 1], [1, 1]]);
+        const root = document.createElement("div");
+        const elements = createPlayerRoundElements(root);
+        renderPlayerRound(elements, {reelsSymbols: [["W", "A", "A"], ["W", "A", "A"], ["W", "A", "A"]], visibleRowCoverage: [0.75, 1, 0.75], highlights});
+        const partial = root.querySelector('[data-cell="0:0"]') as HTMLElement;
+        const full = root.querySelector('[data-cell="1:0"]') as HTMLElement;
+        expect(partial.getAttribute("data-visible-coverage")).toBe("0.75");
+        expect(partial.style.getPropertyValue("--player-row-coverage")).toBe("0.75");
+        expect(full.style.getPropertyValue("--player-row-coverage")).toBe("");
+        const stylesheet = document.getElementById(PLAYER_PRESENTATION_STYLE_ID)!.textContent!;
+        expect(stylesheet).toContain(".pokie-player { --player-cell-size: 3rem;");
+        expect(stylesheet).toContain("height: calc(var(--player-cell-size) * var(--player-row-coverage, 1))");
+        expect(stylesheet).toContain("@media (max-width: 480px) { .pokie-player { --player-cell-size: 2.25rem; }");
+        expect(stylesheet).not.toContain("height: 2.25rem");
+        expect((root.querySelector('[data-cell="1:0"]') as HTMLElement).style.backgroundColor).toBe("rgb(221, 255, 221)");
+        expect((root.querySelector('[data-cell="0:2"]') as HTMLElement).style.backgroundColor).toBe("");
     });
 });

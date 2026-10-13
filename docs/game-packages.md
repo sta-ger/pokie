@@ -202,3 +202,7 @@ snapshots stay live-only: they preserve the constructed collaborator and never a
 Complete built-in children still require their nested state, and selected modes must belong to the
 trusted model before reads, retries or reconciliation publish a result. Declared codecs retain their
 own strict validation requirements, including the game validator for custom payloads.
+
+## Generated, visible and evaluated coordinates
+
+Blueprint screenGeometry, generated packages and conversion support: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

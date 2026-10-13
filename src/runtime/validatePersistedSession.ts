@@ -1,3 +1,5 @@
+import {captureCoordinatePublicPayload} from "../server/session/internal/captureCoordinatePublicPayload.js";
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSessionAuthority, LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
 import {sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
@@ -26,6 +28,26 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         (state.executionState !== "live-only" && state.executionState !== "durably-restorable") ||
         (state.executionState === "durably-restorable" && state.featureState === undefined)) {
         return {status: "corrupt-state", reason: "Session contains invalid or missing executable/observable fields."};
+    }
+    try {
+        if (state.coordinates !== undefined) {
+            const expectedScreen = new ScreenProjection(state.coordinates.geometry).project(state.coordinates.generatedScreen, "visible");
+            if (JSON.stringify(expectedScreen) !== JSON.stringify(state.screen)) throw new Error("Persisted viewport does not match generated coordinate evidence.");
+            if (state.roundPayload) captureCoordinatePublicPayload(state, state.roundPayload);
+            if (state.roundArtifact && (JSON.stringify(state.roundArtifact.geometry) !== JSON.stringify(state.coordinates.geometry) ||
+                JSON.stringify(state.roundArtifact.generatedScreen) !== JSON.stringify(state.coordinates.generatedScreen))) throw new Error("Persisted artifact coordinate evidence differs from session capture.");
+        }
+        let schema = state.stateSchema;
+        const visitedSchemas = new Set<unknown>();
+        while (schema && "base" in schema) {
+            if (visitedSchemas.has(schema)) throw new Error("Cyclic executable state schema.");
+            visitedSchemas.add(schema);
+            schema = schema.base;
+        }
+        if (schema?.kind === "seeded-video-slot" && schema.screenGeometry && !new ScreenProjection(schema.screenGeometry).isIdentity() &&
+            JSON.stringify(new ScreenProjection(schema.screenGeometry).getGeometry()) !== JSON.stringify(state.coordinates?.geometry)) throw new Error("Persisted coordinate contract is missing or differs from its schema.");
+    } catch (error) {
+        return {status: "corrupt-state", reason: String(error)};
     }
     for (const key of ["initialPayload", "roundPayload", "initialDebugPayload", "roundDebugPayload"] as const) {
         if (state[key] !== undefined && (typeof state[key] !== "object" || state[key] === null || Array.isArray(state[key]))) return {status: "corrupt-state", reason: `Invalid ${key}.`};

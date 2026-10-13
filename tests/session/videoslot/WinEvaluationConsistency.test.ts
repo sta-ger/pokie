@@ -57,7 +57,7 @@ describe("Win evaluation consistency across all five win types", () => {
         const config = new VideoSlotConfig();
         const calculator = buildAllFiveEvaluatorsCalculator(config, new SumAllEnabledWinAggregationPolicy());
 
-        calculator.calculateWin(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]));
+        calculator.calculateWin(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["A", "A", "A"])));
 
         const result = calculator.getWinEvaluationResult();
         expect(result.getLineWins()).toHaveLength(1);
@@ -70,11 +70,17 @@ describe("Win evaluation consistency across all five win types", () => {
         expect(calculator.getWinAmount()).toBe(result.getTotalWin());
     });
 
+    test("F3 rejects an actual evaluated grid too small for clusters even when configured dimensions are larger", () => {
+        const config = new VideoSlotConfig();
+        const calculator = buildAllFiveEvaluatorsCalculator(config, new SumAllEnabledWinAggregationPolicy());
+        expect(() => calculator.calculateWin(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]))).toThrow(/grid has only 3/);
+    });
+
     test("highest-win-only aggregation keeps only the best-performing evaluator group, and the total matches it exactly", () => {
         const config = new VideoSlotConfig();
         const calculator = buildAllFiveEvaluatorsCalculator(config, new HighestWinOnlyAggregationPolicy());
 
-        calculator.calculateWin(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix([["A"], ["A"], ["A"]]));
+        calculator.calculateWin(config.getAvailableBets()[0], new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["A", "A", "A"])));
 
         const result = calculator.getWinEvaluationResult();
         // ways (13) is the single highest group among line=10, scatter=5, cluster=7, value=11, ways=13

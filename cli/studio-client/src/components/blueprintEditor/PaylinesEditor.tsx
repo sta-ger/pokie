@@ -21,6 +21,7 @@ export function PaylinesEditor({blueprint, mutate}: {blueprint: Record<string, u
             <Text size="sm" c="dimmed" mb="sm">
                 Optional — omit to use the engine&apos;s default (one horizontal line per row).
             </Text>
+            {blueprint.screenGeometry !== undefined && <Text size="sm" mb="sm">Payline rows are evaluation-local. Edit screenGeometry in the JSON view; the form preserves it. Layout changes must also update that geometry.</Text>}
             <Stack gap="sm">
                 {paylines.map((line, lineIndex) => (
                     <Group key={lineIndex} gap="xs">

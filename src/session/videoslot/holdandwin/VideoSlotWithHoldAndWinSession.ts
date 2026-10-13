@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
 import type {SimulationCategoryDetermining} from "../../SimulationCategoryDetermining.js";
@@ -148,7 +149,13 @@ export class VideoSlotWithHoldAndWinSession<T extends string | number | symbol =
         return this.active || this.baseSession.canPlayNextGame();
     }
 
+    public override validateScreenCoordinates(): void {
+        super.validateScreenCoordinates();
+        rejectScreenGeometry({getScreenGeometry: () => this.getConfiguredScreenGeometry()}, "HoldAndWin");
+    }
+
     public override play(): void {
+        this.validateScreenCoordinates();
         // Mirrors the insufficient-funds guard in VideoSlotWithFreeGamesSession.play(): a plain paid spin
         // with insufficient credits must bail out here, before beforeRoundPlayed/afterRoundPlayed ever
         // run, so stale locked/respin state from a previous feature run can't be reprocessed.

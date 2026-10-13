@@ -1,8 +1,38 @@
+import {ScreenProjection} from "../coordinates/ScreenProjection.js";
+import type {ScreenGeometry, ScreenCoordinateSpace} from "../coordinates/ScreenGeometry.js";
 import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
 
 export class SymbolsCombination<T extends string | number | symbol = string>
 implements SymbolsCombinationDescribing<T> {
     private combination: T[][] = [];
+    private geometry?: ScreenGeometry;
+    private variableReelHeights = false;
+    private space: ScreenCoordinateSpace = "generated";
+
+    public withVariableReelHeights(): this {
+        this.variableReelHeights = true;
+        return this;
+    }
+
+    public hasVariableReelHeights(): boolean {
+        return this.variableReelHeights;
+    }
+
+    public withCoordinates(geometry: ScreenGeometry, space: ScreenCoordinateSpace = "generated"): this {
+        const projection = new ScreenProjection(geometry);
+        projection.assertMatrix(this.combination, space);
+        this.geometry = projection.getGeometry();
+        this.space = space;
+        return this;
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return this.geometry && new ScreenProjection(this.geometry).getGeometry();
+    }
+
+    public getCoordinateSpace(): ScreenCoordinateSpace {
+        return this.space;
+    }
 
     public getSymbols(reelId: number): T[] {
         return this.combination[reelId];

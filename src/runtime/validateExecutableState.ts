@@ -1,3 +1,4 @@
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
 import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
 /** Validate the built-in state envelopes without constructing a session or drawing randomness.
@@ -9,6 +10,7 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     partial = live?.partial ?? partial ?? false;
     if (schema !== undefined && (typeof schema !== "object" || schema === null ||
         !["base", "seeded-video-slot", "free-games", "bet-modes", "custom"].includes(schema.kind))) throw new Error("Unknown executable state schema.");
+    if (schema?.kind === "seeded-video-slot" && schema.screenGeometry) new ScreenProjection(schema.screenGeometry).getGeometry();
     if (schema?.kind === "custom") {
         if (live?.opaque === true) {
             if (value === undefined && !live.optional) throw new Error("Required opaque live snapshot is missing.");

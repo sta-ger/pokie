@@ -1,3 +1,4 @@
+import {overscanGeometry, overscanConfig, adversarialScreen} from "./fixtures/OverscanGame.js";
 import vm from "node:vm";
 import {execFileSync} from "node:child_process";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
@@ -9,12 +10,12 @@ import {
     BetModeDefinition, BetModesConfig, FreeGamesForcedFeatureEntryHandler, VideoSlotWithBetModesSession, type VideoSlotSessionHandling, SessionRuntime, SpinCommandHandler, Simulation, SimulationConfig, AggregateSimulationRunner, ReplayRecorder, generateExactWeightedOutcomeLibrary, InMemorySessionRepository, InMemoryWallet, InMemorySpinOperationLog,
     captureInitialPokieSessionState, VideoSlotSession, VideoSlotWithFreeGamesSession,
     VideoSlotWithFreeGamesConfig, VideoSlotConfig, VideoSlotWinCalculator, Paytable,
-    SymbolsCombinationsGenerator, SeededRandomNumberGenerator, SymbolsSequence,
+    SymbolsCombination, SymbolsCombinationsGenerator, SeededRandomNumberGenerator, SymbolsSequence,
     CustomLinesDefinitions, VideoSlotSessionSerializer,
     renderBuiltGameModule, renderBuiltGameModuleSource,
     InMemoryIdempotencyRepository, SpinReconciliationService, type SpinCommandResult, GameSession, type PokieGame, type GameBlueprint, type PokieSessionState, type RepositoryCommand,
 } from "@fromstan/pokie";
-import {fractionalBetBlueprint, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
+import {fractionalBetBlueprint, fractionalBetConfig, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import {authoritativePaytableBlueprint} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import {extensionGame, extensionRound, legacyRoundGame, LegacyRoundSession} from "./fixtures/RuntimeExtension.js";
 import {inspectRuntimeGraph} from "./helpers/runtimeGraph.js";
@@ -99,12 +100,35 @@ describe("V2C-02 canonical runtime contracts", () => {
             }).outputText);
             fs.writeFileSync(path.join(runtime.directory, "run.mjs"), `
                 import * as esm from "@fromstan/pokie";
+                import * as browser from "@fromstan/pokie/browser";
                 import {createRequire} from "node:module";
                 import {legacyComposedGame as esmGame} from "./game.mjs";
                 import {legacyRoundGame as esmRoundGame} from "./extension.mjs";
                 import {probe} from "./probe.mjs";
                 const require = createRequire(import.meta.url);
                 const cjs = require("@fromstan/pokie");
+                const geometry = ${JSON.stringify(overscanGeometry)};
+                for (const api of [esm, cjs, browser]) {
+                    const projection = new api.ScreenProjection(geometry);
+                    if (JSON.stringify(projection.map([4, 4], "generated", "evaluated")) !== "[4,2]") throw new Error("Public coordinate export did not map the edge cell.");
+                    const config = new api.VideoSlotConfig();
+                    config.setScreenGeometry(geometry);
+                    config.setSymbolsSequences(Array.from({length: 5}, () => new api.SymbolsSequence().fromArray(["A", "K", "S", "Q", "J", "W", "A"])));
+                    const session = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(7)));
+                    session.play();
+                    const publicWin = api.serializeWinEvaluationResult(session.getWinEvaluationResult(), geometry);
+                    if (publicWin.winningPositions.some(([reel, row]) => reel < 0 || reel >= 5 || row < 0 || row >= 3)) throw new Error("Public win-result serializer returned off-viewport positions.");
+                    if (session.getSymbolsCombination().toMatrix()[0].length !== 7 || new api.VideoSlotSessionSerializer().getRoundData(session).reelsSymbols[0].length !== 3) throw new Error("Public runtime lost generated/visible ownership.");
+                }
+                for (const [host, source] of [[esm, cjs], [cjs, esm]]) {
+                    const config = new source.VideoSlotConfig();
+                    config.setReelsNumber(3);
+                    config.setReelsSymbolsNumber(1);
+                    const base = new source.VideoSlotSession(config);
+                    const free = new host.VideoSlotWithFreeGamesSession(undefined, undefined, undefined, base);
+                    free.play();
+                    if (free.getScreenGeometry() !== undefined || free.getSymbolsCombination().toMatrix().length !== 3 || free.getSymbolsCombination().toMatrix()[0].length !== 1) throw new Error("Cross-module ordinary free-games wrapper changed screen ownership.");
+                }
                 await probe(esm, cjs, require("./game.cjs").legacyComposedGame, require("./extension.cjs").legacyRoundGame);
                 await probe(cjs, esm, esmGame, esmRoundGame);
                 console.log("Both public ESM/CJS runtime directions passed.");
@@ -252,6 +276,151 @@ describe("V2C-02 canonical runtime contracts", () => {
             construction.mockRestore();
             save.mockRestore();
         }
+    });
+
+    it("F8 command settlement compensates a new tag contradicting authoritative ordinary generation", async () => {
+        let contradictory = false;
+        const game: PokieGame = {
+            getManifest: () => ({id: "coordinate-contract", name: "Coordinate contract", version: "1.0.0"}),
+            createSession: () => {
+                const config = overscanConfig();
+                config.setScreenGeometry(undefined);
+                return new VideoSlotSession(config, {getScreenGeometry: () => undefined,
+                    generateSymbolsCombination: () => contradictory
+                        ? new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(overscanGeometry)
+                        : new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"])),});
+            },
+            getSessionSerializer: () => new VideoSlotSessionSerializer(),
+        };
+        const repository = new InMemorySessionRepository(), 
+            wallet = new InMemoryWallet(), 
+            operations = new InMemorySpinOperationLog();
+        const session = game.createSession({seed: "contract"});
+        const initial = captureInitialPokieSessionState({seed: "contract"}, session, game.getSessionSerializer?.(), false, game);
+        await repository.save("session", initial);
+        await wallet.setBalance("session", initial.credits!);
+        const handler = new SpinCommandHandler(game, repository, wallet, new InMemoryIdempotencyRepository(), operations, true);
+        handler.primeSession("session", session, 1);
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "first"})).toMatchObject({status: "played", win: 3});
+        const state = await repository.load("session"), 
+            balance = await wallet.getBalance("session");
+        contradictory = true;
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "contradiction"})).toMatchObject({
+            status: "execution-error", reason: expect.stringContaining("upcoming coordinate contract"),
+        });
+        expect(await repository.load("session")).toEqual(state);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        contradictory = false;
+        // A failed live-only executable remains invalidated, rather than replaying a stale award.
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "after"})).toMatchObject({status: "restoration-unsupported"});
+        expect(await wallet.getBalance("session")).toBe(balance);
+    });
+
+    it("F8 command settlement compensates evaluation bounds discovered only in the new legacy tag", async () => {
+        let discover = false;
+        const short = {...overscanGeometry, evaluated: {rowOffset: 2, rows: 2}};
+        const game: PokieGame = {
+            getManifest: () => ({id: "legacy-coordinate-bounds", name: "Legacy bounds", version: "1.0.0"}),
+            createSession: () => {
+                const config = overscanConfig();
+                config.setScreenGeometry(undefined);
+                return new VideoSlotSession(config, {generateSymbolsCombination: () => discover
+                    ? new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(short)
+                    : new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"]))});
+            },
+            getSessionSerializer: () => new VideoSlotSessionSerializer(),
+        };
+        const repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet(),
+            operations = new InMemorySpinOperationLog();
+        const session = game.createSession({seed: "bounds"});
+        const initial = captureInitialPokieSessionState({seed: "bounds"}, session, game.getSessionSerializer?.(), false, game);
+        await repository.save("session", initial);
+        await wallet.setBalance("session", initial.credits!);
+        const handler = new SpinCommandHandler(game, repository, wallet, new InMemoryIdempotencyRepository(), operations, true);
+        handler.primeSession("session", session, 1);
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "first"})).toMatchObject({status: "played", win: 3});
+        const state = await repository.load("session"),
+            balance = await wallet.getBalance("session"),
+            settledScreen = (session as VideoSlotSessionHandling).getSymbolsCombination().toMatrix();
+        discover = true;
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "new-bounds"})).toMatchObject({
+            status: "execution-error", reason: expect.stringContaining('Payline "2"'),
+        });
+        expect(await repository.load("session")).toEqual(state);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        expect(session.getCreditsAmount()).toBe(balance);
+        expect(session.getWinAmount()).toBe(0);
+        expect((session as VideoSlotSessionHandling).getSymbolsCombination().toMatrix()).toEqual(settledScreen);
+        discover = false;
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "after"})).toMatchObject({status: "restoration-unsupported"});
+    });
+
+    it.each([false, true])("preserves ordinary free-game wrappers with independent grant configuration (legacy capabilities %s)", legacy => {
+        for (const ante of [false, true]) {
+            const config = fractionalBetConfig([0.05]);
+            const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)));
+            const nested = legacy ? new Proxy(base, {get(target, property) {
+                if (property === "getConfiguredScreenGeometry" || property === "validateScreenCoordinates") return undefined;
+                const value = Reflect.get(target, property);
+                return typeof value === "function" ? value.bind(target) : value;
+            }}) : base;
+            const grants = new VideoSlotWithFreeGamesConfig<string>(undefined, {});
+            grants.setScatterSymbols(["A"]);
+            grants.setFreeGamesForScatters("A", 3, 2);
+            // The unchanged default grant configuration is 5x3; the base owns a 3x1 screen.
+            const free = new VideoSlotWithFreeGamesSession(grants, undefined, undefined, nested);
+            const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([
+                new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+            ]));
+            if (ante) session.setBetMode("ante");
+            const credits = session.getCreditsAmount();
+            expect(new SessionRuntime(session).execute({kind: "spin"})).toMatchObject({status: "played"});
+            expect(session.getSymbolsCombination().toMatrix()).toEqual([["A"], ["A"], ["A"]]);
+            expect(session.getScreenGeometry()).toBeUndefined();
+            expect(session.getWinAmount()).toBe(0.25);
+            expect(session.getCreditsAmount()).toBeCloseTo(credits + 0.25 - (ante ? 0.1 : 0.05), 10);
+            expect(free.getWonFreeGamesNumber()).toBe(2);
+            expect(free.getFreeGamesSum()).toBe(2);
+            // The separately authored grant remains independent of monetary scatter awards.
+            expect(session.getWinningScatters()).toEqual({});
+            const paidCredits = session.getCreditsAmount();
+            expect(new SessionRuntime(session).execute({kind: "spin"})).toMatchObject({status: "played", stake: 0});
+            expect(free.getFreeGamesNum()).toBe(1);
+            expect(session.getCreditsAmount()).toBe(paidCredits);
+        }
+    });
+
+    it.each(["configuration", "base"] as const)("rejects declared identity dimension conflicts owned by %s before ante or free-game mutation", owner => {
+        const config = fractionalBetConfig([0.05]);
+        const rng = new SeededRandomNumberGenerator(7);
+        const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const grants = new VideoSlotWithFreeGamesConfig<string>(undefined, {});
+        const free = new VideoSlotWithFreeGamesSession(grants, undefined, undefined, base);
+        const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([
+            new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+        ]));
+        session.setBetMode("ante");
+        session.play();
+        free.setFreeGamesSum(2);
+        const snapshot = {credits: session.getCreditsAmount(), state: session.toSessionState(),
+            screen: session.getSymbolsCombination().toMatrix(), win: session.getWinAmount(), rng: rng.toSessionState()};
+        const dimensions = owner === "configuration" ? {reels: 5, rows: 3} : {reels: 3, rows: 1};
+        const declared = owner === "configuration" ? grants : config;
+        declared.setScreenGeometry({generated: dimensions, visible: {rowOffset: 0, rows: dimensions.rows},
+            evaluated: {rowOffset: 0, rows: dimensions.rows}, paylineSpace: "evaluated"});
+        expect(() => session.play()).toThrow(/same upcoming coordinate contract/);
+        expect(() => new VideoSlotWithFreeGamesSession(grants, undefined, undefined, base)).toThrow(/same upcoming coordinate contract/);
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
+        expect(session.toSessionState()).toEqual(snapshot.state);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+        expect(session.getScreenGeometry()).toBeUndefined();
+        expect(session.getWinAmount()).toBe(snapshot.win);
+        expect(rng.toSessionState()).toBe(snapshot.rng);
+        declared.setScreenGeometry(undefined);
+        expect(() => session.play()).not.toThrow();
+        expect(free.getFreeGamesNum()).toBe(1);
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
     });
 
     it.each(["current", "cached-state", "cached-previous", "captured-state", "captured-previous"] as const)("rejects unsupported selected modes in %s before execution, publication or recovery writes", async location => {

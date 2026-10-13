@@ -150,6 +150,7 @@ export function RoundArtifactInspector({
             <RoundDetailsTable artifact={artifact} />
 
             <GameScreenView
+                visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
                 screen={artifact.screen}
                 wins={artifact.wins}
                 credits={credits}
@@ -181,7 +182,8 @@ export function RoundArtifactInspector({
                     </QuickActions>
                 )}
 
-                {hasMultipleSteps && <GameScreenView screen={step.screen} wins={step.wins} />}
+                {hasMultipleSteps && <GameScreenView screen={step.screen}
+                    visibleRowCoverage={step.visibleRowCoverage} wins={step.wins} />}
 
                 <RoundWinsTable wins={step.wins} stake={artifact.stake} />
 
@@ -241,7 +243,7 @@ export function RoundArtifactInspector({
                 <Text size="sm" fw={600} mt="sm" mb={4}>
                     Full artifact
                 </Text>
-                <CodeBlock>{JSON.stringify(artifact, null, 2)}</CodeBlock>
+                <CodeBlock>{JSON.stringify(artifact.canonicalArtifact ?? artifact, null, 2)}</CodeBlock>
             </AdvancedDisclosure>
         </div>
     );

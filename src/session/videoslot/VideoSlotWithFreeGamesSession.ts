@@ -1,3 +1,4 @@
+import {areScreenGeometriesCompatible, resolveScreenProjection} from "./coordinates/projectSymbolsCombination.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../SessionStateRestoring.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
@@ -47,6 +48,21 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         super(baseSession);
         this.config = config;
         this.freeGamesRoundHandler = freeGamesRoundHandler;
+        this.validateScreenCoordinates();
+    }
+
+    public override validateScreenCoordinates(): void {
+        super.validateScreenCoordinates();
+        const projection = resolveScreenProjection(this.config);
+        const baseGeometry = this.getConfiguredScreenGeometry();
+        // Legacy ordinary wrappers use their configuration for grants, while the base owns
+        // the screen dimensions. Declared coordinates require both owners to agree.
+        if (!areScreenGeometriesCompatible(projection?.getGeometry(), baseGeometry) ||
+            ((projection || baseGeometry) &&
+                (this.config.getReelsNumber() !== this.baseSession.getReelsNumber() ||
+                this.config.getReelsSymbolsNumber() !== this.baseSession.getReelsSymbolsNumber()))) {
+            throw new Error("Free-games base session must expose the same upcoming coordinate contract.");
+        }
     }
 
     public getWonFreeGamesNumber(): number {
@@ -135,6 +151,8 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         if (!this.canPlayNextGame()) {
             return;
         }
+        this.validateScreenCoordinates();
+        this.wonFreeGamesNumber = 0;
         this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();
         // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its
@@ -174,7 +192,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     private determineWonFreeGamesNumber(): number {
         let wonFreeGamesNumber = 0;
         // Feature grants depend on landed scatters, independently of monetary payouts.
-        const matrix = this.getSymbolsCombination().toMatrix();
+        const matrix = this.getEvaluatedSymbolsCombination().toMatrix();
         for (const symbolId of this.config.getScatterSymbols()) {
             const grant = this.config.getFreeGamesForScatters(
                 symbolId,

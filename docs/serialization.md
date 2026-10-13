@@ -389,3 +389,7 @@ custom state: without an explicit complete codec they capture a custom, opaque, 
 An unchanged package can play that subclass through direct execution, primed repository commands,
 HTTP and Studio without new declarations. Losing its trusted live state refuses reconstruction and
 undeclared-codec recovery before construction or recovery writes.
+
+## Generated, visible and evaluated coordinates
+
+Viewport presentation and required internal coordinate evidence: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

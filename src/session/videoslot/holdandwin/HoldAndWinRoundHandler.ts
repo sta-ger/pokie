@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {emptyHoldAndWinBaseRoundResult, type HoldAndWinBaseRoundResult} from "./HoldAndWinBaseRoundResult.js";
 import type {HoldAndWinCollecting} from "./HoldAndWinCollecting.js";
 import type {HoldAndWinPayoutAggregating} from "./HoldAndWinPayoutAggregating.js";
@@ -79,6 +80,7 @@ export class HoldAndWinRoundHandler<T extends string | number | symbol = string>
         creditsBeforePlay: number,
         baseRoundResult: HoldAndWinBaseRoundResult<T> = emptyHoldAndWinBaseRoundResult<T>(),
     ): void {
+        rejectScreenGeometry(session, "HoldAndWin");
         const grid = session.getSymbolsCombination().toMatrix();
 
         if (!session.isHoldAndWinActive()) {

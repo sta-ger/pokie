@@ -1,3 +1,5 @@
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
+import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
 import {canonicalizeJsonField} from "./internal/canonicalizeJsonField.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -24,6 +26,7 @@ export function buildRoundStepArtifact<T extends string | number = string>(
     index: number,
     source: RoundArtifactStepSource<T>,
 ): RoundStepArtifact<T> {
+    if (source.generatedScreen !== undefined && source.geometry === undefined) throw new Error("Generated screen requires coordinate geometry.");
     const wins: RoundArtifactWin<T>[] = source.winEvaluationResult.getWinComponents().map((component) => {
         const winAmount = component.getWinAmount();
         if (!Number.isFinite(winAmount) || winAmount < 0) {
@@ -73,6 +76,7 @@ export function buildRoundStepArtifact<T extends string | number = string>(
 
     const step: RoundStepArtifact<T> = {
         index,
+        ...(source.geometry ? {geometry: new ScreenProjection(source.geometry).getGeometry(), generatedScreen: source.generatedScreen?.map(reel => [...reel])} : {}),
         screen: source.screen.map((reel) => [...reel]),
         totalWin,
         wins,
@@ -80,5 +84,6 @@ export function buildRoundStepArtifact<T extends string | number = string>(
         ...(source.debug !== undefined ? {debug: canonicalizeJsonField(`step ${index} debug`, source.debug)} : {}),
     };
 
+    validateArtifactCoordinates(step);
     return deepFreeze(step);
 }

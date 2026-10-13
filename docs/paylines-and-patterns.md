@@ -79,3 +79,7 @@ import {LeftToRightLinesPatterns} from "@fromstan/pokie";
 new LeftToRightLinesPatterns(5).toArray();
 // [[1,1,1,1,1],[1,1,1,1,0],[1,1,1,0,0],[1,1,0,0,0]]
 ```
+
+## Generated, visible and evaluated coordinates
+
+Evaluation-local paylines and visible drawing coordinates: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

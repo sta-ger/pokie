@@ -1,4 +1,5 @@
 import {
+    describeRoundArtifact,
     describeReplayCapabilities,
     describeReplayComparison,
     describeReplayEntryStatus,
@@ -1105,5 +1106,19 @@ describe("P9-07 recorded native-library contract", () => {
         recorded.outcomeSource!.artifact = createArtifact({totalWin: 9});
         expect(describeReplayReproducibility(recorded, undefined).status).toBe("blocked");
         expect(describeReplayComparison(recorded, libraryRecord()).status).not.toBe("match");
+    });
+});
+
+describe("Canonical inspection ownership", () => {
+    it("F4 retains numeric cells, every canonical step and the original hash outside formatted presentation data", () => {
+        const canonical = createArtifact();
+        const numeric = {...canonical, screen: [[7]], steps: [{index: 0, screen: [[7]], totalWin: 0, wins: [], debug: {reelStops: [2]}}], wins: [], totalWin: 0, hash: "original-hash"};
+        const view = describeRoundArtifact(numeric);
+        expect(view.screen).toEqual([["7"]]);
+        expect(view.steps[0].screen).toEqual([["7"]]);
+        expect(view.canonicalArtifact).toBe(numeric);
+        expect(view.canonicalArtifact!.screen).toEqual([[7]]);
+        expect(view.canonicalArtifact!.steps[0].debug).toEqual({reelStops: [2]});
+        expect(view.canonicalArtifact!.hash).toBe("original-hash");
     });
 });

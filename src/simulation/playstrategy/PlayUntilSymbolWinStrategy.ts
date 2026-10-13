@@ -1,5 +1,6 @@
 import type {NextSessionRoundPlayableDetermining} from "./NextSessionRoundPlayableDetermining.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
+import {projectEvaluationSymbols} from "../../session/videoslot/coordinates/projectSymbolsCombination.js";
 import {WinningLinesAnalyzer} from "../../session/videoslot/wincalculator/WinningLinesAnalyzer.js";
 
 export class PlayUntilSymbolWinStrategy<T extends string | number | symbol = string>
@@ -18,7 +19,8 @@ implements NextSessionRoundPlayableDetermining {
 
     public canPlayNextSimulationRound(session: VideoSlotSessionHandling<T>): boolean {
         const rgSession = session;
-        const symbolsCombination = rgSession.getSymbolsCombination();
+        const symbolsCombination = rgSession.getEvaluatedSymbolsCombination?.() ??
+            projectEvaluationSymbols(rgSession.getSymbolsCombination(), rgSession);
         const winningLines = rgSession.getWinningLines();
         const winningLinesArray = Object.values(winningLines);
         const winningScatters = rgSession.getWinningScatters();

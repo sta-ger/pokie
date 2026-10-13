@@ -1,3 +1,5 @@
+import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
+import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import {supportsBetModeSelecting} from "../../session/videoslot/betmode/supportsBetModeSelecting.js";
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../../session/SessionStateRestoring.js";
@@ -35,6 +37,11 @@ export function captureBaseSessionState(
         state.screen = screen;
     }
 
+    const slot = session as Partial<VideoSlotSessionHandling>;
+    const geometry = slot.getScreenGeometry?.();
+    if (geometry && !new ScreenProjection(geometry).isIdentity()) {
+        state.coordinates = {geometry, generatedScreen: slot.getSymbolsCombination!().toMatrix()};
+    }
     const featureState = captureFeatureState(session);
     if (featureState !== undefined) {
         state.featureState = featureState;

@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../../session/videoslot/coordinates/ScreenGeometry.js";
 import type {SessionStateSchema} from "../../session/SessionStateRestoring.js";
 import type {GameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
 import type {PokieGameContext} from "../../gamepackage/PokieGameContext.js";
@@ -13,6 +14,8 @@ export type PokieSessionState = {
     bet: number;
     win: number;
     screen?: unknown[][];
+    /** Required internal coordinate evidence; never part of a public response or optional debug bag. */
+    coordinates?: {geometry: ScreenGeometry; generatedScreen: unknown[][]};
     // Private executable state, interpreted by the selected game's complete codec and validated
     // against stateSchema before execution or recovery. Snapshot-only games stay live-only.
     featureState?: unknown;

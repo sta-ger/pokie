@@ -1,8 +1,10 @@
+import {ScreenProjection} from "./videoslot/coordinates/ScreenProjection.js";
+import type {ScreenGeometry} from "./videoslot/coordinates/ScreenGeometry.js";
 import type {GameSessionHandling} from "./GameSessionHandling.js";
 
 export type SessionStateSchema =
     | {readonly kind: "base" | "custom"}
-    | {readonly kind: "seeded-video-slot"; readonly reels?: number; readonly symbols?: readonly (string | number)[]}
+    | {readonly kind: "seeded-video-slot"; readonly reels?: number; readonly symbols?: readonly (string | number)[]; readonly screenGeometry?: ScreenGeometry}
     | {readonly kind: "free-games" | "bet-modes"; readonly base: SessionStateSchema};
 
 /** Explicit promise that the codec covers every collaborator influencing future rounds,
@@ -32,5 +34,15 @@ export function sessionStateSchemasMatch(first: SessionStateSchema, second: Sess
     if (first.kind === "free-games" || first.kind === "bet-modes") {
         return second !== undefined && "base" in second && sessionStateSchemasMatch(first.base, second.base);
     }
+    if (first.kind === "seeded-video-slot" && second?.kind === "seeded-video-slot") {
+        return JSON.stringify(nonidentityGeometry(first.screenGeometry)) === JSON.stringify(nonidentityGeometry(second.screenGeometry));
+    }
     return true;
+}
+
+
+function nonidentityGeometry(geometry: ScreenGeometry | undefined): ScreenGeometry | undefined {
+    if (!geometry) return undefined;
+    const projection = new ScreenProjection(geometry);
+    return projection.isIdentity() ? undefined : projection.getGeometry();
 }

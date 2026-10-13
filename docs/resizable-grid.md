@@ -74,3 +74,7 @@ session.getReelsHeights(); // [4,4,4,4,4] if the first round won, unchanged othe
 See [Extension Points](extension-points.md) for `AbstractVideoSlotSessionDecorator`, the base
 `VideoSlotWithResizableGridSession` itself extends, if you need to wrap a session with additional behavior of your
 own on top of grid resizing.
+
+## Generated, visible and evaluated coordinates
+
+Coordinate support boundary: ragged grids retain their full shape; nonidentity overscan is rejected: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

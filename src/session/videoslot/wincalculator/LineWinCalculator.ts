@@ -1,3 +1,4 @@
+import {projectEvaluationSymbols, validateEvaluationPaylines} from "../coordinates/projectSymbolsCombination.js";
 import type {LineWinCalculating} from "./LineWinCalculating.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
 import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
@@ -20,10 +21,12 @@ export class LineWinCalculator<T extends string | number | symbol = string> impl
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,
     ): Record<string, WinningLineDescribing<T>> {
+        symbolsCombination = projectEvaluationSymbols(symbolsCombination, this.config);
+        const linesDefinitions = validateEvaluationPaylines(this.config, symbolsCombination);
         const winningLines: Record<string, WinningLineDescribing<T>> = {};
         const winningLinesIds = SymbolsCombinationsAnalyzer.getWinningLinesIds<T>(
             symbolsCombination.toMatrix(),
-            this.config.getLinesDefinitions(),
+            linesDefinitions,
             this.config.getLinesPatterns().toArray(),
             this.config.getWildSymbols(),
             this.config.getWildSubstitutions?.(),

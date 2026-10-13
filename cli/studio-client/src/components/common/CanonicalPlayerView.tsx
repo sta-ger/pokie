@@ -28,6 +28,7 @@ import {useActiveSymbolArtwork} from "./SymbolPresentation";
 export function CanonicalPlayerView({
     reelsSymbols,
     wins,
+    visibleRowCoverage,
     paytable,
     featureCounters,
     lines,
@@ -42,6 +43,7 @@ export function CanonicalPlayerView({
     payoutMultiplier,
 }: {
     reelsSymbols: string[][];
+    visibleRowCoverage?: readonly number[];
     wins?: readonly GenericRoundArtifactWin[];
     paytable?: PaytableViewData;
     featureCounters?: FeatureCounter[];
@@ -73,6 +75,7 @@ export function CanonicalPlayerView({
                 formatTotalWin: (value) => value.toFixed(2),
                 formatPayoutMultiplier: (value) => value.toFixed(2),
                 reelsSymbols,
+                visibleRowCoverage,
                 highlights,
                 featureCounters,
                 lines,
@@ -89,7 +92,7 @@ export function CanonicalPlayerView({
                 },
             },
         );
-    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, wins]);
+    }, [artwork, availableBets, availableModeIds, credits, currentBet, currentModeId, featureCounters, lines, onSelectBet, onSelectMode, paytable, payoutMultiplier, reelsSymbols, totalWin, visibleRowCoverage, wins]);
 
     return <div ref={playerRootRef} />;
 }

@@ -62,7 +62,7 @@ export class AggregateSimulationRunner {
         this.betModeSelector = betModeSelector;
     }
 
-    public run(): SimulationAccumulator {
+    public run(shouldStop?: () => boolean): SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
         const categoryTotals = new Map<string, CategoryTotals>();
         let categorizationSupported = false;
@@ -73,6 +73,7 @@ export class AggregateSimulationRunner {
         const jackpotBefore = this.supportsJackpotStatistics(this.session) ? this.session.getJackpotStatisticsSnapshot() : undefined;
 
         for (let round = 0; round < this.rounds; round++) {
+            if (shouldStop?.()) break;
             if (!this.session.canPlayNextGame()) {
                 break;
             }

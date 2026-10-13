@@ -279,12 +279,13 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     // what createExactEnumerationSession actually enumerates over, never a second, independently-derived view.
     const probe = game.createExactEnumerationSession(new ForcedSymbolsCombinationsGenerator<string>([]));
     const sequences = probe.getSymbolsSequences();
-    const reelsSymbolsNumber = probe.getReelsSymbolsNumber();
+    const geometry = probe.getScreenGeometry?.();
+    const reelsSymbolsNumber = geometry?.generated.rows ?? probe.getReelsSymbolsNumber();
     const reelWindows: string[][][] = sequences.map((sequence) =>
         Array.from({length: sequence.getSize()}, (_unused, position) => sequence.getSymbols(position, reelsSymbolsNumber)),
     );
     const reelSizes = sequences.map((sequence) => sequence.getSize());
-    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows);
+    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows, geometry);
 
     // Same cardinality alone never proves a checkpoint belongs to THIS sweep -- two different games/configs
     // can coincidentally enumerate the exact same raw combination count while their actual reel layouts (and

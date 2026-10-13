@@ -130,6 +130,7 @@ function isPositiveSafeInteger(value: unknown): value is number {
 
 function isGameModel(value: unknown): value is PokieWasmGameModel {
     if (typeof value !== "object" || value === null) return false;
+    if ("screenGeometry" in value) return false;
     const model = value as Partial<PokieWasmGameModel>;
     if (model.schemaVersion !== "pokie.game.v1" || !isPositiveSafeInteger(model.reels) || !isPositiveSafeInteger(model.rows) ||
         !Array.isArray(model.reelStrips) || model.reelStrips.length !== model.reels || !Array.isArray(model.paylines) ||

@@ -345,3 +345,7 @@ stage indicator) is the only one that was actually misusing `Stepper`, and is th
 ## Headless runtime contract
 
 Play propagates repository command failure codes through the service and API. Corrupt or incompatible state produces actionable repair/matching-game guidance while retaining the last settled view. It never triggers a new session or an automatic retry. Project switches, superseded responses and scenario cancellation keep their existing guards; cancellation after a settled round retains that round and stops subsequent execution.
+
+## Generated, visible and evaluated coordinates
+
+Overscan in Play, replay inspectors, Game Model previews and JSON authoring: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

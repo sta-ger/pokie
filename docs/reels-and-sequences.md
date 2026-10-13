@@ -292,3 +292,7 @@ practice:
   grid). Different reel-stop combinations can render the same visible grid (e.g. on strips with repeated adjacent
   symbols); running win calculation once per unique grid × its weight avoids redundant work.
 - **`areCombinationsEqual(a, b)`** — deep equality check for two grids, handy for tests/debugging.
+
+## Generated, visible and evaluated coordinates
+
+Explicit generated matrices, visible viewports and evaluation windows: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

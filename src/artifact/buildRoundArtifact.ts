@@ -89,6 +89,7 @@ export function buildRoundArtifact<T extends string | number = string>(
         totalWin,
         payoutMultiplier: options.stake > 0 ? totalWin / options.stake : 0,
         screen: lastStep.screen,
+        ...(lastStep.geometry ? {geometry: lastStep.geometry, generatedScreen: lastStep.generatedScreen} : {}),
         steps,
         wins,
         ...(featureEvents.length > 0 ? {featureEvents} : {}),
