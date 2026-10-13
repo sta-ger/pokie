@@ -1,0 +1,11 @@
+
+> @fromstan/pokie@1.3.0 typecheck
+> tsc --noEmit -p tsconfig.typecheck.json && npm run typecheck-studio-client
+
+
+> @fromstan/pokie@1.3.0 typecheck-studio-client
+> tsc --project cli/studio-client/tsconfig.json --noEmit
+
+src/artifact/internal/canonicalizeJsonField.ts(22,5): error TS2322: Type 'JsonObject | JsonArray' is not assignable to type 'JsonObject'.
+  Type 'JsonArray' is not assignable to type 'JsonObject'.
+    Index signature for type 'string' is missing in type 'readonly JsonValue[]'.

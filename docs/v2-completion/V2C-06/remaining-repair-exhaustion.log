@@ -1,0 +1,54 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts
+
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts (5.436 s)
+  logical-round delivery and mathematical boundaries
+    ✓ validates opaque custom progress before current-state and cached-result publication (14 ms)
+    ✓ custom retained validation preserves a package's reused executable and direct delivery ledger (3 ms)
+    ✓ direct composite returned failure retains the latest prefix and exact successor (2 ms)
+    ✓ direct composite thrown failure retains the latest prefix and exact successor (2 ms)
+    ✓ a failed direct composite completed by its successor remains retryable after a later round (8 ms)
+    ✓ independent saved-stage result write failure recovers exact delivery without math or settlement (68 ms)
+    ✓ independent saved-stage checkpoint write failure recovers exact delivery without math or settlement (52 ms)
+    ✓ composite saved-stage publication failure exposes the newly accepted prefix (44 ms)
+    ✓ exhaustion preserves an unfinished custom feature instead of declaring it completed (17 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through independent/partial capture and retry (20 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through independent/full capture and retry (21 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through local/partial capture and retry (92 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through local/full capture and retry (120 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through external/partial capture and retry (261 ms)
+    ✓ stopped cascade retains evaluated prefix separately from final refill through external/full capture and retry (292 ms)
+    ✓ binds completed logical identity independently of request identity (independent) (60 ms)
+    ✓ binds completed logical identity independently of request identity (local) (151 ms)
+    ✓ binds completed logical identity independently of request identity (external) (376 ms)
+    ✓ rejects corrupt retained artifacts, commands, cursors and executable progress before effects (56 ms)
+    ✓ a returned successor rejection exposes the retained prefix and resumes without another entry (23 ms)
+    ✓ a thrown composite successor exposes its committed prefix and exact retry identity (187 ms)
+    ✓ uses the execution contract for base and unsupported custom capabilities (3 ms)
+    ✓ exhausted cascades cannot publish completed replay or logical statistics (17 ms)
+    ✓ packages the identical paid entry, retriggers, bank and next RNG round at bet 0.05 (34 ms)
+    ✓ packages the identical paid entry, retriggers, bank and next RNG round at bet 7.5 (20 ms)
+    ✓ packages the identical paid entry, retriggers, bank and next RNG round at bet 1e-7 (17 ms)
+    ✓ cascade bound exhaustion retains its evaluated prefix and cannot purchase another entry (4 ms)
+    ✓ retains direct duplicate deliveries even after another round without another draw (9 ms)
+    ✓ rejects foreign, skipped, stale and entry-changing continuations before mutation (3 ms)
+    ✓ rejects a mutated entry bet or paid continuation before another draw (3 ms)
+    ✓ an unsupported purchase rolls back the selected mode before it can become latent (1 ms)
+    ✓ zero natural grants complete one entry, while a bounded feature keeps an explicit successor (5 ms)
+    ✓ shared retry retention preserves detached historical prefixes of a long chain (230 ms)
+    ✓ finishes a long finite feature iteratively and settles its bank once (1006 ms)
+    ✓ a retrigger on the nominal last free game postpones completion and bank release (5 ms)
+    ✓ logical statistics close once across chunk boundaries without changing step quotas (4 ms)
+    ✓ does not fabricate a completed observation for a feature tail whose entry was not observed (2 ms)
+    ✓ replay addresses a logical round with its actual entry command and ordered artifact (6 ms)
+    ✓ restarts at each committed subround and replays historical/final outputs independently (183 ms)
+    ✓ restart delivers saved cascade stages without calculation or settlement (external=false) (229 ms)
+    ✓ restart delivers saved cascade stages without calculation or settlement (external=true) (387 ms)
+    ✓ cancellation after commit preserves the prefix and resumes its exact successor (212 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       42 passed, 42 total
+Snapshots:   0 total
+Time:        5.667 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts".
