@@ -5822,16 +5822,25 @@ describe("StudioServer", () => {
         };
 
         it("loads Recent Rounds audit evidence through inspect/start/download and rejects a corrupt audit without seed fallback", async () => {
-            const game = {...transactionalRoundGame(), getConfigHash: () => "http-audit-model"};
+            const calculate = jest.fn();
+            const game = {...transactionalRoundGame(calculate), getConfigHash: () => "http-audit-model"};
             await openSampleSlot(game);
             await pollUntilProjectContextSettled(`${baseUrl}/api/project/context`);
             const created = await post(`${baseUrl}/api/project/play/session`, {seed: "http-audit"});
             expect(created.status).toBe(201);
             const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
-            expect((await post(`${baseUrl}/api/project/play/sessions/${sessionId}/spin`, {delivery: "composite"})).status).toBe(200);
+            const spinUrl = `${baseUrl}/api/project/play/sessions/${sessionId}/spin`;
+            expect(await post(spinUrl, {delivery: "composite"})).toMatchObject({status: 200, body: {session: {logicalRound: {status: "completed", cursor: 3}}}});
+            expect(calculate).toHaveBeenCalledTimes(3);
             const rounds = (await get(`${baseUrl}/api/project/rounds`)).body as Array<{debug: {recording: import("@fromstan/pokie").ReplayDescriptor}}>;
             const recording = rounds[0].debug.recording;
             expect(recording.audit).toBeDefined();
+            expect(recording.audit!.deliveries).toHaveLength(3);
+            const requestId = recording.audit!.deliveries[0].disposition.requestId!;
+            expect(recording.audit!.deliveries.map(delivery => delivery.disposition.requestId)).toEqual([requestId, `${requestId}:subround:1`, `${requestId}:subround:2`]);
+            expect(await post(spinUrl, {requestId, delivery: "composite"})).toMatchObject({status: 200});
+            expect(calculate).toHaveBeenCalledTimes(3);
+            expect((await get(`${baseUrl}/api/project/rounds`)).body).toEqual(rounds);
             const inspected = await post(`${baseUrl}/api/project/replays/inspect-artifact`, recording);
             expect(inspected).toMatchObject({status: 200, body: {recording, auditStatus: "recorded", artifactWarnings: []}});
             const started = await post(`${baseUrl}/api/project/replays`, {round: recording.round, recording: (inspected.body as {recording: unknown}).recording});

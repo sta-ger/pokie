@@ -280,14 +280,17 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const stageCursor = artifacts?.length ? 1 : 0;
         const exhausted = (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true;
         const finalScreen = exhausted ? (session as Partial<CascadeResultProviding>).getCascadeResult?.().getFinalScreen() : undefined;
-        const subround = {id: `${id}:${index}`, index, command: cloneSessionData(command), stake, win, payout, credits,
+        // Optional command selections may arrive as explicit undefined values from adapters.
+        // Retain their JSON representation, matching audit capture and retry envelope binding.
+        const retainedCommand = cloneSessionData(Object.fromEntries(Object.entries(command).filter(([, value]) => value !== undefined))) as SessionCommand;
+        const subround = {id: `${id}:${index}`, index, command: retainedCommand, stake, win, payout, credits,
             ...(screen ? {screen: screen.map(reel => [...reel])} : {}), ...(finalScreen ? {finalScreen} : {}), ...(artifacts ? {artifacts} : {})};
         let mathematicalStatus: LogicalRound["status"] = "completed";
         if (this.isDomainPending()) mathematicalStatus = "pending";
         if (exhausted) mathematicalStatus = "exhausted";
         let status = mathematicalStatus;
         if (!exhausted && stageCursor < (artifacts?.length ?? 0)) status = "pending";
-        const round: LogicalRound = deepFreeze({id, entry: previous?.entry ?? cloneSessionData(command), bet: previous?.bet ?? bet,
+        const round: LogicalRound = deepFreeze({id, entry: previous?.entry ?? retainedCommand, bet: previous?.bet ?? bet,
             ...(previous?.mode ?? mode ? {mode: previous?.mode ?? mode} : {}), cursor: index + 1, deliveryCursor: (previous?.deliveryCursor ?? 0) + 1, stageCursor,
             mathematicalStatus,
             status, totalStake: (previous?.totalStake ?? 0) + stake,
