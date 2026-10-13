@@ -258,6 +258,28 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(calculations).toBe(1);
     });
 
+    it("exhaustion preserves an unfinished custom feature instead of declaring it completed", async () => {
+        let calculations = 0;
+        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"});
+        const create = model.createSession.bind(model);
+        model.createSession = context => {
+            const session = create(context);
+            return Object.assign(session, {hasPendingLogicalRound: () => session.getWinAmount() > 0});
+        };
+        const repository = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(100),
+            results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite"};
+        const handler = () => new api.SpinCommandHandler(model, repository, wallet, results);
+        const stopped = settled(await handler().execute(command));
+        expect(stopped.state.logicalRound?.mathematicalStatus).toBe("exhausted");
+        expect(stopped.state.logicalRoundStatistics).toBeUndefined();
+        expect(await handler().execute(command)).toEqual(stopped);
+        expect(await handler().execute({kind: "spin", sessionId: "session", requestId: "next", continuation: {roundId: "round", cursor: 1}})).toMatchObject({status: "invalid-command"});
+        expect(calculations).toBe(1);
+    });
+
     it.each(["independent", "local", "external"].flatMap(composition => ["partial", "full"].map(mode => ({composition, mode: mode as api.SessionCaptureMode}))))("stopped cascade retains evaluated prefix separately from final refill through $composition/$mode capture and retry", async ({composition, mode}) => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cascade-stop-"));
         let calculations = 0;

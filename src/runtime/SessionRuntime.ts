@@ -43,7 +43,8 @@ export class SessionRuntime implements SessionRuntimeHandling {
     /** The executable progress authority is shared by restore, retry and settlement recovery. */
     public static validateLogicalRoundProgress(session: GameSessionHandling, round: LogicalRound): void {
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
-        if ((round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");
+        // Exhaustion is an unfinished stop, not a claim that every feature counter completed.
+        if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");
     }
 
     public getLogicalRound(): LogicalRound | undefined {
