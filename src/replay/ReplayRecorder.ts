@@ -1,3 +1,4 @@
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
 import {PokieJsonRoundArtifactProjector} from "../artifact/PokieJsonRoundArtifactProjector.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
@@ -42,7 +43,8 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         }
         const durationMs = Date.now() - startedAt;
         const slot = session as Partial<VideoSlotSessionHandling>;
-        const artifact = slot.getScreenGeometry?.() && slot.getWinEvaluationResult
+        const geometry = slot.getScreenGeometry?.();
+        const artifact = geometry && !new ScreenProjection(geometry).isIdentity() && slot.getWinEvaluationResult
             ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
                 roundId: `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;

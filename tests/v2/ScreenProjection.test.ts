@@ -13,7 +13,7 @@ import {
     WeightedOutcomeLibraryGenerationCancelledError, ValueWinComponent, WinningValue, MultiplierResolver,
     PreGeneratedRoundResultProjector, buildPreGeneratedRoundResult, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryHash,
     StakeEngineRoundEventsProjector, LocalJsonExternalRoundProjector,
-    HorizontalLines, Paytable, VariableHeightSymbolsCombinationsGenerator, ResizableSymbolsCombinationsGenerator, SymbolsSequence,
+    sessionStateSchemasMatch, HorizontalLines, Paytable, VariableHeightSymbolsCombinationsGenerator, ResizableSymbolsCombinationsGenerator, SymbolsSequence,
     CascadingSpinResolver, VideoSlotWithHoldAndWinSession, VideoSlotWithJackpotSession,
     type SpinCommandResult, type ScreenGeometry, type VideoSlotSessionHandling, type WinEvaluator,
 } from "@fromstan/pokie";
@@ -464,6 +464,19 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(() => new WinEvaluationPipeline<string>([], policy, undefined, [], {validateOnEvaluate: false}).evaluate(context)).toThrow(/evaluation domain/);
     });
 
+    it("preserves the legacy replay shape with explicit identity coordinates", () => {
+        const blueprint = {...overscanBlueprint, screenGeometry: undefined};
+        const identity: ScreenGeometry = {generated: {reels: 5, rows: 3}, visible: {rowOffset: 0, rows: 3}, evaluated: {rowOffset: 0, rows: 3}, paylineSpace: "evaluated"};
+        const recorder = new ReplayRecorder();
+        const ordinary = recorder.record({game: createOverscanGame(blueprint), seed: "7", round: 6});
+        const explicit = recorder.record({game: createOverscanGame({...blueprint, screenGeometry: identity}), seed: "7", round: 6});
+        expect(explicit.screen).toEqual(ordinary.screen);
+        expect(explicit.totalWin).toBe(ordinary.totalWin);
+        expect(explicit.totalBet).toBe(ordinary.totalBet);
+        expect(explicit).not.toHaveProperty("artifact");
+        expect(Object.keys(explicit).sort()).toEqual(Object.keys(ordinary).sort());
+    });
+
     it("preserves zero-overscan screen, stops, initialization consumption, payout and public shapes", () => {
         const config = overscanConfig();
         config.setScreenGeometry(undefined);
@@ -483,6 +496,7 @@ describe("Generated / visible / evaluated screen contracts", () => {
             right.play();
             expect(left.getCreditsAmount()).toBe(right.getCreditsAmount());
         }
+        expect(sessionStateSchemasMatch(left.getSessionStateSchema(), right.getSessionStateSchema())).toBe(true);
         expect(buildRoundArtifactFromSession(left, {roundId: "identity", provenance})).toEqual(buildRoundArtifactFromSession(right, {roundId: "identity", provenance}));
     });
 });

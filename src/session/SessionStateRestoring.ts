@@ -35,7 +35,14 @@ export function sessionStateSchemasMatch(first: SessionStateSchema, second: Sess
         return second !== undefined && "base" in second && sessionStateSchemasMatch(first.base, second.base);
     }
     if (first.kind === "seeded-video-slot" && second?.kind === "seeded-video-slot") {
-        return JSON.stringify(first.screenGeometry && new ScreenProjection(first.screenGeometry).getGeometry()) === JSON.stringify(second.screenGeometry && new ScreenProjection(second.screenGeometry).getGeometry());
+        return JSON.stringify(nonidentityGeometry(first.screenGeometry)) === JSON.stringify(nonidentityGeometry(second.screenGeometry));
     }
     return true;
+}
+
+
+function nonidentityGeometry(geometry: ScreenGeometry | undefined): ScreenGeometry | undefined {
+    if (!geometry) return undefined;
+    const projection = new ScreenProjection(geometry);
+    return projection.isIdentity() ? undefined : projection.getGeometry();
 }
