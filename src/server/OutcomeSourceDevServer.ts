@@ -71,6 +71,7 @@ export class OutcomeSourceDevServer implements PokieDevServerHandling {
         options: PokieDevServerOptions = {},
         sample: SampleFn = sampleOutcomeSourceProject,
     ) {
+        if (options.transactionalRoundStore !== undefined) throw new Error("Outcome-source rounds use the compensation path; transactionalRoundStore supports canonical game sessions only.");
         this.project = project;
         this.modeName = modeName;
         this.host = options.host ?? DEFAULT_HOST;

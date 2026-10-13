@@ -82,6 +82,13 @@ describe("apiClient", () => {
     });
 
     describe("spin", () => {
+        it("preserves identity conflicts without issuing another request or replacing its key", async () => {
+            const {fetchImpl, calls} = createFakeFetch(() => ({ok: false, status: 409,
+                body: {code: "identity-conflict", error: "Restore the original intent; do not retry with a fresh key."}}));
+            await expect(spin(fetchImpl, "http://api.test", "session", "original", 0.05, "base")).rejects.toMatchObject({code: "identity-conflict"});
+            expect(calls).toHaveLength(1);
+            expect(calls[0].init?.body).toBe(JSON.stringify({requestId: "original", bet: 0.05, mode: "base"}));
+        });
         it("POSTs to /sessions/:id/spin with no body when no requestId is given", async () => {
             const {fetchImpl, calls} = createFakeFetch(() => ({
                 ok: true,
