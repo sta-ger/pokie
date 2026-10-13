@@ -42,7 +42,10 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     public getRandomStateCodec(): "seeded" | "opaque" {
-        return this.isRandomStateRestorable() ? "seeded" : "opaque";
+        // The RNG reports its own codec even when injected from the other public module format.
+        // Subclass snapshots remain opaque unless their codec is explicitly supplied.
+        if (this.constructor !== SymbolsCombinationsGenerator) return "opaque";
+        return (this.rng as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
     }
 
     public getRandomState(): unknown {

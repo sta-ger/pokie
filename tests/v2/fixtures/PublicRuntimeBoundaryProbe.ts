@@ -28,9 +28,9 @@ export async function probe(host: Api, guest: Api, legacyGame: typeof legacyComp
     await playLive(host, opaqueGame);
     // Complete children must keep their own strict RNG codec under live-only parents.
     for (const location of ["current", "cached-state", "cached-previous", "captured-state", "captured-previous"] as const) {
-        for (const corruption of ["mode", "restriction", "rng"] as const) {
+        for (const corruption of ["mode", "restriction", "rng", "injected-rng"] as const) {
             for (const declared of [false, true]) {
-                const game = modeGame(guest, declared);
+                const game = modeGame(guest, declared, false, corruption === "injected-rng" ? host : guest);
                 await rejects(host, guest, game, location, state => {
                     const feature = state.featureState as {base: {betModeId: string; base: {rngState: unknown}}};
                     if (corruption === "mode") feature.base.betModeId = "nonexistent";
@@ -40,14 +40,14 @@ export async function probe(host: Api, guest: Api, legacyGame: typeof legacyComp
                         feature.base.betModeId = "ante";
                         state.commandCapabilities = {...state.commandCapabilities!, modes: ["base"]};
                     }
-                    if (corruption === "rng") feature.base.base.rngState = {draws: 3};
+                    if (corruption === "rng" || corruption === "injected-rng") feature.base.base.rngState = {draws: 3};
                 }, corruption === "restriction");
             }
         }
     }
 }
 
-function modeGame(api: Api, declared: boolean, modesOuter = false): PokieGame {
+function modeGame(api: Api, declared: boolean, modesOuter = false, rngApi = api): PokieGame {
     const capabilities = {bets: [1], modes: ["base", "ante"]};
     const baseSchema = {kind: "seeded-video-slot" as const};
     const modeSchema = {kind: "bet-modes" as const, base: baseSchema};
@@ -61,7 +61,7 @@ function modeGame(api: Api, declared: boolean, modesOuter = false): PokieGame {
             const config = new api.VideoSlotConfig();
             config.setAvailableBets([1]);
             config.setBet(1);
-            const base = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(7)));
+            const base = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new rngApi.SeededRandomNumberGenerator(7)));
             const modes = new api.VideoSlotWithBetModesSession(base, new api.BetModesConfig([new api.BetModeDefinition("base"), new api.BetModeDefinition("ante")], "base"));
             return modesOuter ? modes : new api.VideoSlotWithFreeGamesSession(undefined, undefined, undefined, modes);
         },
