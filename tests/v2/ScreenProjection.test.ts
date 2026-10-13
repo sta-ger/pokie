@@ -1,7 +1,7 @@
 import {
     ScreenProjection, SymbolsCombination, SymbolsCombinationsGenerator, SeededRandomNumberGenerator,
     VideoSlotSession, VideoSlotSessionSerializer, VideoSlotWinCalculator, LineWinCalculator, ScatterWinCalculator,
-    WaysWinCalculator, ClusterWinCalculator, ValueWinCalculator, WinEvaluationContext, WinEvaluationPipeline,
+    WaysWinCalculator, ClusterWinCalculator, ClusterWinEvaluator, ValueWinCalculator, WinEvaluationContext, WinEvaluationPipeline, WinEvaluationResult,
     CustomLinesDefinitions,
     VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession, buildRoundArtifactFromSession, buildRoundArtifact,
     PokieJsonRoundArtifactProjector, PublicRoundArtifactProjector, RoundArtifactValidator, computeRoundArtifactHash,
@@ -14,7 +14,7 @@ import {
     PreGeneratedRoundResultProjector, buildPreGeneratedRoundResult, buildWeightedOutcomeLibrary, computeWeightedOutcomeLibraryHash,
     StakeEngineRoundEventsProjector, LocalJsonExternalRoundProjector,
     sessionStateSchemasMatch, HorizontalLines, Paytable, VariableHeightSymbolsCombinationsGenerator, ResizableSymbolsCombinationsGenerator, SymbolsSequence,
-    CascadingSpinResolver, VideoSlotWithHoldAndWinSession, VideoSlotWithJackpotSession,
+    CascadingSpinResolver, VideoSlotWithHoldAndWinSession, VideoSlotWithJackpotSession, AccumulatingJackpotPool, PercentageOfBetJackpotContributor, SymbolCountJackpotTrigger, VideoSlotWithBetModesSession, BetModesConfig, BetModeDefinition,
     type SpinCommandResult, type ScreenGeometry, type VideoSlotSessionHandling, type WinEvaluator,
 } from "@fromstan/pokie";
 import {serializeGameBlueprint} from "../../cli/studio/blueprint/serializeGameBlueprint.js";
@@ -147,6 +147,118 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(() => new LineWinCalculator(config).calculateWinningLines(1, ragged)).toThrow(/evaluation domain/);
         config.setLinesDefinitions(new HorizontalLines(5, 3));
         expect(() => new LineWinCalculator(config).calculateWinningLines(1, ragged)).not.toThrow();
+    });
+
+    it.each([false, true])("F1 preserves a three-symbol default row award on an ordinary ragged grid (tagged %s)", tagged => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        config.setLinesDefinitions(new HorizontalLines(5, 3));
+        const paytable = new Paytable<string>([1]);
+        paytable.setPayoutForSymbol("A", 3, 10);
+        config.setPaytable(paytable);
+        const generated = new SymbolsCombination().fromMatrix([3, 3, 3, 2, 2].map(rows => Array<string>(rows).fill("A")));
+        if (tagged) generated.withVariableReelHeights();
+        const lines = new LineWinCalculator(config).calculateWinningLines(1, generated);
+        expect(lines["2"].getWinAmount()).toBe(10);
+        expect(lines["2"].getSymbolsPositions()).toEqual([0, 1, 2]);
+        const session = new VideoSlotSession(config, {generateSymbolsCombination: () => generated});
+        session.play();
+        expect(session.getWinAmount()).toBe(10);
+        expect(session.getWinningLines()["2"].getWinAmount()).toBe(10);
+        expect(session.getSymbolsCombination().toMatrix().map(reel => reel.length)).toEqual([3, 3, 3, 2, 2]);
+    });
+
+    it.each([false, true])("F2 rejects sparse setLineDefinition paylines before generation or settlement (overscan %s)", overscan => {
+        const config = overscanConfig();
+        if (!overscan) config.setScreenGeometry(undefined);
+        const generator = {generateSymbolsCombination: jest.fn(() => overscan ? combination() : new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"])))};
+        const session = new VideoSlotSession(config, generator);
+        session.play();
+        const credits = session.getCreditsAmount();
+        generator.generateSymbolsCombination.mockClear();
+        const line = new Array<number>(5);
+        line[0] = line[1] = line[2] = 0;
+        config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("sparse", line));
+        expect(() => new LineWinCalculator(config).calculateWinningLines(1, session.getSymbolsCombination())).toThrow(/evaluation domain/);
+        expect(() => session.play()).toThrow(/evaluation domain/);
+        expect(generator.generateSymbolsCombination).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinningLines()).toEqual({});
+        expect(() => new VideoSlotSession(config, generator)).toThrow(/evaluation domain/);
+    });
+
+    it("F3 validates the evaluated 20-cell cluster window rather than the 15-cell viewport", () => {
+        const config = overscanConfig();
+        const geometry = {...overscanGeometry, evaluated: {rowOffset: 2, rows: 4}};
+        config.setScreenGeometry(geometry);
+        config.getPaytable().setPayoutForSymbol("B", 20, 99);
+        const generated = new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["S", "S", "B", "B", "B", "B", "S"])).withCoordinates(geometry);
+        const calculator = new ClusterWinCalculator(config, 16);
+        expect(Object.values(calculator.calculateWinningClusters(1, generated)).map(win => win.getWinAmount())).toEqual([99]);
+        const pipeline = new WinEvaluationPipeline([new ClusterWinEvaluator(calculator, 16)]);
+        expect(pipeline.evaluate(new WinEvaluationContext(1, generated, config)).getTotalWin()).toBe(99);
+        config.setScreenGeometry(overscanGeometry);
+        expect(() => pipeline.evaluate(new WinEvaluationContext(1, combination(), config))).toThrow(/only 15/);
+    });
+
+    it.each(["jackpot", "holdAndWin", "stacked"] as const)("F8 rejects upcoming overscan without changing RNG, credits or settled feature ownership (%s)", feature => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        const rng = {getRandomInt: jest.fn(() => 2)};
+        const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const pool = new AccumulatingJackpotPool("test", 20);
+        const hold = new VideoSlotWithHoldAndWinSession(base);
+        const jackpot = new VideoSlotWithJackpotSession(feature === "stacked" ? hold : base, [pool], new PercentageOfBetJackpotContributor(0.1), new SymbolCountJackpotTrigger("B", 3));
+        const session = feature === "holdAndWin" ? hold : jackpot;
+        session.play();
+        expect(session.getWinAmount()).toBeGreaterThan(0);
+        if (feature !== "jackpot") {
+            hold.setHoldAndWinActive(true);
+            hold.setHoldAndWinRespinsRemaining(2);
+            hold.setLockedHoldAndWinSymbols([{position: [0, 0], symbolId: "A", effect: {kind: "value", amount: 10}}]);
+        }
+        const snapshot = {
+            credits: session.getCreditsAmount(), win: session.getWinAmount(),
+            result: session.getWinEvaluationResult(), lines: session.getWinningLines(),
+            feature: session.toSessionState(), pool: pool.toSessionState(),
+            screen: session.getSymbolsCombination().toMatrix(),
+        };
+        rng.getRandomInt.mockClear();
+        config.setScreenGeometry(overscanGeometry);
+        expect(session.getScreenGeometry()).toBeUndefined();
+        expect(session.getConfiguredScreenGeometry()).toEqual(overscanGeometry);
+        expect(() => session.play()).toThrow(/does not support overscan/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(snapshot.credits);
+        expect(session.getWinAmount()).toBe(snapshot.win);
+        expect(session.getWinEvaluationResult()).toEqual(snapshot.result);
+        expect(session.getWinningLines()).toEqual(snapshot.lines);
+        expect(session.toSessionState()).toEqual(snapshot.feature);
+        expect(pool.toSessionState()).toEqual(snapshot.pool);
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+        expect(session.getScreenGeometry()).toBeUndefined();
+    });
+
+    it.each(["jackpot", "holdAndWin"] as const)("F8 forwards unsupported upcoming geometry preflight through an outer ante decorator (%s)", feature => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        const rng = {getRandomInt: jest.fn(() => 2)};
+        const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
+        const decorated = feature === "jackpot" ? new VideoSlotWithJackpotSession(base) : new VideoSlotWithHoldAndWinSession(base);
+        const session = new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+        session.setBetMode("ante");
+        session.play();
+        const credits = session.getCreditsAmount();
+        const settledWin = session.getWinAmount();
+        const featureState = session.toSessionState();
+        config.setScreenGeometry(overscanGeometry);
+        rng.getRandomInt.mockClear();
+        expect(() => session.play()).toThrow(/does not support overscan/);
+        expect(rng.getRandomInt).not.toHaveBeenCalled();
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(settledWin);
+        expect(session.toSessionState()).toEqual(featureState);
     });
 
     it("normalizes the pipeline even with optional validation disabled and custom evaluators", () => {
@@ -300,6 +412,26 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(external).not.toHaveProperty("generatedScreen");
         expect(external).not.toHaveProperty("geometry");
         expect(artifact.generatedScreen).toEqual(adversarialScreen());
+    });
+
+    it("F5 projects every step publicly when overscan precedes an ordinary final step", () => {
+        const session = fixedSession();
+        session.play();
+        const screen = new ScreenProjection(overscanGeometry).project(adversarialScreen(), "visible");
+        const artifact = buildRoundArtifact({roundId: "mixed", stake: 1, provenance, steps: [
+            {screen, geometry: overscanGeometry, generatedScreen: adversarialScreen(), winEvaluationResult: session.getWinEvaluationResult(), debug: {private: "earlier"}},
+            {screen, winEvaluationResult: new WinEvaluationResult()},
+        ]});
+        expect(artifact.geometry).toBeUndefined();
+        expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
+        const external = new LocalJsonExternalRoundProjector().project(artifact);
+        expect(external).toEqual(new PublicRoundArtifactProjector().project(artifact));
+        const json = JSON.stringify(external);
+        expect(json).not.toContain("generatedScreen");
+        expect(json).not.toContain("geometry");
+        expect(json).not.toContain("private");
+        expect(external.wins).toEqual(new PublicRoundArtifactProjector().project(artifact).wins);
+        expect(artifact.steps[0].generatedScreen).toEqual(adversarialScreen());
     });
 
     it("preserves Blueprint save/reload, generated runtime and Game Model viewport", () => {

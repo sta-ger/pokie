@@ -1,3 +1,4 @@
+import {PokieJsonRoundArtifactProjector, RoundArtifactValidator, computeRoundArtifactHash} from "@fromstan/pokie";
 import {MantineProvider} from "@mantine/core";
 import {fireEvent, render, within} from "@testing-library/react";
 import type {RoundArtifact, RoundArtifactJson, StudioRuntimeSessionView} from "../../../../../../cli/studio-client/src/api/types";
@@ -799,12 +800,16 @@ describe("FeatureStateView feature event data (via RoundArtifactInspector)", () 
 
 
 describe("Overscan round presentation", () => {
-    it("shows the viewport, clipped coverage and remapped highlights while preserving inspector audit data", () => {
+    it("F4 shows viewport highlights while Full artifact preserves every canonical step and original hash", () => {
         const geometry = {generated: {reels: 3, rows: 7}, visible: {rowOffset: 1.25, rows: 2.5}, evaluated: {rowOffset: 2, rows: 3}, paylineSpace: "evaluated" as const};
         const generatedScreen = Array.from({length: 3}, (_, reel) => Array.from({length: 7}, (_, row) => `G${reel}:${row}`));
         const screen = generatedScreen.map(reel => reel.slice(1, 4));
         const wins = [{type: "scatter", id: "S", symbolId: "S", winAmount: 3, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {symbolsPositions: [[0, 0]]}}];
-        const canonical = artifactFor({geometry, generatedScreen, screen, wins, totalWin: 3, payoutMultiplier: 3, steps: [{index: 0, geometry, generatedScreen, screen, wins, totalWin: 3}]});
+        const {hash: _fixtureHash, ...source} = artifactFor({geometry, generatedScreen, screen, wins: [...wins, ...wins], totalWin: 6, payoutMultiplier: 6, steps: [
+            {index: 0, geometry, generatedScreen, screen, wins, totalWin: 3, debug: {reelStops: [1, 2, 3]}},
+            {index: 1, geometry, generatedScreen, screen, wins, totalWin: 3, debug: {reelStops: [3, 2, 1]}},
+        ]});
+        const canonical = new PokieJsonRoundArtifactProjector<string | number>().project(source);
         const displayed = describeRoundArtifact(canonical);
         const {container} = renderWithMantine(<RoundArtifactInspector artifact={displayed} />);
         const grid = container.querySelector(".player-grid")!;
@@ -815,7 +820,18 @@ describe("Overscan round presentation", () => {
         expect(displayed.wins[0].winningPositions).toEqual([[0, 1]]);
         expect(displayed.wins[0].metadata.symbolsPositions).toEqual([[0, 1]]);
         expect(canonical.wins[0].winningPositions).toEqual([[0, 0]]);
-        expect(displayed.generatedScreen).toEqual(generatedScreen);
+        expect(displayed.canonicalArtifact).toBe(canonical);
+        fireEvent.click(within(container).getByRole("button", {name: /advanced details/i}));
+        const full = JSON.parse(container.querySelectorAll("pre")[container.querySelectorAll("pre").length - 1].textContent!);
+        expect(full).toEqual(canonical);
+        const {hash, ...saved} = full;
+        expect(new RoundArtifactValidator().validate(saved)).toEqual([]);
+        expect(computeRoundArtifactHash(saved)).toBe(hash);
+        expect(hash).toBe(canonical.hash);
+        expect(full.steps[0].geometry).toEqual(geometry);
+        expect(full.steps[1].generatedScreen).toEqual(generatedScreen);
+        expect(full.steps[0].debug).toEqual({reelStops: [1, 2, 3]});
+        expect(full.steps[0].wins[0].winningPositions).toEqual([[0, 0]]);
         const session: StudioRuntimeSessionView = {sessionId: "overscan", game: GAME, credits: 100, debug: {artifact: canonical}};
         const play = renderWithMantine(<RoundSummary session={session} />);
         expect(play.container.querySelector('[data-cell="0:0"]')).toHaveAttribute("data-visible-coverage", "0.75");

@@ -20,7 +20,7 @@ type CellElement = HTMLElement & {baseColor: string};
 export const PLAYER_PRESENTATION_STYLE_ID = "pokie-canonical-player-presentation";
 
 const PLAYER_PRESENTATION_CSS = `
-.pokie-player { max-width: 100%; min-width: 0; color: #212529; font-family: system-ui, sans-serif; font-size: 1rem; line-height: normal; }
+.pokie-player { --player-cell-size: 3rem; max-width: 100%; min-width: 0; color: #212529; font-family: system-ui, sans-serif; font-size: 1rem; line-height: normal; }
 .pokie-player h2 { margin: 0 0 .5rem; font-size: 1rem; font-weight: 700; line-height: normal; }
 .pokie-player dl { margin: 0 0 1rem; }
 .pokie-player dt { font-weight: 700; }
@@ -29,7 +29,7 @@ const PLAYER_PRESENTATION_CSS = `
 .pokie-player-grid-scroll { max-width: 100%; overflow-x: auto; }
 .player-grid { border-collapse: collapse; margin-bottom: 1rem; max-width: 100%; }
 .player-reel { vertical-align: top; padding: 0; }
-.player-cell { box-sizing: border-box; height: 3rem; min-width: 3rem; display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 700; border: 3px solid currentColor; overflow: hidden; }
+.player-cell { box-sizing: border-box; height: calc(var(--player-cell-size) * var(--player-row-coverage, 1)); min-width: var(--player-cell-size); display: flex; align-items: center; justify-content: center; text-align: center; font-weight: 700; border: 3px solid currentColor; overflow: hidden; }
 .player-symbol-artwork { max-width: 100%; }
 .player-bet-info, .player-mode-info { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
 .player-bet-options, .player-mode-options { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
@@ -41,7 +41,7 @@ const PLAYER_PRESENTATION_CSS = `
 .player-paytable-scroll { max-width: 100%; overflow-x: auto; }
 .player-paytable { border-collapse: collapse; width: 100%; }
 .player-paytable th, .player-paytable td { border: 1px solid currentColor; padding: .35rem .6rem; text-align: center; }
-@media (max-width: 480px) { .player-cell { height: 2.25rem; min-width: 2.25rem; font-size: .75rem; } }
+@media (max-width: 480px) { .pokie-player { --player-cell-size: 2.25rem; } .player-cell { font-size: .75rem; } }
 `;
 
 /** Installs the canonical, scoped player CSS once for DOM hosts outside the dev client. */
@@ -241,7 +241,7 @@ export function renderReelsGrid(
             const coverage = visibleRowCoverage?.[rowIndex];
             if (coverage !== undefined && coverage > 0 && coverage < 1) {
                 cell.dataset.visibleCoverage = String(coverage);
-                cell.style.height = `calc(3rem * ${coverage})`;
+                cell.style.setProperty("--player-row-coverage", String(coverage));
                 cell.title = `${symbol} (${Math.round(coverage * 100)}% visible)`;
             }
             cell.textContent = symbol;

@@ -35,23 +35,25 @@ export function projectEvaluationSymbols<T extends string | number | symbol>(
 }
 
 export function validateEvaluationPaylines<T extends string | number | symbol>(config: VideoSlotConfigDescribing<T>, combination?: SymbolsCombinationDescribing<T>): LinesDefinitionsDescribing {
-    const projection = resolveScreenProjection(config);
+    const attached = combination?.getScreenGeometry?.();
+    const projection = resolveScreenProjection(config) ?? (attached ? new ScreenProjection(attached) : undefined);
     const matrix = combination?.toMatrix();
     const definitions = config.getLinesDefinitions();
-    const activeIds: string[] = [];
     for (const id of definitions.getLinesIds()) {
         const line = definitions.getLineDefinition(id);
-        if (!Array.isArray(line) || line.length !== config.getReelsNumber() || line.some(row => !Number.isSafeInteger(row) || row < 0)) {
+        if (!Array.isArray(line) || line.length !== config.getReelsNumber() || Array.from(line).some(row => !Number.isSafeInteger(row) || row < 0)) {
             throw new Error(`Payline "${id}" references cells outside the evaluation domain.`);
         }
-        const outside = line.some((row, reel) => row >= (projection?.getRows("evaluated") ?? matrix?.[reel]?.length ?? config.getReelsSymbolsNumber()));
+        // Ordinary default lines retain pattern-level matching on ragged grids: missing trailing
+        // cells do not invalidate a three-symbol award on the reels that contain the row.
+        const ordinaryDefault = !projection && definitions.allowsInactiveVariableRows?.();
+        const outside = line.some((row, reel) => row >= (projection?.getRows("evaluated") ??
+            (ordinaryDefault ? config.getReelsSymbolsNumber() : matrix?.[reel]?.length ?? config.getReelsSymbolsNumber())));
         if (outside) {
-            if (!projection && combination?.hasVariableReelHeights?.() && definitions.allowsInactiveVariableRows?.()) continue;
             throw new Error(`Payline "${id}" references cells outside the evaluation domain.`);
         }
-        activeIds.push(id);
     }
-    return {getLinesIds: () => [...activeIds], getLineDefinition: id => definitions.getLineDefinition(id)};
+    return definitions;
 }
 
 export function rejectScreenGeometry(source: {getScreenGeometry?: () => ScreenGeometry | undefined}, adapter: string): void {

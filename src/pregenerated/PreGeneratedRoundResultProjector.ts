@@ -12,6 +12,7 @@ export class PreGeneratedRoundResultProjector<T extends string | number = string
     public projectPublic(result: PreGeneratedRoundResult<T>): PreGeneratedRoundPublicView<T> {
         const {runtime} = result;
         const artifact = new PublicRoundArtifactProjector<T>().project(result.artifact);
+        const coverage = artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage;
         return {
             roundId: runtime.roundId,
             sessionId: runtime.sessionId,
@@ -21,6 +22,7 @@ export class PreGeneratedRoundResultProjector<T extends string | number = string
             payoutMultiplier: artifact.payoutMultiplier,
             screen: artifact.screen,
             wins: artifact.wins,
+            ...(coverage ? {visibleRowCoverage: coverage} : {}),
         };
     }
 

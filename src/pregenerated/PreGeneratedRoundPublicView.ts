@@ -12,5 +12,6 @@ export type PreGeneratedRoundPublicView<T extends string | number = string> = {
     readonly win: number;
     readonly payoutMultiplier: number;
     readonly screen: readonly (readonly T[])[];
+    readonly visibleRowCoverage?: readonly number[];
     readonly wins: readonly RoundArtifactWin<T>[];
 };

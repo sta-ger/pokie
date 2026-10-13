@@ -12,6 +12,6 @@ export class LocalJsonExternalRoundProjector<T extends string | number = string>
     private readonly inner = new PokieJsonRoundArtifactProjector<T>();
 
     public project(artifact: RoundArtifact<T>): JsonObject {
-        return (artifact.geometry ? new PublicRoundArtifactProjector<T>().project(artifact) : this.inner.project(artifact)) as unknown as JsonObject;
+        return (artifact.geometry || artifact.steps.some(step => step.geometry) ? new PublicRoundArtifactProjector<T>().project(artifact) : this.inner.project(artifact)) as unknown as JsonObject;
     }
 }

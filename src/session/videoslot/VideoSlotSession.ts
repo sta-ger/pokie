@@ -54,6 +54,10 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.roundGeometry = geometry && new ScreenProjection(geometry).getGeometry();
     }
 
+    public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
+        return this.config.getScreenGeometry?.();
+    }
+
     public getScreenGeometry(): ScreenGeometry | undefined {
         return this.roundGeometry && new ScreenProjection(this.roundGeometry).getGeometry();
     }

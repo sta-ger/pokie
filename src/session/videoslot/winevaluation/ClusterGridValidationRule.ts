@@ -15,16 +15,14 @@ implements ValidationRule<WinEvaluationValidationContext<T>> {
             return [];
         }
 
-        const config = evaluationContext.getConfig();
+        const cells = evaluationContext.getSymbolsCombination().toMatrix().reduce((total, reel) => total + reel.length, 0);
         const minimumClusterSize = Number(clusterEvaluator.getMetadata?.().minimumClusterSize ?? 5);
-        if (config.getReelsNumber() * config.getReelsSymbolsNumber() < minimumClusterSize) {
+        if (cells < minimumClusterSize) {
             return [
                 {
                     code: "cluster-grid-too-small",
                     severity: "error",
-                    message: `Cluster evaluator requires at least ${minimumClusterSize} cells, but the grid has only ${
-                        config.getReelsNumber() * config.getReelsSymbolsNumber()
-                    }.`,
+                    message: `Cluster evaluator requires at least ${minimumClusterSize} cells, but the grid has only ${cells}.`,
                 },
             ];
         }

@@ -168,8 +168,13 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
         return this;
     }
 
+    public override validateScreenCoordinates(): void {
+        super.validateScreenCoordinates();
+        rejectScreenGeometry({getScreenGeometry: () => this.getConfiguredScreenGeometry()}, "Jackpot");
+    }
+
     public override play(): void {
-        rejectScreenGeometry(this, "Jackpot");
+        this.validateScreenCoordinates();
         if (!this.canPlayNextGame()) {
             return;
         }

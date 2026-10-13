@@ -243,7 +243,7 @@ export function RoundArtifactInspector({
                 <Text size="sm" fw={600} mt="sm" mb={4}>
                     Full artifact
                 </Text>
-                <CodeBlock>{JSON.stringify(artifact, null, 2)}</CodeBlock>
+                <CodeBlock>{JSON.stringify(artifact.canonicalArtifact ?? artifact, null, 2)}</CodeBlock>
             </AdvancedDisclosure>
         </div>
     );
