@@ -316,6 +316,46 @@ describe("V2C-02 canonical runtime contracts", () => {
         expect(await wallet.getBalance("session")).toBe(balance);
     });
 
+    it("F8 command settlement compensates evaluation bounds discovered only in the new legacy tag", async () => {
+        let discover = false;
+        const short = {...overscanGeometry, evaluated: {rowOffset: 2, rows: 2}};
+        const game: PokieGame = {
+            getManifest: () => ({id: "legacy-coordinate-bounds", name: "Legacy bounds", version: "1.0.0"}),
+            createSession: () => {
+                const config = overscanConfig();
+                config.setScreenGeometry(undefined);
+                return new VideoSlotSession(config, {generateSymbolsCombination: () => discover
+                    ? new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(short)
+                    : new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"]))});
+            },
+            getSessionSerializer: () => new VideoSlotSessionSerializer(),
+        };
+        const repository = new InMemorySessionRepository(),
+            wallet = new InMemoryWallet(),
+            operations = new InMemorySpinOperationLog();
+        const session = game.createSession({seed: "bounds"});
+        const initial = captureInitialPokieSessionState({seed: "bounds"}, session, game.getSessionSerializer?.(), false, game);
+        await repository.save("session", initial);
+        await wallet.setBalance("session", initial.credits!);
+        const handler = new SpinCommandHandler(game, repository, wallet, new InMemoryIdempotencyRepository(), operations, true);
+        handler.primeSession("session", session, 1);
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "first"})).toMatchObject({status: "played", win: 3});
+        const state = await repository.load("session"),
+            balance = await wallet.getBalance("session"),
+            settledScreen = (session as VideoSlotSessionHandling).getSymbolsCombination().toMatrix();
+        discover = true;
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "new-bounds"})).toMatchObject({
+            status: "execution-error", reason: expect.stringContaining('Payline "2"'),
+        });
+        expect(await repository.load("session")).toEqual(state);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        expect(session.getCreditsAmount()).toBe(balance);
+        expect(session.getWinAmount()).toBe(0);
+        expect((session as VideoSlotSessionHandling).getSymbolsCombination().toMatrix()).toEqual(settledScreen);
+        discover = false;
+        expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "after"})).toMatchObject({status: "restoration-unsupported"});
+    });
+
     it.each([false, true])("preserves ordinary free-game wrappers with independent grant configuration (legacy capabilities %s)", legacy => {
         for (const ante of [false, true]) {
             const config = fractionalBetConfig([0.05]);

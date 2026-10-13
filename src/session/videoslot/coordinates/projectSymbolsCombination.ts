@@ -76,8 +76,13 @@ export function validateEvaluationPaylines<T extends string | number | symbol>(c
         // Ordinary default lines retain pattern-level matching on ragged grids: missing trailing
         // cells do not invalidate a three-symbol award on the reels that contain the row.
         const ordinaryDefault = !projection && definitions.allowsInactiveVariableRows?.();
-        const outside = line.some((row, reel) => row >= (projection?.getRows("evaluated") ??
-            (ordinaryDefault ? config.getReelsSymbolsNumber() : matrix?.[reel]?.length ?? config.getReelsSymbolsNumber())));
+        const outside = line.some((row, reel) => {
+            // Viewport height is not an evaluation bound for an undeclared generator. Preflight
+            // checks structure and known windows; newly generated matrices supply ordinary bounds.
+            const rows = projection?.getRows("evaluated") ??
+                (matrix && !ordinaryDefault ? matrix[reel]?.length ?? 0 : undefined);
+            return rows !== undefined && row >= rows;
+        });
         if (outside) {
             throw new Error(`Payline "${id}" references cells outside the evaluation domain.`);
         }

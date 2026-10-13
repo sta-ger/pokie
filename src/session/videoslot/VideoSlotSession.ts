@@ -283,6 +283,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     private resolveUpcomingCoordinates(): {geometry?: ScreenGeometry; authoritative: boolean} {
         const geometry = this.getConfiguredScreenGeometry();
         const projection = this.validateCoordinateGeometry(geometry);
+        // Without a declared evaluation window, upcoming reel heights are unresolved. Do not
+        // use viewport rows or the previous ordinary matrix to constrain the next generation.
         validateEvaluationPaylines(this.config, undefined, projection);
         return {geometry, authoritative: typeof this.combinationsGenerator.getScreenGeometry === "function"};
     }
@@ -300,10 +302,13 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         const projection = this.validateCoordinateGeometry(geometry);
         // Exact-enumeration metadata probes historically initialize with an empty, untagged
         // display placeholder. It may not be projected or settled; play always validates the matrix.
-        if (!initializing || generated.toMatrix().length !== 0 || generated.getScreenGeometry?.()) {
+        const placeholder = initializing && generated.toMatrix().length === 0 && !generated.getScreenGeometry?.();
+        if (!placeholder) {
             projection?.assertMatrix(generated.toMatrix(), "generated");
         }
-        validateEvaluationPaylines(this.config, generated, projection);
+        // Discovered legacy tags and actual ordinary reel heights now provide the missing bounds,
+        // before initialization is published or play reaches the calculator and base settlement.
+        validateEvaluationPaylines(this.config, placeholder ? undefined : generated, projection);
         return geometry;
     }
 

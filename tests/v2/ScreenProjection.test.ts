@@ -188,6 +188,81 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(() => new VideoSlotSession(config, generator)).toThrow(/evaluation domain/);
     });
 
+    it("F8 legacy tags discover evaluation rows beyond the viewport at construction and retain them through play", () => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("high", [3, 3, 3, 3, 3]));
+        const geometry = {...overscanGeometry, evaluated: {rowOffset: 2, rows: 4}};
+        const screen = Array.from({length: 5}, () => ["S", "S", "A", "A", "A", "A", "S"]);
+        const generator = {generateSymbolsCombination: jest.fn(() => new SymbolsCombination().fromMatrix(screen).withCoordinates(geometry))};
+        const direct = new LineWinCalculator(config).calculateWinningLines(1, generator.generateSymbolsCombination());
+        expect(direct.high.getWinAmount()).toBe(10000);
+        const base = new VideoSlotSession(config, generator);
+        const credits = base.getCreditsAmount();
+        base.play();
+        expect(base.getWinAmount()).toBe(direct.high.getWinAmount());
+        const ante = new VideoSlotWithBetModesSession(base, new BetModesConfig([
+            new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+        ]));
+        expect(new SessionRuntime(ante).execute({kind: "spin", mode: "ante"})).toMatchObject({status: "played", win: 10000});
+        expect(ante.getCreditsAmount()).toBe(credits + 20000 - 3);
+        expect(ante.getEvaluatedSymbolsCombination().toMatrix()).toEqual(Array.from({length: 5}, () => ["A", "A", "A", "A"]));
+        expect(new VideoSlotSessionSerializer().getRoundData(ante).reelsSymbols).toEqual(Array.from({length: 5}, () => ["S", "A", "A"]));
+        // Once learned, this evaluation contract is available to every preflight caller.
+        config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("outside", [4, 4, 4, 4, 4]));
+        generator.generateSymbolsCombination.mockClear();
+        const settledCredits = ante.getCreditsAmount();
+        expect(new SessionRuntime(ante).execute({kind: "spin"})).toMatchObject({status: "blocked", reason: expect.stringContaining("evaluation domain")});
+        expect(() => ante.play()).toThrow(/evaluation domain/);
+        expect(generator.generateSymbolsCombination).not.toHaveBeenCalled();
+        expect(ante.getCreditsAmount()).toBe(settledCredits);
+    });
+
+    it("F8 unavailable evaluation bounds still reject newly discovered invalid lines before initial publication", () => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("outside", [4, 4, 4, 4, 4]));
+        const generator = {generateSymbolsCombination: jest.fn(() => combination())};
+        expect(() => new VideoSlotSession(config, generator)).toThrow(/evaluation domain/);
+        expect(generator.generateSymbolsCombination).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([[0, 0, 0, 0], [-1, 0, 0, 0, 0], [0.5, 0, 0, 0, 0], [NaN, 0, 0, 0, 0]].map(line => [line] as const))(
+        "F8 unresolved bounds retain structural preflight before generation and free/ante mutation (%j)", line => {
+            const config = overscanConfig();
+            config.setScreenGeometry(undefined);
+            const generator = {generateSymbolsCombination: jest.fn(() => new SymbolsCombination().fromMatrix(Array.from({length: 5}, () => ["B", "B", "B"])))};
+            const base = new VideoSlotSession(config, generator);
+            const free = new VideoSlotWithFreeGamesSession(new VideoSlotWithFreeGamesConfig(config, {}), undefined, undefined, base);
+            free.setFreeGamesSum(2);
+            const ante = new VideoSlotWithBetModesSession(free, new BetModesConfig([
+                new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
+            ]));
+            ante.setBetMode("ante");
+            const credits = ante.getCreditsAmount(),
+                state = free.toSessionState();
+            config.setLinesDefinitions(new CustomLinesDefinitions().setLineDefinition("invalid", line));
+            generator.generateSymbolsCombination.mockClear();
+            expect(() => new VideoSlotSession(config, generator)).toThrow(/evaluation domain/);
+            expect(new SessionRuntime(ante).execute({kind: "spin"})).toMatchObject({status: "blocked", reason: expect.stringContaining("evaluation domain")});
+            expect(() => ante.play()).toThrow(/evaluation domain/);
+            expect(generator.generateSymbolsCombination).not.toHaveBeenCalled();
+            expect(ante.getCreditsAmount()).toBe(credits);
+            expect(free.toSessionState()).toEqual(state);
+        },
+    );
+
+    it("F8 ordinary empty metadata initialization supplies no bounds but cannot settle authored paylines", () => {
+        const config = overscanConfig();
+        config.setScreenGeometry(undefined);
+        const generator = {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix([])};
+        const session = new VideoSlotSession(config, generator);
+        const credits = session.getCreditsAmount();
+        expect(() => session.play()).toThrow(/evaluation domain/);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(0);
+    });
+
     it("F3 validates the evaluated 20-cell cluster window rather than the 15-cell viewport", () => {
         const config = overscanConfig();
         const geometry = {...overscanGeometry, evaluated: {rowOffset: 2, rows: 4}};
