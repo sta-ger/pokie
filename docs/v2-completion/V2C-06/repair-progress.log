@@ -1,0 +1,12 @@
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts tests/cli/studio-client/src/api/apiClient.test.ts
+
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts
+PASS pokie tests/cli/studio-client/src/api/apiClient.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       143 passed, 143 total
+Snapshots:   0 total
+Time:        4.471 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts", "tests/cli/studio-client/src/api/apiClient.test.ts".
