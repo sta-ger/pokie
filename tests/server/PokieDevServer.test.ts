@@ -530,14 +530,20 @@ describe("PokieDevServer (fake game, real HTTP over an ephemeral port)", () => {
         const spun = await postJson(`${baseUrl}/sessions/${sessionId}/spin`);
         const restored = await getJson(`${baseUrl}/sessions/${sessionId}`);
 
+        expect([created.status, spun.status, restored.status]).toEqual([201, 200, 200]);
         for (const response of [created, spun, restored]) {
+            // Delivery metadata belongs to the transport, independently of a rich serializer.
+            // This custom fixture has not declared logical-round support.
+            expect(response.body.logicalRoundDeliverySupported).toBe(false);
+            expect(response.body.logicalRoundDurability).toBe(response === spun ? "independent-ports" : undefined);
             expect(response.body.availableSymbols).toBeUndefined();
             expect(response.body.paytable).toBeUndefined();
             expect(response.body.reelsSymbols).toBeUndefined();
             expect(response.body.stages).toBeUndefined();
-            expect(Object.keys(response.body).sort()).toEqual(
-                Object.keys(response.body).filter((key) => ["sessionId", "game", "bet", "win", "credits", "screen"].includes(key)).sort(),
-            );
+            const expectedKeys = ["sessionId", "game", "bet", "credits", "screen", "logicalRoundDeliverySupported"];
+            if (response !== created) expectedKeys.push("win");
+            if (response === spun) expectedKeys.push("logicalRoundDurability");
+            expect(Object.keys(response.body).sort()).toEqual(expectedKeys.sort());
         }
     });
 
