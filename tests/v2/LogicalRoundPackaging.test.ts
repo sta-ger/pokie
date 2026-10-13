@@ -96,8 +96,8 @@ function played(result: api.SessionCommandResult) {
     return result;
 }
 function settled(result: api.SpinCommandResult) {
-    expect(result.status).toBe("played");
     if (result.status !== "played") throw new Error("reason" in result ? result.reason : result.status);
+    expect(result.status).toBe("played");
     return result;
 }
 function comparable(round: api.LogicalRound) {
@@ -108,6 +108,117 @@ function snapshot(session: api.GameSessionHandling) {
 }
 
 describe("logical-round delivery and mathematical boundaries", () => {
+    it.each(["independent", "local", "external"])("binds completed logical identity independently of request identity (%s)", async composition => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-logical-identity-"));
+        const model = game(0);
+        const initial = api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model);
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(initial.credits);
+        const provider = composition === "external" ? await ControllableDurableWallet.open(path.join(directory, "provider.sqlite")) : undefined;
+        let store: api.TransactionalRoundStore | api.ExternalRoundStore | undefined;
+        if (composition === "local") store = await api.SqliteTransactionalRoundStore.open(path.join(directory, "round.sqlite"));
+        else if (provider) store = await api.SqliteExternalRoundStore.open(path.join(directory, "round.sqlite"), provider);
+        try {
+            if (provider) await provider.setBalance("session", initial.credits!);
+            if (store) await store.initialize("session", initial, model);
+            else await repository.save("session", initial);
+            const handler = store ? new api.SpinCommandHandler(model, store) : new api.SpinCommandHandler(model, repository, wallet);
+            const entry: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite"};
+            const first = settled(await handler.execute(entry));
+            expect(first.state.logicalRound?.status).toBe("completed");
+            expect(await handler.execute({...entry, requestId: "second"})).toMatchObject({status: "identity-conflict"});
+            expect(await handler.execute({kind: "spin", sessionId: "session", requestId: "entry"})).toMatchObject({status: "identity-conflict"});
+            const later = settled(await handler.execute({...entry, requestId: "later", roundId: "later"}));
+            expect(await handler.execute({...entry, requestId: "third"})).toMatchObject({status: "identity-conflict"});
+            expect(await handler.execute(entry)).toEqual(first);
+            expect(later.state.logicalRoundStatistics).toMatchObject({rounds: 2, totalStake: 0.1});
+            expect(await (store ?? wallet).getBalance("session")).toBe(later.credits);
+        } finally {
+            await store?.close();
+            provider?.close();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("rejects corrupt retained artifacts, commands, cursors and executable progress before effects", async () => {
+        const model = game(0);
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(100);
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        const first = settled(await new api.SpinCommandHandler(model, repository, wallet).execute({kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "stepwise", mode: "buy"}));
+        const original = JSON.stringify(first.state);
+        const debit = jest.spyOn(wallet, "debit");
+        const corruptions: ((state: api.PokieSessionState) => void)[] = [
+            state => {
+                (state.logicalRound!.subrounds[0].artifacts![0] as {wins: unknown}).wins = "bad";
+            },
+            state => {
+                (state.logicalRound!.subrounds[0].command as unknown as {sessionId: string}).sessionId = "foreign";
+            },
+            state => {
+                (state.logicalRound as {status: string}).status = "completed";
+            },
+            state => {
+                (state.logicalRound as {stageCursor: number}).stageCursor = 0;
+            },
+            state => {
+                (state.featureState as {base: {freeGamesNum: number; freeGamesSum: number}}).base.freeGamesNum = (state.featureState as {base: {freeGamesSum: number}}).base.freeGamesSum;
+            },
+        ];
+        for (const corrupt of corruptions) {
+            const state = JSON.parse(original) as api.PokieSessionState;
+            corrupt(state);
+            await repository.save("session", state);
+            const version = (await repository.loadVersioned("session"))!.version;
+            const result = await new api.SpinCommandHandler(model, repository, wallet).execute({kind: "spin", sessionId: "session", requestId: "next", continuation: {roundId: "round", cursor: 1}});
+            expect(result).toMatchObject({status: "corrupt-state"});
+            expect((await repository.loadVersioned("session"))!.version).toBe(version);
+        }
+        expect(debit).not.toHaveBeenCalled();
+    });
+
+    it("a thrown composite successor exposes its committed prefix and exact retry identity", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-logical-thrown-"));
+        const model = game(0);
+        const store = await api.SqliteTransactionalRoundStore.open(path.join(directory, "round.sqlite"));
+        try {
+            await store.initialize("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model), model);
+            let committed = false;
+            setTransactionBoundaryHook(store, boundary => {
+                if (boundary === "after:commit") committed = true;
+                if (committed && boundary === "before:request") throw new Error("successor storage failure");
+                return Promise.resolve();
+            });
+            const handler = new api.SpinCommandHandler(model, store);
+            const entry: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "composite", roundId: "round", delivery: "composite", mode: "buy"};
+            expect(await handler.execute(entry)).toMatchObject({status: "storage-error", committedProgress: {roundId: "round", cursor: 1, requestId: "composite"}});
+            expect((await store.readSession("session"))!.state.logicalRound?.cursor).toBe(1);
+            setTransactionBoundaryHook(store, () => Promise.resolve());
+            expect(settled(await handler.execute(entry)).state.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 0.25});
+        } finally {
+            await store.close();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    it("uses the execution contract for base and unsupported custom capabilities", () => {
+        const base = new api.GameSession();
+        expect(api.SessionRuntime.supportsLogicalRoundDelivery(base)).toBe(true);
+        expect(new api.SessionRuntime(base).execute({kind: "spin", delivery: "composite", roundId: "base"})).toMatchObject({status: "played", logicalRound: {status: "completed", cursor: 1}});
+        const custom = {...base, getBet: () => 1} as unknown as api.GameSessionHandling;
+        expect(api.SessionRuntime.supportsLogicalRoundDelivery(custom)).toBe(false);
+        expect(new api.SessionRuntime(custom).execute({kind: "spin", delivery: "stepwise", roundId: "custom"})).toMatchObject({status: "invalid-command"});
+    });
+
+    it("exhausted cascades cannot publish completed replay or logical statistics", () => {
+        const model = cascadeGame(() => undefined, {maxCascadeSteps: 1, onMaxCascadeStepsExceeded: "stop"});
+        expect(() => new api.ReplayRecorder().record({game: model, round: 1, unit: "logical-round"})).toThrow(/exhausted/);
+        expect(() => new api.ReplayRecorder().record({game: model, round: 1})).toThrow(/exhausted/);
+        const statistics = new api.AggregateSimulationRunner(model.createSession({seed: 7}), 1).run().getStatistics();
+        expect(statistics.rounds).toBe(1);
+        expect(statistics.logicalRounds).toBeUndefined();
+    });
+
     it.each([0.05, 7.5, 1e-7])("packages the identical paid entry, retriggers, bank and next RNG round at bet %s", bet => {
         const a = game().createSession({seed: 17}), 
             b = game().createSession({seed: 17});
@@ -209,6 +320,28 @@ describe("logical-round delivery and mathematical boundaries", () => {
         expect(end.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 0.25});
     });
 
+    it("shared retry retention preserves detached historical prefixes of a long chain", () => {
+        const session = game(0, 30).createSession({seed: 7});
+        const runtime = new api.SessionRuntime(session);
+        const entries: {command: api.SessionCommand; output: api.SessionCommandResult}[] = [];
+        let command: api.SessionCommand = {kind: "spin", delivery: "stepwise", roundId: "shared", mode: "buy"};
+        while (entries.length === 0 || runtime.hasPendingLogicalRound()) {
+            const output = played(runtime.execute(command));
+            entries.push({command, output});
+            if (output.logicalRound?.status !== "pending") break;
+            command = {kind: "spin", delivery: "stepwise", continuation: {roundId: "shared", cursor: output.logicalRound.deliveryCursor}};
+        }
+        const before = snapshot(session);
+        for (const entry of entries) {
+            expect(runtime.execute(entry.command)).toEqual(entry.output);
+            const detached = played(runtime.execute(entry.command));
+            (detached.logicalRound!.subrounds[0] as {win: number}).win = 999;
+            expect(runtime.execute(entry.command)).toEqual(entry.output);
+        }
+        expect(snapshot(session)).toEqual(before);
+        expect(entries).toHaveLength(30);
+    });
+
     it("finishes a long finite feature iteratively and settles its bank once", () => {
         const session = game(0, 150).createSession({seed: 7});
         const runtime = new api.SessionRuntime(session);
@@ -277,6 +410,7 @@ describe("logical-round delivery and mathematical boundaries", () => {
     it("replay addresses a logical round with its actual entry command and ordered artifact", () => {
         const descriptor = new api.ReplayRecorder().record({game: game(0), seed: "7", round: 1, unit: "logical-round", entryCommands: [{kind: "spin", mode: "buy", bet: 7.5}]});
         expect(descriptor.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 37.5, mode: "buy"});
+        expect(descriptor.artifact!.provenance.configHash).toBe(game(0).getConfigHash!());
         expect(descriptor.artifact!.steps).toHaveLength(3);
         expect(descriptor.totalWin).toBe(descriptor.artifact!.totalWin);
     });

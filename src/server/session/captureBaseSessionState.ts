@@ -1,3 +1,4 @@
+import {SessionRuntime} from "../../runtime/SessionRuntime.js";
 import {ScreenProjection} from "../../session/videoslot/coordinates/ScreenProjection.js";
 import type {VideoSlotSessionHandling} from "../../session/videoslot/VideoSlotSessionHandling.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
@@ -20,6 +21,7 @@ export function captureBaseSessionState(
 ): PokieSessionState {
     const state: PokieSessionState = {
         context,
+        logicalRoundDeliverySupported: SessionRuntime.supportsLogicalRoundDelivery(session),
         stateSchema: resolveSessionStateSchema(session),
         bet: session.getBet(),
         win: session.getWinAmount(),

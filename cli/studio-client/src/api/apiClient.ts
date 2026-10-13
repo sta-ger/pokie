@@ -874,9 +874,9 @@ export type PlaySessionResult = {status: "ok"; session: StudioRuntimeSessionView
 
 export type PlaySpinResult =
     | {status: "ok"; session: StudioRuntimeSessionView}
-    | {status: "error"; message: string}
+    | {status: "error"; message: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
-    | {status: "blocked"; message: string}
+    | {status: "blocked"; message: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView}
     | {status: "no-active-project"};
 
 // Play's own two calls -- POST /api/project/play/session, POST /api/project/play/sessions/:id/spin --
@@ -958,7 +958,8 @@ export async function findFreeGamesPlaySession(fetchImpl: FetchLike, sessionId: 
 async function readPlaySpinResult(response: {status: number; ok: boolean; json(): Promise<unknown>}): Promise<PlaySpinResult> {
     // Machine-readable session failures take precedence over the legacy HTTP-only project guard.
     // They preserve the settled view and never request a replacement session.
-    const body = await response.json() as {code?: string; error?: string; status?: string; session?: StudioRuntimeSessionView};
+    const body = await response.json() as {code?: string; error?: string; status?: string; session?: StudioRuntimeSessionView; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}};
+    const recovery = {...(body.retryDisposition ? {retryDisposition: body.retryDisposition} : {}), ...(body.committedProgress ? {committedProgress: body.committedProgress} : {}), ...(body.committedProgress && body.session ? {session: body.session} : {})};
     if (body.code !== undefined && body.code !== "not-found") {
         const actions: Record<string, string> = {
             "incompatible-state": "Load the matching game version or explicitly start a new session.",
@@ -970,7 +971,7 @@ async function readPlaySpinResult(response: {status: number; ok: boolean; json()
             "execution-error": "Inspect the game runtime; the last committed session remains authoritative.",
         };
         const action = actions[body.code] ?? "Check the command and current session revision.";
-        return {status: "error", message: `${body.code}: ${body.error ?? "Session rejected."} ${action}`};
+        return {status: "error", code: body.code, ...recovery, message: `${body.code}: ${body.error ?? "Session rejected."} ${action}`};
     }
     if (response.status === 409) {
         return {status: "no-active-project"};
@@ -979,7 +980,7 @@ async function readPlaySpinResult(response: {status: number; ok: boolean; json()
         return {status: "not-found"};
     }
     if (response.status === 400) {
-        return {status: "blocked", message: body.error ?? "Spin rejected."};
+        return {status: "blocked", ...recovery, message: body.error ?? "Spin rejected."};
     }
     if (!response.ok) {
         throw new Error(body.error ?? "Failed to spin");

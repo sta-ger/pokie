@@ -47,4 +47,4 @@ type SpinCommandOutcome =
     | {status: "conflict"; sessionId: string; reason: string}
     | {status: "recovery-required"; sessionId: string; requestId: string; reason: string};
 
-export type SpinCommandResult = SpinCommandOutcome & {committedProgress?: {roundId: string; cursor: number; requestId: string}};
+export type SpinCommandResult = SpinCommandOutcome & {committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; committedResult?: Extract<SpinCommandOutcome, {status: "played"}>};

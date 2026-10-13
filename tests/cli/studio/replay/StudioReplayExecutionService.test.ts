@@ -1,6 +1,7 @@
 import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {
+    CascadeResult,
     GameSessionHandling,
     GameSessionSerializing,
     loadPokieGame,
@@ -1699,6 +1700,25 @@ it("replays the same logical entry and ordered subrounds through Studio", async 
         if (download.status !== "ok") throw new Error("Missing descriptor");
         expect(download.descriptor.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 15});
         expect(download.descriptor.commands).toEqual([{kind: "spin", bet: 7.5, mode: "double"}]);
+    } finally {
+        await service.cancelAll();
+    }
+});
+
+it("refuses completed Studio replay publication for an exhausted cascade in the legacy step unit", async () => {
+    const model = createSeedAwareFakeGame({id: "exhausted", name: "Exhausted", version: "1"});
+    const create = model.createSession.bind(model);
+    model.createSession = context => Object.assign(create(context), {getCascadeResult: () => new CascadeResult([["A"]], [["A"]], [], {maxCascadeStepsExceeded: true})});
+    const completed = jest.fn();
+    const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, completed);
+    const started = service.start("/exhausted", {round: 1});
+    if (started.status !== "created") throw new Error("Replay not created");
+    try {
+        const terminal = await waitForTerminal(service, "/exhausted", started.job.id);
+        expect(terminal.status).toBe("failed");
+        expect(terminal.descriptor).toBeUndefined();
+        expect(service.getDownload("/exhausted", started.job.id)).toMatchObject({status: "not-ready"});
+        expect(completed).not.toHaveBeenCalled();
     } finally {
         await service.cancelAll();
     }

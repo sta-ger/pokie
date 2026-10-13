@@ -82,6 +82,13 @@ describe("apiClient", () => {
     });
 
     describe("spin", () => {
+        it("preserves committed progress and the saved public prefix on successor failure", async () => {
+            const committedProgress = {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"};
+            const committedSession = {sessionId: "session", credits: 99, logicalRound: {roundId: "round", cursor: 1, status: "pending"}};
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {code: "storage-error", error: "successor failed", committedProgress, committedSession}}));
+            await expect(spin(fetchImpl, "http://api.test", "session", "entry")).rejects.toMatchObject({code: "storage-error", committedProgress, committedSession});
+        });
+
         it.each([0.05, 7.5, 1e-7])("forwards exact %s and the caller's original revision", async bet => {
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {sessionId: "s", credits: 1}}));
             await spin(fetchImpl, "http://api.test", "s", "logical", bet, "base", 2);

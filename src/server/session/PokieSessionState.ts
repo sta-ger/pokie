@@ -9,6 +9,9 @@ import type {SessionCapturePolicy} from "./SessionCapturePolicy.js";
 
 export type PokieSessionState = {
     logicalRound?: LogicalRound;
+    /** Compact permanent entry identities; full historical outputs belong to result storage. */
+    logicalRoundIds?: readonly string[];
+    logicalRoundDeliverySupported?: boolean;
     logicalRoundStatistics?: LogicalRoundStatistics;
     identity?: GameSessionIdentity;
     stateSchema?: SessionStateSchema;

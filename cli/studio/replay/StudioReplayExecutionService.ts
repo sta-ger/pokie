@@ -1,5 +1,5 @@
 import {
-    buildLogicalRoundArtifact, type LogicalRound,
+    buildLogicalRoundArtifact, type LogicalRound, type CascadeResultProviding,
     buildRoundArtifactFromSession,
     captureInitialPokieSessionState,
     captureRoundPokieSessionState,
@@ -462,7 +462,7 @@ export class StudioReplayExecutionService {
                             this.cancelRecord(record);
                             return; 
                         }
-                        if (logicalRound && logicalRound.status !== "completed") throw new Error("Logical replay exceeded its bound; no completed descriptor can be published.");
+                        if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Logical replay exceeded its bound; no completed descriptor can be published.");
                         const stake = logicalRound?.totalStake ?? result.stake, 
                             win = logicalRound?.totalWin ?? result.win;
                         totalBet += stake;

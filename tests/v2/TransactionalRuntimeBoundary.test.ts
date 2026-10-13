@@ -355,7 +355,8 @@ describe("public transactional runtime compositions", () => {
         const captured = JSON.parse(String(row.intent));
         captured.candidate.credits = -1;
         db.prepare("UPDATE external_requests SET intent=? WHERE session_id='s' AND request_id='round'").run(JSON.stringify(captured));
-        expect(await handler.execute(intent)).toMatchObject({status: "recovery-required"});
+        expect(await handler.execute(intent)).toMatchObject({status: "corrupt-state"});
+        expect(await handler.execute({...intent, requestId: "replacement"})).toMatchObject({status: "recovery-required"});
         expect(provider.counts("s")).toEqual({debit: 1, credit: 0});
         expect(await store.readSession("s")).toMatchObject({version: 1});
     });

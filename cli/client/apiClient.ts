@@ -68,8 +68,8 @@ export async function spin(
         body,
     });
     if (!response.ok) {
-        const errorBody = (await safeJson(response)) as {error?: string; code?: string; retryDisposition?: unknown} | undefined;
-        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`, errorBody?.retryDisposition === "safe-to-retry" ? "safe-to-retry" : undefined);
+        const errorBody = (await safeJson(response)) as {error?: string; code?: string; retryDisposition?: unknown; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; committedSession?: SessionResponse} | undefined;
+        throw new SessionCommandError(errorBody?.code ?? "transport-error", errorBody?.error ?? `Spin failed (HTTP ${response.status}).`, errorBody?.retryDisposition === "safe-to-retry" ? "safe-to-retry" : undefined, errorBody?.committedProgress, errorBody?.committedSession);
     }
     return (await response.json()) as SessionResponse;
 }
@@ -83,7 +83,7 @@ async function safeJson(response: {json(): Promise<unknown>}): Promise<unknown> 
 }
 
 export class SessionCommandError extends Error {
-    constructor(public readonly code: string, message: string, public readonly retryDisposition?: "safe-to-retry") {
+    constructor(public readonly code: string, message: string, public readonly retryDisposition?: "safe-to-retry", public readonly committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}, public readonly committedSession?: SessionResponse) {
         super(`${code}: ${message}`);
         this.name = "SessionCommandError";
     }

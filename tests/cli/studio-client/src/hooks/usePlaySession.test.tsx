@@ -122,3 +122,62 @@ it("keeps the same entry identity after response loss and then sends only the sa
     expect(bodies[2]).not.toHaveProperty("mode");
     await waitFor(() => expect(result.current.session.status).toBe("ok"));
 });
+
+it.each(["invalid-command", "blocked"])("releases a definitively rejected %s intent so changed controls submit a fresh entry", async code => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/play/session") return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true})})});
+        bodies.push(JSON.parse(String(init?.body)));
+        if (bodies.length === 1) return Promise.resolve({ok: false, status: 400, json: () => Promise.resolve({code, error: "Rejected selection", retryDisposition: "rejected"})});
+        return Promise.resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true})})});
+    };
+    const {result} = renderHook(() => usePlaySession(), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => result.current.newSession());
+    await waitFor(() => expect(result.current.sessionId).toBe("stable"));
+    act(() => result.current.spin(7.5, "buy"));
+    await waitFor(() => expect(result.current.session.status).toBe("error"));
+    act(() => result.current.spin(0.05, "base", "composite"));
+    await waitFor(() => expect(result.current.session.status).toBe("ok"));
+    expect(bodies[1]).toMatchObject({bet: 0.05, mode: "base", delivery: "composite"});
+    expect(bodies[1].requestId).not.toBe(bodies[0].requestId);
+    expect(bodies[1].roundId).not.toBe(bodies[0].roundId);
+});
+
+it.each(["recovery-required", "settlement-error"])("retains the original intent after uncertain %s", async code => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/play/session") return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true})})});
+        bodies.push(JSON.parse(String(init?.body)));
+        return Promise.resolve({ok: false, status: 409, json: () => Promise.resolve({code, error: "Uncertain settlement"})});
+    };
+    const {result} = renderHook(() => usePlaySession(), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => result.current.newSession());
+    await waitFor(() => expect(result.current.sessionId).toBe("stable"));
+    act(() => result.current.spin(7.5, "buy"));
+    await waitFor(() => expect(result.current.session.status).toBe("error"));
+    act(() => result.current.spin(0.05, "base", "composite"));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    await waitFor(() => expect(result.current.session.status).toBe("error"));
+    expect(bodies[1]).toEqual(bodies[0]);
+});
+
+it("shows a committed prefix on successor error while retaining the original intent for retry", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const prefix = session("stable", {credits: 999, logicalRoundDeliverySupported: true});
+    const fetchImpl: FetchLike = (url, init) => {
+        if (url === "/api/project/play/session") return Promise.resolve({ok: true, status: 201, json: () => Promise.resolve({status: "ok", session: session("stable", {logicalRoundDeliverySupported: true})})});
+        bodies.push(JSON.parse(String(init?.body)));
+        return Promise.resolve({ok: false, status: 503, json: () => Promise.resolve({code: "execution-error", error: "Successor failed", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, session: prefix})});
+    };
+    const recorded = jest.fn();
+    const {result} = renderHook(() => usePlaySession(recorded), {wrapper: strictModeWrapper(fetchImpl)});
+    act(() => result.current.newSession());
+    await waitFor(() => expect(result.current.sessionId).toBe("stable"));
+    act(() => result.current.spin(7.5, "buy", "composite"));
+    await waitFor(() => expect(result.current.session).toMatchObject({status: "error", previousSession: prefix}));
+    expect(recorded).toHaveBeenCalledTimes(1);
+    act(() => result.current.spin(0.05, "base"));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    await waitFor(() => expect(result.current.session.status).toBe("error"));
+    expect(bodies[1]).toEqual(bodies[0]);
+});

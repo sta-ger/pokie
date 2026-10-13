@@ -3747,7 +3747,17 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
 
-        const result = await this.playService.spin(sessionId, "spin", validated.bet, validated.mode, validated);
+        const disconnect = new AbortController();
+        const abortDelivery = (): void => disconnect.abort();
+        req.once("aborted", abortDelivery);
+        res.once("close", abortDelivery);
+        let result: StudioPlaySpinResult;
+        try {
+            result = await this.playService.spin(sessionId, "spin", validated.bet, validated.mode, validated, disconnect.signal);
+        } finally {
+            req.off("aborted", abortDelivery);
+            res.off("close", abortDelivery);
+        }
         if (result.status === "ok") {
             this.sendJson(res, 200, {status: "ok", session: result.session});
             return;
@@ -3872,7 +3882,7 @@ export class StudioServer implements StudioServerHandling {
             return;
         }
         if (result.status === "blocked") {
-            this.sendJson(res, 400, {error: result.error});
+            this.sendJson(res, 400, {error: result.error, ...(result.code ? {code: result.code} : {}), ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {}), ...(result.committedProgress ? {committedProgress: result.committedProgress} : {}), ...(result.session ? {session: result.session} : {})});
             return;
         }
         if (result.status === "cancelled") {
@@ -3885,7 +3895,7 @@ export class StudioServer implements StudioServerHandling {
         const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
         const statusCode = result.code === undefined ? 200 : statusCodes[result.code] ?? 409;
         this.sendJson(res, statusCode,
-            {status: "error", error: result.error, ...(result.code === undefined ? {} : {code: result.code})});
+            {status: "error", error: result.error, ...(result.code === undefined ? {} : {code: result.code}), ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {}), ...(result.committedProgress ? {committedProgress: result.committedProgress} : {}), ...(result.session ? {session: result.session} : {})});
     }
 
     private playCancellationResult(

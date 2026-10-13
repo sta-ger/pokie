@@ -1367,6 +1367,12 @@ describe("studio-client apiClient", () => {
     });
 
     describe("spinPlaySession", () => {
+        it("preserves structured failure codes, disposition and committed recovery identity", async () => {
+            const committedProgress = {roundId: "round", cursor: 2, requestId: "entry:subround:1"};
+            const {fetchImpl} = createFakeFetch(() => ({ok: false, status: 503, body: {code: "settlement-error", error: "uncertain", retryDisposition: "safe-to-retry", committedProgress}}));
+            expect(await spinPlaySession(fetchImpl, "session")).toMatchObject({status: "error", code: "settlement-error", retryDisposition: "safe-to-retry", committedProgress});
+        });
+
         it("POSTs with no body and returns the ok session result", async () => {
             const session = {sessionId: "session-1", game: {id: "a", name: "A", version: "0.1.0"}, credits: 995, win: 0};
             const {fetchImpl, calls} = createFakeFetch(() => ({ok: true, status: 200, body: {status: "ok", session}}));

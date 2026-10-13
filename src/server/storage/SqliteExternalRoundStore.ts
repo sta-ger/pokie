@@ -81,7 +81,7 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
 
     public initialize(sessionId: string, state: PokieSessionState, game: PokieGame): Promise<void> {
         return this.enqueue(async () => {
-            const invalid = validateRepositoryCommand({sessionId}) ?? validatePersistedSession(state, game)?.reason;
+            const invalid = validateRepositoryCommand({sessionId}) ?? validatePersistedSession(state, game, undefined, sessionId)?.reason;
             if (invalid || state.executionState !== "durably-restorable") throw new Error(invalid ?? "External rounds require durable executable state.");
             const data = encode(state);
             await this.write(() => {
@@ -163,7 +163,7 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                     outcome = {status: "not-found", sessionId};
                     return;
                 }
-                const invalid = validatePersistedSession(session.state, game);
+                const invalid = validatePersistedSession(session.state, game, undefined, sessionId);
                 if (invalid) {
                     outcome = {...invalid, sessionId};
                     return;
@@ -203,13 +203,13 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
         const retainedSession = this.read(sessionId);
         if (!current || !current.command || !current.snapshot || !["prepare", "debit", "payout", "commit"].includes(current.phase) ||
             typeof current.debitId !== "string" || !current.debitId || typeof current.payoutId !== "string" || !current.payoutId || current.debitId === current.payoutId ||
-            !Number.isSafeInteger(current.snapshot.version) || current.snapshot.version < 1 || validatePersistedSession(current.snapshot.state, game) ||
+            !Number.isSafeInteger(current.snapshot.version) || current.snapshot.version < 1 || validatePersistedSession(current.snapshot.state, game, undefined, current.command.sessionId) ||
             retainedSession?.version !== current.snapshot.version || encode(retainedSession.state) !== encode(current.snapshot.state) ||
             commandEnvelope(current.command) !== envelope) {
             await this.write(() => {
                 this.database.prepare("UPDATE external_requests SET owner=NULL, expires=0 WHERE session_id=? AND request_id=? AND owner=?").run(sessionId, requestId, owner);
             });
-            return unresolved("Corrupt retained intent; settlement blocked.");
+            return {status: "corrupt-state", sessionId, reason: "Corrupt retained intent; settlement blocked with original identity retained."};
         }
         const persist = async (): Promise<void> => {
             await this.write(() => {
@@ -261,7 +261,7 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
             if (rejected || candidate.state.executionState !== "durably-restorable" || !Number.isFinite(current.debit) || current.debit! < 0 || !Number.isFinite(current.payout) || current.payout! < 0 ||
                 current.debit !== candidate.stake || !["credit", "debit"].includes(current.payoutKind!) ||
                 candidate.credits !== (current.payoutKind === "credit" ? current.balance! - current.debit! + current.payout! : current.balance! - current.debit! - current.payout!) || candidate.version !== current.snapshot.version + 1 ||
-                encode(candidate.previousState) !== encode(current.snapshot.state)) return unresolved("Corrupt captured accounting/continuation; settlement blocked.");
+                encode(candidate.previousState) !== encode(current.snapshot.state)) return {status: "corrupt-state", sessionId, reason: rejected?.reason ?? "Corrupt captured accounting/continuation; settlement blocked with original identity retained."};
             let settledBalance: number | undefined;
             for (const phase of ["debit", "payout"] as const) {
                 const dispatchAllowed = current.phase === phase;

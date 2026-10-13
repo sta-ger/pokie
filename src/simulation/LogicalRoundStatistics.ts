@@ -1,3 +1,4 @@
+import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {LogicalRoundProgressProviding} from "../runtime/LogicalRound.js";
 
@@ -9,6 +10,10 @@ const pending = new WeakMap<GameSessionHandling, {steps: number; stake: number; 
 export function observeLogicalSubround(session: GameSessionHandling, stake: number, win: number): LogicalRoundStatistics | undefined {
     const progress = session as Partial<LogicalRoundProgressProviding>;
     if (typeof progress.hasPendingLogicalRound !== "function") return undefined;
+    if ((session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) {
+        pending.delete(session);
+        return undefined;
+    }
     const retained = pending.get(session);
     // A bare executable feature snapshot cannot prove the entry accounting of a tail first seen here.
     if (retained === undefined && stake === 0) return undefined;

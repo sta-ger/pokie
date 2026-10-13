@@ -1,3 +1,4 @@
+import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {buildLogicalRoundArtifact} from "../artifact/buildLogicalRoundArtifact.js";
 import type {LogicalRound} from "../runtime/LogicalRound.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
@@ -45,7 +46,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
                 : options.entryCommands?.[played];
             const result = executeSessionCommand(session, command);
             logicalRound = result.logicalRound;
-            if (logicalRound?.status === "pending") throw new Error("Replay logical round exceeded the delivery bound; result is incomplete.");
+            if ((logicalRound && logicalRound.status !== "completed") || (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) throw new Error("Replay logical round exceeded the delivery bound; result is incomplete or exhausted.");
             totalBet += logicalRound?.totalStake ?? result.stake;
             totalWin += logicalRound?.totalWin ?? result.win;
         }
@@ -58,7 +59,7 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
             })) : undefined;
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,
-            buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: "1.3.0"}})));
+            buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: logicalRound.id, stake: logicalRound.totalStake, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})}})));
         return {
             ...(options.unit ? {unit: options.unit} : {}), ...(options.entryCommands ? {commands: options.entryCommands} : {}), ...(logicalRound ? {logicalRound} : {}),
             sessionId: crypto.randomUUID(),

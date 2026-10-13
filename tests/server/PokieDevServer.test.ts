@@ -1,3 +1,4 @@
+import {transactionalRoundGame} from "../v2/fixtures/TransactionalRoundGame.js";
 import {emitPublicRuntime} from "../v2/helpers/publicRuntime.js";
 import {
     BuildableFromSessionState,
@@ -2132,6 +2133,53 @@ describe("PokieDevServer canonical rejection codes (controller-owned HTTP lane)"
                 expect(spy).not.toHaveBeenCalled();
                 spy.mockRestore();
             });
+        } finally {
+            await server.stop();
+        }
+    });
+});
+
+describe("PokieDevServer logical recovery and capability (controller-owned HTTP lane)", () => {
+    it("returns the retained prefix and exact successor identity when a composite successor throws", async () => {
+        let fail = true;
+        let calculations = 0;
+        const game = transactionalRoundGame(() => {
+            calculations++;
+            if (fail && calculations === 2) throw new Error("successor calculation failed");
+        });
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        try {
+            const address = await server.start();
+            const base = `http://${address.host}:${address.port}`;
+            const created = await postJson(`${base}/sessions`, {seed: 1});
+            const sessionId = created.body.sessionId as string;
+            const entry = {requestId: "entry", roundId: "round", delivery: "composite"};
+            const failed = await postJson(`${base}/sessions/${sessionId}/spin`, entry);
+            expect(failed).toMatchObject({status: 500, body: {code: "execution-error", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, committedSession: {logicalRound: {status: "pending", cursor: 1}}}});
+            expect(failed.body.committedSession).not.toHaveProperty("featureState");
+            expect(failed.body.committedSession).not.toHaveProperty("internal");
+            fail = false;
+            const resumed = await postJson(`${base}/sessions/${sessionId}/spin`, entry);
+            expect(resumed).toMatchObject({status: 200, body: {logicalRound: {status: "completed", cursor: 3, totalStake: 0.05}}});
+        } finally {
+            await server.stop();
+        }
+    });
+
+    it("base sessions advertise and execute the same capability on create, spin and restore", async () => {
+        const game: PokieGame = {getManifest: () => ({id: "base-capability", name: "Base", version: "1"}), createSession: () => new GameSession(),
+            getSessionStateSchema: () => ({kind: "base"}), getSessionCommandCapabilities: () => ({bets: new GameSession().getAvailableBets()}),
+            validateSessionState: state => new GameSession().validateSessionState(state)};
+        const server = new PokieDevServer(game, {host: "127.0.0.1", port: 0});
+        try {
+            const address = await server.start();
+            const base = `http://${address.host}:${address.port}`;
+            const created = await postJson(`${base}/sessions`);
+            const sessionId = created.body.sessionId as string;
+            expect(created.body.logicalRoundDeliverySupported).toBe(true);
+            const spun = await postJson(`${base}/sessions/${sessionId}/spin`, {requestId: "entry", roundId: "round", delivery: "composite"});
+            expect(spun).toMatchObject({status: 200, body: {logicalRoundDeliverySupported: true, logicalRound: {status: "completed", cursor: 1}}});
+            expect((await getJson(`${base}/sessions/${sessionId}`)).body.logicalRoundDeliverySupported).toBe(true);
         } finally {
             await server.stop();
         }

@@ -9,7 +9,7 @@ import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieSessionState} from "../server/session/PokieSessionState.js";
 import {resolveGameSessionIdentity} from "./GameSessionIdentity.js";
 
-export function validatePersistedSession(value: unknown, game: PokieGame, live?: LiveSessionAuthority): {status: "incompatible-state" | "corrupt-state" | "restoration-unsupported"; reason: string} | undefined {
+export function validatePersistedSession(value: unknown, game: PokieGame, live?: LiveSessionAuthority, sessionId?: string): {status: "incompatible-state" | "corrupt-state" | "restoration-unsupported"; reason: string} | undefined {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return {status: "corrupt-state", reason: "Session state must be an object."};
     const state = value as PokieSessionState;
     let expected: ReturnType<typeof resolveGameSessionIdentity>;
@@ -62,8 +62,24 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
     if (state.logicalRound !== undefined) {
         const invalid = validateLogicalRound(state.logicalRound);
         if (invalid) return {status: "corrupt-state", reason: invalid};
+        if (sessionId !== undefined && (state.logicalRound.entry as {sessionId?: string}).sessionId !== sessionId) return {status: "corrupt-state", reason: "Retained logical round belongs to another session."};
+        const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
+        if (last.win !== state.win || last.credits !== state.credits || (last.screen !== undefined && JSON.stringify(last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
+        let schema = state.stateSchema;
+        let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number} | undefined;
+        let pending = false;
+        let known = schema?.kind !== "custom";
+        while (schema && (schema.kind === "free-games" || schema.kind === "bet-modes")) {
+            if (schema.kind === "free-games") pending ||= (feature?.freeGamesNum ?? 0) < (feature?.freeGamesSum ?? 0);
+            feature = feature?.base as typeof feature;
+            schema = schema.base;
+            if (schema.kind === "custom") known = false;
+        }
+        if (known && (state.logicalRound.mathematicalStatus === "pending") !== pending) return {status: "corrupt-state", reason: "Logical progress differs from executable feature progress."};
         if (state.logicalRound.bet !== state.bet) return {status: "corrupt-state", reason: "Logical entry bet differs from executable selection."};
     }
+    if (state.logicalRoundIds !== undefined && (!Array.isArray(state.logicalRoundIds) || new Set(state.logicalRoundIds).size !== state.logicalRoundIds.length || state.logicalRoundIds.some(id => typeof id !== "string" || !id.trim() || id.includes("\0")) || (state.logicalRound !== undefined && !state.logicalRoundIds.includes(state.logicalRound.id)))) return {status: "corrupt-state", reason: "Invalid retained logical entry identities."};
+    if (state.logicalRoundDeliverySupported !== undefined && typeof state.logicalRoundDeliverySupported !== "boolean") return {status: "corrupt-state", reason: "Invalid logical delivery capability."};
     const statistics = state.logicalRoundStatistics;
     if (statistics !== undefined && (!statistics || !Number.isSafeInteger(statistics.rounds) || statistics.rounds < 0 || !Number.isSafeInteger(statistics.steps) || statistics.steps < statistics.rounds || ![statistics.totalStake, statistics.totalWin].every(n => Number.isFinite(n) && n >= 0))) return {status: "corrupt-state", reason: "Invalid logical-round statistics."};
     const capabilities = state.commandCapabilities;

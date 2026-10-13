@@ -1,4 +1,7 @@
+import {StudioRoundRecorder} from "../../../cli/studio/runtime/StudioRoundRecorder.js";
+import {transactionalRoundGame} from "../../v2/fixtures/TransactionalRoundGame.js";
 import {
+    InMemorySessionRepository, SpinCommandHandler,
     buildRoundArtifact,
     buildWeightedOutcomeLibrary,
     computeWeightedOutcomeLibraryHash,
@@ -6150,6 +6153,108 @@ describe("StudioServer", () => {
         afterEach(async () => {
             await playServer?.stop();
             fs.rmSync(playStudioRoot, {recursive: true, force: true});
+        });
+
+        it("manual composite failure exposes and records its retained prefix through HTTP", async () => {
+            let fail = true;
+            let calculations = 0;
+            const model = transactionalRoundGame(() => {
+                calculations++;
+                if (fail && calculations === 2) throw new Error("successor failed");
+            });
+            const recorder = new StudioRoundRecorder();
+            const service = new StudioPlayService(() => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, recorder);
+            playServer = new StudioServer({pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: playStudioRoot,
+                jobService: createIsolatedJobService(playStudioRoot), homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", playStudioRoot, new StudioHomeService("1.0.0")),
+                playService: service, initialContext: {mode: "project", projectRoot: "/tmp/logical-slot"}});
+            const address = await playServer.start();
+            const base = `http://${address.host}:${address.port}`;
+            const created = await post(`${base}/api/project/play/session`, {seed: 1});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+            const entry = {requestId: "entry", roundId: "round", delivery: "composite"};
+            const failed = await post(`${base}/api/project/play/sessions/${sessionId}/spin`, entry);
+            expect(failed).toMatchObject({status: 500, body: {code: "execution-error", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, session: {logicalRound: {status: "pending", cursor: 1}}}});
+            expect(recorder.list()).toHaveLength(1);
+            fail = false;
+            expect(await post(`${base}/api/project/play/sessions/${sessionId}/spin`, entry)).toMatchObject({status: 200, body: {session: {logicalRound: {status: "completed", cursor: 3}}}});
+            expect(recorder.list()).toHaveLength(1);
+            expect(recorder.list()[0].logicalRound?.status).toBe("completed");
+        });
+
+        it("a real manual composite disconnect retains the accepted prefix and stops successor work", async () => {
+            let calculations = 0;
+            const model = transactionalRoundGame(() => calculations++);
+            const recorder = new StudioRoundRecorder();
+            const service = new StudioPlayService(() => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, recorder);
+            playServer = new StudioServer({pokieVersion: "1.0.0", host: "127.0.0.1", port: 0, studioRoot: playStudioRoot,
+                jobService: createIsolatedJobService(playStudioRoot), homeService: new StudioHomeService("1.0.0"), blueprintService: new StudioBlueprintService("1.0.0", playStudioRoot, new StudioHomeService("1.0.0")), playService: service, initialContext: {mode: "project", projectRoot: "/tmp/logical-slot"}});
+            const address = await playServer.start();
+            const base = `http://${address.host}:${address.port}`;
+            const created = await post(`${base}/api/project/play/session`, {seed: 1});
+            const sessionId = (created.body as {session: {sessionId: string}}).session.sessionId;
+            let saved!: () => void, release!: () => void, aborted!: () => void;
+            const savedBoundary = new Promise<void>(resolve => {
+                saved = resolve;
+            });
+            const gate = new Promise<void>(resolve => {
+                release = resolve;
+            });
+            const disconnected = new Promise<void>(resolve => {
+                aborted = resolve;
+            });
+            const save = InMemorySessionRepository.prototype.saveVersioned;
+            const execute = SpinCommandHandler.prototype.execute;
+            let accepted: Promise<import("@fromstan/pokie").SpinCommandResult> | undefined;
+            let serviceWork: ReturnType<StudioPlayService["spin"]> | undefined;
+            const spin = service.spin.bind(service);
+            const spinSpy = jest.spyOn(service, "spin").mockImplementation((...args) => {
+                serviceWork = spin(...args);
+                return serviceWork;
+            });
+            const saveSpy = jest.spyOn(InMemorySessionRepository.prototype, "saveVersioned").mockImplementation(async function(this: InMemorySessionRepository, session, state, version) {
+                const result = await Reflect.apply(save, this, [session, state, version]);
+                saved();
+                await gate;
+                return result;
+            });
+            const executeSpy = jest.spyOn(SpinCommandHandler.prototype, "execute").mockImplementation(function(this: SpinCommandHandler, command, signal) {
+                signal?.addEventListener("abort", aborted, {once: true});
+                accepted = Reflect.apply(execute, this, [command, signal]);
+                return accepted;
+            });
+            const intent = {requestId: "composite", roundId: "round", delivery: "composite"};
+            const request = http.request(`${base}/api/project/play/sessions/${sessionId}/spin`, {method: "POST", headers: {"Content-Type": "application/json"}});
+            const closed = new Promise<void>(resolve => {
+                request.once("error", () => resolve());
+            });
+            try {
+                request.end(JSON.stringify(intent));
+                await savedBoundary;
+                request.destroy();
+                await disconnected;
+                release();
+                await closed;
+                expect(await accepted).toMatchObject({status: "played", state: {logicalRound: {status: "pending", cursor: 1}}});
+                saveSpy.mockRestore();
+                executeSpy.mockRestore();
+                // Await the transport/service completion before reading shared history.
+                await serviceWork;
+                spinSpy.mockRestore();
+                expect(calculations).toBe(1);
+                expect(recorder.list()).toHaveLength(1);
+                const resumed = await post(`${base}/api/project/play/sessions/${sessionId}/spin`, intent);
+                expect(resumed).toMatchObject({status: 200, body: {session: {logicalRound: {status: "completed", cursor: 3}}}});
+                expect(calculations).toBe(3);
+                expect(recorder.list()).toHaveLength(1);
+            } finally {
+                request.destroy();
+                release();
+                saveSpy.mockRestore();
+                executeSpy.mockRestore();
+                await accepted;
+                await serviceWork;
+                spinSpy.mockRestore();
+            }
         });
 
         it("returns 409 'No active project' for both Play routes in Home mode", async () => {

@@ -106,6 +106,9 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                     if (requestId !== requestIdRef.current) {
                         return;
                     }
+                    const prefix = (result.status === "error" || result.status === "blocked") ? result.session : undefined;
+                    const retainedSession = prefix ?? previousSession;
+                    if (prefix) activeSessionRef.current = prefix;
                     const described = describePlaySpinResult(result);
                     if (described.status === "ok") {
                         activeSessionRef.current = described.session;
@@ -118,9 +121,9 @@ export function usePlaySession(onRoundRecorded?: () => void) {
                         setSessionId(undefined);
                         setSession(described);
                     } else {
-                        setSession({...described, ...(described.status === "error" ? {subject} : {}), ...(previousSession === undefined ? {} : {previousSession})});
+                        setSession({...described, ...(described.status === "error" ? {subject} : {}), ...(retainedSession === undefined ? {} : {previousSession: retainedSession})});
                     }
-                    if (described.status === "ok") {
+                    if (described.status === "ok" || prefix) {
                         onRoundRecorded?.();
                     }
                 })
@@ -146,7 +149,7 @@ export function usePlaySession(onRoundRecorded?: () => void) {
         }
         const intent = pendingSpinRef.current;
         runSpinAction("This spin", (sid) => spinPlaySession(fetchImpl, sid, intent.bet, intent.mode, intent).then(result => {
-            if (result.status === "ok" && pendingSpinRef.current === intent) pendingSpinRef.current = undefined;
+            if ((result.status === "ok" || ((result.status === "error" || result.status === "blocked") && result.retryDisposition === "rejected" && !result.committedProgress)) && pendingSpinRef.current === intent) pendingSpinRef.current = undefined;
             return result;
         }));
         // eslint-disable-next-line react-hooks/exhaustive-deps

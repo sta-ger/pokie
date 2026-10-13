@@ -1,13 +1,17 @@
-import {isSessionStateRestorable} from "../session/SessionStateRestoring.js";
+import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
 import {buildRoundArtifactFromSession} from "../artifact/buildRoundArtifactFromSession.js";
 import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
-import {validateLogicalRound, type LogicalRound, type LogicalRoundProgressProviding} from "./LogicalRound.js";
+import {validateLogicalRound, type LogicalRound, type LogicalSubround, type LogicalRoundProgressProviding} from "./LogicalRound.js";
 
 const logicalRounds = new WeakMap<GameSessionHandling, LogicalRound>();
-const deliveries = new WeakMap<GameSessionHandling, Map<string, {command: string; result: Extract<SessionCommandResult, {status: "played"}>}>>();
+type Played = Extract<SessionCommandResult, {status: "played"}>;
+type SubroundNode = {subround: LogicalSubround; previous?: SubroundNode};
+type SavedDelivery = {command: string; result: Omit<Played, "logicalRound">; round?: Omit<LogicalRound, "subrounds">; tail?: SubroundNode};
+const deliveries = new WeakMap<GameSessionHandling, Map<string, SavedDelivery>>();
+const retainedTails = new WeakMap<GameSessionHandling, {roundId: string; tail: SubroundNode}>();
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import {supportsBetModeSelecting} from "../session/videoslot/betmode/supportsBetModeSelecting.js";
 import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
@@ -27,8 +31,13 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (round !== undefined) {
             const invalid = validateLogicalRound(round);
             if (invalid) throw new Error(invalid);
+            if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== this.isDomainPending()) throw new Error("Retained logical progress differs from executable progress.");
             logicalRounds.set(session, deepFreeze(cloneSessionData(round)));
         }
+    }
+
+    public static supportsLogicalRoundDelivery(session: GameSessionHandling): boolean {
+        return resolveSessionStateSchema(session).kind === "base" || typeof (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound === "function";
     }
 
     public getLogicalRound(): LogicalRound | undefined {
@@ -44,7 +53,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (command?.continuation) key = `${command.continuation.roundId}:${command.continuation.cursor}`;
         else if (command?.roundId) key = `${command.roundId}:entry`;
         const saved = key ? deliveries.get(this.session)?.get(key) : undefined;
-        if (saved) return saved.command === JSON.stringify(command) ? cloneSessionData(saved.result) : {status: "invalid-command", reason: "Logical delivery identity conflicts with its original command."};
+        if (saved) return saved.command === JSON.stringify(command) ? this.restoreDelivery(saved) : {status: "invalid-command", reason: "Logical delivery identity conflicts with its original command."};
         if (signal?.aborted) return {status: "blocked", reason: "Cancelled before acceptance."};
         const invalid = this.validateSelection(command);
         if (invalid !== undefined) return {status: "invalid-command", reason: invalid};
@@ -71,7 +80,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         // Preserve the accepted prefix even if a later composite successor fails.
         if (key) {
             const ledger = deliveries.get(session) ?? new Map();
-            ledger.set(key, {command: JSON.stringify(command), result: cloneSessionData(result)});
+            ledger.set(key, this.saveDelivery(command, result));
             deliveries.set(session, ledger);
         }
         if (command.delivery === "composite") {
@@ -86,7 +95,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         }
         if (key) {
             const ledger = deliveries.get(this.session) ?? new Map();
-            ledger.set(key, {command: JSON.stringify(command), result: cloneSessionData(result)});
+            ledger.set(key, this.saveDelivery(command, result));
             deliveries.set(this.session, ledger);
         }
         return result;
@@ -102,9 +111,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
             const stages = round.subrounds[round.cursor - 1].artifacts?.length ?? 0;
             const stake = (this.session as Partial<StakeAmountDetermining>).getStakeAmount?.() ?? this.session.getBet();
             if (round.stageCursor >= stages && stake !== 0) return "Logical continuation requires a zero-stake domain subround.";
-        } else if (round?.status === "pending" || round?.status === "exhausted") return "Logical round is pending; supply its continuation.";
+        } else if (command.roundId && (round?.id === command.roundId || deliveries.get(this.session)?.has(`${command.roundId}:entry`))) return "Logical entry identity was already accepted; retry its saved delivery.";
+        else if (round?.status === "pending" || round?.status === "exhausted") return "Logical round is pending; supply its continuation.";
         if ((command.delivery !== undefined || command.continuation !== undefined) && !command.continuation && !command.roundId) return "Explicit logical entry requires roundId.";
-        if ((command.delivery !== undefined || command.continuation !== undefined) && typeof (this.session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound !== "function") return "Custom session must declare logical-round progress before selecting a delivery policy.";
+        if ((command.delivery !== undefined || command.continuation !== undefined) && !SessionRuntime.supportsLogicalRoundDelivery(this.session)) return "Custom session must declare logical-round progress before selecting a delivery policy.";
         if (command.delivery !== undefined && !command.continuation && this.isDomainPending()) return "Cannot enter a new logical round during an active feature.";
         const session = this.session;
         if (command.bet !== undefined && !session.getAvailableBets().includes(command.bet)) {
@@ -132,8 +142,8 @@ export class SessionRuntime implements SessionRuntimeHandling {
                 if (used) throw new Error("Prepared delivery is no longer executable.");
                 used = true;
                 const stageCursor = round.stageCursor + 1;
-                const next: LogicalRound = deepFreeze(cloneSessionData({...round, deliveryCursor: round.deliveryCursor + 1, stageCursor,
-                    status: stageCursor < (round.subrounds[round.cursor - 1].artifacts?.length ?? 0) || this.isDomainPending() ? "pending" : "completed"}));
+                const next: LogicalRound = deepFreeze({...round, deliveryCursor: round.deliveryCursor + 1, stageCursor,
+                    status: stageCursor < (round.subrounds[round.cursor - 1].artifacts?.length ?? 0) || this.isDomainPending() ? "pending" : "completed"});
                 logicalRounds.set(session, next);
                 const last = round.subrounds[round.cursor - 1];
                 return {status: "played", deliveryOnly: true, win: last.win, credits: last.credits, stake: 0, payout: 0, logicalRound: cloneSessionData(next)};
@@ -221,15 +231,36 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (exhausted) mathematicalStatus = "exhausted";
         let status = mathematicalStatus;
         if (!exhausted && stageCursor < (artifacts?.length ?? 0)) status = "pending";
-        const round: LogicalRound = deepFreeze(cloneSessionData({id, entry: previous?.entry ?? command, bet: previous?.bet ?? bet,
+        const round: LogicalRound = deepFreeze({id, entry: previous?.entry ?? cloneSessionData(command), bet: previous?.bet ?? bet,
             ...(previous?.mode ?? mode ? {mode: previous?.mode ?? mode} : {}), cursor: index + 1, deliveryCursor: (previous?.deliveryCursor ?? 0) + 1, stageCursor,
             mathematicalStatus,
             status, totalStake: (previous?.totalStake ?? 0) + stake,
             totalWin: (previous?.totalWin ?? 0) + win, totalPayout: (previous?.totalPayout ?? 0) + payout,
-            subrounds: [...(previous?.subrounds ?? []), subround]}));
+            subrounds: [...(previous?.subrounds ?? []), deepFreeze(cloneSessionData(subround))]});
         logicalRounds.set(session, round);
         return {status: "played", win, credits, stake, mode, payout, logicalRound: cloneSessionData(round)};
     }
+    // Each mathematical subround is retained once. Delivery snapshots keep only scalar progress
+    // and a shared immutable tail; historical arrays are materialized only for the caller.
+    private saveDelivery(command: SessionCommand, result: Played): SavedDelivery {
+        const {logicalRound, ...output} = result;
+        if (!logicalRound) return {command: JSON.stringify(command), result: output};
+        const retained = logicalRounds.get(this.session)!;
+        let tail = retainedTails.get(this.session)?.roundId === retained.id ? retainedTails.get(this.session)!.tail : undefined;
+        for (let index = tail ? tail.subround.index + 1 : 0; index < retained.cursor; index++) tail = {subround: retained.subrounds[index], previous: tail};
+        retainedTails.set(this.session, {roundId: retained.id, tail: tail!});
+        const {subrounds: _subrounds, ...round} = retained;
+        return {command: JSON.stringify(command), result: output, round, tail};
+    }
+
+    private restoreDelivery(saved: SavedDelivery): Played {
+        if (!saved.round) return cloneSessionData(saved.result);
+        const subrounds: LogicalSubround[] = [];
+        for (let node = saved.tail; node; node = node.previous) subrounds.push(node.subround);
+        subrounds.reverse();
+        return cloneSessionData({...saved.result, logicalRound: {...saved.round, subrounds}});
+    }
+
     private isDomainPending(): boolean {
         const session = this.session as GameSessionHandling & Partial<LogicalRoundProgressProviding>;
         return session.hasPendingLogicalRound?.() ?? false;

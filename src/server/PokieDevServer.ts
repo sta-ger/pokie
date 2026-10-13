@@ -392,7 +392,7 @@ export class PokieDevServer implements PokieDevServerHandling {
 
         const credits = await this.wallet.getBalance(sessionId);
         const response = this.buildSessionResponse(sessionId, state, credits, undefined, state.initialPayload);
-        response.logicalRoundDeliverySupported = (this.game.supportsLogicalRoundDelivery?.() ?? state.stateSchema?.kind !== "custom");
+        response.logicalRoundDeliverySupported = (this.spinCommandHandler.execute !== undefined && state.logicalRoundDeliverySupported === true && this.game.supportsLogicalRoundDelivery?.() !== false);
         if (includeInternal) {
             // The save above always went through the plain save() (a fresh sessionId has no prior
             // version to be conditional on), so the version it landed at is read back separately here
@@ -430,20 +430,32 @@ export class PokieDevServer implements PokieDevServerHandling {
             res.off("close", abortDelivery);
         }
 
+        let committedSession: PokieDevSessionResponse | undefined;
+        if (result.committedResult) {
+            const prefix = result.committedResult;
+            committedSession = this.buildSessionResponse(prefix.sessionId, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload);
+            if (prefix.state.logicalRound) {
+                const progress = projectLogicalRound(prefix.state.logicalRound);
+                committedSession.logicalRound = progress;
+                if (progress.currentStep) Object.assign(committedSession, {screen: progress.currentStep.screen, reelsSymbols: progress.currentStep.screen, totalWin: progress.currentStep.totalWin});
+            }
+        }
+        const recovery = {...(result.committedProgress ? {committedProgress: result.committedProgress} : {}), ...(committedSession ? {committedSession} : {})};
+
         if (result.status === "not-found") {
             this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`});
             return;
         }
 
         if (result.status === "blocked") {
-            this.sendJson(res, 400, {code: result.status, error: result.reason});
+            this.sendJson(res, 400, {code: result.status, error: result.reason, ...recovery});
             return;
         }
 
         if (result.status === "conflict" || result.status === "identity-conflict") {
             // Identity reuse requires the original intent; stale-version conflicts are separate.
             // Atomic losers have no effects. Legacy conflicts have attempted compensation.
-            this.sendJson(res, 409, {code: result.status, error: result.reason});
+            this.sendJson(res, 409, {code: result.status, error: result.reason, ...recovery});
             return;
         }
 
@@ -453,19 +465,19 @@ export class PokieDevServer implements PokieDevServerHandling {
             // own — see SpinCommandHandler's own doc comment. Never retried automatically here, and
             // never surfaced as this server's own fault: the caller/operator needs to resolve it by hand
             // (see result.reason) before this requestId can be retried.
-            this.sendJson(res, 409, {code: result.status, error: result.reason});
+            this.sendJson(res, 409, {code: result.status, error: result.reason, ...recovery});
             return;
         }
 
         if (result.status !== "played") {
             const statusCodes: Record<string, number> = {"invalid-command": 400, "storage-error": 503, "settlement-error": 503, "execution-error": 500};
             const status = statusCodes[result.status] ?? 409;
-            this.sendJson(res, status, {code: result.status, error: result.reason, ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {})});
+            this.sendJson(res, status, {code: result.status, error: result.reason, ...recovery, ...(result.retryDisposition ? {retryDisposition: result.retryDisposition} : {})});
             return;
         }
 
         const response = this.buildSessionResponse(result.sessionId, result.state, result.credits, result.win, result.state.roundPayload);
-        response.logicalRoundDeliverySupported = (this.game.supportsLogicalRoundDelivery?.() ?? result.state.stateSchema?.kind !== "custom");
+        response.logicalRoundDeliverySupported = (this.spinCommandHandler.execute !== undefined && result.state.logicalRoundDeliverySupported === true && this.game.supportsLogicalRoundDelivery?.() !== false);
         if (result.state.logicalRound) {
             const progress = projectLogicalRound(result.state.logicalRound);
             response.logicalRound = progress;
@@ -648,7 +660,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         }
         const credits = this.transactionalRoundStore === undefined ? await this.wallet.getBalance(sessionId) : state.credits!;
         const response = this.buildSessionResponse(sessionId, state, credits, state.win, this.mergeSerializedPayloads(state));
-        response.logicalRoundDeliverySupported = (this.game.supportsLogicalRoundDelivery?.() ?? state.stateSchema?.kind !== "custom");
+        response.logicalRoundDeliverySupported = (this.spinCommandHandler.execute !== undefined && state.logicalRoundDeliverySupported === true && this.game.supportsLogicalRoundDelivery?.() !== false);
         if (state.logicalRound) response.logicalRound = projectLogicalRound(state.logicalRound);
         if (includeInternal) {
             response.internal = this.buildInternalSessionData(state, undefined, undefined, versioned?.version);

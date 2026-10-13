@@ -1,3 +1,4 @@
+import {transactionalRoundGame} from "../../../v2/fixtures/TransactionalRoundGame.js";
 import {createOverscanGame, overscanBlueprint, overscanGeometry} from "../../../v2/fixtures/OverscanGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import {
@@ -1604,4 +1605,52 @@ describe("Overscan Studio Play", () => {
             service.reset();
         }
     });
+});
+
+describe("Studio logical history retention", () => {
+    it("evicts full views while compact historical identities still prevent duplicate records", () => {
+        const recorder = new StudioRoundRecorder();
+        const views = Array.from({length: 25}, (_, index) => ({sessionId: "session", game: manifest, credits: 100, bet: 1, screen: [[`screen-${index}`]], studioRequestId: `request-${index}`}));
+        for (const view of views) recorder.record(view, {source: "play", operation: "spin"});
+        expect(recorder.list()).toHaveLength(20);
+        const identities = Reflect.get(recorder, "identities") as Map<string, Record<string, unknown>>;
+        expect(identities.size).toBe(25);
+        for (const identity of identities.values()) {
+            expect(identity).not.toHaveProperty("screen");
+            expect(identity).not.toHaveProperty("logicalRound");
+            expect(identity).not.toHaveProperty("debug");
+        }
+        const historical = {...views[0]};
+        recorder.record(historical, {source: "simulation-sample", operation: "simulation-sample"});
+        expect(historical).toMatchObject({studioRound: 1, studioSource: "play"});
+        expect(recorder.list()).toHaveLength(20);
+        expect(recorder.list()[0]).toMatchObject({studioRound: 25});
+        recorder.clearAll();
+        expect(identities.size).toBe(0);
+    });
+});
+
+it("Studio retains and records a committed composite prefix across thrown successor failure", async () => {
+    let fail = true;
+    let calculations = 0;
+    const model = transactionalRoundGame(() => {
+        calculations++;
+        if (fail && calculations === 2) throw new Error("successor failed");
+    });
+    const recorder = new StudioRoundRecorder();
+    const service = new StudioPlayService(() => Promise.resolve(model), undefined, undefined, undefined, undefined, undefined, recorder);
+    try {
+        const created = await service.newSession("/logical", "1");
+        if (created.status !== "ok") throw new Error("No Play session");
+        const intent = {requestId: "entry", roundId: "round", delivery: "composite" as const};
+        const failed = await service.spin(created.session.sessionId, "spin", undefined, undefined, intent);
+        expect(failed).toMatchObject({status: "error", code: "execution-error", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, session: {logicalRound: {cursor: 1, status: "pending"}}});
+        expect(recorder.list()).toHaveLength(1);
+        fail = false;
+        expect(await service.spin(created.session.sessionId, "spin", undefined, undefined, intent)).toMatchObject({status: "ok", session: {logicalRound: {status: "completed", cursor: 3, totalStake: 0.05}}});
+        expect(recorder.list()).toHaveLength(1);
+        expect(recorder.list()[0].logicalRound?.status).toBe("completed");
+    } finally {
+        await service.reset();
+    }
 });

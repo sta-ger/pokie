@@ -126,8 +126,8 @@ export type StudioPlaySpinResult =
     /** A scenario search stopped only between real settled rounds. */
     | {status: "cancelled"; session?: StudioRuntimeSessionView}
     | {status: "not-found"}
-    | {status: "blocked"; error: string}
-    | {status: "error"; error: string; code?: string};
+    | {status: "blocked"; error: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView}
+    | {status: "error"; error: string; code?: string; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}; session?: StudioRuntimeSessionView};
 
 // Play's own backend -- Studio's only game mode (see PlayTab's own doc comment). Never a
 // PokieDevServer/PokieClientServer, never an OS port, never a SessionRepository/WalletPort a
@@ -404,15 +404,13 @@ export class StudioPlayService {
             if (handled.status === "not-found") {
                 result = {status: "not-found"};
             } else if (handled.status === "blocked") {
-                result = {status: "blocked", error: handled.reason};
-            } else if (handled.status === "conflict" || handled.status === "recovery-required") {
-                // Neither can actually happen here in practice -- this service never passes an
-                // expectedVersion, and never shares its stores with another SpinCommandHandler instance
-                // (see the class doc comment) -- surfaced as a plain error rather than silently dropped
-                // in the (unreachable in normal operation) case they somehow ever did.
-                result = {status: "error", code: handled.status, error: handled.reason};
+                result = {status: "blocked", code: handled.status, error: handled.reason, ...(handled.committedProgress ? {committedProgress: handled.committedProgress} : {retryDisposition: "rejected"})};
             } else if (handled.status !== "played") {
-                result = {status: "error", code: handled.status, error: handled.reason};
+                let retryDisposition: "rejected" | "safe-to-retry" | undefined;
+                if (["invalid-command", "identity-conflict", "conflict"].includes(handled.status) && !handled.committedProgress) retryDisposition = "rejected";
+                else if ("retryDisposition" in handled && handled.retryDisposition === "safe-to-retry") retryDisposition = handled.retryDisposition;
+                result = {status: "error", code: handled.status, error: handled.reason, ...(handled.committedProgress ? {committedProgress: handled.committedProgress} : {}),
+                    ...(retryDisposition ? {retryDisposition} : {})};
             } else {
                 const settledSession = active.spinHandler.getLiveSession(sessionId);
                 if (settledSession === undefined) {
@@ -437,13 +435,19 @@ export class StudioPlayService {
                 result.session.studioRequestId = (handled.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? handled.requestId;
                 result.session.debug = {...result.session.debug, stateBefore: handled.previousState, requestId: handled.requestId};
             }
+            if (handled.status !== "played" && handled.committedResult && (result.status === "error" || result.status === "blocked")) {
+                const prefix = handled.committedResult;
+                result.session = this.buildSessionView(sessionId, active.manifest, prefix.state, prefix.credits, prefix.win, prefix.state.roundPayload, active.session);
+                result.session.studioRequestId = (prefix.state.logicalRound?.entry as {requestId?: string} | undefined)?.requestId ?? prefix.requestId;
+            }
         }
 
         // A round cannot be returned or recorded after an asynchronous predecessor has installed a
         // replacement. This is especially important for portable components: a Wasm session is mutable,
         // so an obsolete response must never be presented as the newer session's own round.
-        if (result.status === "ok") {
-            this.roundRecorder.record(result.session, {
+        const recordedSession = "session" in result ? result.session : undefined;
+        if (recordedSession) {
+            this.roundRecorder.record(recordedSession, {
                 source: active.kind === "outcomeSource" ? "play-outcome-source" : "play",
                 operation: actualOperation,
                 projectRoot: active.projectRoot,
@@ -906,7 +910,7 @@ export class StudioPlayService {
                 view.totalWin = view.logicalRound.currentStep.totalWin;
             }
         }
-        view.logicalRoundDeliverySupported = typeof (session as {hasPendingLogicalRound?: () => boolean}).hasPendingLogicalRound === "function";
+        view.logicalRoundDeliverySupported = SessionRuntime.supportsLogicalRoundDelivery(session) && (this.active?.kind !== "runtime" || this.active.game.supportsLogicalRoundDelivery?.() !== false);
         view.logicalRoundDurability = "process-only";
         const availableSymbols = this.getAvailableSymbolsIfSupported(session);
         if (availableSymbols !== undefined) {

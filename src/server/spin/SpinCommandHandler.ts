@@ -286,7 +286,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     }
 
     public validateStoredSession(sessionId: string, state: unknown): ReturnType<typeof validatePersistedSession> {
-        return validatePersistedSession(state, this.game, this.liveSessions.get(sessionId)?.authority);
+        return validatePersistedSession(state, this.game, this.liveSessions.get(sessionId)?.authority, sessionId);
     }
 
     // Observes the process-local session that the most recent successful command for this id actually
@@ -365,8 +365,12 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
     public execute(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const sessionId = typeof command?.sessionId === "string" ? command.sessionId : "";
-        return this.trackDelivery(this.deliver(command, signal)).catch(error => ({...((error instanceof RuntimeCommandError && error.retryDisposition) ? {retryDisposition: error.retryDisposition} : {}), status: error instanceof RuntimeCommandError ? error.code : "execution-error",
-            sessionId, reason: error instanceof Error ? error.message : String(error)}));
+        return this.trackDelivery(this.deliver(command, signal)).catch(error => this.failureResult(error, sessionId));
+    }
+
+    private failureResult(error: unknown, sessionId: string): SpinCommandResult {
+        return {...((error instanceof RuntimeCommandError && error.retryDisposition) ? {retryDisposition: error.retryDisposition} : {}), status: error instanceof RuntimeCommandError ? error.code : "execution-error",
+            sessionId, reason: error instanceof Error ? error.message : String(error)};
     }
 
     private trackDelivery(work: Promise<SpinCommandResult>): Promise<SpinCommandResult> {
@@ -389,8 +393,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             const round = result.state.logicalRound;
             const next = await this.dispatch({kind: "spin", sessionId: command.sessionId,
                 requestId: `${command.requestId}:subround:${round.deliveryCursor}`, delivery: "stepwise",
-                continuation: {roundId: round.id, cursor: round.deliveryCursor}, expectedVersion: result.version}, signal);
-            if (next.status !== "played") return {...next, committedProgress: {roundId: round.id, cursor: round.deliveryCursor, requestId: result.requestId!}, ...("reason" in next ? {reason: `${next.reason} Committed prefix: round ${round.id}, cursor ${round.cursor}.`} : {})};
+                continuation: {roundId: round.id, cursor: round.deliveryCursor}, expectedVersion: result.version}, signal).catch(error => this.failureResult(error, command.sessionId));
+            if (next.status !== "played") return {...next, committedProgress: {roundId: round.id, cursor: round.deliveryCursor, requestId: result.requestId!, nextRequestId: `${command.requestId}:subround:${round.deliveryCursor}`}, committedResult: cloneSessionData(result), ...("reason" in next ? {reason: `${next.reason} Committed prefix: round ${round.id}, cursor ${round.cursor}.`} : {})};
             result = next;
             advanced++;
         }
@@ -528,13 +532,16 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 const invalid = validateRetryResult(cached, this.game, sessionId, requestId, this.liveSessions.get(sessionId)?.authority) ??
                     (retained === undefined ? undefined : this.validatePendingState(retained, sessionId, requestId));
                 if (invalid !== undefined) return {...invalid, sessionId};
-                if ((intent?.delivery !== undefined || intent?.continuation !== undefined) && cached.status === "played") {
+                if (cached.status === "played" && (intent?.delivery !== undefined || intent?.continuation !== undefined || cached.state.logicalRound !== undefined || cached.deliveryCommand !== undefined)) {
                     const original = cached.deliveryCommand ?? cached.state.logicalRound?.subrounds[cached.state.logicalRound.subrounds.length - 1]?.command;
                     if (!original || commandEnvelope(original as RepositoryCommand) !== commandEnvelope(intent!)) return {status: "identity-conflict", sessionId, reason: "Logical request identity was already used for a different command."};
                 }
                 return cloneSessionData(cached);
             }
         }
+
+        if (intent?.roundId && !intent.continuation && (state.logicalRoundIds?.includes(intent.roundId) || state.logicalRound?.id === intent.roundId)) return {status: "identity-conflict", sessionId, reason: "Logical round identity has already been accepted; retry its original request."};
+        if ((intent?.delivery !== undefined || intent?.continuation !== undefined) && this.game.supportsLogicalRoundDelivery?.() === false) return {status: "invalid-command", sessionId, reason: "Selected game does not support logical delivery."};
 
         const capabilities = this.game.getSessionCommandCapabilities?.(state.context) ?? this.liveSessions.get(sessionId)?.authority.capabilities;
         if ((bet !== undefined || mode !== undefined) && capabilities === undefined) return {status: "invalid-command", sessionId,
@@ -598,7 +605,12 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 reason: resolvedSession.reason,
             };
         }
-        const runtime = new SessionRuntime(resolvedSession.session, state.logicalRound);
+        let runtime: SessionRuntime;
+        try {
+            runtime = new SessionRuntime(resolvedSession.session, state.logicalRound);
+        } catch (error) {
+            return {status: "corrupt-state", sessionId, reason: error instanceof Error ? error.message : String(error)};
+        }
         const selectionError = runtime.validateSelection(intent ?? {kind: "spin", bet, mode});
         if (selectionError !== undefined) return {status: "invalid-command", sessionId, reason: selectionError};
         let balanceBeforePlay: number;
@@ -832,6 +844,8 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                     : undefined;
             const newState = captureRoundPokieSessionState(state.context, session, state, this.sessionSerializer, this.capturePolicy, roundArtifactRequest);
             newState.credits = newBalance;
+            if (state.logicalRoundIds) newState.logicalRoundIds = state.logicalRoundIds;
+            if (executed.logicalRound && !intent?.continuation) newState.logicalRoundIds = [...new Set([...(state.logicalRoundIds ?? []), ...(state.logicalRound ? [state.logicalRound.id] : []), executed.logicalRound.id])];
             if (state.logicalRoundStatistics) newState.logicalRoundStatistics = state.logicalRoundStatistics;
             if (executed.logicalRound) {
                 if (executed.logicalRound.mathematicalStatus === "completed" && (state.logicalRound?.id !== executed.logicalRound.id || state.logicalRound.mathematicalStatus !== "completed")) {
@@ -864,6 +878,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
 
             const result: SpinCommandResult = {
                 status: "played",
+                ...(intent?.delivery !== undefined || intent?.continuation !== undefined ? {deliveryCommand: intent} : {}),
                 sessionId,
                 state: newState,
                 previousState: state,

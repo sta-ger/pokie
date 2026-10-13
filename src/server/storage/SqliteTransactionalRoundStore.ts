@@ -97,7 +97,7 @@ export class SqliteTransactionalRoundStore implements TransactionalRoundStore {
 
     public initialize(sessionId: string, state: PokieSessionState, game: PokieGame): Promise<void> {
         return this.enqueue(async () => {
-            const invalid = validateRepositoryCommand({kind: "spin", sessionId}) ?? validatePersistedSession(state, game)?.reason;
+            const invalid = validateRepositoryCommand({kind: "spin", sessionId}) ?? validatePersistedSession(state, game, undefined, sessionId)?.reason;
             if (invalid !== undefined) throw new Error(invalid);
             if (state.executionState !== "durably-restorable") throw new Error("Atomic round storage requires complete durably-restorable executable state.");
             const serialized = encode(state);
