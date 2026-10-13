@@ -221,6 +221,10 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         pokieVersion = "unknown",
     ) {
         if ("transact" in sessionRepository) {
+            if (arguments.length > 3 || (wallet !== undefined && (wallet === null || typeof wallet !== "object" ||
+                Object.keys(wallet).some(key => !["captureDebugSessionData", "sessionCapturePolicyMode", "pokieVersion"].includes(key)) || "getBalance" in wallet))) {
+                throw new Error("Transactional round store owns every participant; only capture options may accompany it.");
+            }
             this.transactionalStore = sessionRepository;
             const store = sessionRepository;
             const options = wallet as {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string} | undefined;

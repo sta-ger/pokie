@@ -29,7 +29,7 @@ class Worker {
     private stderr = "";
     constructor(file: string, args: string[]) {
         this.process = fork(file, args, {execArgv: [], stdio: ["ignore", "ignore", "pipe", "ipc"]});
-        this.process.stderr!.on("data", data => {
+        this.process.stderr?.on("data", data => {
             this.stderr += String(data);
         });
         this.process.on("message", message => {
@@ -38,6 +38,11 @@ class Worker {
         });
         this.exited = new Promise(resolve => {
             this.process.once("exit", () => {
+                this.listeners.forEach(listener => listener());
+                resolve();
+            });
+            this.process.once("error", error => {
+                this.messages.push({type: "error", error: String(error)});
                 this.listeners.forEach(listener => listener());
                 resolve();
             });
@@ -88,6 +93,7 @@ describe("durable transactional reference rounds", () => {
     let calculations: string;
     let workers: Worker[];
     let stores: API.SqliteTransactionalRoundStore[];
+    let readers: import("node:sqlite").DatabaseSync[];
     beforeAll(() => {
         runtime = emitPublicRuntime();
         for (const name of ["TransactionalRoundGame", "TransactionalRoundStoreProcess"]) {
@@ -107,10 +113,14 @@ describe("durable transactional reference rounds", () => {
         calculations = path.join(directory, "calculations.txt");
         workers = [];
         stores = [];
+        readers = [];
     });
     afterEach(async () => {
         await Promise.all(workers.map(worker => worker.kill()));
         await Promise.all(stores.map(store => store.close()));
+        readers.forEach(reader => {
+            if (reader.isOpen) reader.close();
+        });
         fs.rmSync(directory, {recursive: true, force: true});
     });
     async function open(lockWaitMs = 5000): Promise<API.SqliteTransactionalRoundStore> {
@@ -219,6 +229,7 @@ describe("durable transactional reference rounds", () => {
         expect(() => escaped!.sessions.load("session")).toThrow("owning transaction");
         const {DatabaseSync} = createRequire(path.join(runtime.directory, "consumer.cjs"))("node:sqlite") as typeof import("node:sqlite");
         const raw = new DatabaseSync(database);
+        readers.push(raw);
         raw.prepare("UPDATE sessions SET state=?").run(JSON.stringify({...initial, featureState: {}}));
         let calculationsCount = 0;
         const handler = new api.SpinCommandHandler(gameFactory(() => calculationsCount++), store);
@@ -230,7 +241,6 @@ describe("durable transactional reference rounds", () => {
         expect(calculationsCount).toBe(0);
         raw.exec("PRAGMA user_version=2");
         await expect(api.SqliteTransactionalRoundStore.open(database)).rejects.toThrow("schema");
-        raw.close();
     });
 
     it("rolls back insufficient balance, failed calculation/capture/serialization and every persistence boundary, preserving state/RNG", async () => {
@@ -555,6 +565,8 @@ describe("durable transactional reference rounds", () => {
         const store = await open();
         await initialize(store);
         expect(() => new api.PokieDevServer(gameFactory(), {transactionalRoundStore: store, wallet: new api.InMemoryWallet()})).toThrow("incompatible");
+        expect(() => Reflect.construct(api.SpinCommandHandler, [gameFactory(), store, new api.InMemoryWallet()])).toThrow("owns every participant");
+        expect(() => Reflect.construct(api.SpinCommandHandler, [gameFactory(), store, undefined, new api.InMemoryIdempotencyRepository()])).toThrow("owns every participant");
         const server = worker("server");
         const ready = await server.wait("ready");
         const url = `http://127.0.0.1:${ready.port}/sessions/session/spin`;
