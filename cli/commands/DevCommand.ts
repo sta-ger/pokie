@@ -147,6 +147,7 @@ export class DevCommand implements CliCommandHandling {
             const apiServer = this.createApiServer(game, {
                 host: options.host,
                 port: options.port,
+                settlementGuarantee: "compensation",
                 sessionCapturePolicyMode: "full",
                 pokieVersion: this.pokieVersion,
             });

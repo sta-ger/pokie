@@ -1,3 +1,4 @@
+import {InMemorySpinOperationLog} from "../../../src/server/spin/InMemorySpinOperationLog.js";
 import {resolveGameSessionIdentity} from "../../../src/runtime/GameSessionIdentity.js";
 import {FRACTIONAL_BET_STAKES, fractionalBetSession} from "../../fixtures/math/FractionalBetFixture.js";
 import {validatePlaySpinRequest} from "../../../cli/studio/runtime/validatePlaySpinRequest.js";
@@ -1015,6 +1016,25 @@ describe("SpinCommandHandler", () => {
         expect(wallet.debitCalls).toHaveLength(1);
         expect(wallet.debitCalls[0].amount).toBe(0);
         await expect(wallet.getBalance("session-1")).resolves.toBe(1000);
+    });
+
+    it.each(["debit", "credit"] as const)("retains ambiguous %s dispatch instead of deleting or falsely compensating its operation", async leg => {
+        const game = createFakeGame(),
+            repository = new InMemorySessionRepository(),
+            wallet = new RecordingTransactionalWallet();
+        const operations = new InMemorySpinOperationLog();
+        await createSpinnableSessionOn(repository, wallet, "ambiguous", 1000);
+        const apply = wallet[leg].bind(wallet);
+        const dispatch = jest.fn(async (id: string, transaction: string, amount: number) => {
+            await apply(id, transaction, amount);
+            throw new Error("Applied then disconnected");
+        });
+        wallet[leg] = dispatch;
+        const handler = new SpinCommandHandler(game, repository, wallet, undefined, operations);
+        await expect(handler.handle("ambiguous", "original")).rejects.toThrow("Applied then disconnected");
+        expect(await operations.load("ambiguous", "original")).toMatchObject({checkpoint: leg === "debit" ? "started" : "debited"});
+        expect(await handler.handle("ambiguous", "original")).toMatchObject({status: "recovery-required"});
+        expect(dispatch).toHaveBeenCalledTimes(1);
     });
 
     it("touches nothing when the wallet's debit itself throws", async () => {

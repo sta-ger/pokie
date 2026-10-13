@@ -349,3 +349,9 @@ Play propagates repository command failure codes through the service and API. Co
 ## Generated, visible and evaluated coordinates
 
 Overscan in Play, replay inspectors, Game Model previews and JSON authoring: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+
+Studio Play uses the legacy independent-port, ephemeral compensation composition. It does
+not acquire durable round identity or external-wallet guarantees from shared handler types.
+Project/reset staleness guards, exact numeric selection, last settled views and scenario
+cancellation remain its support boundary. Durable library HTTP execution is separately
+[configured](game-session.md#durable-external-wallet-reconciliation).

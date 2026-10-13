@@ -393,3 +393,10 @@ undeclared-codec recovery before construction or recovery writes.
 ## Generated, visible and evaluated coordinates
 
 Viewport presentation and required internal coordinate evidence: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+
+Durable external settlement saves the full calculated continuation and detached public/debug
+result before remote debit/payout. Invalid or nonserializable capture blocks dispatch;
+recovered accounting is validated before publication. A pending remote round retains its
+original snapshot and prevents intervening session advancement. See
+[external reconciliation](game-session.md#durable-external-wallet-reconciliation); plain file
+replacement or an in-memory idempotency map does not confer these guarantees.

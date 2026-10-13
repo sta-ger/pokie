@@ -46,8 +46,9 @@ export async function spin(
     requestId?: string,
     bet?: number,
     mode?: string,
+    expectedSessionVersion?: number,
 ): Promise<SessionResponse> {
-    const payload: {requestId?: string; bet?: number; mode?: string} = {};
+    const payload: {requestId?: string; bet?: number; mode?: string; expectedSessionVersion?: number} = {};
     if (requestId !== undefined) {
         payload.requestId = requestId;
     }
@@ -57,6 +58,7 @@ export async function spin(
     if (mode !== undefined) {
         payload.mode = mode;
     }
+    if (expectedSessionVersion !== undefined) payload.expectedSessionVersion = expectedSessionVersion;
     const body = Object.keys(payload).length === 0 ? undefined : JSON.stringify(payload);
     const response = await fetchImpl(`${apiBaseUrl}/sessions/${encodeURIComponent(sessionId)}/spin`, {
         method: "POST",

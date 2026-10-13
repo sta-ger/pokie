@@ -81,3 +81,10 @@ and capture/authority contracts. Direct initialize/readSession/lookupResult/clos
 support reopen without domain execution. A server's `transactionalRoundStore` option
 accepts exclusive ownership; pre-generated/outcome-source and Studio Play remain on
 separate, weaker settlement paths.
+
+`ExternalRoundStore` / `SqliteExternalRoundStore` compose a durable local outbox with a
+`DurableWalletPort`; declared durability and inspection capabilities require provider
+verification. Session fencing, permanent settlement IDs, calculated continuation and saved
+responses survive local restart. This composition reconciles independent stores and never
+claims distributed ACID. Legacy independent repositories and wallets remain weaker
+compensation configurations. See [external settlement](game-session.md#durable-external-wallet-reconciliation).

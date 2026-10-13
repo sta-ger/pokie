@@ -169,4 +169,62 @@ describe("Player session boot", () => {
             init: expect.objectContaining({method: "POST"}),
         });
     });
+    it.each(["transport", "recovery-required", "identity-conflict"])("retries %s with retained round identity/payload and prevents a new charge", async code => {
+        const calls: Array<{requestId: string; bet?: number}> = [];
+        let failure = true;
+        window.fetch = jest.fn((url: string, init?: {body?: string}) => {
+            if (url === "/config") return Promise.resolve(response({apiBaseUrl: "http://api.test"}));
+            if (url.endsWith("/spin")) {
+                calls.push(JSON.parse(init!.body!));
+                if (failure) {
+                    if (code === "transport") return Promise.reject(new Error("Response lost"));
+                    return Promise.resolve({ok: false, status: 409, json: () => Promise.resolve({code, error: "Keep the original identity"})});
+                }
+            }
+            return Promise.resolve(response(session("stable-session")));
+        }) as unknown as typeof window.fetch;
+        await import("../../../cli/client/main.js");
+        await flushPromises();
+        await flushPromises();
+        const spinButton = document.getElementById("spin-button") as HTMLButtonElement;
+        spinButton.click();
+        await flushPromises();
+        await flushPromises();
+        expect(calls[0].requestId).toEqual(expect.any(String));
+        expect(spinButton.disabled).toBe(true);
+        expect(window.localStorage.getItem("pokie.player.pendingRound:http://api.test:stable-session")).toBe(JSON.stringify(calls[0]));
+        expect((document.getElementById("spin-reconnect-button") as HTMLButtonElement).disabled).toBe(true);
+        failure = false;
+        (document.getElementById("spin-retry-button") as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+        expect(calls).toEqual([calls[0], calls[0]]);
+        expect(window.localStorage.getItem("pokie.player.pendingRound:http://api.test:stable-session")).toBeNull();
+        expect(spinButton.disabled).toBe(false);
+        spinButton.click();
+        await flushPromises();
+        await flushPromises();
+        expect(calls[2].requestId).not.toBe(calls[0].requestId);
+    });
+
+    it("restores a pending round after reload and keeps its captured selection", async () => {
+        const pending = {requestId: "retained", bet: 0.05, mode: "base"};
+        window.localStorage.setItem("pokie:sessionId", "stable-session");
+        window.localStorage.setItem("pokie.player.pendingRound:http://api.test:stable-session", JSON.stringify(pending));
+        const submitted: unknown[] = [];
+        window.fetch = jest.fn((url: string, init?: {body?: string}) => {
+            if (url === "/config") return Promise.resolve(response({apiBaseUrl: "http://api.test"}));
+            if (url.endsWith("/spin")) submitted.push(JSON.parse(init!.body!));
+            return Promise.resolve(response({...session("stable-session"), bet: 7.5, availableBets: [0.05, 7.5]}));
+        }) as unknown as typeof window.fetch;
+        await import("../../../cli/client/main.js");
+        await flushPromises();
+        await flushPromises();
+        expect((document.getElementById("spin-button") as HTMLButtonElement).disabled).toBe(true);
+        (document.getElementById("spin-retry-button") as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+        expect(submitted).toEqual([pending]);
+    });
+
 });

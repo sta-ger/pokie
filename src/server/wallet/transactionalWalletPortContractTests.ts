@@ -121,5 +121,29 @@ export function transactionalWalletPortContractTests(name: string, createWallet:
             // The same transactionId under a different sessionId is a distinct transaction.
             await expect(wallet.debit("session-2", "txn-1", 50)).resolves.toBe(450);
         });
+        it("returns historical duplicate outcomes after unrelated accounting and rejects conflicting active identities", async () => {
+            const wallet = createWallet();
+            await wallet.setBalance("s", 100);
+            const original = await wallet.debit("s", "d", 0.05);
+            await wallet.credit("s", "c", 7.5);
+            expect(await wallet.debit("s", "d", 0.05)).toBe(original);
+            await expect(wallet.debit("s", "d", 1e-7)).rejects.toThrow();
+            await expect(wallet.credit("s", "d", 0.05)).rejects.toThrow();
+            expect(await wallet.getBalance("s")).toBe(original + 7.5);
+        });
+        it("serializes overlapping debits and prevents aggregate overdraft", async () => {
+            const wallet = createWallet();
+            await wallet.setBalance("s", 7.5);
+            const outcomes = await Promise.allSettled([wallet.debit("s", "a", 7.5), wallet.debit("s", "b", 7.5)]);
+            expect(outcomes.map(outcome => outcome.status)).toEqual(["fulfilled", "rejected"]);
+            expect(await wallet.getBalance("s")).toBe(0);
+        });
+        it.each([NaN, Infinity, -1])("rejects invalid amount %s without mutation", async amount => {
+            const wallet = createWallet();
+            await wallet.setBalance("s", 100);
+            await expect(wallet.debit("s", "a", amount)).rejects.toThrow();
+            await expect(wallet.credit("s", "b", amount)).rejects.toThrow();
+            expect(await wallet.getBalance("s")).toBe(100);
+        });
     });
 }

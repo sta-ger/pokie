@@ -1,5 +1,7 @@
 import type {WalletTransactionStatus} from "./WalletTransactionStatus.js";
 
+// Legacy inspection vocabulary; method presence confers no durable guarantee.
+// DurableWalletPort.inspectTransaction distinguishes uncertainty and authoritative absence.
 // Optional capability, additive to TransactionalWalletPort the same way TransactionalWalletPort is
 // additive to WalletPort (see isTransactionalWalletPort.ts) — a wallet that already tracks its own
 // transaction ledger (TransactionalWalletAdapter/InMemoryWallet both do) can report a specific

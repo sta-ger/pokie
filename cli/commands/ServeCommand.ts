@@ -116,7 +116,7 @@ export class ServeCommand implements CliCommandHandling {
         const game = await this.loadRuntimeGame(options.packageRoot);
         let address;
         try {
-            const server = this.createServer(game, {host: options.host, port: options.port});
+            const server = this.createServer(game, {host: options.host, port: options.port, settlementGuarantee: "compensation"});
             address = await server.start();
             // The listener owns the game only after it is live: its sessions must retain the
             // runtime snapshot, while startup failures below still release it immediately.

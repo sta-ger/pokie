@@ -119,6 +119,10 @@ const DEFAULT_LEASE_DURATION_MS = 10_000;
 // what actually authorizes acting. The "committed" backfill is deliberately exempt from both: it's
 // terminal (nothing further ever touches a truly-committed attempt) and idempotent regardless of who or
 // how many times performs it, so there is no live-attempt race to guard against there.
+// This independently constructed service is the legacy weaker compensation reconciler.
+// WalletTransactionInspecting method presence does not certify durable provider facts.
+// Strong external settlement uses ExternalRoundStore through the handler's reconciliation service,
+// with explicit provider/storage capabilities, session fencing and original immutable IDs.
 export class SpinReconciliationService implements SpinReconciliationServicing {
     private readonly wallet: TransactionalWalletPort;
     private readonly sessionRepository: SessionRepository;

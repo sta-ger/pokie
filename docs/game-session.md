@@ -382,3 +382,82 @@ atomic. `FileSessionRepository` instance-local queues are not cross-process lock
 Studio Play/scenarios, pre-generated handlers and outcome-source serving retain their
 existing in-memory/compensation contracts. Durable Studio job records do not make Play
 rounds durable. Browser/portable/WASM consumers have no SQLite requirement.
+
+## Durable external-wallet reconciliation
+
+`SqliteExternalRoundStore` is an explicit **local durable intent/outbox**, with an independent
+`DurableWalletPort`. It provides reconciliation, not distributed ACID. The reference
+`SqliteTransactionalRoundStore` ledger alone participates in SQLite's round transaction.
+Never mix either composition with separately supplied repositories or wallets.
+
+```ts
+const intents = await SqliteExternalRoundStore.open("./external-rounds.sqlite", provider, {
+    callTimeoutMs: 2000, recoveryWaitMs: 5000,
+});
+const server = new PokieDevServer(game, {
+    externalRoundStore: intents, settlementGuarantee: "external-reconciliation",
+});
+// Or initialize a captured durably-restorable session and use:
+const handler = new SpinCommandHandler(game, intents);
+await handler.execute({kind: "spin", sessionId, requestId: "stable-logical-round",
+    expectedVersion: 1, bet: 0.05, mode: "base"});
+```
+
+A provider explicitly declares durable idempotency, authoritative inspection and permanent
+session/kind/amount identity binding. These are provider promises requiring independent
+contract verification, not inferred from method names. Duplicate debit/credit calls must
+return their **original** balance even after unrelated transactions or provider restart.
+In-memory wallets, plain `WalletPort`, `TransactionalWalletAdapter`, incomplete inspection,
+and non-durable operation/result repositories are incapable of this guarantee. Select the
+legacy independent-port constructor or `settlementGuarantee: "compensation"` for those
+weaker local/dev configurations. A strong selection without its capable store fails at
+construction/open, before calculation or settlement. SQLite is optional, loaded only on
+explicit open; Node with `node:sqlite` transaction inspection and WAL/FULL support is required.
+Unsupported selections never fall back to memory. Existing ESM/CJS root exports include
+both composition and capability contracts; browser/WASM entries remain portable.
+
+The external store first reserves the session and freezes the command envelope. It restores
+and calculates through the canonical handler using a private local ledger, then persists
+both permanent wallet IDs, amounts, complete executable/RNG continuation and detached
+response **before the first effective remote action**. No real wallet calls run inside the
+reference store transaction. Each remote phase has committed local intent before dispatch.
+Only confirmed settlement publishes the new session revision and retained result together.
+A pending round blocks other request IDs for that session across store/handler instances;
+owner tokens and bounded leases fence late local publication. Expired ownership permits
+recovery with the original remote IDs, never replacement charge IDs. Provider idempotency
+must cover overlapping late dispatches from stale owners.
+
+Inspection distinguishes `unknown`, `pending`, `not-applied` (authoritative), `committed`
+(with original kind, amount and balance), and `compensated`. A provider reservation that
+remains pending must finish through its provider lifecycle or operator recovery; POKIE
+cannot guess its outcome. Unknown/pending/compensated, malformed inspection, inspection
+failure and exhausted budgets return `recovery-required`, retaining intent and blocking
+fresh settlement. A rejected promise can have applied its debit/payout: it never authorizes
+intent deletion, compensation or a new identity. The same original command resumes via
+`execute`, `handle`, `reconcileOne`, `reconcileAll` or the handler's reconciliation service.
+A confirmed payout recovers the saved response without replaying the game.
+
+Network calls have a finite timeout and receive an abort signal where supported. Cancellation
+before dispatch has no remote effect; cancellation/timeout after possible dispatch preserves
+ambiguity. Aborting a request does not prove the provider cancelled its transaction. Timers
+and listeners are released, and late acknowledgement has no publication authority. Direct
+`execute(command, signal)` supports caller cancellation; HTTP disconnection still drains the
+accepted round on shutdown. Server stop rejects new admission, drains bounded accepted work
+and closes owned storage before caller game release. Library callers own `close()`.
+
+Strong identities include session, requestId and the exact original bet/mode/version envelope.
+Identical completed retries precede stale-version checking and return the original accounting,
+revision and request-specific public/debug projection after restart and subsequent rounds.
+Different payloads conflict; keys across sessions remain independent. Numeric stakes, including
+0.05, 7.5, 1e-7 and zero free stakes, remain numbers without rounding or string conversion.
+Invalid commands, blocked/insufficient funds, corruption, identity/revision conflicts,
+storage/settlement/execution failures and unresolved recovery are non-success outcomes.
+The external composition retains rejected pre-effect results under their original identity;
+use a new logical command only after an explicit terminal rejection, never after ambiguity.
+
+The controllable independent provider for controller verification is
+`tests/server/wallet/fixtures/ControllableDurableWallet.ts`. Its separate SQLite database,
+pre/post-action disconnects, missing acknowledgement, inspection overrides and debit/payout
+counters exercise the lifecycle without substituting the local reference ledger. Candidate
+implementation checks and pending independent evidence are recorded in
+[V2C-05](v2-completion/V2C-05.md).

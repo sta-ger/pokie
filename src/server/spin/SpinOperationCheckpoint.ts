@@ -1,9 +1,8 @@
 // The checkpoint sequence SpinCommandHandler.playAndSettle() writes to SpinOperationLog as it progresses
 // through one requestId-bearing attempt — never for a requestId-less call, the same scope idempotency
 // itself already has (see SpinOperationLog's own doc comment). Written durably, immediately after the
-// underlying step actually succeeds, never in advance — the same "record the truth right after it
-// happens" discipline atomicallyWriteExternalDeploymentArtifactsToDirectory uses for a filesystem swap,
-// applied here to a cross-store attempt instead.
+// underlying acknowledgement, except started which precedes dispatch. These are legacy
+// compensation checkpoints, not the durable external outbox protocol.
 //
 // "started"/"debited"/"settled"/"session-saved" are in-flight — an attempt whose process died (or whose
 // own in-process compensation failed) leaves its record at exactly one of these, which is what
@@ -11,9 +10,8 @@
 // attempt is fully resolved one way or the other and SpinOperationLog.listIncomplete() never returns it
 // again.
 export type SpinOperationCheckpoint =
-    // Recorded before the wallet debit is even attempted — nothing has been applied yet. By code order
-    // alone (never contingent on wallet inspection), an attempt found stuck here is always safe to treat
-    // as if it never happened.
+    // Recorded before dispatch. A call can apply then disconnect while this checkpoint remains;
+    // it NEVER proves that the wallet debit did not happen.
     | "started"
     // The stake debit succeeded. Whether play()/the win settlement that follows it ever ran is unknown
     // from the checkpoint alone — see SpinReconciliationService's own doc comment for how it resolves

@@ -303,3 +303,7 @@ already closed with real browser evidence, one an intentional documented v2 limi
 architectural marker sweep, without reopening or changing any Phase 5 product behavior.
 
 The shared [headless command workflow](game-session.md#headless-commands-and-repository-ownership) and [repository recovery support matrix](serialization.md#executable-repository-records) describe domain execution, identity and extension ports.
+
+Durable public round support: [reference SQLite and independent external-wallet
+reconciliation](game-session.md#durable-external-wallet-reconciliation), with candidate
+implementation evidence and pending independent verification in [V2C-05](v2-completion/V2C-05.md).

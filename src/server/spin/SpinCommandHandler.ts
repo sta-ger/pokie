@@ -1,3 +1,5 @@
+import {isExternalRoundStore, type ExternalRoundStore, type ExternalRoundPreparation, type ExternalRoundCandidate} from "../storage/ExternalRoundStore.js";
+import {InMemoryWallet} from "../wallet/InMemoryWallet.js";
 import type {TransactionalRoundStore} from "../storage/TransactionalRoundStore.js";
 import {captureLiveSessionAuthority, type LiveSessionAuthority} from "../../runtime/internal/LiveSessionAuthority.js";
 import {validateOperationRecord, validateRetryResult} from "../../runtime/internal/validateRecoveryData.js";
@@ -125,8 +127,8 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // `reconciliationService` resolves it first — resuming an already-fully-settled attempt from its own
 // captured result (never calling session.play() again), safely reversing a debit whose matching
 // settlement is confirmed to have never applied, or returning a "recovery-required" SpinCommandResult
-// when neither can be established safely — so a repeated requestId can never re-debit the wallet or
-// re-play the round, whichever of those interruption windows it landed in.
+// when neither can be established safely — with no durable guarantee on this legacy path. Use the explicit external store for permanent
+// identities and authoritative inspection; unacknowledged calls remain ambiguous.
 //
 // Multi-instance safety: none of the above — including this handler's own reconcileOne()/reconcileAll()
 // wrapper methods, and the inline retry-time check in handleSerialized() itself — is granted any
@@ -146,6 +148,7 @@ import type {SpinReconciliationServicing} from "./SpinReconciliationServicing.js
 // authority on its own.
 export class SpinCommandHandler implements SpinCommandHandling, RepositoryCommandHandling {
     private readonly transactionalStore?: TransactionalRoundStore;
+    private readonly externalStore?: ExternalRoundStore;
     private atomicExecution = false;
     private readonly game: PokieGame;
     private readonly sessionRepository: SessionRepository;
@@ -163,7 +166,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     private readonly sessionQueues = new Map<string, Promise<unknown>>();
 
     /** Explicit atomic composition; the store owns every participant, never an external wallet. */
-    constructor(game: PokieGame, store: TransactionalRoundStore, options?: {
+    constructor(game: PokieGame, store: TransactionalRoundStore | ExternalRoundStore, options?: {
         captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string;
     });
     // Overload 1 (current, preferred): singleInstanceDeployment (see the class doc comment's own
@@ -206,7 +209,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     );
     constructor(
         game: PokieGame,
-        sessionRepository: SessionRepository | TransactionalRoundStore,
+        sessionRepository: SessionRepository | TransactionalRoundStore | ExternalRoundStore,
         wallet?: TransactionalWalletPort | {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string},
         idempotencyRepository: IdempotencyRepository<SpinCommandResult> = new InMemoryIdempotencyRepository(),
         operationLog: SpinOperationLog = new InMemorySpinOperationLog(),
@@ -220,12 +223,15 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         sessionCapturePolicyMode: SessionCaptureMode = "partial",
         pokieVersion = "unknown",
     ) {
-        if ("transact" in sessionRepository) {
+        if ("transact" in sessionRepository || "externalSettlement" in sessionRepository) {
             if (arguments.length > 3 || (wallet !== undefined && (wallet === null || typeof wallet !== "object" ||
                 Object.keys(wallet).some(key => !["captureDebugSessionData", "sessionCapturePolicyMode", "pokieVersion"].includes(key)) || "getBalance" in wallet))) {
                 throw new Error("Transactional round store owns every participant; only capture options may accompany it.");
             }
-            this.transactionalStore = sessionRepository;
+            if ("externalSettlement" in sessionRepository) {
+                if (!isExternalRoundStore(sessionRepository)) throw new Error("External settlement requires durable intent/result storage and session fencing.");
+                this.externalStore = sessionRepository;
+            } else this.transactionalStore = sessionRepository;
             const store = sessionRepository;
             const options = wallet as {captureDebugSessionData?: boolean; sessionCapturePolicyMode?: SessionCaptureMode; pokieVersion?: string} | undefined;
             const forbidden = (): Promise<never> => Promise.reject(new Error("Atomic participants are owned exclusively by the round store."));
@@ -248,23 +254,29 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         this.operationLog = operationLog;
         // Precedence: an explicit reconciliationService — whichever overload it arrived through — always
         // wins; only when none was supplied at all does singleInstanceDeployment shape the default build.
-        this.reconciliationService = this.transactionalStore === undefined ?
-            legacyReconciliationService ??
-            reconciliationService ??
-            new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game, sessionId => this.liveSessions.get(sessionId)?.authority) : {
+        const localReconciliation: SpinReconciliationServicing = this.transactionalStore === undefined ?
+            legacyReconciliationService ?? reconciliationService ?? new SpinReconciliationService(wallet, sessionRepository, idempotencyRepository, operationLog, singleInstanceDeployment, false, undefined, undefined, undefined, game, sessionId => this.liveSessions.get(sessionId)?.authority) : {
                 reconcileOne: async (sessionId, requestId) => ({
                     status: await this.transactionalStore!.lookupResult(sessionId, requestId) === undefined ? "no-action-needed" : "already-committed",
-                    sessionId, requestId, reason: "Atomic storage contains only complete commits; SQLite rolls back abandoned transactions. No compensation is performed.",
+                    sessionId, requestId, reason: "Atomic storage contains only complete commits; no compensation is performed.",
                 }),
                 reconcileAll: () => Promise.resolve([]),
             };
+        this.reconciliationService = this.externalStore !== undefined ? {
+            reconcileOne: (sessionId, requestId) => this.reconcileExternal(sessionId, requestId),
+            reconcileAll: async () => {
+                const outcomes: SpinReconciliationOutcome[] = [];
+                for (const command of await this.externalStore!.pendingCommands()) outcomes.push(await this.reconcileExternal(command.sessionId, command.requestId!));
+                return outcomes;
+            },
+        } : localReconciliation;
         this.sessionSerializer = resolveGameSessionSerializer(game);
         this.capturePolicy = buildSessionCapturePolicy(sessionCapturePolicyMode, captureDebugSessionData);
         this.pokieVersion = pokieVersion;
     }
 
     public primeSession(sessionId: string, session: GameSessionHandling, committedVersion?: number): void {
-        if (this.transactionalStore !== undefined) return;
+        if (this.transactionalStore !== undefined || this.externalStore !== undefined) return;
         this.liveSessions.set(sessionId, {session, committedVersion, authority: captureLiveSessionAuthority(session)});
     }
 
@@ -293,7 +305,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     // singleInstanceDeployment: true (see the constructor's own doc comment and the class doc comment's
     // "Multi-instance safety" section) — this method itself has no separate say in that.
     public reconcileOne(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
-        if (this.transactionalStore !== undefined) return this.reconciliationService.reconcileOne(sessionId, requestId);
+        if (this.transactionalStore !== undefined || this.externalStore !== undefined) return this.reconciliationService.reconcileOne(sessionId, requestId);
         const invalid = validateRepositoryCommand({sessionId, requestId});
         if (invalid !== undefined) return Promise.reject(new Error(invalid));
         return this.enqueue(sessionId, async () => {
@@ -317,6 +329,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
     // is a startup/ops sweep, not a hot path, so that's a deliberate simplicity choice, not a limitation
     // worth optimizing away.
     public async reconcileAll(): Promise<readonly SpinReconciliationOutcome[]> {
+        if (this.externalStore !== undefined) return this.reconciliationService.reconcileAll();
         const pending = await this.operationLog.listIncomplete();
         const outcomes: SpinReconciliationOutcome[] = [];
         for (const record of pending) {
@@ -341,16 +354,17 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         });
     }
 
-    public execute(command: RepositoryCommand): Promise<SpinCommandResult> {
+    public execute(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const sessionId = typeof command?.sessionId === "string" ? command.sessionId : "";
-        return this.dispatch(command).catch(error => ({status: error instanceof RuntimeCommandError ? error.code : "execution-error",
+        return this.dispatch(command, signal).catch(error => ({status: error instanceof RuntimeCommandError ? error.code : "execution-error",
             sessionId, reason: error instanceof Error ? error.message : String(error)}));
     }
 
-    private dispatch(command: RepositoryCommand): Promise<SpinCommandResult> {
+    private dispatch(command: RepositoryCommand, signal?: AbortSignal): Promise<SpinCommandResult> {
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid !== undefined) return Promise.resolve({status: "invalid-command", sessionId: typeof command?.sessionId === "string" ? command.sessionId : "", reason: invalid});
         const {sessionId, requestId, expectedVersion, bet, mode} = command;
+        if (this.externalStore !== undefined) return this.externalStore.execute(command, this.game, snapshot => this.prepareExternal(command, snapshot), signal);
         if (this.transactionalStore !== undefined) {
             return this.transactionalStore.transact(command, (transaction, intent) => {
                 // Always reconstruct authoritative state inside ownership. A rolled-back mutable
@@ -367,6 +381,42 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             });
         }
         return this.enqueue(sessionId, () => this.handleSerialized(sessionId, requestId, expectedVersion, bet, mode));
+    }
+
+    private async prepareExternal(command: RepositoryCommand, snapshot: ExternalRoundPreparation): Promise<ExternalRoundCandidate> {
+        let state = cloneSessionData(snapshot.state),
+            version = snapshot.version;
+        const ledger = new InMemoryWallet(snapshot.balance);
+        let payout: number | undefined;
+        const credit = ledger.credit.bind(ledger);
+        ledger.credit = (sessionId, transactionId, amount) => {
+            payout = amount; // Preserve the canonical handler's exact delta calculation, including tiny stakes.
+            return credit(sessionId, transactionId, amount);
+        };
+        const inner = new SpinCommandHandler(this.game, {
+            load: () => Promise.resolve(cloneSessionData(state)),
+            loadVersioned: () => Promise.resolve({state: cloneSessionData(state), version}),
+            save: () => Promise.reject(new Error("Preparation requires versioned writes.")),
+            saveVersioned: (_id: string, next: PokieSessionState, expected: number) => {
+                if (expected !== version) throw new SessionVersionConflictError(command.sessionId, expected, version);
+                state = cloneSessionData(next);
+                return Promise.resolve(++version);
+            },
+        } as import("../session/VersionedSessionRepository.js").VersionedSessionRepository, ledger,
+        undefined, undefined, false, undefined, this.capturePolicy.captureDebugPayloads, this.capturePolicy.mode, this.pokieVersion);
+        inner.atomicExecution = true;
+        return {result: await inner.dispatch(command), payout};
+    }
+
+    private async reconcileExternal(sessionId: string, requestId: string): Promise<SpinReconciliationOutcome> {
+        const invalid = validateRepositoryCommand({sessionId, requestId});
+        if (invalid) throw new Error(invalid);
+        const saved = await this.externalStore!.lookupResult(sessionId, requestId);
+        const command = (await this.externalStore!.pendingCommands()).find(value => value.sessionId === sessionId && value.requestId === requestId);
+        if (!command) return {status: saved?.status === "played" ? "already-committed" : "no-action-needed", sessionId, requestId, reason: "External store has no unresolved operation for this identity."};
+        const result = await this.execute(command);
+        return result.status === "played" ? {status: "resumed", sessionId, requestId, result, reason: "Original external settlement reconciled."} :
+            {status: "deferred", sessionId, requestId, reason: "reason" in result ? result.reason : result.status};
     }
 
     // Chains `work` onto whatever is already queued for `sessionId`, so it only starts once every
@@ -622,6 +672,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const appliedTransactionIds: string[] = [];
         let sessionStateSaved = false;
         let playStarted = false;
+        let uncertainTransactionId: string | undefined;
         let failureCode: RuntimeFailureCode = "execution-error";
         let checkpoint: ((record: Omit<SpinOperationRecord, "sessionId" | "requestId" | "attemptId" | "debitTransactionId" | "creditTransactionId" | "stakeAmount" | "expectedVersion" | "startedAt">) => Promise<void>) | undefined;
         try {
@@ -660,8 +711,10 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             failureCode = "storage-error";
             await checkpoint({checkpoint: "started", updatedAt: startedAt});
             failureCode = "settlement-error";
+            uncertainTransactionId = debitTransactionId;
             await this.wallet.debit(sessionId, debitTransactionId, stakeAmount);
             appliedTransactionIds.push(debitTransactionId);
+            uncertainTransactionId = undefined;
             failureCode = "storage-error";
             await checkpoint({checkpoint: "debited", updatedAt: new Date().toISOString()});
 
@@ -674,11 +727,13 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             const creditAmount = delta + stakeAmount;
 
             failureCode = "settlement-error";
+            uncertainTransactionId = creditTransactionId;
             const newBalance =
                 creditAmount >= 0
                     ? await this.wallet.credit(sessionId, creditTransactionId, creditAmount)
                     : await this.wallet.debit(sessionId, creditTransactionId, -creditAmount);
             appliedTransactionIds.push(creditTransactionId);
+            uncertainTransactionId = undefined;
             if (!Number.isFinite(newBalance) || newBalance < 0) throw new Error("Settled wallet balance must be finite and non-negative.");
 
             failureCode = "execution-error";
@@ -764,7 +819,9 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
                 this.liveSessions.delete(sessionId);
                 throw new RuntimeCommandError(failureCode, error);
             }
-            let compensationFullySucceeded = true;
+            // A rejected call may already have applied. Retain its last checkpoint even if
+            // reversal of every ACKNOWLEDGED leg succeeds on the weaker path.
+            let compensationFullySucceeded = uncertainTransactionId === undefined;
             // Before play(), the only mutable state this handler owns is the reversible command
             // projection (credits/bet/mode).  Restore it rather than evicting a sound live-only session
             // merely because a checkpoint or debit failed.  Once play() begins, setters would no longer
@@ -788,7 +845,7 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             if (compensationFullySucceeded) {
                 try {
                     if (appliedTransactionIds.length === 0 && !sessionStateSaved) {
-                        // Nothing was ever applied in the first place (e.g. the debit itself threw) — there
+                        // No remote dispatch was attempted (for example stake capture failed) — there
                         // was nothing to compensate, so "compensated" would overstate what happened here;
                         // just clear the record, the same as the "started"-only case in
                         // SpinReconciliationService.
