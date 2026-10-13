@@ -21,6 +21,7 @@ import type {PreGeneratedSessionRepository} from "./pregenerated/PreGeneratedSes
 import type {PreGeneratedSessionResponse} from "./pregenerated/PreGeneratedSessionResponse.js";
 import {PreGeneratedSpinCommandHandler} from "./pregenerated/PreGeneratedSpinCommandHandler.js";
 import type {PreGeneratedSpinCommandHandling} from "./pregenerated/PreGeneratedSpinCommandHandling.js";
+import {captureCoordinatePublicPayload} from "./session/internal/captureCoordinatePublicPayload.js";
 import {captureInitialPokieSessionState} from "./session/captureInitialPokieSessionState.js";
 import {InMemorySessionRepository} from "./session/InMemorySessionRepository.js";
 import {isVersionedSessionRepository} from "./session/isVersionedSessionRepository.js";
@@ -647,7 +648,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         if (state.screen !== undefined) {
             response.screen = state.screen;
         }
-        return response;
+        return captureCoordinatePublicPayload(state, response) as PokieDevSessionResponse;
     }
 
     private async readSeedContext(req: IncomingMessage): Promise<PokieGameContext | undefined> {

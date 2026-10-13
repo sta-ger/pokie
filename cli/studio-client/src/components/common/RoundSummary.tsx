@@ -76,6 +76,7 @@ export function RoundSummary({
                     displacing normal play behind provenance or JSON. */}
                 <GameScreenView
                     screen={artifact.screen}
+                    visibleRowCoverage={artifact.steps[artifact.steps.length - 1]?.visibleRowCoverage}
                     wins={artifact.wins}
                     credits={session.credits}
                     totalWin={artifact.totalWin}
@@ -160,6 +161,7 @@ export function RoundSummary({
             {session.screen && (
                 <GameScreenView
                     screen={describeRuntimeScreen(session.screen) ?? []}
+                    visibleRowCoverage={Array.isArray(session.visibleRowCoverage) ? session.visibleRowCoverage as number[] : undefined}
                     credits={session.credits}
                     totalWin={session.win}
                     payoutMultiplier={session.win !== undefined && session.bet !== undefined && session.bet !== 0 ? session.win / session.bet : undefined}

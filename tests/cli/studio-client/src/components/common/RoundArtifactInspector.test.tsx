@@ -816,5 +816,12 @@ describe("Overscan round presentation", () => {
         expect(displayed.wins[0].metadata.symbolsPositions).toEqual([[0, 1]]);
         expect(canonical.wins[0].winningPositions).toEqual([[0, 0]]);
         expect(displayed.generatedScreen).toEqual(generatedScreen);
+        const session: StudioRuntimeSessionView = {sessionId: "overscan", game: GAME, credits: 100, debug: {artifact: canonical}};
+        const play = renderWithMantine(<RoundSummary session={session} />);
+        expect(play.container.querySelector('[data-cell="0:0"]')).toHaveAttribute("data-visible-coverage", "0.75");
+        expect(play.container.querySelector('[data-cell="2:0"]')).toHaveAttribute("data-visible-coverage", "0.75");
+        expect(play.container.querySelector('[data-cell="1:0"]')).toHaveStyle({backgroundColor: "#ffda00"});
+        const fallback = renderWithMantine(<RoundSummary session={{sessionId: "fallback", game: GAME, credits: 100, screen, visibleRowCoverage: [0.75, 1, 0.75]}} />);
+        expect(fallback.container.querySelector('[data-cell="0:0"]')).toHaveAttribute("data-visible-coverage", "0.75");
     });
 });

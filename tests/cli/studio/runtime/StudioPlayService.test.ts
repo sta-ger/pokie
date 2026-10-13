@@ -1,4 +1,4 @@
-import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
+import {createOverscanGame, overscanBlueprint, overscanGeometry} from "../../../v2/fixtures/OverscanGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import {
     ReplayRecorder, buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
@@ -1562,6 +1562,26 @@ describe("StudioPlayService canonical error propagation", () => {
 
 
 describe("Overscan Studio Play", () => {
+    it("preserves partial viewport coverage without a game serializer", async () => {
+        const game = createOverscanGame({...overscanBlueprint, screenGeometry: {...overscanGeometry, visible: {rowOffset: 1.25, rows: 2.5}}});
+        game.getSessionSerializer = undefined;
+        const service = new StudioPlayService(() => Promise.resolve(game));
+        try {
+            const created = await service.newSession("/overscan", "7");
+            if (created.status !== "ok") throw new Error(JSON.stringify(created));
+            expect(created.session.screen?.[0]).toHaveLength(3);
+            expect(created.session.visibleRowCoverage).toEqual([0.75, 1, 0.75]);
+            const round = await service.spin(created.session.sessionId);
+            if (round.status !== "ok") throw new Error(JSON.stringify(round));
+            expect(round.session.visibleRowCoverage).toEqual([0.75, 1, 0.75]);
+            expect(round.session.screen?.[0]).toHaveLength(3);
+            expect(round.session).not.toHaveProperty("generatedScreen");
+            expect(round.session).not.toHaveProperty("coordinates");
+            expect(round.session.debug?.artifact?.generatedScreen?.[0]).toHaveLength(7);
+        } finally {
+            service.reset();
+        }
+    });
     it("matches seeded replay payout and retains the last settled viewport after search cancellation", async () => {
         const game = createOverscanGame();
         const release = jest.fn(() => Promise.resolve());

@@ -45,6 +45,7 @@ import {
     type PokieWasmRuntimeSession,
     type PokieWasmRound,
 } from "@fromstan/pokie";
+import {captureCoordinatePublicPayload} from "../../../src/server/session/internal/captureCoordinatePublicPayload.js";
 import {deriveDeterministicSeed} from "../../../src/pregenerated/internal/deriveDeterministicSeed.js";
 import crypto from "crypto";
 import {passthroughRuntimePackageResolver, RuntimePackageResolving} from "../../materialize/materializeRuntimePackage.js";
@@ -879,7 +880,7 @@ export class StudioPlayService {
                     bet: state.bet,
                     credits,
                     ...(win !== undefined ? {win} : {}),
-                    ...(state.screen !== undefined ? {screen: state.screen} : {}),
+                    ...captureCoordinatePublicPayload(state, state.screen !== undefined ? {screen: state.screen} : {}),
                 }
         ) as StudioRuntimeSessionView;
 
