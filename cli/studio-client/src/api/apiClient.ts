@@ -960,7 +960,7 @@ async function readPlaySpinResult(response: {status: number; ok: boolean; json()
     // They preserve the settled view and never request a replacement session.
     const body = await response.json() as {code?: string; error?: string; status?: string; session?: StudioRuntimeSessionView; retryDisposition?: "rejected" | "safe-to-retry"; committedProgress?: {roundId: string; cursor: number; requestId: string; nextRequestId?: string}};
     const recovery = {...(body.retryDisposition ? {retryDisposition: body.retryDisposition} : {}), ...(body.committedProgress ? {committedProgress: body.committedProgress} : {}), ...(body.committedProgress && body.session ? {session: body.session} : {})};
-    if (body.code !== undefined && body.code !== "not-found") {
+    if (body.code !== undefined && (body.code !== "not-found" || body.committedProgress)) {
         const actions: Record<string, string> = {
             "incompatible-state": "Load the matching game version or explicitly start a new session.",
             "corrupt-state": "Restore the saved session from a valid backup; do not retry this spin.",

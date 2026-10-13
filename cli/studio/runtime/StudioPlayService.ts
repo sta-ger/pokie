@@ -402,7 +402,7 @@ export class StudioPlayService {
             }
             const handled = await active.spinHandler.execute({kind: "spin", sessionId, bet, mode, ...intent, requestId: intent.requestId ?? crypto.randomUUID()}, signal);
             if (handled.status === "not-found") {
-                result = {status: "not-found"};
+                result = handled.committedProgress ? {status: "error", code: "not-found", error: "Session was removed after its committed prefix.", committedProgress: handled.committedProgress} : {status: "not-found"};
             } else if (handled.status === "blocked") {
                 result = {status: "blocked", code: handled.status, error: handled.reason, ...(handled.committedProgress ? {committedProgress: handled.committedProgress} : {retryDisposition: "rejected"})};
             } else if (handled.status !== "played") {

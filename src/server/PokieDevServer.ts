@@ -443,7 +443,7 @@ export class PokieDevServer implements PokieDevServerHandling {
         const recovery = {...(result.committedProgress ? {committedProgress: result.committedProgress} : {}), ...(committedSession ? {committedSession} : {})};
 
         if (result.status === "not-found") {
-            this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`});
+            this.sendJson(res, 404, {code: "not-found", error: `Unknown sessionId "${sessionId}".`, ...recovery});
             return;
         }
 

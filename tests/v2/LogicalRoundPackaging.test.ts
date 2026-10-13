@@ -1,3 +1,4 @@
+import {transactionalRoundGame} from "./fixtures/TransactionalRoundGame.js";
 import {ControllableDurableWallet} from "../server/wallet/fixtures/ControllableDurableWallet.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -175,6 +176,29 @@ describe("logical-round delivery and mathematical boundaries", () => {
             expect((await repository.loadVersioned("session"))!.version).toBe(version);
         }
         expect(debit).not.toHaveBeenCalled();
+    });
+
+    it("a returned successor rejection exposes the retained prefix and resumes without another entry", async () => {
+        const model = transactionalRoundGame();
+        const create = model.createSession.bind(model);
+        let reject = true;
+        model.createSession = context => {
+            const session = create(context) as api.GameSessionHandling & api.LogicalRoundProgressProviding & api.StakeAmountDetermining;
+            const stake = session.getStakeAmount.bind(session);
+            session.getStakeAmount = () => reject && session.hasPendingLogicalRound() ? 1 : stake();
+            return session;
+        };
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(100);
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 1}, model.createSession({seed: 1}), model.getSessionSerializer?.(), false, model));
+        const handler = new api.SpinCommandHandler(model, repository, wallet);
+        const entry: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite"};
+        const failed = await handler.execute(entry);
+        expect(failed).toMatchObject({status: "invalid-command", committedProgress: {roundId: "round", cursor: 1, requestId: "entry", nextRequestId: "entry:subround:1"}, committedResult: {state: {logicalRound: {cursor: 1, status: "pending"}}}});
+        reject = false;
+        const completed = settled(await handler.execute(entry));
+        expect(completed.state.logicalRound).toMatchObject({status: "completed", cursor: 3, totalStake: 0.05});
+        expect(await handler.execute(entry)).toEqual(completed);
     });
 
     it("a thrown composite successor exposes its committed prefix and exact retry identity", async () => {
