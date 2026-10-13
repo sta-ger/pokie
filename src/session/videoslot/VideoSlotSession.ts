@@ -268,6 +268,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
             const selections = (value.sequenceState as {selections: ReelSequenceSelection[]}).selections;
             this.getSymbolsSequences().forEach((strip, reelIndex) => {
                 if (isWeightedSymbolsSequence(strip) && JSON.stringify(strips[reelIndex]) !== JSON.stringify(strip.resolve(selections.find(item => item.reelIndex === reelIndex)!.variantId).toArray())) throw new Error("Retained variant differs from resolved strip.");
+                if (!isWeightedSymbolsSequence(strip) && JSON.stringify(strips[reelIndex]) !== JSON.stringify(strip.toArray())) throw new Error("Retained exact strip differs from the weighted model.");
             });
         } else if ((state as {sequenceState?: unknown}).sequenceState !== undefined) throw new Error("Unexpected weighted selection state.");
         if (strips.length !== this.config.getReelsNumber() || !strips.every(strip => strip.every(symbol => this.config.getAvailableSymbols().includes(symbol)))) throw new Error("Resolved reels do not match the selected model's dimensions or symbols.");
@@ -331,6 +332,7 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         // Without a declared evaluation window, upcoming reel heights are unresolved. Do not
         // use viewport rows or the previous ordinary matrix to constrain the next generation.
         validateEvaluationPaylines(this.config, undefined, projection);
+        this.combinationsGenerator.validateSequenceDefinitions?.();
         return {geometry, authoritative: typeof this.combinationsGenerator.getScreenGeometry === "function"};
     }
 

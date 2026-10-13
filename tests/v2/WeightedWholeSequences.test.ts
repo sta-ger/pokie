@@ -1,3 +1,4 @@
+import {EditCommand} from "../../cli/commands/EditCommand.js";
 import {runInNewContext} from "node:vm";
 import {runChunkedSimulation} from "../../src/simulation/parallel/internal/runChunkedSimulation.js";
 import fs from "node:fs";
@@ -235,6 +236,90 @@ describe("canonical weighted whole sequences", () => {
         second.release();
     });
 
+    it("restores the standalone generator's next implicit context and variant draw", () => {
+        const config = weightedConfig();
+        const generator = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(71));
+        generator.generateSymbolsCombination();
+        const random = generator.getRandomState();
+        const selection = json(generator.getSelectionState());
+        const expected = generator.generateSymbolsCombination().toMatrix();
+        const restored = new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(0));
+        restored.setRandomState(random);
+        restored.setSelectionContext("logical:discarded");
+        restored.setSelectionState(selection);
+        expect(restored.generateSymbolsCombination().toMatrix()).toEqual(expected);
+        expect(restored.getSequenceSelections()).toEqual(generator.getSequenceSelections());
+        expect(restored.getSequenceSelections()[0].context).toBe("implicit:2");
+        expect(restored.getRandomState()).toBe(generator.getRandomState());
+    });
+
+    it("rejects live definition replacement and mixed exact-strip tampering without altering context or RNG", () => {
+        const config = weightedConfig();
+        const session = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(91)));
+        session.play();
+        const saved = json(session.toSessionState());
+        const definitions = config.getSymbolsSequences();
+        config.setSymbolsSequences([new api.WeightedSymbolsSequence([{id: "a", weight: 1, symbols: ["B", "D"]}, {id: "b", weight: 3, symbols: ["A", "C"]}]), definitions[1]]);
+        expect(() => session.play()).toThrow("definitions changed");
+        expect(() => session.getSequenceStatistics()).toThrow("definitions changed");
+        config.setSymbolsSequences(definitions);
+        expect(session.toSessionState()).toEqual(saved);
+        const tampered = json(saved);
+        tampered.reelStrips![1] = ["B", "B"];
+        expect(() => session.fromSessionState(tampered)).toThrow("exact strip");
+        expect(session.toSessionState()).toEqual(saved);
+    });
+
+    it("binds restored active contexts to the supplied logical round before any continuation draw", () => {
+        const game = weightedGame();
+        const session = game.createSession({seed: 8}) as api.VideoSlotSession;
+        const runtime = new api.SessionRuntime(session);
+        const accepted = runtime.execute({kind: "spin", roundId: "bound", delivery: "stepwise"});
+        if (accepted.status !== "played") throw new Error("Expected accepted round.");
+        const tampered = json(session.toSessionState()) as {rngState: number; reelStrips: string[][]; implicitRound: number; sequenceState: {context: string; selections: api.ReelSequenceSelection[]}};
+        tampered.sequenceState.context = "logical:foreign";
+        tampered.sequenceState.selections = tampered.sequenceState.selections.map(selection => ({...selection, context: "logical:foreign"}));
+        const restored = game.createSession({seed: 8}) as api.VideoSlotSession;
+        restored.fromSessionState(tampered);
+        expect(() => new api.SessionRuntime(restored, accepted.logicalRound)).toThrow("weighted selections");
+        expect(restored.toSessionState().rngState).toBe(tampered.rngState);
+        runtime.release();
+    });
+
+    it("edits a real weighted Blueprint through the CLI wizard without discarding its source or other authored fields", async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "weighted-edit-"));
+        const file = path.join(directory, "weighted.blueprint.json");
+        const model: api.GameBlueprint & {notes: string} = {...json(weightedBlueprint), symbols: ["A", "B"], paytable: {A: {2: 4}, B: {2: 0}}, winModel: {type: "ways"}, notes: "Keep this authored field", screenGeometry: {generated: {reels: 2, rows: 3}, visible: {rowOffset: 1, rows: 1}, evaluated: {rowOffset: 1, rows: 1}, paylineSpace: "evaluated"}};
+        fs.writeFileSync(file, JSON.stringify(model));
+        let closed = false;
+        const questions: string[] = [];
+        const prompt = {ask: (question: string): Promise<string> => {
+            questions.push(question);
+            if (questions.length > 60) throw new Error("Wizard exceeded its bounded question count.");
+            if (question.startsWith("Game name")) return Promise.resolve("Edited weighted game");
+            if (question.startsWith("Save this blueprint")) return Promise.resolve("y");
+            return Promise.resolve("");
+        }, close: () => {
+            closed = true;
+        }};
+        const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
+        try {
+            const command = new EditCommand(undefined, undefined, undefined, undefined, undefined, () => prompt, () => true);
+            expect(await command.run([file])).toBe(0);
+            const edited = JSON.parse(fs.readFileSync(file, "utf8")) as typeof model;
+            expect(edited.reelSequences).toEqual(model.reelSequences);
+            expect(edited.winModel).toEqual(model.winModel);
+            expect(edited.screenGeometry).toEqual(model.screenGeometry);
+            expect(edited.notes).toBe(model.notes);
+            expect(edited.manifest.name).toBe("Edited weighted game");
+            expect(questions.some(question => question.includes("Reel weighting"))).toBe(false);
+            expect(closed).toBe(true);
+        } finally {
+            log.mockRestore();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it("reports zero/partial coverage, run-local deltas, merged counters and bounded long-session state", () => {
         const game = weightedGame(),
             session = game.createSession({seed: 321}) as api.VideoSlotSession;
@@ -410,11 +495,20 @@ describe("canonical weighted whole sequences", () => {
             const target = path.join(directory, "invalid");
             expect(() => new api.GamePackageGenerator("1").generate(invalid, directory, target)).toThrow("exactly one reel source");
             expect(fs.existsSync(target)).toBe(false);
+            for (const rows of [0, -1, 1.5]) {
+                expect(() => new api.GamePackageGenerator("1").generate({...weightedBlueprint, rows}, directory, target)).toThrow("rows must be a positive integer");
+                expect(fs.existsSync(target)).toBe(false);
+            }
             const source = path.join(directory, "weighted.blueprint.json");
             fs.writeFileSync(source, JSON.stringify(weightedBlueprint));
             const planner = new api.ArtifactConversionPlanner();
             const project: api.PokieProject = {type: "blueprint", rootPath: source, capabilities: api.PROJECT_TYPE_CAPABILITIES.blueprint, provenance: "Blueprint fields"};
             for (const kind of ["parWorkbook", "wasm"] as const) expect(planner.plan(project, kind).status).toBe("unavailable");
+            const unsupported = path.join(directory, "unsupported");
+            await expect(new api.WasmArtifactBuilder("1").build(project, path.join(unsupported, "game.pokie.wasm"))).rejects.toThrow("reelSequences");
+            const issues = await new api.ParSheetExporter("1").exportToFile(weightedBlueprint, path.join(unsupported, "game.xlsx"));
+            expect(issues.some(issue => issue.code === "parsheet-weighted-sequences-unsupported" && issue.severity === "error")).toBe(true);
+            expect(fs.existsSync(unsupported)).toBe(false);
             fs.writeFileSync(source, JSON.stringify(invalid));
             expect(() => api.loadGameBlueprint(source)).toThrow("reelSequences");
             expect(api.loadGameBlueprint(source, {preserveInvalidAuthoredContent: true})).toEqual(invalid);

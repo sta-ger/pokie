@@ -72,7 +72,7 @@ export class WeightedSymbolsSequence<T extends string | number | symbol = string
         return this.getNumberOfSymbols(symbol) / this.getSize() * 100;
     }
     public getSymbolsWeights(): Record<T, number> {
-        const result = {} as Record<T, number>;
+        const result = Object.create(null) as Record<T, number>;
         for (const variant of this.variants) for (const symbol of variant.symbols) result[symbol] = this.getSymbolWeight(symbol);
         return result;
     }
@@ -95,6 +95,7 @@ export class WeightedSymbolsSequence<T extends string | number | symbol = string
 
 /** Exact binary64 ratios, reduced by GCD. No integer replication or fractional truncation. */
 export function integerRelativeWeights(weights: readonly number[]): bigint[] {
+    if (!Array.isArray(weights) || !weights.length || Array.from(weights).some(weight => typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) || !weights.some(weight => weight > 0)) throw new Error("Relative weights must be finite, nonnegative and have a positive total.");
     const buffer = new ArrayBuffer(8),
         view = new DataView(buffer);
     const parts = weights.map(weight => {
@@ -115,6 +116,7 @@ export function integerRelativeWeights(weights: readonly number[]): bigint[] {
 
 /** Small totals take one integer draw; larger totals use high-first 32-bit chunks and rejection. */
 export function drawBelow(total: bigint, rng: RandomNumberGenerating): bigint {
+    if (typeof total !== "bigint" || total <= BigInt(0)) throw new Error("Weighted draw total must be positive.");
     if (total <= BigInt(0x100000000)) return BigInt(rng.getRandomInt(0, Number(total)));
     const bits = (total - BigInt(1)).toString(2).length;
     for (;;) {
@@ -141,6 +143,9 @@ export function validateWeightedReelDefinitions<T extends string | number | symb
     Array.from(sequences).forEach((sequence, index) => {
         if (!sequence || typeof sequence.getSize !== "function") throw new Error(`reelSequences[${index}]: invalid sequence definition.`);
         if (isWeightedSymbolsSequence(sequence)) new WeightedSymbolsSequence(sequence.getVariants(), symbols, `reelSequences[${index}].variants`).getSize();
-        else if (!sequence.getSize() || sequence.toArray().some(symbol => !symbols.includes(symbol))) throw new Error(`reelSequences[${index}].symbols: invalid exact symbols.`);
+        else {
+            const strip = sequence.toArray();
+            if (!Array.isArray(strip) || !strip.length || sequence.getSize() !== strip.length || Array.from(strip).some(symbol => !["string", "number", "symbol"].includes(typeof symbol) || (typeof symbol === "number" && !Number.isFinite(symbol)) || !symbols.includes(symbol))) throw new Error(`reelSequences[${index}].symbols: invalid exact symbols.`);
+        }
     });
 }

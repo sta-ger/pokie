@@ -238,6 +238,7 @@ export class EditCommand implements CliCommandHandling {
         changed("paylines", original.paylines, edited.paylines);
         changed("paytable", original.paytable, edited.paytable);
         changed("reelStrips", original.reelStrips, edited.reelStrips);
+        changed("reelSequences", original.reelSequences, edited.reelSequences);
         changed("symbolWeights", original.symbolWeights, edited.symbolWeights);
         changed("reelStripGeneration", original.reelStripGeneration, edited.reelStripGeneration);
         changed("mechanics", original.mechanics, edited.mechanics);

@@ -383,3 +383,15 @@ corresponding context/capture contract; forced-grid enumeration declares support
 without claiming a runtime selection. Canonical PAR and WASM conversions currently
 reject `reelSequences` before publishing an output. Generated TypeScript game
 packages preserve all alternatives and IDs.
+
+Weighted reel definitions, including mixed exact strips, remain fixed for the
+lifetime of a generator/session. Replacing them on a live configuration is rejected
+before drawing or publishing a state/statistics snapshot. Create a new session for
+an authored model change. JSON restoration may rebuild equivalent literal objects;
+it cannot change the retained weighted model's arrays or distribution.
+
+When restoring a standalone generator, pair `getSelectionState()` /
+`setSelectionState()` with its RNG capture/restore methods. Its bounded implicit
+context counter is part of that state, so the next generation reselects once.
+`pokie edit` preserves weighted sources and authored fields outside the wizard's
+questions; edit alternatives in Studio/JSON, then apply/save explicitly.

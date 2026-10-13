@@ -1,3 +1,5 @@
+import {resolveScreenProjection} from "../session/videoslot/coordinates/projectSymbolsCombination.js";
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import {WeightedSymbolsSequence} from "../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 
@@ -6,6 +8,13 @@ export function validateBlueprintReelSequences(blueprint: Record<string, unknown
     const source = blueprint.reelSequences;
     if (source === undefined) return [];
     const errors: string[] = [];
+    if (!Number.isSafeInteger(blueprint.reels) || (blueprint.reels as number) <= 0) errors.push("reelSequences: reels must be a positive integer.");
+    if (!Number.isSafeInteger(blueprint.rows) || (blueprint.rows as number) <= 0) errors.push("reelSequences: rows must be a positive integer.");
+    try {
+        resolveScreenProjection({getScreenGeometry: () => blueprint.screenGeometry as ScreenGeometry | undefined, getReelsNumber: () => blueprint.reels as number, getReelsSymbolsNumber: () => blueprint.rows as number});
+    } catch (error) {
+        errors.push(`reelSequences.screenGeometry: ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (["reelStrips", "reelStripGeneration", "symbolWeights"].some(key => blueprint[key] !== undefined)) errors.push("reelSequences: exactly one reel source is allowed; remove reelStrips, reelStripGeneration and symbolWeights.");
     if (!Array.isArray(source) || source.length !== blueprint.reels || source.length === 0) return [...errors, "reelSequences: expected exactly one definition per reel."];
     Array.from(source).forEach((entry, index) => {

@@ -36,8 +36,8 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if (schema?.kind === "seeded-video-slot" && schema.weightedReels && state.reelStrips !== undefined) {
         const strips = state.reelStrips as (string | number)[][];
-        const selection = state.sequenceState as {context: string; selections: import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[]; counts: Record<string, number>[]};
-        if (!selection || !Array.isArray(selection.selections) || selection.selections.length !== schema.weightedReels.length || typeof selection.context !== "string" || !Array.isArray(selection.counts) || selection.counts.length !== strips.length || !Number.isSafeInteger(state.implicitRound) || (state.implicitRound as number) < 0) throw new Error("Missing weighted selection state.");
+        const selection = state.sequenceState as {context: string; contextRequested: boolean; implicitGeneration: number; selections: import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[]; counts: Record<string, number>[]};
+        if (!selection || !Array.isArray(selection.selections) || selection.selections.length !== schema.weightedReels.length || typeof selection.context !== "string" || !Array.isArray(selection.counts) || selection.counts.length !== strips.length || typeof selection.contextRequested !== "boolean" || !Number.isSafeInteger(selection.implicitGeneration) || selection.implicitGeneration < 0 || !Number.isSafeInteger(state.implicitRound) || (state.implicitRound as number) < 0) throw new Error("Missing weighted selection state.");
         if (selection.context !== "initialization") validateSequenceSelections(selection.selections, strips.length);
         for (const reel of schema.weightedReels) {
             const definition = new WeightedSymbolsSequence(reel.variants, schema.symbols);

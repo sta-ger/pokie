@@ -1,5 +1,5 @@
 import {isWeightedSymbolsSequence, validateWeightedReelDefinitions} from "./WeightedSymbolsSequence.js";
-import type {ReelSequenceSelection, ReelSequenceStatistics} from "./WeightedSequenceVariant.js";
+import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "./WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
 import {resolveScreenProjection} from "../coordinates/projectSymbolsCombination.js";
 import {SeededRandomNumberGenerator} from "./SeededRandomNumberGenerator.js";
@@ -14,6 +14,7 @@ export class SymbolsCombinationsGenerator<T extends string | number | symbol = s
 implements SymbolsCombinationsGenerating<T> {
     private readonly rng: RandomNumberGenerating;
     private readonly config: VideoSlotConfigDescribing<T>;
+    private readonly weightedDefinitions?: {symbols?: T[]; variants?: WeightedSequenceVariant<T>[]}[];
     private lastStopPositions: number[] = [];
     private context = "initialization";
     private contextRequested = false;
@@ -24,12 +25,16 @@ implements SymbolsCombinationsGenerating<T> {
     constructor(config: VideoSlotConfigDescribing<T>, rng: RandomNumberGenerating = new PseudorandomNumberGenerator()) {
         this.config = config;
         this.rng = rng;
+        const definitions = config.getSymbolsSequences();
+        this.weightedDefinitions = definitions.some(isWeightedSymbolsSequence)
+            ? definitions.map(sequence => isWeightedSymbolsSequence(sequence) ? {variants: sequence.getVariants()} : {symbols: sequence.toArray()}) : undefined;
         this.counts = config.getSymbolsSequences().map(() => Object.create(null) as Record<string, number>);
     }
 
 
     public setSelectionContext(context: string): void {
         if (typeof context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(context) || context.includes("\0")) throw new Error("Invalid whole-sequence selection context.");
+        this.assertWeightedDefinitionsUnchanged();
         this.contextRequested = true;
         if (context !== this.context) {
             this.context = context;
@@ -42,6 +47,7 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     public getSequenceStatistics(): ReelSequenceStatistics[] {
+        this.assertWeightedDefinitionsUnchanged();
         return this.config.getSymbolsSequences().flatMap((sequence, reelIndex) => {
             if (!(isWeightedSymbolsSequence(sequence))) return [];
             const variants = sequence.getVariants(),
@@ -57,13 +63,17 @@ implements SymbolsCombinationsGenerating<T> {
         });
     }
 
-    public getSelectionState(): {context: string; selections: ReelSequenceSelection[]; counts: Record<string, number>[]} {
-        return {context: this.context, selections: this.getSequenceSelections(), counts: this.counts.map(counts => ({...counts}))};
+    public getSelectionState(): {context: string; contextRequested: boolean; implicitGeneration: number; selections: ReelSequenceSelection[]; counts: Record<string, number>[]} {
+        this.assertWeightedDefinitionsUnchanged();
+        return {context: this.context, contextRequested: this.contextRequested, implicitGeneration: this.implicitGeneration, selections: this.getSequenceSelections(), counts: this.counts.map(counts => ({...counts}))};
     }
 
     public validateSelectionState(value: unknown): void {
+        this.assertWeightedDefinitionsUnchanged();
         const state = value as ReturnType<SymbolsCombinationsGenerator<T>["getSelectionState"]>;
         if (!state || typeof state.context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(state.context) || !Array.isArray(state.selections) || !Array.isArray(state.counts) || state.counts.length > this.config.getReelsNumber()) throw new Error("Invalid weighted selection context/state.");
+        if (typeof state.contextRequested !== "boolean") throw new Error("Invalid pending selection context.");
+        if (!Number.isSafeInteger(state.implicitGeneration) || state.implicitGeneration < 0) throw new Error("Invalid implicit generation counter.");
         const seen = new Set<number>();
         for (const selection of state.selections) {
             const sequence = this.config.getSymbolsSequences()[selection.reelIndex];
@@ -82,19 +92,27 @@ implements SymbolsCombinationsGenerating<T> {
         this.validateSelectionState(value);
         const state = value as ReturnType<SymbolsCombinationsGenerator<T>["getSelectionState"]>;
         this.context = state.context;
+        this.implicitGeneration = state.implicitGeneration;
+        this.contextRequested = state.contextRequested;
         this.selections = state.selections.map(item => ({...item}));
         this.counts = state.counts.map(counts => Object.assign(Object.create(null) as Record<string, number>, counts));
     }
 
     public getResolvedReelStrips(): T[][] {
+        this.assertWeightedDefinitionsUnchanged();
         return this.config.getSymbolsSequences().map((sequence, reelIndex) => isWeightedSymbolsSequence(sequence)
             ? sequence.resolve(this.selections.find(item => item.reelIndex === reelIndex)!.variantId).toArray() : sequence.toArray());
     }
 
 
-    public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+    public validateSequenceDefinitions(): void {
         resolveScreenProjection(this.config);
         validateWeightedReelDefinitions(this.config.getSymbolsSequences(), this.config.getReelsNumber(), this.config.getAvailableSymbols(), resolveScreenProjection(this.config)?.getRows("generated") ?? this.config.getReelsSymbolsNumber());
+        this.assertWeightedDefinitionsUnchanged();
+    }
+
+    public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        this.validateSequenceDefinitions();
         if (!this.contextRequested) this.setSelectionContext(`implicit:${++this.implicitGeneration}`);
         this.contextRequested = false;
         const arr: T[][] = new Array(this.config.getReelsNumber());
@@ -141,6 +159,22 @@ implements SymbolsCombinationsGenerating<T> {
         const rng = this.rng as {fromSessionState?: (value: unknown) => unknown};
         if (rng.fromSessionState === undefined) throw new Error("This symbols-combination RNG does not support state restoration.");
         rng.fromSessionState(state);
+    }
+
+    private assertWeightedDefinitionsUnchanged(): void {
+        const sequences = this.config.getSymbolsSequences();
+        if (!this.weightedDefinitions && !sequences.some(isWeightedSymbolsSequence)) return;
+        const equalSymbols = (first: readonly T[], second: readonly T[]): boolean => first.length === second.length && first.every((symbol, index) => symbol === second[index]);
+        const unchanged = this.weightedDefinitions?.length === sequences.length && sequences.every((sequence, index) => {
+            const definition = this.weightedDefinitions![index];
+            if (!isWeightedSymbolsSequence(sequence)) return definition.symbols !== undefined && equalSymbols(definition.symbols, sequence.toArray());
+            const variants = sequence.getVariants();
+            return definition.variants !== undefined && definition.variants.length === variants.length && variants.every((variant, variantIndex) => {
+                const expected = definition.variants![variantIndex];
+                return expected.id === variant.id && expected.weight === variant.weight && equalSymbols(expected.symbols, variant.symbols);
+            });
+        });
+        if (!unchanged) throw new Error("Weighted reel definitions changed on a live generator; create a new session for the new model.");
     }
 
     private getRandomReelSymbols(reelId: number): {symbols: T[]; position: number} {
