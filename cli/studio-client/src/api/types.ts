@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../../../../src/session/videoslot/coordinates/ScreenGeometry.js";
 export type StudioContext = {mode: "home"} | {mode: "project"; projectRoot: string};
 
 /** Mirrors the server-owned durable Studio job contract. */
@@ -215,7 +216,7 @@ export type GameModelBasics = {id?: string; name?: string; version?: string; des
 
 export type GameModelWinModel = {type: "lines" | "ways" | "clusters"; minimumClusterSize?: number};
 
-export type GameModelLayout = {reels?: number; rows?: number; winModel: GameModelWinModel; paylineCount?: number};
+export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: ScreenGeometry; winModel: GameModelWinModel; paylineCount?: number};
 
 export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
@@ -223,7 +224,7 @@ export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" |
 
 export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
 
-export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]};
+export type GameModelGameWindow = {reels: number; rows: number; wrapsAround: true; grid: GameModelReelWindowCell[][]; screenGeometry?: ScreenGeometry; visibleRowCoverage?: number[]};
 
 export type GameModelReelStripPosition = {
     index: number;
@@ -792,6 +793,8 @@ export type RoundArtifactFeatureEvent = {
 };
 
 export type RoundStepArtifact = {
+    readonly geometry?: ScreenGeometry;
+    readonly generatedScreen?: readonly (readonly (string | number)[])[];
     readonly index: number;
     readonly screen: readonly (readonly (string | number)[])[];
     readonly totalWin: number;
@@ -801,6 +804,8 @@ export type RoundStepArtifact = {
 };
 
 export type RoundArtifact = {
+    readonly geometry?: ScreenGeometry;
+    readonly generatedScreen?: readonly (readonly (string | number)[])[];
     readonly schemaVersion: number;
     readonly roundId: string;
     readonly provenance: RoundArtifactProvenance;

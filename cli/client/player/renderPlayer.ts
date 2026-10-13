@@ -186,6 +186,7 @@ export type PlayerRoundView = {
     formatTotalWin?: (value: number) => string;
     formatPayoutMultiplier?: (value: number) => string;
     reelsSymbols: string[][];
+    visibleRowCoverage?: readonly number[];
     highlights: WinHighlight[];
     featureCounters?: FeatureCounter[];
     lines?: LineDefinitionView[];
@@ -223,6 +224,7 @@ export function renderReelsGrid(
     container: HTMLElement,
     reelsSymbols: string[][],
     artworkUrlForSymbol?: (symbolId: string) => string | undefined,
+    visibleRowCoverage?: readonly number[],
 ): void {
     clearChildren(container);
     const doc = container.ownerDocument;
@@ -236,6 +238,12 @@ export function renderReelsGrid(
             const cell = doc.createElement("div") as unknown as CellElement;
             cell.dataset.cell = cellId(reelIndex, rowIndex);
             cell.className = "player-cell";
+            const coverage = visibleRowCoverage?.[rowIndex];
+            if (coverage !== undefined && coverage > 0 && coverage < 1) {
+                cell.dataset.visibleCoverage = String(coverage);
+                cell.style.height = `calc(3rem * ${coverage})`;
+                cell.title = `${symbol} (${Math.round(coverage * 100)}% visible)`;
+            }
             cell.textContent = symbol;
             cell.baseColor = "";
             const artworkUrl = artworkUrlForSymbol?.(symbol);
@@ -568,7 +576,7 @@ export function renderPlayerRound(elements: PlayerRoundElements, view: PlayerRou
             }
         }
     }
-    renderReelsGrid(elements.gridContainer, view.reelsSymbols, view.artworkUrlForSymbol);
+    renderReelsGrid(elements.gridContainer, view.reelsSymbols, view.artworkUrlForSymbol, view.visibleRowCoverage);
     applyPersistentHighlights(elements.gridContainer, view.highlights);
     renderWinsSection(elements.winsSection, view.highlights.length > 0);
     renderWinHighlightsList(elements.winsList, elements.gridContainer, view.highlights);

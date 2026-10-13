@@ -89,6 +89,7 @@ export function buildGameModelProjection(
         layout: available({
             reels: blueprint.reels,
             rows: blueprint.rows,
+            ...(blueprint.screenGeometry ? {screenGeometry: JSON.parse(JSON.stringify(blueprint.screenGeometry))} : {}),
             winModel,
             paylineCount: winModel.type === "lines" ? (blueprint.paylines?.length ?? 0) : undefined,
         }),

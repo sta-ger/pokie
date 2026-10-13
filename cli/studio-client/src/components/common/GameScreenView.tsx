@@ -19,6 +19,7 @@ import {CanonicalPlayerView} from "./CanonicalPlayerView";
 export function GameScreenView({
     screen,
     wins,
+    visibleRowCoverage,
     credits,
     totalWin,
     payoutMultiplier,
@@ -33,6 +34,7 @@ export function GameScreenView({
     onSelectMode,
 }: {
     screen: string[][];
+    visibleRowCoverage?: readonly number[];
     wins?: readonly RoundArtifactWin[];
     credits?: number;
     totalWin?: number;
@@ -51,6 +53,7 @@ export function GameScreenView({
         <CanonicalPlayerView
             reelsSymbols={screen}
             wins={wins}
+            visibleRowCoverage={visibleRowCoverage}
             credits={credits}
             totalWin={totalWin}
             payoutMultiplier={payoutMultiplier}

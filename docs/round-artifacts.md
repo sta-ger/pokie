@@ -248,3 +248,7 @@ if (issues.some((issue) => issue.severity === "error")) {
     // ...
 }
 ```
+
+## Generated, visible and evaluated coordinates
+
+Canonical generated evidence and the separate PublicRoundArtifactProjector: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).

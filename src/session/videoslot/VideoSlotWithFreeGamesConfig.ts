@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
 import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
@@ -30,6 +31,14 @@ implements VideoSlotWithFreeGamesConfigRepresenting<T> {
         entry[5] = 20;
         rv["S"] = entry;
         return rv;
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return this.baseConfig.getScreenGeometry();
+    }
+
+    public setScreenGeometry(geometry: ScreenGeometry | undefined): void {
+        this.baseConfig.setScreenGeometry(geometry);
     }
 
     public isResolvedForSessionRestoration(): boolean {

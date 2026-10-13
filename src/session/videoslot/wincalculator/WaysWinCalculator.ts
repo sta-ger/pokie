@@ -1,3 +1,4 @@
+import {projectEvaluationSymbols} from "../coordinates/projectSymbolsCombination.js";
 import {VideoSlotConfig} from "../VideoSlotConfig.js";
 import {VideoSlotWithFreeGamesConfig} from "../VideoSlotWithFreeGamesConfig.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
@@ -34,6 +35,7 @@ export class WaysWinCalculator<T extends string | number | symbol = string> impl
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,
     ): Record<T, WinningWayDescribing<T>> {
+        symbolsCombination = projectEvaluationSymbols(symbolsCombination, this.config);
         const winningWays = {} as Record<T, WinningWayDescribing<T>>;
         const matrix = symbolsCombination.toMatrix();
         const payableSymbols = this.config

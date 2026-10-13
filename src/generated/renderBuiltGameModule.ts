@@ -199,7 +199,7 @@ ${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     // declarations. Pin the erased type import to the CommonJS condition so Node16 resolution does
     // not reject it as an ESM type import from a CommonJS generated module.
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
-    const baseStateSchema = {kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols};
+    const baseStateSchema = {kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
     const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
     const stateSchema = betModeWiring !== undefined ? {kind: "bet-modes", base: featureStateSchema} : featureStateSchema;
     const blueprintDeclaration =
@@ -254,6 +254,7 @@ function createConfig(${contextParam}) {
     }
     config.setReelsNumber(blueprint.reels);
     config.setReelsSymbolsNumber(blueprint.rows);
+    if (blueprint.screenGeometry) config.setScreenGeometry(blueprint.screenGeometry);
     config.setWildSymbols(blueprint.wilds || []);
     config.setScatterSymbols(blueprint.scatters || []);
     config.setAvailableSymbols(blueprint.symbols);
@@ -269,9 +270,9 @@ function createConfig(${contextParam}) {
 
     config.setPaytable(paytable);
 
-    if (blueprint.paylines) {
+    if (blueprint.paylines || blueprint.screenGeometry) {
         const linesDefinitions = new CustomLinesDefinitions();
-        blueprint.paylines.forEach((line, index) => linesDefinitions.setLineDefinition(String(index), line));
+        (blueprint.paylines || Array.from({length: blueprint.screenGeometry?.evaluated.rows ?? blueprint.rows}, (_, row) => Array.from({length: blueprint.reels}, () => row))).forEach((line, index) => linesDefinitions.setLineDefinition(String(index), line));
         config.setLinesDefinitions(linesDefinitions);
     }
 

@@ -22,7 +22,7 @@ export function estimateExactOutcomeSpaceSize(game: PokieGame): OutcomeSpaceEsti
 
     return {
         reelsNumber: probe.getReelsNumber(),
-        reelsSymbolsNumber: probe.getReelsSymbolsNumber(),
+        reelsSymbolsNumber: probe.getScreenGeometry?.()?.generated.rows ?? probe.getReelsSymbolsNumber(),
         reelSizes,
         totalOutcomeSpaceSize,
     };

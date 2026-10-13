@@ -1,3 +1,4 @@
+import {captureCoordinatePublicPayload} from "./internal/captureCoordinatePublicPayload.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import type {PokieGame} from "../../gamepackage/PokieGame.js";
 import {resolveGameSessionIdentity} from "../../runtime/GameSessionIdentity.js";
@@ -40,7 +41,7 @@ export function captureInitialPokieSessionState(
     }
 
     if (serializer !== undefined) {
-        state.initialPayload = serializer.getInitialData(session) as unknown as Record<string, unknown>;
+        state.initialPayload = captureCoordinatePublicPayload(state, serializer.getInitialData(session) as unknown as Record<string, unknown>);
 
         if (serializer.getInitialDebugData && captureDebugData) {
             state.initialDebugPayload = serializer.getInitialDebugData(session);

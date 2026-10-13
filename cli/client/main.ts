@@ -190,6 +190,7 @@ function renderVideoSlotRound(
             totalWin,
             payoutMultiplier: totalWin !== undefined && bet !== undefined && bet !== 0 ? totalWin / bet : undefined,
             reelsSymbols: response.reelsSymbols,
+            visibleRowCoverage: Array.isArray(response.visibleRowCoverage) ? response.visibleRowCoverage as number[] : undefined,
             highlights,
             featureCounters: deriveFeatureCounters(response),
             lines: staticView.lines,

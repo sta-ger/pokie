@@ -1,3 +1,4 @@
+import {assertEvaluationComponents} from "../coordinates/internal/assertEvaluationComponents.js";
 import {ValidationResult} from "../../../validation/ValidationResult.js";
 import {ValidationRule} from "../../../validation/ValidationRule.js";
 import {ClusterWinComponent} from "./ClusterWinComponent.js";
@@ -48,6 +49,9 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
     }
 
     public evaluate(context: WinEvaluationContext<T>): WinEvaluationResult<T> {
+        if (context.getConfig().getScreenGeometry?.() || context.getSymbolsCombination().getScreenGeometry?.()) {
+            context = new WinEvaluationContext(context.getBet(), context.getSymbolsCombination(), context.getConfig(), context.getMetadata());
+        }
         if (this.options.validateOnEvaluate !== false) {
             const validation = this.validate(context);
             if (validation.hasErrors()) {
@@ -59,7 +63,11 @@ export class WinEvaluationPipeline<T extends string | number | symbol = string> 
             evaluator,
             components: evaluator.evaluate(context).map((component) => this.applyMultiplier(component, context)),
         }));
+        const geometry = context.getConfig().getScreenGeometry?.() ?? context.getSymbolsCombination().getScreenGeometry?.();
+        if (geometry) componentsByEvaluator.forEach(({components}) => assertEvaluationComponents(components, geometry));
         const selectedComponents = this.aggregationPolicy.aggregate(componentsByEvaluator, context);
+
+        if (geometry) assertEvaluationComponents(selectedComponents, geometry);
 
         return new WinEvaluationResult<T>({
             lineWins: selectedComponents.filter((component): component is LineWinComponent<T> => component instanceof LineWinComponent),

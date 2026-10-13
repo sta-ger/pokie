@@ -1,3 +1,7 @@
+import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
+import {projectEvaluationSymbols} from "./coordinates/projectSymbolsCombination.js";
+import {SymbolsCombination} from "./combinations/SymbolsCombination.js";
+import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
 import type {LinesPatternsDescribing} from "./linespatterns/LinesPatternsDescribing.js";
 import type {PaytableRepresenting} from "./paytable/PaytableRepresenting.js";
@@ -19,6 +23,25 @@ implements VideoSlotSessionHandling<T> {
 
     constructor(baseSession: VideoSlotSessionHandling<T>) {
         this.baseSession = baseSession;
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return this.baseSession.getScreenGeometry?.();
+    }
+
+    public validateScreenCoordinates(): void {
+        this.baseSession.validateScreenCoordinates?.();
+    }
+
+    public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        if (this.baseSession.getVisibleSymbolsCombination) return this.baseSession.getVisibleSymbolsCombination();
+        const geometry = this.getScreenGeometry();
+        const generated = this.getSymbolsCombination();
+        return geometry ? new SymbolsCombination<T>().fromMatrix(new ScreenProjection(geometry).project(generated.toMatrix(), "visible")) : generated;
+    }
+
+    public getEvaluatedSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        return this.baseSession.getEvaluatedSymbolsCombination?.() ?? projectEvaluationSymbols(this.getSymbolsCombination());
     }
 
     public getPaytable(): PaytableRepresenting<T> {

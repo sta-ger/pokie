@@ -1,3 +1,4 @@
+import {RoundArtifactValidator} from "./RoundArtifactValidator.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import {computeRoundArtifactHash} from "./computeRoundArtifactHash.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -13,6 +14,10 @@ export class PokieJsonRoundArtifactProjector<T extends string | number = string>
 implements RoundArtifactProjector<T, RoundArtifactJson<T>> {
     public project(artifact: RoundArtifact<T>): RoundArtifactJson<T> {
         const canonical = toCanonicalJson(artifact) as unknown as RoundArtifact<T>;
+        if (artifact.geometry || artifact.steps.some(step => step.geometry)) {
+            const issues = new RoundArtifactValidator<T>().validate(artifact);
+            if (issues.length) throw new Error(issues.map(issue => issue.message).join("; "));
+        }
         return deepFreeze({...canonical, hash: computeRoundArtifactHash(artifact)});
     }
 }

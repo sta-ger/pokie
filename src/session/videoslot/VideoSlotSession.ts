@@ -1,3 +1,7 @@
+import {ScreenProjection} from "./coordinates/ScreenProjection.js";
+import {assertEvaluationComponents} from "./coordinates/internal/assertEvaluationComponents.js";
+import {projectEvaluationSymbols, resolveScreenProjection, validateEvaluationPaylines} from "./coordinates/projectSymbolsCombination.js";
+import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {SymbolsSequence} from "./combinations/SymbolsSequence.js";
 import {validateExecutableState} from "../../runtime/validateExecutableState.js";
 import type {SessionStateRestoring} from "../SessionStateRestoring.js";
@@ -29,6 +33,9 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     private readonly combinationsGenerator: SymbolsCombinationsGenerating<T>;
     private readonly winCalculator: VideoSlotWinCalculating<T>;
     private winAmount = 0;
+    private resultValid = true;
+    private roundGeometry?: ScreenGeometry;
+
     private symbolsCombination: SymbolsCombinationDescribing<T> = new SymbolsCombination<T>();
 
     constructor(
@@ -41,9 +48,30 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.combinationsGenerator = combinationsGenerator;
         this.winCalculator = winCalculator;
         this.baseSession = baseSession;
+        this.validateScreenCoordinates();
         this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
+        const geometry = this.config.getScreenGeometry?.() ?? this.symbolsCombination.getScreenGeometry?.();
+        this.roundGeometry = geometry && new ScreenProjection(geometry).getGeometry();
     }
 
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return this.roundGeometry && new ScreenProjection(this.roundGeometry).getGeometry();
+    }
+
+    public getVisibleSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        const projection = resolveScreenProjection(this);
+        return projection ? new SymbolsCombination<T>().fromMatrix(projection.project(this.symbolsCombination.toMatrix(), "visible")) : this.symbolsCombination;
+    }
+
+    public getEvaluatedSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        return this.roundGeometry
+            ? projectEvaluationSymbols(new SymbolsCombination<T>().fromMatrix(this.symbolsCombination.toMatrix()).withCoordinates(this.roundGeometry)) : this.symbolsCombination;
+    }
+
+    public validateScreenCoordinates(): void {
+        resolveScreenProjection(this.config);
+        validateEvaluationPaylines(this.config);
+    }
     public getPaytable(): PaytableRepresenting<T> {
         return this.config.getPaytable();
     }
@@ -53,14 +81,15 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getWinningLines(): Record<string, WinningLineDescribing<T>> {
-        return this.winCalculator.getWinningLines();
+        return this.resultValid ? this.winCalculator.getWinningLines() : {};
     }
 
     public getWinningScatters(): Record<T, WinningScatterDescribing<T>> {
-        return this.winCalculator.getWinningScatters();
+        return this.resultValid ? this.winCalculator.getWinningScatters() : {} as Record<T, WinningScatterDescribing<T>>;
     }
 
     public getWinEvaluationResult(): WinEvaluationResult<T> {
+        if (!this.resultValid) return new WinEvaluationResult<T>();
         if (this.supportsWinEvaluationResult()) {
             return this.winCalculator.getWinEvaluationResult!();
         }
@@ -92,17 +121,18 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getWinAmount(): number {
+        if (!this.resultValid) return 0;
         return this.supportsWinEvaluationResult()
             ? this.getWinEvaluationResult().getTotalWin()
             : this.winCalculator.getWinAmount();
     }
 
     public getLinesWinning(): number {
-        return this.winCalculator.getLinesWinning();
+        return this.resultValid ? this.winCalculator.getLinesWinning() : 0;
     }
 
     public getScattersWinning(): number {
-        return this.winCalculator.getScattersWinning();
+        return this.resultValid ? this.winCalculator.getScattersWinning() : 0;
     }
 
     public getAvailableBets(): number[] {
@@ -129,15 +159,33 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         if (!this.canPlayNextGame()) {
             return;
         }
+        this.resultValid = false;
+        this.validateScreenCoordinates();
+        const generated = this.combinationsGenerator.generateSymbolsCombination();
+        const declared = this.config.getScreenGeometry?.() ?? generated.getScreenGeometry?.();
+        if (declared) {
+            if (generated.getCoordinateSpace && generated.getCoordinateSpace() !== "generated") throw new Error("A session generator must supply the generated coordinate space.");
+            new ScreenProjection(declared).assertMatrix(generated.toMatrix(), "generated");
+        }
+        const evaluated = projectEvaluationSymbols(generated, this.config);
+        validateEvaluationPaylines(this.config, evaluated);
+        this.winCalculator.calculateWin(this.getBet(), evaluated);
+        const geometry = this.config.getScreenGeometry?.() ?? generated.getScreenGeometry?.();
+        if (geometry) {
+            const result = this.supportsWinEvaluationResult() ? this.winCalculator.getWinEvaluationResult!() : LegacyWinEvaluationResultAdapter.fromWinCalculator(this.winCalculator);
+            assertEvaluationComponents(result.getWinComponents(), geometry);
+        }
         this.baseSession.play();
-        this.symbolsCombination = this.combinationsGenerator.generateSymbolsCombination();
-        this.winCalculator.calculateWin(this.getBet(), this.symbolsCombination);
+        this.symbolsCombination = generated;
+        this.roundGeometry = geometry && new ScreenProjection(geometry).getGeometry();
+        this.resultValid = true;
         this.winAmount = this.getWinAmount();
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
     }
 
-    public getSessionStateSchema(): {readonly kind: "seeded-video-slot"} {
-        return {kind: "seeded-video-slot"};
+    public getSessionStateSchema(): {readonly kind: "seeded-video-slot"; readonly screenGeometry?: ScreenGeometry} {
+        const screenGeometry = this.config.getScreenGeometry?.();
+        return {kind: "seeded-video-slot", ...(screenGeometry ? {screenGeometry} : {})};
     }
 
     public isSessionStateRestorable(): boolean {

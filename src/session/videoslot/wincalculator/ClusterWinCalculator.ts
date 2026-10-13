@@ -1,3 +1,4 @@
+import {projectEvaluationSymbols} from "../coordinates/projectSymbolsCombination.js";
 import {VideoSlotConfig} from "../VideoSlotConfig.js";
 import {VideoSlotWithFreeGamesConfig} from "../VideoSlotWithFreeGamesConfig.js";
 import {ClusterDetector} from "../combinations/ClusterDetector.js";
@@ -41,6 +42,7 @@ export class ClusterWinCalculator<T extends string | number | symbol = string> i
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,
     ): Record<string, WinningClusterDescribing<T>> {
+        symbolsCombination = projectEvaluationSymbols(symbolsCombination, this.config);
         const winningClusters: Record<string, WinningClusterDescribing<T>> = {};
         const clusters = this.clusterDetector.detect<T>(
             symbolsCombination.toMatrix(),

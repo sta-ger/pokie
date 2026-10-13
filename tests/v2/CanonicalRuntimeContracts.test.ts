@@ -1,3 +1,4 @@
+import {overscanGeometry} from "./fixtures/OverscanGame.js";
 import vm from "node:vm";
 import {execFileSync} from "node:child_process";
 import {emitPublicRuntime} from "./helpers/publicRuntime.js";
@@ -99,12 +100,24 @@ describe("V2C-02 canonical runtime contracts", () => {
             }).outputText);
             fs.writeFileSync(path.join(runtime.directory, "run.mjs"), `
                 import * as esm from "@fromstan/pokie";
+                import * as browser from "@fromstan/pokie/browser";
                 import {createRequire} from "node:module";
                 import {legacyComposedGame as esmGame} from "./game.mjs";
                 import {legacyRoundGame as esmRoundGame} from "./extension.mjs";
                 import {probe} from "./probe.mjs";
                 const require = createRequire(import.meta.url);
                 const cjs = require("@fromstan/pokie");
+                const geometry = ${JSON.stringify(overscanGeometry)};
+                for (const api of [esm, cjs, browser]) {
+                    const projection = new api.ScreenProjection(geometry);
+                    if (JSON.stringify(projection.map([4, 4], "generated", "evaluated")) !== "[4,2]") throw new Error("Public coordinate export did not map the edge cell.");
+                    const config = new api.VideoSlotConfig();
+                    config.setScreenGeometry(geometry);
+                    config.setSymbolsSequences(Array.from({length: 5}, () => new api.SymbolsSequence().fromArray(["A", "K", "S", "Q", "J", "W", "A"])));
+                    const session = new api.VideoSlotSession(config, new api.SymbolsCombinationsGenerator(config, new api.SeededRandomNumberGenerator(7)));
+                    session.play();
+                    if (session.getSymbolsCombination().toMatrix()[0].length !== 7 || new api.VideoSlotSessionSerializer().getRoundData(session).reelsSymbols[0].length !== 3) throw new Error("Public runtime lost generated/visible ownership.");
+                }
                 await probe(esm, cjs, require("./game.cjs").legacyComposedGame, require("./extension.cjs").legacyRoundGame);
                 await probe(cjs, esm, esmGame, esmRoundGame);
                 console.log("Both public ESM/CJS runtime directions passed.");

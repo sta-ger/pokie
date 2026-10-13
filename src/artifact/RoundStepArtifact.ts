@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {JsonObject} from "../json/JsonValue.js";
 import type {RoundArtifactFeatureEvent} from "./RoundArtifactFeatureEvent.js";
 import type {RoundArtifactWin} from "./RoundArtifactWin.js";
@@ -10,6 +11,8 @@ import type {RoundArtifactWin} from "./RoundArtifactWin.js";
 // mutating their own original input or by holding a reference to the artifact itself.
 export type RoundStepArtifact<T extends string | number = string> = {
     readonly index: number;
+    readonly geometry?: ScreenGeometry;
+    readonly generatedScreen?: readonly (readonly T[])[];
     readonly screen: readonly (readonly T[])[];
     readonly totalWin: number;
     readonly wins: readonly RoundArtifactWin<T>[];

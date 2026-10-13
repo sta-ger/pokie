@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {WinEvaluationResult} from "../session/videoslot/winevaluation/WinEvaluationResult.js";
 import type {RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.js";
 
@@ -10,6 +11,8 @@ import type {RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.j
 // "debug" into JsonObject at build time (see canonicalizeJsonField), so there's no need for the caller-facing
 // input type to be as strict as the output RoundStepArtifact.
 export type RoundArtifactStepSource<T extends string | number = string> = {
+    readonly geometry?: ScreenGeometry;
+    readonly generatedScreen?: readonly (readonly T[])[];
     readonly screen: readonly (readonly T[])[];
     readonly winEvaluationResult: WinEvaluationResult<T>;
     readonly featureEvents?: readonly RoundArtifactFeatureEventInput[];

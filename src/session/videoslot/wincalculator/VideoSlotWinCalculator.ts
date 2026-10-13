@@ -103,6 +103,7 @@ export class VideoSlotWinCalculator<T extends string | number | symbol = string>
     }
 
     public calculateWin(bet: number, symbolsCombination: SymbolsCombinationDescribing<T>): void {
+        this.winEvaluationResult = new WinEvaluationResult<T>();
         if (this.config.getAvailableBets().some((availableBet) => availableBet === bet)) {
             this.winEvaluationResult = this.pipeline.evaluate(
                 new WinEvaluationContext<T>(bet, symbolsCombination, this.config),

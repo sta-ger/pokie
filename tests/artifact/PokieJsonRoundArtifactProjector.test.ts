@@ -1,4 +1,6 @@
+import {adversarialScreen, overscanConfig, overscanGeometry} from "../v2/fixtures/OverscanGame.js";
 import {
+    PublicRoundArtifactProjector, VideoSlotSession, buildRoundArtifactFromSession,
     PokieJsonRoundArtifactProjector,
     RoundArtifact,
     RoundArtifactProvenance,
@@ -111,5 +113,28 @@ describe("PokieJsonRoundArtifactProjector", () => {
         const invalid = {...artifact, debug: cyclic} as unknown as RoundArtifact<string>;
 
         expect(() => computeRoundArtifactHash(invalid)).toThrow(/circular reference/);
+    });
+});
+
+
+describe("Overscan artifact projection ownership", () => {
+    it("keeps generated evidence in canonical JSON and maps public wins without mutating it", () => {
+        const session = new VideoSlotSession(overscanConfig(), {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(adversarialScreen()).withCoordinates(overscanGeometry)});
+        session.play();
+        const artifact = buildRoundArtifactFromSession(session, {roundId: "overscan", provenance});
+        const canonical = new PokieJsonRoundArtifactProjector().project(artifact);
+        const publicView = new PublicRoundArtifactProjector().project(artifact);
+        expect(canonical.generatedScreen).toEqual(adversarialScreen());
+        expect(canonical.geometry).toEqual(overscanGeometry);
+        expect(canonical.steps[0].generatedScreen).toEqual(canonical.generatedScreen);
+        expect(publicView).not.toHaveProperty("generatedScreen");
+        expect(publicView).not.toHaveProperty("geometry");
+        expect(publicView.wins[0].winningPositions[0]).toEqual([0, 1]);
+        expect(canonical.wins[0].winningPositions[0]).toEqual([0, 0]);
+        expect(publicView.totalWin).toBe(canonical.totalWin);
+        expect(computeRoundArtifactHash(JSON.parse(JSON.stringify(artifact)))).toBe(canonical.hash);
+        const corrupted = JSON.parse(JSON.stringify(canonical));
+        corrupted.steps[0].screen[0][0] = "tampered";
+        expect(() => new PokieJsonRoundArtifactProjector().project(corrupted)).toThrow(/viewport/);
     });
 });

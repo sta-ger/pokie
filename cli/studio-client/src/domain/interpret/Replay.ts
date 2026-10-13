@@ -1,3 +1,6 @@
+import type {RoundArtifact as CanonicalRoundArtifact} from "../../../../../src/artifact/RoundArtifact.js";
+import {toCanonicalJson} from "../../../../../src/json/toCanonicalJson.js";
+import {PublicRoundArtifactProjector} from "../../../../../src/artifact/PublicRoundArtifactProjector.js";
 import type {
     OutcomeSourceReplayDescriptorView,
     ReplayDescriptor,
@@ -58,14 +61,17 @@ export function isReplayTerminal(job: StudioReplayJobView): boolean {
 export type RoundArtifactDisplayView = Omit<RoundArtifact, "screen" | "steps"> & {
     hash?: string;
     screen: string[][];
-    steps: (Omit<RoundArtifact["steps"][number], "screen"> & {screen: string[][]})[];
+    steps: (Omit<RoundArtifact["steps"][number], "screen"> & {screen: string[][]; visibleRowCoverage?: readonly number[]})[];
 };
 
 export function describeRoundArtifact(artifact: RoundArtifact & {hash?: string}): RoundArtifactDisplayView {
+    const visible = artifact.geometry || artifact.steps.some(step => step.geometry)
+        ? new PublicRoundArtifactProjector<string | number>().project(toCanonicalJson(artifact) as unknown as CanonicalRoundArtifact<string | number>) : artifact;
     return {
         ...artifact,
-        screen: formatScreenGrid(artifact.screen),
-        steps: artifact.steps.map((step) => ({...step, screen: formatScreenGrid(step.screen)})),
+        wins: visible.wins,
+        screen: formatScreenGrid(visible.screen),
+        steps: visible.steps.map((step) => ({...step, screen: formatScreenGrid(step.screen)})),
     };
 }
 

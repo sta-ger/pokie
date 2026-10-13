@@ -129,6 +129,7 @@ export function resolveCanonicalWasmGameModel(blueprint: GameBlueprint): PokieWa
 }
 
 function assertSupportedCanonicalWasmSemantics(blueprint: GameBlueprint): void {
+    if (blueprint.screenGeometry !== undefined) throw new Error("Canonical WASM does not support screenGeometry. Build a TypeScript package to preserve coordinate semantics.");
     if (blueprint.winModel !== undefined && blueprint.winModel.type !== "lines") {
         throw new Error(`Blueprint "${blueprint.manifest.id}" uses winModel.type "${blueprint.winModel.type}", which canonical POKIE WASM does not implement. Next: use line wins (omit winModel or set {type: "lines"}) before building.`);
     }

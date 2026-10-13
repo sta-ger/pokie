@@ -183,7 +183,7 @@ export function deriveWinHighlights(response: VideoSlotRoundResponse): WinHighli
             kind: "line",
             label: canonicalWinLabel("line", id, typeof win.symbolId === "string" || typeof win.symbolId === "number" ? win.symbolId : id, winAmount, symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0])),
             winAmount,
-            positions: symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0]),
+            positions: Array.isArray(win.visiblePositions) ? asPositions(win.visiblePositions) : symbolsPositions.map((reelIndex) => [reelIndex, definition[reelIndex] ?? 0]),
             paylinePositions: definition.map((row, reelIndex) => [reelIndex, row]),
         };
     });

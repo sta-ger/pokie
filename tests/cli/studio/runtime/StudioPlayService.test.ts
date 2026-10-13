@@ -1,6 +1,7 @@
+import {createOverscanGame} from "../../../v2/fixtures/OverscanGame.js";
 import {emitPublicRuntime} from "../../../v2/helpers/publicRuntime.js";
 import {
-    buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
+    ReplayRecorder, buildRoundArtifact, InMemorySessionRepository, SpinCommandHandler,
     GameSessionHandling,
     GameWithFreeGamesSessionHandling,
     GamePackageGenerator,
@@ -1556,5 +1557,31 @@ describe("StudioPlayService canonical error propagation", () => {
         expect(await service.spin(created.session.sessionId)).toMatchObject({status: "error", code: "incompatible-state"});
         expect(play).not.toHaveBeenCalled();
         service.reset();
+    });
+});
+
+
+describe("Overscan Studio Play", () => {
+    it("matches seeded replay payout and retains the last settled viewport after search cancellation", async () => {
+        const game = createOverscanGame();
+        const release = jest.fn(() => Promise.resolve());
+        const service = new StudioPlayService(() => Promise.resolve(game), () => Promise.resolve({runtimePath: "/overscan", release}), "1.3.0");
+        try {
+            const created = await service.newSession("/overscan", "7");
+            if (created.status !== "ok") throw new Error(JSON.stringify(created));
+            expect(created.session.screen?.[0]).toHaveLength(3);
+            const controller = new AbortController();
+            const result = await service.findAnyWin(created.session.sessionId, {signal: controller.signal, onProgress: () => controller.abort()});
+            expect(result.status).toBe("cancelled");
+            if (result.status !== "cancelled" || !result.session) throw new Error(JSON.stringify(result));
+            const replay = new ReplayRecorder().record({game, seed: "7", round: 1});
+            expect(result.session.win).toBe(replay.totalWin);
+            expect(result.session.screen).toEqual(replay.screen);
+            expect(result.session.debug?.artifact?.generatedScreen?.[0]).toHaveLength(7);
+            expect(result.session.credits).toBe(created.session.credits! - created.session.bet! + replay.totalWin);
+            expect(release).toHaveBeenCalledTimes(1);
+        } finally {
+            service.reset();
+        }
     });
 });

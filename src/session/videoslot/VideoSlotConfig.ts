@@ -1,3 +1,5 @@
+import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
+import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import {CustomLinesDefinitions} from "./linesdefinitions/CustomLinesDefinitions.js";
 import {RightToLeftLinesPatterns} from "./linespatterns/RightToLeftLinesPatterns.js";
 import {ScatteredLinesPatterns} from "./linespatterns/ScatteredLinesPatterns.js";
@@ -15,6 +17,8 @@ import type {SymbolsSequenceDescribing} from "./combinations/SymbolsSequenceDesc
 import type {VideoSlotConfigRepresenting} from "./VideoSlotConfigRepresenting.js";
 
 export class VideoSlotConfig<T extends string | number | symbol = string> implements VideoSlotConfigRepresenting<T> {
+    private screenGeometry?: ScreenGeometry;
+
     private readonly baseConfig: GameSessionConfig;
     private readonly sequencesGenerator: ReelsSymbolsSequencesGenerating<T>;
 
@@ -51,6 +55,14 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
         this.linesDefinitions = new HorizontalLines(this.reelsNumber, this.reelsSymbolsNumber);
         this.linesPatterns = new LeftToRightLinesPatterns(this.reelsNumber);
         this.reelsSymbolsSequences = this.createReelsSymbolsSequences();
+    }
+
+    public getScreenGeometry(): ScreenGeometry | undefined {
+        return this.screenGeometry && new ScreenProjection(this.screenGeometry).getGeometry();
+    }
+
+    public setScreenGeometry(geometry: ScreenGeometry | undefined): void {
+        this.screenGeometry = geometry === undefined ? undefined : new ScreenProjection(geometry).getGeometry();
     }
 
     /** Built-in resolved data only: subclasses and injected model strategies need their own complete codec. */

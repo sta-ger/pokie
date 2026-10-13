@@ -1,3 +1,5 @@
+import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
+import type {RoundStepArtifact} from "./RoundStepArtifact.js";
 import {InvalidJsonValueError} from "../json/InvalidJsonValueError.js";
 import {toCanonicalJson} from "../json/toCanonicalJson.js";
 import type {ValidationIssue} from "../validation/ValidationIssue.js";
@@ -231,6 +233,11 @@ implements ValidationRule<RoundArtifact<T>> {
                 });
             }
 
+            try {
+                validateArtifactCoordinates(s as RoundStepArtifact<T>);
+            } catch (error) {
+                issues.push({code: "round-artifact-coordinates-invalid", severity: "error", message: String(error)});
+            }
             this.validateFeatureEvents(s.featureEvents, `step ${position}`, issues);
 
             const ownWinsSum = (s.wins as unknown[]).reduce((sum: number, win) => {
@@ -313,6 +320,9 @@ implements ValidationRule<RoundArtifact<T>> {
         const lastStep = a.steps[a.steps.length - 1] as Loose<RoundArtifact<T>["steps"][number]> | null;
         if (typeof lastStep !== "object" || lastStep === null || lastStep.screen === undefined) {
             return;
+        }
+        if (!deepEqual(a.geometry, lastStep.geometry) || !deepEqual(a.generatedScreen, lastStep.generatedScreen)) {
+            issues.push({code: "round-artifact-coordinates-mismatch", severity: "error", message: "Round coordinate evidence does not match the last step."});
         }
         if (!deepEqual(a.screen, lastStep.screen)) {
             issues.push({

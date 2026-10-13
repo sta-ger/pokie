@@ -18,8 +18,7 @@ export type ChunkedSimulationChunkInfo = {
 };
 
 export type ChunkedSimulationCallbacks = {
-    // Checked at the top of every chunk, before that chunk plays a single round — mirrors
-    // StudioSimulationService's original "cancellation can only take effect between chunks" behavior.
+    // Checked before every round. A settled command is counted before cancellation is reported.
     // Throws SimulationCancelledError to stop, same as ParallelSimulationRunner's worker-thread path.
     shouldStop?: () => boolean;
     onChunkComplete?: (info: ChunkedSimulationChunkInfo) => Promise<void> | void;
@@ -79,7 +78,7 @@ export async function runChunkedSimulation(
 
         const chunkRounds = Math.min(chunkSize, roundsRemaining);
         const runner = new AggregateSimulationRunner(session, chunkRounds, undefined, undefined, betModeSelector);
-        const chunkAccumulator = runner.run();
+        const chunkAccumulator = runner.run(callbacks.shouldStop);
         accumulator.merge(chunkAccumulator);
         const chunkBreakdown = runner.getBreakdownStatistics();
         if (chunkBreakdown) {
@@ -101,9 +100,12 @@ export async function runChunkedSimulation(
         // Never checked once the session has already stopped itself early this chunk — sessionStopped
         // always takes precedence over converged, since there's no meaningful "converged" statistic to
         // report on a run the session itself cut short.
-        const converged = !stoppedEarly && (callbacks.checkConvergence?.(accumulator, roundsCompleted) ?? false);
+        const cancelled = callbacks.shouldStop?.() === true;
+        const converged = !cancelled && !stoppedEarly && (callbacks.checkConvergence?.(accumulator, roundsCompleted) ?? false);
 
-        await callbacks.onChunkComplete?.({roundsCompleted, isFinished: stoppedEarly || converged || roundsRemaining <= 0});
+        await callbacks.onChunkComplete?.({roundsCompleted, isFinished: cancelled || stoppedEarly || converged || roundsRemaining <= 0});
+
+        if (cancelled || callbacks.shouldStop?.()) throw new SimulationCancelledError();
 
         // The session stopped playing on its own before using every round in this chunk — no point
         // scheduling further chunks once that's happened.

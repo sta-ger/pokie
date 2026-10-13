@@ -345,7 +345,7 @@ function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; r
     if (gameWindow.reels === 0 || reels.every((reel) => !isResolvedReel(reel) || reel.positions.length === 0)) {
         return <EmptyState message="No reels configured yet." />;
     }
-    const grid = reels.map((reel) => reelWindowColumn(reel, stop, gameWindow.rows));
+    const grid = reels.map((reel) => reelWindowColumn(reel, stop + Math.floor(gameWindow.screenGeometry?.visible.rowOffset ?? 0), gameWindow.rows));
     return (
         <div>
             <Text size="sm" c="dimmed" mb="sm">
@@ -353,6 +353,7 @@ function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; r
                 to its own start once it runs past its own end. Move the stop position below to see every window
                 this configuration can show. Wild/scatter symbols are highlighted.
             </Text>
+            {gameWindow.screenGeometry && <Text size="sm" mb="sm">Generated rows: {gameWindow.screenGeometry.generated.rows}. Visible offset: {gameWindow.screenGeometry.visible.rowOffset}. Evaluation rows: {gameWindow.screenGeometry.evaluated.rows}, starting at generated row {gameWindow.screenGeometry.evaluated.rowOffset}. Paylines use evaluation-local rows.</Text>}
             <Group gap="xs" mb="sm" wrap="nowrap">
                 <Button size="xs" variant="default" aria-label="Previous stop" onClick={() => setStop((current) => current - 1)}>
                     ‹ Prev stop
@@ -377,7 +378,7 @@ function GameWindowView({gameWindow, reels}: {gameWindow: GameModelGameWindow; r
                                 {grid.map((column, reelIndex) => {
                                     const cell = column[rowIndex];
                                     return (
-                                        <Table.Td key={reelIndex} ta="center">
+                                        <Table.Td key={reelIndex} ta="center" title={gameWindow.visibleRowCoverage?.[rowIndex] !== undefined ? `${Math.round(gameWindow.visibleRowCoverage[rowIndex] * 100)}% visible` : undefined}>
                                             {cell === undefined ? (
                                                 "—"
                                             ) : (

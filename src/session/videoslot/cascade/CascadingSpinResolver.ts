@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {VideoSlotConfigDescribing} from "../VideoSlotConfigDescribing.js";
 import {SymbolsCombination} from "../combinations/SymbolsCombination.js";
 import {CascadeGridTransformer} from "../combinations/CascadeGridTransformer.js";
@@ -38,6 +39,7 @@ export class CascadingSpinResolver<T extends string | number | symbol = string> 
     }
 
     public resolve(initialScreen: T[][], bet: number): CascadeResult<T> {
+        rejectScreenGeometry(this.config, "CascadingSpinResolver");
         const steps: CascadeStep<T>[] = [];
         let currentScreen = initialScreen.map((reel) => [...reel]);
         let stepIndex = 0;

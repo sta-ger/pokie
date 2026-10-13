@@ -1,3 +1,4 @@
+import {captureCoordinatePublicPayload} from "./internal/captureCoordinatePublicPayload.js";
 import {cloneSessionData} from "../../runtime/internal/cloneSessionData.js";
 import {buildRoundArtifactFromSession} from "../../artifact/buildRoundArtifactFromSession.js";
 import {RoundArtifactBuildError} from "../../artifact/RoundArtifactBuildError.js";
@@ -78,7 +79,7 @@ export function captureRoundPokieSessionState(
     }
 
     if (serializer !== undefined) {
-        state.roundPayload = serializer.getRoundData(session) as unknown as Record<string, unknown>;
+        state.roundPayload = captureCoordinatePublicPayload(state, serializer.getRoundData(session) as unknown as Record<string, unknown>);
 
         if (serializer.getRoundDebugData && capturePolicy.captureDebugPayloads) {
             state.roundDebugPayload = serializer.getRoundDebugData(session);
@@ -121,6 +122,7 @@ function captureFullRoundArtifact(
             debug: buildRoundArtifactDebugSummary(context, state, previousState, roundArtifactRequest, capturePolicy),
         });
     } catch (error) {
+        if (state.coordinates) throw error;
         state.roundArtifactUnavailableReason =
             error instanceof RoundArtifactBuildError
                 ? `buildRoundArtifactFromSession failed (${error.getCode()}): ${error.message}`

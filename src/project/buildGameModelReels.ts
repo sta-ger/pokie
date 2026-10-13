@@ -1,3 +1,5 @@
+import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
+import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {GameBlueprint} from "../generated/GameBlueprint.js";
 import {resolveReelStripGeneration} from "../generated/resolveReelStripGeneration.js";
 import type {ReelStripGenerationSummary} from "../generated/ReelStripGenerationSummary.js";
@@ -67,7 +69,7 @@ function positionsFromStrip(strip: string[], wilds: string[], scatters: string[]
 // The Game window at stop position 0 -- the first `rows` symbols of whichever strip each reel actually
 // resolves to, read via ReelStrip.getSymbolAt so a strip shorter than `rows` wraps exactly like a real
 // spin's screen window would (see ReelStripDefinition's own doc comment on circular index resolution).
-function buildGameWindow(reelsCount: number, rows: number, strips: string[][], wilds: string[], scatters: string[]): GameModelGameWindow {
+function buildGameWindow(reelsCount: number, rows: number, strips: string[][], wilds: string[], scatters: string[], geometry?: ScreenGeometry): GameModelGameWindow {
     const grid = Array.from({length: reelsCount}, (_, reelIndex) => {
         const strip = strips[reelIndex];
         if (strip === undefined || strip.length === 0 || rows <= 0) {
@@ -75,11 +77,11 @@ function buildGameWindow(reelsCount: number, rows: number, strips: string[][], w
         }
         const reelStrip = new ReelStrip(strip);
         return Array.from({length: rows}, (_, rowIndex) => {
-            const symbolId = reelStrip.getSymbolAt(rowIndex);
+            const symbolId = reelStrip.getSymbolAt(rowIndex + (geometry ? Math.floor(new ScreenProjection(geometry).getGeometry().visible.rowOffset) : 0));
             return {symbolId, isWild: wilds.includes(symbolId), isScatter: scatters.includes(symbolId)};
         });
     });
-    return {reels: reelsCount, rows, wrapsAround: true, grid};
+    return {reels: reelsCount, rows, wrapsAround: true, grid, ...(geometry ? {screenGeometry: new ScreenProjection(geometry).getGeometry(), visibleRowCoverage: new ScreenProjection(geometry).getVisibleCoverage()} : {})};
 }
 
 function buildReelFromLiteralStrip(reelIndex: number, strip: string[], wilds: string[], scatters: string[]): GameModelReel {
@@ -238,19 +240,19 @@ export function buildGameModelReels(blueprint: GameBlueprint, options?: BuildGam
 
     if (blueprint.reelStrips !== undefined) {
         const reels = blueprint.reelStrips.map((strip, reelIndex) => buildReelFromLiteralStrip(reelIndex, strip, wilds, scatters));
-        return {generationMode, gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters), reels};
+        return {generationMode, gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters, blueprint.screenGeometry), reels};
     }
 
     if (blueprint.reelStripGeneration !== undefined) {
         const reels = buildReelsFromGeneration(blueprint, wilds, scatters);
-        return {generationMode, gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters), reels};
+        return {generationMode, gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters, blueprint.screenGeometry), reels};
     }
 
     const weights = blueprint.symbolWeights !== undefined ? blueprint.symbolWeights : defaultWeightsFor(blueprint.symbols, wilds, scatters);
     const {sample, reels} = buildReelsFromSharedWeights(weights, blueprint.reels, wilds, scatters, options?.sharedWeightsSampleSeed ?? SHARED_WEIGHTS_SAMPLE_SEED);
     return {
         generationMode,
-        gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters),
+        gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters, blueprint.screenGeometry),
         reels,
         sharedWeightsSample: sample,
     };

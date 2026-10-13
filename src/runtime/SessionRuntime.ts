@@ -66,6 +66,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         try {
             // Setters are allowed to mutate and then throw.  Always restore the snapshot on failure so a
             // partial setCreditsAmount() cannot bypass restoration merely because it never returned.
+            (session as {validateScreenCoordinates?: () => void}).validateScreenCoordinates?.();
             session.setCreditsAmount(balance);
             if (bet !== undefined) session.setBet(bet);
             if (mode !== undefined && supportsBetModeSelecting(session)) session.setBetMode(mode);

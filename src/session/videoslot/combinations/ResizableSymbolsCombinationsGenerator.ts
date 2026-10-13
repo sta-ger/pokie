@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
 import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
 import {SymbolsCombination} from "./SymbolsCombination.js";
@@ -29,6 +30,7 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        rejectScreenGeometry(this.config, "ResizableSymbolsCombinationsGenerator");
         const arr: T[][] = new Array(this.config.getReelsNumber());
         const stopPositions: number[] = new Array(this.config.getReelsNumber());
         for (let i = 0; i < this.config.getReelsNumber(); i++) {
@@ -37,7 +39,7 @@ implements SymbolsCombinationsGenerating<T> {
             stopPositions[i] = reel.position;
         }
         this.lastStopPositions = stopPositions;
-        return new SymbolsCombination<T>().fromMatrix(arr);
+        return new SymbolsCombination<T>().fromMatrix(arr).withVariableReelHeights();
     }
 
     public getLastStopPositions(): number[] {

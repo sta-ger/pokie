@@ -1,3 +1,4 @@
+import {projectEvaluationSymbols} from "../coordinates/projectSymbolsCombination.js";
 import type {SymbolsCombinationDescribing} from "../combinations/SymbolsCombinationDescribing.js";
 import {SymbolsCombinationsAnalyzer} from "../combinations/SymbolsCombinationsAnalyzer.js";
 import type {ValueWinCalculating} from "./ValueWinCalculating.js";
@@ -19,6 +20,7 @@ export class ValueWinCalculator<T extends string | number | symbol = string> imp
         bet: number,
         symbolsCombination: SymbolsCombinationDescribing<T>,
     ): Record<T, WinningValueDescribing<T>> {
+        symbolsCombination = projectEvaluationSymbols(symbolsCombination);
         const winningValues = {} as Record<T, WinningValueDescribing<T>>;
         const matrix = symbolsCombination.toMatrix();
         // Record keys always come back as strings from `for...in`, even when T is numeric — the

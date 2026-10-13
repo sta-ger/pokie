@@ -1,3 +1,5 @@
+import {projectEvaluationSymbols, resolveScreenProjection} from "./coordinates/projectSymbolsCombination.js";
+import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import {isSessionStateRestorable, resolveSessionStateSchema, type SessionStateSchema, type SessionStateRestoring} from "../SessionStateRestoring.js";
 import {AbstractVideoSlotSessionDecorator} from "./AbstractVideoSlotSessionDecorator.js";
 import type {BuildableFromSessionState} from "../BuildableFromSessionState.js";
@@ -47,6 +49,18 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         super(baseSession);
         this.config = config;
         this.freeGamesRoundHandler = freeGamesRoundHandler;
+        this.validateScreenCoordinates();
+    }
+
+    public override validateScreenCoordinates(): void {
+        super.validateScreenCoordinates();
+        const projection = resolveScreenProjection(this.config);
+        if (projection && !projection.isIdentity()) {
+            const baseGeometry = this.baseSession.getScreenGeometry?.();
+            if (!baseGeometry || JSON.stringify(new ScreenProjection(baseGeometry).getGeometry()) !== JSON.stringify(projection.getGeometry())) {
+                throw new Error("Free-games base session must expose the same overscan coordinate contract.");
+            }
+        }
     }
 
     public getWonFreeGamesNumber(): number {
@@ -135,6 +149,8 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         if (!this.canPlayNextGame()) {
             return;
         }
+        this.validateScreenCoordinates();
+        this.wonFreeGamesNumber = 0;
         this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();
         // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its
@@ -174,7 +190,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     private determineWonFreeGamesNumber(): number {
         let wonFreeGamesNumber = 0;
         // Feature grants depend on landed scatters, independently of monetary payouts.
-        const matrix = this.getSymbolsCombination().toMatrix();
+        const matrix = projectEvaluationSymbols(this.getSymbolsCombination(), this.config).toMatrix();
         for (const symbolId of this.config.getScatterSymbols()) {
             const grant = this.config.getFreeGamesForScatters(
                 symbolId,

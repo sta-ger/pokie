@@ -17,6 +17,10 @@ export class HorizontalLines implements LinesDefinitionsDescribing {
         }
     }
 
+    public allowsInactiveVariableRows(): boolean {
+        return true;
+    }
+
     public getLineDefinition(lineId: string): number[] {
         return this.definitions[lineId];
     }

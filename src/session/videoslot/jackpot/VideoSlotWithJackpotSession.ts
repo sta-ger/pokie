@@ -1,3 +1,4 @@
+import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import type {BuildableFromSessionState} from "../../BuildableFromSessionState.js";
 import type {ConvertableToSessionState} from "../../ConvertableToSessionState.js";
 import type {JackpotPoolStatisticsSnapshot, JackpotStatisticsSnapshot} from "../../JackpotStatisticsSnapshot.js";
@@ -168,6 +169,7 @@ export class VideoSlotWithJackpotSession<T extends string | number | symbol = st
     }
 
     public override play(): void {
+        rejectScreenGeometry(this, "Jackpot");
         if (!this.canPlayNextGame()) {
             return;
         }

@@ -190,6 +190,7 @@ export function PlayTab({
         roundResult = (
             <GameScreenView
                 screen={describeRuntimeScreen(activeSession.screen) ?? []}
+                visibleRowCoverage={Array.isArray(activeSession.visibleRowCoverage) ? activeSession.visibleRowCoverage as number[] : undefined}
                 credits={activeSession.credits}
                 availableBets={availableBets}
                 currentBet={currentBet}

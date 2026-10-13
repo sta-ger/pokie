@@ -796,3 +796,25 @@ describe("FeatureStateView feature event data (via RoundArtifactInspector)", () 
         expect(queryByText("Show advanced details (feature event data)")).toBeNull();
     });
 });
+
+
+describe("Overscan round presentation", () => {
+    it("shows the viewport, clipped coverage and remapped highlights while preserving inspector audit data", () => {
+        const geometry = {generated: {reels: 3, rows: 7}, visible: {rowOffset: 1.25, rows: 2.5}, evaluated: {rowOffset: 2, rows: 3}, paylineSpace: "evaluated" as const};
+        const generatedScreen = Array.from({length: 3}, (_, reel) => Array.from({length: 7}, (_, row) => `G${reel}:${row}`));
+        const screen = generatedScreen.map(reel => reel.slice(1, 4));
+        const wins = [{type: "scatter", id: "S", symbolId: "S", winAmount: 3, winningPositions: [[0, 0]], multiplierBreakdown: [], metadata: {symbolsPositions: [[0, 0]]}}];
+        const canonical = artifactFor({geometry, generatedScreen, screen, wins, totalWin: 3, payoutMultiplier: 3, steps: [{index: 0, geometry, generatedScreen, screen, wins, totalWin: 3}]});
+        const displayed = describeRoundArtifact(canonical);
+        const {container} = renderWithMantine(<RoundArtifactInspector artifact={displayed} />);
+        const grid = container.querySelector(".player-grid")!;
+        expect(within(grid as HTMLElement).queryByText("G0:0")).toBeNull();
+        expect(within(grid as HTMLElement).queryByText("G0:4")).toBeNull();
+        expect(grid.querySelector('[data-cell="0:0"]')).toHaveAttribute("data-visible-coverage", "0.75");
+        expect(grid.querySelector('[data-cell="1:0"]')).toHaveStyle({backgroundColor: "#ffda00"});
+        expect(displayed.wins[0].winningPositions).toEqual([[0, 1]]);
+        expect(displayed.wins[0].metadata.symbolsPositions).toEqual([[0, 1]]);
+        expect(canonical.wins[0].winningPositions).toEqual([[0, 0]]);
+        expect(displayed.generatedScreen).toEqual(generatedScreen);
+    });
+});

@@ -1,3 +1,4 @@
+import type {ScreenGeometry} from "../../../session/videoslot/coordinates/ScreenGeometry.js";
 import crypto from "crypto";
 
 // Deterministic identity for a single exact enumeration run -- everything an ExactEnumerationCheckpoint (see
@@ -9,7 +10,7 @@ import crypto from "crypto";
 // whose actual symbol layout doesn't -- same outcome-space cardinality, incompatible grids). betMode/stake are
 // deliberately excluded: they only affect artifact building for each already-accumulated grid, never which raw
 // tuples exist or how they dedupe/weight.
-export function computeExactEnumerationSourceId(gameId: string, configHash: string | undefined, reelWindows: readonly string[][][]): string {
-    const material = JSON.stringify({gameId, configHash: configHash ?? null, reelWindows});
+export function computeExactEnumerationSourceId(gameId: string, configHash: string | undefined, reelWindows: readonly string[][][], geometry?: ScreenGeometry): string {
+    const material = JSON.stringify({gameId, configHash: configHash ?? null, reelWindows, ...(geometry ? {geometry} : {})});
     return crypto.createHash("sha256").update(material).digest("hex");
 }

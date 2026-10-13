@@ -5,6 +5,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
     "manifest",
     "reels",
     "rows",
+    "screenGeometry",
     "symbols",
     "wilds",
     "scatters",

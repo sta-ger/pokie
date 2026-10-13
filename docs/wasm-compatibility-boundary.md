@@ -195,3 +195,7 @@ request-sized output; CLI retains its requested command/result batch, while
 Studio uses chunk-sized batches. Neither is cumulative continuation history.
 See [P9-02 measurements](audit-corrections/compact-wasm-state.md) for bounds,
 accounting and focused regression commands.
+
+## Generated, visible and evaluated coordinates
+
+screenGeometry is explicitly unsupported by canonical WASM and PAR conversion: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
