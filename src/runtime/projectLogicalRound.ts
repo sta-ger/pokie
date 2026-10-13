@@ -10,7 +10,7 @@ export function projectLogicalRound(round: LogicalRound) {
         entry: {bet: round.bet, ...(round.mode ? {mode: round.mode} : {})},
         totalStake: round.totalStake, totalWin: round.totalWin, totalPayout: round.totalPayout,
         subrounds: round.subrounds.map(s => ({id: s.id, index: s.index, stake: s.stake, win: s.win, payout: s.payout,
-            credits: s.credits, ...(s.screen ? {screen: s.screen} : {}),
+            credits: s.credits, ...(s.screen ? {screen: s.screen} : {}), ...(s.finalScreen ? {finalScreen: s.finalScreen} : {}),
             featureEvents: s.artifacts?.flatMap(a => a.featureEvents ?? []) ?? []}))});
 }
 export type LogicalRoundDelivery = ReturnType<typeof projectLogicalRound>;

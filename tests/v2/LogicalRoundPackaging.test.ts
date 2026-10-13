@@ -109,6 +109,175 @@ function snapshot(session: api.GameSessionHandling) {
 }
 
 describe("logical-round delivery and mathematical boundaries", () => {
+    it("validates opaque custom progress before current-state and cached-result publication", async () => {
+        const model = transactionalRoundGame();
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(100);
+        const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        const entry: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "stepwise"};
+        const first = settled(await new api.SpinCommandHandler(model, repository, wallet, results).execute(entry));
+        const bad = JSON.parse(JSON.stringify(first)) as typeof first;
+        (bad.state.featureState as {free: number}).free = 0;
+        expect(api.validatePersistedSession(bad.state, model)).toMatchObject({status: "corrupt-state"});
+        await results.save("session", "entry", bad);
+        const debit = jest.spyOn(wallet, "debit"),
+            credit = jest.spyOn(wallet, "credit");
+        expect(await new api.SpinCommandHandler(model, repository, wallet, results).execute(entry)).toMatchObject({status: "corrupt-state"});
+        await repository.save("session", bad.state);
+        expect(await new api.SpinCommandHandler(model, repository, wallet).execute({kind: "spin", sessionId: "session", requestId: "next", continuation: {roundId: "round", cursor: 1}})).toMatchObject({status: "corrupt-state"});
+        expect(debit).not.toHaveBeenCalled();
+        expect(credit).not.toHaveBeenCalled();
+    });
+
+    it("custom retained validation preserves a package's reused executable and direct delivery ledger", () => {
+        const model = transactionalRoundGame();
+        const session = model.createSession({seed: 7});
+        const runtime = new api.SessionRuntime(session);
+        const entry: api.SessionCommand = {kind: "spin", roundId: "direct", delivery: "stepwise"};
+        const beforeEntry = api.captureInitialPokieSessionState({seed: 7}, session, model.getSessionSerializer?.(), false, model);
+        const first = played(runtime.execute(entry));
+        const initial = api.captureRoundPokieSessionState({seed: 7}, session, beforeEntry, model.getSessionSerializer?.(), {mode: "partial", captureDebugPayloads: false, version: 1});
+        initial.identity = api.resolveGameSessionIdentity(model);
+        initial.logicalRound = first.logicalRound;
+        model.createSession = () => session;
+        const before = snapshot(session),
+            credits = session.getCreditsAmount();
+        const bad = JSON.parse(JSON.stringify(initial)) as typeof initial;
+        (bad.featureState as {free: number}).free = 0;
+        expect(api.validatePersistedSession(bad, model)).toMatchObject({status: "corrupt-state"});
+        expect(snapshot(session)).toEqual(before);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(runtime.execute(entry)).toEqual(first);
+        expect(runtime.getLogicalRound()).toEqual(first.logicalRound);
+    });
+
+    it.each(["returned", "thrown"])("direct composite %s failure retains the latest prefix and exact successor", failure => {
+        const session = transactionalRoundGame().createSession({seed: 7}) as api.GameSessionHandling & api.StakeAmountDetermining;
+        const runtime = new api.SessionRuntime(session);
+        const play = session.play.bind(session),
+            stake = session.getStakeAmount.bind(session);
+        let calls = 0,
+            reject = true;
+        session.play = () => {
+            if (failure === "thrown" && reject && calls === 2) throw new Error("third subround failed");
+            play();
+            calls++;
+        };
+        session.getStakeAmount = () => failure === "returned" && reject && calls === 2 ? 1 : stake();
+        const entry: api.SessionCommand = {kind: "spin", roundId: "round", delivery: "composite"};
+        let progress: {committedResult: api.SessionCommandResult; continuation: api.RoundContinuation} | undefined;
+        try {
+            const failed = runtime.execute(entry);
+            if (failed.status !== "played") progress = failed.committedProgress;
+        } catch (error) {
+            progress = (error as {committedProgress: typeof progress}).committedProgress;
+        }
+        expect(progress).toMatchObject({committedResult: {logicalRound: {cursor: 2, deliveryCursor: 2}}, continuation: {roundId: "round", cursor: 2}});
+        expect(runtime.getLogicalRound()?.cursor).toBe(2);
+        reject = false;
+        const completed = played(runtime.execute(entry));
+        expect(completed.logicalRound).toMatchObject({cursor: 3, status: "completed", totalStake: 0.05});
+        expect(calls).toBe(3);
+        expect(runtime.execute(entry)).toEqual(completed);
+        expect(calls).toBe(3);
+    });
+
+    it.each(["result", "checkpoint"])("independent saved-stage %s write failure recovers exact delivery without math or settlement", async fault => {
+        let calculations = 0;
+        const model = cascadeGame(() => calculations++);
+        const repository = new api.InMemorySessionRepository();
+        const wallet = new api.InMemoryWallet(100);
+        const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+        const operations = new api.InMemorySpinOperationLog();
+        const reconcile = new api.SpinReconciliationService(wallet, repository, results, operations, true, false, 0, undefined, undefined, model);
+        const handler = () => new api.SpinCommandHandler(model, repository, wallet, results, operations, true, reconcile);
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        settled(await handler().execute({kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "stepwise"}));
+        const balance = await wallet.getBalance("session");
+        const debit = jest.spyOn(wallet, "debit"),
+            credit = jest.spyOn(wallet, "credit");
+        if (fault === "result") jest.spyOn(results, "save").mockRejectedValueOnce(new Error("result write failed"));
+        else jest.spyOn(operations, "record").mockImplementationOnce(record => Reflect.apply(api.InMemorySpinOperationLog.prototype.record, operations, [record])).mockRejectedValueOnce(new Error("checkpoint write failed"));
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "stage", continuation: {roundId: "round", cursor: 1}, delivery: "stepwise"};
+        const failed = await handler().execute(command);
+        expect(failed).toMatchObject({status: "storage-error", committedProgress: {roundId: "round", cursor: 2, requestId: "stage"}, committedResult: {state: {logicalRound: {deliveryCursor: 2}}}});
+        const retained = (await operations.load("session", "stage"))!;
+        await operations.record({...retained, capturedResult: {...retained.capturedResult!, previousState: null as unknown as api.PokieSessionState}});
+        expect(await handler().execute(command)).toMatchObject({status: "corrupt-state"});
+        await operations.record(retained);
+        const saved = settled(await handler().execute(command));
+        expect(saved).toEqual(failed.committedResult);
+        expect(await handler().execute(command)).toEqual(saved);
+        expect(calculations).toBe(1);
+        expect(await wallet.getBalance("session")).toBe(balance);
+        expect(debit).not.toHaveBeenCalled();
+        expect(credit).not.toHaveBeenCalled();
+    });
+
+    it("composite saved-stage publication failure exposes the newly accepted prefix", async () => {
+        let calculations = 0,
+            fail = true;
+        const model = cascadeGame(() => calculations++);
+        const repository = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(100);
+        const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>(),
+            operations = new api.InMemorySpinOperationLog();
+        const reconcile = new api.SpinReconciliationService(wallet, repository, results, operations, true, false, 0, undefined, undefined, model);
+        const handler = () => new api.SpinCommandHandler(model, repository, wallet, results, operations, true, reconcile);
+        const save = results.save.bind(results);
+        results.save = (sessionId, requestId, result) => fail && requestId === "entry:subround:1" ? Promise.reject(new Error("stage response lost")) : save(sessionId, requestId, result);
+        await repository.save("session", api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model));
+        const command: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite"};
+        expect(await handler().execute(command)).toMatchObject({status: "storage-error", committedProgress: {cursor: 2, requestId: "entry:subround:1", nextRequestId: "entry:subround:2"}, committedResult: {state: {logicalRound: {deliveryCursor: 2}}}});
+        fail = false;
+        const completed = settled(await handler().execute(command));
+        expect(completed.state.logicalRound).toMatchObject({status: "completed", deliveryCursor: 3});
+        expect(calculations).toBe(1);
+    });
+
+    it.each(["independent", "local", "external"].flatMap(composition => ["partial", "full"].map(mode => ({composition, mode: mode as api.SessionCaptureMode}))))("stopped cascade retains evaluated prefix separately from final refill through $composition/$mode capture and retry", async ({composition, mode}) => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cascade-stop-"));
+        let calculations = 0;
+        const model = cascadeGame(() => calculations++, {maxCascadeSteps: 2, onMaxCascadeStepsExceeded: "stop"});
+        const repository = new api.InMemorySessionRepository(),
+            wallet = new api.InMemoryWallet(100);
+        const results = new api.InMemoryIdempotencyRepository<api.SpinCommandResult>();
+        const provider = composition === "external" ? await ControllableDurableWallet.open(path.join(directory, "wallet.sqlite")) : undefined;
+        let store: api.TransactionalRoundStore | api.ExternalRoundStore | undefined;
+        if (composition === "local") store = await api.SqliteTransactionalRoundStore.open(path.join(directory, "round.sqlite"));
+        else if (provider) store = await api.SqliteExternalRoundStore.open(path.join(directory, "round.sqlite"), provider);
+        try {
+            const initial = api.captureInitialPokieSessionState({seed: 7}, model.createSession({seed: 7}), model.getSessionSerializer?.(), false, model);
+            if (store) await store.initialize("session", initial, model);
+            else await repository.save("session", initial);
+            if (provider) await provider.setBalance("session", initial.credits!);
+            const handler = () => store ? new api.SpinCommandHandler(model, store, {sessionCapturePolicyMode: mode, captureDebugSessionData: false}) : new api.SpinCommandHandler(model, repository, wallet, results, undefined, false, undefined, false, mode);
+            const command: api.RepositoryCommand = {kind: "spin", sessionId: "session", requestId: "entry", roundId: "round", delivery: "composite"};
+            const first = settled(await handler().execute(command));
+            expect(first.state.logicalRound).toMatchObject({status: "exhausted", mathematicalStatus: "exhausted", cursor: 1});
+            const subround = first.state.logicalRound!.subrounds[0];
+            expect(subround.artifacts).toHaveLength(2);
+            expect(subround.screen).toEqual([["A"], ["A"], ["A"]]);
+            expect(subround.finalScreen).toEqual([["B"], ["B"], ["B"]]);
+            expect(first.state.screen).toEqual(subround.finalScreen);
+            expect(api.projectLogicalRound(first.state.logicalRound!).subrounds[0].finalScreen).toEqual(subround.finalScreen);
+            if (mode === "full") {
+                expect(first.state.roundArtifact!.steps).toHaveLength(2);
+                expect(first.state.roundArtifact!.screen).toEqual(subround.screen);
+            }
+            expect(first.state.logicalRoundStatistics).toBeUndefined();
+            expect(await handler().execute(command)).toEqual(first);
+            expect(calculations).toBe(1);
+            expect(await (store ?? wallet).getBalance("session")).toBe(first.credits);
+            expect(await handler().execute({...command, requestId: "next", roundId: "next"})).toMatchObject({status: "invalid-command"});
+        } finally {
+            await store?.close();
+            provider?.close();
+            fs.rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
     it.each(["independent", "local", "external"])("binds completed logical identity independently of request identity (%s)", async composition => {
         const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-logical-identity-"));
         const model = game(0);

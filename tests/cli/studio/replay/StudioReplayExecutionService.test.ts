@@ -1723,3 +1723,39 @@ it("refuses completed Studio replay publication for an exhausted cascade in the 
         await service.cancelAll();
     }
 });
+
+describe("Studio fractional logical replay payout", () => {
+    it.each([0.05, 7.5, 1e-7].flatMap(bet => [false, true].map(deferred => ({bet, deferred}))))("preserves awards at $bet (deferred=$deferred)", async ({bet, deferred}) => {
+        const model = deferred ? createOverscanGame({
+            manifest: {id: "fractional-bank", name: "Fractional bank", version: "1"},
+            reels: 3, rows: 1, availableBets: [0.05, 7.5, 1e-7], symbols: ["A", "S"], wilds: [], scatters: ["S"],
+            paylines: [[0, 0, 0]], paytable: {A: {"3": 2}}, reelStrips: Array.from({length: 3}, () => ["A"]),
+            mechanics: {freeGames: {scatterSymbol: "S", awardsByCount: {"3": 2}}},
+            betModes: [{id: "base", runtimeType: "base", isDefault: true}, {id: "buy", runtimeType: "buyFeature", costMultiplier: 5, forcedFreeGames: 3}],
+        }) : transactionalRoundGame();
+        const entry = {kind: "spin" as const, bet, ...(deferred ? {mode: "buy"} : {})};
+        const session = model.createSession({seed: "7"});
+        session.setCreditsAmount(bet * 20);
+        const reference = new SessionRuntime(session).execute({...entry, roundId: "reference", delivery: "composite"});
+        if (reference.status !== "played" || !reference.logicalRound) throw new Error("Missing logical reference");
+        const service = new StudioReplayExecutionService(new InMemoryStudioReplayRepository(), () => Promise.resolve(model));
+        const started = service.start("/fractional", {round: 1, seed: "7", unit: "logical-round", entryCommands: [entry]});
+        if (started.status !== "created") throw new Error("Replay not created");
+        try {
+            expect((await waitForTerminal(service, "/fractional", started.job.id)).status).toBe("completed");
+            const download = service.getDownload("/fractional", started.job.id);
+            if (download.status !== "ok") throw new Error("Missing descriptor");
+            const actual = download.descriptor.logicalRound!;
+            expect(actual.subrounds.map(step => step.win)).toEqual(reference.logicalRound.subrounds.map(step => step.win));
+            for (const [index, step] of actual.subrounds.entries()) expect(Math.abs(step.payout - reference.logicalRound.subrounds[index].payout)).toBeLessThan(bet * 1e-10);
+            expect(Math.abs(actual.totalPayout - actual.totalWin)).toBeLessThan(bet * 1e-10);
+            if (deferred) {
+                expect(actual.subrounds[1].payout).toBe(0);
+                expect(actual.subrounds[0].payout).toBe(0);
+                expect(actual.subrounds[actual.cursor - 1].payout).toBe(actual.totalWin);
+            }
+        } finally {
+            await service.cancelAll();
+        }
+    });
+});

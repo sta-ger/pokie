@@ -17,6 +17,8 @@ export type LogicalSubround = {
     readonly payout: number;
     readonly credits: number;
     readonly screen?: unknown[][];
+    /** Final unevaluated refill when a cascade stopped at its bound. */
+    readonly finalScreen?: unknown[][];
     readonly artifacts?: readonly RoundStepArtifact[];
 };
 
@@ -69,6 +71,7 @@ function validateLogicalRoundStructure(value: unknown): string | undefined {
         if (validateSessionCommand(step.command) || step.index !== index || step.id !== `${round.id}:${index}` ||
             ![step.stake, step.win, step.payout, step.credits].every(n => Number.isFinite(n) && n >= 0) ||
             (index > 0 && step.stake !== 0)) return "Invalid logical subround.";
+        if (step.finalScreen !== undefined && (!validScreen(step.finalScreen) || index !== round.cursor - 1 || round.mathematicalStatus !== "exhausted")) return "Invalid exhausted final screen.";
         if (step.screen !== undefined && !validScreen(step.screen)) return "Invalid retained subround screen.";
         if (step.artifacts !== undefined) {
             if (!Array.isArray(step.artifacts) || step.artifacts.length === 0 || !step.artifacts.every((artifact: RoundStepArtifact) => artifact && validScreen(artifact.screen) && Array.isArray(artifact.wins) && artifact.wins.every(validWin))) return "Invalid retained mathematical steps.";

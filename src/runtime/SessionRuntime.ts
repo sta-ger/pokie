@@ -16,7 +16,7 @@ import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import {supportsBetModeSelecting} from "../session/videoslot/betmode/supportsBetModeSelecting.js";
 import type {StakeAmountDetermining} from "../session/StakeAmountDetermining.js";
 import {validateSessionCommand, type SessionCommand} from "./SessionCommand.js";
-import type {SessionCommandResult, SessionRuntimeHandling} from "./SessionRuntimeHandling.js";
+import type {SessionCommandProgress, SessionCommandResult, SessionRuntimeHandling} from "./SessionRuntimeHandling.js";
 
 export type PreparedSessionCommand =
     | {readonly status: "ready"; readonly deliveryOnly?: boolean; readonly rollback: () => boolean; readonly execute: () => Extract<SessionCommandResult, {status: "played"}>}
@@ -31,13 +31,19 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (round !== undefined) {
             const invalid = validateLogicalRound(round);
             if (invalid) throw new Error(invalid);
-            if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== this.isDomainPending()) throw new Error("Retained logical progress differs from executable progress.");
+            SessionRuntime.validateLogicalRoundProgress(session, round);
             logicalRounds.set(session, deepFreeze(cloneSessionData(round)));
         }
     }
 
     public static supportsLogicalRoundDelivery(session: GameSessionHandling): boolean {
         return resolveSessionStateSchema(session).kind === "base" || typeof (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound === "function";
+    }
+
+    /** The executable progress authority is shared by restore, retry and settlement recovery. */
+    public static validateLogicalRoundProgress(session: GameSessionHandling, round: LogicalRound): void {
+        const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
+        if ((round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");
     }
 
     public getLogicalRound(): LogicalRound | undefined {
@@ -53,7 +59,11 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (command?.continuation) key = `${command.continuation.roundId}:${command.continuation.cursor}`;
         else if (command?.roundId) key = `${command.roundId}:entry`;
         const saved = key ? deliveries.get(this.session)?.get(key) : undefined;
-        if (saved) return saved.command === JSON.stringify(command) ? this.restoreDelivery(saved) : {status: "invalid-command", reason: "Logical delivery identity conflicts with its original command."};
+        if (saved) {
+            if (saved.command !== JSON.stringify(command)) return {status: "invalid-command", reason: "Logical delivery identity conflicts with its original command."};
+            const prefix = this.restoreDelivery(saved);
+            return command.delivery === "composite" ? this.completeComposite(command, prefix, key!, signal) : prefix;
+        }
         if (signal?.aborted) return {status: "blocked", reason: "Cancelled before acceptance."};
         const invalid = this.validateSelection(command);
         if (invalid !== undefined) return {status: "invalid-command", reason: invalid};
@@ -83,16 +93,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
             ledger.set(key, this.saveDelivery(command, result));
             deliveries.set(session, ledger);
         }
-        if (command.delivery === "composite") {
-            const limit = command.maxSubrounds ?? 1000;
-            let advanced = 1;
-            while (result.logicalRound?.status === "pending" && advanced < limit && !signal?.aborted) {
-                const next = this.execute({kind: "spin", delivery: "stepwise", continuation: {roundId: result.logicalRound.id, cursor: result.logicalRound.deliveryCursor}}, signal);
-                if (next.status !== "played") return next;
-                result = next;
-                advanced++;
-            }
-        }
+        if (command.delivery === "composite") return this.completeComposite(command, result, key!, signal);
         if (key) {
             const ledger = deliveries.get(this.session) ?? new Map();
             ledger.set(key, this.saveDelivery(command, result));
@@ -200,6 +201,30 @@ export class SessionRuntime implements SessionRuntimeHandling {
             return {status: "blocked", reason: error instanceof Error ? error.message : String(error), restored: true};
         }
     }
+    private completeComposite(command: SessionCommand, prefix: Played, key: string, signal?: AbortSignal): SessionCommandResult {
+        let result = prefix;
+        let advanced = 1;
+        const ledger = deliveries.get(this.session)!;
+        while (result.logicalRound?.status === "pending" && advanced < (command.maxSubrounds ?? 1000) && !signal?.aborted) {
+            const continuation = {roundId: result.logicalRound.id, cursor: result.logicalRound.deliveryCursor};
+            const committedProgress: SessionCommandProgress = {committedResult: cloneSessionData(result), continuation};
+            let next: SessionCommandResult;
+            try {
+                next = this.execute({kind: "spin", delivery: "stepwise", continuation}, signal);
+            } catch (error) {
+                // Preserve the original exception and add portable recovery information.
+                const failure = error instanceof Error ? error : new Error(String(error));
+                Object.assign(failure, {committedProgress});
+                throw failure;
+            }
+            if (next.status !== "played") return {...next, committedProgress};
+            result = next;
+            ledger.set(key, this.saveDelivery(command, result));
+            advanced++;
+        }
+        return result;
+    }
+
     /** Settlement adapters prepare once, debit the wallet, then execute the same session. */
     private executePrepared(command: SessionCommand): Extract<SessionCommandResult, {status: "played"}> {
         const session = this.session;
@@ -223,9 +248,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
             ? buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {roundId: id, stake, betMode: mode, provenance: {game: {id: "runtime", name: "Runtime", version: "1"}, pokieVersion: "unknown"}}).steps : undefined;
         const screen = artifacts?.[artifacts.length - 1]?.screen;
         const stageCursor = artifacts?.length ? 1 : 0;
-        const subround = {id: `${id}:${index}`, index, command: cloneSessionData(command), stake, win, payout, credits,
-            ...(screen ? {screen: screen.map(reel => [...reel])} : {}), ...(artifacts ? {artifacts} : {})};
         const exhausted = (session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true;
+        const finalScreen = exhausted ? (session as Partial<CascadeResultProviding>).getCascadeResult?.().getFinalScreen() : undefined;
+        const subround = {id: `${id}:${index}`, index, command: cloneSessionData(command), stake, win, payout, credits,
+            ...(screen ? {screen: screen.map(reel => [...reel])} : {}), ...(finalScreen ? {finalScreen} : {}), ...(artifacts ? {artifacts} : {})};
         let mathematicalStatus: LogicalRound["status"] = "completed";
         if (this.isDomainPending()) mathematicalStatus = "pending";
         if (exhausted) mathematicalStatus = "exhausted";

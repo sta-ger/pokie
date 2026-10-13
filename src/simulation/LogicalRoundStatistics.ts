@@ -1,3 +1,4 @@
+import {SessionRuntime} from "../runtime/SessionRuntime.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import type {GameSessionHandling} from "../session/GameSessionHandling.js";
 import type {LogicalRoundProgressProviding} from "../runtime/LogicalRound.js";
@@ -9,7 +10,7 @@ export const emptyLogicalRoundStatistics = (): LogicalRoundStatistics => ({round
 const pending = new WeakMap<GameSessionHandling, {steps: number; stake: number; win: number}>();
 export function observeLogicalSubround(session: GameSessionHandling, stake: number, win: number): LogicalRoundStatistics | undefined {
     const progress = session as Partial<LogicalRoundProgressProviding>;
-    if (typeof progress.hasPendingLogicalRound !== "function") return undefined;
+    if (!SessionRuntime.supportsLogicalRoundDelivery(session)) return undefined;
     if ((session as Partial<CascadeResultProviding>).getCascadeResult?.().getMetadata().maxCascadeStepsExceeded === true) {
         pending.delete(session);
         return undefined;
@@ -21,7 +22,7 @@ export function observeLogicalSubround(session: GameSessionHandling, stake: numb
     observation.steps++;
     observation.stake += stake;
     observation.win += win;
-    if (progress.hasPendingLogicalRound()) {
+    if (progress.hasPendingLogicalRound?.()) {
         pending.set(session, observation);
         return undefined;
     }

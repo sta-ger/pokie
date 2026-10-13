@@ -360,6 +360,26 @@ describe("public transactional runtime compositions", () => {
         expect(provider.counts("s")).toEqual({debit: 1, credit: 0});
         expect(await store.readSession("s")).toMatchObject({version: 1});
     });
+    it("blocks external settlement recovery when opaque candidate progress contradicts its retained pending round", async () => {
+        const provider = await wallet(),
+            store = await open(provider);
+        await initialize(store);
+        provider.fault = "after-debit";
+        const command: api.RepositoryCommand = {...intent, requestId: "logical", delivery: "stepwise", roundId: "logical"};
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(), store);
+        expect(await handler.execute(command)).toMatchObject({status: "recovery-required"});
+        const db = Reflect.get(store, "database") as import("node:sqlite").DatabaseSync;
+        const row = db.prepare("SELECT intent FROM external_requests WHERE session_id='s' AND request_id='logical'").get()!;
+        const captured = JSON.parse(String(row.intent));
+        expect(captured.candidate.state.logicalRound.mathematicalStatus).toBe("pending");
+        captured.candidate.state.featureState.free = 0;
+        db.prepare("UPDATE external_requests SET intent=? WHERE session_id='s' AND request_id='logical'").run(JSON.stringify(captured));
+        expect(await handler.execute(command)).toMatchObject({status: "corrupt-state"});
+        expect(await handler.execute({...command, requestId: "replacement"})).toMatchObject({status: "recovery-required"});
+        expect(provider.counts("s")).toEqual({debit: 1, credit: 0});
+        expect(await store.readSession("s")).toMatchObject({version: 1});
+    });
+
     it("rejects non-durable falsely incomplete store composition before game construction", () => {
         const fake = {externalSettlement: true, readSession: () => Promise.resolve(undefined)} as unknown as api.ExternalRoundStore;
         expect(() => new api.SpinCommandHandler(transactionalRoundGame(), fake)).toThrow("durable intent");

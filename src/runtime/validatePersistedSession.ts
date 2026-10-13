@@ -1,13 +1,19 @@
+import type {ConvertableToSessionState} from "../session/ConvertableToSessionState.js";
+import {SessionRuntime} from "./SessionRuntime.js";
+import {cloneSessionData} from "./internal/cloneSessionData.js";
+import {restoreFeatureState} from "../server/session/restoreFeatureState.js";
 import {validateLogicalRound} from "./LogicalRound.js";
 import {captureCoordinatePublicPayload} from "../server/session/internal/captureCoordinatePublicPayload.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSessionAuthority, LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
 import {RoundArtifactValidator} from "../artifact/RoundArtifactValidator.js";
-import {sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
+import {isSessionStateRestorable, resolveSessionStateSchema, sessionStateSchemasMatch, type SessionStateSchema} from "../session/SessionStateRestoring.js";
 import {validateExecutableState} from "./validateExecutableState.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import type {PokieSessionState} from "../server/session/PokieSessionState.js";
 import {resolveGameSessionIdentity} from "./GameSessionIdentity.js";
+
+type GameSessionHandlingWithState = import("../session/GameSessionHandling.js").GameSessionHandling & ConvertableToSessionState;
 
 export function validatePersistedSession(value: unknown, game: PokieGame, live?: LiveSessionAuthority, sessionId?: string): {status: "incompatible-state" | "corrupt-state" | "restoration-unsupported"; reason: string} | undefined {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return {status: "corrupt-state", reason: "Session state must be an object."};
@@ -64,7 +70,7 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
         if (invalid) return {status: "corrupt-state", reason: invalid};
         if (sessionId !== undefined && (state.logicalRound.entry as {sessionId?: string}).sessionId !== sessionId) return {status: "corrupt-state", reason: "Retained logical round belongs to another session."};
         const last = state.logicalRound.subrounds[state.logicalRound.cursor - 1];
-        if (last.win !== state.win || last.credits !== state.credits || (last.screen !== undefined && JSON.stringify(last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
+        if (last.win !== state.win || last.credits !== state.credits || ((last.finalScreen ?? last.screen) !== undefined && JSON.stringify(last.finalScreen ?? last.screen) !== JSON.stringify(state.screen))) return {status: "corrupt-state", reason: "Retained logical output differs from executable capture."};
         let schema = state.stateSchema;
         let feature = state.featureState as {base?: unknown; freeGamesNum?: number; freeGamesSum?: number} | undefined;
         let pending = false;
@@ -122,6 +128,27 @@ export function validatePersistedSession(value: unknown, game: PokieGame, live?:
             throw new Error("Stored command capabilities do not match the selected game model.");
         }
         validateSelectedModes(state.featureState, schema ?? live?.schema, authority.modes, capabilities.modes, schema === undefined ? live?.snapshotPolicy : undefined);
+        let leaf = schema;
+        while (leaf && "base" in leaf) leaf = leaf.base;
+        if (state.logicalRound && leaf?.kind === "custom" && state.executionState === "durably-restorable") {
+            // Custom codecs own opaque feature progress. Restore a detached executable solely to
+            // ask the same progress contract used for fresh continuation; never play or settle it.
+            const session = game.createSession(state.context);
+            if (!isSessionStateRestorable(session) || !sessionStateSchemasMatch(resolveSessionStateSchema(session), state.stateSchema)) throw new Error("Selected session cannot validate retained executable progress.");
+            const original = {feature: cloneSessionData((session as GameSessionHandlingWithState).toSessionState()), bet: session.getBet(), credits: session.getCreditsAmount()};
+            try {
+                restoreFeatureState(session, cloneSessionData(state.featureState));
+                session.setBet(state.bet);
+                session.setCreditsAmount(state.credits!);
+                SessionRuntime.validateLogicalRoundProgress(session, state.logicalRound);
+            } finally {
+                // Some extension packages return a retained instance from createSession. Validation
+                // must preserve that instance too, and must not install delivery state on it.
+                restoreFeatureState(session, original.feature);
+                session.setBet(original.bet);
+                session.setCreditsAmount(original.credits);
+            }
+        }
     } catch (error) {
         return {status: "corrupt-state", reason: error instanceof Error ? error.message : String(error)};
     }

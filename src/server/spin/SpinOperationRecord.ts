@@ -9,6 +9,7 @@ import type {SpinOperationCheckpoint} from "./SpinOperationCheckpoint.js";
 // a second time to recompute it. Mirrors the "played" SpinCommandResult's own fields exactly, minus
 // requestId (the record is already keyed by it).
 export type SpinOperationCapturedResult = {
+    readonly deliveryOnly?: boolean;
     readonly previousState: PokieSessionState;
     readonly newState: PokieSessionState;
     readonly win: number;

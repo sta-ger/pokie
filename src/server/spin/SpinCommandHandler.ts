@@ -394,7 +394,13 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
             const next = await this.dispatch({kind: "spin", sessionId: command.sessionId,
                 requestId: `${command.requestId}:subround:${round.deliveryCursor}`, delivery: "stepwise",
                 continuation: {roundId: round.id, cursor: round.deliveryCursor}, expectedVersion: result.version}, signal).catch(error => this.failureResult(error, command.sessionId));
-            if (next.status !== "played") return {...next, committedProgress: {roundId: round.id, cursor: round.deliveryCursor, requestId: result.requestId!, nextRequestId: `${command.requestId}:subround:${round.deliveryCursor}`}, committedResult: cloneSessionData(result), ...("reason" in next ? {reason: `${next.reason} Committed prefix: round ${round.id}, cursor ${round.cursor}.`} : {})};
+            if (next.status !== "played") {
+                const prefix = next.committedResult ?? result;
+                const accepted = prefix.state.logicalRound!;
+                return {...next, committedProgress: {roundId: accepted.id, cursor: accepted.deliveryCursor, requestId: prefix.requestId!,
+                    ...(accepted.status === "pending" ? {nextRequestId: `${command.requestId}:subround:${accepted.deliveryCursor}`} : {})}, committedResult: cloneSessionData(prefix),
+                ...("reason" in next ? {reason: `${next.reason} Committed prefix: round ${accepted.id}, cursor ${accepted.cursor}.`} : {})};
+            }
             result = next;
             advanced++;
         }
@@ -639,15 +645,38 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         }
 
         if (command.deliveryOnly) {
+            if (!isVersionedSessionRepository(this.sessionRepository) || version === undefined || !requestId) {
+                command.rollback();
+                return {status: "restoration-unsupported", sessionId, reason: "Saved-stage delivery requires versioned result storage."};
+            }
             const executed = command.execute();
             const nextState = cloneSessionData({...state, logicalRound: executed.logicalRound});
-            if (!isVersionedSessionRepository(this.sessionRepository) || version === undefined || !requestId) return {status: "restoration-unsupported", sessionId, reason: "Saved-stage delivery requires versioned result storage."};
-            const nextVersion = await this.sessionRepository.saveVersioned(sessionId, nextState, version);
-            const result: SpinCommandResult = {status: "played", deliveryOnly: true, deliveryCommand: intent, sessionId, requestId, previousState: state, state: nextState,
-                credits: state.credits!, win: state.win, stake: 0, version: nextVersion};
-            await this.idempotencyRepository.save(sessionId, requestId, result);
-            this.liveSessions.set(sessionId, {session: resolvedSession.session, committedVersion: nextVersion, record: JSON.stringify(nextState), authority: captureLiveSessionAuthority(resolvedSession.session)});
-            return cloneSessionData(result);
+            const attemptId = crypto.randomUUID();
+            const startedAt = new Date().toISOString();
+            let record: SpinOperationRecord = {sessionId, requestId, command: intent, attemptId,
+                debitTransactionId: `${sessionId}:${attemptId}:debit`, creditTransactionId: `${sessionId}:${attemptId}:credit`, stakeAmount: 0,
+                expectedVersion: version, checkpoint: "settled", startedAt, updatedAt: startedAt,
+                capturedResult: {deliveryOnly: true, previousState: state, newState: nextState, win: state.win, credits: state.credits!, stake: 0}};
+            let result: Extract<SpinCommandResult, {status: "played"}> | undefined;
+            try {
+                // Retain the computed transition before either independent write. Recovery uses
+                // the existing operation log and never calculates or settles a saved stage.
+                if (!this.atomicExecution) await this.operationLog.record(record);
+                const nextVersion = await this.sessionRepository.saveVersioned(sessionId, nextState, version);
+                result = {status: "played", deliveryOnly: true, deliveryCommand: intent, sessionId, requestId, previousState: state, state: nextState,
+                    credits: state.credits!, win: state.win, stake: 0, version: nextVersion};
+                record = {...record, checkpoint: "session-saved", capturedResult: {...record.capturedResult!, newVersion: nextVersion}};
+                if (!this.atomicExecution) await this.operationLog.record(record);
+                await this.idempotencyRepository.save(sessionId, requestId, result);
+                if (!this.atomicExecution) await this.operationLog.record({...record, checkpoint: "committed"});
+                this.liveSessions.set(sessionId, {session: resolvedSession.session, committedVersion: nextVersion, record: JSON.stringify(nextState), authority: captureLiveSessionAuthority(resolvedSession.session)});
+                return cloneSessionData(result);
+            } catch (error) {
+                this.liveSessions.delete(sessionId);
+                const round = result?.state.logicalRound;
+                return {status: "storage-error", sessionId, reason: error instanceof Error ? error.message : String(error),
+                    ...(result && round ? {committedResult: cloneSessionData(result), committedProgress: {roundId: round.id, cursor: round.deliveryCursor, requestId}} : {})};
+            }
         }
         return this.playAndSettle(sessionId, resolvedSession.session, state, version, balanceBeforePlay, requestId, command.rollback, command.execute, intent);
     }

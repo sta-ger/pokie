@@ -59,5 +59,8 @@ export function validateOperationRecord(value: SpinOperationRecord, game: PokieG
     if (captured === undefined) return undefined;
     if (!object(captured) || captured.previousState === undefined || captured.newState === undefined) return corrupt("Invalid captured result envelope.");
     if (captured.stake !== undefined && captured.stake !== value.stakeAmount) return corrupt("Captured stake does not match the operation.");
-    return validateComputedResult(captured, captured.newState, captured.previousState, captured.newVersion, game, live, sessionId);
+    const rejected = validateComputedResult(captured, captured.newState, captured.previousState, captured.newVersion, game, live, sessionId);
+    if (rejected) return rejected;
+    if (captured.deliveryOnly === true && (!value.command || value.stakeAmount !== 0 || !validateSavedStageDelivery(captured.previousState as PokieSessionState, captured.newState as PokieSessionState, value.command))) return corrupt("Invalid captured saved-stage transition.");
+    return undefined;
 }

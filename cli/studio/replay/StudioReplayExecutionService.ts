@@ -1,3 +1,4 @@
+import {executeLogicalReplayCommand} from "../../../src/replay/internal/executeLogicalReplayCommand.js";
 import {
     buildLogicalRoundArtifact, type LogicalRound, type CascadeResultProviding,
     buildRoundArtifactFromSession,
@@ -406,7 +407,7 @@ export class StudioReplayExecutionService {
                 // A replay reconstructs a specific round, not risk of ruin — same reasoning as
                 // ReplayRecorder itself: a bankroll large enough that reaching `round` is never cut short
                 // by running out of credits mid-replay.
-                session.setCreditsAmount(Number.MAX_SAFE_INTEGER);
+                session.setCreditsAmount(record.unit === "logical-round" ? session.getBet() : Number.MAX_SAFE_INTEGER);
             } catch (error) {
                 this.fail(record, error);
                 return;
@@ -441,7 +442,7 @@ export class StudioReplayExecutionService {
                             return;
                         }
                         const actualRound = record.completedRounds + played;
-                        if (!session.canPlayNextGame()) {
+                        if (record.unit !== "logical-round" && !session.canPlayNextGame()) {
                             this.fail(record, new Error(`Replay target round ${record.round} is unreachable: session stopped after ${actualRound} round(s).`));
                             return;
                         }
@@ -454,8 +455,9 @@ export class StudioReplayExecutionService {
                             stateBeforeFinal = this.captureBoundaryState(record.round === 1, context, session, initialState, serializer);
                         }
 
-                        const result = executeSessionCommand(session, record.unit === "logical-round"
-                            ? {...record.entryCommands?.[actualRound], kind: "spin", delivery: "composite", roundId: `replay:${actualRound + 1}`} : record.entryCommands?.[actualRound], record.abortController.signal);
+                        const result = record.unit === "logical-round"
+                            ? executeLogicalReplayCommand(session, {...record.entryCommands?.[actualRound], kind: "spin", delivery: "composite", roundId: `replay:${actualRound + 1}`}, record.abortController.signal)
+                            : executeSessionCommand(session, record.entryCommands?.[actualRound], record.abortController.signal);
                         logicalRound = result.logicalRound;
                         if (record.abortController.signal.aborted) {
                             record.completedRounds += played + (record.unit !== "logical-round" || logicalRound?.status === "completed" ? 1 : 0);

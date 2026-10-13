@@ -487,7 +487,9 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
         if (record.checkpoint === "settled") {
             try {
                 if (isVersionedSessionRepository(this.sessionRepository) && record.expectedVersion !== undefined) {
-                    newVersion = await this.sessionRepository.saveVersioned(sessionId, captured.newState, record.expectedVersion);
+                    const current = await this.sessionRepository.loadVersioned(sessionId);
+                    if (captured.deliveryOnly === true && current?.version === record.expectedVersion + 1 && JSON.stringify(current.state) === JSON.stringify(captured.newState)) newVersion = current.version;
+                    else newVersion = await this.sessionRepository.saveVersioned(sessionId, captured.newState, record.expectedVersion);
                 } else {
                     await this.sessionRepository.save(sessionId, captured.newState);
                 }
@@ -591,6 +593,9 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     // latter. The seam is deliberately named around "durable settlement proof" in general, even though
     // WalletTransactionInspecting is the only such proof this package currently knows how to check.
     private async verifyDurableSettlement(record: SpinOperationRecord): Promise<{verified: true} | {verified: false; reason: string}> {
+        // Validated saved-stage transitions have no wallet legs; the retained operation
+        // is their recovery boundary, not an invented zero-amount settlement.
+        if (record.capturedResult?.deliveryOnly === true) return {verified: true};
         if (!isWalletTransactionInspecting(this.wallet)) {
             return {
                 verified: false,
@@ -617,6 +622,7 @@ export class SpinReconciliationService implements SpinReconciliationServicing {
     private buildPlayedResult(record: SpinOperationRecord, captured: SpinOperationCapturedResult): SpinCommandResult {
         return {
             status: "played",
+            ...(captured.deliveryOnly ? {deliveryOnly: true, deliveryCommand: record.command} : {}),
             sessionId: record.sessionId,
             state: captured.newState,
             previousState: captured.previousState,
