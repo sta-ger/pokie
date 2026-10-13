@@ -55,7 +55,9 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     }
 
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
-        return this.config.getScreenGeometry?.();
+        // The last generated combination advertises a generator contract even when the model
+        // has no geometry. Keep this preflight capability separate from settled-result geometry.
+        return this.config.getScreenGeometry?.() ?? this.symbolsCombination.getScreenGeometry?.();
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {

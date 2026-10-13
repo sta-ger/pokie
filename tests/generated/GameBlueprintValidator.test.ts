@@ -169,6 +169,18 @@ describe("GameBlueprintValidator", () => {
         expect(codesOf(validator.validate(blueprint))).toContain("blueprint-payline-invalid");
     });
 
+    it("rejects sparse outer paylines and sparse rows-per-reel definitions", () => {
+        const sparseLine = new Array<number>(5);
+        sparseLine[0] = sparseLine[1] = sparseLine[2] = 0;
+        const sparsePaylines = new Array<number[]>(2);
+        sparsePaylines[0] = [0, 0, 0, 0, 0];
+        for (const paylines of [[sparseLine], sparsePaylines]) {
+            const issues = new GameBlueprintValidator().validate({...validBlueprint(), paylines});
+            expect(codesOf(issues)).toContain("blueprint-payline-invalid");
+            expect(issues.some(issue => issue.severity === "error")).toBe(true);
+        }
+    });
+
     it("flags a payline with a row index out of bounds", () => {
         const blueprint = {...validBlueprint(), paylines: [[0, 0, 0, 0, 5]]};
 

@@ -1,5 +1,5 @@
 import {
-    SymbolsCombination,
+    SymbolsCombination, VideoSlotSession,
     PaytableRepresenting,
     PlayUntilSymbolWinStrategy,
     SymbolsCombinationDescribing,
@@ -8,7 +8,29 @@ import {
     WinningLine,
 } from "@fromstan/pokie";
 
+import {overscanConfig, overscanGeometry} from "../../v2/fixtures/OverscanGame.js";
+
 describe("PlayUntilSymbolWinStrategy", () => {
+    it.each([0, 2])("uses evaluation-local lines for no-wild search with a wild at generated row %s", wildRow => {
+        const config = overscanConfig();
+        const screen = Array.from({length: 5}, () => ["B", "B", "A", "B", "B", "B", "B"]);
+        screen[0][wildRow] = "W";
+        const session = new VideoSlotSession(config, {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(screen).withCoordinates(overscanGeometry)});
+        session.play();
+        expect(session.getWinningLines()["0"].getSymbolId()).toBe("A");
+        const strategy = new PlayUntilSymbolWinStrategy<string>("A");
+        strategy.setAllowWilds(false, "W");
+        expect(strategy.canPlayNextSimulationRound(session)).toBe(wildRow === 2);
+        // Older/custom sessions without the optional evaluated-screen method use the same adapter.
+        const adapter = {
+            getSymbolsCombination: () => session.getSymbolsCombination(), getScreenGeometry: () => session.getScreenGeometry(),
+            getReelsNumber: () => session.getReelsNumber(), getReelsSymbolsNumber: () => session.getReelsSymbolsNumber(),
+            isSymbolScatter: (symbol: string) => session.isSymbolScatter(symbol),
+            getWinningLines: () => session.getWinningLines(), getWinningScatters: () => session.getWinningScatters(),
+        } as VideoSlotSessionHandling;
+        expect(strategy.canPlayNextSimulationRound(adapter)).toBe(wildRow === 2);
+    });
+
     let linesForTest: Record<number, WinningLine>;
     let scattersForTest: Record<string, WinningScatter>;
 

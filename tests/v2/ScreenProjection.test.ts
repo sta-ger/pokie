@@ -2,7 +2,7 @@ import {
     ScreenProjection, SymbolsCombination, SymbolsCombinationsGenerator, SeededRandomNumberGenerator,
     VideoSlotSession, VideoSlotSessionSerializer, VideoSlotWinCalculator, LineWinCalculator, ScatterWinCalculator,
     WaysWinCalculator, ClusterWinCalculator, ClusterWinEvaluator, ValueWinCalculator, WinEvaluationContext, WinEvaluationPipeline, WinEvaluationResult,
-    CustomLinesDefinitions,
+    CustomLinesDefinitions, LineWinComponent, WinningLine,
     VideoSlotWithFreeGamesConfig, VideoSlotWithFreeGamesSession, buildRoundArtifactFromSession, buildRoundArtifact,
     PokieJsonRoundArtifactProjector, PublicRoundArtifactProjector, RoundArtifactValidator, computeRoundArtifactHash,
     captureInitialPokieSessionState, captureRoundPokieSessionState, validatePersistedSession,
@@ -259,6 +259,62 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(session.getCreditsAmount()).toBe(credits);
         expect(session.getWinAmount()).toBe(settledWin);
         expect(session.toSessionState()).toEqual(featureState);
+    });
+
+    it.each(["jackpot", "holdAndWin", "jackpotOutsideHold", "holdOutsideJackpot"] as const)("F8 preflights tagged generator geometry through feature stacks and ante (%s)", feature => {
+        for (const ante of [false, true]) {
+            const config = overscanConfig();
+            config.setScreenGeometry(undefined);
+            const generator = {generateSymbolsCombination: jest.fn(() => combination())};
+            const base = new VideoSlotSession(config, generator);
+            base.play();
+            expect(base.getWinAmount()).toBe(3);
+            const pool = new AccumulatingJackpotPool("tagged", 20);
+            const jackpot = (session: VideoSlotSessionHandling) => new VideoSlotWithJackpotSession(session, [pool], new PercentageOfBetJackpotContributor(0.1), new SymbolCountJackpotTrigger("B", 3));
+            const hold = new VideoSlotWithHoldAndWinSession(feature === "holdOutsideJackpot" ? jackpot(base) : base);
+            hold.setHoldAndWinActive(true);
+            hold.setHoldAndWinRespinsRemaining(2);
+            hold.setLockedHoldAndWinSymbols([{position: [0, 0], symbolId: "A", effect: {kind: "value", amount: 10}}]);
+            const decorated = feature === "holdAndWin" || feature === "holdOutsideJackpot" ? hold :
+                jackpot(feature === "jackpotOutsideHold" ? hold : base);
+            const session = new VideoSlotWithBetModesSession(decorated, new BetModesConfig([new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2})]));
+            if (ante) session.setBetMode("ante");
+            const snapshot = {
+                credits: session.getCreditsAmount(), win: session.getWinAmount(), lines: session.getWinningLines(),
+                result: session.getWinEvaluationResult(), state: session.toSessionState(),
+                pool: pool.toSessionState(), geometry: session.getScreenGeometry(), screen: session.getSymbolsCombination().toMatrix(),
+            };
+            generator.generateSymbolsCombination.mockClear();
+            expect(config.getScreenGeometry()).toBeUndefined();
+            expect(session.getConfiguredScreenGeometry()).toEqual(overscanGeometry);
+            expect(() => session.play()).toThrow(/does not support overscan/);
+            expect(generator.generateSymbolsCombination).not.toHaveBeenCalled();
+            expect(session.getCreditsAmount()).toBe(snapshot.credits);
+            expect(session.getWinAmount()).toBe(snapshot.win);
+            expect(session.getWinningLines()).toEqual(snapshot.lines);
+            expect(session.getWinEvaluationResult()).toEqual(snapshot.result);
+            expect(session.toSessionState()).toEqual(snapshot.state);
+            expect(pool.toSessionState()).toEqual(snapshot.pool);
+            expect(session.getScreenGeometry()).toEqual(snapshot.geometry);
+            expect(session.getSymbolsCombination().toMatrix()).toEqual(snapshot.screen);
+        }
+    });
+
+    it.each(["jackpot", "holdAndWin"] as const)("F8 keeps settled geometry separate when an untagged generator's upcoming model becomes ordinary (%s)", feature => {
+        const config = overscanConfig();
+        let screen = adversarialScreen();
+        const base = new VideoSlotSession(config, {generateSymbolsCombination: () => new SymbolsCombination().fromMatrix(screen)});
+        base.play();
+        const decorated = feature === "jackpot" ? new VideoSlotWithJackpotSession(base) : new VideoSlotWithHoldAndWinSession(base);
+        const session = new VideoSlotWithBetModesSession(decorated);
+        config.setScreenGeometry(undefined);
+        screen = Array.from({length: 5}, () => ["B", "B", "B"]);
+        expect(session.getScreenGeometry()).toEqual(overscanGeometry);
+        expect(session.getConfiguredScreenGeometry()).toBeUndefined();
+        expect(() => session.play()).not.toThrow();
+        expect(session.getScreenGeometry()).toBeUndefined();
+        expect(session.getSymbolsCombination().toMatrix()).toEqual(screen);
+        expect(session.getWinAmount()).toBe(3);
     });
 
     it("normalizes the pipeline even with optional validation disabled and custom evaluators", () => {
@@ -609,6 +665,40 @@ describe("Generated / visible / evaluated screen contracts", () => {
         expect(() => new WinEvaluationPipeline([evaluator], undefined, undefined, [], {validateOnEvaluate: false}).evaluate(context)).toThrow(/evaluation domain/);
         const policy = {getPolicyName: () => "custom", aggregate: () => [component]};
         expect(() => new WinEvaluationPipeline<string>([], policy, undefined, [], {validateOnEvaluate: false}).evaluate(context)).toThrow(/evaluation domain/);
+    });
+
+    it.each(["definition", "symbolsPositions", "wildSymbolsPositions", "winningPositions", "positionCell", "multiplierPositions", "multiplierBreakdown", "metadataPositions"] as const)("F2 rejects sparse injected %s before returning a paid evaluator or policy result", field => {
+        const component = new LineWinComponent(new WinningLine(10, [0, 0, 0, 0, 0], [0, 1, 2], "custom", [0, 1, 2], [], "A"), [[0, 0], [1, 0], [2, 0]]);
+        const sparse = new Array<number>(5);
+        sparse[0] = sparse[1] = sparse[2] = 0;
+        if (field === "definition" || field === "symbolsPositions" || field === "wildSymbolsPositions") {
+            jest.spyOn(component, "getMetadata").mockReturnValue({...component.getMetadata(), [field]: sparse});
+        } else if (field === "winningPositions" || field === "positionCell") {
+            jest.spyOn(component, "getWinningPositions").mockReturnValue(field === "positionCell" ? [new Array<number>(2)] : new Array<number[]>(1));
+        } else if (field === "multiplierPositions") {
+            jest.spyOn(component, "getMultiplierBreakdown").mockReturnValue([{source: "custom", positions: new Array<number[]>(1), values: [2], combinedMultiplier: 2}]);
+        } else if (field === "multiplierBreakdown") {
+            const breakdown = component.getMultiplierBreakdown();
+            breakdown.length = 1;
+            jest.spyOn(component, "getMultiplierBreakdown").mockReturnValue(breakdown);
+        } else {
+            jest.spyOn(component, "getType").mockReturnValue("value");
+            jest.spyOn(component, "getMetadata").mockReturnValue({symbolsPositions: new Array<number[]>(1)});
+        }
+        const evaluator: WinEvaluator = {evaluate: () => [component], getEvaluatorId: () => "custom", getEvaluatorGroup: () => "custom", getComponentType: () => "custom"};
+        const context = new WinEvaluationContext(1, combination(), overscanConfig());
+        expect(() => new WinEvaluationPipeline([evaluator], undefined, undefined, [], {validateOnEvaluate: false}).evaluate(context)).toThrow(/Evaluator returned|integer/);
+        const policy = {getPolicyName: () => "custom", aggregate: () => [component]};
+        expect(() => new WinEvaluationPipeline<string>([], policy, undefined, [], {validateOnEvaluate: false}).evaluate(context)).toThrow(/Evaluator returned|integer/);
+        const config = overscanConfig();
+        const calculator = new VideoSlotWinCalculator(config);
+        jest.spyOn(calculator, "getWinEvaluationResult").mockReturnValue(new WinEvaluationResult({winComponents: [component]}));
+        const session = new VideoSlotSession(config, {generateSymbolsCombination: () => combination()}, calculator);
+        const credits = session.getCreditsAmount();
+        expect(() => session.play()).toThrow(/Evaluator returned|integer/);
+        expect(session.getCreditsAmount()).toBe(credits);
+        expect(session.getWinAmount()).toBe(0);
+        expect(session.getWinEvaluationResult().getWinComponents()).toEqual([]);
     });
 
     it("preserves the legacy replay shape with explicit identity coordinates", () => {

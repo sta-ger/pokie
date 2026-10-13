@@ -26,7 +26,9 @@ implements VideoSlotSessionHandling<T> {
     }
 
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
-        return this.baseSession.getConfiguredScreenGeometry ? this.baseSession.getConfiguredScreenGeometry() : this.baseSession.getScreenGeometry?.();
+        const configured = this.baseSession.getConfiguredScreenGeometry?.();
+        const attached = this.baseSession.getSymbolsCombination().getScreenGeometry?.();
+        return configured ?? attached ?? (this.baseSession.getConfiguredScreenGeometry ? undefined : this.baseSession.getScreenGeometry?.());
     }
 
     public getScreenGeometry(): ScreenGeometry | undefined {

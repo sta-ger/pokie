@@ -756,11 +756,11 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
 
         const seenLines = new Map<string, number>();
-        paylines.forEach((line, index) => {
+        Array.from(paylines).forEach((line, index) => {
             const valid =
                 Array.isArray(line) &&
                 (!reelsValid || line.length === reels) &&
-                line.every(
+                Array.from(line).every(
                     (row) => typeof row === "number" && Number.isInteger(row) && row >= 0 && (!rowsValid || row < (rows as number)),
                 );
             if (!valid) {
