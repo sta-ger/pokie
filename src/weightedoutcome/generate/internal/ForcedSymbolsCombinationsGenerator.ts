@@ -13,6 +13,10 @@ export class ForcedSymbolsCombinationsGenerator<T extends string | number | symb
         this.combination = new SymbolsCombination<T>().fromMatrix(grid);
     }
 
+    public acceptsWeightedDefinitions(): boolean {
+        return true;
+    }
+
     public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
         return this.combination;
     }

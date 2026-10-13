@@ -1,3 +1,4 @@
+import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -72,6 +73,8 @@ export class GamePackageGenerator implements GamePackageGenerating {
         reelStripGeneration?: GameBuildInfoReelStripGeneration,
         options?: GamePackageGenerateOptions,
     ): GeneratedGamePackage {
+        const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
+        if (variantErrors.length) throw new Error(variantErrors.join("; "));
         const id = blueprint.manifest.id;
         const projectRoot = resolveGamePackageDestination(id, cwd, outDir);
 

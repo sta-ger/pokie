@@ -1,3 +1,5 @@
+import {buildSequenceWindows} from "./buildSequenceWindows.js";
+import {isWeightedSymbolsSequence} from "./WeightedSymbolsSequence.js";
 import type {LinesDefinitionsDescribing} from "../linesdefinitions/LinesDefinitionsDescribing.js";
 import type {SymbolsSequenceDescribing} from "./SymbolsSequenceDescribing.js";
 
@@ -328,13 +330,7 @@ export class SymbolsCombinationsAnalyzer {
     ): T[][][] {
         // Each reel only has `getSize()` distinct visible windows, so precompute them once
         // instead of recomputing the same window on every combination that includes it.
-        const reelsWindows: T[][][] = sequences.map((sequence) => {
-            const windows: T[][] = new Array(sequence.getSize());
-            for (let position = 0; position < sequence.getSize(); position++) {
-                windows[position] = sequence.getSymbols(position, symbolsNumber);
-            }
-            return windows;
-        });
+        const reelsWindows = sequences.map(sequence => buildSequenceWindows(sequence, symbolsNumber).windows);
         const reelsSizes: number[] = reelsWindows.map((windows) => windows.length);
 
         const allPossibleSymbolsCombinations: T[][][] = [];
@@ -361,7 +357,37 @@ export class SymbolsCombinationsAnalyzer {
     ): number {
         // Every reel stop is drawn uniformly (see SymbolsCombinationsGenerator), so a single
         // combination's probability is the product of each reel's 1-in-getSize() chance.
+        if (sequences.some(sequence => isWeightedSymbolsSequence(sequence))) throw new Error("Weighted sequences have joint variant/stop probabilities; use getWeightedCombinations().");
         return sequences.reduce((probability, sequence) => probability / sequence.getSize(), 1);
+    }
+
+    public static getWeightedCombinations<T extends string | number | symbol>(sequences: SymbolsSequenceDescribing<T>[], rows: number): {combination: T[][]; probability: number}[] {
+        const requirePositiveMass = (probability: number): number => {
+            if (!(probability > 0) || !Number.isFinite(probability)) throw new Error("A positive joint variant/stop probability is not representable in binary64; use exact rational weights or runtime selection.");
+            return probability;
+        };
+        const events = sequences.map(sequence => {
+            if (!(isWeightedSymbolsSequence(sequence))) return Array.from({length: sequence.getSize()}, (_, stop) => ({window: sequence.getSymbols(stop, rows), probability: requirePositiveMass(1 / sequence.getSize())}));
+            const probabilities = sequence.getProbabilities();
+            return sequence.getVariants().flatMap((variant, index) => {
+                if (variant.weight === 0) return [];
+                const probability = requirePositiveMass(probabilities[index] / variant.symbols.length);
+                return Array.from({length: variant.symbols.length}, (_, stop) => ({window: Array.from({length: rows}, (_, row) => variant.symbols[(stop + row) % variant.symbols.length]), probability}));
+            });
+        });
+        const combinations = new Map<string, {combination: T[][]; probability: number}>();
+        const visit = (reel: number, grid: T[][], probability: number): void => {
+            if (reel === events.length) {
+                const key = JSON.stringify(grid),
+                    prior = combinations.get(key);
+                if (prior) prior.probability += probability;
+                else combinations.set(key, {combination: grid, probability});
+                return;
+            }
+            for (const event of events[reel]) visit(reel + 1, [...grid, event.window], requirePositiveMass(probability * event.probability));
+        };
+        visit(0, [], 1);
+        return [...combinations.values()];
     }
 
     public static getUniqueCombinationsWithWeights<T extends string | number | symbol = string>(

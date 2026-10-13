@@ -27,7 +27,7 @@ const SECTION_CODE_PREFIXES: Record<BlueprintSectionId, string[]> = {
     layout: ["blueprint-reels-", "blueprint-rows-", "blueprint-paylines-", "blueprint-payline-"],
     symbols: ["blueprint-symbols-", "blueprint-wilds-", "blueprint-scatters-"],
     // "blueprint-reelstrip" (no trailing "s") covers reelstrip-/reelstrips-/reelstripgeneration- alike.
-    reels: ["blueprint-reelstrip", "blueprint-symbolweights-", "blueprint-weighting-"],
+    reels: ["blueprint-reel-sequences-", "blueprint-reelstrip", "blueprint-symbolweights-", "blueprint-weighting-"],
     paytable: ["blueprint-paytable-", "blueprint-symbol-missing-payout"],
     bets: ["blueprint-availablebets-", "blueprint-betmode-", "blueprint-betmodes-"],
 };

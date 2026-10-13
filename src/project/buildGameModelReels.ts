@@ -35,6 +35,7 @@ const DEFAULT_SCATTER_SYMBOL_COUNT = 3;
 const SHARED_WEIGHTS_SAMPLE_SEED = 1;
 
 function describeReelGenerationMode(blueprint: GameBlueprint): GameModelReelGenerationMode {
+    if (blueprint.reelSequences !== undefined) return "reelSequences";
     if (blueprint.reelStrips !== undefined) {
         return "reelStrips";
     }
@@ -237,6 +238,12 @@ export function buildGameModelReels(blueprint: GameBlueprint, options?: BuildGam
     const wilds = blueprint.wilds ?? [];
     const scatters = blueprint.scatters ?? [];
     const generationMode = describeReelGenerationMode(blueprint);
+    if (blueprint.reelSequences !== undefined) {
+        const reels: GameModelReel[] = blueprint.reelSequences.map((definition, reelIndex) => definition.type === "exact"
+            ? buildReelFromLiteralStrip(reelIndex, definition.symbols, wilds, scatters)
+            : {reelIndex, source: "weighted", reason: "Whole-sequence variants are selected once per logical round; there is no single authoritative strip.", generationDiagnostics: [], weightedVariants: definition.variants.map(variant => ({...variant, symbols: [...variant.symbols]}))});
+        return {generationMode, gameWindow: buildGameWindow(blueprint.reels, blueprint.rows, stripsOf(reels), wilds, scatters, blueprint.screenGeometry), reels};
+    }
 
     if (blueprint.reelStrips !== undefined) {
         const reels = blueprint.reelStrips.map((strip, reelIndex) => buildReelFromLiteralStrip(reelIndex, strip, wilds, scatters));

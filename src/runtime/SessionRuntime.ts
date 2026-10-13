@@ -1,4 +1,5 @@
 import {isSessionStateRestorable, resolveSessionStateSchema} from "../session/SessionStateRestoring.js";
+import {sequenceSelectionsEqual} from "../artifact/validateSequenceSelections.js";
 import type {CascadeResultProviding} from "../session/videoslot/cascade/CascadeResultProviding.js";
 import {cloneSessionData} from "./internal/cloneSessionData.js";
 import {deepFreeze} from "../internal/deepFreeze.js";
@@ -46,6 +47,12 @@ export class SessionRuntime implements SessionRuntimeHandling {
 
     /** The executable progress authority is shared by restore, retry and settlement recovery. */
     public static validateLogicalRoundProgress(session: GameSessionHandling, round: LogicalRound): void {
+        const selections = (session as Partial<VideoSlotSessionHandling>).getSequenceSelections?.();
+        const artifacts = round.subrounds[round.cursor - 1]?.artifacts;
+        const retained = artifacts?.[artifacts.length - 1]?.sequenceSelections;
+        // Canonical JSON restoration sorts object keys. Compare identity fields, rather than the
+        // incidental insertion order of captured versus restored selection objects.
+        if (selections?.length && !sequenceSelectionsEqual(selections, retained)) throw new Error("Retained weighted selections differ from the logical round.");
         const pending = (session as Partial<LogicalRoundProgressProviding>).hasPendingLogicalRound?.() ?? false;
         // Exhaustion is an unfinished stop, not a claim that every feature counter completed.
         if (round.mathematicalStatus !== "exhausted" && (round.mathematicalStatus === "pending") !== pending) throw new Error("Retained logical progress differs from executable progress.");
@@ -95,7 +102,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (prepared.status === "blocked") return {status: "blocked", reason: prepared.reason};
         let result: Extract<SessionCommandResult, {status: "played"}>;
         try {
-            result = prepared.execute(); 
+            result = prepared.execute();
         } catch (error) {
             if (before) {
                 (session as GameSessionHandling & {fromSessionState(state: unknown): unknown}).fromSessionState(before.state);
@@ -160,7 +167,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
             return {status: "ready", deliveryOnly: true, rollback: () => {
                 if (used) return false;
                 used = true;
-                return true; 
+                return true;
             }, execute: () => {
                 if (used) throw new Error("Prepared delivery is no longer executable.");
                 used = true;
@@ -264,8 +271,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const mode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
         const creditsBefore = session.getCreditsAmount();
         const bet = session.getBet();
+        const context = command.continuation?.roundId ?? command.roundId;
+        if (context) (session as Partial<VideoSlotSessionHandling>).setSelectionContext?.(`logical:${context}`);
         session.play();
-        const win = session.getWinAmount(), 
+        const win = session.getWinAmount(),
             credits = session.getCreditsAmount();
         const payout = Math.max(0, credits - creditsBefore + stake);
         if (command.delivery === undefined && command.continuation === undefined) return {status: "played", win, credits, stake, mode};

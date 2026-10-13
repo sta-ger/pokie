@@ -1,3 +1,4 @@
+import type {ReelSequenceSelection, ReelSequenceStatistics} from "./combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import type {SymbolsCombinationDescribing} from "./combinations/SymbolsCombinationDescribing.js";
 import type {GameSessionHandling} from "../GameSessionHandling.js";
@@ -9,6 +10,10 @@ export interface VideoSlotSessionHandling<T extends string | number | symbol = s
     extends VideoSlotConfigDescribing<T>,
         GameSessionHandling,
         VideoSlotRoundStateDetermining<T> {
+    setSelectionContext?(context: string): void;
+    getSequenceSelections?(): ReelSequenceSelection[];
+    getSequenceStatistics?(): ReelSequenceStatistics[];
+
     getScreenGeometry?(): ScreenGeometry | undefined;
     /** Validated upcoming model/generator geometry. An undefined return is authoritative ordinary
      * coordinates; callers must not replace it with a settled combination's tag.

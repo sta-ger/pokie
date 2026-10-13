@@ -1,3 +1,4 @@
+import {sequenceSelectionsEqual, validateSequenceSelections} from "./validateSequenceSelections.js";
 import {computeRoundArtifactHash} from "./computeRoundArtifactHash.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 import type {RoundStepArtifact} from "./RoundStepArtifact.js";
@@ -59,7 +60,14 @@ export class RoundArtifactValidator<T extends string | number = string>
 implements ValidationRule<RoundArtifact<T>> {
     public validate(artifact: RoundArtifact<T>): ValidationIssue[] {
         try {
-            return this.validateInternal(artifact);
+            const issues = this.validateInternal(artifact);
+            if (issues.length) return issues;
+            validateSequenceSelections(artifact.sequenceSelections, artifact.screen.length, artifact.roundId);
+            for (const step of artifact.steps) {
+                validateSequenceSelections(step.sequenceSelections, step.screen.length, artifact.roundId);
+                if (!sequenceSelectionsEqual(step.sequenceSelections, artifact.sequenceSelections)) throw new Error("Step selection differs from retained round selection.");
+            }
+            return issues;
         } catch (error) {
             return [
                 {

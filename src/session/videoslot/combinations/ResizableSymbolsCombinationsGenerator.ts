@@ -1,3 +1,4 @@
+import {isWeightedSymbolsSequence} from "./WeightedSymbolsSequence.js";
 import {rejectScreenGeometry} from "../coordinates/projectSymbolsCombination.js";
 import {PseudorandomNumberGenerator} from "./PseudorandomNumberGenerator.js";
 import type {RandomNumberGenerating} from "./RandomNumberGenerating.js";
@@ -30,6 +31,7 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
+        if (this.config.getSymbolsSequences().some(sequence => isWeightedSymbolsSequence(sequence))) throw new Error("ResizableSymbolsCombinationsGenerator does not support weighted whole sequences.");
         rejectScreenGeometry(this.config, "ResizableSymbolsCombinationsGenerator");
         const arr: T[][] = new Array(this.config.getReelsNumber());
         const stopPositions: number[] = new Array(this.config.getReelsNumber());

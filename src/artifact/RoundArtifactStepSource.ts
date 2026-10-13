@@ -1,3 +1,4 @@
+import type {ReelSequenceSelection} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {WinEvaluationResult} from "../session/videoslot/winevaluation/WinEvaluationResult.js";
 import type {RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.js";
@@ -13,6 +14,7 @@ import type {RoundArtifactFeatureEventInput} from "./RoundArtifactFeatureEvent.j
 export type RoundArtifactStepSource<T extends string | number = string> = {
     readonly geometry?: ScreenGeometry;
     readonly generatedScreen?: readonly (readonly T[])[];
+    readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly T[])[];
     readonly winEvaluationResult: WinEvaluationResult<T>;
     readonly featureEvents?: readonly RoundArtifactFeatureEventInput[];

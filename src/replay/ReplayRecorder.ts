@@ -215,9 +215,9 @@ export class ReplayRecorder implements ReplayRecording, PreGeneratedReplayRecord
         const durationMs = Date.now() - startedAt;
         const slot = session as Partial<VideoSlotSessionHandling>;
         const geometry = slot.getScreenGeometry?.();
-        let artifact = (logicalRound || (geometry && !new ScreenProjection(geometry).isIdentity())) && slot.getWinEvaluationResult
+        let artifact = (slot.getSequenceSelections?.().length || logicalRound || (geometry && !new ScreenProjection(geometry).isIdentity())) && slot.getWinEvaluationResult
             ? new PokieJsonRoundArtifactProjector().project(buildRoundArtifactFromSession(slot as VideoSlotSessionHandling, {
-                roundId: `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
+                roundId: logicalRound?.id ?? `replay:${seed ?? "no-seed"}:${round}`, provenance: {game: manifest, pokieVersion: "1.3.0", ...(game.getConfigHash ? {configHash: game.getConfigHash()} : {})},
             })) : undefined;
 
         if (logicalRound && slot.getWinEvaluationResult) artifact = new PokieJsonRoundArtifactProjector().project(buildLogicalRoundArtifact(logicalRound,

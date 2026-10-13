@@ -1,7 +1,13 @@
+import type {ReelSequenceSelection, ReelSequenceStatistics} from "./WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
 import type {SymbolsCombinationDescribing} from "./SymbolsCombinationDescribing.js";
 
 export interface SymbolsCombinationsGenerating<T extends string | number | symbol = string> {
+    validateSequenceDefinitions?(): void;
+    acceptsWeightedDefinitions?(): boolean;
+    setSelectionContext?(context: string): void;
+    getSequenceSelections?(): ReelSequenceSelection[];
+    getSequenceStatistics?(): ReelSequenceStatistics[];
     generateSymbolsCombination(): SymbolsCombinationDescribing<T>;
 
     /** Authoritative next-generation contract. An undefined return means ordinary coordinates,

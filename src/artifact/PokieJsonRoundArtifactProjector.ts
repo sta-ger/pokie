@@ -14,7 +14,7 @@ export class PokieJsonRoundArtifactProjector<T extends string | number = string>
 implements RoundArtifactProjector<T, RoundArtifactJson<T>> {
     public project(artifact: RoundArtifact<T>): RoundArtifactJson<T> {
         const canonical = toCanonicalJson(artifact) as unknown as RoundArtifact<T>;
-        if (artifact.geometry || artifact.steps.some(step => step.geometry)) {
+        if (artifact.sequenceSelections || artifact.geometry || artifact.steps.some(step => step.geometry)) {
             const issues = new RoundArtifactValidator<T>().validate(artifact);
             if (issues.length) throw new Error(issues.map(issue => issue.message).join("; "));
         }

@@ -1,3 +1,5 @@
+import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
+import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {observeLogicalSubround} from "./LogicalRoundStatistics.js";
 import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {JackpotStatisticsProviding} from "../session/JackpotStatisticsProviding.js";
@@ -65,6 +67,8 @@ export class AggregateSimulationRunner {
 
     public run(shouldStop?: () => boolean): SimulationAccumulator {
         const accumulator = new SimulationAccumulator();
+        const slot = this.session as Partial<VideoSlotSessionHandling>;
+        const sequenceBefore = slot.getSequenceStatistics?.();
         const categoryTotals = new Map<string, CategoryTotals>();
         let categorizationSupported = false;
         // Captured *before* a single round of this run plays — see subtractJackpotStatisticsSnapshots' own
@@ -119,6 +123,8 @@ export class AggregateSimulationRunner {
         this.lastJackpotStatistics = this.supportsJackpotStatistics(this.session)
             ? subtractJackpotStatisticsSnapshots(this.session.getJackpotStatisticsSnapshot(), jackpotBefore)
             : undefined;
+        const sequenceAfter = slot.getSequenceStatistics?.();
+        if (sequenceAfter?.length) accumulator.setReelSequenceStatistics(mergeReelSequenceStatistics(sequenceAfter, sequenceBefore, true));
         return accumulator;
     }
 

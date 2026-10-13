@@ -1,3 +1,5 @@
+import {WeightedSymbolsSequence} from "../session/videoslot/combinations/WeightedSymbolsSequence.js";
+import {validateSequenceSelections} from "../artifact/validateSequenceSelections.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {LiveSnapshotPolicy} from "./internal/LiveSessionAuthority.js";
 import type {SessionStateSchema} from "../session/SessionStateRestoring.js";
@@ -22,6 +24,12 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
     }
     if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Executable state must be an object.");
     const state = value as Record<string, unknown>;
+    if (state.selectionContext !== undefined && (typeof state.selectionContext !== "string" ||
+        !(/^(implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(state.selectionContext) || state.selectionContext.includes("\0") ||
+        (state.selectionContext.startsWith("implicit:") && (!Number.isSafeInteger(Number(state.selectionContext.slice(9))) ||
+            (state.implicitRound !== undefined && Number(state.selectionContext.slice(9)) > (state.implicitRound as number)))))) throw new Error("Invalid pending whole-sequence round context.");
+    if (state.featureEntryPending !== undefined && (typeof state.featureEntryPending !== "boolean" ||
+        (state.featureEntryPending && !(typeof state.freeGamesSum === "number" && typeof state.freeGamesNum === "number" && state.freeGamesSum > state.freeGamesNum)))) throw new Error("Invalid pending feature entry.");
     if (schema?.kind === "base" && Object.keys(state).length !== 0) throw new Error("Base-game state must be empty.");
     if (partial && schema?.kind === "seeded-video-slot" && (state.rngState === undefined) !== (state.reelStrips === undefined)) throw new Error("Partial seeded state must omit RNG and reels together.");
     if (!partial && schema?.kind === "seeded-video-slot" && state.rngState === undefined) throw new Error("Required seeded RNG snapshot is missing.");
@@ -31,6 +39,22 @@ export function validateExecutableState(value: unknown, schema?: SessionStateSch
         const strips = state.reelStrips as (string | number)[][];
         if ((schema.reels !== undefined && strips.length !== schema.reels) ||
             (schema.symbols !== undefined && !strips.every(strip => strip.every(symbol => schema.symbols!.includes(symbol))))) throw new Error("Resolved reel strips do not match the selected model.");
+    }
+    if (schema?.kind === "seeded-video-slot" && schema.weightedReels && state.reelStrips !== undefined) {
+        const strips = state.reelStrips as (string | number)[][];
+        const selection = state.sequenceState as {context: string; contextRequested: boolean; implicitGeneration: number; selections: import("../session/videoslot/combinations/WeightedSequenceVariant.js").ReelSequenceSelection[]; counts: Record<string, number>[]};
+        if (!selection || !Array.isArray(selection.selections) || selection.selections.length !== schema.weightedReels.length || typeof selection.context !== "string" || !Array.isArray(selection.counts) || selection.counts.length !== strips.length || typeof selection.contextRequested !== "boolean" || !Number.isSafeInteger(selection.implicitGeneration) || selection.implicitGeneration < 0 || !Number.isSafeInteger(state.implicitRound) || (state.implicitRound as number) < 0) throw new Error("Missing weighted selection state.");
+        if (selection.context.startsWith("implicit:") && (!Number.isSafeInteger(Number(selection.context.slice(9))) || Number(selection.context.slice(9)) > Math.min(selection.implicitGeneration, state.implicitRound as number))) throw new Error("Unreserved implicit weighted context.");
+        if (selection.context !== "initialization") validateSequenceSelections(selection.selections, strips.length);
+        for (const reel of schema.weightedReels) {
+            const definition = new WeightedSymbolsSequence(reel.variants, schema.symbols);
+            const retained = selection.selections.find(item => item.reelIndex === reel.reelIndex);
+            if (!retained || retained.context !== selection.context || JSON.stringify(definition.resolve(retained.variantId).toArray()) !== JSON.stringify(strips[reel.reelIndex])) throw new Error("Invalid resolved weighted variant/context.");
+        }
+        Array.from(selection.counts).forEach((counts, reelIndex) => {
+            const definition = schema.weightedReels!.find(reel => reel.reelIndex === reelIndex);
+            if (!counts || typeof counts !== "object" || Array.isArray(counts) || Object.entries(counts).some(([id, count]) => !definition?.variants.some(variant => variant.id === id && variant.weight > 0) || !Number.isSafeInteger(count) || count < 0)) throw new Error("Invalid weighted counters.");
+        });
     }
     if (schema?.kind === "free-games" && (state.freeGamesNum === undefined || state.freeGamesSum === undefined || state.freeGamesBank === undefined)) throw new Error("Required free-games state is missing.");
     if (schema?.kind === "bet-modes" && state.betModeId === undefined) throw new Error("Required bet-mode state is missing.");

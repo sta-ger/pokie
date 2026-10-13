@@ -229,6 +229,17 @@ describe("ReelCommand", () => {
     });
 
     describe("--materialize", () => {
+        it.each(["json", "text"])("rejects weighted literal materialization in %s without resolving or writing", async format => {
+            const blueprint: GameBlueprint = {...noReelStripGenerationBlueprint, reelSequences: [{type: "weighted", variants: [{id: "only", symbols: ["A"], weight: 1}]}]};
+            const write = jest.fn(),
+                resolve = jest.fn();
+            const command = new ReelCommand(loaderFor(blueprint), write, resolve);
+            expect(await command.run(["generate", "game.json", "--materialize", "--out", "untouched.json", ...(format === "json" ? ["--format", "json"] : [])])).toBe(1);
+            expect(write).not.toHaveBeenCalled();
+            expect(resolve).not.toHaveBeenCalled();
+            expect(JSON.stringify(logSpy.mock.calls)).toContain("does not support reelSequences");
+            if (format === "json") expect(JSON.parse(logSpy.mock.calls[0][0])).toMatchObject({materialized: false, code: "reel-sequences-materialization-unsupported"});
+        });
         it("resolves the whole blueprint and writes a plain reelStrips array with reelStripGeneration removed", async () => {
             const writeFile = jest.fn();
             const command = new ReelCommand(loaderFor(baseBlueprint), writeFile);

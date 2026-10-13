@@ -1,3 +1,4 @@
+import {getReelGenerationMode, setReelGenerationMode, type ReelGenerationModeDrafts} from "../../../../../../cli/studio-client/src/domain/blueprintFormOps";
 import {
     computeReelStopWindow,
     describeLoadResult,
@@ -191,5 +192,21 @@ describe("interpretBlueprintEditor", () => {
         it("maps error to failed", () => {
             expect(describeSaveManagedResult({status: "error", error: "disk full"})).toEqual({status: "failed", message: "disk full"});
         });
+    });
+});
+
+describe("weighted whole-sequence authoring preservation", () => {
+    it("keeps definitions across unrelated edits and explicit reversible source-mode changes", () => {
+        const definitions = [{type: "weighted", variants: [{id: "a", symbols: ["A"], weight: 0.25}, {id: "b", symbols: ["B"], weight: 0.75}]}];
+        const blueprint: Record<string, unknown> = {reels: 1, reelSequences: definitions, manifest: {name: "Draft"}};
+        const drafts: ReelGenerationModeDrafts = {};
+        expect(getReelGenerationMode(blueprint)).toBe("reelSequences");
+        blueprint.manifest = {name: "Edited"};
+        expect(blueprint.reelSequences).toEqual(definitions);
+        setReelGenerationMode(blueprint, "reelStripGeneration", drafts);
+        expect(blueprint.reelSequences).toBeUndefined();
+        setReelGenerationMode(blueprint, "reelSequences", drafts);
+        expect(blueprint.reelSequences).toEqual(definitions);
+        expect(blueprint.reelStripGeneration).toBeUndefined();
     });
 });

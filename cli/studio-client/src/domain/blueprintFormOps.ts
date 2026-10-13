@@ -14,6 +14,10 @@ function asNumberArray(value: unknown): number[] {
     return Array.isArray(value) ? value.filter((item): item is number => typeof item === "number") : [];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function removeAt<T>(list: T[], index: number): T[] {
     return list.filter((_, i) => i !== index);
 }
@@ -97,6 +101,11 @@ export function renameSymbol(blueprint: Record<string, unknown>, from: string, t
 // payout semantics.  Membership-only references are removed automatically by removeSymbolAt().
 export function getSymbolDeletionBlockers(blueprint: Record<string, unknown>, id: string): string[] {
     const blockers: string[] = [];
+    if (Array.isArray(blueprint.reelSequences)) blueprint.reelSequences.forEach((reel: unknown, index: number) => {
+        if (!isRecord(reel)) return;
+        const arrays = reel.type === "weighted" && Array.isArray(reel.variants) ? reel.variants.map((variant: unknown) => isRecord(variant) ? asStringArray(variant.symbols) : []) : [asStringArray(reel.symbols)];
+        if (arrays.some((symbols: string[]) => symbols.includes(id))) blockers.push(`reelSequences[${index}]`);
+    });
     if (id in asPaytable(blueprint.paytable)) blockers.push("paytable");
     if (Reflect.apply(Object.prototype.hasOwnProperty, asSymbolWeights(blueprint.symbolWeights), [id])) blockers.push("symbolWeights");
     asReelStrips(blueprint.reelStrips).forEach((strip, reelIndex) => {
@@ -128,6 +137,10 @@ function renameRecordKey(blueprint: Record<string, unknown>, field: string, from
 }
 
 function renameGeneratedReelReferences(blueprint: Record<string, unknown>, from: string, to: string): void {
+    const renameSymbols = (entry: unknown): unknown => isRecord(entry) && Array.isArray(entry.symbols)
+        ? {...entry, symbols: entry.symbols.map((id: unknown) => id === from ? to : id)} : entry;
+    if (Array.isArray(blueprint.reelSequences)) blueprint.reelSequences = blueprint.reelSequences.map((reel: unknown) => isRecord(reel) && reel.type === "weighted" && Array.isArray(reel.variants)
+        ? {...reel, variants: reel.variants.map(renameSymbols)} : renameSymbols(reel));
     if (!Array.isArray(blueprint.reelStripGeneration)) return;
     blueprint.reelStripGeneration = asReelStripGenerationEntries(blueprint.reelStripGeneration).map((entry) => {
         if (entry.type === "literal") return {...entry, strip: asStringArray(entry.strip).map((id) => (id === from ? to : id))};
@@ -910,9 +923,10 @@ export function resizeReelStripGenerationToReelCount(blueprint: Record<string, u
 
 // ---- Reel generation mode (reelStrips/reelStripGeneration/symbolWeights are mutually exclusive in practice) ----
 
-export type ReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
+export type ReelGenerationMode = "reelSequences" | "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
 
 export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelGenerationMode {
+    if (blueprint.reelSequences !== undefined) return "reelSequences";
     if (blueprint.reelStrips !== undefined) {
         return "reelStrips";
     }
@@ -931,6 +945,7 @@ export function getReelGenerationMode(blueprint: Record<string, unknown>): ReelG
 // Save and every runtime consumer see one canonical representation, while a user can still reverse an
 // in-progress mode choice without rebuilding their reels from scratch.
 export type ReelGenerationModeDrafts = {
+    reelSequences?: unknown;
     reelStrips?: string[][];
     reelStripGeneration?: Record<string, unknown>[];
     symbolWeights?: Record<string, number>;
@@ -941,7 +956,9 @@ function cloneReelGenerationDraft<T>(value: T): T {
 }
 
 function rememberReelGenerationMode(blueprint: Record<string, unknown>, mode: ReelGenerationMode, drafts: ReelGenerationModeDrafts): void {
-    if (mode === "reelStrips" && blueprint.reelStrips !== undefined) {
+    if (mode === "reelSequences") {
+        drafts.reelSequences = cloneReelGenerationDraft(blueprint.reelSequences);
+    } else if (mode === "reelStrips" && blueprint.reelStrips !== undefined) {
         drafts.reelStrips = cloneReelGenerationDraft(asReelStrips(blueprint.reelStrips));
     } else if (mode === "reelStripGeneration" && blueprint.reelStripGeneration !== undefined) {
         drafts.reelStripGeneration = cloneReelGenerationDraft(asReelStripGenerationEntries(blueprint.reelStripGeneration));
@@ -964,6 +981,12 @@ export function setReelGenerationMode(blueprint: Record<string, unknown>, mode: 
         rememberReelGenerationMode(blueprint, currentMode, drafts);
     }
 
+    if (mode === "reelSequences") {
+        blueprint.reelSequences = cloneReelGenerationDraft(drafts?.reelSequences ?? Array.from({length: reelCount(blueprint)}, () => ({type: "weighted", variants: []})));
+        for (const key of ["reelStrips", "reelStripGeneration", "symbolWeights"]) Reflect.deleteProperty(blueprint, key);
+        return;
+    }
+    Reflect.deleteProperty(blueprint, "reelSequences");
     if (mode === "reelStrips") {
         let strips: string[][];
         if (blueprint.reelStrips !== undefined) {

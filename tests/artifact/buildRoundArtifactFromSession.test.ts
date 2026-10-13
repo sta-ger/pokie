@@ -6,6 +6,9 @@ import {
     VideoSlotWinCalculator,
     WinEvaluationResult,
     buildRoundArtifactFromSession,
+    CascadeResult,
+    CascadeStep,
+    RoundArtifactValidator,
 } from "@fromstan/pokie";
 
 const provenance: RoundArtifactProvenance = {
@@ -42,6 +45,18 @@ function fakeSession(overrides: Record<string, unknown> = {}): VideoSlotSessionH
 }
 
 describe("buildRoundArtifactFromSession", () => {
+    it.each(["terminal-only", "multi-step", "bounded-exhaustion"])("retains weighted selection evidence on every %s cascade artifact source", kind => {
+        const screen = [["A"]],
+            evaluation = new WinEvaluationResult<string>();
+        const steps = kind === "terminal-only" ? [] : [new CascadeStep(screen, evaluation, [], []), new CascadeStep(screen, evaluation, [], [])];
+        const selection = [{reelIndex: 0, variantId: "all-A", context: "logical:cascade"}];
+        const session = fakeSession({getSequenceSelections: () => selection, getCascadeResult: () => new CascadeResult(screen, screen, steps, {}, {}, {}, kind === "bounded-exhaustion" ? undefined : evaluation)});
+        const artifact = buildRoundArtifactFromSession(session, {roundId: "cascade", provenance});
+        expect(artifact.sequenceSelections).toEqual(selection);
+        expect(artifact.steps).toHaveLength(steps.length + (kind === "bounded-exhaustion" ? 0 : 1));
+        artifact.steps.forEach(step => expect(step.sequenceSelections).toEqual(selection));
+        expect(new RoundArtifactValidator().validate(artifact)).toEqual([]);
+    });
     it("uses the session's own bet as stake when it does not implement StakeAmountDetermining", () => {
         const artifact = buildRoundArtifactFromSession(fakeSession(), {roundId: "r1", provenance});
 

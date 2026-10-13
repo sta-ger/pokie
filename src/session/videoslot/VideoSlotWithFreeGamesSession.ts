@@ -33,6 +33,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     private freeGamesSum = 0;
     private freeBank = 0;
     private wonFreeGamesNumber = 0;
+    private featureEntryPending = false;
 
     constructor(
         config: VideoSlotWithFreeGamesConfigRepresenting<T> = new VideoSlotWithFreeGamesConfig<T>(),
@@ -82,6 +83,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
     }
 
     public setFreeGamesSum(value: number): void {
+        if (this.getSequenceSelections().length && !this.hasUnfinishedFreeGames() && value > this.freeGamesNum) this.featureEntryPending = true;
         this.freeGamesSum = value;
     }
 
@@ -106,6 +108,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             freeGamesNum: this.freeGamesNum,
             freeGamesSum: this.freeGamesSum,
             freeGamesBank: this.freeBank,
+            ...(this.featureEntryPending ? {featureEntryPending: true} : {}),
         };
         if (this.wonFreeGamesNumber > 0) {
             state.wonFreeGamesNumber = this.wonFreeGamesNumber;
@@ -122,6 +125,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
             !Number.isSafeInteger(value.freeGamesNum) || value.freeGamesNum < 0 ||
             !Number.isSafeInteger(value.freeGamesSum) || value.freeGamesSum < value.freeGamesNum ||
             !Number.isFinite(value.freeGamesBank) || value.freeGamesBank < 0 ||
+            (value.featureEntryPending !== undefined && (typeof value.featureEntryPending !== "boolean" || (value.featureEntryPending && value.freeGamesSum <= value.freeGamesNum))) ||
             (value.wonFreeGamesNumber !== undefined && (!Number.isSafeInteger(value.wonFreeGamesNumber) || value.wonFreeGamesNumber < 0)) ||
             !this.supportsSessionStateRestore(this.baseSession)) throw new Error("Invalid free-games executable state.");
         const base = this.baseSession as VideoSlotSessionHandling<T> & {validateSessionState?: (state: unknown) => void};
@@ -135,6 +139,7 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         this.freeGamesSum = value.freeGamesSum;
         this.freeBank = value.freeGamesBank;
         this.wonFreeGamesNumber = value.wonFreeGamesNumber ?? 0;
+        this.featureEntryPending = value.featureEntryPending ?? false;
         return this;
     }
 
@@ -153,6 +158,10 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         }
         this.validateScreenCoordinates();
         this.wonFreeGamesNumber = 0;
+        if (this.hasUnfinishedFreeGames() && !this.featureEntryPending) {
+            const context = this.getSequenceSelections()[0]?.context;
+            if (context && context !== "initialization") this.baseSession.setSelectionContext?.(context);
+        }
         this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();
         // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its
@@ -167,6 +176,9 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         // display screen and insufficient-credit no-ops never create or reprocess a grant.
         this.wonFreeGamesNumber = this.determineWonFreeGamesNumber();
         this.freeGamesRoundHandler.afterRoundPlayed(this, creditsBeforePlay);
+        // Natural grants already belong to the just-selected round. A forced grant before play
+        // starts a fresh selection context, then its subsequent free spins retain that choice.
+        this.featureEntryPending = false;
     }
 
     // StakeAmountDetermining: a spin consuming an unfinished free-games round never charges a real

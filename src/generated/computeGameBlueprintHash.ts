@@ -20,6 +20,7 @@ import crypto from "crypto";
 // exactly those fields a conflict check needs to catch. Use *this* one for "did the raw blueprint
 // content change", that one only for "does this still round-trip losslessly through a PAR sheet".
 export function computeGameBlueprintHash(blueprint: unknown): string {
+    if (blueprint && typeof blueprint === "object" && "reelSequences" in blueprint) blueprint = {blueprint, sequenceContext: "logical-round-v1", variantSampling: "binary64-integer-ratios-v1"};
     return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonicalize(blueprint))).digest("hex")}`;
 }
 

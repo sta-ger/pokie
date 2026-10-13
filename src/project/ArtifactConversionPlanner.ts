@@ -776,6 +776,13 @@ export class ArtifactConversionPlanner {
             diagnostic: {code, failedEdge: {from: sourceKind, to: targetKind}, message, recovery},
         });
 
+        if (sourceKind === "blueprint" && source.canonicalLocation && (targetKind === "wasm" || targetKind === "parWorkbook") && fs.existsSync(source.canonicalLocation)) {
+            try {
+                const blueprint = JSON.parse(fs.readFileSync(source.canonicalLocation, "utf8")) as {reelSequences?: unknown};
+                if (blueprint.reelSequences !== undefined) return unavailable("unsupported-boundary", `${targetKind} does not support reelSequences or weighted whole-sequence variants.`, "Build a TypeScript package to preserve the distribution.");
+            } catch { /* Source validation reports malformed Blueprint content at execution. */ }
+        }
+
         // Studio selectors are not artifact recognition.  In particular, a raw
         // JSON library may be readable by a legacy consumer, but it lacks the
         // bundle identity and provenance required to advertise a conversion

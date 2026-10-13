@@ -573,3 +573,24 @@ A feature tail first observed without its entry ledger is not a completed logica
 observation. Its steps still count normally; bare feature snapshots cannot recover
 the original entry price or command. Durable runtime statistics use the retained
 logical entry and therefore complete normally after restart.
+
+## Whole-sequence selection coverage
+
+Weighted sessions expose `getSequenceStatistics()`. Aggregate simulations subtract
+the starting counters, so reused or restored sessions report only the current run.
+Counters pass through chunk snapshots, worker results, statistics merging and
+JSON/Markdown/HTML reports; Studio renders the same fields.
+
+Each `reelSequences` report entry contains its reel index, `logical-round` context,
+model identity, selection denominator and configured variants. Every variant has
+its ID, authored weight, normalized probability (and exact `probabilityRatio`),
+count, observed frequency and `uncovered` flag. Positive-weight entries with zero
+observations are uncovered; zero-weight entries are identified separately. A zero
+selection denominator yields frequency zero, never NaN. Reports keep unseen
+configured entries, and incompatible weighted model identities cannot be merged.
+
+Initialization and exact probes contribute no selection events. Free continuations,
+repeated reads, saved stage delivery and idempotent retry do not recount a choice.
+Restorable runtime rollback and compensated persistence failure restore counters
+with selection/RNG state. Variant state keeps only active contextual selections and
+configured counters, rather than a history of completed round IDs.

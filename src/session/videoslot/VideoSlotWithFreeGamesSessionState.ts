@@ -4,5 +4,6 @@ export type VideoSlotWithFreeGamesSessionState = {
     freeGamesBank: number;
     // Last completed round's grant. Missing in legacy states and when the grant is zero.
     wonFreeGamesNumber?: number;
+    featureEntryPending?: boolean;
     base?: unknown;
 };

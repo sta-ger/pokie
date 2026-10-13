@@ -1,3 +1,4 @@
+import {describeSequenceVariantCoverage} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant";
 import {List, Table, Text} from "@mantine/core";
 import type {SimulationReportView} from "../../domain/interpret/Simulation";
 import {AdvancedDisclosure} from "./AdvancedDisclosure";
@@ -16,6 +17,13 @@ export function formatConfidenceInterval(interval: {low: number; high: number} |
 export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
     return (
         <div>
+            {view.reelSequences?.map(reel => <PageSection key={reel.reelIndex} legend={`Weighted reel ${reel.reelIndex + 1}`}>
+                <Text>{reel.context}: {reel.selections} selections</Text>
+                <Table><Table.Thead><Table.Tr>{["Variant ID", "Weight", "Probability", "Count", "Frequency", "Coverage"].map(label => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead>
+                    <Table.Tbody>{reel.variants.map(variant => <Table.Tr key={variant.id}>
+                        <Table.Td>{variant.id}</Table.Td><Table.Td>{variant.weight}</Table.Td><Table.Td>{variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability}</Table.Td><Table.Td>{variant.count}</Table.Td><Table.Td>{variant.frequency}</Table.Td><Table.Td>{describeSequenceVariantCoverage(variant.weight, variant.uncovered)}</Table.Td>
+                    </Table.Tr>)}</Table.Tbody></Table>
+            </PageSection>)}
             <Table withRowBorders={false}>
                 <Table.Tbody>
                     <Table.Tr>

@@ -378,3 +378,21 @@ uses, `seed` when `"bounded-coverage"`, `pokieVersion`/`game`/`configHash`/`gene
 generated library. Threading it into `OutcomeLibraryBundleModeInput.generator` copies it verbatim into that mode's
 own bundle manifest entry (see [Outcome Library Bundle](outcome-library-bundle.md)) — present only for a mode
 actually built by this generator, absent for one built from an already-computed outcome source.
+
+## Whole-sequence variants in generation
+
+Exact generation supports canonical weighted sequence definitions. The raw space is
+the product of each reel's positive-weight variant/stop event count, so caps and
+progress reflect the joint space rather than one default strip. Zero-weight
+alternatives stay in configuration/coverage metadata but produce no outcomes.
+Weighted exact library weights are normalized joint grid probability masses;
+exact-only libraries retain their existing combinatorial weights.
+
+Both streamed disk staging and in-memory accumulation add weighted mass when
+several events render the same grid. Sampled generation draws from the weighted
+joint event distribution instead of treating alternatives as uniformly likely.
+Grid artifacts come from the existing forced-session calculation path and contain
+no invented unique variant-selection identity. The source/checkpoint identity
+binds variant IDs, weights, full arrays and ordering. Cancellation retains only
+explicitly owned valid checkpoints, cleans ordinary temporary partitions and
+publishes no completed library. See [weighted mathematics](math-modeling.md#weighted-whole-sequences).

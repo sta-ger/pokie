@@ -64,7 +64,9 @@ export async function runChunkedSimulation(
     // betModeId) — undefined by default, so a caller that never touches bet modes is unaffected.
     betModeSelector: BetModeForNextSimulationRoundSetting | undefined = undefined,
 ): Promise<ChunkedSimulationResult> {
-    const accumulator = new SimulationAccumulator();
+    // Capture run-local configured coverage even if no chunk ever plays. This also clears any
+    // historical counts when the supplied session is reused or restored.
+    const accumulator = new AggregateSimulationRunner(session, 0).run();
     let breakdown: Record<string, SimulationBreakdownComponent> | undefined;
     let jackpot: JackpotStatisticsSnapshot | undefined;
     let roundsCompleted = 0;

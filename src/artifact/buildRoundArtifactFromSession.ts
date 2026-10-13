@@ -32,6 +32,8 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     options: RoundArtifactFromSessionOptions,
 ): RoundArtifact<T> {
     const geometry = session.getScreenGeometry?.();
+    const selections = session.getSequenceSelections?.();
+    const selectionEvidence = selections?.length ? {sequenceSelections: selections} : {};
     const coordinateEvidence = geometry && !new ScreenProjection(geometry).isIdentity()
         ? {geometry, generatedScreen: session.getSymbolsCombination().toMatrix()} : {};
     const stake = options.stake ?? determineStakeAmount(session, session.getBet());
@@ -41,8 +43,8 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     const cascadeSteps = cascade?.getCascadeSteps();
     const terminal = cascade?.getTerminalEvaluation();
     let sources: RoundArtifactStepSource<T>[] | undefined;
-    if (cascade && terminal) sources = [...(cascadeSteps ?? []).map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult()})), {screen: cascade.getFinalScreen(), winEvaluationResult: terminal}];
-    else if (cascadeSteps?.length) sources = cascadeSteps.map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult()}));
+    if (cascade && terminal) sources = [...(cascadeSteps ?? []).map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult(), ...selectionEvidence})), {screen: cascade.getFinalScreen(), winEvaluationResult: terminal, ...selectionEvidence}];
+    else if (cascadeSteps?.length) sources = cascadeSteps.map(step => ({screen: step.getScreen(), winEvaluationResult: step.getWinEvaluationResult(), ...selectionEvidence}));
     const artifact = buildRoundArtifact({
         roundId: options.roundId,
         provenance: options.provenance,
@@ -53,6 +55,7 @@ export function buildRoundArtifactFromSession<T extends string | number = string
             {
                 screen: captureScreen(session) as T[][],
                 ...coordinateEvidence,
+                ...selectionEvidence,
                 winEvaluationResult: session.getWinEvaluationResult(),
                 ...(featureEvents.length > 0 ? {featureEvents} : {}),
             },

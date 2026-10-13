@@ -1,3 +1,4 @@
+import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {GameBlueprintValidating} from "./GameBlueprintValidating.js";
@@ -111,6 +112,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         }
         const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, maxMatchCount, issues);
         this.validatePaylines(b.paylines, reels, reelsValid, evaluatedRows, rowsValid, issues);
+        for (const message of validateBlueprintReelSequences(b)) issues.push({code: "blueprint-reel-sequences-invalid", severity: "error", message});
         const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
         const reelStripGenerationSymbols = this.validateReelStripGeneration(b.reelStripGeneration, symbolSet, symbolsValid, reels, reelsValid, issues);
         const weightSymbols = this.validateSymbolWeights(b.symbolWeights, symbolSet, symbolsValid, issues);

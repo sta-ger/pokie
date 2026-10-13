@@ -35,7 +35,7 @@ export type UniqueGridWeightEntry<T extends string | number = string> = {readonl
 // gets back the same accumulation an uninterrupted run would have produced.
 export async function accumulateUniqueGridWeights<T extends string | number = string>(
     reelWindows: readonly T[][][],
-    tuples: Generator<{tuple: number[]; rawIndex: bigint}>,
+    tuples: Generator<{tuple: number[]; rawIndex: bigint; weight?: bigint}>,
     progressTotal: bigint,
     options: {
         readonly signal?: AbortSignal;
@@ -59,7 +59,7 @@ export async function accumulateUniqueGridWeights<T extends string | number = st
     );
     let processedRawCount = options.initialProcessedRawCount ?? BigInt(0);
 
-    for (const {tuple, rawIndex} of tuples) {
+    for (const {tuple, rawIndex, weight = BigInt(1)} of tuples) {
         if (options.signal?.aborted) {
             // Cast: ExactEnumerationCheckpoint fixes its grid symbol type at string, matching this module's
             // only real caller (generateExactWeightedOutcomeLibrary, always T = string); accumulateUniqueGridWeights
@@ -76,9 +76,9 @@ export async function accumulateUniqueGridWeights<T extends string | number = st
         const key = JSON.stringify(grid);
         const entry = grids.get(key);
         if (entry) {
-            entry.weight += BigInt(1);
+            entry.weight += weight;
         } else {
-            grids.set(key, {grid, weight: BigInt(1)});
+            grids.set(key, {grid, weight});
         }
 
         processedRawCount++;

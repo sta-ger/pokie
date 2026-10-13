@@ -1,3 +1,6 @@
+import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
+import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
+import type {VideoSlotSessionHandling} from "../session/videoslot/VideoSlotSessionHandling.js";
 import {observeLogicalSubround, emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 import {executeSessionCommand} from "../runtime/SessionRuntime.js";
 import type {AsyncSimulationHandling} from "./AsyncSimulationHandling.js";
@@ -7,6 +10,7 @@ import type {NextSessionRoundPlayableDetermining} from "./playstrategy/NextSessi
 import type {SimulationConfigRepresenting} from "./SimulationConfigRepresenting.js";
 
 export class Simulation implements AsyncSimulationHandling {
+    private readonly sequenceBefore?: ReelSequenceStatistics[];
     private logicalRounds = emptyLogicalRoundStatistics();
     private readonly session: GameSessionHandling;
     private readonly numberOfRounds: number;
@@ -29,10 +33,16 @@ export class Simulation implements AsyncSimulationHandling {
 
     constructor(session: GameSessionHandling, config: SimulationConfigRepresenting) {
         this.session = session;
+        this.sequenceBefore = (session as Partial<VideoSlotSessionHandling>).getSequenceStatistics?.();
         this.numberOfRounds = config.getNumberOfRounds();
         this.changeBetStrategy = config.getChangeBetStrategy();
         this.playStrategy = config.getPlayStrategy();
     }
+
+    public getReelSequenceStatistics(): ReelSequenceStatistics[] {
+        return mergeReelSequenceStatistics((this.session as Partial<VideoSlotSessionHandling>).getSequenceStatistics?.(), this.sequenceBefore, true);
+    }
+
 
     public getLogicalRoundStatistics(): LogicalRoundStatistics {
         return {...this.logicalRounds};

@@ -1,3 +1,4 @@
+import type {ReelSequenceSelection, ReelSequenceStatistics, WeightedSequenceVariant} from "../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundDelivery} from "../../../../src/runtime/projectLogicalRound.js";
 import type {ScreenGeometry} from "../../../../src/session/videoslot/coordinates/ScreenGeometry.js";
 export type StudioContext = {mode: "home"} | {mode: "project"; projectRoot: string};
@@ -221,7 +222,7 @@ export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: S
 
 export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
-export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
+export type GameModelReelGenerationMode = "reelSequences" | "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
 
 export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
 
@@ -237,6 +238,7 @@ export type GameModelReelStripPosition = {
 };
 
 export type GameModelResolvedReel = {
+    weightedVariants?: WeightedSequenceVariant[];
     reelIndex: number;
     source: "literal" | "generated" | "sample";
     positions: GameModelReelStripPosition[];
@@ -244,7 +246,7 @@ export type GameModelResolvedReel = {
     generationDiagnostics?: ReelStripGenerationDiagnostic[];
 };
 
-export type GameModelUnresolvedReel = {reelIndex: number; source: "generated"; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
+export type GameModelUnresolvedReel = {reelIndex: number; source: "generated" | "weighted"; weightedVariants?: WeightedSequenceVariant[]; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
 
 export type GameModelReel = GameModelResolvedReel | GameModelUnresolvedReel;
 
@@ -502,6 +504,7 @@ export type StudioReelStripGenerationReelView =
 // blueprint-level problem unrelated to reelStripGeneration itself never hides every other,
 // resolvable reel's result. See StudioReelStripGenerationView.ts's own doc comment.
 export type StudioReelStripGenerationView = {
+    weightedReels?: {reelIndex: number; variants: WeightedSequenceVariant[]}[];
     status: "ok";
     errors: ValidationIssue[];
     warnings: ValidationIssue[];
@@ -664,6 +667,7 @@ export type SimulationReportReproducibility = {
 // The server's copy of this same type lives in "pokie" itself (src/reporting/SimulationReport.ts) —
 // kept as its own client-side copy here, same convention as every other type in this file.
 export type SimulationReport = {
+    reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     requestedRounds: number;
     rounds: number;
@@ -797,6 +801,7 @@ export type RoundStepArtifact = {
     readonly geometry?: ScreenGeometry;
     readonly generatedScreen?: readonly (readonly (string | number)[])[];
     readonly index: number;
+    readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly (string | number)[])[];
     readonly totalWin: number;
     readonly wins: readonly RoundArtifactWin[];
@@ -814,6 +819,7 @@ export type RoundArtifact = {
     readonly stake: number;
     readonly totalWin: number;
     readonly payoutMultiplier: number;
+    readonly sequenceSelections?: readonly ReelSequenceSelection[];
     readonly screen: readonly (readonly (string | number)[])[];
     readonly steps: readonly RoundStepArtifact[];
     readonly wins: readonly RoundArtifactWin[];

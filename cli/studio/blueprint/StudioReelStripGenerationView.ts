@@ -1,4 +1,4 @@
-import type {ReelStripAnalysis, ReelStripGenerationDiagnostic, ValidationIssue} from "@fromstan/pokie";
+import type {WeightedSequenceVariant, ReelStripAnalysis, ReelStripGenerationDiagnostic, ValidationIssue} from "@fromstan/pokie";
 
 // One reel's own entry in POST /api/home/blueprints/reel-strip-generation-preview's response --
 // mirrors that reel's own GameBlueprint.reelStripGeneration[reelIndex] entry: a "literal" reel's exact
@@ -41,6 +41,7 @@ export type StudioReelStripGenerationReelView =
 // own doc comment. A "generated" reel that fails to satisfy its own constraints is likewise reported
 // per-reel (its own success: false), not as a top-level failure.
 export type StudioReelStripGenerationView = {
+    weightedReels?: {reelIndex: number; variants: WeightedSequenceVariant[]}[];
     status: "ok";
     errors: ValidationIssue[];
     warnings: ValidationIssue[];

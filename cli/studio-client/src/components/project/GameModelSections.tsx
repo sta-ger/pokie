@@ -163,6 +163,7 @@ function mechanicsIssues(edit: GameModelEditController): ValidationIssue[] {
 }
 
 function describeReelGenerationMode(mode: GameModelReelGenerationMode): string {
+    if (mode === "reelSequences") return "Whole-sequence variants";
     if (mode === "reelStrips") {
         return "Literal reel strips";
     }
@@ -483,7 +484,11 @@ function FullStripsView({reels}: {reels: GameModelReel[]}) {
         <div>
             {reels.map((reel) => (
                 <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1}`}>
-                    {isResolvedReel(reel) ? (
+                    {reel.weightedVariants && <>
+                        <Text>Whole-sequence alternatives, selected once per logical round.</Text>
+                        {reel.weightedVariants.map(variant => <Text key={variant.id}>{variant.id}: weight {variant.weight}; [{variant.symbols.join(", ")}]</Text>)}
+                    </>}
+                    {!reel.weightedVariants && (isResolvedReel(reel) ? (
                         <>
                             <Text size="sm" c="dimmed" mb="xs">
                                 {describeReelSource(reel.source)} {reel.positions.length} position(s), circular (wraps
@@ -491,7 +496,7 @@ function FullStripsView({reels}: {reels: GameModelReel[]}) {
                             </Text>
                             <ReelPositionsTable reel={reel} />
                         </>
-                    ) : <UnresolvedReelNotice reel={reel} />}
+                    ) : <UnresolvedReelNotice reel={reel} />)}
                 </PageSection>
             ))}
         </div>
@@ -549,7 +554,11 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
             {sharedWeightsSample !== undefined && <SharedWeightsConversionTable sample={sharedWeightsSample} />}
             {reels.map((reel) => (
                 <PageSection key={reel.reelIndex} legend={`Reel ${reel.reelIndex + 1} analysis`}>
-                    {isResolvedReel(reel) ? (
+                    {reel.weightedVariants && <>
+                        <Text>Whole-sequence alternatives, selected once per logical round.</Text>
+                        {reel.weightedVariants.map(variant => <Text key={variant.id}>{variant.id}: weight {variant.weight}; [{variant.symbols.join(", ")}]</Text>)}
+                    </>}
+                    {!reel.weightedVariants && (isResolvedReel(reel) ? (
                         <>
                             <Text size="sm" c="dimmed" mb="xs">
                                 {reel.analysis.length} possible stop position(s) (this reel&apos;s own length).
@@ -557,7 +566,7 @@ function AnalysisView({reels, sharedWeightsSample}: {reels: GameModelReel[]; sha
                             <AnalysisTable analysis={reel.analysis} />
                             {reel.generationDiagnostics !== undefined && <DiagnosticsList diagnostics={reel.generationDiagnostics} />}
                         </>
-                    ) : <UnresolvedReelNotice reel={reel} includeDiagnostics />}
+                    ) : <UnresolvedReelNotice reel={reel} includeDiagnostics />)}
                 </PageSection>
             ))}
         </div>

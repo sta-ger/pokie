@@ -97,10 +97,13 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             // question (symbolWeights or literal reelStrips only) -- "pokie reel generate" is the
             // dedicated editor for that shape (see its own doc comment), so an edit run carries it through
             // untouched instead of asking a question that could only ever destroy it.
+            const reelSequences = editing ? this.defaults.reelSequences : undefined;
             const reelStripGeneration = editing ? this.defaults.reelStripGeneration : undefined;
             let reelStrips: string[][] | undefined;
             let symbolWeights: Record<string, number> | undefined;
-            if (reelStripGeneration !== undefined) {
+            if (reelSequences !== undefined) {
+                console.log('\nWhole-sequence variants are preserved. Edit alternatives in Studio or the Blueprint JSON.');
+            } else if (reelStripGeneration !== undefined) {
                 console.log(
                     '\nReel weighting -- this blueprint already has a "generated" reelStripGeneration; left ' +
                         'unchanged here. Use "pokie reel generate" to adjust it.',
@@ -111,7 +114,10 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
             const mechanics = await this.askMechanics(prompt, scatters ?? [], editing);
             const outDir = await this.askOutDir(prompt, manifest.id, options?.destination);
 
+            const preserved = editing && reelSequences !== undefined ? {...this.defaults} : {};
+            for (const key of ["manifest", "reels", "rows", "symbols", "paytable", "wilds", "scatters", "paylines", "availableBets", "mechanics"]) Reflect.deleteProperty(preserved, key);
             const blueprint: GameBlueprint = {
+                ...preserved,
                 manifest,
                 reels,
                 rows,
@@ -123,6 +129,7 @@ export class GameBlueprintWizard implements GameBlueprintWizarding {
                 ...(reelStrips !== undefined ? {reelStrips} : {}),
                 ...(symbolWeights !== undefined ? {symbolWeights} : {}),
                 ...(reelStripGeneration !== undefined ? {reelStripGeneration} : {}),
+                ...(reelSequences !== undefined ? {reelSequences} : {}),
                 ...(availableBets !== undefined ? {availableBets} : {}),
                 ...(mechanics !== undefined ? {mechanics} : {}),
             };

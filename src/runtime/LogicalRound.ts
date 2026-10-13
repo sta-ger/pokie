@@ -46,9 +46,9 @@ export interface LogicalRoundProgressProviding {
 
 export function validateLogicalRound(value: unknown): string | undefined {
     try {
-        return validateLogicalRoundStructure(value); 
+        return validateLogicalRoundStructure(value);
     } catch {
-        return "Malformed retained logical round."; 
+        return "Malformed retained logical round.";
     }
 }
 
@@ -78,7 +78,7 @@ function validateLogicalRoundStructure(value: unknown): string | undefined {
             const last = step.artifacts[step.artifacts.length - 1];
             const totalWin = step.artifacts.reduce((sum: number, artifact: RoundStepArtifact) => sum + artifact.totalWin, 0);
             const artifact = {schemaVersion: 1, roundId: round.id, provenance: {game: {id: "retained", name: "Retained", version: "1"}, pokieVersion: "unknown"}, betMode: round.mode ?? "base", stake: step.stake,
-                totalWin, payoutMultiplier: step.stake > 0 ? totalWin / step.stake : 0, screen: last.screen,
+                totalWin, payoutMultiplier: step.stake > 0 ? totalWin / step.stake : 0, screen: last.screen, ...(last.sequenceSelections ? {sequenceSelections: last.sequenceSelections} : {}),
                 ...(last.geometry ? {geometry: last.geometry, generatedScreen: last.generatedScreen} : {}), steps: step.artifacts, wins: step.artifacts.flatMap((item: RoundStepArtifact) => item.wins)};
             if (new RoundArtifactValidator().validate(artifact).length || Math.abs(totalWin - step.win) > 1e-9 || JSON.stringify(last.screen) !== JSON.stringify(step.screen)) return "Invalid retained mathematical artifact/accounting.";
         }

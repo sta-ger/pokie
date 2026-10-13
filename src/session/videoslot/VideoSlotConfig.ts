@@ -1,3 +1,4 @@
+import {WeightedSymbolsSequence, validateWeightedReelDefinitions} from "./combinations/WeightedSymbolsSequence.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import {CustomLinesDefinitions} from "./linesdefinitions/CustomLinesDefinitions.js";
@@ -71,7 +72,7 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
             this.paytable.constructor === Paytable &&
             [HorizontalLines, CustomLinesDefinitions].some(kind => this.linesDefinitions.constructor === kind) &&
             [LeftToRightLinesPatterns, RightToLeftLinesPatterns, ScatteredLinesPatterns].some(kind => this.linesPatterns.constructor === kind) &&
-            this.reelsSymbolsSequences.every(strip => strip.constructor === SymbolsSequence);
+            this.reelsSymbolsSequences.every(strip => strip.constructor === SymbolsSequence || strip.constructor === WeightedSymbolsSequence);
     }
 
     public getPaytable(): PaytableRepresenting<T> {
@@ -162,7 +163,8 @@ export class VideoSlotConfig<T extends string | number | symbol = string> implem
     }
 
     public setSymbolsSequences(reelsSymbolsSequences: SymbolsSequenceDescribing<T>[]): void {
-        this.reelsSymbolsSequences = reelsSymbolsSequences;
+        validateWeightedReelDefinitions(reelsSymbolsSequences, this.reelsNumber, this.availableSymbols, this.screenGeometry?.generated.rows ?? this.reelsSymbolsNumber);
+        this.reelsSymbolsSequences = [...reelsSymbolsSequences];
     }
 
     public isSymbolWild(symbolId: T): boolean {
