@@ -287,7 +287,7 @@ describe("V2C-02 canonical runtime contracts", () => {
                 const value = Reflect.get(target, property);
                 return typeof value === "function" ? value.bind(target) : value;
             }}) : base;
-            const grants = new VideoSlotWithFreeGamesConfig(undefined, {});
+            const grants = new VideoSlotWithFreeGamesConfig<string>(undefined, {});
             grants.setScatterSymbols(["A"]);
             grants.setFreeGamesForScatters("A", 3, 2);
             // The unchanged default grant configuration is 5x3; the base owns a 3x1 screen.
@@ -317,7 +317,7 @@ describe("V2C-02 canonical runtime contracts", () => {
         const config = fractionalBetConfig([0.05]);
         const rng = new SeededRandomNumberGenerator(7);
         const base = new VideoSlotSession(config, new SymbolsCombinationsGenerator(config, rng));
-        const grants = new VideoSlotWithFreeGamesConfig(undefined, {});
+        const grants = new VideoSlotWithFreeGamesConfig<string>(undefined, {});
         const free = new VideoSlotWithFreeGamesSession(grants, undefined, undefined, base);
         const session = new VideoSlotWithBetModesSession(free, new BetModesConfig([
             new BetModeDefinition("base"), new BetModeDefinition("ante", {stakeMultiplier: 2}),
