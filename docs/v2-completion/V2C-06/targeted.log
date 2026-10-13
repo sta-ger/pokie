@@ -1,0 +1,40 @@
+npm run test:targeted -- tests/v2/LogicalRoundPackaging.test.ts tests/net/MultiStageRoundSessionSerializer.test.ts tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts tests/v2/CanonicalRuntimeContracts.test.ts tests/v2/PackageIdentity.test.ts tests/artifact/buildRoundArtifactFromSession.test.ts tests/simulation/AggregateSimulationRunner.test.ts tests/simulation/DefaultGameSessionSimulation.test.ts tests/simulation/SimulationStatisticsMerger.test.ts tests/replay/ReplayRecorder.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio/runtime/StudioPlayService.test.ts tests/cli/studio-client/src/components/project/PlayTab.test.tsx tests/cli/client/apiClient.test.ts tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts tests/v2/TransactionalRoundStore.test.ts tests/v2/TransactionalRuntimeBoundary.test.ts tests/server/session/captureRoundPokieSessionState.test.ts tests/server/spin/SpinCommandHandler.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/cli/client/main.test.ts tests/cli/studio-client/src/api/apiClient.test.ts tests/cli/studio-client/src/hooks/usePlaySession.test.tsx tests/session/videoslot/DefaultVideoSlotWithFreeGamesSession.test.ts tests/session/videoslot/WinRuntimeContract.test.ts tests/session/videoslot/betmode/VideoSlotWithBetModesSession.test.ts tests/session/videoslot/betmode/FreeGamesForcedFeatureEntryHandler.test.ts tests/simulation/FixedBetModeForNextSimulationRoundSetting.test.ts tests/simulation/AggregateSimulationRunnerBetMode.test.ts
+
+> @fromstan/pokie@1.3.0 test:targeted
+> mkdir -p "$PWD/node_modules/.cache/pokie-tmp" && TMPDIR="$PWD/node_modules/.cache/pokie-tmp" NODE_OPTIONS=--experimental-vm-modules node --max-old-space-size=1408 ./node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/v2/LogicalRoundPackaging.test.ts tests/net/MultiStageRoundSessionSerializer.test.ts tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts tests/v2/CanonicalRuntimeContracts.test.ts tests/v2/PackageIdentity.test.ts tests/artifact/buildRoundArtifactFromSession.test.ts tests/simulation/AggregateSimulationRunner.test.ts tests/simulation/DefaultGameSessionSimulation.test.ts tests/simulation/SimulationStatisticsMerger.test.ts tests/replay/ReplayRecorder.test.ts tests/cli/studio/replay/StudioReplayExecutionService.test.ts tests/cli/studio/runtime/StudioPlayService.test.ts tests/cli/studio-client/src/components/project/PlayTab.test.tsx tests/cli/client/apiClient.test.ts tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts tests/v2/TransactionalRoundStore.test.ts tests/v2/TransactionalRuntimeBoundary.test.ts tests/server/session/captureRoundPokieSessionState.test.ts tests/server/spin/SpinCommandHandler.test.ts tests/server/spin/SpinCommandHandlerReconciliation.test.ts tests/cli/client/main.test.ts tests/cli/studio-client/src/api/apiClient.test.ts tests/cli/studio-client/src/hooks/usePlaySession.test.tsx tests/session/videoslot/DefaultVideoSlotWithFreeGamesSession.test.ts tests/session/videoslot/WinRuntimeContract.test.ts tests/session/videoslot/betmode/VideoSlotWithBetModesSession.test.ts tests/session/videoslot/betmode/FreeGamesForcedFeatureEntryHandler.test.ts tests/simulation/FixedBetModeForNextSimulationRoundSetting.test.ts tests/simulation/AggregateSimulationRunnerBetMode.test.ts
+
+PASS pokie tests/v2/TransactionalRoundStore.test.ts (187.783 s)
+PASS pokie tests/v2/CanonicalRuntimeContracts.test.ts (45.468 s)
+PASS pokie tests/cli/studio/runtime/StudioPlayService.test.ts (24.222 s)
+PASS pokie tests/v2/PackageIdentity.test.ts (15.676 s)
+PASS pokie tests/v2/TransactionalRuntimeBoundary.test.ts (12.072 s)
+PASS pokie tests/v2/LogicalRoundPackaging.test.ts
+PASS pokie tests/simulation/DefaultGameSessionSimulation.test.ts
+PASS studio-client-components tests/cli/studio-client/src/components/project/PlayTab.test.tsx
+PASS pokie tests/session/videoslot/DefaultVideoSlotWithFreeGamesSession.test.ts
+PASS pokie tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts
+PASS studio-client-components tests/cli/studio-client/src/hooks/usePlaySession.test.tsx
+PASS pokie tests/cli/studio/replay/StudioReplayExecutionService.test.ts
+PASS pokie tests/simulation/AggregateSimulationRunnerBetMode.test.ts
+PASS pokie tests/server/spin/SpinCommandHandler.test.ts
+PASS pokie tests/server/session/captureRoundPokieSessionState.test.ts
+PASS pokie tests/session/videoslot/betmode/VideoSlotWithBetModesSession.test.ts
+PASS pokie tests/session/videoslot/WinRuntimeContract.test.ts
+PASS pokie tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts
+PASS pokie tests/artifact/buildRoundArtifactFromSession.test.ts
+PASS pokie tests/replay/ReplayRecorder.test.ts
+PASS pokie tests/simulation/AggregateSimulationRunner.test.ts
+PASS pokie tests/simulation/SimulationStatisticsMerger.test.ts
+PASS pokie tests/session/videoslot/betmode/FreeGamesForcedFeatureEntryHandler.test.ts
+PASS pokie tests/simulation/FixedBetModeForNextSimulationRoundSetting.test.ts
+PASS pokie tests/net/MultiStageRoundSessionSerializer.test.ts
+PASS pokie tests/cli/client/main.test.ts
+PASS pokie tests/cli/studio-client/src/api/apiClient.test.ts
+PASS pokie tests/server/spin/SpinCommandHandlerReconciliation.test.ts
+PASS pokie tests/cli/client/apiClient.test.ts
+
+Test Suites: 29 passed, 29 total
+Tests:       803 passed, 803 total
+Snapshots:   0 total
+Time:        308.451 s
+Ran all test suites within paths "tests/v2/LogicalRoundPackaging.test.ts", "tests/net/MultiStageRoundSessionSerializer.test.ts", "tests/net/videoslot/cascade/CascadeSessionSerializer.test.ts", "tests/v2/CanonicalRuntimeContracts.test.ts", "tests/v2/PackageIdentity.test.ts", "tests/artifact/buildRoundArtifactFromSession.test.ts", "tests/simulation/AggregateSimulationRunner.test.ts", "tests/simulation/DefaultGameSessionSimulation.test.ts", "tests/simulation/SimulationStatisticsMerger.test.ts", "tests/replay/ReplayRecorder.test.ts", "tests/cli/studio/replay/StudioReplayExecutionService.test.ts", "tests/cli/studio/runtime/StudioPlayService.test.ts", "tests/cli/studio-client/src/components/project/PlayTab.test.tsx", "tests/cli/client/apiClient.test.ts", "tests/weightedoutcome/generate/generateExactWeightedOutcomeLibrary.test.ts", "tests/v2/TransactionalRoundStore.test.ts", "tests/v2/TransactionalRuntimeBoundary.test.ts", "tests/server/session/captureRoundPokieSessionState.test.ts", "tests/server/spin/SpinCommandHandler.test.ts", "tests/server/spin/SpinCommandHandlerReconciliation.test.ts", "tests/cli/client/main.test.ts", "tests/cli/studio-client/src/api/apiClient.test.ts", "tests/cli/studio-client/src/hooks/usePlaySession.test.tsx", "tests/session/videoslot/DefaultVideoSlotWithFreeGamesSession.test.ts", "tests/session/videoslot/WinRuntimeContract.test.ts", "tests/session/videoslot/betmode/VideoSlotWithBetModesSession.test.ts", "tests/session/videoslot/betmode/FreeGamesForcedFeatureEntryHandler.test.ts", "tests/simulation/FixedBetModeForNextSimulationRoundSetting.test.ts", "tests/simulation/AggregateSimulationRunnerBetMode.test.ts" in 2 projects.
