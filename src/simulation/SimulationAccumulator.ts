@@ -1,9 +1,12 @@
+import {mergeReelSequenceStatistics} from "./ReelSequenceStatisticsMerging.js";
+import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import {emptyLogicalRoundStatistics, mergeLogicalRoundStatistics, type LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 import {ConfidenceIntervalCalculator} from "./ConfidenceIntervalCalculator.js";
 import type {SimulationAccumulatorSnapshot} from "./SimulationAccumulatorSnapshot.js";
 import type {SimulationStatistics} from "./SimulationStatistics.js";
 
 export class SimulationAccumulator {
+    private reelSequences?: ReelSequenceStatistics[];
     private logicalRounds: LogicalRoundStatistics | undefined;
     private rounds = 0;
     private hitCount = 0;
@@ -26,6 +29,7 @@ export class SimulationAccumulator {
     public static fromSnapshot(snapshot: SimulationAccumulatorSnapshot): SimulationAccumulator {
         validateSnapshot(snapshot);
         const accumulator = new SimulationAccumulator();
+        if (snapshot.reelSequences) accumulator.setReelSequenceStatistics(snapshot.reelSequences);
         accumulator.logicalRounds = snapshot.logicalRounds ? {...snapshot.logicalRounds} : undefined;
         accumulator.rounds = snapshot.rounds;
         accumulator.hitCount = snapshot.hitCount;
@@ -45,6 +49,11 @@ export class SimulationAccumulator {
         });
         return accumulator;
     }
+
+    public setReelSequenceStatistics(statistics: readonly ReelSequenceStatistics[]): void {
+        this.reelSequences = mergeReelSequenceStatistics([], statistics);
+    }
+
 
     public addLogicalRound(observation: LogicalRoundStatistics): void {
         this.logicalRounds = mergeLogicalRoundStatistics(this.logicalRounds ?? emptyLogicalRoundStatistics(), observation);
@@ -94,6 +103,7 @@ export class SimulationAccumulator {
     }
 
     public merge(other: SimulationAccumulator): void {
+        if (other.reelSequences) this.reelSequences = mergeReelSequenceStatistics(this.reelSequences, other.reelSequences);
         if (other.logicalRounds) this.addLogicalRound(other.logicalRounds);
         if (other.rounds === 0) {
             return;
@@ -168,6 +178,7 @@ export class SimulationAccumulator {
             this.rounds,
         );
         return {
+            ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,
@@ -196,6 +207,7 @@ export class SimulationAccumulator {
     // worker_threads boundary itself, but this plain snapshot can.
     public toSnapshot(): SimulationAccumulatorSnapshot {
         return {
+            ...(this.reelSequences ? {reelSequences: mergeReelSequenceStatistics([], this.reelSequences)} : {}),
             ...(this.logicalRounds ? {logicalRounds: {...this.logicalRounds}} : {}),
             rounds: this.rounds,
             hitCount: this.hitCount,

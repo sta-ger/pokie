@@ -1,3 +1,4 @@
+import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {ReelStripAnalysis} from "../reels/ReelStripAnalysis.js";
 import type {ReelStripGenerationDiagnostic} from "../reels/ReelStripGenerationDiagnostic.js";
@@ -22,7 +23,7 @@ export type GameModelLayout = {reels?: number; rows?: number; screenGeometry?: S
 
 export type GameModelSymbol = {id: string; isWild: boolean; isScatter: boolean};
 
-export type GameModelReelGenerationMode = "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
+export type GameModelReelGenerationMode = "reelSequences" | "reelStrips" | "reelStripGeneration" | "symbolWeights" | "default";
 
 export type GameModelReelWindowCell = {symbolId: string; isWild: boolean; isScatter: boolean};
 
@@ -66,7 +67,7 @@ export type GameModelResolvedReel = {
 // A "generated" reel whose own reelStripGeneration constraints couldn't be satisfied -- mirrors what a
 // real "pokie build" would report for the same blueprint (see resolveReelStripGeneration.ts); there is no
 // strip to show, only why generation failed.
-export type GameModelUnresolvedReel = {reelIndex: number; source: "generated"; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
+export type GameModelUnresolvedReel = {reelIndex: number; source: "generated" | "weighted"; weightedVariants?: WeightedSequenceVariant[]; reason: string; generationDiagnostics: ReelStripGenerationDiagnostic[]};
 
 export type GameModelReel = GameModelResolvedReel | GameModelUnresolvedReel;
 

@@ -81,6 +81,7 @@ export function buildRoundArtifact<T extends string | number = string>(
     const featureEvents = [...stepFeatureEvents, ...optionFeatureEvents];
 
     const candidate: RoundArtifact<T> = {
+        ...(lastStep.sequenceSelections ? {sequenceSelections: lastStep.sequenceSelections} : {}),
         schemaVersion,
         roundId: options.roundId,
         provenance: {...options.provenance, game: {...options.provenance.game}},

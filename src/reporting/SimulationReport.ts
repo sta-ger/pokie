@@ -1,3 +1,4 @@
+import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationConvergenceOutcome} from "../simulation/SimulationConvergenceOutcome.js";
 import type {SimulationStopReason} from "../simulation/SimulationStopReason.js";
 import type {SimulationReportBreakdown} from "./SimulationReportBreakdown.js";
@@ -19,6 +20,7 @@ export type SimulationReportReproducibility = {
 };
 
 export type SimulationReport = {
+    reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     requestedRounds: number;
     rounds: number;

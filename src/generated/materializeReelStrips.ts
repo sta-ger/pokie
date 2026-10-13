@@ -22,6 +22,7 @@ import {SeededRandomNumberGenerator} from "../session/videoslot/combinations/See
 // reelIndex), duplicate (two summaries claiming the same reelIndex), or unsuccessful (success: false,
 // or success: true with no strip, which resolveReelStripGeneration never produces but callers could).
 export function materializeReelStrips(blueprint: GameBlueprint, reelStripGeneration: GameBuildInfoReelStripGeneration | undefined): GameBlueprint {
+    if (blueprint.reelSequences !== undefined) return blueprint;
     const specs = blueprint.reelStripGeneration;
     if (specs === undefined) {
         return materializeSharedSymbolWeights(blueprint);

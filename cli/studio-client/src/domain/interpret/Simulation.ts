@@ -1,3 +1,4 @@
+import type {ReelSequenceStatistics} from "../../../../../src/session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport, SimulationReportBreakdownComponent, StudioSimulationJobView} from "../../api/types";
 
 // Pure view-model transforms for the Simulation tab — same role as interpretProjectDashboard.ts:
@@ -54,6 +55,7 @@ export function describeBreakdown(report: SimulationReport): BreakdownRowView[] 
 }
 
 export type SimulationReportView = {
+    reelSequences?: ReelSequenceStatistics[];
     game: {id: string; name: string; version: string};
     rounds: number;
     requestedRounds: number;
@@ -102,6 +104,7 @@ export function describeSimulationReport(
 ): SimulationReportView {
     return {
         game: report.game,
+        reelSequences: report.reelSequences,
         rounds: report.rounds,
         requestedRounds: report.requestedRounds,
         seed: report.seed,

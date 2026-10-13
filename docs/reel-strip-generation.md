@@ -429,3 +429,20 @@ Both `minimumCircularDistances` and `maximumCircularDistances` measure the same 
 occurrences of a symbol (going around the circle) — they only differ in whether the smallest or largest of those
 gaps is reported. A symbol occurring 0 or 1 times has no gap to measure and is omitted from both — matching exactly
 how `MinimumCircularDistanceConstraint`/`MaximumCircularDistanceConstraint` treat that same symbol.
+
+## Runtime sequence alternatives
+
+`reelSequences` chooses a whole authored array at runtime. It is separate from the
+build-time distributions and seeds in `reelStripGeneration` and `symbolWeights`.
+Do not replace alternatives with a generated strip: doing so changes the model.
+See [weighted whole-sequence reels](reels-and-sequences.md#weighted-whole-sequence-reels)
+for the canonical authoring and context rules.
+
+Studio identifies this source as **Whole-sequence variants**. Author alternatives
+in the JSON editor; unrelated form edits preserve them. Source-mode edits are
+reversible drafts and reach the file only through Save. Preview shows alternatives
+without selecting or saving them. Validation/save/build share canonical diagnostics
+with reel/variant paths in the Reels section. Invalid authored content can still be
+loaded for correction; failed validation or build leaves the source and output
+unchanged. `pokie reel generate` does not flatten this runtime source, and generation
+apply/materialize requires its existing explicit authoring action.

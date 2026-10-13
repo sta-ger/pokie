@@ -132,3 +132,26 @@ simulation.getPayoutsStandardDeviation(); // volatility indicator
 If the simulated RTP diverges noticeably from the theoretical one, or hit frequency/volatility don't match the
 target player experience, go back to steps 2–4: adjust symbol distribution on the reel strips, tweak paytable
 payouts, or change how many paylines are active — then re-run steps 5–6 until the numbers land where you want them.
+
+## Weighted whole sequences
+
+For variant `v` of reel `r`, a joint variant/stop event has probability
+`weight[v] / sum(weights) / length[v]`. POKIE currently requires equal variant
+lengths within each reel, so its joint enumeration assigns the variant's exact
+integer relative weight to each circular stop. Lengths may differ between reels.
+Across independent reels the joint event mass is the product of those weights.
+
+`SymbolsCombinationsAnalyzer.getWeightedCombinations()` returns grid probabilities;
+`getCombinationProbability()` rejects weighted inputs because there is no single
+uniform tuple probability. Outcome-library generation sweeps the same ordered
+variant/stop events, merges mass for identical grids in memory or disk partitions,
+and evaluates each grid through the existing forced-session seam. A deduplicated
+artifact does not claim one arbitrary variant ID for several possible sources.
+Exact source identity includes all authored IDs, arrays, weights and ordering,
+including zero-weight alternatives; incompatible checkpoints are rejected.
+
+A tiny fixture uses a 1:3 all-A/all-B reel, an exact all-A reel, and a two-A line
+paying four times stake. Its exact RTP is `1/4 * 4 = 1`. Seeded runtime and sampled
+libraries use the same distribution. Positive numeric probability underflow is an
+explicit exact-analysis/export boundary, while runtime selection retains exact
+binary64 weight ratios. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).

@@ -1,3 +1,4 @@
+import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
 import type {SimulationReportRendering} from "./SimulationReportRendering.js";
 import type {SimulationReportSet} from "./SimulationReportSet.js";
@@ -39,6 +40,10 @@ export class MarkdownSimulationReportRenderer implements SimulationReportRenderi
             `- **Workers**: ${report.workers ?? 1}`,
         ];
 
+        for (const reel of report.reelSequences ?? []) {
+            lines.push("", `## Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)`, "", "| Variant ID | Weight | Probability | Count | Frequency | Coverage |", "| --- | --- | --- | --- | --- | --- |");
+            for (const variant of reel.variants) lines.push(`| ${variant.id.replace(/[|\n\r]/g, " ")} | ${variant.weight} | ${variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability} | ${variant.count} | ${variant.frequency} | ${describeSequenceVariantCoverage(variant.weight, variant.uncovered)} |`);
+        }
         if (report.breakdown) {
             lines.push(
                 "",

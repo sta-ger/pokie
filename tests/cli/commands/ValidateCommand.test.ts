@@ -1,3 +1,4 @@
+import {weightedBlueprint} from "../../v2/fixtures/WeightedWholeSequenceGame.js";
 import {OutcomeLibraryBundleModeIndex, OutcomeLibraryBundleWriter, PokieGamePackageValidating, PokieGamePackageValidationReport, PokieGamePackageValidator} from "@fromstan/pokie";
 import fs from "fs";
 import os from "os";
@@ -187,6 +188,17 @@ describe("ValidateCommand project artifacts and CI report schema", () => {
     afterEach(() => {
         fs.rmSync(outDir, {recursive: true, force: true});
         (console.log as jest.Mock).mockRestore();
+    });
+
+    it("reports the weighted reel/variant field and leaves the authored file unchanged", async () => {
+        const file = path.join(outDir, "weighted.blueprint.json");
+        const model = {...weightedBlueprint, reelSequences: [{type: "weighted", variants: [{id: "bad", symbols: ["A"], weight: -1}]}, {type: "exact", symbols: ["A"]}]};
+        const bytes = JSON.stringify(model);
+        fs.writeFileSync(file, bytes);
+        expect(await new ValidateCommand().run([file, "--format", "json"])).toBe(1);
+        const printed = (console.log as jest.Mock).mock.calls.map(call => String(call[0])).join("\n");
+        expect(printed).toContain("reelSequences[0].variants[0].weight");
+        expect(fs.readFileSync(file, "utf8")).toBe(bytes);
     });
 
     it("validates Blueprint JSON directly, preserves math warnings, and emits a stable machine-readable report", async () => {

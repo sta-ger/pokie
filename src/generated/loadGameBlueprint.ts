@@ -1,7 +1,8 @@
+import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import fs from "fs";
 import type {GameBlueprint} from "./GameBlueprint.js";
 
-export function loadGameBlueprint(filePath: string): GameBlueprint {
+export function loadGameBlueprint(filePath: string, options?: {readonly preserveInvalidAuthoredContent?: boolean}): GameBlueprint {
     let content: string;
     try {
         content = fs.readFileSync(filePath, "utf-8");
@@ -24,5 +25,7 @@ export function loadGameBlueprint(filePath: string): GameBlueprint {
         throw new Error(`"${filePath}" must contain a JSON object describing a GameBlueprint.`);
     }
 
+    const issues = validateBlueprintReelSequences(parsed as Record<string, unknown>);
+    if (issues.length && !options?.preserveInvalidAuthoredContent) throw new Error(issues.join("; "));
     return parsed as GameBlueprint;
 }

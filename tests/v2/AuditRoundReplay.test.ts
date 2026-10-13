@@ -1,3 +1,5 @@
+import {weightedBlueprint} from "./fixtures/WeightedWholeSequenceGame.js";
+import {renderBuiltGameModule} from "../../src/generated/renderBuiltGameModule.js";
 import {ControllableDurableWallet} from "../server/wallet/fixtures/ControllableDurableWallet.js";
 import fs from "node:fs";
 import {EventEmitter} from "node:events";
@@ -54,6 +56,21 @@ describe("canonical audited logical-round replay", () => {
         }
     }, 60000);
     afterAll(() => runtime?.dispose());
+
+    it("retains weighted variants in the actual CJS package and enumerates them from an ESM consumer", () => {
+        fs.writeFileSync(path.join(runtime.directory, "weighted.cjs"), renderBuiltGameModule(weightedBlueprint, "1.3.0"));
+        fs.writeFileSync(path.join(runtime.directory, "weighted-consumer.mjs"), `
+import {generateExactWeightedOutcomeLibrary, WeightedOutcomeLibraryAnalyzer, ReplayRecorder, AuditRoundReplay} from "@fromstan/pokie";
+import {createRequire} from "node:module";
+const game = createRequire(import.meta.url)("./weighted.cjs");
+const session = game.createSession({seed: 3});
+const descriptor = new ReplayRecorder().recordAudit(game, session, [{kind: "spin", roundId: "formats", delivery: "stepwise"}], {status: "calculated", sessionId: "formats", durability: "detached"}, {seed: 3});
+const {library} = await generateExactWeightedOutcomeLibrary({libraryId: "formats", game, pokieVersion: "1.3.0"});
+console.log(JSON.stringify({rtp: new WeightedOutcomeLibraryAnalyzer().analyze(library).rtp, selections: descriptor.artifact.sequenceSelections, verification: new AuditRoundReplay().replay(game, descriptor.audit).verification}));
+`);
+        const output = execFileSync(process.execPath, [path.join(runtime.directory, "weighted-consumer.mjs")], {encoding: "utf8"});
+        expect(JSON.parse(output)).toMatchObject({rtp: 1, verification: "verified", selections: [{reelIndex: 0, context: "logical:formats"}]});
+    });
 
     it.each([0.05, 7.5, 1e-7])("JSON exports reproduce base/generated/visible/evaluated screens and next RNG operation in ESM/CJS processes at %s", bet => {
         const current = recorded(createOverscanGame(), {kind: "spin", delivery: "composite", roundId: "base", bet});

@@ -1,3 +1,5 @@
+import {isWeightedSymbolsSequence, validateWeightedReelDefinitions} from "./WeightedSymbolsSequence.js";
+import type {ReelSequenceSelection, ReelSequenceStatistics} from "./WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../coordinates/ScreenGeometry.js";
 import {resolveScreenProjection} from "../coordinates/projectSymbolsCombination.js";
 import {SeededRandomNumberGenerator} from "./SeededRandomNumberGenerator.js";
@@ -13,14 +15,88 @@ implements SymbolsCombinationsGenerating<T> {
     private readonly rng: RandomNumberGenerating;
     private readonly config: VideoSlotConfigDescribing<T>;
     private lastStopPositions: number[] = [];
+    private context = "initialization";
+    private contextRequested = false;
+    private implicitGeneration = 0;
+    private selections: ReelSequenceSelection[] = [];
+    private counts: Record<string, number>[] = [];
 
     constructor(config: VideoSlotConfigDescribing<T>, rng: RandomNumberGenerating = new PseudorandomNumberGenerator()) {
         this.config = config;
         this.rng = rng;
+        this.counts = config.getSymbolsSequences().map(() => Object.create(null) as Record<string, number>);
     }
+
+
+    public setSelectionContext(context: string): void {
+        if (typeof context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(context) || context.includes("\0")) throw new Error("Invalid whole-sequence selection context.");
+        this.contextRequested = true;
+        if (context !== this.context) {
+            this.context = context;
+            this.selections = [];
+        }
+    }
+
+    public getSequenceSelections(): ReelSequenceSelection[] {
+        return this.selections.map(value => ({...value}));
+    }
+
+    public getSequenceStatistics(): ReelSequenceStatistics[] {
+        return this.config.getSymbolsSequences().flatMap((sequence, reelIndex) => {
+            if (!(isWeightedSymbolsSequence(sequence))) return [];
+            const variants = sequence.getVariants(),
+                probabilities = sequence.getProbabilities(),
+                weights = sequence.getIntegerWeights();
+            const denominator = weights.reduce((sum, weight) => sum + weight, BigInt(0)).toString();
+            const selections = Object.values(this.counts[reelIndex] ?? {}).reduce((sum, count) => sum + count, 0);
+            return [{reelIndex, context: "logical-round" as const, model: JSON.stringify({context: "logical-round-v1", rows: this.config.getReelsSymbolsNumber(), geometry: this.config.getScreenGeometry?.(), reels: this.config.getSymbolsSequences().map(strip => isWeightedSymbolsSequence(strip) ? strip.getVariants() : strip.toArray())}), selections,
+                variants: variants.map((variant, index) => {
+                    const count = this.counts[reelIndex]?.[variant.id] ?? 0;
+                    return {id: variant.id, weight: variant.weight, probability: probabilities[index], probabilityRatio: {numerator: weights[index].toString(), denominator}, count, frequency: selections ? count / selections : 0, uncovered: variant.weight > 0 && count === 0};
+                })}];
+        });
+    }
+
+    public getSelectionState(): {context: string; selections: ReelSequenceSelection[]; counts: Record<string, number>[]} {
+        return {context: this.context, selections: this.getSequenceSelections(), counts: this.counts.map(counts => ({...counts}))};
+    }
+
+    public validateSelectionState(value: unknown): void {
+        const state = value as ReturnType<SymbolsCombinationsGenerator<T>["getSelectionState"]>;
+        if (!state || typeof state.context !== "string" || !(/^(initialization|implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(state.context) || !Array.isArray(state.selections) || !Array.isArray(state.counts) || state.counts.length > this.config.getReelsNumber()) throw new Error("Invalid weighted selection context/state.");
+        const seen = new Set<number>();
+        for (const selection of state.selections) {
+            const sequence = this.config.getSymbolsSequences()[selection.reelIndex];
+            if (!Number.isSafeInteger(selection.reelIndex) || seen.has(selection.reelIndex) || selection.context !== state.context || !(isWeightedSymbolsSequence(sequence))) throw new Error("Invalid retained weighted selection.");
+            sequence.resolve(selection.variantId);
+            seen.add(selection.reelIndex);
+        }
+        Array.from(state.counts).forEach((counts, reelIndex) => {
+            const sequence = this.config.getSymbolsSequences()[reelIndex];
+            if (!counts || typeof counts !== "object" || Array.isArray(counts) || Object.entries(counts).some(([id, count]) => !(isWeightedSymbolsSequence(sequence)) || !sequence.getVariants().some(variant => variant.id === id && variant.weight > 0) || !Number.isSafeInteger(count) || count < 0)) throw new Error("Invalid weighted selection counters.");
+        });
+        if (state.selections.length && state.selections.length !== this.config.getSymbolsSequences().filter(sequence => isWeightedSymbolsSequence(sequence)).length) throw new Error("Incomplete retained weighted selections.");
+    }
+
+    public setSelectionState(value: unknown): void {
+        this.validateSelectionState(value);
+        const state = value as ReturnType<SymbolsCombinationsGenerator<T>["getSelectionState"]>;
+        this.context = state.context;
+        this.selections = state.selections.map(item => ({...item}));
+        this.counts = state.counts.map(counts => Object.assign(Object.create(null) as Record<string, number>, counts));
+    }
+
+    public getResolvedReelStrips(): T[][] {
+        return this.config.getSymbolsSequences().map((sequence, reelIndex) => isWeightedSymbolsSequence(sequence)
+            ? sequence.resolve(this.selections.find(item => item.reelIndex === reelIndex)!.variantId).toArray() : sequence.toArray());
+    }
+
 
     public generateSymbolsCombination(): SymbolsCombinationDescribing<T> {
         resolveScreenProjection(this.config);
+        validateWeightedReelDefinitions(this.config.getSymbolsSequences(), this.config.getReelsNumber(), this.config.getAvailableSymbols(), resolveScreenProjection(this.config)?.getRows("generated") ?? this.config.getReelsSymbolsNumber());
+        if (!this.contextRequested) this.setSelectionContext(`implicit:${++this.implicitGeneration}`);
+        this.contextRequested = false;
         const arr: T[][] = new Array(this.config.getReelsNumber());
         const stopPositions: number[] = new Array(this.config.getReelsNumber());
         for (let i = 0; i < this.config.getReelsNumber(); i++) {
@@ -68,7 +144,20 @@ implements SymbolsCombinationsGenerating<T> {
     }
 
     private getRandomReelSymbols(reelId: number): {symbols: T[]; position: number} {
-        const sequence = this.config.getSymbolsSequences()[reelId];
+        let sequence = this.config.getSymbolsSequences()[reelId];
+        if (isWeightedSymbolsSequence(sequence)) {
+            let selected = this.selections.find(item => item.reelIndex === reelId);
+            if (!selected) {
+                const variant = sequence.select(this.rng);
+                selected = {reelIndex: reelId, variantId: variant.id, context: this.context};
+                this.selections.push(selected);
+                if (this.context !== "initialization") {
+                    this.counts[reelId] ??= Object.create(null) as Record<string, number>;
+                    this.counts[reelId][variant.id] = (this.counts[reelId][variant.id] ?? 0) + 1;
+                }
+            }
+            sequence = sequence.resolve(selected.variantId);
+        }
         const position = this.rng.getRandomInt(0, sequence.getSize());
         return {symbols: sequence.getSymbols(position, resolveScreenProjection(this.config)?.getRows("generated") ?? this.config.getReelsSymbolsNumber()), position};
     }

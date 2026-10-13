@@ -1,3 +1,4 @@
+import {weightedBlueprint} from "../v2/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../fixtures/math/AuthoritativePaytableFixture.js";
 import {FRACTIONAL_BET_STAKES, FRACTIONAL_MIXED_CONTINUATION, fractionalBetBlueprint, amountTolerance, screenMultiplier} from "../fixtures/math/FractionalBetFixture.js";
 import ts from "typescript";
@@ -58,6 +59,17 @@ describe("GamePackageGenerator", () => {
     function loadFractionalEntrypoints(bets: number[], mixed = false): Promise<PokieGame[]> {
         return loadGeneratedEntrypoints(fractionalBetBlueprint(bets, mixed));
     }
+
+    it("preserves weighted variants and seeded math in generated and compiled typed entrypoints", async () => {
+        const games = await loadGeneratedEntrypoints(weightedBlueprint);
+        const sessions = games.map(game => game.createSession({seed: "weighted-formats"}) as import("@fromstan/pokie").VideoSlotSession);
+        for (let round = 0; round < 20; round++) {
+            for (const session of sessions) session.play();
+            expect(sessions[0].toSessionState()).toEqual(sessions[1].toSessionState());
+            expect(sessions[0].getWinAmount()).toBe(sessions[1].getWinAmount());
+        }
+        expect(sessions[0].getSequenceStatistics()[0].selections).toBe(20);
+    });
 
     async function loadGeneratedEntrypoints(blueprint: GameBlueprint): Promise<PokieGame[]> {
         const result = new GamePackageGenerator("1.3.0").generate(blueprint, cwd);

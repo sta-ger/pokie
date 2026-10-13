@@ -1,3 +1,4 @@
+import {validateBlueprintReelSequences} from "./validateBlueprintReelSequences.js";
 import type {GameBlueprint} from "./GameBlueprint.js";
 import {materializeReelStrips} from "./materializeReelStrips.js";
 import {resolveBetModeCodegenWiring} from "./resolveBetModeCodegenWiring.js";
@@ -21,6 +22,8 @@ import {resolveReelStripGeneration} from "./resolveReelStripGeneration.js";
 // rather than a precomputed literal, so re-running "pokie build" on an unchanged blueprint still
 // regenerates byte-identical files.
 function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: string, format: "cjs" | "ts"): string {
+    const variantErrors = validateBlueprintReelSequences(blueprint as unknown as Record<string, unknown>);
+    if (variantErrors.length) throw new Error(variantErrors.join("; "));
     const resolution = resolveReelStripGeneration(blueprint);
     if (!resolution.success) {
         throw new Error(`Cannot render a game module with unresolved generated reels.`);
@@ -45,6 +48,7 @@ function renderBuiltGameModuleImpl(blueprint: GameBlueprint, pokieVersion: strin
         "SeededRandomNumberGenerator",
         "SymbolsCombinationsGenerator",
         "SymbolsSequence",
+        "WeightedSymbolsSequence",
         "VideoSlotConfig",
         "VideoSlotSession",
         "VideoSlotSessionSerializer",
@@ -199,7 +203,8 @@ ${winCalculatorDeclaration}        return ${sessionConstructionExpression};
     // declarations. Pin the erased type import to the CommonJS condition so Node16 resolution does
     // not reject it as an ESM type import from a CommonJS generated module.
     const typeImport = format === "ts" ? `import type {GameBlueprint, PokieGameContext} from "@fromstan/pokie" with { "resolution-mode": "require" };\n\n` : "";
-    const baseStateSchema = {kind: "seeded-video-slot", reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
+    const weightedReels = blueprint.reelSequences?.flatMap((reel, reelIndex) => reel.type === "weighted" ? [{reelIndex, variants: reel.variants}] : []);
+    const baseStateSchema = {kind: "seeded-video-slot", ...(weightedReels?.length ? {weightedReels} : {}), reels: blueprint.reels, symbols: blueprint.symbols, ...(blueprint.screenGeometry ? {screenGeometry: blueprint.screenGeometry} : {})};
     const featureStateSchema = blueprint.mechanics?.freeGames !== undefined ? {kind: "free-games", base: baseStateSchema} : baseStateSchema;
     const stateSchema = betModeWiring !== undefined ? {kind: "bet-modes", base: featureStateSchema} : featureStateSchema;
     const blueprintDeclaration =
@@ -276,7 +281,11 @@ function createConfig(${contextParam}) {
         config.setLinesDefinitions(linesDefinitions);
     }
 
-    if (blueprint.reelStrips) {
+    if (blueprint.reelSequences) {
+        config.setSymbolsSequences(blueprint.reelSequences.map((reel) => reel.type === "weighted"
+            ? new WeightedSymbolsSequence(reel.variants, blueprint.symbols)
+            : new SymbolsSequence().fromArray(reel.symbols)));
+    } else if (blueprint.reelStrips) {
         config.setSymbolsSequences(blueprint.reelStrips.map((strip) => new SymbolsSequence().fromArray(strip)));
     } else if (blueprint.symbolWeights) {
         ${sequencesDeclaration}

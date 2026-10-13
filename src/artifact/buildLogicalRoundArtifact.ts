@@ -11,7 +11,7 @@ export function buildLogicalRoundArtifact(round: LogicalRound, template: RoundAr
     const last = steps[steps.length - 1];
     const candidate: RoundArtifact = cloneSessionData({...template, roundId: round.id, stake: round.totalStake,
         betMode: round.mode ?? template.betMode, totalWin: round.totalWin, payoutMultiplier: round.totalStake > 0 ? round.totalWin / round.totalStake : 0,
-        steps, screen: last.screen, wins: steps.flatMap(s => s.wins), featureEvents: steps.flatMap(s => s.featureEvents ?? [])});
+        steps, screen: last.screen, ...(last.sequenceSelections ? {sequenceSelections: last.sequenceSelections} : {}), wins: steps.flatMap(s => s.wins), featureEvents: steps.flatMap(s => s.featureEvents ?? [])});
     const invalid = new RoundArtifactValidator().validate(candidate);
     if (invalid.length) throw new Error(`Invalid logical artifact: ${JSON.stringify(invalid)}`);
     return deepFreeze(candidate);

@@ -1,10 +1,12 @@
+import {isWeightedSymbolsSequence} from "./combinations/WeightedSymbolsSequence.js";
+import type {ReelSequenceSelection, ReelSequenceStatistics} from "./combinations/WeightedSequenceVariant.js";
 import {ScreenProjection} from "./coordinates/ScreenProjection.js";
 import {assertEvaluationComponents} from "./coordinates/internal/assertEvaluationComponents.js";
 import {areScreenGeometriesCompatible, projectEvaluationSymbols, resolveGeneratedScreenGeometry, resolveScreenProjection, validateEvaluationPaylines} from "./coordinates/projectSymbolsCombination.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {SymbolsSequence} from "./combinations/SymbolsSequence.js";
 import {validateExecutableState} from "../../runtime/validateExecutableState.js";
-import type {SessionStateRestoring} from "../SessionStateRestoring.js";
+import type {SessionStateRestoring, SessionStateSchema} from "../SessionStateRestoring.js";
 import {GameSession} from "../GameSession.js";
 import type {GameSessionHandling} from "../GameSessionHandling.js";
 import type {LinesDefinitionsDescribing} from "./linesdefinitions/LinesDefinitionsDescribing.js";
@@ -33,6 +35,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
     private readonly combinationsGenerator: SymbolsCombinationsGenerating<T>;
     private readonly winCalculator: VideoSlotWinCalculating<T>;
     private winAmount = 0;
+    private implicitRound = 0;
+    private selectionContext?: string;
     private resultValid = true;
     private roundGeometry?: ScreenGeometry;
     private roundDimensions = {reels: 0, rows: 0};
@@ -45,17 +49,34 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         winCalculator: VideoSlotWinCalculating<T> = new VideoSlotWinCalculator<T>(config),
         baseSession: GameSessionHandling = new GameSession(config),
     ) {
+        if (config.getSymbolsSequences().some(sequence => isWeightedSymbolsSequence(sequence)) && !(combinationsGenerator instanceof SymbolsCombinationsGenerator) && combinationsGenerator.acceptsWeightedDefinitions?.() !== true) throw new Error("Custom combinations generator must explicitly support weighted whole sequences before drawing.");
         this.config = config;
         this.combinationsGenerator = combinationsGenerator;
         this.winCalculator = winCalculator;
         this.baseSession = baseSession;
         const contract = this.resolveUpcomingCoordinates();
+        this.combinationsGenerator.setSelectionContext?.("initialization");
         const generated = this.combinationsGenerator.generateSymbolsCombination();
         const geometry = this.validateGeneratedCoordinates(generated, contract, true);
         this.symbolsCombination = generated;
         this.roundGeometry = geometry;
         this.roundDimensions = this.captureScreenDimensions(geometry);
     }
+
+
+    public setSelectionContext(context: string): void {
+        if (typeof context !== "string" || !(/^(implicit:[1-9][0-9]*|logical:[\s\S]+)$/).test(context) || context.includes("\0")) throw new Error("Invalid whole-sequence round context.");
+        this.selectionContext = context;
+    }
+
+    public getSequenceSelections(): ReelSequenceSelection[] {
+        return this.combinationsGenerator.getSequenceSelections?.() ?? [];
+    }
+
+    public getSequenceStatistics(): ReelSequenceStatistics[] {
+        return this.combinationsGenerator.getSequenceStatistics?.() ?? [];
+    }
+
 
     public getConfiguredScreenGeometry(): ScreenGeometry | undefined {
         const configured = this.config.getScreenGeometry?.();
@@ -186,6 +207,8 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         }
         this.resultValid = false;
         const contract = this.resolveUpcomingCoordinates();
+        this.combinationsGenerator.setSelectionContext?.(this.selectionContext ?? `implicit:${++this.implicitRound}`);
+        this.selectionContext = undefined;
         const generated = this.combinationsGenerator.generateSymbolsCombination();
         const geometry = this.validateGeneratedCoordinates(generated, contract);
         const evaluationSource = geometry
@@ -205,16 +228,17 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         this.setCreditsAmount(this.getCreditsAmount() + this.winAmount);
     }
 
-    public getSessionStateSchema(): {readonly kind: "seeded-video-slot"; readonly screenGeometry?: ScreenGeometry} {
+    public getSessionStateSchema(): Extract<SessionStateSchema, {kind: "seeded-video-slot"}> {
         const screenGeometry = this.config.getScreenGeometry?.();
-        return {kind: "seeded-video-slot", ...(screenGeometry ? {screenGeometry} : {})};
+        const weightedReels = this.getSymbolsSequences().flatMap((strip, reelIndex) => isWeightedSymbolsSequence(strip) ? [{reelIndex, variants: strip.getVariants() as unknown as import("./combinations/WeightedSequenceVariant.js").WeightedSequenceVariant<string | number>[]}] : []);
+        return {kind: "seeded-video-slot", ...(weightedReels.length ? {weightedReels} : {}), ...(screenGeometry ? {screenGeometry} : {})};
     }
 
     public isSessionStateRestorable(): boolean {
         const generator = this.combinationsGenerator as {isRandomStateRestorable?: () => boolean};
         return this.constructor === VideoSlotSession && generator.isRandomStateRestorable?.() === true &&
             this.combinationsGenerator instanceof SymbolsCombinationsGenerator && this.combinationsGenerator.usesConfig(this.config) &&
-            this.getSymbolsSequences().every(strip => strip.getSymbols(0, strip.getSize()).every(symbol => typeof symbol === "string" || (typeof symbol === "number" && Number.isFinite(symbol)))) &&
+            this.getSymbolsSequences().every(strip => (isWeightedSymbolsSequence(strip) ? strip.getVariants().flatMap(variant => variant.symbols) : strip.getSymbols(0, strip.getSize())).every(symbol => typeof symbol === "string" || (typeof symbol === "number" && Number.isFinite(symbol)))) &&
             this.baseSession instanceof GameSession && this.baseSession.usesConfig(this.config) && this.baseSession.isSessionStateRestorable() &&
             this.winCalculator instanceof VideoSlotWinCalculator && this.winCalculator.usesConfig(this.config) && this.winCalculator.isStatelessForSessionRestoration();
     }
@@ -223,9 +247,12 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         return (this.combinationsGenerator as {getRandomStateCodec?: () => "seeded" | "opaque"}).getRandomStateCodec?.() ?? "opaque";
     }
 
-    public toSessionState(): {rngState?: unknown; reelStrips?: T[][]} {
+    public toSessionState(): {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number} {
         const rngState = (this.combinationsGenerator as {getRandomState?: () => unknown}).getRandomState?.();
-        return rngState === undefined ? {} : {rngState, reelStrips: this.getSymbolsSequences().map(strip => strip.getSymbols(0, strip.getSize()))};
+        const weighted = this.getSymbolsSequences().some(strip => isWeightedSymbolsSequence(strip));
+        const generator = this.combinationsGenerator as SymbolsCombinationsGenerator<T>;
+        return rngState === undefined ? {} : {rngState, reelStrips: weighted ? generator.getResolvedReelStrips() : this.getSymbolsSequences().map(strip => strip.getSymbols(0, strip.getSize())),
+            ...(weighted ? {sequenceState: generator.getSelectionState(), implicitRound: this.implicitRound} : {})};
     }
 
     public validateSessionState(state: unknown): void {
@@ -234,13 +261,22 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         if (rngState === undefined && !this.isSessionStateRestorable()) return;
         validateExecutableState(state, this.getSessionStateSchema());
         const strips = (state as {reelStrips: T[][]}).reelStrips;
+        if (this.getSymbolsSequences().some(strip => isWeightedSymbolsSequence(strip))) {
+            const value = state as {sequenceState?: unknown; implicitRound?: number};
+            (this.combinationsGenerator as SymbolsCombinationsGenerator<T>).validateSelectionState(value.sequenceState);
+            if (!Number.isSafeInteger(value.implicitRound) || value.implicitRound! < 0) throw new Error("Invalid implicit weighted round counter.");
+            const selections = (value.sequenceState as {selections: ReelSequenceSelection[]}).selections;
+            this.getSymbolsSequences().forEach((strip, reelIndex) => {
+                if (isWeightedSymbolsSequence(strip) && JSON.stringify(strips[reelIndex]) !== JSON.stringify(strip.resolve(selections.find(item => item.reelIndex === reelIndex)!.variantId).toArray())) throw new Error("Retained variant differs from resolved strip.");
+            });
+        } else if ((state as {sequenceState?: unknown}).sequenceState !== undefined) throw new Error("Unexpected weighted selection state.");
         if (strips.length !== this.config.getReelsNumber() || !strips.every(strip => strip.every(symbol => this.config.getAvailableSymbols().includes(symbol)))) throw new Error("Resolved reels do not match the selected model's dimensions or symbols.");
         if (typeof rngState !== "number" || !Number.isSafeInteger(rngState) || rngState < 0 || rngState > 0xffffffff) {
             throw new Error("Video-slot state requires a valid seeded RNG snapshot.");
         }
     }
 
-    public fromSessionState(state: {rngState?: unknown; reelStrips?: T[][]}): this {
+    public fromSessionState(state: {rngState?: unknown; reelStrips?: T[][]; sequenceState?: unknown; implicitRound?: number}): this {
         if (this.isSessionStateRestorable()) this.validateSessionState(state);
         if (typeof state !== "object" || state === null || state.rngState === undefined) {
             if (!this.isSessionStateRestorable() && typeof state === "object" && state !== null) return this;
@@ -249,7 +285,12 @@ export class VideoSlotSession<T extends string | number | symbol = string> imple
         if (state.rngState !== undefined) {
             const generator = this.combinationsGenerator as {setRandomState?: (value: unknown) => void};
             if (generator.setRandomState === undefined) throw new Error("This video-slot session cannot restore its RNG state.");
-            if (state.reelStrips !== undefined) this.config.setSymbolsSequences(state.reelStrips.map(strip => new SymbolsSequence<T>().fromArray(strip)));
+            if (state.sequenceState !== undefined) {
+                (this.combinationsGenerator as SymbolsCombinationsGenerator<T>).setSelectionState(state.sequenceState);
+                this.implicitRound = state.implicitRound!;
+                this.selectionContext = undefined;
+            }
+            if (state.reelStrips !== undefined) this.config.setSymbolsSequences(state.reelStrips.map((strip, index) => isWeightedSymbolsSequence(this.config.getSymbolsSequences()[index]) ? this.config.getSymbolsSequences()[index] : new SymbolsSequence<T>().fromArray(strip)));
             generator.setRandomState(state.rngState);
         }
         return this;

@@ -46,7 +46,7 @@ export class EditCommand implements CliCommandHandling {
     private readonly isInteractiveTerminal: () => boolean;
 
     constructor(
-        loadBlueprint: (filePath: string) => GameBlueprint = loadGameBlueprint,
+        loadBlueprint: (filePath: string) => GameBlueprint = filePath => loadGameBlueprint(filePath, {preserveInvalidAuthoredContent: true}),
         validator: GameBlueprintValidating = new GameBlueprintValidator(),
         resolveProject: ProjectResolving = new ProjectTargetResolver(),
         // Overwrite-capable and atomic (see writeFileAtomically's own doc): unlike "pokie create"'s

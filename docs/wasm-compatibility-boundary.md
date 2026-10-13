@@ -206,3 +206,11 @@ package SessionRuntime path in Node/Studio. Existing canonical WASM `runtime.rep
 compact snapshots and bounded traces are unchanged; no command history is added to
 portable WASM state. Native outcome libraries likewise retain their existing
 selection provenance, hashes and fairness verification profile.
+
+## Weighted whole-sequence boundary
+
+Canonical WASM encodes literal strips and rejects `GameBlueprint.reelSequences`
+at conversion preflight and direct execution. The same restriction applies to
+PAR workbook export and automatic intermediate conversions. Neither target
+selects, concatenates or silently flattens a weighted reel; refusal occurs before
+publishing an output. Use a TypeScript package for whole-sequence variants.

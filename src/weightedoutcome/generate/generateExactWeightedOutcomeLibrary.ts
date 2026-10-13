@@ -1,3 +1,5 @@
+import {buildSequenceWindows} from "../../session/videoslot/combinations/buildSequenceWindows.js";
+import {isWeightedSymbolsSequence, drawBelow} from "../../session/videoslot/combinations/WeightedSymbolsSequence.js";
 import {executeSessionCommand} from "../../runtime/SessionRuntime.js";
 import crypto from "crypto";
 import fs from "fs";
@@ -217,7 +219,8 @@ type PreparedGeneration = {
     readonly totalOutcomeSpaceSize: bigint;
     readonly progressTotal: bigint;
     readonly reelWindows: string[][][];
-    readonly tuples: Generator<{tuple: number[]; rawIndex: bigint}>;
+    readonly tuples: Generator<{tuple: number[]; rawIndex: bigint; weight?: bigint}>;
+    readonly weightDenominator?: bigint;
     readonly sourceEnumerationId: string;
     /** Resolved by the shared request preparation, never a raw caller assertion. */
     readonly configHash?: string;
@@ -281,11 +284,33 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
     const sequences = probe.getSymbolsSequences();
     const geometry = probe.getScreenGeometry?.();
     const reelsSymbolsNumber = geometry?.generated.rows ?? probe.getReelsSymbolsNumber();
-    const reelWindows: string[][][] = sequences.map((sequence) =>
-        Array.from({length: sequence.getSize()}, (_unused, position) => sequence.getSymbols(position, reelsSymbolsNumber)),
-    );
-    const reelSizes = sequences.map((sequence) => sequence.getSize());
-    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows, geometry);
+    const events = sequences.map(sequence => buildSequenceWindows(sequence, reelsSymbolsNumber));
+    const reelWindows = events.map(event => event.windows);
+    const reelSizes = reelWindows.map(windows => windows.length);
+    const weighted = sequences.some(sequence => isWeightedSymbolsSequence(sequence));
+    const weightDenominator = weighted ? events.reduce((total, event) => total * event.weights.reduce((sum, weight) => sum + weight, BigInt(0)), BigInt(1)) : undefined;
+    const sourceEnumerationId = computeExactEnumerationSourceId(manifest.id, request.configHash, reelWindows, geometry, weighted ? events.map(event => event.identity) : undefined);
+    function *exactTuples(start: bigint): Generator<{tuple: number[]; rawIndex: bigint; weight?: bigint}> {
+        for (const entry of sweepStopTuples(reelSizes, start)) yield {...entry, ...(weighted ? {weight: entry.tuple.reduce((mass, stop, reel) => mass * events[reel].weights[stop], BigInt(1))} : {})};
+    }
+    function *sampledTuples(count: bigint, seed: string): Generator<{tuple: number[]; rawIndex: bigint}> {
+        const random = new SeededWeightedOutcomeRandomSource(seed);
+        if (!weighted) {
+            yield* sampleStopTuples(reelSizes, count, random);
+            return;
+        }
+        for (let rawIndex = BigInt(0); rawIndex < count; rawIndex++) {
+            const tuple = events.map(event => {
+                let draw = drawBelow(event.weights.reduce((sum, weight) => sum + weight, BigInt(0)), {getRandomInt: (min, max) => min + random.nextInt(max - min)});
+                for (let i = 0; i < event.weights.length; i++) {
+                    if (draw < event.weights[i]) return i;
+                    draw -= event.weights[i];
+                }
+                throw new Error("Invalid weighted sample.");
+            });
+            yield {tuple, rawIndex};
+        }
+    }
 
     // Same cardinality alone never proves a checkpoint belongs to THIS sweep -- two different games/configs
     // can coincidentally enumerate the exact same raw combination count while their actual reel layouts (and
@@ -321,7 +346,8 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
             totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
             progressTotal: estimate.totalOutcomeSpaceSize,
             reelWindows,
-            tuples: sweepStopTuples(reelSizes, options.resumeFrom?.processedRawIndex ?? BigInt(0)),
+            tuples: exactTuples(options.resumeFrom?.processedRawIndex ?? BigInt(0)),
+            ...(weightDenominator ? {weightDenominator} : {}),
             sourceEnumerationId,
             ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
             ...resumeState,
@@ -335,7 +361,7 @@ function prepare(options: GenerateExactWeightedOutcomeLibraryOptions): PreparedG
         totalOutcomeSpaceSize: estimate.totalOutcomeSpaceSize,
         progressTotal: bounded.sampleSize,
         reelWindows,
-        tuples: sampleStopTuples(reelSizes, bounded.sampleSize, new SeededWeightedOutcomeRandomSource(bounded.seed)),
+        tuples: sampledTuples(bounded.sampleSize, bounded.seed),
         sourceEnumerationId,
         ...(request.configHash === undefined ? {} : {configHash: request.configHash}),
     };
@@ -432,7 +458,7 @@ async function *streamExactWeightedOutcomesInternal(
             stake,
         });
 
-        return {id, weight: toSafeWeightNumber(entry.weight, id), artifact};
+        return {id, weight: prepared.weightDenominator ? bigintProbability(entry.weight, prepared.weightDenominator) : toSafeWeightNumber(entry.weight, id), artifact};
     };
 
     let processedRawCount: bigint;
@@ -507,7 +533,7 @@ async function *streamExactWeightedOutcomesInternal(
  */
 async function *externallyAccumulateExactGridWeights(
     reelWindows: readonly string[][][],
-    tuples: Generator<{tuple: number[]; rawIndex: bigint}>,
+    tuples: Generator<{tuple: number[]; rawIndex: bigint; weight?: bigint}>,
     progressTotal: bigint,
     options: {
         readonly signal?: AbortSignal;
@@ -576,7 +602,7 @@ async function *externallyAccumulateExactGridWeights(
                 );
             }
         }
-        for (const {tuple, rawIndex} of tuples) {
+        for (const {tuple, rawIndex, weight = BigInt(1)} of tuples) {
             if (options.signal?.aborted) {
                 // Retain partitions only when the public adapter requested a
                 // checkpoint and can persist the returned identity. A stream
@@ -586,14 +612,14 @@ async function *externallyAccumulateExactGridWeights(
             }
             const grid = tuple.map((position, reelId) => reelWindows[reelId][position]);
             const gridKey = JSON.stringify(grid);
-            checkpointGrid = [gridKey, {grid, weight: BigInt(1)}];
+            checkpointGrid = [gridKey, {grid, weight}];
             const bucket = Number.parseInt(crypto.createHash("sha256").update(gridKey).digest("hex").slice(0, 2), 16);
             let descriptor = descriptors.get(bucket);
             if (descriptor === undefined) {
                 descriptor = fs.openSync(path.join(stagingDir, `${bucket.toString(16).padStart(2, "0")}.jsonl`), "a");
                 descriptors.set(bucket, descriptor);
             }
-            const buffered = `${bufferedLines.get(bucket) ?? ""}${gridKey}\n`;
+            const buffered = `${bufferedLines.get(bucket) ?? ""}${JSON.stringify([gridKey, weight.toString()])}\n`;
             if (buffered.length >= EXTERNAL_WRITE_BUFFER_BYTES) {
                 fs.writeSync(descriptor, buffered);
                 bufferedLines.delete(bucket);
@@ -628,9 +654,11 @@ async function *externallyAccumulateExactGridWeights(
             const weights = new Map<string, UniqueGridWeightEntry<string>>();
             for (const line of fs.readFileSync(bucketPath, "utf-8").split("\n")) {
                 if (line.length === 0) continue;
-                const entry = weights.get(line);
-                if (entry !== undefined) entry.weight += BigInt(1);
-                else weights.set(line, {grid: JSON.parse(line) as string[][], weight: BigInt(1)});
+                const decoded = JSON.parse(line) as [string, string] | string[][];
+                const [gridKey, mass] = typeof decoded[0] === "string" ? decoded as [string, string] : [JSON.stringify(decoded), "1"];
+                const entry = weights.get(gridKey);
+                if (entry !== undefined) entry.weight += BigInt(mass);
+                else weights.set(gridKey, {grid: JSON.parse(gridKey) as string[][], weight: BigInt(mass)});
             }
             const sorted = Array.from(weights.entries())
                 .map(([gridKey, entry]) => ({id: outcomeIdForGrid(gridKey), entry}))
@@ -711,4 +739,12 @@ export function generateSampledWeightedOutcomeLibrary(
     options: Omit<GenerateExactWeightedOutcomeLibraryOptions, "bounded" | "sampled"> & {readonly sampled: SampledWeightedOutcomeLibraryOptions},
 ): Promise<GenerateExactWeightedOutcomeLibraryResult> {
     return generateExactWeightedOutcomeLibrary(options);
+}
+
+function bigintProbability(numerator: bigint, denominator: bigint): number {
+    const nShift = Math.max(0, numerator.toString(2).length - 53);
+    const dShift = Math.max(0, denominator.toString(2).length - 53);
+    const result = Number(numerator >> BigInt(nShift)) / Number(denominator >> BigInt(dShift)) * 2 ** (nShift - dShift);
+    if (!(result > 0) || !Number.isFinite(result)) throw new Error("Weighted joint probability cannot be represented as a positive finite number.");
+    return result;
 }

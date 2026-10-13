@@ -32,6 +32,8 @@ export function buildRoundArtifactFromSession<T extends string | number = string
     options: RoundArtifactFromSessionOptions,
 ): RoundArtifact<T> {
     const geometry = session.getScreenGeometry?.();
+    const selections = session.getSequenceSelections?.();
+    const selectionEvidence = selections?.length ? {sequenceSelections: selections} : {};
     const coordinateEvidence = geometry && !new ScreenProjection(geometry).isIdentity()
         ? {geometry, generatedScreen: session.getSymbolsCombination().toMatrix()} : {};
     const stake = options.stake ?? determineStakeAmount(session, session.getBet());
@@ -53,6 +55,7 @@ export function buildRoundArtifactFromSession<T extends string | number = string
             {
                 screen: captureScreen(session) as T[][],
                 ...coordinateEvidence,
+                ...selectionEvidence,
                 winEvaluationResult: session.getWinEvaluationResult(),
                 ...(featureEvents.length > 0 ? {featureEvents} : {}),
             },

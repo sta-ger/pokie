@@ -43,6 +43,7 @@ export function prepareBlueprintForParSheetExport(
     validator: GameBlueprintValidating = new GameBlueprintValidator(),
 ): ParSheetBlueprintPreparation {
     const validationIssues = validator.validate(blueprint);
+    if (typeof blueprint === "object" && blueprint !== null && "reelSequences" in blueprint) return {blueprint: undefined, issues: [...validationIssues, {code: "parsheet-weighted-sequences-unsupported", severity: "error", message: "PAR workbooks do not support reelSequences. Build a TypeScript package to preserve whole-sequence variants."}]};
     if (typeof blueprint === "object" && blueprint !== null && "screenGeometry" in blueprint) {
         return {blueprint: undefined, issues: [...validationIssues, {code: "parsheet-screen-geometry-unsupported", severity: "error", message: "PAR workbooks do not support screenGeometry. Build a TypeScript package to preserve coordinate semantics."}]};
     }

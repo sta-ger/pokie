@@ -1,3 +1,4 @@
+import type {ReelSequenceSelection, ReelSequenceStatistics} from "./combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "./coordinates/ScreenGeometry.js";
 import {projectEvaluationSymbols} from "./coordinates/projectSymbolsCombination.js";
 import {SymbolsCombination} from "./combinations/SymbolsCombination.js";
@@ -23,6 +24,16 @@ implements VideoSlotSessionHandling<T> {
 
     constructor(baseSession: VideoSlotSessionHandling<T>) {
         this.baseSession = baseSession;
+    }
+
+    public setSelectionContext(context: string): void {
+        this.baseSession.setSelectionContext?.(context);
+    }
+    public getSequenceSelections(): ReelSequenceSelection[] {
+        return this.baseSession.getSequenceSelections?.() ?? [];
+    }
+    public getSequenceStatistics(): ReelSequenceStatistics[] {
+        return this.baseSession.getSequenceStatistics?.() ?? [];
     }
 
     public hasPendingLogicalRound(): boolean {

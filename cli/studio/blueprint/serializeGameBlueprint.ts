@@ -12,6 +12,7 @@ const KNOWN_TOP_LEVEL_KEYS = [
     "paylines",
     "paytable",
     "reelStrips",
+    "reelSequences",
     "symbolWeights",
     "availableBets",
 ] as const;

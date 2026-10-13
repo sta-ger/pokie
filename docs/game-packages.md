@@ -218,3 +218,18 @@ session. Custom state requires complete capture, restore, session validation and
 selected-package validation; dynamic variants and RNG algorithms/state must be
 covered by that model/codec compatibility promise. Missing authority leaves ordinary
 play and legacy seed-forward replay available, with exact audit explicitly unavailable.
+
+## Whole-sequence variants
+
+Generated and recompiled typed packages preserve `reelSequences`, complete variant
+arrays, IDs and relative weights. Public ESM and CommonJS consumers use the same
+context contract; weighted-definition recognition survives that module boundary.
+The model hash includes authored variants and versioned context/sampling semantics.
+Existing exact-only models keep their stop draws and seeded mathematics.
+
+`loadGameBlueprint()` checks canonical sequence definitions before runtime use.
+Authoring adapters may request `{preserveInvalidAuthoredContent: true}` to retain a
+broken draft for correction; this does not authorize build or runtime publication.
+Studio and CLI editing use that authoring option and validate before saving the new
+source. PAR and canonical WASM currently reject the `reelSequences` representation;
+build a TypeScript package to preserve it. See [the reel contract](reels-and-sequences.md#weighted-whole-sequence-reels).

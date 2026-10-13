@@ -28,6 +28,7 @@ export function ReelGenerationModeSelector({
             </Text>
             <Radio.Group value={mode} onChange={(value) => mutate((b) => setReelGenerationMode(b, value as ReelGenerationMode, modeDrafts.current))} mb="md">
                 <Group gap="md">
+                    <Radio value="reelSequences" label="Whole-sequence variants" />
                     <Radio value="default" label="Default (recommended)" />
                     <Radio value="reelStrips" label="Reel strips" />
                     <Radio value="reelStripGeneration" label="Per-reel (Reel Strip Modeler)" />
@@ -35,6 +36,10 @@ export function ReelGenerationModeSelector({
                 </Group>
             </Radio.Group>
 
+            {mode === "reelSequences" && <PageSection legend="Whole-sequence variants">
+                <Text>Edit reelSequences in the JSON editor. Each weighted reel has stable variant IDs, complete symbols arrays and relative weights. Changes remain drafts until Save.</Text>
+                <pre>{JSON.stringify(blueprint.reelSequences, null, 2)}</pre>
+            </PageSection>}
             {mode === "reelStrips" && <ReelStripsEditor blueprint={blueprint} mutate={mutate} />}
             {mode === "reelStripGeneration" && <ReelStripGenerationEditor blueprint={blueprint} mutate={mutate} drafts={drafts} revision={revision} />}
             {mode === "symbolWeights" && <SymbolWeightsEditor blueprint={blueprint} mutate={mutate} />}

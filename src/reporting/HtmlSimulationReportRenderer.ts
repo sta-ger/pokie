@@ -1,3 +1,4 @@
+import {describeSequenceVariantCoverage} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {SimulationReport} from "./SimulationReport.js";
 import type {SimulationReportRendering} from "./SimulationReportRendering.js";
 import type {SimulationReportSet} from "./SimulationReportSet.js";
@@ -99,6 +100,8 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
             tableRows,
             "            </tbody>",
             "        </table>",
+            ...(report.reelSequences ?? []).flatMap(reel => [`<h2>Weighted reel ${reel.reelIndex + 1} (${reel.context}; ${reel.selections} selections)</h2>`, "<table><tr><th>Variant ID</th><th>Weight</th><th>Probability</th><th>Count</th><th>Frequency</th><th>Coverage</th></tr>",
+                ...reel.variants.map(variant => `<tr><td>${this.escapeHtml(variant.id)}</td><td>${variant.weight}</td><td>${variant.probability === 0 && variant.weight > 0 ? `${variant.probabilityRatio?.numerator}/${variant.probabilityRatio?.denominator}` : variant.probability}</td><td>${variant.count}</td><td>${variant.frequency}</td><td>${describeSequenceVariantCoverage(variant.weight, variant.uncovered)}</td></tr>`), "</table>"]),
             ...this.renderBreakdownSection(report),
             ...this.renderJackpotSection(report),
             ...this.renderConvergenceSection(report),
@@ -119,7 +122,9 @@ export class HtmlSimulationReportRenderer implements SimulationReportRendering {
         ];
         const tableRows = rows.map(([label, value]) => `            <tr><th scope="row">${label}</th><td>${value}</td></tr>`).join("\n");
 
-        return ["        <table>", "            <tbody>", tableRows, "            </tbody>", "        </table>"];
+        return ["        <table>", "            <tbody>", tableRows, "            </tbody>", "        </table>",
+
+        ];
     }
 
     private renderComparisonSection(modeEntries: Array<[string, SimulationReport]>): string[] {

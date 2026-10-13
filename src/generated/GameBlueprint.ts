@@ -1,3 +1,4 @@
+import type {WeightedSequenceVariant} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {ScreenGeometry} from "../session/videoslot/coordinates/ScreenGeometry.js";
 import type {BetMode} from "../gamepackage/BetMode.js";
 import type {ReelStripGenerationSpec} from "./ReelStripGenerationSpec.js";
@@ -57,6 +58,8 @@ export type GameBlueprint = {
     // One strip (an ordered array of symbol ids) per reel. Takes precedence over reelStripGeneration
     // and symbolWeights. Unchanged since before reelStripGeneration existed.
     reelStrips?: string[][];
+    /** Runtime whole-sequence alternatives; exclusive with other authored reel sources. */
+    reelSequences?: ({type: "exact"; symbols: string[]} | {type: "weighted"; variants: WeightedSequenceVariant[]})[];
     // Per-reel build-time alternative to a literal reelStrips: one entry per reel (must have exactly
     // "reels" entries), each independently either {type: "literal", strip} — the same data a
     // reelStrips entry would hold — or {type: "generated", ...} — that reel's own, fully independent

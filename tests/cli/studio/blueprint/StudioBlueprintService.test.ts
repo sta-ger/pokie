@@ -1,3 +1,4 @@
+import {weightedBlueprint} from "../../../v2/fixtures/WeightedWholeSequenceGame.js";
 import {authoritativePaytableBlueprint, type AuthoredAwardCase} from "../../../fixtures/math/AuthoritativePaytableFixture.js";
 import {
     AggregateSimulationRunner,
@@ -136,6 +137,33 @@ describe("StudioBlueprintService", () => {
     function createService(): StudioBlueprintService {
         return new StudioBlueprintService("1.2.1", studioRoot, homeService);
     }
+
+    it("preserves whole-sequence variants through save/reload and refuses stale authored changes", () => {
+        const service = createService(),
+            file = path.join(tmpDir, "weighted.blueprint.json");
+        const model = JSON.parse(JSON.stringify(weightedBlueprint)) as GameBlueprint;
+        expect(service.validate(model).status).toBe("ok");
+        expect(service.save(file, model, false).status).toBe("ok");
+        expect(service.load(file)).toMatchObject({status: "ok", blueprint: {reelSequences: model.reelSequences}});
+        const original = computeGameBlueprintHash(model);
+        model.manifest.name = "Unrelated form edit";
+        expect(service.save(file, model, true, original).status).toBe("ok");
+        const bytes = fs.readFileSync(file, "utf8");
+        expect(service.save(file, weightedBlueprint, true, original).status).toBe("conflict");
+        expect(fs.readFileSync(file, "utf8")).toBe(bytes);
+        expect(JSON.parse(bytes).reelSequences).toEqual(weightedBlueprint.reelSequences);
+        expect(service.validate({...model, reelStrips: [["A"], ["A"]]}).status).toBe("invalid");
+        const preview = service.previewReelStripGeneration(model);
+        expect(preview.weightedReels?.[0].variants).toEqual((model.reelSequences![0] as {variants: unknown}).variants);
+        const malformed = {...model, reelStrips: [["A"], ["A"]]};
+        fs.writeFileSync(file, JSON.stringify(malformed));
+        expect(service.load(file)).toMatchObject({status: "ok", blueprint: {reelSequences: model.reelSequences}});
+        expect(service.validate(malformed).status).toBe("invalid");
+        const malformedBytes = fs.readFileSync(file, "utf8");
+        expect(service.save(file, malformed, true).status).toBe("error");
+        expect(service.saveManaged(malformed).status).toBe("error");
+        expect(fs.readFileSync(file, "utf8")).toBe(malformedBytes);
+    });
 
     it.each(["missing-symbol", "missing-count", "zero", "positive"] as AuthoredAwardCase[])("validates, saves, projects and builds authored %s math", async kind => {
         const service = createService();

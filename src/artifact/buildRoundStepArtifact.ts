@@ -1,3 +1,4 @@
+import {validateSequenceSelections} from "./validateSequenceSelections.js";
 import {ScreenProjection} from "../session/videoslot/coordinates/ScreenProjection.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 import {assertValidFeatureEventInput} from "./internal/assertValidFeatureEventInput.js";
@@ -74,7 +75,9 @@ export function buildRoundStepArtifact<T extends string | number = string>(
             : {}),
     }));
 
+    validateSequenceSelections(source.sequenceSelections, source.screen.length);
     const step: RoundStepArtifact<T> = {
+        ...(source.sequenceSelections ? {sequenceSelections: source.sequenceSelections.map(item => ({...item}))} : {}),
         index,
         ...(source.geometry ? {geometry: new ScreenProjection(source.geometry).getGeometry(), generatedScreen: source.generatedScreen?.map(reel => [...reel])} : {}),
         screen: source.screen.map((reel) => [...reel]),

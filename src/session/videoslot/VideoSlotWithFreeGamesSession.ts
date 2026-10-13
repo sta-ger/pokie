@@ -153,6 +153,10 @@ export class VideoSlotWithFreeGamesSession<T extends string | number | symbol = 
         }
         this.validateScreenCoordinates();
         this.wonFreeGamesNumber = 0;
+        if (this.hasUnfinishedFreeGames()) {
+            const context = this.getSequenceSelections()[0]?.context;
+            if (context && context !== "initialization") this.baseSession.setSelectionContext?.(context);
+        }
         this.freeGamesRoundHandler.beforeRoundPlayed(this);
         const creditsBeforePlay = this.getCreditsAmount();
         // baseSession is a plain VideoSlotSession/GameSession with no notion of free rounds, so its

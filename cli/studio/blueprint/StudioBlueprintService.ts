@@ -15,6 +15,7 @@ import {
     GamePackageGenerating,
     GamePackageGenerator,
     loadGameBlueprint,
+    validateBlueprintReelSequences,
     ParSheetExporter,
     ParSheetExporting,
     ParSheetImporter,
@@ -211,7 +212,7 @@ export class StudioBlueprintService {
         pokieVersion: string,
         studioRoot: string,
         homeService: StudioHomeService,
-        loadBlueprint: (filePath: string) => unknown = loadGameBlueprint,
+        loadBlueprint: (filePath: string) => unknown = filePath => loadGameBlueprint(filePath, {preserveInvalidAuthoredContent: true}),
         blueprintValidator: GameBlueprintValidating = new GameBlueprintValidator(),
         gamePackageGenerator: GamePackageGenerating = new GamePackageGenerator(pokieVersion),
         // Overridable purely so previewReelStripGeneration's per-reel isolation (see its own doc
@@ -340,6 +341,8 @@ export class StudioBlueprintService {
     // the UI can reload, compare, or save the edit elsewhere. The legacy overwrite gate remains for a
     // fresh Save target that has no loaded-source snapshot.
     public save(rawPath: string, blueprint: unknown, overwrite: boolean, expectedHash?: string): StudioBlueprintSaveView {
+        const variantErrors = isPlainObject(blueprint) ? validateBlueprintReelSequences(blueprint) : [];
+        if (variantErrors.length) return {status: "error", error: variantErrors.join("; ")};
         const resolved = path.resolve(process.cwd(), rawPath);
         if (isPathWithin(this.studioRoot, resolved)) {
             return {status: "error", error: outsideStudioRootMessage(rawPath)};
@@ -459,6 +462,11 @@ export class StudioBlueprintService {
     public saveManaged(blueprint: unknown, sourceWorkbookPath: string, _conversionEvidence?: StudioParSheetConversionEvidence): Promise<StudioBlueprintSaveManagedView>;
     public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView | Promise<StudioBlueprintSaveManagedView>;
     public saveManaged(blueprint: unknown, sourceWorkbookPath?: string, _conversionEvidence?: StudioParSheetConversionEvidence): StudioBlueprintSaveManagedView | Promise<StudioBlueprintSaveManagedView> {
+        const variantErrors = isPlainObject(blueprint) ? validateBlueprintReelSequences(blueprint) : [];
+        if (variantErrors.length) {
+            const result: StudioBlueprintSaveManagedView = {status: "error", error: variantErrors.join("; ")};
+            return sourceWorkbookPath === undefined ? result : Promise.resolve(result);
+        }
         // PAR-backed first saves are a real artifact publication, not an
         // editor-local JSON write with copied diagnostics.  The async branch
         // below prepares and executes the same byte/destination-bound
@@ -841,6 +849,12 @@ export class StudioBlueprintService {
             return {status: "ok", errors, warnings, reels: []};
         }
 
+        if (Array.isArray(blueprint.reelSequences) && errors.length === 0) {
+            const definitions = (blueprint as GameBlueprint).reelSequences!;
+            return {status: "ok", errors, warnings,
+                weightedReels: definitions.flatMap((definition, reelIndex) => definition.type === "weighted" ? [{reelIndex, variants: definition.variants.map(variant => ({...variant, symbols: [...variant.symbols]}))}] : []),
+                reels: definitions.flatMap((definition, reelIndex) => definition.type === "exact" ? [{reelIndex, type: "literal" as const, strip: [...definition.symbols], analysis: ReelStripAnalyzer.analyze(new ReelStrip(definition.symbols))}] : [])};
+        }
         const rawSpecs: unknown[] = Array.isArray(blueprint.reelStripGeneration) ? blueprint.reelStripGeneration : [];
         if (rawSpecs.length === 0) {
             return {status: "ok", errors, warnings, reels: []};

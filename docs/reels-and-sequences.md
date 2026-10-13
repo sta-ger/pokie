@@ -296,3 +296,90 @@ practice:
 ## Generated, visible and evaluated coordinates
 
 Explicit generated matrices, visible viewports and evaluation windows: see [the coordinate contract and adapter support matrix](v2-completion/V2C-03.md).
+
+## Weighted whole-sequence reels
+
+`GameBlueprint.reelSequences` is a runtime source of complete ordered arrays. It is
+exclusive with `reelStrips`, `reelStripGeneration`, and `symbolWeights`; legacy
+precedence between those older sources stays unchanged. One entry describes each
+reel, and exact and weighted entries may mix:
+
+```json
+"reelSequences": [
+  {"type": "weighted", "variants": [
+    {"id": "all-A", "symbols": ["A", "A"], "weight": 1},
+    {"id": "all-B", "symbols": ["B", "B"], "weight": 3}
+  ]},
+  {"type": "exact", "symbols": ["A", "A"]}
+]
+```
+
+IDs must be nonempty and case-sensitively unique within each reel. Equal ordered
+arrays are rejected even when their IDs or weights differ. Unequal cyclic rotations
+remain distinct arrays. Weights must be finite and nonnegative, with at least one
+positive weight per reel. Individual zero weights remain configured and appear in
+coverage reports, but are never selected. Every array must be nonempty and contain
+known symbols. Variants of **one reel must have equal lengths**; different reels may
+have different lengths. A strip shorter than the generated window remains legal:
+reads wrap circularly, just as they do for an exact `SymbolsSequence`.
+
+For each new context, the fixed-height generator visits reels in ascending index
+order. On a weighted reel it selects one complete variant, then draws that reel's
+uniform stop. An exact reel draws only its stop. Subsequent generation in the same
+context draws stops from the retained arrays without selecting again. There is no
+per-symbol selection, array concatenation, or integer replication of strips.
+
+| Context | Selection lifetime | Included in selection statistics |
+| --- | --- | --- |
+| Constructor `initialization` | Initial display only | No |
+| Direct `play()`, `implicit:N` | One paid entry and its free continuations | Yes |
+| Runtime command, `logical:roundId` | One logical round, including continuations and saved stage deliveries | Yes |
+| Forced exact-enumeration grid | No runtime selection | No |
+
+Definitions hold no session selection state. Each generator retains only its active
+context, chosen reel/variant IDs and counters keyed by configured variants. An
+unfunded play, invalid command or invalid model draws nothing. Idempotent runtime
+retries reuse the saved delivery; seeded runtime rollback and repository
+compensation restore selection state and counters together with RNG state. Use the
+runtime/repository contracts for transactional execution.
+
+Relative weights use their exact binary64 integer ratios, reduced by GCD. A total
+at most `2^32` takes one `getRandomInt(0, total)` variant draw. Larger totals draw
+high-first chunks of at most 32 bits and reject values outside the total. The
+number and order of those integer calls are deterministic for the RNG stream.
+Fractions are not rounded into symbol counts, and finite large totals cannot
+overflow. Numeric probabilities in reports are binary64 approximations; the
+`probabilityRatio` numerator/denominator strings retain the exact normalized ratio,
+including positive probabilities smaller than binary64 can display. Exact numeric
+analysis/export rejects an unrepresentable positive probability rather than
+silently dropping it.
+
+Direct callers compose immutable definitions with the existing configuration:
+
+```ts
+config.setSymbolsSequences([
+    new WeightedSymbolsSequence([
+        {id: "a", symbols: ["A", "A"], weight: 1},
+        {id: "b", symbols: ["B", "B"], weight: 3},
+    ], config.getAvailableSymbols()),
+    new SymbolsSequence().fromArray(["A", "A"]),
+]);
+const session = new VideoSlotSession(config,
+    new SymbolsCombinationsGenerator(config, new SeededRandomNumberGenerator(7)));
+```
+
+`getSize()`, configuration/variant inspection and analytics never select a variant.
+An unresolved weighted definition's `getSymbol()`, `getSymbols()` and `toArray()`
+reject literal-strip reads; inspect `getVariants()` or resolve a known retained ID.
+`getSequenceSelections()` exposes reel index, variant ID and context. These are
+canonical step/round artifact fields, validated and hashed, and appear in JSON
+replays and Studio inspection. Session state and its trusted schema preserve the
+weighted definitions and active identities across JSON restoration.
+
+The fixed-height generator and the built-in free-game/bet-mode decorators support
+this contract. Variable-height and resizable generators reject weighted inputs
+before drawing. Custom generators must explicitly declare support and own the
+corresponding context/capture contract; forced-grid enumeration declares support
+without claiming a runtime selection. Canonical PAR and WASM conversions currently
+reject `reelSequences` before publishing an output. Generated TypeScript game
+packages preserve all alternatives and IDs.

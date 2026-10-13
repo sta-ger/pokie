@@ -1,5 +1,7 @@
+import type {ReelSequenceStatistics} from "../session/videoslot/combinations/WeightedSequenceVariant.js";
 import type {LogicalRoundStatistics} from "./LogicalRoundStatistics.js";
 export type SimulationStatistics = {
+    reelSequences?: ReelSequenceStatistics[];
     logicalRounds?: LogicalRoundStatistics;
     rounds: number;
     hitCount: number;

@@ -95,7 +95,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
         if (prepared.status === "blocked") return {status: "blocked", reason: prepared.reason};
         let result: Extract<SessionCommandResult, {status: "played"}>;
         try {
-            result = prepared.execute(); 
+            result = prepared.execute();
         } catch (error) {
             if (before) {
                 (session as GameSessionHandling & {fromSessionState(state: unknown): unknown}).fromSessionState(before.state);
@@ -160,7 +160,7 @@ export class SessionRuntime implements SessionRuntimeHandling {
             return {status: "ready", deliveryOnly: true, rollback: () => {
                 if (used) return false;
                 used = true;
-                return true; 
+                return true;
             }, execute: () => {
                 if (used) throw new Error("Prepared delivery is no longer executable.");
                 used = true;
@@ -264,8 +264,10 @@ export class SessionRuntime implements SessionRuntimeHandling {
         const mode = supportsBetModeSelecting(session) ? session.getBetModeId() : undefined;
         const creditsBefore = session.getCreditsAmount();
         const bet = session.getBet();
+        const context = command.continuation?.roundId ?? command.roundId;
+        if (context) (session as Partial<VideoSlotSessionHandling>).setSelectionContext?.(`logical:${context}`);
         session.play();
-        const win = session.getWinAmount(), 
+        const win = session.getWinAmount(),
             credits = session.getCreditsAmount();
         const payout = Math.max(0, credits - creditsBefore + stake);
         if (command.delivery === undefined && command.continuation === undefined) return {status: "played", win, credits, stake, mode};

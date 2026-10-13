@@ -10,7 +10,7 @@ import type {RoundArtifactWin} from "./RoundArtifactWin.js";
 import type {RoundStepArtifact} from "./RoundStepArtifact.js";
 import {validateArtifactCoordinates} from "./validateArtifactCoordinates.js";
 
-export type PublicRoundArtifact<T extends string | number = string> = Pick<RoundArtifact<T>, "roundId" | "stake" | "betMode" | "totalWin" | "payoutMultiplier" | "screen" | "featureEvents"> & {
+export type PublicRoundArtifact<T extends string | number = string> = Pick<RoundArtifact<T>, "roundId" | "stake" | "betMode" | "totalWin" | "payoutMultiplier" | "screen" | "sequenceSelections" | "featureEvents"> & {
     readonly steps: readonly PublicRoundStep<T>[];
     readonly wins: readonly RoundArtifactWin<T>[];
 };
@@ -19,12 +19,12 @@ export type PublicRoundStep<T extends string | number = string> = Pick<RoundStep
 /** Presentation only. Canonical artifacts and their hashes keep all generated/evaluated evidence. */
 export class PublicRoundArtifactProjector<T extends string | number = string> implements RoundArtifactProjector<T, PublicRoundArtifact<T>> {
     public project(artifact: RoundArtifact<T>): PublicRoundArtifact<T> {
-        if (artifact.geometry || artifact.steps.some(step => step.geometry)) {
+        if (artifact.sequenceSelections || artifact.geometry || artifact.steps.some(step => step.geometry)) {
             const issues = new RoundArtifactValidator<T>().validate(artifact);
             if (issues.length) throw new Error(issues.map(issue => issue.message).join("; "));
         }
         const steps = artifact.steps.map(projectPublicRoundStep);
-        const result = {roundId: artifact.roundId, stake: artifact.stake, betMode: artifact.betMode, totalWin: artifact.totalWin,
+        const result = {...(artifact.sequenceSelections ? {sequenceSelections: artifact.sequenceSelections} : {}), roundId: artifact.roundId, stake: artifact.stake, betMode: artifact.betMode, totalWin: artifact.totalWin,
             payoutMultiplier: artifact.payoutMultiplier, screen: artifact.screen, steps, wins: steps.flatMap(step => step.wins),
             ...(artifact.featureEvents ? {featureEvents: artifact.featureEvents.map(projectPublicFeatureEvent)} : {})};
         return deepFreeze(toCanonicalJson(result) as unknown as PublicRoundArtifact<T>);
@@ -52,7 +52,7 @@ export function projectPublicRoundStep<T extends string | number>(step: RoundSte
         return {...publicWin, metadata, winningPositions: projectVisiblePositions(win.winningPositions, projection),
             multiplierBreakdown: publicWin.multiplierBreakdown.map(item => ({...item, positions: projectVisiblePositions(item.positions, projection)}))};
     });
-    return deepFreeze(toCanonicalJson({index: step.index, screen: step.screen, totalWin: step.totalWin, wins,
+    return deepFreeze(toCanonicalJson({...(step.sequenceSelections ? {sequenceSelections: step.sequenceSelections} : {}), index: step.index, screen: step.screen, totalWin: step.totalWin, wins,
         ...(step.featureEvents ? {featureEvents: step.featureEvents.map(projectPublicFeatureEvent)} : {}),
         ...(projection ? {visibleRowCoverage: projection.getVisibleCoverage()} : {})}) as unknown as PublicRoundStep<T>);
 }

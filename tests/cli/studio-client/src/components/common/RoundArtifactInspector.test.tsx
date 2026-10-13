@@ -841,3 +841,14 @@ describe("Overscan round presentation", () => {
         expect(fallback.container.querySelector('[data-cell="0:0"]')).toHaveAttribute("data-visible-coverage", "0.75");
     });
 });
+
+describe("whole-sequence replay inspection", () => {
+    it("shows the retained reel, variant ID and context alongside canonical JSON", () => {
+        const sequenceSelections = [{reelIndex: 0, variantId: "all-B", context: "implicit:1"}];
+        const base = artifactFor({sequenceSelections, screen: [["B"]], steps: [{index: 0, screen: [["B"]], wins: [], totalWin: 0, sequenceSelections}]});
+        const {hash: _hash, ...raw} = base;
+        const artifact = {...raw, hash: computeRoundArtifactHash(raw)};
+        const result = renderWithMantine(<RoundArtifactInspector artifact={describeRoundArtifact(artifact)} />);
+        expect(result.getByText("Reel 1: all-B (implicit:1)")).toBeInTheDocument();
+    });
+});
