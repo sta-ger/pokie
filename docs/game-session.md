@@ -462,8 +462,10 @@ Invalid commands, blocked/insufficient funds, corruption, identity/revision conf
 storage/settlement/execution failures and unresolved recovery are non-success outcomes.
 Confirmed preparation/balance failures release the session reservation and report
 `retryDisposition: "safe-to-retry"` through domain and HTTP errors. The original envelope
-remains bound but preparation can run again after recovery; these transient errors are not
-permanently saved as completed results. The player can Retry or submit a fresh logical round
+remains bound but preparation can run again through an explicitly submitted original-envelope
+retry; these transient errors are not permanently saved as completed results. Released failures
+are excluded from recovery sweeps, and the store rechecks recovery eligibility under ownership
+so a stale discovery cannot execute them. The player can Retry or submit a fresh logical round
 after that explicit disposition. A provider’s terminal rejected debit retains its historical
 error and also permits a fresh round. Transport loss, errors without the disposition,
 `recovery-required` and `identity-conflict` preserve the original pending identity and payload;

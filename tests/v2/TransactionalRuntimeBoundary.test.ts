@@ -113,7 +113,10 @@ describe("public transactional runtime compositions", () => {
         const recovery = new api.SpinCommandHandler(transactionalRoundGame(() => {
             throw new Error("Recovery played again"); 
         }), reopened);
-        const result = await recovery.execute(intent);
+        const outcome = await recovery.getReconciliationService().reconcileOne("s", "round");
+        expect(outcome.status).toBe("resumed");
+        if (outcome.status !== "resumed") throw new Error("Expected resumed external settlement");
+        const result = outcome.result;
         expect(result).toMatchObject({status: "played", version: 2});
         if (result.status === "played") expect(result.win).toBeGreaterThan(0);
         expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
@@ -459,6 +462,147 @@ describe("public transactional runtime compositions", () => {
         expect((await post(base, "s", {...body, bet: 7.5})).body).toMatchObject({code: "identity-conflict"});
         expect((await post(base, "s", body)).status).toBe(200);
         expect(provider.counts("s")).toEqual({debit: 1, credit: 1});
+    });
+
+    it.each(["balance", "preparation"])("released %s failure stays inert across fresh execution, every recovery entry point and reopen", async phase => {
+        const provider = await wallet(),
+            store = await open(provider);
+        if (!("externalSettlement" in store)) throw new Error("Expected external store");
+        await initialize(store);
+        const initial = await store.readSession("s");
+        let calculations = 0;
+        const count = () => {
+            calculations++;
+        };
+        const originalBalance = provider.getBalance.bind(provider);
+        if (phase === "balance") provider.getBalance = () => Promise.reject(new Error("Transient balance failure"));
+        const failedHandler = new api.SpinCommandHandler(transactionalRoundGame(count, phase === "preparation" ? "capture" : undefined), store);
+        const command = {...intent, expectedVersion: undefined};
+        expect(await failedHandler.execute(command)).toMatchObject({status: phase === "balance" ? "settlement-error" : "execution-error", retryDisposition: "safe-to-retry"});
+        Object.assign(provider, {getBalance: originalBalance});
+        expect(await store.readSession("s")).toEqual(initial);
+        expect(await store.pendingCommands()).toEqual([]);
+        expect(provider.transactions("s")).toEqual([]);
+
+        const handler = new api.SpinCommandHandler(transactionalRoundGame(count), store);
+        expect(await handler.execute({...command, bet: 7.5})).toMatchObject({status: "identity-conflict"});
+        const fresh = await handler.execute({...command, requestId: "fresh"});
+        expect(fresh).toMatchObject({status: "played", version: 2});
+        const settled = await store.readSession("s"),
+            transactions = provider.transactions("s"),
+            balance = await provider.getBalance("s"),
+            countAfterFresh = calculations;
+        const verifyRecovery = async (owner: api.SpinCommandHandler): Promise<void> => {
+            const service = owner.getReconciliationService();
+            expect(await Promise.all([owner.reconcileOne("s", "round"), service.reconcileOne("s", "round")]))
+                .toEqual([expect.objectContaining({status: "no-action-needed"}), expect.objectContaining({status: "no-action-needed"})]);
+            expect(await Promise.all([owner.reconcileAll(), service.reconcileAll()])).toEqual([[], []]);
+            expect(calculations).toBe(countAfterFresh);
+            expect(provider.transactions("s")).toEqual(transactions);
+            expect(await provider.getBalance("s")).toBe(balance);
+        };
+        await verifyRecovery(handler);
+        await store.close();
+        const reopened = await open(provider);
+        if (!("externalSettlement" in reopened)) throw new Error("Expected external store");
+        const recovery = new api.SpinCommandHandler(transactionalRoundGame(count), reopened);
+        await verifyRecovery(recovery);
+        expect(await reopened.readSession("s")).toEqual(settled); // Includes executable state and RNG.
+        expect(await reopened.lookupResult("s", "fresh")).toEqual(fresh);
+        expect(await reopened.lookupResult("s", "round")).toBeUndefined();
+        expect(await recovery.execute({...command, mode: "double"})).toMatchObject({status: "identity-conflict"});
+        const observer = await open(provider);
+        if (!("externalSettlement" in observer)) throw new Error("Expected external store");
+        let entered!: () => void,
+            continueBalance!: () => void;
+        const waiting = new Promise<void>(resolve => {
+            entered = resolve;
+        }),
+            balanceGate = new Promise<void>(resolve => {
+                continueBalance = resolve;
+            });
+        provider.getBalance = async id => {
+            entered();
+            await balanceGate;
+            return originalBalance(id);
+        };
+        const retry = recovery.execute(command);
+        await waiting;
+        expect(await observer.pendingCommands()).toEqual([command]);
+        const db = Reflect.get(observer, "database") as import("node:sqlite").DatabaseSync;
+        const persisted = JSON.parse(String(db.prepare("SELECT intent FROM external_requests WHERE session_id='s' AND request_id='round'").get()!.intent));
+        expect(persisted.reusable).toBeUndefined();
+        expect(persisted.snapshot).toEqual(settled);
+        continueBalance();
+        expect(await retry).toMatchObject({status: "played", requestId: "round", version: 3});
+        Object.assign(provider, {getBalance: originalBalance});
+        expect(calculations).toBe(countAfterFresh + 1);
+        expect(provider.counts("s")).toEqual({debit: 2, credit: 2});
+        expect(await reopened.lookupResult("s", "fresh")).toEqual(fresh);
+    });
+
+    it.each(["balance", "preparation"])("fences stale recovery discovery when another owner releases a %s failure", async phase => {
+        const provider = await wallet(),
+            store = await open(provider);
+        if (!("externalSettlement" in store)) throw new Error("Expected external store");
+        await initialize(store);
+        const observer = await open(provider);
+        if (!("externalSettlement" in observer)) throw new Error("Expected external store");
+        let entered!: () => void,
+            continueBalance!: () => void;
+        const waiting = new Promise<void>(resolve => {
+            entered = resolve;
+        }),
+            balanceGate = new Promise<void>(resolve => {
+                continueBalance = resolve;
+            });
+        const originalBalance = provider.getBalance.bind(provider);
+        provider.getBalance = async id => {
+            entered();
+            await balanceGate;
+            if (phase === "balance") throw new Error("Transient balance failure");
+            return originalBalance(id);
+        };
+        let calculations = 0;
+        const game = transactionalRoundGame(() => {
+            calculations++;
+        }, phase === "preparation" ? "capture" : undefined);
+        const command = {...intent, expectedVersion: undefined};
+        const failing = new api.SpinCommandHandler(game, store).execute(command);
+        await waiting;
+        const discovered = await observer.pendingCommands();
+        expect(discovered).toEqual([command]);
+        // Keep the earlier observation through the owner's release and a successful fresh command.
+        // Both reconciliation entry points must be safe even if discovery is stale.
+        observer.pendingCommands = () => Promise.resolve(discovered);
+        const recovery = new api.SpinCommandHandler(transactionalRoundGame(() => {
+            calculations++;
+        }), observer);
+        const concurrentRecovery = recovery.getReconciliationService().reconcileOne("s", "round");
+        continueBalance();
+        expect(await failing).toMatchObject({retryDisposition: "safe-to-retry"});
+        expect(await concurrentRecovery).toMatchObject({status: "no-action-needed"});
+        Object.assign(provider, {getBalance: originalBalance});
+        expect(await store.pendingCommands()).toEqual([]);
+        const fresh = await new api.SpinCommandHandler(transactionalRoundGame(() => {
+            calculations++;
+        }), store)
+            .execute({...command, requestId: "fresh"});
+        expect(fresh).toMatchObject({status: "played", version: 2});
+        const settled = await store.readSession("s"),
+            transactions = provider.transactions("s"),
+            countAfterFresh = calculations;
+        expect(await Promise.all([recovery.reconcileOne("s", "round"), recovery.getReconciliationService().reconcileOne("s", "round")]))
+            .toEqual([expect.objectContaining({status: "no-action-needed"}), expect.objectContaining({status: "no-action-needed"})]);
+        const sweeps = await Promise.all([recovery.reconcileAll(), recovery.getReconciliationService().reconcileAll()]);
+        for (const outcomes of sweeps) expect(outcomes).toEqual([expect.objectContaining({status: "no-action-needed"})]);
+        expect(await observer.recover({...command, requestId: "missing"}, game, () => {
+            throw new Error("Recovery created a round");
+        })).toBeUndefined();
+        expect(await store.readSession("s")).toEqual(settled);
+        expect(await store.lookupResult("s", "fresh")).toEqual(fresh);
+        expect(provider.transactions("s")).toEqual(transactions);
+        expect(calculations).toBe(countAfterFresh);
     });
 
     it("preserves a canonical debit payout leg instead of coercing its kind to credit", async () => {

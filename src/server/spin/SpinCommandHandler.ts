@@ -425,7 +425,9 @@ export class SpinCommandHandler implements SpinCommandHandling, RepositoryComman
         const saved = await this.externalStore!.lookupResult(sessionId, requestId);
         const command = (await this.externalStore!.pendingCommands()).find(value => value.sessionId === sessionId && value.requestId === requestId);
         if (!command) return {status: saved?.status === "played" ? "already-committed" : "no-action-needed", sessionId, requestId, reason: "External store has no unresolved operation for this identity."};
-        const result = await this.execute(command);
+        const result = await this.externalStore!.recover(command, this.game, snapshot => this.prepareExternal(snapshot)).catch(error => ({status: "execution-error" as const, sessionId,
+            reason: error instanceof Error ? error.message : String(error)}));
+        if (!result) return {status: "no-action-needed", sessionId, requestId, reason: "External operation was released before recovery acquired ownership; explicit submission required."};
         return result.status === "played" ? {status: "resumed", sessionId, requestId, result, reason: "Original external settlement reconciled."} :
             {status: "deferred", sessionId, requestId, reason: "reason" in result ? result.reason : result.status};
     }

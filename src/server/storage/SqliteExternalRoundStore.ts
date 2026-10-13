@@ -15,7 +15,9 @@ import type {ExternalRoundCandidate, ExternalRoundPreparation, ExternalRoundStor
 type Played = Extract<SpinCommandResult, {status: "played"}>;
 type Intent = {
     command: RepositoryCommand; snapshot: VersionedSessionState; balance?: number; candidate?: Played;
-    debitId: string; payoutId: string; debit?: number; payout?: number; payoutKind?: "debit" | "credit"; reusable?: boolean;
+    debitId: string; payoutId: string; debit?: number; payout?: number; payoutKind?: "debit" | "credit";
+    /** Released before remote effects; only an explicit original-envelope submission may reactivate. */
+    reusable?: boolean;
     phase: "prepare" | "debit" | "payout" | "commit";
 };
 const SCHEMA = [
@@ -95,13 +97,24 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
         return this.enqueue(() => Promise.resolve(this.saved(sessionId, requestId)));
     }
     public pendingCommands(): Promise<readonly RepositoryCommand[]> {
-        return this.enqueue(() => Promise.resolve(this.database.prepare("SELECT intent FROM external_requests WHERE result IS NULL").all().map(row => decode<Intent>(row.intent).command)));
+        return this.enqueue(() => Promise.resolve(this.database.prepare("SELECT intent FROM external_requests WHERE result IS NULL").all()
+            .map(row => decode<Intent>(row.intent)).filter(intent => !intent.reusable).map(intent => intent.command)));
     }
     public execute(command: RepositoryCommand, game: PokieGame, prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>, signal?: AbortSignal): Promise<SpinCommandResult> {
         const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
         if (invalid || command.requestId === undefined) return Promise.resolve({status: "invalid-command", sessionId: command?.sessionId ?? "", reason: invalid ?? "Durable external rounds require a stable requestId."});
         const frozen = Object.freeze({...command});
-        return this.enqueue(() => this.run(frozen, game, prepare, signal));
+        return this.enqueue(async () => {
+            const result = await this.run(frozen, game, prepare, signal);
+            if (!result) throw new Error("Submitted external round returned no outcome.");
+            return result;
+        });
+    }
+    public recover(command: RepositoryCommand, game: PokieGame, prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>): Promise<SpinCommandResult | undefined> {
+        const invalid = validateRepositoryCommand(command) ?? validateSessionCommand(command);
+        if (invalid || command.requestId === undefined) return Promise.resolve({status: "invalid-command", sessionId: command?.sessionId ?? "", reason: invalid ?? "Durable external rounds require a stable requestId."});
+        const frozen = Object.freeze({...command});
+        return this.enqueue(() => this.run(frozen, game, prepare, undefined, true));
     }
     public close(): Promise<void> {
         if (!this.closePromise) {
@@ -113,7 +126,7 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
         return this.closePromise;
     }
 
-    private async run(command: RepositoryCommand, game: PokieGame, prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>, signal?: AbortSignal): Promise<SpinCommandResult> {
+    private async run(command: RepositoryCommand, game: PokieGame, prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>, signal?: AbortSignal, recoveryOnly = false): Promise<SpinCommandResult | undefined> {
         const sessionId = command.sessionId,
             requestId = command.requestId!,
             owner = randomUUID();
@@ -124,6 +137,7 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
         for (;;) {
             let outcome: SpinCommandResult | undefined;
             let busy = false;
+            let skipped = false;
             await this.write(() => {
                 const existing = this.row(sessionId, requestId);
                 if (existing && existing.envelope !== envelope) {
@@ -134,6 +148,12 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                     outcome = this.saved(sessionId, requestId)!;
                     const rejected = outcome.status === "played" ? validateRetryResult(outcome, game, sessionId, requestId) : undefined;
                     if (rejected) outcome = {...rejected, sessionId};
+                    return;
+                }
+                // A discovery list can precede another owner's pre-effect release. Recovery must
+                // never create or reactivate an identity the caller is now allowed to discard.
+                if (recoveryOnly && (!existing || decode<Intent>(existing.intent).reusable)) {
+                    skipped = true;
                     return;
                 }
                 const session = this.read(sessionId);
@@ -167,10 +187,11 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
                 }
                 intent = existing ? decode<Intent>(existing.intent) : {command, snapshot: session, debitId: `${sessionId}:${randomUUID()}:debit`, payoutId: `${sessionId}:${randomUUID()}:credit`, phase: "prepare"};
                 if (intent.reusable) intent = {...intent, snapshot: session, balance: undefined, reusable: undefined};
-                this.database.prepare("INSERT INTO external_requests VALUES (?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(session_id, request_id) DO UPDATE SET owner=excluded.owner, expires=excluded.expires")
+                this.database.prepare("INSERT INTO external_requests VALUES (?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(session_id, request_id) DO UPDATE SET intent=excluded.intent, owner=excluded.owner, expires=excluded.expires")
                     .run(sessionId, requestId, envelope, encode(intent), owner, Date.now() + this.timeoutMs * 8 + this.recoveryWaitMs);
                 this.database.prepare("UPDATE external_sessions SET pending=? WHERE id=?").run(requestId, sessionId);
             });
+            if (skipped) return undefined;
             if (outcome) return outcome;
             if (!busy) break;
             if (signal?.aborted || Date.now() >= deadline) return unresolved("Live owner still holds the original round; bounded waiting exhausted.");
@@ -274,12 +295,12 @@ export class SqliteExternalRoundStore implements ExternalRoundStore {
             if (error instanceof RuntimeCommandError && error.code === "storage-error") throw error;
             if (current.phase === "prepare") {
                 const failure = error instanceof RuntimeCommandError ? error : new RuntimeCommandError(current.balance === undefined ? "settlement-error" : "execution-error", error);
-                // No remote leg was dispatched. Preserve envelope binding but allow preparation to
-                // run again after the provider/game recovers, and release the session reservation.
+                // No remote leg was dispatched. Release recovery eligibility and the reservation
+                // atomically, retaining the envelope for explicitly submitted retries only.
                 current = {...current, balance: undefined, reusable: true};
-                await persist();
                 await this.write(() => {
                     this.assertOwner(sessionId, requestId, owner);
+                    this.database.prepare("UPDATE external_requests SET intent=?, owner=NULL, expires=0 WHERE session_id=? AND request_id=?").run(encode(current), sessionId, requestId);
                     this.database.prepare("UPDATE external_sessions SET pending=NULL WHERE id=?").run(sessionId);
                 });
                 throw new RuntimeCommandError(failure.code, failure.cause, "safe-to-retry");

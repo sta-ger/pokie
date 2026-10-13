@@ -29,6 +29,12 @@ export interface ExternalRoundStore {
     lookupResult(sessionId: string, requestId: string): Promise<SpinCommandResult | undefined>;
     execute(command: RepositoryCommand, game: PokieGame,
         prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>, signal?: AbortSignal): Promise<SpinCommandResult>;
+    /** Resume only a persisted unresolved operation. Eligibility must be rechecked under ownership;
+     * absent or released pre-effect failures return undefined and require explicit execute() retry.
+     */
+    recover(command: RepositoryCommand, game: PokieGame,
+        prepare: (snapshot: ExternalRoundPreparation) => Promise<ExternalRoundCandidate>): Promise<SpinCommandResult | undefined>;
+    /** Discovery only: excludes released failures; recover() must fence stale observations. */
     pendingCommands(): Promise<readonly RepositoryCommand[]>;
     close(): Promise<void>;
 }
@@ -37,5 +43,5 @@ export function isExternalRoundStore(value: unknown): value is ExternalRoundStor
     const store = value as Partial<ExternalRoundStore> | null;
     return typeof store === "object" && store !== null && store.externalSettlement === true &&
         store.capabilities?.durableIntent === true && store.capabilities.durableResults === true && store.capabilities.sessionFencing === true &&
-        [store.initialize, store.readSession, store.getBalance, store.lookupResult, store.execute, store.pendingCommands, store.close].every(method => typeof method === "function");
+        [store.initialize, store.readSession, store.getBalance, store.lookupResult, store.execute, store.recover, store.pendingCommands, store.close].every(method => typeof method === "function");
 }
