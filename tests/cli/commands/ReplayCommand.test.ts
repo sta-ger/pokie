@@ -1,6 +1,8 @@
 import {createOverscanGame} from "../../v2/fixtures/OverscanGame.js";
 import {
     GameSessionHandling,
+    AUTHORED_MECHANIC_CATALOG,
+    GamePackageGenerator,
     loadPokieGame,
     OutcomeLibraryBundleWriter,
     OutcomeSourceReplayResult,
@@ -22,6 +24,7 @@ import {ReplayCommand} from "../../../cli/commands/ReplayCommand.js";
 import {createMaterializingRuntimePackageResolver} from "../../../cli/materialize/materializeRuntimePackage.js";
 import {buildOutcomeLibraryBundleModeInput} from "../../weightedoutcome/bundle/OutcomeLibraryBundleTestFixtures.js";
 import {createCanonicalWasmFixture} from "../../fixtures/wasm/createCanonicalWasmFixture.js";
+import {existingMechanicsBlueprint, mechanicsSession} from "../../v2/fixtures/ExistingMechanicsGame.js";
 
 function stubProjectResolver(project: PokieProject | undefined): ProjectResolving & {calls: string[]} {
     const calls: string[] = [];
@@ -113,6 +116,8 @@ describe("ReplayCommand", () => {
         expect(help).toContain("Blueprint");
         expect(help).toContain("WASM");
         expect(help).toContain("pokie-wasm-replay");
+        expect(help).toContain("available entries");
+        expect(help).toContain("step replay only");
     });
 
     it("throws when run without a packageRoot", async () => {
@@ -186,6 +191,118 @@ describe("ReplayCommand", () => {
         expect(descriptor.round).toBe(3);
 
         (console.log as jest.Mock).mockRestore();
+    });
+});
+
+describe("ReplayCommand generated package mode policy", () => {
+    let directory: string;
+    beforeEach(() => {
+        directory = fs.mkdtempSync(path.join(process.cwd(), "node_modules/.cache/pokie-tmp/replay-modes-"));
+        jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+        jest.restoreAllMocks();
+        fs.rmSync(directory, {recursive: true, force: true});
+    });
+
+    function fixture(withModes = true) {
+        const blueprint = existingMechanicsBlueprint(AUTHORED_MECHANIC_CATALOG.find(row => row.id === "modes")!);
+        // No natural retrigger: only explicit purchases can grant these free games.
+        blueprint.reelStrips = [["A"], ["A"], ["A"]];
+        if (!withModes) Reflect.deleteProperty(blueprint, "betModes");
+        const built = new GamePackageGenerator("1.3.0").generate(blueprint, directory);
+        let session: ReturnType<typeof mechanicsSession>;
+        let play: jest.SpyInstance;
+        const stakes: number[] = [];
+        const load = jest.fn(async (root: string) => {
+            const game = await loadPokieGame(root, entry => Promise.resolve(require(entry) as Record<string, unknown>));
+            const create = game.createSession.bind(game);
+            jest.spyOn(game, "createSession").mockImplementation(context => {
+                session = create(context) as typeof session;
+                const originalPlay = session.play.bind(session);
+                play = jest.spyOn(session, "play").mockImplementation(() => {
+                    stakes.push(session.getStakeAmount());
+                    originalPlay();
+                });
+                return session;
+            });
+            return game;
+        });
+        const output = path.join(directory, "replay.json");
+        return {root: built.projectRoot, output, load, stakes, getSession: () => session, getPlay: () => play};
+    }
+
+    it("F11 charges two fractional ante steps and retains actual commands and policy", async () => {
+        const f = fixture();
+        await new ReplayCommand(f.load).run([f.root, "--seed", "31", "--round", "2", "--mode", "ante", "--out", f.output]);
+        const descriptor = JSON.parse(fs.readFileSync(f.output, "utf8")) as ReplayDescriptor;
+        expect(descriptor.totalBet).toBeCloseTo(0.15, 12);
+        expect(descriptor).toMatchObject({unit: "step", modePolicy: {betModeId: "ante", selection: "repeat-when-available"}, commands: [{kind: "spin", mode: "ante"}, {kind: "spin", mode: "ante"}]});
+        expect(f.stakes).toEqual([0.05 * 1.5, 0.05 * 1.5]);
+        expect(f.getSession().getBetModeId!()).toBe("ante");
+    });
+
+    it.each([
+        {mode: "buy", stakes: [0.5, 0, 0.5, 0, 0.5, 0], total: 1.5},
+        {mode: "buy-more", stakes: [1.25, 0, 0, 0, 1.25, 0], total: 2.5},
+    ])("F11 consumes $mode only at available entries, leaving continuations uncharged", async ({mode, stakes, total}) => {
+        const f = fixture();
+        await new ReplayCommand(f.load).run([f.root, "--seed", "31", "--round", "6", "--mode", mode, "--out", f.output]);
+        const descriptor = JSON.parse(fs.readFileSync(f.output, "utf8")) as ReplayDescriptor;
+        expect(f.stakes).toEqual(stakes);
+        expect(descriptor.totalBet).toBeCloseTo(total, 12);
+        expect(descriptor.modePolicy).toEqual({betModeId: mode, selection: "repeat-when-available"});
+        expect(descriptor.commands).toEqual(stakes.map(stake => ({kind: "spin", ...(stake > 0 ? {mode} : {})})));
+        expect(f.getSession().getBetModeId!()).toBe("base");
+        expect(f.getSession().toSessionState()).toMatchObject({chargedBetModeId: mode});
+    });
+
+    it("F11 rejects unknown selections before a spin or output publication", async () => {
+        const f = fixture();
+        await expect(new ReplayCommand(f.load).run([f.root, "--round", "2", "--mode", "missing", "--out", f.output])).rejects.toThrow(/Unknown bet mode "missing".*Available modes/);
+        expect(f.getPlay()).not.toHaveBeenCalled();
+        expect(f.getSession().getBetModeId!()).toBe("base");
+        expect(fs.existsSync(f.output)).toBe(false);
+        expect(console.log).not.toHaveBeenCalled();
+    });
+
+    it("F11 rejects mode policy with logical-round addressing before any spin or output", async () => {
+        const f = fixture();
+        await expect(new ReplayCommand(f.load).run([f.root, "--round", "2", "--mode", "ante", "--unit", "logical-round", "--out", f.output])).rejects.toThrow(/mode policy requires step replay/);
+        expect(f.getPlay()).not.toHaveBeenCalled();
+        expect(fs.existsSync(f.output)).toBe(false);
+        expect(console.log).not.toHaveBeenCalled();
+    });
+
+    it("F11 rejects explicit selection on a generated package without executable modes", async () => {
+        const f = fixture(false);
+        await expect(new ReplayCommand(f.load).run([f.root, "--round", "2", "--mode", "ante", "--out", f.output])).rejects.toThrow(/session does not support bet mode selection/);
+        expect(f.getPlay()).not.toHaveBeenCalled();
+        expect(fs.existsSync(f.output)).toBe(false);
+        expect(console.log).not.toHaveBeenCalled();
+    });
+
+    it("F11 preserves omitted-mode base replay without inventing policy or commands", async () => {
+        const f = fixture();
+        await new ReplayCommand(f.load).run([f.root, "--seed", "31", "--round", "2", "--out", f.output]);
+        const descriptor = JSON.parse(fs.readFileSync(f.output, "utf8")) as ReplayDescriptor;
+        expect(descriptor.totalBet).toBeCloseTo(0.1, 12);
+        expect(f.stakes).toEqual([0.05, 0.05]);
+        expect(descriptor).not.toHaveProperty("modePolicy");
+        expect(descriptor).not.toHaveProperty("commands");
+    });
+
+    it.each([
+        {flag: "--seed", value: "replacement"},
+        {flag: "--round", value: "2"},
+        {flag: "--unit", value: "step"},
+        {flag: "--mode", value: "ante"},
+    ])("F11 keeps --recording inputs immutable against $flag", async ({flag, value}) => {
+        const f = fixture();
+        await expect(new ReplayCommand(f.load).run([f.root, "--recording", "recording.json", flag, value, "--out", f.output])).rejects.toThrow(/already binds/);
+        expect(f.load).not.toHaveBeenCalled();
+        expect(fs.existsSync(f.output)).toBe(false);
+        expect(console.log).not.toHaveBeenCalled();
     });
 });
 
@@ -274,6 +391,9 @@ describe("ReplayCommand runtime package materialization boundary", () => {
         const command = new ReplayCommand(loadGame, undefined, undefined, resolveRuntimePackageRoot);
         const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
         try {
+            await expect(command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--mode", "ante", "--out", descriptorPath])).rejects.toThrow(/Canonical WASM replay does not support --mode/);
+            expect(fs.existsSync(descriptorPath)).toBe(false);
+            expect(logSpy).not.toHaveBeenCalled();
             await command.run([wasmPath, "--round", "2", "--seed", "canonical-seed", "--out", descriptorPath]);
             const descriptor = JSON.parse(fs.readFileSync(descriptorPath, "utf8")) as ReplayDescriptor;
             expect(descriptor).toMatchObject({game: {id: "canonical-replay"}, round: 2, seed: "canonical-seed", credits: expect.any(Number)});

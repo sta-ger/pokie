@@ -96,8 +96,20 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         const cliReport = JSON.parse(fs.readFileSync(reportPath, "utf8"));
         if (row.modes) expect(Object.keys(cliReport.modes)).toEqual(blueprint.betModes!.map(mode => mode.id));
         await new ReportCommand().run([reportPath, "--format", "html", "--out", path.join(directory, "report.html")]);
-        await new ReplayCommand(() => Promise.resolve(game)).run([built.projectRoot, "--round", "3", "--seed", "31", "--out", path.join(directory, "replay.json")]);
-        expect(JSON.parse(fs.readFileSync(path.join(directory, "replay.json"), "utf8")).round).toBe(3);
+        for (const mode of blueprint.betModes?.map(entry => entry.id) ?? [undefined]) {
+            const replayPath = path.join(directory, "replay.json");
+            await new ReplayCommand(root => api.loadPokieGame(root, entry => Promise.resolve(require(entry) as Record<string, unknown>))).run([built.projectRoot, "--round", "3", "--seed", "31", ...(mode ? ["--mode", mode] : []), "--out", replayPath]);
+            const descriptor = JSON.parse(fs.readFileSync(replayPath, "utf8")) as api.ReplayDescriptor;
+            const expected = new api.ReplayRecorder().record({game, seed: "31", round: 3, betModeId: mode});
+            expect(descriptor).toMatchObject({round: 3, totalBet: expected.totalBet, totalWin: expected.totalWin, screen: expected.screen});
+            if (mode) {
+                expect(descriptor.modePolicy).toEqual({betModeId: mode, selection: "repeat-when-available"});
+                expect(descriptor.unit).toBe("step");
+                expect(descriptor.commands).toEqual(expected.commands);
+                expect(descriptor.commands).toHaveLength(3);
+                expect(descriptor.commands!.filter(command => command.mode !== undefined).every(command => command.mode === mode)).toBe(true);
+            } else expect(descriptor).not.toHaveProperty("modePolicy");
+        }
         const studio = new StudioPlayService(() => Promise.resolve(game));
         try {
             const created = await studio.newSession(built.projectRoot, 31);

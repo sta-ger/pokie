@@ -2187,6 +2187,15 @@ Options:
 - `--round <number>` — **required**. A positive integer: the 1-indexed round to replay.
 - `--seed <string>` — forwarded as `context.seed` to `game.createSession(context)`, same best-effort caveat as
   [`pokie sim --seed`](#pokie-sim-packageroot).
+- `--mode <betModeId>` — for packages/Blueprints, selects the executable mode repeatedly at available
+  entries using the shared simulation/Studio replay policy. Purchases are consumed at paid entry;
+  zero-stake continuations stay uncharged, and another purchase is selected only when entry is available.
+  The descriptor retains `modePolicy: {betModeId, selection: "repeat-when-available"}` and the executed
+  `commands`, with mode selections on paid entries. Unknown or unsupported selections fail before any
+  spin or output publication. Omit this flag to retain the package's default selection behavior.
+- `--unit step|logical-round` — package address unit (default: step). Package `--mode` requires step
+  replay and cannot be combined with `--unit logical-round` or `--recording`. Logical-round replay uses
+  the package's declared progress; `--recording` reproduces its bound audit commands and selections.
 - `--out <file>` — write the JSON replay descriptor to `<file>`.
 - `--format json` — accepted for symmetry with `pokie sim`/`pokie validate`; JSON is currently the only supported
   format, and is always printed to stdout regardless of this flag.
