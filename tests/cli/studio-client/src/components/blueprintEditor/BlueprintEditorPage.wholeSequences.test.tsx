@@ -3,6 +3,7 @@ import {MantineProvider} from "@mantine/core";
 import {ModalsProvider} from "@mantine/modals";
 import {createMemoryRouter, RouterProvider} from "react-router-dom";
 import {HomePage} from "../../../../../../cli/studio-client/src/components/home/HomePage";
+import {BlueprintEditorPage} from "../../../../../../cli/studio-client/src/components/blueprintEditor/BlueprintEditorPage";
 import {loadPersistedBlueprintDraft} from "../../../../../../cli/studio-client/src/domain/blueprintDraftStorage";
 import {GameModelTab} from "../../../../../../cli/studio-client/src/components/project/GameModelTab";
 import {buildGameModelProjection} from "../../../../../../src/project/buildGameModelProjection";
@@ -277,11 +278,11 @@ it("Project Reels Apply works, Save uses expectedHash and retains local edits ma
 });
 
 
-function renderHome(fetch: FetchLike) {
+function renderHome(fetch: FetchLike, loaded = true) {
     const router = createMemoryRouter([
         {path: "/home/:tab", element: <HomePage />},
         {path: "/project/:root/:tab", element: <div>Opened workspace</div>},
-    ], {initialEntries: [{pathname: "/home/design", state: {initialBlueprintPath: "model.json"}}]});
+    ], {initialEntries: [{pathname: "/home/design", state: loaded ? {initialBlueprintPath: "model.json"} : undefined}]});
     render(
         <MantineProvider>
             <StudioApiProvider fetchImpl={fetch}>
@@ -304,6 +305,137 @@ function nativeInput(label: string, value: string) {
     fireEvent.input(input, {inputType: "insertText"});
     expect(input).toHaveValue(value);
 }
+
+it.each(["save", "open"].flatMap(stage => [true, false].flatMap(loaded => [
+    ["Game id", "id", "starter-slot-home-after-save"],
+    ["Game name", "name", "Newer Home draft"],
+    ["Version", "version", "2.0.0"],
+    ["Description (optional)", "description", "Newer description"],
+    ["Author (optional)", "author", "Newer author"],
+].map(([label, field, value]) => ({stage, loaded, label, field, value})))))("Home retains focused $label input during $stage for loaded=$loaded without abandoning newer work", async ({stage, loaded, label, field, value}) => {
+    let finish: (() => void) | undefined;
+    let submitted: Record<string, unknown> | undefined;
+    let acceptedSource: string | undefined;
+    let opened = 0;
+    const delayed: FetchLike = (url, init) => {
+        const saving = String(url).endsWith(loaded ? "/save" : "/save-managed");
+        const opening = String(url).endsWith("/open");
+        if (saving || opening) {
+            if (saving) submitted = JSON.parse(String(init?.body)).blueprint;
+            else opened++;
+            const complete = () => {
+                if (saving) acceptedSource = JSON.stringify(submitted);
+                return {ok: true, status: 200, json: () => Promise.resolve(saving
+                    ? {status: "ok", path: "model.json", name: "starter-slot", blueprintHash: "saved-version"}
+                    : {context: {mode: "project", projectRoot: "model.json"}, manifest: submitted?.manifest})};
+            };
+            if ((stage === "save" && saving) || (stage === "open" && opening)) return new Promise(resolve => {
+                finish = () => resolve(complete());
+            });
+            return Promise.resolve(complete());
+        }
+        return homeFetch(url, init);
+    };
+    const router = renderHome(delayed, loaded);
+    const actionName = loaded ? "Save game" : "Create game";
+    await waitFor(() => expect(screen.getByRole("button", {name: actionName})).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", {name: actionName}));
+    await waitFor(() => expect(finish).toBeDefined());
+    const input = screen.getByLabelText(label);
+    expect(input).toBeEnabled();
+    act(() => input.focus());
+    nativeInput(label, value);
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole("button", {name: loaded || stage === "open" ? "Save game" : "Create game"})).toBeDisabled();
+    await act(async () => {
+        finish?.();
+        await Promise.resolve();
+    });
+    expect(router.state.location.pathname).toBe("/home/design");
+    expect(screen.queryByText("Opened workspace")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(label)).toHaveValue(value);
+    expect(acceptedSource).toBe(JSON.stringify(submitted));
+    expect(JSON.parse(acceptedSource!).manifest[field]).not.toBe(value);
+    expect(opened).toBe(stage === "save" ? 0 : 1);
+    expect(loadPersistedBlueprintDraft()?.blueprint).toMatchObject({manifest: {[field]: value}});
+    // Completion must not arm a navigation bypass for a later manual exit.
+    await act(() => router.navigate("/project/other/overview"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Leave and lose them");
+    fireEvent.click(within(dialog).getByRole("button", {name: "Stay"}));
+});
+
+it("raw editor explicitly saves native metadata without blur, retaining explicit IDs and optional-field removal", async () => {
+    renderWithProviders(<BlueprintEditorPage initialPath="model.json" />, {fetchImpl: homeFetch});
+    await waitFor(() => expect(screen.getByLabelText("Game id")).toHaveValue("test"));
+    nativeInput("Game name", "Derived Name");
+    expect(screen.getByLabelText("Game id")).toHaveValue("derived-name");
+    nativeInput("Game id", "explicit-id");
+    nativeInput("Game name", "Later Name");
+    expect(screen.getByLabelText("Game id")).toHaveValue("explicit-id");
+    nativeInput("Version", "2.0.0");
+    nativeInput("Description (optional)", "Native description");
+    nativeInput("Author (optional)", "Temporary author");
+    nativeInput("Author (optional)", "");
+    expect(source).toBe(JSON.stringify(original));
+    change("Save to path", "model.json");
+    fireEvent.click(screen.getByRole("button", {name: "Save"}));
+    await screen.findByText('Saved to "model.json".');
+    expect(JSON.parse(source)).toEqual({...original, manifest: {
+        id: "explicit-id", name: "Later Name", version: "2.0.0", description: "Native description",
+    }});
+});
+
+it("Project basics retains native metadata for Cancel confirmation and explicit Save, with save-time controls locked", async () => {
+    let finish: (() => void) | undefined;
+    let savedBody: {blueprint: unknown; expectedHash: string} | undefined;
+    const projectFetch: FetchLike = (url, init) => {
+        if (String(url).includes("/api/project/gameModel")) return response(buildGameModelProjection(JSON.parse(source) as GameBlueprint));
+        if (String(url).endsWith("/load")) return response({status: "ok", path: "model.json", blueprint: JSON.parse(source), blueprintHash: "loaded-version"});
+        if (String(url).endsWith("/save")) {
+            savedBody = JSON.parse(String(init?.body));
+            return new Promise(resolve => {
+                finish = () => {
+                    source = JSON.stringify(savedBody!.blueprint);
+                    resolve({ok: true, status: 200, json: () => Promise.resolve({status: "ok", path: "model.json", blueprintHash: "saved-version"})});
+                };
+            });
+        }
+        return fetchImpl(url, init);
+    };
+    const router = createMemoryRouter([{path: "/project/gameModel", element: <GameModelTab editable projectRoot="model.json" />}], {initialEntries: ["/project/gameModel"]});
+    render(<MantineProvider><StudioApiProvider fetchImpl={projectFetch}><ModalsProvider><RouterProvider router={router} /></ModalsProvider></StudioApiProvider></MantineProvider>);
+    const section = (await screen.findByText("Game basics", {selector: "span"})).closest("fieldset")!;
+    fireEvent.click(within(section).getByRole("button", {name: "Edit"}));
+    await screen.findByLabelText("Game id");
+    nativeInput("Game id", "cancelled-id");
+    fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", {name: "Confirm"}));
+    await waitFor(() => expect(within(section).getByRole("button", {name: "Edit"})).toBeEnabled());
+    expect(source).toBe(JSON.stringify(original));
+    expect(savedBody).toBeUndefined();
+    fireEvent.click(within(section).getByRole("button", {name: "Edit"}));
+    await screen.findByLabelText("Game id");
+    nativeInput("Game id", "saved-id");
+    nativeInput("Game name", "Saved Name");
+    nativeInput("Version", "2.0.0");
+    nativeInput("Description (optional)", "Saved description");
+    nativeInput("Author (optional)", "Saved author");
+    fireEvent.click(within(section).getByRole("button", {name: "Save"}));
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(savedBody).toEqual({path: "model.json", overwrite: true, expectedHash: "loaded-version", blueprint: {
+        ...original, manifest: {id: "saved-id", name: "Saved Name", version: "2.0.0", description: "Saved description", author: "Saved author"},
+    }});
+    for (const label of ["Game id", "Game name", "Version", "Description (optional)", "Author (optional)"]) expect(screen.getByLabelText(label)).toBeDisabled();
+    expect(source).toBe(JSON.stringify(original));
+    await act(async () => {
+        finish?.();
+        await Promise.resolve();
+    });
+    await waitFor(() => expect(within(section).getByRole("button", {name: "Edit"})).toBeEnabled());
+    expect(JSON.parse(source)).toEqual(savedBody!.blueprint);
+});
 
 it("actual guided Home validates, inspects, Applies and Saves native input across all five weighted reels", async () => {
     const user = userEvent.setup();
