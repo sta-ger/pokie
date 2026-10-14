@@ -798,9 +798,12 @@ export class StudioArtifactBuildService {
             // Studio-level registration loop starts.
             ...new Set([...registeredRoots, ...ownedRoots]).values(),
         ].sort((left, right) => right.length - left.length);
+        const registrationCleanupErrors: unknown[] = [];
         for (const projectRoot of rollbackRoots) {
             if (!ownedRoots.has(projectRoot)) continue;
-            await this.unregisterManagedProject(projectRoot).catch(() => undefined);
+            await this.unregisterManagedProject(projectRoot).catch((error: unknown) => {
+                registrationCleanupErrors.push(error);
+            });
             // The registry may have registered a generated Outcome before
             // Studio reaches its own project-registration loop.  Releasing
             // that record is a separate operation from removing the root: a
@@ -811,7 +814,9 @@ export class StudioArtifactBuildService {
                     releaseManagedOutcomeProject?: (sourceRootPath: string, rootPath: string) => Promise<void>;
                 };
                 if (registry.releaseManagedOutcomeProject !== undefined) {
-                    await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch(() => undefined);
+                    await registry.releaseManagedOutcomeProject(ownership.sourceRootPath, projectRoot).catch((error: unknown) => {
+                        registrationCleanupErrors.push(error);
+                    });
                 }
             }
             if (result.publishedDirectoryOwnership?.some(entry => projectRoot === entry.path) || result.publishedFileOwnership?.some(entry => entry.path === projectRoot)) continue;
@@ -827,8 +832,12 @@ export class StudioArtifactBuildService {
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
         }
+        const assertRegistrationCleanup = (): void => {
+            if (registrationCleanupErrors.length) throw new Error(`Could not confirm Studio registration rollback: ${registrationCleanupErrors.map(error => error instanceof Error ? error.message : String(error)).join("; ")}`);
+        };
         if (result.publishedDirectoryOwnership !== undefined || result.publishedFileOwnership !== undefined) {
             await rollbackArtifactPublication(result);
+            assertRegistrationCleanup();
             return;
         }
         if ((plan.target.kind === "wasm" || (plan.target.kind === "parWorkbook" && plan.packageExtraction)) && !outputDestinationExisted) {
@@ -841,6 +850,7 @@ export class StudioArtifactBuildService {
                 fs.promises.rm(`${result.outputPath}.pokie`, {recursive: true, force: true}),
             ]).catch(() => undefined);
         }
+        assertRegistrationCleanup();
     }
 
     private durableManagedRoots(result: import("@fromstan/pokie").ArtifactBuildResult, plan: ArtifactConversionPlan): readonly string[] {

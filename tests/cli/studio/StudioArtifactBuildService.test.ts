@@ -387,6 +387,23 @@ describe("StudioArtifactBuildService", () => {
         }
     });
 
+    it.each([false, true])("keeps registration cleanup failure observable after owned files roll back (cancelled: %s)", async cancelled => {
+        const source = writeDescriptorPackage(workDir);
+        const bytes = fs.readFileSync(path.join(source, "index.js"));
+        const controller = new AbortController();
+        const destination = path.join(workDir, "cleanup.json");
+        const packageService = new StudioArtifactBuildService("1.3.0", undefined, undefined, () => {
+            if (!cancelled) throw new Error("registration failed");
+            controller.abort();
+            return Promise.resolve();
+        }, undefined, undefined, () => Promise.reject(new Error("registry cleanup confirmation failed")));
+        const result = await packageService.build(source, "blueprint", destination, {signal: controller.signal});
+        expect(result).toMatchObject({status: "error", message: expect.stringContaining("registration rollback: registry cleanup confirmation failed")});
+        expect(fs.readFileSync(path.join(source, "index.js"))).toEqual(bytes);
+        expect(fs.readdirSync(workDir)).toEqual(["descriptor-package"]);
+        expect(runtimeSnapshotNames(source)).toEqual([]);
+    });
+
     describe("reviewed package extraction", () => {
         async function terminal(packageService: StudioArtifactBuildService, source: string, id: string) {
             for (let read = 0; read < 1000; read++) {
