@@ -68,6 +68,10 @@ export class BlueprintArtifactBuilder implements ArtifactBuilder {
             assertArtifactBuildNotCancelled(options);
             const extraction = source.type === "tsPackage" ? await new PackageBlueprintExtraction().extract(source.rootPath, {signal: options?.signal}) : undefined;
             if (extraction) {
+                // Extraction settles and releases its runtime lease before returning.
+                // Keep cleanup/malformed failures authoritative; only its cancelled
+                // outcome enters the shared builder cancellation lifecycle.
+                if (extraction.status === "cancelled") assertArtifactBuildNotCancelled(options);
                 this.assertComplete(extraction);
                 if (options?.preparedPackageModel && extraction.blueprintHash !== options.preparedPackageModel.blueprintHash) throw new Error("Package model changed after preview; prepare a new extraction.");
             }

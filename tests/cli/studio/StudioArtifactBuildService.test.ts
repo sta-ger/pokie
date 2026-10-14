@@ -1,4 +1,4 @@
-import {writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -32,6 +32,53 @@ describe("StudioArtifactBuildService", () => {
 
     afterEach(() => {
         fs.rmSync(workDir, {recursive: true, force: true});
+    });
+
+    it.each(["blueprint", "tsPackage"] as const)("durably cancels %s during its final asynchronous descriptor read without artifact actions or registration", async target => {
+        const fixture = writePausedDescriptorPackage(workDir);
+        const snapshots = runtimeSnapshotNames();
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const register = jest.fn(() => Promise.resolve());
+        const registry = new ArtifactBuilderRegistry("1.3.0");
+        const execute = registry.executePlan.bind(registry);
+        jest.spyOn(registry, "executePlan").mockImplementation((plan, source, destination, options) => execute(plan, source, destination, {
+            ...options, onProgress: value => {
+                options?.onProgress?.(value);
+                if (value.message === "Extracting public package model into Blueprint") fixture.arm();
+            },
+        }));
+        const packageService = new StudioArtifactBuildService("1.3.0", registry, undefined, register);
+        const durableDirectory = path.join(workDir, "jobs");
+        const jobs = new StudioJobService(new FileStudioJobRepository(durableDirectory));
+        packageService.attachJobService(jobs);
+        try {
+            const started = packageService.start(fixture.source, target, path.join(workDir, "output"));
+            if (started.status !== "created") throw new Error("expected artifact job");
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(packageService.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "running"});
+            expect(packageService.cancelForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelling", cancellationRequested: true});
+            fixture.settle();
+            await packageService.cancelAll();
+            expect(packageService.getStatusForProject(fixture.source, started.job.id)).toMatchObject({
+                status: "cancelled", result: {status: "cancelled"}, progress: {status: "cancelled"},
+            });
+            expect(jobs.list(fixture.source)).toEqual([expect.objectContaining({id: started.job.id, status: "cancelled"})]);
+            const durable = new FileStudioJobRepository(durableDirectory).get(started.job.id);
+            expect(durable).toMatchObject({status: "cancelled"});
+            expect(durable?.result?.outputs).toBeUndefined();
+            const restarted = new StudioArtifactBuildService("1.3.0");
+            restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
+            expect(restarted.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelled"});
+            expect(register).not.toHaveBeenCalled();
+            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "jobs"]);
+        } finally {
+            fixture.restore();
+            await packageService.cancelAll();
+        }
     });
 
     it("previews package diagnostics and publishes/registers a separate Blueprint with extraction provenance", async () => {

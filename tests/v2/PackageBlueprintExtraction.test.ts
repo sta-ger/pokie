@@ -1,8 +1,9 @@
-import {writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "./fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+    ArtifactBuildCancelledError,
     ArtifactBuilderRegistry,
     BlueprintArtifactBuilder,
     GameBlueprintValidator,
@@ -354,6 +355,86 @@ describe("PackageBlueprintExtraction", () => {
         const published = await new BlueprintArtifactBuilder().build(packageProject(source), destination);
         expect(JSON.parse(fs.readFileSync(destination, "utf8"))).toEqual(result.blueprint);
         expect(JSON.parse(fs.readFileSync(published.conversionEvidencePath!, "utf8")).extractedBlueprintHash).toBe(result.blueprintHash);
+    });
+
+    it.each([false, true])("settles a paused direct asynchronous build truthfully (cancelled: %s)", async cancelled => {
+        const fixture = writePausedDescriptorPackage(directory);
+        const snapshots = runtimeSnapshotNames();
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const destination = path.join(directory, "async.json");
+        const controller = new AbortController();
+        const progress: string[] = [];
+        fixture.arm();
+        try {
+            const build = new BlueprintArtifactBuilder().build(packageProject(fixture.source), destination, {
+                signal: controller.signal, onProgress: value => {
+                    progress.push(value.status);
+                },
+            });
+            const checked = cancelled ? expect(build).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : build;
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(fs.existsSync(destination)).toBe(false);
+            if (cancelled) controller.abort();
+            fixture.settle();
+            const result = await checked;
+            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            if (cancelled) {
+                expect(progress).toContain("cancelled");
+                expect(progress).not.toContain("completed");
+                expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+            } else {
+                expect(result).toMatchObject({outputPath: destination, packageExtraction: {status: "complete"}});
+                expect(JSON.parse(fs.readFileSync(`${destination}.conversion-evidence.json`, "utf8")).kind).toBe("package-extraction");
+                expect(fs.readdirSync(directory).some(name => name.endsWith(".tmp"))).toBe(false);
+            }
+        } finally {
+            fixture.restore();
+        }
+    });
+
+    it("keeps a malformed asynchronous model as a failure without publication", async () => {
+        const fixture = writePausedDescriptorPackage(directory, '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {...model, manifest: null}}');
+        const snapshots = runtimeSnapshotNames();
+        fixture.arm();
+        try {
+            const checked = expect(new BlueprintArtifactBuilder().build(packageProject(fixture.source), path.join(directory, "bad.json")))
+                .rejects.toThrow(/Package extraction malformed/);
+            await fixture.readStarted;
+            fixture.settle();
+            await checked;
+            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+        } finally {
+            fixture.restore();
+        }
+    });
+
+    it("keeps snapshot cleanup failure authoritative when the descriptor read was cancelled", async () => {
+        const fixture = writePausedDescriptorPackage(directory);
+        const controller = new AbortController();
+        const snapshots = runtimeSnapshotNames();
+        const rmSync = fs.rmSync.bind(fs);
+        const cleanup = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
+            rmSync(target, options);
+            if (path.basename(String(target)).startsWith("pokie-runtime-")) throw new Error("snapshot cleanup failed");
+        });
+        fixture.arm();
+        try {
+            const checked = expect(new BlueprintArtifactBuilder().build(packageProject(fixture.source), path.join(directory, "bad.json"), {signal: controller.signal}))
+                .rejects.toThrow(/Package extraction malformed:.*snapshot-release-failed/);
+            await fixture.readStarted;
+            controller.abort();
+            fixture.settle();
+            await checked;
+            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+        } finally {
+            cleanup.mockRestore();
+            fixture.restore();
+        }
     });
 
     it("records every omitted bet-mode field without inserting declarations, including legacy metadata", async () => {

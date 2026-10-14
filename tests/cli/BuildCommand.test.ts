@@ -1,5 +1,6 @@
-import {writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import {
+    ArtifactBuildCancelledError,
     ArtifactBuilder,
     ArtifactBuilderRegistry,
     ArtifactBuildResult,
@@ -93,6 +94,39 @@ describe("BuildCommand", () => {
     afterEach(() => {
         logSpy.mockRestore();
         errorSpy.mockRestore();
+    });
+
+    it.each(["blueprint", "tsPackage"])("propagates SIGINT during the final asynchronous descriptor read for %s", async target => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-cli-async-extraction-"));
+        const fixture = writePausedDescriptorPackage(root);
+        const snapshots = runtimeSnapshotNames();
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const listeners = process.listenerCount("SIGINT");
+        logSpy.mockImplementation(message => {
+            if (message === "Build running: Extracting public package model into Blueprint") fixture.arm();
+        });
+        try {
+            const checked = expect(new BuildCommand("1.3.0").run([fixture.source, "--target", target, "--out", path.join(root, "output")]))
+                .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(process.listenerCount("SIGINT")).toBe(listeners + 1);
+            process.emit("SIGINT");
+            fixture.settle();
+            await checked;
+            const output = logSpy.mock.calls.map(call => call[0]).join("\n");
+            expect(output).toContain("Cancelling artifact build…");
+            expect(output).toContain("Artifact build cancelled.");
+            expect(output).not.toContain("Build summary:");
+            expect(process.listenerCount("SIGINT")).toBe(listeners);
+            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+        } finally {
+            fixture.restore();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
     });
 
     it("previews and builds public package models through the shared diagnosis/evidence workflow", async () => {

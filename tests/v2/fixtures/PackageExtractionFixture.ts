@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import type {GameBlueprint} from "@fromstan/pokie";
 import {fractionalBetBlueprint} from "../../fixtures/math/FractionalBetFixture.js";
 
@@ -31,4 +32,39 @@ module.exports = {
 };`,
     );
     return root;
+}
+
+/** A real package descriptor read, held only after final-build progress arms it. */
+export function writePausedDescriptorPackage(parent: string, descriptorExpression = '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model}') {
+    const control = path.join(parent, "descriptor-read.txt");
+    fs.writeFileSync(control, "existing descriptor input");
+    const source = writeDescriptorPackage(parent, {descriptorBody:
+        `return require("fs").promises.readFile(${JSON.stringify(control)}, "utf8").then(() => (${descriptorExpression}));`,});
+    let armed = false;
+    let started!: () => void;
+    let settle!: () => void;
+    const readStarted = new Promise<void>(resolve => {
+        started = resolve;
+    });
+    const gate = new Promise<void>(resolve => {
+        settle = resolve;
+    });
+    const readFile = fs.promises.readFile.bind(fs.promises);
+    const spy = jest.spyOn(fs.promises, "readFile").mockImplementation((...args) => {
+        const read = readFile(...args);
+        if (String(args[0]) !== control || !armed) return read;
+        armed = false;
+        started();
+        return gate.then(() => read);
+    });
+    return {source, control, readStarted, settle, arm: () => {
+        armed = true;
+    }, restore: () => {
+        settle();
+        spy.mockRestore();
+    }};
+}
+
+export function runtimeSnapshotNames(): string[] {
+    return fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
 }

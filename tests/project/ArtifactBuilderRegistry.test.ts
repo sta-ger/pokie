@@ -1,5 +1,6 @@
+import {ArtifactBuildCancelledError} from "../../src/project/ArtifactBuildOptions.js";
 import {ArtifactPublicationOwnership} from "../../src/project/ArtifactPublicationOwnership.js";
-import {writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
+import {runtimeSnapshotNames, writePausedDescriptorPackage, writeDescriptorPackage} from "../v2/fixtures/PackageExtractionFixture.js";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -41,6 +42,40 @@ describe("ArtifactBuilderRegistry", () => {
             }
             expect(fs.readdirSync(root).some(name => name.startsWith(".pokie-"))).toBe(false);
         } finally {
+            fs.rmSync(root, {recursive: true, force: true});
+        }
+    });
+
+    it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("cancels the final descriptor read for %s before publishing or running downstream writers", async target => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-async-extraction-registry-"));
+        const fixture = writePausedDescriptorPackage(root);
+        const snapshots = runtimeSnapshotNames();
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const controller = new AbortController();
+        const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+        const destination = path.join(root, "output");
+        const progress: string[] = [];
+        try {
+            const plan = await registry.preparePlan(project, target, {destinationPath: destination});
+            expect(plan.status).toBe("planned");
+            const checked = expect(registry.executePlan(plan, project, destination, {signal: controller.signal, onProgress: value => {
+                progress.push(value.status);
+                if (value.message === "Extracting public package model into Blueprint") fixture.arm();
+            }})).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
+            await fixture.readStarted;
+            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(fs.existsSync(destination)).toBe(false);
+            controller.abort();
+            fixture.settle();
+            await checked;
+            expect(progress).toContain("cancelled");
+            expect(progress).not.toContain("completed");
+            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
+        } finally {
+            fixture.restore();
             fs.rmSync(root, {recursive: true, force: true});
         }
     });
