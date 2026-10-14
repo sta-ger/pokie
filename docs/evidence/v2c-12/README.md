@@ -125,3 +125,40 @@ for either completed lifecycle, so no retry was fabricated.
 I independently opened these three PNGs. They are legible and match the
 transcript; the first documents the finding and the latter two document the
 purchase lifecycle. This remains visual evidence, not approval.
+
+## Package Replay completion (2026-10-14)
+
+Candidate product identity is
+`f84c3e4822ceeb4cbad4ea45c4a32c42d14da5e6`. The persistent harness reused
+its authenticated candidate build (`npm run build-cli`, exit 0; output digest
+`cf8bda590c5ab274695037493a388e31ab0b6b1818702896f7284d41110a0752`) and
+ran one new isolated Studio profile at 1439×956. The runtime-only transcript
+is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-2d828f3a7c8a1b91/run-2026-10-14T22-47-58-710Z/transcript.json`
+(SHA-256 `3af2021c030d4259c7c5cbf019e65b2678206574db57887fb896e1ecdffa449b`).
+
+Through rendered Studio controls, the verifier authored the deterministic
+0.05 fixture, generated an ordinary exact base library (125 outcomes), then a
+weighted ante bounded-coverage library (seed `v2c12-weighted-seed`, sample
+size 12, 10 outcomes). It drew one ordinary artifact with seed
+`v2c12-ordinary-seed` and one weighted artifact with seed
+`v2c12-weighted-draw`, selected each through **Replay Artifact**, and ran one
+reproduction. Both rendered result surfaces completed 1/1 round and reported
+that the recreated result matched the recorded one.
+
+| Variant | Rendered/replay provenance | Download SHA-256 |
+| --- | --- | --- |
+| ordinary | base; stake 0.05; library `v2c12-replay-current-base`; charged mode base; seed `v2c12-ordinary-seed` | recorded `248adb75b54f4420c554cd41bbde5e42e7b37e7a39b842b7140ffb02d2514e9c`; recreated `6f90565f6247fa8e8ec9306032efc4c14569da4150b9a4fc7b3c1575a60657a3` |
+| weighted | ante; stake 0.07500000000000001; library `v2c12-replay-current-ante`; charged mode ante; seed `v2c12-weighted-draw` | recorded `e157f849b2c656fdd88edddbe36f4f6c21ad3df5368482609f1bdec08e2fcb35`; recreated `e53b260e826d135ba5d5ca063367a924436e1dc442a576a6127e9ac16038c840` |
+
+The four runtime-only screenshots are `1-observation.png` through
+`4-observation.png` in that run (SHA-256 respectively
+`e8ecbd7c82403e6f0e72ab15d093b2c66299f978bc7eb895e64ad7da9018713f`,
+`7228f092d6ac2351879ed96019892fff1ee2f749e0eaf4d6a8521079b900b65d`,
+`20ac4738e999f80da659fea81878475b574b40f7ae4eb11ca795e2ef5e157520`, and
+`a5432527967e7ee3c561f89843488874bc2b07e1598edf69f61e2742ab224b8e`). I
+independently opened all four: the draw images visibly show each seed,
+library, mode and stake; the replay images visibly show completed 1/1,
+matching result, mode and seed. Runtime artifacts are intentionally not
+committed. This receipt reuses the prior ante/purchase/simulation/native-draw
+observations and does not claim controller approval.
