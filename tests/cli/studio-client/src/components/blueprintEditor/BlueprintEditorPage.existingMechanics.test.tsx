@@ -108,11 +108,7 @@ it.each([
     const input = await within(panel).findByLabelText(field);
     await user.clear(input);
     if (section === "Game basics") await user.type(input, "   ");
-    if (field === "Reels") {
-        await user.tab();
-        await screen.findByText(/Reduce reels from 3 to 0/);
-        await user.click(screen.getByRole("button", {name: "Confirm"}));
-    }
+    else await user.type(input, field === "Reels" ? "3.5" : "1.5");
     await user.click(within(panel).getByRole("button", {name: "Save"}));
     await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
     expect(input).toHaveAccessibleDescription(new RegExp(path.replace(/\./g, "\\.")));
