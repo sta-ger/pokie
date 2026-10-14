@@ -39,6 +39,7 @@ export class ArtifactPublicationOwnership {
             await fs.promises.mkdir(directory);
             const current = await fs.promises.lstat(directory);
             this.directories.push({path: directory, dev: current.dev, ino: current.ino, removeOnRollback: true});
+            await assertEmpty();
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
             // Another writer allocated this directory; it is a guard, never ours to remove.

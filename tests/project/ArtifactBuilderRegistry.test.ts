@@ -141,16 +141,24 @@ describe("ArtifactBuilderRegistry", () => {
             if (empty) expect(fs.statSync(destination).ino).toBe(callerDirectoryInode);
         };
 
-        it("rejects a directory populated between final preflight and acquisition", async () => {
-            if (target === "parWorkbook" || target === "wasm") return;
+        if (target !== "parWorkbook" && target !== "wasm") it.each(["existing", "created"])("rejects a %s directory populated between final preflight and acquisition", async boundary => {
             const acquire = ArtifactPublicationOwnership.prototype.ensureDirectory;
-            jest.spyOn(ArtifactPublicationOwnership.prototype, "ensureDirectory").mockImplementation(async function(this: ArtifactPublicationOwnership, directory, requireEmpty) {
-                if (path.resolve(directory) === destination && requireEmpty) {
-                    fs.mkdirSync(destination, {recursive: true});
-                    fs.writeFileSync(path.join(destination, "competing.bin"), bytes);
-                }
-                await Reflect.apply(acquire, this, [directory, requireEmpty]);
-            });
+            if (boundary === "existing" || empty) {
+                jest.spyOn(ArtifactPublicationOwnership.prototype, "ensureDirectory").mockImplementation(async function(this: ArtifactPublicationOwnership, directory, requireEmpty) {
+                    if (path.resolve(directory) === destination && requireEmpty) {
+                        fs.mkdirSync(destination, {recursive: true});
+                        fs.writeFileSync(path.join(destination, "competing.bin"), bytes);
+                    }
+                    await Reflect.apply(acquire, this, [directory, requireEmpty]);
+                });
+            } else {
+                const mkdir = fs.promises.mkdir.bind(fs.promises);
+                jest.spyOn(fs.promises, "mkdir").mockImplementation(async (directory, options) => {
+                    const result = await mkdir(directory, options);
+                    if (path.resolve(String(directory)) === destination) fs.writeFileSync(path.join(destination, "competing.bin"), bytes);
+                    return result;
+                });
+            }
             await expect(registry.build(target, project, destination)).rejects.toThrow(/already exists and is not empty/);
             expect(fs.readdirSync(destination)).toEqual(["competing.bin"]);
             expect(fs.readFileSync(path.join(destination, "competing.bin"))).toEqual(bytes);

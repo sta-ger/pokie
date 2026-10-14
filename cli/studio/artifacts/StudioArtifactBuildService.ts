@@ -801,7 +801,7 @@ export class StudioArtifactBuildService {
             }
             await fs.promises.rm(`${projectRoot}.conversion-evidence.json`, {force: true}).catch(() => undefined);
         }
-        if (result.publishedDirectoryOwnership !== undefined) {
+        if (result.publishedDirectoryOwnership !== undefined || result.publishedFileOwnership !== undefined) {
             await rollbackArtifactPublication(result);
             return;
         }
