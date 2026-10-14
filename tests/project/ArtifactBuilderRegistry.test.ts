@@ -7,6 +7,7 @@ import path from "path";
 import type {ArtifactBuilder} from "../../src/project/ArtifactBuilder.js";
 import {ArtifactBuilderRegistry} from "../../src/project/ArtifactBuilderRegistry.js";
 import {PackageBlueprintExtraction} from "../../src/generated/PackageBlueprintExtraction.js";
+import {loadPokieGameRuntime, type LoadedPokieGame} from "../../src/gamepackage/loadPokieGame.js";
 import {ParSheetImporter} from "../../src/parsheet/ParSheetImporter.js";
 import {BlueprintArtifactBuilder} from "../../src/project/BlueprintArtifactBuilder.js";
 import {computeProjectInputBindingHash, computeArtifactInputBindingHash, type ArtifactConversionPlan} from "../../src/project/ArtifactConversionPlanner.js";
@@ -49,7 +50,7 @@ describe("ArtifactBuilderRegistry", () => {
     it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)("cancels the final descriptor read for %s before publishing or running downstream writers", async target => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-async-extraction-registry-"));
         const fixture = writePausedDescriptorPackage(root);
-        const snapshots = runtimeSnapshotNames();
+        const snapshots = runtimeSnapshotNames(fixture.source);
         const input = fs.readFileSync(path.join(fixture.source, "index.js"));
         const controller = new AbortController();
         const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
@@ -63,14 +64,14 @@ describe("ArtifactBuilderRegistry", () => {
                 if (value.message === "Extracting public package model into Blueprint") fixture.arm();
             }})).rejects.toBeInstanceOf(ArtifactBuildCancelledError);
             await fixture.readStarted;
-            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(fs.existsSync(destination)).toBe(false);
             controller.abort();
             fixture.settle();
             await checked;
             expect(progress).toContain("cancelled");
             expect(progress).not.toContain("completed");
-            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
             expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
             expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
@@ -83,18 +84,18 @@ describe("ArtifactBuilderRegistry", () => {
     it("propagates cancellation into validation's initial preparation when no plan is supplied", async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-unprepared-validation-"));
         const fixture = writePausedDescriptorPackage(root, undefined, {pauseAtRead: 1});
-        const snapshots = runtimeSnapshotNames();
+        const snapshots = runtimeSnapshotNames(fixture.source);
         const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
         const controller = new AbortController();
         try {
             const checked = expect(registry.validate("blueprint", project, undefined, {signal: controller.signal}))
                 .rejects.toBeInstanceOf(ArtifactBuildCancelledError);
             await fixture.readStarted;
-            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             controller.abort();
             fixture.settle();
             await checked;
-            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
             fixture.restore();
@@ -106,7 +107,7 @@ describe("ArtifactBuilderRegistry", () => {
         it.each([true, false])("releases the validation snapshot with cancellation=%s and preserves optional callers", async cancel => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-validation-extraction-"));
             const fixture = writePausedDescriptorPackage(root);
-            const snapshots = runtimeSnapshotNames();
+            const snapshots = runtimeSnapshotNames(fixture.source);
             const input = fs.readFileSync(path.join(fixture.source, "index.js"));
             const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
             const controller = new AbortController();
@@ -114,7 +115,7 @@ describe("ArtifactBuilderRegistry", () => {
             try {
                 const plan = await registry.preparePlan(project, target, {destinationPath: path.join(root, "output")});
                 expect(plan.packageExtraction?.status).toBe("complete");
-                expect(runtimeSnapshotNames()).toEqual(snapshots);
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
                 fixture.arm();
                 const running = cancel
                     ? registry.validate(target, project, plan, {signal: controller.signal, onProgress: value => {
@@ -124,12 +125,12 @@ describe("ArtifactBuilderRegistry", () => {
                 const checked = cancel ? expect(running).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : expect(running).resolves.toBeUndefined();
                 await fixture.readStarted;
                 expect(fixture.readCount).toBe(2);
-                expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+                expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
                 if (cancel) controller.abort();
                 fixture.settle();
                 await checked;
                 if (cancel) expect(progress).toEqual(["cancelled"]);
-                expect(runtimeSnapshotNames()).toEqual(snapshots);
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
                 expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
                 expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
                 expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
@@ -142,7 +143,7 @@ describe("ArtifactBuilderRegistry", () => {
         it("rejects a malformed validation read after successful preparation as source drift", async () => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-malformed-validation-"));
             const fixture = writePausedDescriptorPackage(root, '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: descriptorInput === "malformed" ? {...model, manifest: null} : model}');
-            const snapshots = runtimeSnapshotNames();
+            const snapshots = runtimeSnapshotNames(fixture.source);
             const input = fs.readFileSync(path.join(fixture.source, "index.js"));
             const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
             try {
@@ -155,7 +156,7 @@ describe("ArtifactBuilderRegistry", () => {
                 await fixture.readStarted;
                 fixture.settle();
                 await checked;
-                expect(runtimeSnapshotNames()).toEqual(snapshots);
+                expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
                 expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
                 expect(fs.readFileSync(fixture.control, "utf8")).toBe("malformed");
                 expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
@@ -164,6 +165,54 @@ describe("ArtifactBuilderRegistry", () => {
                 fs.rmSync(root, {recursive: true, force: true});
             }
         });
+    });
+
+    it("tracks the validation lease while unrelated runtime snapshots are allocated and released", async () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), "pokie-registry-snapshot-ownership-"));
+        const fixture = writePausedDescriptorPackage(root);
+        const unrelatedSource = writeDescriptorPackage(root, {
+            name: "unrelated-package",
+            descriptorBody: `return {descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model, fixtureIdentity: ${JSON.stringify(root)}};`,
+        });
+        const input = fs.readFileSync(path.join(fixture.source, "index.js"));
+        const project: PokieProject = {type: "tsPackage", rootPath: fixture.source, provenance: "fixture", capabilities: PROJECT_TYPE_CAPABILITIES.tsPackage};
+        let unrelated: LoadedPokieGame | undefined;
+        let running: Promise<void> | undefined;
+        try {
+            unrelated = await loadPokieGameRuntime(unrelatedSource);
+            const unrelatedSnapshots = runtimeSnapshotNames(unrelatedSource);
+            expect(unrelatedSnapshots).toHaveLength(1);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual([]);
+            const plan = await registry.preparePlan(project, "wasm", {destinationPath: path.join(root, "output")});
+            fixture.arm();
+            running = registry.validate("wasm", project, plan);
+            await fixture.readStarted;
+            expect(fixture.readCount).toBe(2);
+            const validationSnapshots = runtimeSnapshotNames(fixture.source);
+            expect(validationSnapshots).toHaveLength(1);
+            expect(fs.readdirSync(os.tmpdir())).toEqual(expect.arrayContaining([...validationSnapshots, ...unrelatedSnapshots]));
+            await unrelated.release();
+            expect(runtimeSnapshotNames(unrelatedSource)).toEqual([]);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(validationSnapshots);
+            unrelated = await loadPokieGameRuntime(unrelatedSource);
+            const replacementSnapshots = runtimeSnapshotNames(unrelatedSource);
+            expect(replacementSnapshots).toHaveLength(1);
+            expect(replacementSnapshots).not.toEqual(unrelatedSnapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(validationSnapshots);
+            fixture.settle();
+            await running;
+            expect(runtimeSnapshotNames(fixture.source)).toEqual([]);
+            expect(runtimeSnapshotNames(unrelatedSource)).toEqual(replacementSnapshots);
+            expect(fs.existsSync(path.join(root, "output"))).toBe(false);
+            expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
+            expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
+            expect(fs.readdirSync(root).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "unrelated-package"]);
+        } finally {
+            fixture.restore();
+            await running?.catch(() => undefined);
+            await unrelated?.release();
+            fs.rmSync(root, {recursive: true, force: true});
+        }
     });
 
     it.each(["blueprint", "tsPackage", "parWorkbook", "wasm"] as const)(

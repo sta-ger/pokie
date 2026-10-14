@@ -36,7 +36,7 @@ describe("StudioArtifactBuildService", () => {
 
     it.each(["blueprint", "tsPackage"] as const)("durably cancels %s during its final asynchronous descriptor read without artifact actions or registration", async target => {
         const fixture = writePausedDescriptorPackage(workDir);
-        const snapshots = runtimeSnapshotNames();
+        const snapshots = runtimeSnapshotNames(fixture.source);
         const input = fs.readFileSync(path.join(fixture.source, "index.js"));
         const register = jest.fn(() => Promise.resolve());
         const registry = new ArtifactBuilderRegistry("1.3.0");
@@ -55,7 +55,7 @@ describe("StudioArtifactBuildService", () => {
             const started = packageService.start(fixture.source, target, path.join(workDir, "output"));
             if (started.status !== "created") throw new Error("expected artifact job");
             await fixture.readStarted;
-            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(packageService.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "running"});
             expect(packageService.cancelForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelling", cancellationRequested: true});
             fixture.settle();
@@ -71,7 +71,7 @@ describe("StudioArtifactBuildService", () => {
             restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(durableDirectory)));
             expect(restarted.getStatusForProject(fixture.source, started.job.id)).toMatchObject({status: "cancelled"});
             expect(register).not.toHaveBeenCalled();
-            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
             expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
             expect(fs.readdirSync(workDir).sort()).toEqual(["descriptor-package", "descriptor-read.txt", "jobs"]);

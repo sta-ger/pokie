@@ -74,6 +74,20 @@ export function writePausedDescriptorPackage(
     }};
 }
 
-export function runtimeSnapshotNames(): string[] {
-    return fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
+/** Inventory this fixture's leases, independent of other workers sharing the temporary directory. */
+export function runtimeSnapshotNames(packageSource: string): string[] {
+    // Paused descriptors embed their unique absolute control path in index.js. The loader copies
+    // those bytes unchanged, so this binding still detects every live or leaked fixture snapshot.
+    const entry = fs.readFileSync(path.join(packageSource, "index.js"));
+    const temporaryDirectory = os.tmpdir();
+    return fs.readdirSync(temporaryDirectory).filter(name => {
+        if (!name.startsWith("pokie-runtime-")) return false;
+        try {
+            return fs.readFileSync(path.join(temporaryDirectory, name, "index.js")).equals(entry);
+        } catch (error) {
+            // A foreign worker may release its snapshot between enumeration and inspection.
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+            throw error;
+        }
+    }).sort();
 }

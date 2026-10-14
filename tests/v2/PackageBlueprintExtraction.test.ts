@@ -359,7 +359,7 @@ describe("PackageBlueprintExtraction", () => {
 
     it.each([false, true])("settles a paused direct asynchronous build truthfully (cancelled: %s)", async cancelled => {
         const fixture = writePausedDescriptorPackage(directory);
-        const snapshots = runtimeSnapshotNames();
+        const snapshots = runtimeSnapshotNames(fixture.source);
         const input = fs.readFileSync(path.join(fixture.source, "index.js"));
         const destination = path.join(directory, "async.json");
         const controller = new AbortController();
@@ -373,12 +373,12 @@ describe("PackageBlueprintExtraction", () => {
             });
             const checked = cancelled ? expect(build).rejects.toBeInstanceOf(ArtifactBuildCancelledError) : build;
             await fixture.readStarted;
-            expect(runtimeSnapshotNames().length).toBe(snapshots.length + 1);
+            expect(runtimeSnapshotNames(fixture.source).length).toBe(snapshots.length + 1);
             expect(fs.existsSync(destination)).toBe(false);
             if (cancelled) controller.abort();
             fixture.settle();
             const result = await checked;
-            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readFileSync(path.join(fixture.source, "index.js"))).toEqual(input);
             expect(fs.readFileSync(fixture.control, "utf8")).toBe("existing descriptor input");
             if (cancelled) {
@@ -397,7 +397,7 @@ describe("PackageBlueprintExtraction", () => {
 
     it("keeps a malformed asynchronous model as a failure without publication", async () => {
         const fixture = writePausedDescriptorPackage(directory, '{descriptorVersion: 1, blueprintSchemaVersion: 1, sourceKind: "custom", model: {...model, manifest: null}}');
-        const snapshots = runtimeSnapshotNames();
+        const snapshots = runtimeSnapshotNames(fixture.source);
         fixture.arm();
         try {
             const checked = expect(new BlueprintArtifactBuilder().build(packageProject(fixture.source), path.join(directory, "bad.json")))
@@ -405,7 +405,7 @@ describe("PackageBlueprintExtraction", () => {
             await fixture.readStarted;
             fixture.settle();
             await checked;
-            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
             fixture.restore();
@@ -415,7 +415,7 @@ describe("PackageBlueprintExtraction", () => {
     it("keeps snapshot cleanup failure authoritative when the descriptor read was cancelled", async () => {
         const fixture = writePausedDescriptorPackage(directory);
         const controller = new AbortController();
-        const snapshots = runtimeSnapshotNames();
+        const snapshots = runtimeSnapshotNames(fixture.source);
         const rmSync = fs.rmSync.bind(fs);
         const cleanup = jest.spyOn(fs, "rmSync").mockImplementation((target, options) => {
             rmSync(target, options);
@@ -429,7 +429,7 @@ describe("PackageBlueprintExtraction", () => {
             controller.abort();
             fixture.settle();
             await checked;
-            expect(runtimeSnapshotNames()).toEqual(snapshots);
+            expect(runtimeSnapshotNames(fixture.source)).toEqual(snapshots);
             expect(fs.readdirSync(directory).sort()).toEqual(["descriptor-package", "descriptor-read.txt"]);
         } finally {
             cleanup.mockRestore();
