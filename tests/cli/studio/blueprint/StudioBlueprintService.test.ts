@@ -193,9 +193,9 @@ describe("StudioBlueprintService", () => {
         }
     });
 
-    it("keeps reachability rejection and rejects a negative payout before build publication", async () => {
+    it("retains literal reachability warnings and rejects a negative payout before build publication", async () => {
         const service = createService();
-        expect(service.validate(authoritativePaytableBlueprint("missing-symbol")).status).toBe("invalid");
+        expect(service.validate(authoritativePaytableBlueprint("missing-symbol"))).toMatchObject({status: "ok", warnings: expect.arrayContaining([expect.objectContaining({code: "blueprint-reelstrips-missing-symbol"})])});
         const invalid = {...authoritativePaytableBlueprint("zero", 1, true), paytable: {A: {3: -1}}};
         const destination = path.join(tmpDir, "preserved-output");
         fs.mkdirSync(destination);

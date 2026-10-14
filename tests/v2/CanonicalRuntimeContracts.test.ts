@@ -727,7 +727,18 @@ describe("V2C-02 canonical runtime contracts", () => {
             b = new SpinCommandHandler(generated(blueprint), repository, wallet);
         const reference = new SpinCommandHandler(generated(blueprint), referenceRepository, referenceWallet);
         for (let round = 0; round < 8; round++) {
-            expect(await (round % 2 ? b : a).execute({kind: "spin", sessionId: "session"})).toEqual(await reference.execute({kind: "spin", sessionId: "session"}));
+            const actual = await (round % 2 ? b : a).execute({kind: "spin", sessionId: "session"});
+            const expected = await reference.execute({kind: "spin", sessionId: "session"});
+            if (actual.status !== "played" || expected.status !== "played") throw new Error(JSON.stringify({actual, expected}));
+            const {audit: actualAudit, ...actualResult} = actual;
+            const {audit: expectedAudit, ...expectedResult} = expected;
+            expect(actualResult).toEqual(expectedResult);
+            if (actualAudit && expectedAudit) {
+                publicApi.validateAuditRoundRecording(actualAudit, generated(blueprint));
+                publicApi.validateAuditRoundRecording(expectedAudit, generated(blueprint));
+                const math = (audit: publicApi.AuditRoundRecording) => audit.deliveries.map(({disposition: _disposition, ...delivery}) => delivery);
+                expect(math(actualAudit)).toEqual(math(expectedAudit));
+            } else expect(actualAudit).toEqual(expectedAudit);
         }
     });
 

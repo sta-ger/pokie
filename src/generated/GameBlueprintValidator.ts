@@ -111,7 +111,7 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         } else {
             maxMatchCount = reelsValid ? (reels as number) : undefined;
         }
-        const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, maxMatchCount, issues);
+        const paytableSymbols = this.validatePaytable(b.paytable, symbolSet, symbolsValid, wilds, scatters, maxMatchCount, reelsValid && rowsValid ? Number(reels) * Number(evaluatedRows) : undefined, issues);
         this.validatePaylines(b.paylines, reels, reelsValid, evaluatedRows, rowsValid, issues);
         for (const message of validateBlueprintReelSequences(b)) issues.push({code: "blueprint-reel-sequences-invalid", severity: "error", message});
         const reelStripSymbols = this.validateReelStrips(b.reelStrips, symbolSet, symbolsValid, reels, reelsValid, rows, rowsValid, issues);
@@ -651,7 +651,9 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
         symbolSet: Set<string>,
         symbolsValid: boolean,
         wilds: string[],
+        scatters: string[],
         maxMatchCount: number | undefined,
+        maxScatterMatchCount: number | undefined,
         issues: ValidationIssue[],
     ): string[] {
         if (typeof paytable !== "object" || paytable === null || Array.isArray(paytable)) {
@@ -699,12 +701,14 @@ export class GameBlueprintValidator implements GameBlueprintValidating {
             const validPayouts: {times: number; multiplier: number}[] = [];
             for (const [times, multiplier] of Object.entries(payouts as Record<string, unknown>)) {
                 const timesNumber = Number(times);
-                const timesValid = Number.isInteger(timesNumber) && timesNumber >= 2 && (maxMatchCount === undefined || timesNumber <= maxMatchCount);
+                const minimum = scatters.includes(symbolId) ? 1 : 2;
+                const maximum = scatters.includes(symbolId) ? maxScatterMatchCount : maxMatchCount;
+                const timesValid = Number.isInteger(timesNumber) && timesNumber >= minimum && (maximum === undefined || timesNumber <= maximum);
                 if (!timesValid) {
                     issues.push({
                         code: "blueprint-paytable-invalid-times",
                         severity: "error",
-                        message: `"paytable.${symbolId}" has an invalid match-count key "${times}" (expected an integer between 2 and ${maxMatchCount ?? '"reels"'}).`,
+                        message: `"paytable.${symbolId}" has an invalid match-count key "${times}" (expected an integer between ${minimum} and ${maximum ?? '"reels"'}).`,
                     });
                 }
                 const multiplierValid = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier >= 0;

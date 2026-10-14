@@ -3,8 +3,8 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 /** Shared by validation and direct rendering: unknown authored fields never disappear. */
 export function validateAuthoredMechanics(blueprint: Record<string, unknown>): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
-    const error = (path: string, message: string): void => {
-        issues.push({code: "blueprint-mechanics-invalid", severity: "error", path, message: `${path}: ${message}`});
+    const error = (path: string, message: string, code = "blueprint-mechanics-invalid"): void => {
+        issues.push({code, severity: "error", path, message: `${path}: ${message}`});
     };
     const object = (value: unknown, path: string, keys: string[]): Record<string, unknown> | undefined => {
         if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -12,7 +12,7 @@ export function validateAuthoredMechanics(blueprint: Record<string, unknown>): V
             return undefined;
         }
         const data = value as Record<string, unknown>;
-        for (const key of Object.keys(data)) if (!keys.includes(key)) error(`${path}.${key}`, "unknown field.");
+        for (const key of Object.keys(data)) if (!keys.includes(key)) error(`${path}.${key}`, "unknown field.", "blueprint-mechanics-unknown-field");
         return data;
     };
     const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;

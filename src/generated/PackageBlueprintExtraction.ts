@@ -394,7 +394,7 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 path: "winModel.minimumClusterSize",
                 message: "The cluster minimum exceeds the effective evaluation grid.",
             });
-            const missing = validation.filter((issue) => issue.severity === "error");
+            const missing = validation.filter((issue) => issue.severity === "error" && !(issue.code === "blueprint-mechanics-unknown-field" && result.diagnostics.some(diagnostic => diagnostic.code === "unsupported-model-field" && diagnostic.path === issue.path)));
             for (const issue of validation) result.diagnostics.push({
                 path: issue.path ?? requiredFieldPath(issue.code),
                 code: issue.code,
