@@ -4,7 +4,7 @@ import type {ValidationIssue} from "../validation/ValidationIssue.js";
 import type {ValidationRule} from "../validation/ValidationRule.js";
 
 export class PokieGameContractValidationRule implements ValidationRule<unknown> {
-    public validate(target: unknown): ValidationIssue[] {
+    public validate(target: unknown, detachManifestData?: (manifest: unknown) => unknown): ValidationIssue[] {
         if (!isPokieGame(target)) {
             return [
                 {
@@ -19,7 +19,9 @@ export class PokieGameContractValidationRule implements ValidationRule<unknown> 
 
         let manifest: PokieGameManifest;
         try {
-            manifest = target.getManifest();
+            const rawManifest = target.getManifest();
+            // Extraction can require detached JSON before this ordinary contract reads metadata fields.
+            manifest = (detachManifestData ? detachManifestData(rawManifest) : rawManifest) as PokieGameManifest;
         } catch (error) {
             return [
                 {

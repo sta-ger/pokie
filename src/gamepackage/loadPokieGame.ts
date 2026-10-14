@@ -14,10 +14,14 @@ export type LoadedPokieGame = {
 // The explicit lifetime API for hosts which keep a game/session alive (Studio Play, an RGS, or a
 // long-running embedder).  The returned game executes from an isolated package snapshot; release
 // removes that snapshot and its CommonJS cache entries once no session can use it any more.
-export async function loadPokieGameRuntime(packageRoot: string, loadEntryModule?: PokieGameEntryModuleLoading): Promise<LoadedPokieGame> {
+export async function loadPokieGameRuntime(
+    packageRoot: string,
+    loadEntryModule?: PokieGameEntryModuleLoading,
+    options?: {readonly detachManifestData?: (manifest: unknown) => unknown},
+): Promise<LoadedPokieGame> {
     const {entryPath, candidate, release} = await resolvePokieGameEntryModule(packageRoot, loadEntryModule);
 
-    const validation = new ValidationResult(new PokieGameContractValidationRule().validate(candidate));
+    const validation = new ValidationResult(new PokieGameContractValidationRule().validate(candidate, options?.detachManifestData));
     if (validation.hasErrors()) {
         await release();
         const issues = validation

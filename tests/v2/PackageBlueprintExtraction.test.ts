@@ -418,6 +418,21 @@ describe("PackageBlueprintExtraction", () => {
         await expect(registry.executePlan(stale, project, staleDestination)).rejects.toThrow(/changed/);
         expect(fs.existsSync(staleDestination)).toBe(false);
     });
+    it("rejects package manifest accessors before the loader reads them and releases its snapshot", async () => {
+        const source = writeDescriptorPackage(directory);
+        const marker = path.join(directory, "accessor-invoked");
+        const entry = path.join(source, "index.js");
+        fs.writeFileSync(entry, `const manifest = {name: "Unsafe", version: "1"};
+Object.defineProperty(manifest, "id", {enumerable: true, get() { require("fs").writeFileSync(${JSON.stringify(marker)}, "invoked"); return "unsafe"; }});
+module.exports = {getManifest() { return manifest; }, createSession() { throw new Error("no session"); }};`);
+        const before = fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort();
+        const bytes = fs.readFileSync(entry);
+        expect((await extractor.extract(source)).status).toBe("malformed");
+        expect(fs.existsSync(marker)).toBe(false);
+        expect(fs.readFileSync(entry)).toEqual(bytes);
+        expect(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith("pokie-runtime-")).sort()).toEqual(before);
+    });
+
     it("releases real runtime snapshots on success, malformed descriptors and opaque legacy reads", async () => {
         const snapshots = (): string[] =>
             fs
