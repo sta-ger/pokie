@@ -14,11 +14,7 @@ export type ReplayRequestInput = {
     // the reference is real before tagging the reproduced round as a genuine simulation sample (see
     // StudioServer.handleStartReplay).
     simulationId?: unknown;
-    // Only meaningful for a resolved "outcomeLibrary" project (see
-    // StudioReplayExecutionService.runOutcomeSourceReplay's own doc comment) -- same "client already
-    // resolved it" convention as simulationId above: for "Recent Simulation", the client reads this
-    // straight off that simulation's own already-recorded modeName (never re-derived server-side from
-    // simulationId), so the reproduced round preserves the exact mode the original run sampled.
+    // Package repeat-mode policy or a concrete native-library mode, retained from the source run.
     modeName?: unknown;
     // The portable native outcome-library descriptor retained by artifact inspection. It is not
     // interpreted here (the server validates it against the currently open bundle), but carrying it

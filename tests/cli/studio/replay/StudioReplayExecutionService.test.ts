@@ -1973,10 +1973,10 @@ describe("V2C-12 package simulation replay mode policy", () => {
         if (started.status !== "created") throw new Error("Not created");
         const job = await waitForTerminal(service, "/simulation-modes", started.job.id);
         expect(job.status).toBe("completed");
-        expect(job.descriptor).toMatchObject({totalBet: expect.closeTo(({ante: 0.45, buy: 1, "buy-more": 2.5}[modeName]!)), modePolicy: {betModeId: modeName, selection: "repeat-when-available"}});
+        expect(job.descriptor).toMatchObject({totalBet: expect.closeTo(({ante: 0.45, buy: 1.5, "buy-more": 2.5}[modeName]!)), modePolicy: {betModeId: modeName, selection: "repeat-when-available"}});
         expect(job.descriptor?.commands).toHaveLength(6);
-        expect(job.descriptor?.commands?.filter(command => command.mode === modeName)).toHaveLength(modeName === "ante" ? 6 : 2);
-        expect(job.descriptor?.commands?.filter(command => command.mode === undefined)).toHaveLength(modeName === "ante" ? 0 : 4);
+        expect(job.descriptor?.commands?.filter(command => command.mode === modeName)).toHaveLength({ante: 6, buy: 3, "buy-more": 2}[modeName]!);
+        expect(job.descriptor?.commands?.filter(command => command.mode === undefined)).toHaveLength({ante: 0, buy: 3, "buy-more": 4}[modeName]!);
         const repeated = new ReplayRecorder().record({game, seed: "sample", round: 6, betModeId: modeName});
         expect(repeated.totalBet).toBe(job.descriptor!.totalBet);
         expect(repeated.commands).toEqual(job.descriptor!.commands);

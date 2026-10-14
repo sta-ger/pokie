@@ -1529,14 +1529,14 @@ it("discovers authored executable modes and submits selected and explicit all-mo
     });
     renderRoutedApp({fetchImpl: fake.fetchImpl, initialEntries: ["/project/overview"]});
     await goToSimulationTab(user);
-    const select = await screen.findByRole("textbox", {name: "Bet mode"});
+    const select = await screen.findByLabelText("Bet mode");
     await user.click(select);
     expect(screen.queryByRole("option", {name: "legacy"})).not.toBeInTheDocument();
     await user.click(screen.getByRole("option", {name: "ante"}));
     await user.click(screen.getByRole("button", {name: "Run Simulation"}));
     await waitFor(() => expect(requests[0]?.modeName).toBe("ante"));
     await user.click(screen.getByRole("button", {name: stepperStep("Configure", "Set rounds")}));
-    await user.click(screen.getByRole("textbox", {name: "Bet mode"}));
+    await user.click(screen.getByLabelText("Bet mode"));
     await user.click(screen.getByRole("option", {name: "All modes"}));
     await user.click(screen.getByRole("button", {name: "Run Simulation"}));
     await waitFor(() => expect(requests[1]?.modeName).toBe("all"));

@@ -23,7 +23,7 @@ export function SimulationReportDisplay({view}: {view: SimulationReportView}) {
             {view.jackpot && <PageSection legend="Jackpots">
                 <Text>Awards: {view.jackpot.awardCount}; awarded: {view.jackpot.totalAwarded}; contributed: {view.jackpot.totalContributed}</Text>
                 <Text>Jackpot RTP contribution: {(view.jackpot.contribution * 100).toFixed(4)}% of actual stake {view.totalBet}</Text>
-                <Text size="sm">Pools are local to each simulation session/worker. Fixed-pool contributions are statistics, not balance growth.</Text>
+                <Text size="sm">Authored accumulating pools are local to each simulation session/worker. Fixed-pool contributions are statistics, not balance growth.</Text>
                 <Table><Table.Thead><Table.Tr>{["Pool", "Awards", "Awarded", "Contributed", "RTP contribution"].map(label => <Table.Th key={label}>{label}</Table.Th>)}</Table.Tr></Table.Thead>
                     <Table.Tbody>{Object.entries(view.jackpot.pools).map(([id, pool]) => <Table.Tr key={id}><Table.Td>{id}</Table.Td><Table.Td>{pool.awardCount}</Table.Td><Table.Td>{pool.totalAwarded}</Table.Td><Table.Td>{pool.totalContributed}</Table.Td><Table.Td>{(pool.contribution * 100).toFixed(4)}%</Table.Td></Table.Tr>)}</Table.Tbody></Table>
             </PageSection>}

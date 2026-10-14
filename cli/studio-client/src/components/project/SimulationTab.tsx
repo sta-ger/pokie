@@ -88,8 +88,7 @@ export function SimulationTab({
     onCompare: (entry: StudioSimulationReportListEntry) => void;
     onClearCompare: () => void;
     downloadUrls: {json: string; markdown: string; html: string} | undefined;
-    // The current project's own real outcome-library modes -- see ProjectDashboardPage's own
-    // outcomeLibraryModes doc comment. Undefined for an ordinary game-backed project.
+    // Authored executable package modes or native library modes, discovered by the dashboard.
     availableModes?: string[];
     packageModes?: boolean;
     modeDiscoveryError?: string;

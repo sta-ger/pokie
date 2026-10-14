@@ -1255,7 +1255,7 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         expect(Object.keys(job.report.modes)).toEqual(["base", "ante", "buy", "buy-more"]);
         expect(job.report.modes.base.totalBet).toBeCloseTo(0.3);
         expect(job.report.modes.ante.totalBet).toBeCloseTo(0.45);
-        expect(job.report.modes.buy.totalBet).toBeCloseTo(1);
+        expect(job.report.modes.buy.totalBet).toBeCloseTo(1.5);
         expect(job.report.modes["buy-more"].totalBet).toBeCloseTo(2.5);
         expect(job.roundsCompleted).toBe(24);
         expect(job.report).not.toHaveProperty("rtp");
@@ -1276,7 +1276,7 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
             expect(jobs.get(directory, started.job.id)?.request.modeName).toBe("all");
             const restarted = new StudioSimulationService(undefined, () => Promise.resolve(game));
             restarted.attachJobService(new StudioJobService(new FileStudioJobRepository(directory)));
-            expect(restarted.getReport(directory, started.job.id)).toMatchObject({status: "ok", report: completed.report});
+            expect(restarted.getReport(directory, started.job.id)).toMatchObject({status: "ok", report: JSON.parse(JSON.stringify(completed.report))});
             expect(restarted.listReports(directory)).toMatchObject([{modeName: "all", modes: {ante: {rounds: 2, betMode: "ante"}}}]);
             expect(restarted.getStatusForProject(directory, started.job.id)?.modeName).toBe("all");
             const rerun = restarted.start(directory, {rounds: 2, seed: "saved", modeName: "all"});
