@@ -1547,6 +1547,6 @@ export type PackageBlueprintExtractionResult = {
     status: "complete" | "partial" | "unsupported" | "malformed" | "cancelled";
     source: {kind: "generated" | "custom" | "legacy"; location?: string; descriptorVersion?: number; blueprintSchemaVersion?: number; gameId?: string; gameVersion?: string};
     fields: {path: string; status: "exact" | "inferred" | "defaulted" | "unsupported"; authority: string}[];
-    diagnostics: {path: string; code: string; message: string; severity?: "warning" | "error"}[];
+    diagnostics: {path: string; code: string; message: string; severity?: "warning" | "error" | "info"}[];
     comparisonLimits: string[];
 };

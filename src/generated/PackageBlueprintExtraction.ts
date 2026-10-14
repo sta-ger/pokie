@@ -385,10 +385,10 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 message: issue.message,
                 severity: issue.severity,
             });
-            for (const diagnostic of result.diagnostics.filter((issue) => issue.severity !== "warning")) result.fields.push({path: diagnostic.path, status: "unsupported", authority: diagnostic.code});
+            for (const diagnostic of result.diagnostics.filter((issue) => issue.severity !== "warning" && issue.severity !== "info")) result.fields.push({path: diagnostic.path, status: "unsupported", authority: diagnostic.code});
             const required = ["reels", "rows", "symbols", "paytable"];
             if (missing.length > 0) result.status = required.some((field) => !hasOwn(model, field)) ? "partial" : "malformed";
-            else if (result.diagnostics.some((issue) => issue.severity !== "warning")) result.status = "unsupported";
+            else if (result.diagnostics.some((issue) => issue.severity !== "warning" && issue.severity !== "info")) result.status = "unsupported";
             else {
                 result.status = "complete";
                 result.blueprint = model as GameBlueprint;
