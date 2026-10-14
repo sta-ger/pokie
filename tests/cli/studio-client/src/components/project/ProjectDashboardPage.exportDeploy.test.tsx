@@ -1863,6 +1863,68 @@ describe("ProjectDashboardPage - Export & Deploy shell", () => {
             expect(await within(section).findByText(/Built to \/games\/tsPackage/)).toBeInTheDocument();
         });
 
+        it.each([
+            ["tsPackage", "directory"],
+            ["parWorkbook", "file"],
+            ["stakeAdapter", "directory"],
+            ["wasm", "file"],
+        ] as const)("retains pending-start cancellation and the owned destination for the sibling %s card", async (target, destinationKind) => {
+            let accept!: (value: Awaited<ReturnType<FetchLike>>) => void;
+            let cancelled = false;
+            let finish = false;
+            let cancellingReads = 0;
+            let builds = 0;
+            const fetchImpl: FetchLike = (url, init) => {
+                const [requestPath] = url.split("?");
+                const respond = (body: unknown) => Promise.resolve({ok: true, status: 200, json: () => Promise.resolve(body)});
+                if (requestPath === "/api/project/artifacts/targets") return respond([{target, supported: true, state: "supported", unsupportedNotes: []}]);
+                if (requestPath === "/api/project/artifacts/preview") return respond({status: "ok", target, destination: `/games/${target}`, destinationKind, plannedOutputs: [target], sourceType: "blueprint"});
+                if (requestPath === "/api/project/artifacts/build") {
+                    builds++;
+                    return new Promise(resolve => {
+                        accept = resolve;
+                    });
+                }
+                if (requestPath === "/api/project/artifacts/build/sibling/cancel") {
+                    cancelled = true;
+                    return respond({id: "sibling", target, status: "cancelling", cancellationRequested: true});
+                }
+                if (requestPath === "/api/project/artifacts/build/sibling") {
+                    if (cancelled) cancellingReads++;
+                    return respond({id: "sibling", target, status: finish ? "cancelled" : "cancelling", cancellationRequested: true,
+                        ...(finish ? {result: {status: "cancelled", message: "Cancelled", plan: {status: "planned", source: {kind: "blueprint", capabilities: []}, target: {kind: target, capabilities: []}, steps: [], preflight: {destinationKind, estimatedWork: "publish", losses: [], oneWay: false}}}}
+                            : {progress: {status: "running", message: "Cleaning owned output"}})});
+                }
+                return fetchImplFrom(BASE_ROUTES)(url, init);
+            };
+            renderRoutedApp({fetchImpl, initialEntries: ["/project/overview"]});
+            await screen.findByRole("heading", {name: "A"});
+            fireEvent.click(screen.getByRole("button", {name: "Build/Export"}));
+            const section = (await screen.findByText("Build artifact")).closest("fieldset") as HTMLElement;
+            await within(section).findByText("Ready to build");
+            const destination = within(section).getByLabelText(destinationKind === "file" ? "Output file (optional)" : "Output directory (optional)");
+            fireEvent.click(within(section).getByRole("button", {name: "Build"}));
+            expect(destination).toBeDisabled();
+            expect(within(section).getByRole("button", {name: "Browse…"})).toBeDisabled();
+            fireEvent.change(destination, {target: {value: "/games/replacement"}});
+            expect(destination).toHaveValue("");
+            fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
+            expect(cancelled).toBe(false);
+            await act(() => accept({ok: true, status: 202, json: () => Promise.resolve({status: "created", job: {id: "sibling", target, status: "queued", cancellationRequested: false}})}));
+            expect(await within(section).findByText(/Cleaning owned output.*Cancellation requested/)).toBeInTheDocument();
+            expect(cancelled).toBe(true);
+            fireEvent.change(destination, {target: {value: "/games/cancelling-replacement"}});
+            fireEvent.click(within(section).getByRole("button", {name: "Build"}));
+            expect(destination).toBeDisabled();
+            expect(destination).toHaveValue("");
+            expect(builds).toBe(1);
+            await waitFor(() => expect(cancellingReads).toBeGreaterThan(1));
+            finish = true;
+            await within(section).findByText(/Build cancelled/);
+            expect(destination).toBeEnabled();
+            expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
+        });
+
         it("sends visible Cancel to the server-side artifact job and renders its cancelled terminal state", async () => {
             const user = userEvent.setup();
             let cancelled = false;

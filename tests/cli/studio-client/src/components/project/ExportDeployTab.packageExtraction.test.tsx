@@ -236,14 +236,21 @@ it("suppresses a stale extraction preview after changing the destination", async
     expect(within(section).getByText("Package model: complete (custom)")).toBeInTheDocument();
 });
 
-it("ignores an old job response after selecting another extraction destination", async () => {
+it("ignores an obsolete job response after cancellation settles and the destination changes", async () => {
     let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let cancelled = false;
     const section = await open(transport((url, init) => {
         if (url.endsWith("/preview")) {
             const body = JSON.parse(String(init?.body)) as {outDir?: string};
             return response(preview(body.outDir));
         }
         if (url.endsWith("/build")) return response({status: "created", job: {id: "old", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
+        if (url.endsWith("/cancel")) {
+            cancelled = true;
+            return response({id: "old", target: "blueprint", status: "cancelling", cancellationRequested: true});
+        }
+        if (cancelled) return response({id: "old", target: "blueprint", status: "cancelled", cancellationRequested: true,
+            result: {status: "cancelled", message: "Cancelled before publication", plan: plan()}});
         return new Promise(resolve => {
             settle = resolve;
         });
@@ -251,6 +258,8 @@ it("ignores an old job response after selecting another extraction destination",
     await within(section).findByText("Package model: complete (custom)");
     fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
     await waitFor(() => expect(settle).toBeDefined());
+    fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
+    await within(section).findByText(/Build cancelled/);
     fireEvent.change(within(section).getByLabelText("Output file (optional)"), {target: {value: "/games/next.json"}});
     await within(section).findByText("Resolved absolute path: /games/next.json");
     await act(async () => settle(await response({id: "old", target: "blueprint", status: "completed", cancellationRequested: false,
@@ -259,37 +268,107 @@ it("ignores an old job response after selecting another extraction destination",
     expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
 });
 
-it("invalidates a rejected extraction preview and waits for a new preview before saving again", async () => {
-    let previewReads = 0;
-    let settle!: (value: Awaited<ReturnType<FetchLike>>) => void;
-    const section = await open(transport(url => {
-        if (url.endsWith("/preview")) {
-            if (++previewReads === 1) return response(preview());
+it("retains cancellation while startup is pending and locks the destination until cleanup settles", async () => {
+    let accept!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let acknowledgeCancel!: (value: Awaited<ReturnType<FetchLike>>) => void;
+    let finish = false;
+    let builds = 0;
+    let cancels = 0;
+    let reads = 0;
+    const section = await open(transport((url) => {
+        if (url.endsWith("/preview")) return response(preview());
+        if (url.endsWith("/build")) {
+            builds++;
             return new Promise(resolve => {
-                settle = resolve;
+                accept = resolve;
             });
         }
-        return Promise.resolve({ok: false, status: 409, json: () => Promise.resolve({error: "Source changed; refresh the preview"})});
+        if (url.endsWith("/cancel")) {
+            cancels++;
+            return new Promise(resolve => {
+                acknowledgeCancel = resolve;
+            });
+        }
+        reads++;
+        return response({id: "pending", target: "blueprint", status: finish ? "cancelled" : "running", cancellationRequested: finish,
+            ...(finish ? {result: {status: "cancelled", message: "Cleanup settled", plan: plan()}} : {progress: {status: "running", message: "Waiting for descriptor"}})});
     }));
     await within(section).findByText("Package model: complete (custom)");
-    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
-    await waitFor(() => expect(previewReads).toBe(2));
-    expect(within(section).getByRole("button", {name: "Build"})).toBeDisabled();
+    const save = within(section).getByRole("button", {name: "Save Blueprint"});
+    const destination = within(section).getByLabelText("Output file (optional)");
+    fireEvent.click(save);
+    expect(destination).toBeDisabled();
+    expect(within(section).getByRole("button", {name: "Browse…"})).toBeDisabled();
+    fireEvent.change(destination, {target: {value: "/games/overlap.json"}});
+    expect(destination).toHaveValue("");
+    fireEvent.click(save);
+    expect(builds).toBe(1);
+    fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
+    expect(await within(section).findByText(/Starting artifact build.*Cancellation requested/)).toBeInTheDocument();
+    expect(within(section).getByRole("button", {name: "Cancel"})).toBeDisabled();
+    expect(cancels).toBe(0);
+    await act(async () => accept(await response({status: "created", job: {id: "pending", target: "blueprint", status: "queued", cancellationRequested: false}}, 202)));
+    await waitFor(() => expect(cancels).toBe(1));
+    // An older running view must not clear the local cancellation intent.
+    expect(await within(section).findByText(/Waiting for descriptor.*Cancellation requested/)).toBeInTheDocument();
+    await waitFor(() => expect(reads).toBeGreaterThan(1));
+    expect(destination).toBeDisabled();
+    finish = true;
+    await act(async () => acknowledgeCancel(await response({id: "pending", target: "blueprint", status: "cancelling", cancellationRequested: true})));
+    await within(section).findByText(/Build cancelled/);
+    expect(destination).toBeEnabled();
+    expect(cancels).toBe(1);
     expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
-    await act(async () => settle(await response(preview())));
-    expect(await within(section).findByRole("button", {name: "Save Blueprint"})).toBeEnabled();
 });
 
-it("does not show an open action for a failed job carrying an inconsistent success payload", async () => {
-    const section = await open(transport(url => {
-        if (url.endsWith("/preview")) return response(preview());
-        if (url.endsWith("/build")) return response({status: "created", job: {id: "failure", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
-        return response({id: "failure", target: "blueprint", status: "failed", cancellationRequested: false,
-            result: {status: "ok", outputPath: "/games/unpublished.json", plan: plan()}});
+it.each(["cancelled", "failed"] as const)("keeps the running and cancelling destination owned until a %s terminal", async terminal => {
+    let cancelled = false;
+    let finish = false;
+    let builds = 0;
+    let cancellingReads = 0;
+    const destinations: (string | undefined)[] = [];
+    const section = await open(transport((url, init) => {
+        if (url.endsWith("/preview")) {
+            const body = JSON.parse(String(init?.body)) as {outDir?: string};
+            destinations.push(body.outDir);
+            return response(preview(body.outDir));
+        }
+        if (url.endsWith("/build")) {
+            builds++;
+            return response({status: "created", job: {id: "owned", target: "blueprint", status: "queued", cancellationRequested: false}}, 202);
+        }
+        if (url.endsWith("/cancel")) {
+            cancelled = true;
+            return response({id: "owned", target: "blueprint", status: "cancelling", cancellationRequested: true});
+        }
+        if (cancelled) cancellingReads++;
+        // Losing a read during cleanup must not release ownership or stop polling.
+        if (cancelled && cancellingReads === 1) return Promise.reject(new Error("Temporary poll failure"));
+        const activeStatus = cancelled ? "cancelling" : "running";
+        return response({id: "owned", target: "blueprint", status: finish ? terminal : activeStatus, cancellationRequested: cancelled,
+            ...(finish ? {result: {status: terminal === "cancelled" ? "cancelled" : "error", message: "Descriptor failed", plan: plan()}} : {progress: {status: "running", message: cancelled ? "Releasing snapshot" : "Extracting descriptor"}})});
     }));
     await within(section).findByText("Package model: complete (custom)");
+    const destination = within(section).getByLabelText("Output file (optional)");
     fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
-    await within(section).findByText("Artifact job failed without confirming a successful publication.");
+    await within(section).findByText(/Extracting descriptor/);
+    fireEvent.change(destination, {target: {value: "/games/running.json"}});
+    expect(destination).toBeDisabled();
+    expect(destination).toHaveValue("");
+    expect(within(section).getByRole("button", {name: "Save Blueprint"})).toBeDisabled();
+    fireEvent.click(within(section).getByRole("button", {name: "Cancel"}));
+    await within(section).findByText(/Releasing snapshot.*Cancellation requested/);
+    fireEvent.change(destination, {target: {value: "/games/cancelling.json"}});
+    fireEvent.click(within(section).getByRole("button", {name: "Save Blueprint"}));
+    expect(destination).toBeDisabled();
+    expect(destination).toHaveValue("");
+    expect(within(section).getByRole("button", {name: "Browse…"})).toBeDisabled();
+    expect(builds).toBe(1);
+    expect(destinations).toEqual([undefined]);
+    await waitFor(() => expect(cancellingReads).toBeGreaterThan(1));
+    finish = true;
+    await within(section).findByText(terminal === "cancelled" ? /Build cancelled/ : "Descriptor failed");
+    expect(destination).toBeEnabled();
     expect(within(section).queryByRole("button", {name: "Open as Project"})).not.toBeInTheDocument();
-    expect(within(section).queryByText(/Built to/)).not.toBeInTheDocument();
+    expect(within(section).queryByRole("button", {name: "Add to Projects"})).not.toBeInTheDocument();
 });
