@@ -330,7 +330,7 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
         expect(new StudioBlueprintService("1.3.0", directory, new StudioHomeService("1.3.0")).validate(blueprint)).toMatchObject({status: "invalid", errors: expect.arrayContaining([expect.objectContaining(diagnostic)])});
         for (const render of [api.renderBuiltGameModule, api.renderBuiltGameModuleSource]) expect(() => render(blueprint, "1.3.0")).toThrow(/reserved symbol-effect key.*rename the symbol/);
         expect(() => new api.GamePackageGenerator("1.3.0").generate(blueprint, directory, "rejected")).toThrow(/reserved symbol-effect key/);
-        const source = path.join(directory, "invalid.blueprint.json"), 
+        const source = path.join(directory, "invalid.blueprint.json"),
             destination = path.join(directory, "rejected.xlsx");
         fs.writeFileSync(source, JSON.stringify(blueprint));
         expect(await new ValidateCommand().run([source])).toBe(1);
@@ -362,8 +362,8 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
     it.each([false, true])("F9 binds changed/deleted charged mode to purchase entry across fresh handlers (explicit: %s)", async explicit => {
         const blueprint = existingMechanicsBlueprint(catalogue.find(row => row.id === "accumulating-freeGames-modes")!);
         blueprint.reelStrips = [["A"], ["A"], ["A"]];
-        const game = generatedMechanicsGame(blueprint), 
-            repository = new api.InMemorySessionRepository(), 
+        const game = generatedMechanicsGame(blueprint),
+            repository = new api.InMemorySessionRepository(),
             wallet = new api.InMemoryWallet(100);
         await repository.save("s", api.captureInitialPokieSessionState({seed: 31}, mechanicsSession(game), game.getSessionSerializer!(), true, game));
         const handler = () => new api.SpinCommandHandler(game, repository, wallet);
@@ -378,9 +378,9 @@ describe("V2C-12 catalogue-driven public authored workflows", () => {
             else state.base.chargedBetModeId = mode;
             expect(api.validatePersistedSession(corrupt, game)).toMatchObject({status: "corrupt-state", reason: expect.stringContaining("attribution")});
             await repository.save("s", corrupt);
-            const save = jest.spyOn(repository, "save"), 
-                create = jest.spyOn(game, "createSession"), 
-                debit = jest.spyOn(wallet, "debit"), 
+            const save = jest.spyOn(repository, "save"),
+                create = jest.spyOn(game, "createSession"),
+                debit = jest.spyOn(wallet, "debit"),
                 credit = jest.spyOn(wallet, "credit");
             expect((await handler().execute({kind: "spin", sessionId: "s", requestId: "invalid", ...continuation})).status).toBe("corrupt-state");
             for (const spy of [save, create, debit, credit]) expect(spy).not.toHaveBeenCalled();
