@@ -83,3 +83,45 @@ I independently opened all three PNGs after capture. They are legible,
 consistent with the transcript, and show the stated controls/results; this is
 an observation only, not image-based approval.
 
+## Recovery collection and finding (2026-10-14)
+
+The persistent harness was repaired in place and used one further fresh
+application/browser profile from 19:28:00.143Z to 19:29:34.997Z. Its complete
+runtime-only transcript is
+`/home/stager/Work/sta-ger/agents/runtime/verifier-harnesses/V2C-12-67d2bfbec82708b0/run-2026-10-14T19-28-00-143Z/transcript.json`
+(SHA-256 `8991a53520d535480b21f3739b2cdfe235ca19ad72b8f5e8ada47d09b45a9f7e`).
+It binds the candidate, current checkout, fresh config/documents paths,
+1439x956 viewport, 3 captured surfaces, action sequence, and post-close child
+diagnostic. It reused the authenticated candidate build receipt above; no test,
+pack, install, or second build was run.
+
+The run explicitly applied and created `v2c12-accum-recovery` with a
+three-reel accumulating `mini` jackpot, free-games and base/ante/buy/buy-more
+modes. Its Project Game basics form then accepted a blank-equivalent Game name
+draft for Save. The exact Save transitioned to loading and back to an editable
+draft with Save disabled, but displayed no validation issue or field error;
+the saved project was subsequently recovered intact through Cancel/Confirm.
+This is a reproducible finding: `GameBlueprintValidator.validateManifest`
+requires `trim().length > 0` in
+`src/generated/GameBlueprintValidator.ts`, while the rendered Project form
+does not expose that invalid result on this path. The recovered view again
+rendered `Name: V2C12 Accumulating Recovery`.
+
+The same run recorded an initial explicit `buy` Spin from Credits 1000, its
+accepted pending state, `Charged mode buy`, stake 0.5, and a payout-affected
+Credits balance of 1009.55. Its uncharged `Continue round` completed a
+two-subround lifecycle. A real browser `Ctrl+R` returned the public
+no-active-session Play recovery surface. A newly created post-reload session
+required a fresh `buy` selection and a later explicit Spin; that separate
+purchase again rendered Credits 999.5. No rendered Retry action was offered
+for either completed lifecycle, so no retry was fabricated.
+
+| File | SHA-256 | independently inspected surface |
+| --- | --- | --- |
+| `5-project-form-validation-missing.png` | `2da5996ac49cae5b05a12169a644edabdc284206bc4e1075e33def9d8b93f219` | Blank visible Game name, disabled Save and no rendered actionable validation. |
+| `6-purchase-continuation.png` | `59776c0c947d843d4708dae466d16af2c0af474799c35d13bf761ffe3ad7bd80` | First accepted buy purchase: pending continuation, Credits 1009.55 after award, charged mode and jackpot award. |
+| `7-later-purchase.png` | `6adba3b95527a178cf501fb35093c4d3b48db41ec8040b6474d481cf44fc35fe` | Later explicit post-reload buy purchase: Credits 999.5, charged mode and continuation. |
+
+I independently opened these three PNGs. They are legible and match the
+transcript; the first documents the finding and the latter two document the
+purchase lifecycle. This remains visual evidence, not approval.
