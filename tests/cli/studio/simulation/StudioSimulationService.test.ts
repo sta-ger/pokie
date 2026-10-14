@@ -1214,7 +1214,7 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         const start = service.start("/authored", request);
         if (start.status !== "created") throw new Error("Not created");
         const job = await waitForTerminal(service, start.job.id);
-        expect(job).toMatchObject({status: "completed", modeName: "ante", report: {betMode: "ante", totalBet: expect.closeTo(0.15), jackpot: {totalContributed: expect.closeTo(0.015), pools: {mini: {totalContributed: expect.closeTo(0.015)}}}}});
+        expect(job).toMatchObject({status: "completed", modeName: "ante", report: {betMode: "ante", totalBet: expect.closeTo(0.15, 12), jackpot: {totalContributed: expect.closeTo(0.015, 12), pools: {mini: {totalContributed: expect.closeTo(0.015, 12)}}}}});
         const report = job.report!;
         if (isSimulationReportSet(report)) throw new Error("Unexpected set");
         expect(report.reproducibility?.command).toContain("--mode ante");
@@ -1224,7 +1224,7 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         }
         const repeat = service.start("/authored", request);
         if (repeat.status !== "created") throw new Error("Not created");
-        expect((await waitForTerminal(service, repeat.job.id)).report).toMatchObject({totalBet: expect.closeTo(0.15), jackpot: {totalContributed: expect.closeTo(0.015)}});
+        expect((await waitForTerminal(service, repeat.job.id)).report).toMatchObject({totalBet: expect.closeTo(0.15, 12), jackpot: {totalContributed: expect.closeTo(0.015, 12)}});
         await service.cancelAll();
     });
 
@@ -1237,10 +1237,10 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
         if (!job.report || isSimulationReportSet(job.report)) throw new Error("No single report");
         const report = job.report;
         expect(report.jackpot?.awardCount).toBe(2);
-        expect(report.jackpot?.totalAwarded).toBeCloseTo(id.startsWith("fixed") ? 20 : 20.015);
-        expect(report.jackpot?.totalContributed).toBeCloseTo(0.015);
-        expect(report.jackpot?.contribution).toBeCloseTo(report.jackpot!.totalAwarded / report.totalBet);
-        expect(report.jackpot?.pools.mini.contribution).toBeCloseTo(report.jackpot!.contribution);
+        expect(report.jackpot?.totalAwarded).toBeCloseTo(id.startsWith("fixed") ? 20 : 20.015, 12);
+        expect(report.jackpot?.totalContributed).toBeCloseTo(0.015, 12);
+        expect(report.jackpot?.contribution).toBeCloseTo(report.jackpot!.totalAwarded / report.totalBet, 12);
+        expect(report.jackpot?.pools.mini.contribution).toBeCloseTo(report.jackpot!.contribution, 12);
         await service.cancelAll();
     });
 
@@ -1281,7 +1281,7 @@ describe("V2C-12 authored Studio simulation mode/report policy", () => {
             expect(restarted.getStatusForProject(directory, started.job.id)?.modeName).toBe("all");
             const rerun = restarted.start(directory, {rounds: 2, seed: "saved", modeName: "all"});
             if (rerun.status !== "created") throw new Error("Not created");
-            expect((await waitForTerminal(restarted, rerun.job.id)).report).toMatchObject({modes: {ante: {totalBet: expect.closeTo(0.15)}}});
+            expect((await waitForTerminal(restarted, rerun.job.id)).report).toMatchObject({modes: {ante: {totalBet: expect.closeTo(0.15, 12)}}});
             await service.cancelAll();
             await restarted.cancelAll();
         } finally {
