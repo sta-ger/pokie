@@ -1,3 +1,4 @@
+import type {ValidationIssueSeverity} from "../validation/ValidationIssueSeverity.js";
 import type {PokieGame} from "../gamepackage/PokieGame.js";
 import {loadPokieGameRuntime} from "../gamepackage/loadPokieGame.js";
 import {computeGameBlueprintHash} from "./computeGameBlueprintHash.js";
@@ -5,7 +6,7 @@ import {GAME_BLUEPRINT_SCHEMA_VERSION, type GameBlueprint} from "./GameBlueprint
 import {GameBlueprintValidator} from "./GameBlueprintValidator.js";
 import {PACKAGE_MODEL_DESCRIPTOR_VERSION} from "./PackageModelDescriptor.js";
 
-export type PackageExtractionDiagnostic = {path: string; code: string; message: string; severity?: "warning" | "error" | "info"};
+export type PackageExtractionDiagnostic = {path: string; code: string; message: string; severity?: ValidationIssueSeverity};
 export type PackageExtractionField = {
     path: string;
     status: "exact" | "inferred" | "defaulted" | "unsupported";
@@ -385,10 +386,10 @@ export class PackageBlueprintExtraction implements PackageBlueprintExtracting {
                 message: issue.message,
                 severity: issue.severity,
             });
-            for (const diagnostic of result.diagnostics.filter((issue) => issue.severity !== "warning" && issue.severity !== "info")) result.fields.push({path: diagnostic.path, status: "unsupported", authority: diagnostic.code});
+            for (const diagnostic of result.diagnostics.filter((issue) => issue.severity === undefined || issue.severity === "error")) result.fields.push({path: diagnostic.path, status: "unsupported", authority: diagnostic.code});
             const required = ["reels", "rows", "symbols", "paytable"];
             if (missing.length > 0) result.status = required.some((field) => !hasOwn(model, field)) ? "partial" : "malformed";
-            else if (result.diagnostics.some((issue) => issue.severity !== "warning" && issue.severity !== "info")) result.status = "unsupported";
+            else if (result.diagnostics.some((issue) => issue.severity === undefined || issue.severity === "error")) result.status = "unsupported";
             else {
                 result.status = "complete";
                 result.blueprint = model as GameBlueprint;

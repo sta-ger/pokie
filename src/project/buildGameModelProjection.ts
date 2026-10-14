@@ -135,7 +135,7 @@ export function buildPackageGameModelProjection(extraction: PackageBlueprintExtr
         symbols: "symbols", wilds: "symbols", scatters: "symbols", reelStrips: "reels", reelSequences: "reels", paytable: "paytable",
         availableBets: "betsAndModes", betModes: "betsAndModes", mechanics: "mechanics",
     };
-    for (const diagnostic of extraction.diagnostics.filter(issue => issue.severity !== "warning" && issue.severity !== "info")) {
+    for (const diagnostic of extraction.diagnostics.filter(issue => issue.severity === undefined || issue.severity === "error")) {
         const section = sections[diagnostic.path.split(".")[0]];
         if (section) projection[section] = unavailable(`${diagnostic.code}: ${diagnostic.message}`);
     }
